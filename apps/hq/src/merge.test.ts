@@ -214,6 +214,78 @@ describe("a change merged into main, or closed", () => {
         }),
     );
 
+    // Kara run 3, 2026-10-25: a 179-commit monorepo joined onto HQ's empty first commit merged as
+    // one squash, and main lost its history.
+    it.effect(
+      "the first change into a repository holding only HQ's empty first commit lands the history it carries as it is, and a later change is one squash as always",
+      () =>
+        Effect.gen(function* () {
+          const { call, fake, origin, url } = yield* startCore(true);
+          yield* untilHealth(call, "active");
+          const owner = yield* sessionFor(call, "door-owner");
+          const { appId, credential, auth } = yield* mateWithChange(call, fake, owner);
+          const git = yield* gitClient;
+          // An existing repository: three commits from a root of its own.
+          yield* git.checked(["init", "-q", "-b", "main", "monorepo"]);
+          const monorepo = NodePath.join(git.dir, "monorepo");
+          for (const file of ["readme.md", "web.ts", "hq.ts"]) {
+            NodeFS.writeFileSync(NodePath.join(monorepo, file), `${file}\n`);
+            yield* git.checked(["add", file], monorepo);
+            yield* git.checked(["commit", "-q", "-m", `Add ${file}`], monorepo);
+          }
+          // Joined onto HQ's empty first commit on the change's branch, as zcp joins it.
+          const ada = yield* checkout(git, origin, credential, appId, "ada");
+          yield* git.checked(["fetch", "-q", monorepo, "main"], ada.work);
+          yield* git.checked(
+            ["merge", "-q", "--allow-unrelated-histories", "--no-edit", "FETCH_HEAD"],
+            ada.work,
+          );
+          const { head } = yield* ada.push("P_MATE", 1);
+          yield* recorded(url, 1, head);
+          yield* call("PATCH", "/api/mate/changes/appdev/1", {
+            headers: auth,
+            body: { title: "Bring the monorepo in" },
+          });
+
+          const before = yield* ada.main;
+          const merged = yield* merge(call, owner, appId, 1, head);
+          assert.strictEqual(merged.status, 200);
+          const change = merged.body as Record<string, unknown>;
+          const landed = yield* ada.main;
+          assert.deepStrictEqual(
+            [change["state"], change["mergedSha"], change["landedHead"]],
+            ["merged", landed, head],
+          );
+          // Main takes the change's head under one merge commit, never a fast-forward: every commit
+          // it carried, and HQ's first, none squashed, and main's own line stays HQ's.
+          assert.strictEqual(
+            yield* git.checked(["log", "-1", "--format=%P%n%B", landed], ada.work),
+            [`${before} ${head}`, "Bring the monorepo in (#1)", "", "Mate-Change: P_MATE/1"].join(
+              "\n",
+            ),
+          );
+          assert.strictEqual(
+            yield* git.checked(["rev-list", "--count", "origin/main"], ada.work),
+            "6",
+          );
+
+          // The next change squashes onto the history the first one kept.
+          const next = (yield* call("POST", "/api/mate/changes", {
+            headers: auth,
+            body: { repo: "appdev", title: "Add a login page" },
+          })).body as { readonly change: { readonly number: number } };
+          assert.strictEqual(next.change.number, 2);
+          yield* ada.commit("login.ts", "login\n", "Add the login page");
+          const later = yield* ada.push("P_MATE", 2);
+          yield* recorded(url, 2, later.head);
+          assert.strictEqual((yield* merge(call, owner, appId, 2, later.head)).status, 200);
+          assert.strictEqual(
+            yield* git.checked(["log", "-1", "--format=%P%n%B", yield* ada.main], ada.work),
+            [landed, "Add a login page (#2)", "", "Mate-Change: P_MATE/2"].join("\n"),
+          );
+        }),
+    );
+
     // The deploy-jobs design: the merge's request submits each stage's deploy of the merged commit
     // before it answers, and answers where each stands.
     it.effect("answers a merge with each stage's deploy of the merged commit, submitted", () =>

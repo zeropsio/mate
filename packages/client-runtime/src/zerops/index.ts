@@ -254,7 +254,10 @@ export {
   type ZeropsTokenDelegation,
 } from "./groupReach.ts";
 export {
+  CODE_IN_POOL_LINE,
+  checkoutLabel,
   gitCheckoutHostnames,
+  gitEmptyLine,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
@@ -262,8 +265,13 @@ export {
   gitTrouble,
   gitVerdict,
   mateChangeIn,
+  NO_REPOSITORY_LINE,
   pullRequestBlocked,
+  leaseOfRepository,
   pullRequestBlockedReason,
+  threadCheckoutHostnames,
+  threadLeases,
+  type CheckoutLease,
   type GitBlock,
   type GitBlockAction,
   type GitBlockActionKind,
@@ -278,6 +286,25 @@ export {
 export { linkedChanges, linksChange } from "./changeLinks.ts";
 export { branchLabel, mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 export { mateNextStep, type MateNextStep } from "./mateNextStep.ts";
+export {
+  boundLeaseRead,
+  lifecycleLeases,
+  mateWorkspaceList,
+  sendZeropsReleaseRequest,
+  workspaceChip,
+  workspaceChipOf,
+  workspaceName,
+  ZEROPS_RELEASE_QUESTION,
+  ZEROPS_RELEASE_REQUEST,
+  zeropsLeaseIdle,
+  zeropsReleaseAsk,
+  zeropsReleaseTurn,
+  ZEROPS_LEASE_IDLE_AFTER_MS,
+  type MateWorkspace,
+  type WorkspaceChip,
+  type ZeropsReleaseAsk,
+  type ZeropsReleaseConversation,
+} from "./workspaceChip.ts";
 export {
   MATE_ARRIVAL_WINDOW_MS,
   mateArriving,

@@ -74,19 +74,28 @@ describe("mateNextStep", () => {
       mateName: "Juno",
       step: "none",
     },
+    // The conversation's header counts it, so the strip lists it too, in its row's word (below).
     {
       case: "its own change that does not merge",
       pullRequests: [pull({ mergeability: "conflicting" })],
       mate: "p-wren",
       mateName: "Wren",
-      step: "none",
+      step: {
+        title: "Wren is waiting for your review",
+        detail: "Greet with a fuller line",
+        number: 1,
+      },
     },
     {
       case: "its own change HQ is still checking",
       pullRequests: [pull({ mergeability: "checking" })],
       mate: "p-wren",
       mateName: "Wren",
-      step: "none",
+      step: {
+        title: "Wren is waiting for your review",
+        detail: "Greet with a fuller line",
+        number: 1,
+      },
     },
     {
       case: "its own landed change HQ still calls mergeable",
@@ -228,5 +237,234 @@ describe("mateNextStep: every change of its own waiting, newest first", () => {
           }
         : next.kind,
     ).toEqual({ title, lines, more });
+  });
+});
+
+// Several changes per Mate, one per branch (the owner, D-7, 2026-10-25): a conversation offers all
+// of its Mate's waiting changes, the one on the branch its lease is bound to first — never
+// another Mate's — and says it in the same words.
+describe("mateNextStep: the conversation's own branch first", () => {
+  const at = (hour: number) => `2026-10-25T${String(hour).padStart(2, "0")}:00:00Z`;
+  const previews = pull({
+    repository: "appsdev",
+    number: 2,
+    title: "Pool previews",
+    branch: "pool-previews",
+    updatedAt: at(12),
+  });
+  const stamp = pull({
+    repository: "appsdev",
+    number: 7,
+    title: "Build stamp",
+    branch: "build-stamp",
+    updatedAt: at(11),
+  });
+  const badge = pull({
+    repository: "appsdev",
+    number: 6,
+    title: "Test badge",
+    branch: "badge",
+    updatedAt: at(9),
+  });
+  const theirs = pull({
+    repository: "appsdev",
+    number: 8,
+    title: "Their badge",
+    branch: "badge-2",
+    mateProjectId: "p-juno",
+    updatedAt: at(13),
+  });
+
+  it.each([
+    [
+      "its bound lease's branch leads, the rest newest first",
+      [previews, stamp, badge],
+      "badge",
+      ["#6 Test badge", "#2 Pool previews", "#7 Build stamp"],
+    ],
+    [
+      "bound to no lease: newest first",
+      [previews, stamp, badge],
+      undefined,
+      ["#2 Pool previews", "#7 Build stamp", "#6 Test badge"],
+    ],
+    [
+      "a branch with no change of its own waiting: newest first",
+      [previews, stamp, badge],
+      "wip",
+      ["#2 Pool previews", "#7 Build stamp", "#6 Test badge"],
+    ],
+    [
+      "its branch's change still a draft asks nothing: newest first",
+      [previews, stamp, { ...badge, ready: false }],
+      "badge",
+      ["#2 Pool previews", "#7 Build stamp"],
+    ],
+    [
+      "another Mate's change on the branch is never offered",
+      [previews, { ...theirs, branch: "badge" }],
+      "badge",
+      [],
+    ],
+  ] as const)("%s", (_case, pullRequests, boundBranch, lines) => {
+    const step = mateNextStep({
+      pullRequests,
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      boundBranch,
+    });
+    expect(step.kind === "review" ? step.lines.map((line) => line.label) : null).toEqual(
+      lines.length === 0 ? [] : lines,
+    );
+    if (step.kind === "review" && lines.length > 0) {
+      expect(step.detail).toBe(lines[0]!.replace(/^#\d+ /u, ""));
+      expect(step.title).toBe(`Wren is waiting for your review of ${String(lines.length)} changes`);
+    }
+  });
+
+  it("a lone change on its branch reads as the one change, in the same words", () => {
+    const step = mateNextStep({
+      pullRequests: [badge],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      boundBranch: "badge",
+    });
+    expect(step.kind === "review" ? [step.title, step.detail, step.pull.number] : null).toEqual([
+      "Wren is waiting for your review",
+      "Test badge",
+      6,
+    ]);
+  });
+});
+
+// The rehearsal of 2026-10-25: the conversation's header read "Review 2" while the composer listed
+// one change — the other conflicted with main and was left out. The strip lists every change of
+// its Mate's the header counts, under one count: one that merges with its Review, one that does
+// not merge as it stands after the ones that do, in the word its row says (one answer on every
+// surface) and with the fix its review offers — the Mate's to make, the person's to ask for.
+describe("mateNextStep: every change the header counts, one that does not merge in its row's word with its review's fix", () => {
+  const at = (hour: number) => `2026-10-25T${String(hour).padStart(2, "0")}:00:00Z`;
+  const notes = pull({
+    repository: "appdev",
+    number: 3,
+    title: "Add rehearsal notes",
+    branch: "rh-two",
+    behind: true,
+    updatedAt: at(16),
+  });
+  const pools = pull({
+    repository: "appdev",
+    number: 4,
+    title: "Add an api part and dev pools",
+    branch: "api-info",
+    mergeability: "conflicting",
+    behind: true,
+    updatedAt: at(17),
+  });
+  const lineOf = (line: { readonly pull: FlowPullRequest; readonly verdict?: unknown }) => ({
+    number: line.pull.number,
+    verdict: line.verdict,
+  });
+  const resolve = {
+    title: "Conflicts with main",
+    fix: {
+      label: "Ask Wren to resolve it",
+      problem: {
+        what: "Change #4 no longer merges cleanly into main",
+        ask: "Merge main into it, resolve the conflicts, and deliver it again.",
+      },
+    },
+  };
+
+  it("lists a change that conflicts with main after the one that merges, under one count, with the fix its review offers", () => {
+    const step = mateNextStep({
+      pullRequests: [notes, pools],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+    });
+    expect(
+      step.kind === "review"
+        ? {
+            title: step.title,
+            lead: step.pull.number,
+            lines: step.lines.map(lineOf),
+            waiting: step.waiting,
+          }
+        : step.kind,
+    ).toEqual({
+      title: "Wren is waiting for your review of 2 changes",
+      lead: 3,
+      lines: [
+        { number: 3, verdict: undefined },
+        { number: 4, verdict: resolve },
+      ],
+      waiting: 1,
+    });
+  });
+
+  it("keeps the conversation's own branch first, even where its change does not merge", () => {
+    const step = mateNextStep({
+      pullRequests: [notes, pools],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      boundBranch: "api-info",
+    });
+    expect(
+      step.kind === "review" ? { lead: step.pull.number, lines: step.lines.map(lineOf) } : null,
+    ).toEqual({
+      lead: 4,
+      lines: [
+        { number: 4, verdict: resolve },
+        { number: 3, verdict: undefined },
+      ],
+    });
+  });
+
+  it.each([
+    {
+      case: "a lone change that conflicts: on its line, with the fix",
+      over: { mergeability: "conflicting" },
+      yours: true,
+      verdict: {
+        title: "Conflicts with main",
+        fix: {
+          label: "Ask Wren to resolve it",
+          problem: {
+            what: "Change #1 no longer merges cleanly into main",
+            ask: "Merge main into it, resolve the conflicts, and deliver it again.",
+          },
+        },
+      },
+    },
+    {
+      case: "a colleague's Mate's change that conflicts: its Review, never a fix",
+      over: { mergeability: "conflicting" },
+      yours: false,
+      verdict: { title: "Conflicts with main" },
+    },
+    {
+      case: "one HQ is still checking: its Review, as HQ works it out",
+      over: { mergeability: "checking" },
+      yours: true,
+      verdict: { title: "Checking" },
+    },
+    {
+      case: "one main already holds: its Review, nothing to merge",
+      over: { mergeability: "empty" },
+      yours: true,
+      verdict: { title: "Nothing to merge" },
+    },
+  ] as const)("$case", ({ over, yours, verdict }) => {
+    const step = mateNextStep({
+      pullRequests: [pull(over)],
+      mateProjectId: "p-wren",
+      mateName: "Wren",
+      yours,
+    });
+    expect(
+      step.kind === "review"
+        ? { lines: step.lines.map(lineOf), more: step.more, waiting: step.waiting }
+        : step.kind,
+    ).toEqual({ lines: [{ number: 1, verdict }], more: 0, waiting: 0 });
   });
 });

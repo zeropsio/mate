@@ -15,7 +15,10 @@ import { describe, expect, it } from "vite-plus/test";
 import { readZeropsCardSource } from "./cards/decode.ts";
 import { decodeZeropsCard } from "./cards/payloads.ts";
 import { buildDevServerFields } from "./model/builders/devServer.ts";
+import { gitCheckoutHostnames } from "./gitTab.ts";
 import { flowChange } from "./projectFlow.ts";
+import { poolPairsIn, servicePairs } from "./servicePairs.ts";
+import { mateWorkspaceList, workspaceChip, workspaceName } from "./workspaceChip.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
@@ -195,6 +198,92 @@ describe("zcp contract fixtures", () => {
       expect(card.links).toEqual([]);
       expect(card.kicker).toBe("Dev server · appdev");
     });
+  });
+
+  it("pairs a migrated part's stage with its dev pool, never listing the stage as a checkout", () => {
+    const envelope = decodeEnvelope(json("envelope.pool-pair.json"));
+    const [pool, stage] = envelope.services;
+    expect([pool?.hostname, pool?.runtimeClass, pool?.mode]).toEqual([
+      "apppool",
+      "pool",
+      undefined,
+    ]);
+    const poolPairs = poolPairsIn(envelope.services);
+    expect(poolPairs).toEqual([
+      { pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] },
+    ]);
+    const services = [
+      { hostname: "apppool", group: "infrastructure" as const, type: pool?.typeVersion ?? "" },
+      { hostname: "appstage", group: "runtimes" as const, type: stage?.typeVersion ?? "" },
+    ];
+    expect(servicePairs({ services, poolPairs }).devOf).toEqual(new Map([["appstage", "apppool"]]));
+    expect(gitCheckoutHostnames(services, undefined, poolPairs)).toEqual([]);
+    expect(envelope.leases?.map((lease) => [lease.alias, lease.pool])).toEqual([
+      ["apppool-1", "apppool"],
+    ]);
+  });
+
+  it("reads what a lease status read of each lease's checkout, a fact it did not read left out", () => {
+    const sent = json("envelope.lease-status.json") as { leases: ReadonlyArray<unknown> };
+    const [read, unread] = decodeEnvelope(sent).leases ?? [];
+    expect([read, unread]).toEqual(sent.leases);
+    expect(read?.activity).toEqual({
+      lastChangeAt: "2026-10-23T19:12:40Z",
+      acquiredAt: "2026-10-23T18:00:00Z",
+      readAt: "2026-10-23T20:04:00Z",
+    });
+    expect(read?.unsaved).toEqual({
+      files: [" M src/App.tsx", "?? notes.txt"],
+      fileCount: 2,
+      unpushedCommits: 2,
+    });
+    expect(unread?.activity).not.toHaveProperty("lastChangeAt");
+    expect(unread).not.toHaveProperty("unsaved");
+  });
+
+  it("draws the workspace chip from a lease status, never idle while its preview was not observed", () => {
+    const [read, unread] = decodeEnvelope(json("envelope.lease-status.json")).leases ?? [];
+    const chip = (lease: typeof read, at: string) =>
+      lease === undefined
+        ? undefined
+        : workspaceChip({ name: workspaceName(lease), lease, lastTurn: null, now: Date.parse(at) });
+    expect(chip(read, "2026-10-23T20:04:00Z")).toEqual({
+      words: "devpool · feat-a · last active 51 min ago · 2 unpushed · 2 uncommitted",
+      idle: false,
+    });
+    expect(chip(read, "2026-10-27T20:04:00Z")?.idle).toBe(false);
+    expect(chip(unread, "2026-10-27T20:04:00Z")).toEqual({
+      words: "stoppool · feat-b · last active 4 d ago",
+      idle: false,
+    });
+  });
+
+  it("keeps why a lease status found a lease's container not answering, and lists that workspace not answering", () => {
+    // zcp's lease status with its first lease's container at its process limit (DP-21): the
+    // fixture's bytes plus the `notAnswering` zcp sends then.
+    const sent = json("envelope.lease-status.json") as { leases: Array<Record<string, unknown>> };
+    const why = "at its process limit: its ssh server could not start a shell";
+    const variant = {
+      ...sent,
+      leases: sent.leases.map((lease, index) =>
+        index === 0 ? { ...lease, notAnswering: why } : lease,
+      ),
+    };
+    const decoded = decodeEnvelope(variant);
+    expect(decoded.leases?.map((lease) => lease.notAnswering)).toEqual([why, undefined]);
+    const list = mateWorkspaceList({
+      binding: { alias: "stoppool-2", pool: "stoppool", branch: "feat-b" },
+      lifecycle: {
+        state: "known",
+        value: { threadId: "thread-1", recentTools: [], envelope: decoded },
+      } as unknown as Parameters<typeof mateWorkspaceList>[0]["lifecycle"],
+      lastTurn: null,
+      now: Date.parse("2026-10-23T20:04:00Z"),
+    });
+    expect(list.map(({ name, state, notAnswering }) => [name, state, notAnswering])).toEqual([
+      ["stoppool · feat-b", "held", undefined],
+      ["devpool · feat-a", "not answering", why],
+    ]);
   });
 
   it("reads a receipt whose web preview is older than the change head", () => {

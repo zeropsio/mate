@@ -585,6 +585,42 @@ it.effect("invalidates a ref snapshot when a mutation fails after changing Git",
   ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
 );
 
+// A pool hands its container to another branch under the same alias: the checkout at
+// /var/www/matepool-2 is then another clone, at the same path.
+it.effect(
+  "forgets the branch and refs kept of a path another repository took, without asking git",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const driver = yield* makeGitVcsDriverCore();
+        const fileSystem = yield* FileSystem.FileSystem;
+        const parent = yield* makeTmpDir();
+        const checkout = `${parent}/matepool-2`;
+        const clone = (directory: string, branch: string) =>
+          Effect.gen(function* () {
+            yield* fileSystem.makeDirectory(directory);
+            yield* initRepoWithCommit(directory);
+            yield* git(directory, ["checkout", "-b", branch]);
+          }).pipe(Effect.provideService(GitVcsDriver.GitVcsDriver, driver));
+        yield* clone(`${parent}/a`, "feat-a");
+        yield* clone(`${parent}/b`, "feat-b");
+        const current = (refs: {
+          readonly refs: ReadonlyArray<{ readonly name: string; readonly current: boolean }>;
+        }) => refs.refs.find((ref) => ref.current)?.name;
+
+        yield* fileSystem.rename(`${parent}/a`, checkout);
+        assert.strictEqual(current(yield* driver.listRefs({ cwd: checkout })), "feat-a");
+        yield* fileSystem.rename(checkout, `${parent}/a`);
+        yield* fileSystem.rename(`${parent}/b`, checkout);
+        yield* driver.forgetRepository(checkout);
+
+        const after = yield* driver.listRefs({ cwd: checkout });
+        assert.strictEqual(current(after), "feat-b");
+        assert.isFalse(after.refs.some((ref) => ref.name === "feat-a"));
+      }),
+    ).pipe(Effect.provide(ServerConfigLayer.pipe(Layer.provideMerge(NodeServices.layer)))),
+);
+
 it.effect("fails a ref snapshot when for-each-ref exits unsuccessfully", () =>
   Effect.scoped(
     Effect.gen(function* () {

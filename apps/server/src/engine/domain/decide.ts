@@ -311,6 +311,17 @@ const handle = (b: StepBuilder, command: Command): void => {
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
+    case "BindLease":
+      // Its first lease is where it works: another the agent acquires is only a container it uses.
+      if (b.state.lease === null) b.emit({ _tag: "LeaseBound", lease: command.lease });
+      return;
+    case "UnbindLease": {
+      const bound = b.state.lease;
+      if (bound !== null && bound.alias === command.ended) {
+        b.emit({ _tag: "LeaseUnbound", alias: bound.alias });
+      }
+      return;
+    }
     case "ArmWake":
       return armWake(b, command);
     case "CancelWake":
@@ -983,11 +994,11 @@ const endRun = (
 const settledBody = (body: ItemBody, end: RunEnd): ItemBody => {
   switch (body.kind) {
     case "call":
-      return {
-        ...body,
-        state: end.kind === "stopped" ? "stopped" : "unreturned",
-        endedAt: body.endedAt,
-      };
+      // Only a call still running is settled by its run's end: one that came back keeps how it
+      // came back (a helper's, after the turn that started its helper ended).
+      return body.state !== "running"
+        ? body
+        : { ...body, state: end.kind === "stopped" ? "stopped" : "unreturned" };
     case "note":
     case "thought":
       return { ...body, streaming: false };
@@ -2208,7 +2219,10 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (closed !== undefined) {
         // Never back to open: only a closing signal, or one after its turn's end, can change it.
         if (signal.kind === "item-closed" || signal.afterEnd === true) {
-          updateClosed(b, closed, signal.body);
+          updateClosed(b, closed, signal.body, {
+            detail: signal.detail,
+            data: signal.kind === "item-closed" ? signal.data : undefined,
+          });
         }
         return;
       }
@@ -2504,10 +2518,21 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
   }
 };
 
-/** A closed item's key again: the same content changes nothing, new content updates it in place. */
-const updateClosed = (b: StepBuilder, closed: ClosedItem, body: ItemBody): void => {
+/**
+ * A closed item's key again: the same content changes nothing, new content updates it in place,
+ * and what comes beside its body is kept as an open item's would be — its words whole, a closing
+ * call's own record (a helper's call that came back after its run ended).
+ */
+const updateClosed = (
+  b: StepBuilder,
+  closed: ClosedItem,
+  body: ItemBody,
+  beside: { readonly detail?: string | undefined; readonly data?: unknown } = {},
+): void => {
   const run = closed.runId === null ? undefined : b.state.runs[closed.runId];
   const settled = run?.end == null ? body : settledBody(body, run.end);
+  if (beside.detail !== undefined) b.details.push({ itemId: closed.itemId, body: beside.detail });
+  if (beside.data !== undefined) b.data.push({ itemId: closed.itemId, data: beside.data });
   if (contentDigest(settled) === closed.digest) return;
   b.emit({ _tag: "ItemUpdated", runId: closed.runId, itemId: closed.itemId, body: settled });
 };

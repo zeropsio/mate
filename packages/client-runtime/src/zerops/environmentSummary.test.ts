@@ -52,7 +52,21 @@ describe("summarizeEnvironmentServices", () => {
       deployedAt: undefined,
       deployable: [],
       statuses: [],
+      pools: [],
     });
+  });
+
+  it("names the dev pools among the developer's services by hostname, a Box never one", () => {
+    expect(
+      summarizeEnvironmentServices([
+        APP,
+        service("webpool", { type: "swarm@1" }),
+        service("vmpool", { type: "ubuntu/swarm-vm@1" }),
+        service("box", { type: "ubuntu/zbox@1", category: "STANDARD" }),
+        ZCP,
+        CORE,
+      ]).pools,
+    ).toEqual(["vmpool", "webpool"]);
   });
 
   it("says how each of the developer's services stands, as the platform says it", () => {

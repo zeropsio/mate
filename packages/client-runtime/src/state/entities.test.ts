@@ -237,6 +237,23 @@ describe("environment entity projections", () => {
     expect(merged?.messages).toBe(messages);
   });
 
+  it("a thread works in the lease its shell names: the detail is told it", () => {
+    const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+    const detail = {
+      ...THREAD_SHELL,
+      environmentId: ENVIRONMENT_ID,
+      deletedAt: null,
+      messages: [],
+      proposedPlans: [],
+      activities: [],
+    } satisfies OrchestrationThread & { readonly environmentId: EnvironmentId };
+    const shell = { ...THREAD_SHELL, environmentId: ENVIRONMENT_ID, lease };
+    expect(mergeEnvironmentThread(detail, shell)?.lease).toEqual(lease);
+    expect(
+      mergeEnvironmentThread({ ...detail, lease }, { ...shell, lease: null })?.lease,
+    ).toBeNull();
+  });
+
   it("preserves untouched project and thread identities across unrelated shell updates", () => {
     const harness = makeHarness();
     const projectRefsAtom = harness.projects.environmentProjectRefsAtom(ENVIRONMENT_ID);

@@ -2,8 +2,8 @@
  * What enters a conversation's actor, and what `decide` makes of it.
  *
  * People send `Send`, `Stop`, `Answer`, `Dismiss`, `Steer`, `SwitchModel`, `SetRuntimeMode`,
- * `ChooseAgent`, `Archive`, `Unarchive`; the
- * engine's own fibers tell `WakeFired` (scheduler), `EffectSettled` (worker), `ProviderSignals`
+ * `ChooseAgent`, `Archive`, `Unarchive`; the Zerops side tells `BindLease` and `UnbindLease`
+ * from its agent's `zerops_lease` results; the engine's own fibers tell `WakeFired` (scheduler), `EffectSettled` (worker), `ProviderSignals`
  * (the pump, boundaries only) and `Recovered` (boot). Every input carries a command id: a client's,
  * or one derived from its cause (`ids.ts`).
  *
@@ -39,6 +39,7 @@ import type {
   RunId,
   RuntimeMode,
   SessionId,
+  ThreadLease,
   TurnEndSource,
   TurnHandle,
   WakeId,
@@ -271,6 +272,13 @@ export type Command =
     }
   | { readonly _tag: "Archive" }
   | { readonly _tag: "Unarchive" }
+  /** The agent leased a pool container: the conversation is bound to it, unless it has a lease. */
+  | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
+  /**
+   * A lease ended — released, lost, no longer held, or acquired again by another conversation: the
+   * conversation's is unbound when it is `ended`.
+   */
+  | { readonly _tag: "UnbindLease"; readonly ended: string }
   | {
       readonly _tag: "ArmWake";
       readonly kind: string;

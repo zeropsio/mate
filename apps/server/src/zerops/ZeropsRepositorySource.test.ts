@@ -183,3 +183,95 @@ describe("ZeropsRepositorySource", () => {
     }),
   );
 });
+
+describe("a lease's mount", () => {
+  /** zcp mounts a lease as it mounts a service: `<alias>:/var/www` at `/var/www/<alias>`. */
+  const LEASE_LINE =
+    "webpool-3:/var/www /var/www/webpool-3 fuse.sshfs rw,nosuid,nodev,relatime,user_id=2023,group_id=2023 0 0";
+  const TABLE = [MEASURED_MOUNT_TABLE, LEASE_LINE].join("\n");
+
+  it("passes the mount table's rules as a service's mount does", () => {
+    assert.deepStrictEqual(parseMountTable(LEASE_LINE), [
+      { host: "webpool-3", mountPath: "/var/www/webpool-3" },
+    ]);
+  });
+
+  it.effect("is the lease's when zcp's leases name it, never a service's", () =>
+    Effect.gen(function* () {
+      const source = yield* makeZeropsRepositorySource({
+        enabled: true,
+        readMountTable: Effect.succeed(TABLE),
+        leaseAliases: Effect.succeed(new Set(["webpool-3"])),
+      });
+      const result = yield* source.refresh;
+      assert.strictEqual(result._tag, "available");
+      if (result._tag !== "available") return;
+      const byHost = new Map(result.repositories.map((entry) => [entry.host, entry.kind]));
+      assert.strictEqual(byHost.get("webpool-3"), "lease");
+      assert.strictEqual(byHost.get("s3git1"), undefined);
+    }),
+  );
+
+  // A Zerops service hostname is lowercase alphanumeric only, so `<pool>-<number>` is a lease's.
+  it.effect.each([
+    { host: "webpool-3", aliases: [], kind: "lease" },
+    { host: "webpool-3", aliases: ["webpool-3"], kind: "lease" },
+    { host: "weatherdash", aliases: [], kind: undefined },
+    { host: "weatherdash", aliases: ["weatherdash"], kind: "lease" },
+  ])(
+    "is told by its name before any read of zcp's leases, and by a read beside it: $host with $aliases",
+    ({ host, aliases, kind }) =>
+      Effect.gen(function* () {
+        const source = yield* makeZeropsRepositorySource({
+          enabled: true,
+          readMountTable: Effect.succeed(TABLE),
+          leaseAliases: Effect.succeed(new Set(aliases)),
+        });
+        const result = yield* source.list;
+        assert.strictEqual(
+          result._tag === "available"
+            ? result.repositories.find((entry) => entry.host === host)?.kind
+            : "unread",
+          kind,
+        );
+      }),
+  );
+
+  it.effect(
+    "turns a lease's once zcp's leases name it, and is identified again under that kind",
+    () =>
+      Effect.gen(function* () {
+        const aliases = yield* Ref.make<ReadonlySet<string>>(new Set());
+        const source = yield* makeZeropsRepositorySource({
+          enabled: true,
+          readMountTable: Effect.succeed(TABLE),
+          leaseAliases: Ref.get(aliases),
+        });
+        yield* source.refresh;
+        // Verified while the leases had not named it yet (the mount lands before the result).
+        yield* source.remember({
+          host: "webpool-3",
+          mountPath: "/var/www/webpool-3",
+          remotePath: "/var/www",
+          identity: { projectId: "p", serviceId: "pool" },
+          rootId: "zerops:service-root",
+        });
+        yield* Ref.set(aliases, new Set(["webpool-3"]));
+        const known = (yield* source.known).find((entry) => entry.host === "webpool-3");
+        assert.deepStrictEqual(known, {
+          host: "webpool-3",
+          mountPath: "/var/www/webpool-3",
+          remotePath: "/var/www",
+          kind: "lease",
+        });
+        const listed = yield* source.list;
+        assert.strictEqual(
+          listed._tag === "available"
+            ? listed.repositories.find((entry) => entry.host === "webpool-3")?.kind
+            : undefined,
+          "lease",
+          "the cached listing reads the leases as they are now",
+        );
+      }),
+  );
+});

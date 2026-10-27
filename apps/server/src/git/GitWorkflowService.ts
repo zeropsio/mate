@@ -48,6 +48,11 @@ export class GitWorkflowService extends Context.Service<
     readonly invalidateLocalStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateRemoteStatus: (cwd: string) => Effect.Effect<void, never>;
     readonly invalidateStatus: (cwd: string) => Effect.Effect<void, never>;
+    /**
+     * Forgets everything kept of the repository at `cwd`, without asking git: another repository
+     * may sit at that path now, such as a lease's checkout handed to another branch.
+     */
+    readonly forgetRepository: (cwd: string) => Effect.Effect<void>;
     readonly pullCurrentBranch: (cwd: string) => Effect.Effect<VcsPullResult, GitCommandError>;
     readonly runStackedAction: (
       input: GitRunStackedActionInput,
@@ -282,6 +287,8 @@ export const make = Effect.gen(function* () {
     invalidateLocalStatus: gitManager.invalidateLocalStatus,
     invalidateRemoteStatus: gitManager.invalidateRemoteStatus,
     invalidateStatus: gitManager.invalidateStatus,
+    forgetRepository: (cwd) =>
+      Effect.andThen(git.forgetRepository(cwd), gitManager.invalidateStatus(cwd)),
     pullCurrentBranch: (cwd) =>
       ensureGitCommand("GitWorkflowService.pullCurrentBranch", cwd).pipe(
         Effect.andThen(git.pullCurrentBranch(cwd)),

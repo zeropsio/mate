@@ -512,6 +512,50 @@ describe("the keys model's link", () => {
     ).toBe(true);
   });
 
+  it("a state under the keys model brings every open change a Mate holds per branch with its review, and an older HQ's state reads without them", () => {
+    const open = {
+      repo: "appdev",
+      number: 4,
+      title: "Checkout copy",
+      state: "open",
+      head: "a".repeat(40),
+      mergedSha: null,
+      landedHead: null,
+      branch: "feat-copy",
+    };
+    const review = {
+      ready: true,
+      mergeability: "conflict",
+      behind: true,
+      updatedAt: "2026-10-25T09:00:00.000Z",
+    };
+    const read = (mate: Record<string, unknown>) => {
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate }));
+      return decoded._tag === "Success" && decoded.value.type === "state"
+        ? decoded.value.mate
+        : undefined;
+    };
+    const perBranch = read({
+      ...self,
+      openPerBranch: true,
+      changes: [
+        { ...open, ...review },
+        { ...open, number: 3, branch: undefined },
+      ],
+    });
+    expect(perBranch?.openPerBranch).toBe(true);
+    expect(perBranch?.changes.map(({ number, branch }) => [number, branch])).toEqual([
+      [4, "feat-copy"],
+      [3, undefined],
+    ]);
+    expect(perBranch?.changes[0]).toMatchObject(review);
+    const older = read({ ...self, changes: [open] });
+    expect(older?.openPerBranch).toBeUndefined();
+    expect(older?.changes[0]?.ready).toBeUndefined();
+    expect(older?.changes[0]?.mergeability).toBeUndefined();
+    expect(read({ ...self, openPerBranch: false })).toBeUndefined();
+  });
+
   it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
     for (const hello of [

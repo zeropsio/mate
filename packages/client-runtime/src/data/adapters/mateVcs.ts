@@ -163,6 +163,19 @@ export function makeVcsReads(store: AccountStore, wire: ReturnType<typeof makeVc
         Effect.runFork(Fiber.interrupt(current.fiber));
       };
     },
+    /**
+     * Read again: a status stream that was refused or lost is asked of its owner again; a live one
+     * already hears every change and is left as it is.
+     */
+    again: (target: VcsKey) => {
+      const entry = held.get(vcsId(target));
+      const key: LinkKey = `mate:vcs-${encodeURIComponent(vcsId(target))}`;
+      if (
+        entry?.supervisor !== undefined &&
+        ["refused", "recovering", "paused"].includes(streamOf(store.state(), key).phase)
+      )
+        Effect.runFork(entry.supervisor.signal("manual-retry"));
+    },
     close: () => {
       closed = true;
       for (const entry of held.values()) {

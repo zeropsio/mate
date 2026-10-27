@@ -117,6 +117,11 @@ export const noRestartEvidence = Layer.succeed(
 /**
  * A crewmate's conversation works where its crew says (its copy, or the Mate's tree); every other
  * agent works in the server's own directory, with full access: the Mate's container.
+ *
+ * A conversation bound to a lease too: zcp keeps its lease records and work session in the
+ * session's working directory (`.zcp/state`), so a session moved into `/var/www/<alias>` would
+ * find none of them. The lease's mount is under this directory; the binding drives only what a
+ * person's views show (the Git tab, the diff, the terminal).
  */
 export const serverWorkspace = Layer.effect(
   AgentWorkspace,

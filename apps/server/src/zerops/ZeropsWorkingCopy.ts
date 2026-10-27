@@ -21,6 +21,8 @@
  * git, which leaves none. New files count only where the task's work started on a clean working
  * copy (put on its base, every file it held kept away), so they are the task's own.
  *
+ * A pool container a thread's agent leased is that thread's working copy, never one of these.
+ *
  * @module ZeropsWorkingCopy
  */
 import * as Context from "effect/Context";
@@ -28,7 +30,11 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { VcsProcess } from "../vcs/VcsProcess.ts";
-import { ZeropsRepositorySource, type ZeropsRepository } from "./ZeropsRepositorySource.ts";
+import {
+  isLeaseRepository,
+  ZeropsRepositorySource,
+  type ZeropsRepository,
+} from "./ZeropsRepositorySource.ts";
 
 /** How long one local git step on a dev service may take, its SSH included. */
 const STEP_TIMEOUT_MS = 30_000;
@@ -197,6 +203,10 @@ export const make = Effect.gen(function* () {
     );
   };
 
+  /** The dev services' working copies, a lease's mount left to its thread. */
+  const devServices = (repositories: ReadonlyArray<ZeropsRepository>) =>
+    repositories.filter((repository) => !isLeaseRepository(repository));
+
   const hold = (taskId: string, base: WorkingCopyBase, held?: string) =>
     Effect.gen(function* () {
       const listed = yield* source.list;
@@ -209,7 +219,7 @@ export const make = Effect.gen(function* () {
         return { missed: [], unlisted: true };
       }
       const missed = yield* Effect.forEach(
-        listed.repositories,
+        devServices(listed.repositories),
         (repository) => hostOf(repository, taskId, base, held),
         { concurrency: "unbounded" },
       );
@@ -259,7 +269,7 @@ export const make = Effect.gen(function* () {
       const listed = yield* source.list;
       if (listed._tag !== "available") return [];
       const held = yield* Effect.forEach(
-        listed.repositories,
+        devServices(listed.repositories),
         (repository) =>
           Effect.map(holdsUndelivered(repository, withNew), (holds) =>
             holds ? repository.host : undefined,

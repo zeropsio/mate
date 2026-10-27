@@ -1,3 +1,4 @@
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { describe, expect, it } from "@effect/vitest";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
@@ -16,16 +17,27 @@ import {
   type ItemLifecyclePayload,
   type SpiEvent,
   type ThreadId,
+  type ThreadLease,
 } from "@t3tools/contracts";
 
+import { layerTest as serverConfigTest } from "../config.ts";
 import { conversationOfThread, providerThreadOf } from "../engine/MateEngine.ts";
 import { PersistenceSqlError } from "../persistence/Errors.ts";
 import { SqlitePersistenceMemory } from "../persistence/Layers/Sqlite.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
 import { applyToolCall } from "../spi/toolCall.ts";
+import { sweepCheckpointRefs } from "../vcs/checkpointRefsSweep.ts";
+import { VcsProcess, type VcsProcessOutput } from "../vcs/VcsProcess.ts";
 import { ZEROPS_ENVELOPE_FENCE } from "./zeropsEnvelope.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import {
+  isLeaseRepository,
+  makeZeropsLeaseRoster,
+  makeZeropsRepositorySource,
+  ZeropsLeaseRoster,
+  ZeropsRepositorySource,
+} from "./ZeropsRepositorySource.ts";
 
 const THREAD = "thread-1" as ThreadId;
 const OTHER_THREAD = "thread-2" as ThreadId;
@@ -63,6 +75,8 @@ const claudeEvent = (options: {
   readonly text?: string;
   readonly type?: "item.started" | "item.completed";
   readonly itemId?: string;
+  readonly input?: Record<string, unknown>;
+  readonly isError?: boolean;
 }): SpiEvent =>
   applyToolCall({
     eventId: `evt-${(eventCounter += 1)}`,
@@ -77,7 +91,7 @@ const claudeEvent = (options: {
       title: "zerops",
       data: {
         toolName: options.toolName ?? "mcp__zerops__zerops_workflow",
-        input: { action: "status" },
+        input: options.input ?? { action: "status" },
         ...(options.type === "item.started"
           ? {}
           : {
@@ -85,6 +99,7 @@ const claudeEvent = (options: {
                 type: "tool_result",
                 tool_use_id: options.itemId ?? "toolu_01",
                 content: [{ type: "text", text: options.text ?? envelopeBlock("develop-active") }],
+                ...(options.isError === true ? { is_error: true } : {}),
               },
             }),
       },
@@ -657,6 +672,1383 @@ describe("ZeropsLifecycle", () => {
   );
 });
 
+describe("ZeropsLifecycle: the lease a conversation's agent acquired", () => {
+  const CONVERSATION = ConversationId.make("mate");
+  const SESSION = providerThreadOf(CONVERSATION);
+  /** The conversation the lifecycle reads a provider session's events on. */
+  const OWNER = CONVERSATION as string as ThreadId;
+  /** `branch` null: a lease acquired for none. */
+  const lease = (alias: string, state = "held", branch: string | null = "feat-x") => ({
+    alias,
+    pool: "webpool",
+    ...(branch === null ? {} : { branch }),
+    containerHostname: `node-id-${alias.split("-")[1]}.runtime.webpool.zerops`,
+    state,
+    unverified: false,
+  });
+  const envelopeWith = (leases: ReadonlyArray<unknown> | undefined) => ({
+    ...JSON.parse(envelopeJsonText("develop-active")),
+    ...(leases === undefined ? {} : { leases }),
+  });
+  /** A `zerops_lease` call's result, as zcp's JSON carrier writes it. */
+  const leaseCall = (options: {
+    readonly input: Record<string, unknown>;
+    readonly leases?: ReadonlyArray<unknown>;
+    readonly envelope?: ReadonlyArray<unknown> | undefined;
+    readonly isError?: boolean;
+    readonly threadId?: ThreadId;
+  }) =>
+    claudeEvent({
+      threadId: options.threadId ?? SESSION,
+      toolName: "mcp__zerops__zerops_lease",
+      input: options.input,
+      ...(options.isError === undefined ? {} : { isError: options.isError }),
+      text: JSON.stringify({
+        action: options.input.action,
+        leases: options.leases ?? [],
+        envelope: envelopeWith(options.envelope),
+      }),
+    });
+  const acquire = (alias: string, held: ReadonlyArray<unknown>, branch = "feat-x") =>
+    leaseCall({
+      input: { action: "acquire", pool: "webpool", branch },
+      leases: [lease(alias, "held", branch)],
+      envelope: held,
+    });
+  /** Any other Zerops tool whose envelope reads zcp's leases. */
+  const statusReading = (leases: ReadonlyArray<unknown> | undefined) =>
+    claudeEvent({
+      threadId: SESSION,
+      toolName: "mcp__zerops__zerops_deploy",
+      text: JSON.stringify({ status: "DEPLOYED", envelope: envelopeWith(leases) }),
+    });
+
+  const withLeases = <A, E>(
+    use: (
+      lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
+      told: () => Effect.Effect<ReadonlyArray<unknown>>,
+      noted: () => Effect.Effect<ReadonlyArray<string> | undefined>,
+    ) => Effect.Effect<A, E, never>,
+  ) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const changes = yield* Ref.make<ReadonlyArray<unknown>>([]);
+        const roster = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+          recordLease: (conversation, change, key) =>
+            Ref.update(changes, (all) => [...all, { conversation, change, key }]),
+          noteLeases: (aliases) => Ref.set(roster, aliases),
+        });
+        return yield* use(
+          lifecycle,
+          () =>
+            Effect.map(Ref.get(changes), (all) =>
+              all.map((entry) => (entry as { readonly change: unknown }).change),
+            ),
+          () => Ref.get(roster),
+        );
+      }),
+    ).pipe(Effect.provide(persistence));
+
+  it.effect("keeps the latest leases, and the last read where a result did not read them", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+        yield* lifecycle.ingest(statusReading(undefined));
+        const kept = (yield* lifecycle.get(OWNER)).envelope?.leases;
+        expect(kept?.map((one) => one.alias)).toEqual(["webpool-3"]);
+        yield* lifecycle.ingest(statusReading([]));
+        expect((yield* lifecycle.get(OWNER)).envelope?.leases, "an empty read is none").toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect("keeps a lease's dev servers while it is held, and drops them when it ends", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        const preview = [
+          {
+            name: "webpool-3",
+            port: 3000,
+            url: "https://webpool-3003.zerops.app",
+            status: "running",
+            readAt: "2026-10-23T12:00:00Z",
+          },
+        ];
+        const devServersOf = Effect.map(lifecycle.get(OWNER), (state) =>
+          state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+        );
+        yield* lifecycle.ingest(
+          statusReading([{ ...lease("webpool-3"), devServers: preview }, lease("webpool-4")]),
+        );
+        expect((yield* devServersOf)?.devServers).toEqual(preview);
+        yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
+        expect((yield* devServersOf)?.devServers, "a read that did not ask keeps them").toEqual(
+          preview,
+        );
+        yield* lifecycle.ingest(statusReading(undefined));
+        expect((yield* devServersOf)?.devServers).toEqual(preview);
+        yield* lifecycle.ingest(statusReading([lease("webpool-3", "released")]));
+        expect(yield* devServersOf).not.toHaveProperty("devServers");
+        yield* lifecycle.ingest(statusReading([]));
+        yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+        expect(yield* devServersOf, "a lease held again starts unread").not.toHaveProperty(
+          "devServers",
+        );
+      }),
+    ),
+  );
+
+  /** What a `zerops_lease action=status` call read of a lease's checkout (spec-mate §2.8a.3). */
+  const read = (readAt: string, lastChangeAt: string) => ({
+    lastChangeAt,
+    previewOpenConns: 0,
+    acquiredAt: "2026-10-23T18:00:00Z",
+    readAt,
+  });
+  const acquiredAt = "2026-10-23T18:00:00Z";
+  const unsaved = { files: [" M src/App.tsx"], fileCount: 1, unpushedCommits: 2 };
+  /** A `zerops_lease action=status` call, whose envelope carries what it read of each lease. */
+  const leaseStatus = (leases: ReadonlyArray<unknown>) =>
+    leaseCall({ input: { action: "status" }, leases, envelope: leases });
+
+  it.effect(
+    "keeps a held lease's last activity and unsaved work until a read of its checkout replaces them",
+    () =>
+      withLeases((lifecycle) =>
+        Effect.gen(function* () {
+          const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+          const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
+            state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+          );
+          yield* lifecycle.ingest(
+            leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
+          );
+          expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+          yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3"), acquiredAt }]));
+          expect(yield* leaseOf, "a call that did not read the checkout keeps them").toMatchObject({
+            activity: first,
+            unsaved,
+          });
+          yield* lifecycle.ingest(statusReading(undefined));
+          expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+          yield* lifecycle.ingest(
+            leaseStatus([
+              {
+                ...lease("webpool-3"),
+                acquiredAt,
+                unverified: true,
+                activity: { acquiredAt, note: "not read: the pool's orchestrator did not answer" },
+              },
+            ]),
+          );
+          expect(
+            yield* leaseOf,
+            "a status that could not read the checkout clears nothing it read before",
+          ).toMatchObject({ activity: first, unsaved });
+          const second = read("2026-10-24T09:00:00Z", "2026-10-24T08:30:00Z");
+          yield* lifecycle.ingest(
+            leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: second }]),
+          );
+          const leaseRead = yield* leaseOf;
+          expect(leaseRead?.activity, "a newer read of the checkout replaces the last").toEqual(
+            second,
+          );
+          expect(
+            leaseRead,
+            "unsaved work the newer read could not read is not known, never the older read's",
+          ).not.toHaveProperty("unsaved");
+        }),
+      ),
+  );
+
+  it.effect("a lease that ended, left zcp's leases or was acquired again starts unread", () =>
+    withLeases((lifecycle) =>
+      Effect.gen(function* () {
+        const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+        const leaseOf = Effect.map(lifecycle.get(OWNER), (state) =>
+          state.envelope?.leases?.find((one) => one.alias === "webpool-3"),
+        );
+        const devServers = [
+          { name: "webpool-3", port: 3000, status: "running", readAt: "2026-10-23T20:04:00Z" },
+        ];
+        const readLease = {
+          ...lease("webpool-3"),
+          acquiredAt,
+          activity: first,
+          unsaved,
+          devServers,
+        };
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        expect(yield* leaseOf).toMatchObject({ activity: first, unsaved });
+        yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3", "released"), acquiredAt }]));
+        expect(yield* leaseOf).not.toHaveProperty("activity");
+        expect(yield* leaseOf).not.toHaveProperty("unsaved");
+
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        yield* lifecycle.ingest(statusReading([]));
+        yield* lifecycle.ingest(statusReading([{ ...lease("webpool-3"), acquiredAt }]));
+        expect(yield* leaseOf, "gone from the read, then held again").not.toHaveProperty(
+          "activity",
+        );
+
+        yield* lifecycle.ingest(leaseStatus([readLease]));
+        yield* lifecycle.ingest(
+          statusReading([{ ...lease("webpool-3"), acquiredAt: "2026-10-24T07:00:00Z" }]),
+        );
+        expect(
+          yield* leaseOf,
+          "the same alias acquired at another time is another lease",
+        ).not.toHaveProperty("activity");
+        expect(yield* leaseOf).not.toHaveProperty("unsaved");
+        expect(yield* leaseOf, "nor the dev servers read on the lease before").not.toHaveProperty(
+          "devServers",
+        );
+      }),
+    ),
+  );
+
+  it.effect("a lease's last activity and unsaved work are read back after a restart", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const lifecycle = yield* ZeropsLifecycle.make({
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+              repository,
+              threadOwner: conversationOfThread,
+            });
+            yield* lifecycle.ingest(
+              leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
+            );
+          }),
+        );
+        const restarted = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+        });
+        expect((yield* restarted.get(OWNER)).envelope?.leases?.[0]).toMatchObject({
+          activity: first,
+          unsaved,
+        });
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("a successful acquire binds its conversation to the container it leased", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquire("webpool-3", [lease("webpool-3")]));
+        expect(yield* told()).toContainEqual({
+          _tag: "BindLease",
+          lease: { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
+        });
+      }),
+    ),
+  );
+
+  it.effect("the binding is told once per call: its key is the call's own", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const keys: Array<string> = [];
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+          recordLease: (_conversation, change, key) =>
+            Effect.sync(() => {
+              if (change._tag === "BindLease") keys.push(key);
+            }),
+        });
+        const event = acquire("webpool-3", [lease("webpool-3")]);
+        yield* lifecycle.ingest(event);
+        yield* lifecycle.ingest(event);
+        expect(keys).toHaveLength(2);
+        expect(keys[0]).toBe(keys[1]);
+      }),
+    ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect("a lease acquired for no branch binds without one", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "acquire", pool: "webpool" },
+            leases: [lease("webpool-3", "held", null)],
+          }),
+        );
+        expect(yield* told()).toContainEqual({
+          _tag: "BindLease",
+          lease: { alias: "webpool-3", pool: "webpool", branch: null },
+        });
+      }),
+    ),
+  );
+
+  it.effect(
+    "an acquire whose result names no lease of its own binds the one its envelope holds",
+    () =>
+      withLeases((lifecycle, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(
+            leaseCall({
+              input: { action: "acquire", pool: "webpool", branch: "feat-y" },
+              envelope: [lease("webpool-3"), lease("webpool-4", "held", "feat-y")],
+            }),
+          );
+          expect(yield* told()).toContainEqual({
+            _tag: "BindLease",
+            lease: { alias: "webpool-4", pool: "webpool", branch: "feat-y" },
+          });
+        }),
+      ),
+  );
+
+  it.effect("a failed acquire, or one still running, binds nothing", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "acquire", pool: "webpool", branch: "feat-x" },
+            isError: true,
+          }),
+        );
+        yield* lifecycle.ingest(
+          claudeEvent({
+            threadId: SESSION,
+            toolName: "mcp__zerops__zerops_lease",
+            type: "item.started",
+            input: { action: "acquire", pool: "webpool", branch: "feat-x" },
+          }),
+        );
+        expect(yield* told()).toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect("a thread that is no conversation of the engine is bound to nothing", () =>
+    withLeases((lifecycle, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest({
+          ...acquire("webpool-3", [lease("webpool-3")]),
+          threadId: THREAD,
+        });
+        expect(yield* told()).toEqual([]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "every read of zcp's leases tells which mounts are leases, and a restart the last",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const noted = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+          const start = ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            noteLeases: (aliases) => Ref.set(noted, aliases),
+          });
+          const lifecycle = yield* start;
+          expect(yield* Ref.get(noted), "nothing stored, nothing told").toBeUndefined();
+          yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4", "lost")]));
+          expect(yield* Ref.get(noted)).toEqual(["webpool-3", "webpool-4"]);
+
+          // A restart: the roster starts empty, and the last stored read is told again.
+          yield* Ref.set(noted, undefined);
+          yield* start;
+          expect(yield* Ref.get(noted)).toEqual(["webpool-3", "webpool-4"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+
+  /**
+   * The lifecycle over conversations whose records bind as the engine's does: a conversation takes
+   * its first lease, and lets go of it when told the lease ended.
+   */
+  const withConversations = <A, E>(
+    use: (
+      lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"],
+      bound: () => Effect.Effect<Readonly<Record<string, string>>>,
+      told: () => Effect.Effect<ReadonlyArray<ZeropsLifecycle.LeaseChange>>,
+      /** Each checkout told changed, with who was bound to what when it was told. */
+      checkouts: () => Effect.Effect<
+        ReadonlyArray<{
+          readonly alias: string;
+          readonly bound: Readonly<Record<string, string>>;
+        }>
+      >,
+    ) => Effect.Effect<A, E, never>,
+  ) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+        const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+        const changes = yield* Ref.make<ReadonlyArray<ZeropsLifecycle.LeaseChange>>([]);
+        const changedCheckouts = yield* Ref.make<
+          ReadonlyArray<{
+            readonly alias: string;
+            readonly bound: Readonly<Record<string, string>>;
+          }>
+        >([]);
+        const boundAliases = Effect.map(Ref.get(records), (all) =>
+          Object.fromEntries(
+            Object.entries(all).map(([conversation, { alias }]) => [conversation, alias]),
+          ),
+        );
+        const lifecycle = yield* ZeropsLifecycle.make({
+          toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+          repository,
+          threadOwner: conversationOfThread,
+          leaseBindings: Effect.map(Ref.get(records), (all) => ({
+            bindings: Object.entries(all).map(
+              ([conversation, { alias, branch, repo, acquiredAt }]) => ({
+                conversation: conversation as ThreadId,
+                alias,
+                branch,
+                repo,
+                acquiredAt,
+              }),
+            ),
+            complete: true,
+          })),
+          recordLease: (conversation, change) =>
+            Effect.andThen(
+              Ref.update(changes, (all) => [...all, change]),
+              Ref.update(records, (all) => {
+                const { [conversation]: held, ...others } = all;
+                if (change._tag === "BindLease")
+                  return held === undefined ? { ...all, [conversation]: change.lease } : all;
+                return held?.alias === change.ended ? others : all;
+              }),
+            ),
+          checkoutChanged: (alias) =>
+            Effect.flatMap(boundAliases, (bound) =>
+              Ref.update(changedCheckouts, (all) => [...all, { alias, bound }]),
+            ),
+        });
+        return yield* use(
+          lifecycle,
+          () => boundAliases,
+          () => Ref.get(changes),
+          () => Ref.get(changedCheckouts),
+        );
+      }),
+    ).pipe(Effect.provide(persistence));
+  const sessionOf = (name: string) => providerThreadOf(ConversationId.make(name));
+  const release = (alias: string, threadId: ThreadId, held: ReadonlyArray<unknown>) =>
+    leaseCall({
+      input: { action: "release", lease: alias },
+      leases: [lease(alias, "released")],
+      envelope: held,
+      threadId,
+    });
+  const acquireBy = (threadId: ThreadId, alias: string, held: ReadonlyArray<unknown>) => ({
+    ...acquire(alias, held),
+    threadId,
+  });
+
+  it.effect(
+    "a lease released and acquired again tells its checkout changed each time, once its records moved",
+    () =>
+      withConversations((lifecycle, _bound, _told, checkouts) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          yield* lifecycle.ingest(release("webpool-3", sessionOf("ada"), []));
+          yield* lifecycle.ingest(acquireBy(sessionOf("bob"), "webpool-3", [lease("webpool-3")]));
+          expect(yield* checkouts()).toEqual([
+            { alias: "webpool-3", bound: { ada: "webpool-3" } },
+            { alias: "webpool-3", bound: {} },
+            { alias: "webpool-3", bound: { bob: "webpool-3" } },
+          ]);
+          const first = (yield* checkouts()).length;
+          yield* lifecycle.ingest(statusReading([lease("webpool-3")]));
+          expect((yield* checkouts()).length, "a read that says nothing new tells nothing").toBe(
+            first,
+          );
+          yield* lifecycle.ingest(statusReading([lease("webpool-3", "lost")]));
+          expect((yield* checkouts()).slice(first)).toEqual([{ alias: "webpool-3", bound: {} }]);
+        }),
+      ),
+  );
+
+  it.effect("a release unbinds the lease it released", () =>
+    withConversations((lifecycle, bound) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "release", lease: "webpool-3" },
+            leases: [lease("webpool-3", "released")],
+            threadId: sessionOf("ada"),
+          }),
+        );
+        expect(yield* bound()).toEqual({});
+      }),
+    ),
+  );
+
+  it.effect(
+    "a lease gone from zcp's leases, or read lost or released, unbinds; an unchanged read tells nothing",
+    () =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          yield* lifecycle.ingest(
+            acquireBy(sessionOf("bob"), "webpool-4", [lease("webpool-3"), lease("webpool-4")]),
+          );
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(statusReading([lease("webpool-3"), lease("webpool-4")]));
+          expect((yield* told()).length, "the same leases again say nothing new").toBe(first);
+          yield* lifecycle.ingest(
+            // webpool-5 is of another branch: neither conversation is bound to it next.
+            statusReading([lease("webpool-3", "lost"), lease("webpool-5", "unmounted", "feat-z")]),
+          );
+          expect(yield* bound()).toEqual({});
+          expect((yield* told()).slice(first)).toEqual([
+            { _tag: "UnbindLease", ended: "webpool-3" },
+            { _tag: "UnbindLease", ended: "webpool-4" },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect("an acquire's binding is told after what its own read of the leases unbinds", () =>
+    withConversations((lifecycle, bound, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+        const first = (yield* told()).length;
+        yield* lifecycle.ingest(
+          acquireBy(sessionOf("ada"), "webpool-4", [
+            lease("webpool-3", "lost"),
+            lease("webpool-4"),
+          ]),
+        );
+        expect((yield* told()).slice(first).map((change) => change._tag)).toEqual([
+          "UnbindLease",
+          "BindLease",
+        ]);
+        expect(yield* bound()).toEqual({ ada: "webpool-4" });
+      }),
+    ),
+  );
+
+  it.effect(
+    "a lease another conversation released, then a third acquired again, is bound to the third alone",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          yield* lifecycle.ingest(release("webpool-3", sessionOf("bob"), []));
+          expect(yield* bound(), "a release by any conversation unbinds its holder").toEqual({});
+          yield* lifecycle.ingest(acquireBy(sessionOf("cid"), "webpool-3", [lease("webpool-3")]));
+          expect(yield* bound()).toEqual({ cid: "webpool-3" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a lease acquired again by another conversation unbinds the one bound to it, its release unseen",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          yield* lifecycle.ingest(acquireBy(sessionOf("cid"), "webpool-3", [lease("webpool-3")]));
+          expect(yield* bound()).toEqual({ cid: "webpool-3" });
+        }),
+      ),
+  );
+
+  /** bob's lease, of a branch of its own: ada is never bound to it next. */
+  const bobsOwn = lease("webpool-4", "held", "feat-y");
+  it.effect.each([
+    { name: "gone from them", read: [bobsOwn] },
+    { name: "lost", read: [lease("webpool-3", "lost"), bobsOwn] },
+    { name: "released", read: [lease("webpool-3", "released"), bobsOwn] },
+    {
+      name: "reserved with no record of zcp's",
+      read: [lease("webpool-3", "unknown-holder"), bobsOwn],
+    },
+  ])(
+    "another conversation's read of zcp's leases with the lease $name unbinds every conversation bound to it",
+    ({ read }) =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          yield* lifecycle.ingest({
+            ...acquire("webpool-4", [lease("webpool-3"), bobsOwn], "feat-y"),
+            threadId: sessionOf("bob"),
+          });
+          yield* lifecycle.ingest({ ...statusReading(read), threadId: sessionOf("cid") });
+          expect(yield* bound()).toEqual({ bob: "webpool-4" });
+        }),
+      ),
+  );
+
+  /** A lease of a branch's group: its pool is its alias's, as zcp names a lease. */
+  const member = (
+    alias: string,
+    options: {
+      readonly acquiredAt?: string;
+      readonly reused?: boolean;
+      readonly branch?: string;
+      readonly state?: string;
+      readonly repo?: string;
+    } = {},
+  ) => {
+    const [pool = alias, number = "1"] = alias.split("-");
+    return {
+      alias,
+      pool,
+      branch: options.branch ?? "feat-x",
+      containerHostname: `node-id-${number}.runtime.${pool}.zerops`,
+      state: options.state ?? "held",
+      unverified: false,
+      ...(options.acquiredAt === undefined ? {} : { acquiredAt: options.acquiredAt }),
+      ...(options.repo === undefined ? {} : { repo: options.repo }),
+      ...(options.reused === undefined ? {} : { reused: options.reused }),
+    };
+  };
+  /** zcp's envelope never says `reused`: only the acquire's own result does. */
+  const asRead = (leases: ReadonlyArray<ReturnType<typeof member>>) =>
+    leases.map(({ reused: _reused, ...lease }) => lease);
+  /** An acquire of one pool, or of several (`pools`), whose result lists `leases` in that order. */
+  const acquireLeases = (
+    threadId: ThreadId,
+    pools: ReadonlyArray<string>,
+    leases: ReadonlyArray<ReturnType<typeof member>>,
+    held: ReadonlyArray<ReturnType<typeof member>> = leases,
+  ) =>
+    leaseCall({
+      input:
+        pools.length === 1
+          ? { action: "acquire", pool: pools[0], branch: "feat-x" }
+          : { action: "acquire", pools, branch: "feat-x" },
+      leases,
+      envelope: asRead(held),
+      threadId,
+    });
+
+  it.effect("a group acquire binds its conversation to the first lease its result lists", () =>
+    withConversations((lifecycle, bound, told) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("ada"),
+            ["hqpool", "webpool"],
+            [member("hqpool-2"), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2" });
+        expect(yield* told()).toEqual([
+          { _tag: "BindLease", lease: { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" } },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "another conversation's acquire that comes back reused binds nothing and unbinds nothing",
+    () =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          const held = [member("webpool-3"), member("hqpool-2")];
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("ada"), ["webpool"], [member("webpool-3")], held),
+          );
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("bob"),
+              ["webpool"],
+              [member("webpool-3", { reused: true })],
+              held,
+            ),
+          );
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("bob"),
+              ["webpool", "hqpool"],
+              [member("webpool-3", { reused: true }), member("hqpool-2", { reused: true })],
+              held,
+            ),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          expect((yield* told()).slice(first)).toEqual([]);
+        }),
+      ),
+  );
+
+  it.effect("a group acquire whose first lease comes back reused binds the first it leased", () =>
+    withConversations((lifecycle, bound) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [member("hqpool-2")]));
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("bob"),
+            ["hqpool", "webpool"],
+            [member("hqpool-2", { reused: true }), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2", bob: "webpool-3" });
+      }),
+    ),
+  );
+
+  it.effect(
+    "every lease a group acquire leased unbinds another conversation still bound to it, and tells its checkout changed",
+    () =>
+      withConversations((lifecycle, bound, _told, checkouts) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("cid"),
+              ["webpool"],
+              [member("webpool-3", { branch: "feat-y" })],
+            ),
+          );
+          const first = (yield* checkouts()).length;
+          yield* lifecycle.ingest(
+            acquireLeases(
+              sessionOf("ada"),
+              ["hqpool", "webpool", "apipool"],
+              [member("hqpool-2"), member("webpool-3"), member("apipool-4", { reused: true })],
+            ),
+          );
+          expect(yield* bound()).toEqual({ ada: "hqpool-2" });
+          expect(
+            (yield* checkouts())
+              .slice(first)
+              .map(({ alias }) => alias)
+              .toSorted(),
+            "a reused lease's checkout is the one it was",
+          ).toEqual(["hqpool-2", "webpool-3"]);
+        }),
+      ),
+  );
+
+  /** ada works on `hqpool-2`; its branch is held on two more pools, and on one more that was lost. */
+  const adas = member("hqpool-2", { acquiredAt: "2026-10-23T12:00:03Z" });
+  const groupAt = [
+    adas,
+    member("webpool-3", { acquiredAt: "2026-10-23T12:00:02Z" }),
+    member("apipool-4", { acquiredAt: "2026-10-23T12:00:01Z" }),
+    member("docspool-5", { acquiredAt: "2026-10-23T12:00:00Z", state: "lost" }),
+    member("hqpool-6", { acquiredAt: "2026-10-23T11:00:00Z", branch: "feat-y" }),
+  ];
+  const others = groupAt.filter(({ alias }) => alias !== "hqpool-2");
+
+  it.effect.each([
+    {
+      how: "is released by its conversation",
+      end: release("hqpool-2", sessionOf("ada"), asRead(others)),
+    },
+    {
+      how: "is read lost by another conversation",
+      end: {
+        ...statusReading(asRead([member("hqpool-2", { state: "lost" }), ...others])),
+        threadId: sessionOf("cid"),
+      },
+    },
+    {
+      how: "is gone from another conversation's read",
+      end: { ...statusReading(asRead(others)), threadId: sessionOf("cid") },
+    },
+  ])(
+    "when the bound lease $how, its conversation is bound to the earliest-acquired lease of its branch still held",
+    ({ end }) =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(end);
+          expect((yield* told()).slice(first)).toEqual([
+            { _tag: "UnbindLease", ended: "hqpool-2" },
+            {
+              _tag: "BindLease",
+              lease: {
+                alias: "apipool-4",
+                pool: "apipool",
+                branch: "feat-x",
+                acquiredAt: "2026-10-23T12:00:01Z",
+              },
+            },
+          ]);
+          expect(yield* bound()).toEqual({ ada: "apipool-4" });
+        }),
+      ),
+  );
+
+  /** Two apps of one Mate, each its own repository in HQ. */
+  const WEB = "https://hq.example.zerops.app/git/acme/web";
+  const API = "https://hq.example.zerops.app/git/acme/api";
+  /** Both apps on `main`: ada works on web's `webpool-2`; api's lease of `main` is the earliest. */
+  const adasWeb = member("webpool-2", {
+    branch: "main",
+    repo: WEB,
+    acquiredAt: "2026-10-23T12:00:03Z",
+  });
+  const twoApps = [
+    adasWeb,
+    member("apipool-1", { branch: "main", repo: API, acquiredAt: "2026-10-23T12:00:00Z" }),
+    member("docspool-4", { branch: "main", repo: WEB, acquiredAt: "2026-10-23T12:00:02Z" }),
+    member("hqpool-5", { branch: "main", repo: WEB, acquiredAt: "2026-10-23T12:00:04Z" }),
+  ];
+
+  it.effect(
+    "an acquire binds its conversation to its lease's alias, pool, branch and repository",
+    () =>
+      withConversations((lifecycle, _bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adasWeb], twoApps));
+          expect(yield* told()).toEqual([
+            {
+              _tag: "BindLease",
+              lease: {
+                alias: "webpool-2",
+                pool: "webpool",
+                branch: "main",
+                repo: WEB,
+                acquiredAt: "2026-10-23T12:00:03Z",
+              },
+            },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "when the bound lease ends, its conversation is bound to the earliest-acquired lease of its repository and branch, never another app's lease of the same branch",
+    () =>
+      withConversations((lifecycle, bound, told) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adasWeb], twoApps));
+          const first = (yield* told()).length;
+          yield* lifecycle.ingest(release("webpool-2", sessionOf("ada"), asRead(twoApps.slice(1))));
+          expect((yield* told()).slice(first)).toEqual([
+            { _tag: "UnbindLease", ended: "webpool-2" },
+            {
+              _tag: "BindLease",
+              lease: {
+                alias: "docspool-4",
+                pool: "docspool",
+                branch: "main",
+                repo: WEB,
+                acquiredAt: "2026-10-23T12:00:02Z",
+              },
+            },
+          ]);
+          expect(yield* bound()).toEqual({ ada: "docspool-4" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a conversation bound by a zcp that names no repository is bound next by its branch alone",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          const { repo: _repo, ...unnamed } = adasWeb;
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [unnamed], twoApps));
+          yield* lifecycle.ingest(release("webpool-2", sessionOf("ada"), asRead(twoApps.slice(1))));
+          expect(yield* bound()).toEqual({ ada: "apipool-1" });
+        }),
+      ),
+  );
+
+  /** hqpool-2 and apipool-4 were released unseen, and bob's group acquire of ada's branch took both. */
+  const bobs = [
+    member("hqpool-2", { acquiredAt: "2026-10-23T13:00:00Z" }),
+    member("apipool-4", { acquiredAt: "2026-10-23T13:00:00Z" }),
+  ];
+
+  it.effect(
+    "a bound lease another conversation acquired again rebinds its conversation to the earliest-acquired lease of its branch still held",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("bob"), ["hqpool", "apipool"], bobs, [
+              ...bobs,
+              ...others.filter(({ alias }) => alias !== "apipool-4"),
+            ]),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3", bob: "hqpool-2" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a conversation whose lease another acquired again is never bound to a lease that other one leased",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], [adas]));
+          yield* lifecycle.ingest(acquireLeases(sessionOf("bob"), ["hqpool", "apipool"], bobs));
+          expect(yield* bound()).toEqual({ bob: "hqpool-2" });
+        }),
+      ),
+  );
+
+  it.effect(
+    "a bound lease that ends with no other lease of its branch held leaves its conversation unbound",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [adas], groupAt));
+          yield* lifecycle.ingest(
+            release(
+              "hqpool-2",
+              sessionOf("ada"),
+              asRead(
+                groupAt.filter(({ state, branch }) => state !== "held" || branch !== "feat-x"),
+              ),
+            ),
+          );
+          expect(yield* bound()).toEqual({});
+        }),
+      ),
+  );
+
+  it.effect("a release of a branch unbinds every conversation bound to a lease it released", () =>
+    withConversations((lifecycle, bound) =>
+      Effect.gen(function* () {
+        yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["hqpool"], [member("hqpool-2")]));
+        yield* lifecycle.ingest(
+          acquireLeases(
+            sessionOf("bob"),
+            ["webpool"],
+            [member("webpool-3")],
+            [member("hqpool-2"), member("webpool-3")],
+          ),
+        );
+        expect(yield* bound()).toEqual({ ada: "hqpool-2", bob: "webpool-3" });
+        // Its result says what it released; its envelope did not read the leases again.
+        yield* lifecycle.ingest(
+          leaseCall({
+            input: { action: "release", branch: "feat-x" },
+            leases: [
+              member("hqpool-2", { state: "released" }),
+              member("webpool-3", { state: "released" }),
+            ],
+            threadId: sessionOf("cid"),
+          }),
+        );
+        expect(yield* bound()).toEqual({});
+      }),
+    ),
+  );
+
+  it.effect(
+    "a lease's mount stays a lease's to every sweep after a restart that kept an older read of the leases",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const ada = providerThreadOf(ConversationId.make("ada"));
+          const bob = providerThreadOf(ConversationId.make("bob"));
+          const before = yield* makeZeropsLeaseRoster;
+          yield* Effect.scoped(
+            Effect.gen(function* () {
+              const lifecycle = yield* ZeropsLifecycle.make({
+                toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+                repository,
+                threadOwner: conversationOfThread,
+                noteLeases: before.note,
+              });
+              yield* lifecycle.ingest({ ...statusReading([]), threadId: ada });
+              yield* TestClock.adjust("1 second");
+              yield* lifecycle.ingest({
+                ...acquire("webpool-3", [lease("webpool-3")]),
+                threadId: bob,
+              });
+              yield* TestClock.adjust("1 second");
+              // A Zerops tool that reads no leases: ada's older read is stored again, newest.
+              yield* lifecycle.ingest(
+                claudeEvent({
+                  threadId: ada,
+                  toolName: "mcp__zerops__zerops_logs",
+                  text: "no envelope",
+                }),
+              );
+            }),
+          );
+
+          // A restart: a new roster, told what the store kept, and the mounts read again.
+          const roster = yield* makeZeropsLeaseRoster;
+          yield* ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            noteLeases: roster.note,
+          });
+          const source = yield* makeZeropsRepositorySource({
+            enabled: true,
+            readMountTable: Effect.succeed(
+              [
+                "appdev:/var/www /var/www/appdev fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+                "webpool-3:/var/www /var/www/webpool-3 fuse.sshfs rw,nosuid,nodev,relatime 0 0",
+              ].join("\n"),
+            ),
+            leaseAliases: roster.aliases,
+          });
+
+          const listed = yield* source.list;
+          const webpool =
+            listed._tag === "available"
+              ? listed.repositories.find((entry) => entry.host === "webpool-3")
+              : undefined;
+          expect(webpool?.kind).toBe("lease");
+          expect(webpool !== undefined && isLeaseRepository(webpool)).toBe(true);
+
+          const swept: Array<string> = [];
+          yield* sweepCheckpointRefs.pipe(
+            Effect.provide(
+              Layer.mergeAll(
+                Layer.succeed(ZeropsRepositorySource, source),
+                serverConfigTest("/nowhere", { prefix: "sweep" }),
+                Layer.succeed(
+                  VcsProcess,
+                  VcsProcess.of({
+                    run: (input) =>
+                      Effect.sync(() => {
+                        swept.push(input.cwd);
+                        return {
+                          exitCode: 0 as VcsProcessOutput["exitCode"],
+                          stdout: "",
+                          stderr: "",
+                          stdoutTruncated: false,
+                          stderrTruncated: false,
+                        };
+                      }),
+                  }),
+                ),
+              ),
+            ),
+          );
+          expect(swept).toEqual(["/var/www/appdev"]);
+        }),
+      ).pipe(Effect.provide(Layer.merge(persistence, NodeServices.layer))),
+  );
+
+  /** zcp's leases as conversation `name`'s views read them. */
+  const leasesOf = (lifecycle: ZeropsLifecycle.ZeropsLifecycle["Service"], name: string) =>
+    Effect.map(lifecycle.get(name as ThreadId), (state) => state.envelope?.leases);
+  const branchOf = (
+    leases:
+      | ReadonlyArray<{ readonly alias: string; readonly branch?: string | undefined }>
+      | undefined,
+  ) => leases?.find(({ alias }) => alias === "apipool-4")?.branch;
+
+  it.effect(
+    "every conversation reads zcp's leases as the latest call read them, whichever conversation made it",
+    () =>
+      withConversations((lifecycle) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const webpool = member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" });
+            const apipool = member("apipool-4", { acquiredAt: "2026-10-23T12:00:00Z" });
+            yield* lifecycle.ingest(
+              acquireLeases(sessionOf("ada"), ["webpool", "apipool"], [webpool, apipool]),
+            );
+            expect(branchOf(yield* leasesOf(lifecycle, "ada"))).toBe("feat-x");
+            const watching = yield* lifecycle.subscribe("ada" as ThreadId);
+            const heard = yield* Stream.runHead(watching.changes).pipe(Effect.forkChild);
+
+            // apipool-4 was released unseen and another branch took it; bob's call read so.
+            const taken = member("apipool-4", {
+              acquiredAt: "2026-10-23T14:00:00Z",
+              branch: "feat-y",
+            });
+            yield* lifecycle.ingest({
+              ...statusReading(asRead([webpool, taken])),
+              threadId: sessionOf("bob"),
+            });
+
+            expect(branchOf(yield* leasesOf(lifecycle, "ada"))).toBe("feat-y");
+            const published = yield* Fiber.join(heard);
+            expect(
+              branchOf(Option.getOrUndefined(published)?.envelope?.leases),
+              "a conversation watching hears it",
+            ).toBe("feat-y");
+          }),
+        ),
+      ),
+  );
+
+  it.effect(
+    "what zcp last read of a held lease's checkout shows in every conversation until a newer read",
+    () =>
+      withLeases((lifecycle) =>
+        Effect.gen(function* () {
+          const first = read("2026-10-23T20:04:00Z", "2026-10-23T19:12:40Z");
+          const read3 = (leases: ReadonlyArray<{ alias: string }> | undefined) =>
+            leases?.find(({ alias }) => alias === "webpool-3");
+          yield* lifecycle.ingest({
+            ...leaseStatus([{ ...lease("webpool-3"), acquiredAt, activity: first, unsaved }]),
+            threadId: sessionOf("ada"),
+          });
+          yield* lifecycle.ingest({
+            ...statusReading([{ ...lease("webpool-3"), acquiredAt }]),
+            threadId: sessionOf("bob"),
+          });
+          expect(read3(yield* leasesOf(lifecycle, "bob"))).toMatchObject({
+            activity: first,
+            unsaved,
+          });
+          expect(read3(yield* leasesOf(lifecycle, "ada"))).toMatchObject({
+            activity: first,
+            unsaved,
+          });
+        }),
+      ),
+  );
+
+  it.effect.each([
+    { name: "another branch", branch: "feat-y" },
+    { name: "the same branch", branch: "feat-x" },
+  ])(
+    "a lease handed out again under the same alias for $name, unseen, unbinds the conversation bound to it and tells its checkout changed",
+    ({ branch }) =>
+      withConversations((lifecycle, bound, told, checkouts) =>
+        Effect.gen(function* () {
+          const adas = member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" });
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adas]));
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          const changes = (yield* told()).length;
+          const changed = (yield* checkouts()).length;
+
+          const again = member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z", branch });
+          yield* lifecycle.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+
+          expect(yield* bound()).toEqual({});
+          expect((yield* told()).slice(changes)).toEqual([
+            { _tag: "UnbindLease", ended: "webpool-3" },
+          ]);
+          expect((yield* checkouts()).slice(changed).map(({ alias }) => alias)).toEqual([
+            "webpool-3",
+          ]);
+        }),
+      ),
+  );
+
+  // Review r3-5: the last read every binding was checked against stays behind while a record
+  // cannot be read, so the alias's new holder read as a lease handed out again under it, was
+  // unbound, and its own acquire of the branch again came back reused and bound nothing.
+  const handedOutAgain = {
+    first: member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" }),
+    again: member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z" }),
+  };
+  const releasedBy = (threadId: ThreadId, lease: ReturnType<typeof member>) =>
+    leaseCall({
+      input: { action: "release", lease: lease.alias },
+      leases: [{ ...lease, state: "released" }],
+      envelope: [],
+      threadId,
+    });
+
+  it.effect(
+    "a conversation bound before its lease's acquiring was kept is unbound by a read of its alias acquired at another time",
+    () =>
+      withConversations((lifecycle, bound) =>
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const { acquiredAt: _kept, ...recordedBefore } = first;
+          yield* lifecycle.ingest(
+            acquireLeases(sessionOf("ada"), ["webpool"], [recordedBefore], [first]),
+          );
+          expect(yield* bound()).toEqual({ ada: "webpool-3" });
+          yield* lifecycle.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(yield* bound()).toEqual({});
+        }),
+      ),
+  );
+
+  /** Conversations whose records outlive a restart of the lifecycle, bound as the engine binds. */
+  const recordsOver = (records: Ref.Ref<Readonly<Record<string, ThreadLease>>>) => ({
+    leaseBindings: Effect.map(Ref.get(records), (all) => ({
+      bindings: Object.entries(all).map(([conversation, { alias, branch, repo, acquiredAt }]) => ({
+        conversation: conversation as ThreadId,
+        alias,
+        branch,
+        repo,
+        acquiredAt,
+      })),
+      complete: true,
+    })),
+    recordLease: (conversation: ThreadId, change: ZeropsLifecycle.LeaseChange) =>
+      Ref.update(records, (all) => {
+        const { [conversation]: held, ...others } = all;
+        if (change._tag === "BindLease")
+          return held === undefined ? { ...all, [conversation]: change.lease } : all;
+        return held?.alias === change.ended ? others : all;
+      }),
+  });
+
+  it.effect(
+    "a lease handed out again under the same alias while the server was down unbinds its conversation at the first read after the restart",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const start = ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            ...recordsOver(records),
+          });
+          const adas = member("webpool-3", { acquiredAt: "2026-10-23T12:00:00Z" });
+          yield* Effect.scoped(
+            Effect.flatMap(start, (lifecycle) =>
+              lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [adas])),
+            ),
+          );
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["ada"]);
+
+          const restarted = yield* start;
+          yield* restarted.ingest({
+            ...statusReading(
+              asRead([
+                member("webpool-3", { acquiredAt: "2026-10-23T14:00:00Z", branch: "feat-y" }),
+              ]),
+            ),
+            threadId: sessionOf("cid"),
+          });
+          expect(yield* Ref.get(records)).toEqual({});
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect(
+    "a conversation whose record could not be read is unbound by a later read that says the same",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const readable = yield* Ref.make(true);
+          const over = recordsOver(records);
+          const lifecycle = yield* ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            ...over,
+            // While a record cannot be read, the engine lists the others and says it is not whole.
+            leaseBindings: Effect.flatMap(Ref.get(readable), (whole) =>
+              whole ? over.leaseBindings : Effect.succeed({ bindings: [], complete: false }),
+            ),
+          });
+          yield* lifecycle.ingest(acquireBy(sessionOf("ada"), "webpool-3", [lease("webpool-3")]));
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["ada"]);
+
+          yield* Ref.set(readable, false);
+          yield* lifecycle.ingest({ ...statusReading([]), threadId: sessionOf("cid") });
+          expect(Object.keys(yield* Ref.get(records)), "a record not read is left alone").toEqual([
+            "ada",
+          ]);
+
+          yield* Ref.set(readable, true);
+          yield* lifecycle.ingest({ ...statusReading([]), threadId: sessionOf("cid") });
+          expect(yield* Ref.get(records)).toEqual({});
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect(
+    "the conversation that acquired an alias handed out again while a record could not be read stays bound at the next read",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const readable = yield* Ref.make(true);
+          const over = recordsOver(records);
+          const lifecycle = yield* ZeropsLifecycle.make({
+            toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+            repository,
+            threadOwner: conversationOfThread,
+            ...over,
+            // Another conversation's record cannot be read: the engine lists the rest, not whole.
+            leaseBindings: Effect.flatMap(Ref.get(readable), (whole) =>
+              Effect.map(over.leaseBindings, (list) => ({ ...list, complete: whole })),
+            ),
+          });
+          yield* lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [first]));
+          yield* Ref.set(readable, false);
+          yield* lifecycle.ingest(releasedBy(sessionOf("ada"), first));
+          yield* lifecycle.ingest(acquireLeases(sessionOf("bob"), ["webpool"], [again]));
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+
+          yield* Ref.set(readable, true);
+          yield* lifecycle.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+
+  it.effect(
+    "after a restart, the conversation that acquired an alias handed out again stays bound while another record cannot be read",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { first, again } = handedOutAgain;
+          const repository = yield* ZeropsThreadLifecycle.ZeropsThreadLifecycleRepository;
+          const records = yield* Ref.make<Readonly<Record<string, ThreadLease>>>({});
+          const over = recordsOver(records);
+          const make = (whole: boolean) =>
+            ZeropsLifecycle.make({
+              toolEvents: Stream.empty as Stream.Stream<SpiEvent>,
+              repository,
+              threadOwner: conversationOfThread,
+              ...over,
+              leaseBindings: Effect.map(over.leaseBindings, (list) => ({
+                ...list,
+                complete: whole,
+              })),
+            });
+          yield* Effect.scoped(
+            Effect.flatMap(make(true), (lifecycle) =>
+              lifecycle.ingest(acquireLeases(sessionOf("ada"), ["webpool"], [first])),
+            ),
+          );
+
+          const restarted = yield* make(false);
+          yield* restarted.ingest(releasedBy(sessionOf("ada"), first));
+          yield* restarted.ingest(acquireLeases(sessionOf("bob"), ["webpool"], [again]));
+          yield* restarted.ingest({
+            ...statusReading(asRead([again])),
+            threadId: sessionOf("cid"),
+          });
+          expect(Object.keys(yield* Ref.get(records))).toEqual(["bob"]);
+        }),
+      ).pipe(Effect.provide(persistence)),
+  );
+});
+
 describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not ProviderService)", () => {
   it.effect("ingests an event delivered over the bus", () =>
     Effect.scoped(
@@ -665,6 +2057,7 @@ describe("ZeropsLifecycle.layer (wired to the owned ProviderRuntimeEventBus, not
         const layer = ZeropsLifecycle.layer(conversationOfThread).pipe(
           Layer.provide(ProviderRuntimeEventBusTest.make(Stream.fromQueue(bus))),
           Layer.provide(persistence),
+          Layer.provide(Layer.effect(ZeropsLeaseRoster, makeZeropsLeaseRoster)),
         );
 
         const published = yield* Effect.gen(function* () {

@@ -17,11 +17,20 @@
  * part of the application: "web :3000", "api :8080" (the monorepo model, §6).
  * The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
+ * A part migrated to a dev pool keeps its preview: its stage pairs with the pool, as the
+ * conversation's last envelope keys the pair (`poolPairs`), though the pool stands in
+ * Infrastructure and lists no address of its own.
+ *
+ * A thread bound to a lease also lists the dev servers zcp read on each of its
+ * leases — the one it is bound to and every other of its repository and branch — under the
+ * lease's name (`<pool> · <branch>`). A lease has no address but those: the
+ * pool's own route is the pool's, never the lease's.
+ *
  * Pure: no React, no store.
  */
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
+import { servicePairs, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
@@ -49,21 +58,43 @@ export interface MateAddress {
 
 type GroupRole = "stage" | "prod";
 
+interface DevServerAddress {
+  readonly name: string;
+  readonly port?: number | undefined;
+  readonly url?: string | undefined;
+}
+
+const portedName = (server: DevServerAddress) =>
+  server.port === undefined ? server.name : `${server.name} :${String(server.port)}`;
+
 export interface MateAddressInput {
   /** The Mate's own project's services, in topology order. */
   readonly services: ReadonlyArray<{
     readonly hostname: string;
     readonly group: ZeropsTopologyGroup;
+    /** The type-version, which tells a pool or a Box from a runtime (`servicePairs`). */
+    readonly type?: string;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
     /** The dev servers zcp last read on it (`ZeropsServiceRow.devServers`); absent while unread. */
-    readonly devServers?:
-      | ReadonlyArray<{
-          readonly name: string;
-          readonly port?: number | undefined;
-          readonly url?: string | undefined;
-        }>
-      | undefined;
+    readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
   }>;
+  /**
+   * The leases of the thread the list is for (`threadLeases`): each one's alias, its name
+   * (`checkoutLabel`) and the dev servers zcp last read on it (`leaseDevServersOf`); absent or
+   * empty for a thread with none.
+   */
+  readonly leases?:
+    | ReadonlyArray<{
+        readonly alias: string;
+        readonly label: string;
+        readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
+      }>
+    | undefined;
+  /**
+   * The pairs the conversation's last envelope keys by a dev pool (`poolPairsOf`); none before it
+   * carries one.
+   */
+  readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
   /** The Mate's group's stage and production projects the account holds, with their routes. */
@@ -92,7 +123,9 @@ const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u,
 
 export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddress> {
   const own = input.services.filter((service) => service.group !== "infrastructure");
-  const { devOf } = servicePairs({ services: own });
+  // Every service is handed to the pairing: a pool keying a migrated part's pair stands in
+  // Infrastructure, and a pool the services do not list pairs nothing.
+  const { devOf } = servicePairs({ services: input.services, poolPairs: input.poolPairs });
   const devs = new Set(devOf.values());
 
   const addresses: Array<MateAddress> = [];
@@ -108,12 +141,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     const servers = service.devServers ?? [];
     if (servers.length > 1)
       for (const server of servers)
-        if (server.url !== undefined)
-          add(
-            server.port === undefined ? server.name : `${server.name} :${String(server.port)}`,
-            "dev",
-            server.url,
-          );
+        if (server.url !== undefined) add(portedName(server), "dev", server.url);
     const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
     if (route === undefined) continue;
     const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
@@ -124,6 +152,14 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
         ? "dev"
         : projectRole;
     add(service.hostname, role, route.url);
+  }
+  for (const { alias, label, devServers = [] } of input.leases ?? []) {
+    for (const server of devServers) {
+      if (server.url === undefined) continue;
+      // One dev server is the lease's address; several are each a part of it, by name and port.
+      if (devServers.length === 1) add(alias, "dev", server.url, label);
+      else add(`${alias} ${server.name}`, "dev", server.url, `${label} · ${portedName(server)}`);
+    }
   }
   const environments = input.environments ?? [];
   for (const groupRole of ["stage", "prod"] as const) {

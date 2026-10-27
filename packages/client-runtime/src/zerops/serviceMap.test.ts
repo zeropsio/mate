@@ -7,6 +7,8 @@ import {
   buildZeropsServiceMap,
   formatAmount,
   formatRange,
+  leaseDevServersOf,
+  threadLeasesOf,
   serviceStatusNeedsWord,
   serviceStatusTone,
   zeropsPortLabel,
@@ -420,6 +422,72 @@ describe("buildZeropsServiceMap", () => {
 
     expect(unread?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
     expect(today?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
+  });
+});
+
+describe("buildZeropsServiceMap — a part migrated to a dev pool", () => {
+  const pool = service({ hostname: "apppool", type: "swarm@1", group: "infrastructure" });
+  /** The envelope zcp computes from the re-keyed pair: the pool's snapshot carries its stages. */
+  const envelope = (stages: ReadonlyArray<{ hostname: string; setup?: string }>) =>
+    lifecycle({
+      envelope: {
+        services: [
+          { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool", stages },
+          ...stages.map(({ hostname }) => ({
+            hostname,
+            typeVersion: "bun@1.3",
+            runtimeClass: "dynamic",
+            mode: "stage",
+          })),
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+  const placed = (view: ReturnType<typeof buildZeropsServiceMap>) =>
+    view?.groups.map((group) => [
+      group.group,
+      group.rows.map((row) => [row.service.hostname, row.stage?.hostname]),
+    ]);
+
+  it("folds the stage under its pool, never standing alone", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "appstage" })]),
+      envelope([{ hostname: "appstage", setup: "prod" }]),
+    );
+
+    expect(placed(view)).toEqual([["infrastructure", [["apppool", "appstage"]]]]);
+  });
+
+  it("leaves the stage on its own while the lifecycle is not known", () => {
+    const view = buildZeropsServiceMap(topology([pool, service({ hostname: "appstage" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+
+    expect(placed(view)).toEqual([
+      ["runtimes", [["appstage", undefined]]],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
+  });
+
+  it("a pair of several stages leaves each on its own: a row folds one stage, and no service is hidden", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "webstage" }), service({ hostname: "apistage" })]),
+      envelope([
+        { hostname: "webstage", setup: "web" },
+        { hostname: "apistage", setup: "api" },
+      ]),
+    );
+
+    expect(placed(view)).toEqual([
+      [
+        "runtimes",
+        [
+          ["apistage", undefined],
+          ["webstage", undefined],
+        ],
+      ],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
   });
 });
 
@@ -892,5 +960,65 @@ describe("zeropsServiceFacts", () => {
     expect(zeropsServiceFacts(zcp, "Zerops Control Plane").map((fact) => fact.id)).toEqual([
       "deploy",
     ]);
+  });
+});
+
+describe("a lease's dev servers", () => {
+  const preview = {
+    name: "webpool-3",
+    port: 3000,
+    url: "https://webpool-3003.zerops.app",
+    status: "running",
+    readAt: "2026-10-23T12:00:00Z",
+  };
+  const leased = (devServers?: ReadonlyArray<unknown>) =>
+    lifecycle({
+      envelope: {
+        services: [{ hostname: "webpool-3", devServers: [{ ...preview, name: "stale" }] }],
+        leases: [
+          {
+            alias: "webpool-3",
+            pool: "webpool",
+            state: "held",
+            ...(devServers === undefined ? {} : { devServers }),
+          },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+
+  it("are the ones zcp read on the lease, never a service's of its name", () => {
+    expect(leaseDevServersOf("webpool-3", leased([preview]))).toEqual([preview]);
+    expect(leaseDevServersOf("webpool-3", leased())).toBeUndefined();
+    expect(leaseDevServersOf("webpool-4", leased([preview]))).toBeUndefined();
+  });
+
+  it("are none while the lifecycle is not known", () => {
+    expect(leaseDevServersOf("webpool-3", undefined)).toBeUndefined();
+  });
+});
+
+describe("a thread's leases", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("are every lease of its branch its lifecycle last read zcp holding, its own first", () => {
+    const read = lifecycle({
+      envelope: {
+        services: [],
+        leases: [
+          { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
+          { alias: "webpool-3", pool: "webpool", branch: "feat-x", state: "held" },
+          { alias: "apipool-4", pool: "apipool", branch: "feat-y", state: "held" },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+    expect(threadLeasesOf(LEASE, read)).toEqual([
+      LEASE,
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+    ]);
+  });
+
+  it("are the one it is bound to while the lifecycle is not known", () => {
+    expect(threadLeasesOf(LEASE, undefined)).toEqual([LEASE]);
+    expect(threadLeasesOf(null, undefined)).toEqual([]);
   });
 });

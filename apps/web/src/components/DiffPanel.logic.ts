@@ -1,3 +1,4 @@
+import { checkoutLabel, type CheckoutLease } from "@t3tools/client-runtime/zerops";
 import type { Crewmate, VcsListRefsResult, VcsStatusResult } from "@t3tools/contracts";
 import { collectionPresentation, type EnvironmentQueryView } from "../state/query";
 import { buildBaseRefChoices } from "../lib/baseRefChoices";
@@ -7,7 +8,10 @@ import type { DiffPanelSelection } from "../diffPanelStore";
 
 /** A repository a conversation's Diff reads: a Mate's checkout by its service, or its own. */
 export interface DiffRepository {
+  /** Which checkout it is, for choosing and keeping a choice: its hostname or lease alias. */
   readonly name: string;
+  /** What it is called: its name, or for a lease `<pool> · <branch>` (`checkoutLabel`). */
+  readonly label: string;
   readonly cwd: string;
 }
 
@@ -15,27 +19,34 @@ export interface DiffRepository {
  * The repositories a conversation's Diff reads, as its agent works in them; `null` while that is
  * still read. A crewmate who writes works in its own copy of its service's checkout
  * (`.crew/<handle>`, on `crew/<handle>`), as its crew places it (`CrewWorkspaceDirectory` on the
- * server); every other conversation in the Mate's checkouts (`checkouts`), else its own folder.
+ * server); every other conversation in the Mate's checkouts (`checkouts`, a bound thread's leases
+ * alone, each called `<pool> · <branch>` and known by its alias), else its own folder.
  */
 export function diffRepositories(input: {
   readonly checkouts: ReadonlyArray<string> | null;
   readonly cwd: string | null;
   /** A crewmate's conversation's crewmate; `undefined` while its crew is read, else `null`. */
   readonly crewmate: Pick<Crewmate, "handle" | "kind" | "host"> | null | undefined;
+  /** The thread's leases (`threadLeases`), which name their checkouts; none for none. */
+  readonly leases: ReadonlyArray<CheckoutLease>;
 }): ReadonlyArray<DiffRepository> | null {
   const { checkouts, cwd, crewmate } = input;
   if (crewmate === undefined) return null;
   if (crewmate?.kind === "writer" && crewmate.host !== null) {
     const copy = `${crewmate.host}/.crew/${crewmate.handle}`;
-    return [{ name: copy, cwd: checkoutPathFor(copy) }];
+    return [{ name: copy, label: copy, cwd: checkoutPathFor(copy) }];
   }
   if (checkouts === null) return null;
   if (checkouts.length > 0) {
-    return checkouts.map((hostname) => ({ name: hostname, cwd: checkoutPathFor(hostname) }));
+    return checkouts.map((hostname) => ({
+      name: hostname,
+      label: checkoutLabel(hostname, input.leases),
+      cwd: checkoutPathFor(hostname),
+    }));
   }
-  return cwd === null
-    ? []
-    : [{ name: cwd.split("/").findLast((part) => part.length > 0) ?? cwd, cwd }];
+  if (cwd === null) return [];
+  const folder = cwd.split("/").findLast((part) => part.length > 0) ?? cwd;
+  return [{ name: folder, label: folder, cwd }];
 }
 
 /** What git says of a repository now: its status, the record the Git page reads too. */
@@ -88,7 +99,7 @@ export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyA
         scope: "unstaged",
         label: "Not committed",
         count: read === null ? null : read.workingTree.files.length,
-        nothing: `Everything in ${repository.name} is committed.`,
+        nothing: `Everything in ${repository.label} is committed.`,
         baseRef: null,
       },
       {
@@ -102,10 +113,10 @@ export function diffChoices(reads: ReadonlyArray<DiffRepositoryRead>): ReadonlyA
               ? read.aheadCount
               : (read.aheadOfDefaultCount ?? null),
         nothing: neverPushed
-          ? `${repository.name} has never been pushed: there is nothing to compare it with.`
+          ? `${repository.label} has never been pushed: there is nothing to compare it with.`
           : onMain
-            ? `Everything in ${repository.name} is pushed.`
-            : `Nothing in ${repository.name} is outside main.`,
+            ? `Everything in ${repository.label} is pushed.`
+            : `Nothing in ${repository.label} is outside main.`,
         baseRef: onMain && !neverPushed ? "@{upstream}" : null,
       },
     ];

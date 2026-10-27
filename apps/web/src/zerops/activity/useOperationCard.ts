@@ -129,7 +129,8 @@ export function observationTargetFor(operation: ZeropsOperation): ObservationTar
 /**
  * The dev-server card's "Open" link, resolved from the client's own topology
  * view by hostname — never from the tool result, whose `operation.links` hold
- * only the port addresses of several named servers (`buildDevServerFields`).
+ * only the port addresses of several named servers, or the Open link of a
+ * lease, which no topology view holds (`buildDevServerFields`).
  * `undefined` before the topology view has loaded, for any
  * other operation kind, when no service in the view matches the operation's
  * hostname, or when the matching service has no subdomain of its own.

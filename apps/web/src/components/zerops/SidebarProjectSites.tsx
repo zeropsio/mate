@@ -10,8 +10,10 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * A place's section is what its chip's menu said (`ChipMenu`): its state, what went wrong, the fix
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
- * is its own project's addresses, its dev and its pair's preview named. Each address is listed
- * once, opens in a new tab, and copies from its row (`c`, ⌘C, or the button its hover shows).
+ * is its own project's addresses, its dev and its pair's preview named, and its dev pools'
+ * workspaces — one per lease, read from a conversation of the Mate (`useMatesLeases`). Each address
+ * is listed once, opens in a new tab, and copies from its row (`c`, ⌘C, or the button its hover
+ * shows).
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
  */
@@ -47,6 +49,7 @@ import { usePublicAccess } from "~/zerops/usePublicAccess";
 import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
+import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
@@ -61,10 +64,13 @@ import {
   productionUrl,
   projectSitesSections,
   projectSitesStatus,
+  readsLeases,
+  sitesHoldNothing,
   sitesLinkCount,
   type SitesLink,
   type SitesMateFacts,
   type SitesStatus,
+  type SitesWorkspace,
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
@@ -74,7 +80,11 @@ export interface SitesMate extends ChipMate {
   /** The listing's row (`ZeropsCandidatePresentation`): its routes and services where read. */
   readonly candidate: ChipMate["candidate"] & {
     readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
-    readonly services?: { readonly hostnames: ReadonlyArray<string> };
+    readonly services?: {
+      readonly hostnames: ReadonlyArray<string>;
+      /** Its dev pools (`ZeropsEnvironmentServices.pools`), whose routes are their leases'. */
+      readonly pools?: ReadonlyArray<string>;
+    };
   };
   readonly name: string;
   /** Whose it is, where it is a colleague's (ZeropsMateOwner): "Vira · Theo's". */
@@ -111,13 +121,16 @@ const FLASH_MS = 1_200;
 
 const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
 
-const factsOf = (mate: SitesMate): SitesMateFacts => ({
+/** A Mate as its section is read, with zcp's leases where a conversation of it read them. */
+const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
   owner: mate.owner === undefined || mate.owner.isViewer ? undefined : firstName(mate.owner.name),
   routes: mate.candidate.routes,
   hostnames: mate.candidate.services?.hostnames,
   controlPlane: mate.candidate.service?.name,
+  pools: mate.candidate.services?.pools,
+  leases: leases[mate.candidate.project.id],
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -163,17 +176,19 @@ export function ProjectSites(
   const tagId = `${id}-tag`;
   const popup = useRef<HTMLDivElement>(null);
 
-  // What the doors say needs no moment: addresses do not age.
+  // What the doors say needs no moment: addresses do not age. At rest no Mate's leases are read,
+  // so a dev pool's workspaces are only possible: they keep the globe from saying none.
+  const restingMates = mates.map((mate) => factsOf(mate));
   const atRest = projectSitesSections({
     production: production?.(0),
     productionUnread: false,
     stages: stages?.(0),
     unreadStages: [],
     placeRoutes: (stop) => stop.routes,
-    mates: mates.map(factsOf),
+    mates: restingMates,
   });
   const reading = atRest.some((section) => section.links === undefined);
-  const none = !reading && sitesLinkCount(atRest) === 0;
+  const none = !reading && sitesHoldNothing(atRest, restingMates);
   const prodUrl = productionUrl(production?.(0));
   const mac = typeof navigator !== "undefined" && isMacPlatform(navigator.platform);
   const globeTip = none
@@ -413,6 +428,12 @@ export function SitesPanel({
   const [bound, setBound] = useState<ReadonlyMap<string, ReadonlyArray<ZeropsPublicRoute>>>(
     () => new Map(),
   );
+  // Each Mate's dev pools list its workspaces, as a conversation of the Mate read zcp's leases.
+  const leases = useMatesLeases(
+    mates
+      .filter((mate) => readsLeases(factsOf(mate)))
+      .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
+  );
   const sections = projectSitesSections({
     production: prod,
     productionUnread: prod === undefined && line?.production !== undefined,
@@ -420,7 +441,7 @@ export function SitesPanel({
     unreadStages: stg === undefined ? (line?.stages.map((stage) => stage.name) ?? []) : [],
     placeRoutes: (stop) =>
       (stop.projectId === undefined ? undefined : bound.get(stop.projectId)) ?? stop.routes,
-    mates: mates.map(factsOf),
+    mates: mates.map((mate) => factsOf(mate, leases)),
   });
   const filtering = query.trim() !== "";
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
@@ -477,7 +498,7 @@ export function SitesPanel({
       clearTimeout(timer);
     };
   }, [copied]);
-  const copy = (link: SitesLink) => {
+  const copy = (link: CopiedLink) => {
     const clipboard = typeof navigator === "undefined" ? undefined : navigator.clipboard;
     if (clipboard === undefined) return;
     clipboard.writeText(link.url).then(
@@ -608,6 +629,17 @@ export function SitesPanel({
                     owner={section.owner}
                     projectId={section.projectId}
                     title={section.title}
+                  />
+                  <SitesWorkspaces
+                    copied={copied}
+                    onCopy={copy}
+                    workspaces={
+                      filtering
+                        ? shown?.kind === "mate"
+                          ? shown.workspaces
+                          : []
+                        : section.workspaces
+                    }
                   />
                   {body}
                   {filtering || manage === undefined ? null : (
@@ -910,6 +942,121 @@ function ZeropsDoor({ projectId, name }: { readonly projectId: string; readonly 
   );
 }
 
+/** What a row copies: its address, under its row's key. */
+type CopiedLink = Pick<SitesLink, "key" | "url">;
+
+/** `c` on a focused row, or ⌘C with nothing selected, copies its address. */
+function copyOnKey(event: KeyboardEvent<HTMLAnchorElement>, onCopy: () => void) {
+  const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
+  const selected = window.getSelection?.()?.toString() ?? "";
+  const copyKey =
+    event.key.toLowerCase() === "c" &&
+    (plain || ((event.metaKey || event.ctrlKey) && selected === ""));
+  if (!copyKey) return;
+  event.preventDefault();
+  onCopy();
+}
+
+/** A row's copy button, which its hover or focus shows and which says so once copied. */
+function CopyButton({
+  host,
+  done,
+  onCopy,
+}: {
+  readonly host: string;
+  readonly done: boolean;
+  readonly onCopy: () => void;
+}) {
+  return (
+    <button
+      aria-label={`Copy ${host}`}
+      className="zerops-sites-copy"
+      data-zerops-surface="sidebar-project-sites-copy"
+      onClick={onCopy}
+      tabIndex={-1}
+      type="button"
+    >
+      {done ? (
+        <>
+          <CheckIcon aria-hidden="true" className="size-3.5" />
+          Copied
+        </>
+      ) : (
+        <CopyIcon aria-hidden="true" className="size-3.5" />
+      )}
+    </button>
+  );
+}
+
+/**
+ * A Mate's dev pools' workspaces, one row per lease: its state's dot in the head's mark column, its
+ * name and alias, its state's word, and — while it has a preview to open — the preview, which opens
+ * in a new tab and copies from its row like an address.
+ */
+function SitesWorkspaces({
+  workspaces,
+  copied,
+  onCopy,
+}: {
+  readonly workspaces: ReadonlyArray<SitesWorkspace>;
+  readonly copied: string | undefined;
+  readonly onCopy: (link: CopiedLink) => void;
+}) {
+  return workspaces.map((workspace) => {
+    const said = (
+      <>
+        <EnvDot dot={workspace.dot} />
+        <span className="zerops-sites-service">{workspace.name}</span>
+        {workspace.alias === undefined ? null : (
+          <span className="zerops-sites-alias">{workspace.alias}</span>
+        )}
+        <span
+          className="zerops-sites-role"
+          data-tone={workspace.dot === "failed" ? "red" : undefined}
+        >
+          {workspace.word}
+        </span>
+      </>
+    );
+    const { url, host } = workspace;
+    if (url === undefined || host === undefined) {
+      return (
+        <div
+          className="zerops-sites-link zerops-sites-workspace"
+          data-zerops-surface="sidebar-project-sites-workspace"
+          key={workspace.key}
+        >
+          {said}
+        </div>
+      );
+    }
+    const copyThis = () => {
+      onCopy({ key: workspace.key, url });
+    };
+    const done = copied === workspace.key;
+    return (
+      <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined} key={workspace.key}>
+        <a
+          className="zerops-sites-link zerops-sites-workspace"
+          data-sites-nav=""
+          data-zerops-surface="sidebar-project-sites-workspace"
+          href={url}
+          onKeyDown={(event) => {
+            copyOnKey(event, copyThis);
+          }}
+          rel="noreferrer"
+          target="_blank"
+        >
+          {said}
+          <span className="zerops-sites-host">{host}</span>
+          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+        </a>
+        <CopyButton done={done} host={host} onCopy={copyThis} />
+      </div>
+    );
+  });
+}
+
 /** A section's links: each opens in a new tab, and copies from its row. */
 function SitesLinks({
   links,
@@ -920,7 +1067,7 @@ function SitesLinks({
   /** `undefined` while unread. */
   readonly links: ReadonlyArray<SitesLink> | undefined;
   readonly copied: string | undefined;
-  readonly onCopy: (link: SitesLink) => void;
+  readonly onCopy: (link: CopiedLink) => void;
   /** A read place with no address says so; a Mate with none has no section. */
   readonly sayNone: boolean;
 }) {
@@ -944,14 +1091,9 @@ function SitesLinks({
           data-zerops-surface="sidebar-project-sites-link"
           href={link.url}
           onKeyDown={(event) => {
-            const plain = !event.metaKey && !event.ctrlKey && !event.altKey;
-            const selected = window.getSelection?.()?.toString() ?? "";
-            const copyKey =
-              event.key.toLowerCase() === "c" &&
-              (plain || ((event.metaKey || event.ctrlKey) && selected === ""));
-            if (!copyKey) return;
-            event.preventDefault();
-            onCopy(link);
+            copyOnKey(event, () => {
+              onCopy(link);
+            });
           }}
           rel="noreferrer"
           target="_blank"
@@ -966,25 +1108,13 @@ function SitesLinks({
           <span className="zerops-sites-host">{link.host}</span>
           <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
         </a>
-        <button
-          aria-label={`Copy ${link.host}`}
-          className="zerops-sites-copy"
-          data-zerops-surface="sidebar-project-sites-copy"
-          onClick={() => {
+        <CopyButton
+          done={done}
+          host={link.host}
+          onCopy={() => {
             onCopy(link);
           }}
-          tabIndex={-1}
-          type="button"
-        >
-          {done ? (
-            <>
-              <CheckIcon aria-hidden="true" className="size-3.5" />
-              Copied
-            </>
-          ) : (
-            <CopyIcon aria-hidden="true" className="size-3.5" />
-          )}
-        </button>
+        />
       </div>
     );
   });
@@ -993,22 +1123,28 @@ function SitesLinks({
 /**
  * The conversation header's Sites: the panel a row's globe opens, narrowed to production and this
  * conversation's own Mate. Each section's head carries its way to Zerops, so the header needs no
- * Open in Zerops of its own.
+ * Open in Zerops of its own. The Mate's workspaces are read from the conversation it is in, the
+ * one its person visits now.
  */
 export function HeaderSites({
   sites,
   mateProjectId,
+  threadKey,
   trigger,
   children,
 }: {
   readonly sites: ProjectSitesInput;
   readonly mateProjectId: string;
+  /** The conversation the header is in, by scoped key; absent, the Mate's last visited one. */
+  readonly threadKey?: string | undefined;
   readonly trigger: ReactElement;
   readonly children: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const mates = sites.mates.filter((mate) => mate.candidate.project.id === mateProjectId);
+  const mates = sites.mates
+    .filter((mate) => mate.candidate.project.id === mateProjectId)
+    .map((mate) => (threadKey === undefined ? mate : { ...mate, threadKey }));
   const line = sites.line === undefined ? undefined : { ...sites.line, stages: [] };
   const close = () => {
     setOpen(false);

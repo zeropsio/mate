@@ -20,6 +20,14 @@ import {
   type ZeropsStatHistoryItem,
   type ZeropsStatPair,
 } from "./api.ts";
+import {
+  isPoolOrSandboxServiceType,
+  isPoolServiceType,
+  isSandboxServiceType,
+  withoutOsPrefix,
+} from "./infrastructureType.ts";
+
+export { isPoolOrSandboxServiceType, isPoolServiceType, isSandboxServiceType };
 
 export type ZeropsTopologyGroup = "runtimes" | "data" | "infrastructure";
 
@@ -151,17 +159,6 @@ export interface ZeropsTopologyView {
 
 const ZCP_TYPE_PREFIX = "zcp";
 
-/**
- * A type-version can carry an OS prefix — the platform reports runtimes as
- * `ubuntu/nodejs@22`, not `nodejs@22`. Managed types use a different
- * separator (`valkey:single@7.2`), so only a leading `<os>/` segment is
- * stripped.
- */
-const withoutOsPrefix = (type: string): string => {
-  const separator = type.indexOf("/");
-  return separator < 0 ? type : type.slice(separator + 1);
-};
-
 /** Categories the Zerops API reports for a managed data service (POC finding). */
 const MANAGED_DATA_CATEGORIES: ReadonlySet<string> = new Set(["STANDARD", "OBJECT_STORAGE"]);
 
@@ -174,11 +171,13 @@ export function isZcpServiceType(type: string): boolean {
  * Which panel of the service map a service belongs in.
  *
  * Order matters: the zcp container's own type is user-category, so it has to
- * be claimed as infrastructure before the runtime branch sees it.
+ * be claimed as infrastructure before the runtime branch sees it. A pool
+ * (`USER`) and a Box (`STANDARD`) are claimed the same way, by type, before
+ * their category can make them a runtime card or data.
  */
 function zeropsTopologyServiceGroup(service: ZeropsService): ZeropsTopologyGroup {
   const typeVersion = service.serviceStackTypeInfo?.serviceStackTypeVersionName ?? "";
-  if (isZcpServiceType(typeVersion)) {
+  if (isZcpServiceType(typeVersion) || isPoolOrSandboxServiceType(typeVersion)) {
     return "infrastructure";
   }
   const category = service.serviceStackTypeInfo?.serviceStackTypeCategory;

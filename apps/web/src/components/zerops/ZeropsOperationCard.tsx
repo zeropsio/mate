@@ -673,7 +673,8 @@ export function ZeropsOperationCard(props: {
    * `devServer` only: the subdomain URL resolved by the timeline's own
    * topology view (client-topology-view — server feed, not the tool result).
    * Never sourced from `operation.links`, which holds only the port addresses
-   * of a service running several named servers; such a card opens those instead.
+   * of a service running several named servers, or a lease's own Open link;
+   * such a card opens those instead.
    */
   readonly devServerUrl?: string;
   /**

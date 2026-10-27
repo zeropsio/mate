@@ -2,6 +2,7 @@
 import type {
   OrchestrationEvent,
   OrchestrationReadModel,
+  OrchestrationThread,
   OrchestrationThreadDetailSnapshot,
   ThreadId,
 } from "@t3tools/contracts";
@@ -156,6 +157,16 @@ export const captureConversationText = Effect.fn("captureConversationText")(func
   return result;
 });
 
+/**
+ * Where a thread's pictures are captured from: where its agent works, its worktree, else its
+ * project's root. A thread bound to a lease too: its agent writes paths from there, and the
+ * lease's mount is under it.
+ */
+export const threadWorkspaceRoot = (
+  thread: Pick<OrchestrationThread, "worktreePath"> | undefined,
+  project: { readonly workspaceRoot: string } | undefined,
+): string | undefined => thread?.worktreePath ?? project?.workspaceRoot;
+
 type PlannedEvent = OrchestrationEvent extends infer E
   ? E extends unknown
     ? Omit<E, "sequence">
@@ -172,7 +183,7 @@ export const captureConversationEvent = Effect.fn("captureConversationEvent")(fu
   if (Option.isNone(config)) return event;
   const thread = model.threads.find((value) => value.id === event.payload.threadId);
   const project = model.projects.find((value) => value.id === thread?.projectId);
-  const workspaceRoot = thread?.worktreePath ?? project?.workspaceRoot;
+  const workspaceRoot = threadWorkspaceRoot(thread, project);
   if (!workspaceRoot) return event;
   if (event.type === "thread.message-sent") {
     if (event.payload.role === "reasoning") return event;

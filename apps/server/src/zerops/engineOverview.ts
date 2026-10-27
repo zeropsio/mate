@@ -207,6 +207,8 @@ export const engineShellOf = (view: ConversationView): OrchestrationThreadShell 
     interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
     branch: null,
     worktreePath: null,
+    // The pool container its agent leased: never its worktree, which T3 removes with the thread.
+    lease: view.lease ?? null,
     latestTurn: run === null ? null : turnOf(run),
     createdAt: iso(view.createdAt),
     updatedAt: at,

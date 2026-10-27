@@ -21,6 +21,7 @@ vi.mock("@tanstack/react-router", async () => {
     useLocation: ({ select }: { select: (location: { pathname: string }) => unknown }) =>
       select({ pathname: router.pathname }),
     useNavigate: () => () => Promise.resolve(),
+    useRouter: () => ({ state: { location: { pathname: router.pathname } } }),
   };
 });
 

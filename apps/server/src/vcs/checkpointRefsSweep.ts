@@ -3,7 +3,8 @@
  * conversation's snapshot refs. The refs it left under `refs/t3/checkpoints/` would hold their
  * objects in every repository it wrote to for good, so each start deletes them there — a Mate's
  * service checkouts, else the server's own folder — and git can collect the objects. A repository
- * already swept lists none; one that cannot be reached keeps its refs until a later start.
+ * already swept lists none; one that cannot be reached keeps its refs until a later start. A pool
+ * container a thread's agent leased is that thread's, never swept.
  *
  * @module checkpointRefsSweep
  */
@@ -11,7 +12,7 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import { ServerConfig } from "../config.ts";
-import { ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
+import { isLeaseRepository, ZeropsRepositorySource } from "../zerops/ZeropsRepositorySource.ts";
 import { VcsProcess } from "./VcsProcess.ts";
 
 const CHECKPOINT_REFS = "refs/t3/checkpoints/";
@@ -44,11 +45,13 @@ export const removeCheckpointRefs = Effect.fn("checkpointRefsSweep.remove")(func
 /** Sweeps every repository the capture wrote to, each on its own; a failure leaves the others. */
 export const sweepCheckpointRefs = Effect.gen(function* () {
   const config = yield* ServerConfig;
-  const repositories = yield* (yield* ZeropsRepositorySource).list;
+  const listed = yield* (yield* ZeropsRepositorySource).list;
+  const services =
+    listed._tag === "available"
+      ? listed.repositories.filter((repository) => !isLeaseRepository(repository))
+      : [];
   const targets =
-    repositories._tag === "available" && repositories.repositories.length > 0
-      ? repositories.repositories.map((repository) => repository.mountPath)
-      : [config.cwd];
+    services.length > 0 ? services.map((repository) => repository.mountPath) : [config.cwd];
   yield* Effect.forEach(
     targets,
     (cwd) =>

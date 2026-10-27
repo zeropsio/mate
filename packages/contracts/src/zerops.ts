@@ -26,10 +26,12 @@ import * as Schema from "effect/Schema";
 
 import {
   ForwardCompatibleArray,
+  ForwardCompatibleOptional,
   IsoDateTime,
   ThreadId,
   TrimmedNonEmptyString,
 } from "./baseSchemas.ts";
+import { LeaseAlias } from "./orchestration.ts";
 import { ServerProviderAuthStatus } from "./server.ts";
 
 // ---------------------------------------------------------------------------
@@ -133,7 +135,8 @@ export const ZeropsServiceSnapshot = Schema.Struct({
   stageSetupName: Schema.optional(Schema.String),
   /**
    * The pair's stages, which replace `stageHostname`/`stageSetupName` once zcp
-   * emits them. Mate never pairs from them (§2.8a.3).
+   * emits them. Mate pairs from them only on a pool's snapshot, a part migrated
+   * to a dev pool; a dev service's pair comes from the tier (§2.8a.3).
    */
   stages: Schema.optional(Schema.Array(ZeropsStageRef)),
   /**
@@ -192,6 +195,160 @@ export const ZeropsBootstrapSession = Schema.Struct({
 export type ZeropsBootstrapSession = typeof ZeropsBootstrapSession.Type;
 
 /**
+ * A lease's reconciled state as zcp reports it, verbatim: switch with a default branch. A parked
+ * lease's container is stopped and still zcp's.
+ */
+export const KNOWN_ZEROPS_LEASE_STATES = [
+  "held",
+  "unmounted",
+  "parked",
+  "lost",
+  "unknown-holder",
+  "released",
+] as const;
+
+/** The states of a lease zcp no longer holds: released, lost, or reserved with no record of zcp's. */
+const ENDED_ZEROPS_LEASE_STATES: ReadonlySet<string> = new Set([
+  "released",
+  "lost",
+  "unknown-holder",
+]);
+
+/** Whether zcp still holds a lease in this state: any state but an ended one, a new one included. */
+export const isZeropsLeaseHeld = (state: string): boolean => !ENDED_ZEROPS_LEASE_STATES.has(state);
+
+/**
+ * The branch whose group a lease is of: the leases zcp holds of one repository and branch are one
+ * group, one per part's pool (zcp `docs/spec-workflows.md` §8 DP-17), and a lease of no branch is
+ * of `main`'s.
+ */
+export const zeropsLeaseGroupBranch = (branch: string | null | undefined): string =>
+  branch === null || branch === undefined || branch === "" ? "main" : branch;
+
+/** A repository's address as zcp keys it (`topology.CanonicalRepoURL`): no `.git`, no trailing slash. */
+const canonicalZeropsRepo = (address: string): string =>
+  address
+    .trim()
+    .replace(/\/$/u, "")
+    .replace(/\.git$/u, "")
+    .replace(/\/$/u, "");
+
+/**
+ * Whether two addresses name one repository, as zcp compares them (`topology.SameRepoURL`): equal in
+ * canonical form but for case, which hosts like GitHub ignore in the host, owner and name.
+ */
+export const sameZeropsRepo = (left: string, right: string): boolean => {
+  const canonical = canonicalZeropsRepo(left);
+  return canonical !== "" && canonical.toLowerCase() === canonicalZeropsRepo(right).toLowerCase();
+};
+
+/** What a lease's group is keyed by: its branch, and the repository zcp names (`repo`) when it does. */
+export interface ZeropsLeaseGroupKey {
+  readonly branch?: string | null | undefined;
+  readonly repo?: string | undefined;
+}
+
+const namedRepo = (repo: string | undefined): string | undefined =>
+  repo === undefined || repo.trim() === "" ? undefined : repo;
+
+/**
+ * Whether two leases, or a binding and a lease, are of one group — the leases zcp holds of one
+ * repository and branch (zcp `docs/spec-workflows.md` §8 DP-17): two apps of one Mate both on
+ * `main` hold two groups. One that names no repository (a zcp, a record or a binding older than
+ * `repo`) is grouped by its branch alone.
+ */
+export const sameZeropsLeaseGroup = (
+  left: ZeropsLeaseGroupKey,
+  right: ZeropsLeaseGroupKey,
+): boolean => {
+  if (zeropsLeaseGroupBranch(left.branch) !== zeropsLeaseGroupBranch(right.branch)) return false;
+  const leftRepo = namedRepo(left.repo);
+  const rightRepo = namedRepo(right.repo);
+  return leftRepo === undefined || rightRepo === undefined || sameZeropsRepo(leftRepo, rightRepo);
+};
+
+/**
+ * What zcp read of a lease's checkout and preview — zcp `topology.LeaseActivity` (zcp
+ * `docs/spec-workflows.md` §8 DP-21). Times are RFC 3339 UTC. A fact zcp did not read is absent,
+ * never a zero, and `note` says why; one with no `readAt` is a lease zcp did not read at all.
+ */
+export const ZeropsLeaseActivity = Schema.Struct({
+  /** The checkout's last change: a commit, a checkout, or a modified or untracked file. */
+  lastChangeAt: Schema.optional(IsoDateTime),
+  /** When the preview took its last connection; absent until one came. */
+  previewLastConnAt: Schema.optional(IsoDateTime),
+  /** The preview's open connections at `readAt`; above 0, someone may be looking at it. */
+  previewOpenConns: Schema.optional(Schema.Number),
+  acquiredAt: Schema.optional(IsoDateTime),
+  /** When zcp read these facts. */
+  readAt: Schema.optional(IsoDateTime),
+  /** What could not be read, and why. */
+  note: Schema.optional(Schema.String),
+});
+export type ZeropsLeaseActivity = typeof ZeropsLeaseActivity.Type;
+
+/**
+ * What releasing a lease would lose, as zcp's release guard reads it — zcp `topology.LeaseUnsaved`:
+ * uncommitted and untracked files git does not ignore, and commits on no remote branch. Files git
+ * ignores and stashes are never in it.
+ */
+export const ZeropsLeaseUnsaved = Schema.Struct({
+  /** The first `git status --porcelain` lines; absent for a clean checkout. */
+  files: Schema.optional(ForwardCompatibleArray(Schema.String)),
+  /** Every `git status --porcelain` line, `files` included. */
+  fileCount: Schema.Number,
+  unpushedCommits: Schema.Number,
+});
+export type ZeropsLeaseUnsaved = typeof ZeropsLeaseUnsaved.Type;
+
+/**
+ * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
+ * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
+ */
+export const ZeropsLease = Schema.Struct({
+  alias: LeaseAlias,
+  pool: Schema.String,
+  /** Absent for a lease acquired for no branch. */
+  branch: Schema.optional(Schema.String),
+  containerHostname: Schema.optional(Schema.String),
+  state: Schema.String,
+  /** The state is zcp's own record's: the pool's orchestrator did not answer. */
+  unverified: Schema.optional(Schema.Boolean),
+  /**
+   * When zcp acquired the lease (RFC 3339), from its record; absent for one it has no record of.
+   * Of the leases of one repository and branch, the earliest acquired is the one a conversation is
+   * bound to next when the lease it was bound to ends.
+   */
+  acquiredAt: Schema.optional(Schema.String),
+  /**
+   * The repository the lease's group is keyed by beside `branch`, canonical and credential-free;
+   * absent for one zcp has no record of, or a record older than it. Two apps of one Mate both on
+   * `main` hold leases of one branch: their repositories tell the groups apart.
+   */
+  repo: Schema.optional(Schema.String),
+  /**
+   * The dev servers zcp read on the lease's supervisor, only on a `zerops_dev_server` call for its
+   * alias (the preview server's `url` is the pool's per-port subdomain). Absent means not read in
+   * this call, never none running; a server this build cannot read is dropped, not the lease.
+   */
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  /**
+   * What zcp read of the lease's checkout and preview, and what a release would lose there — only
+   * on a `zerops_lease` call that read them (`action=status`). Absent means not read in this call,
+   * never no activity or nothing unsaved; one this build cannot read is dropped, not the lease.
+   */
+  activity: ForwardCompatibleOptional(ZeropsLeaseActivity),
+  unsaved: ForwardCompatibleOptional(ZeropsLeaseUnsaved),
+  /**
+   * Why the lease's container did not answer a call's read over ssh — its process limit, or ssh
+   * not reaching it — as zcp says it (zcp `docs/spec-workflows.md` §8 DP-21). Absent when it
+   * answered or was not read; it is still zcp's lease.
+   */
+  notAnswering: Schema.optional(Schema.String),
+});
+export type ZeropsLease = typeof ZeropsLease.Type;
+
+/**
  * `workflow.StateEnvelope` — the state zcp computes once per workflow-aware
  * tool result and ships inside the result text as a fenced `json zcp-envelope`
  * block. Contract: zcp `docs/spec-mate.md` §1.
@@ -208,6 +365,11 @@ export const ZeropsStateEnvelope = Schema.Struct({
   selfService: Schema.optional(ZeropsEnvelopeSelfService),
   project: ZeropsEnvelopeProject,
   services: ForwardCompatibleArray(ZeropsServiceSnapshot),
+  /**
+   * The pool containers zcp holds leases on. Absent means not read (a zcp that predates leases),
+   * never none; `[]` is none. A lease this build cannot read is dropped, not the envelope.
+   */
+  leases: Schema.optional(ForwardCompatibleArray(ZeropsLease)),
   workSession: Schema.optional(ZeropsWorkSession),
   bootstrap: Schema.optional(ZeropsBootstrapSession),
   generated: IsoDateTime,

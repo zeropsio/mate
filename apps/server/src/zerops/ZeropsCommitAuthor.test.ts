@@ -78,6 +78,20 @@ describe("a task's commit author on the Mate's working copies", () => {
     }),
   );
 
+  it.effect("a pool container a thread's agent leased never gets the author", () =>
+    Effect.gen(function* () {
+      const { author, ran } = yield* rig({
+        _tag: "available",
+        repositories: [repository("appdev"), { ...repository("webpool-3"), kind: "lease" }],
+      });
+      yield* author.set(AUTHOR);
+      assert.deepStrictEqual(writes(ran), [
+        "/var/www/appdev: config --local user.email 4242+acme-mate[bot]@users.noreply.github.com",
+        "/var/www/appdev: config --local user.name acme-mate[bot]",
+      ]);
+    }),
+  );
+
   it.effect("a working copy git refuses is named, and the others still get the author", () =>
     Effect.gen(function* () {
       const { author, ran } = yield* rig(available("appdev", "apidev"), ["/var/www/apidev"]);

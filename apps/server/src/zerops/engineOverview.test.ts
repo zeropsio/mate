@@ -287,6 +287,14 @@ describe("HQ's overview of a Mate on the engine", () => {
 
   // Milo's stress run 5: after a restart the menu row's subject read the shell's title, with
   // raw backticks: "(`sleep 25 && echo helper-job-done` and `sh -c …`)".
+  it("a conversation's shell names the pool container its agent works in, and none while unbound", () => {
+    const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+    assert.deepStrictEqual(engineShellOf(view({ lease })).lease, lease);
+    assert.strictEqual(engineShellOf(view()).lease, null);
+    // Never a worktree: T3 removes a thread's worktree with the thread.
+    assert.strictEqual(engineShellOf(view({ lease })).worktreePath, null);
+  });
+
   it("names the conversation by the person's first words as plain words, its markdown read", () => {
     const lastPerson = {
       text: "---\nStart two helpers (`sleep 25 && echo done` and **`exit 4`**)\nthen report",

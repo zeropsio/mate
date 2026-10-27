@@ -108,21 +108,29 @@ export function workspaceCommand<
 
 const vcsAtoms = Atom.family((key: string) => {
   const target = JSON.parse(key) as import("@t3tools/client-runtime/data").VcsKey;
+  // The account's status reads this atom last demanded from, which a read again goes to.
+  let demanding: ReturnType<typeof import("@t3tools/client-runtime/data").makeVcsReads> | null =
+    null;
   const demand = Atom.make((get) => {
     const host = get(workspaceHostAtom);
+    demanding = host?.vcs ?? null;
     if (host === null) return null;
     get.addFinalizer(host.vcs.demand(target));
     return host;
   });
-  return Atom.make((get) => {
-    const host = get(demand);
-    return host === null
-      ? AsyncResult.initial<
-          import("@t3tools/contracts").VcsStatusResult,
-          import("@t3tools/client-runtime/data").StreamFault
-        >(true)
-      : get(host.data.project(mateVcs, target));
-  });
+  return Atom.readable(
+    (get) => {
+      const host = get(demand);
+      return host === null
+        ? AsyncResult.initial<
+            import("@t3tools/contracts").VcsStatusResult,
+            import("@t3tools/client-runtime/data").StreamFault
+          >(true)
+        : get(host.data.project(mateVcs, target));
+    },
+    // Read again: a refused or lost status stream is asked of its owner again.
+    () => demanding?.again(target),
+  );
 });
 export const vcsStatus = (target: import("@t3tools/client-runtime/data").VcsKey) =>
   vcsAtoms(JSON.stringify(target));

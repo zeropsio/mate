@@ -12,11 +12,12 @@
  * - **What git holds beyond the records is recorded** (`catchUp`): a repository of a known
  *   application without its row; a change whose squash is on `main`, merged (from the squash alone
  *   when git holds no `mate/` branch of it); a change branch
- *   without its record, a change again — off any task a Mate opens a number only while none of its
- *   own is open, so of a Mate's open changes on no task in a repository only the newest stays open,
- *   the rest closed, superseded; each task's change stays open beside them (an automated Mate holds
- *   one per task); a release tag of the recipe repository without its record, a release. Each is logged
- *   `reconciled`. The heads and `main` themselves follow in the takeover (`gitHost.ts`), as at every
+ *   without its record, a change again — off any task a Mate holds one default change per
+ *   repository (`mate/<mateId>/<number>`, opened naming no branch), so of a Mate's default changes
+ *   only the newest stays open, the rest closed, superseded; every change on a branch it named, one
+ *   handed to it, and each task's change stay open beside it (a Mate holds one per branch, an
+ *   automated Mate one per task); a release tag of the recipe repository without its record, a
+ *   release. Each is logged `reconciled`. The heads and `main` themselves follow in the takeover (`gitHost.ts`), as at every
  *   takeover.
  *
  * Afterwards no change branch or squash on `main` is without its record, and a new change's number
@@ -192,6 +193,14 @@ interface ChangeRow {
 }
 
 /**
+ * Whether `row` is its Mate's default change: opened on no task and naming no branch, on
+ * `mate/<mateId>/<number>` (`hq_change_one_default`). A Mate holds one open at a time; a change on
+ * a branch it named, or handed to it from another Mate's default, is never one.
+ */
+const isDefault = (row: ChangeRow) =>
+  row.task_id === null && row.branch === `mate/${row.mate_project_id}/${String(row.number)}`;
+
+/**
  * What git holds beyond the records, recorded, each logged `reconciled`; `withheld` repositories
  * left to the takeover that serves them.
  */
@@ -280,11 +289,11 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     if (orphans.length === 0 && open.length === 0 && squashedOnly.length === 0) return;
     const squashOf = (mateId: string, number: number) =>
       squashes.get(`${mateId}/${String(number)}`) ?? null;
-    // Of each Mate's open changes on no task, its newest stays open; a task's change is its own,
-    // open beside its Mate's others.
+    // Of each Mate's default changes, its newest stays open; a change on a branch it named, one
+    // handed to it and a task's change are their own, open beside it.
     const newest = new Map<string, number>();
-    // A branch with no record, recorded: merged where main holds its squash, else open if it is its
-    // Mate's newest, else closed.
+    // A branch with no record — a default one, as only `mate/<mateId>/<number>` is read — recorded:
+    // merged where main holds its squash, else open if it is its Mate's newest default, else closed.
     const restoreOrphan = (
       branch: ChangeBranch & { readonly sha: string | null },
       squash: string | null,
@@ -394,7 +403,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     }
     const candidates = [
       ...open
-        .filter((row) => !merged.has(row.number) && row.task_id === null)
+        .filter((row) => !merged.has(row.number) && isDefault(row))
         .map((row) => ({ mateId: row.mate_project_id, number: row.number })),
       ...orphans
         .filter((branch) => squashOf(branch.mateId, branch.number) === null)
@@ -406,7 +415,7 @@ const changesOf = (git: HqGit, sql: SqlClient.SqlClient, leader: Leader["Service
     for (const row of open) {
       if (
         merged.has(row.number) ||
-        row.task_id !== null ||
+        !isDefault(row) ||
         newest.get(row.mate_project_id) === row.number
       )
         continue;

@@ -153,6 +153,20 @@ const date = (value: string | number | undefined) =>
           DateTime.formatIso,
         ),
       );
+/**
+ * Whether GitHub's rules let changes reach a branch only by a pull request (`GET …/rules/branches/
+ * <b>`, readable with the metadata every installation holds): `false` where no such rule applies or
+ * the plan has no rules, `undefined` where GitHub's answer says nothing.
+ */
+export const pullRequestsOnly = (rules: HostReply): boolean | undefined => {
+  if (
+    rules.status === 403 &&
+    Option.getOrUndefined(decodeMessage(rules.body))?.message === PLAN_WITHOUT_RULES
+  )
+    return false;
+  const read = rules.status === 200 ? Option.getOrUndefined(decodeRules(rules.body)) : undefined;
+  return read?.some((rule) => rule.type === "pull_request");
+};
 /** 403 is a host wait only with rate evidence. Requirements headers are not the token's grants. */
 export const rateEvidence = (reply: HostReply, now: number) => {
   const message = Option.getOrUndefined(decodeMessage(reply.body))?.message ?? "";

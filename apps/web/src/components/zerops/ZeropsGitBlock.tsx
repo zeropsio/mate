@@ -121,7 +121,9 @@ export function ZeropsGitBlock({
     >
       <div className="flex min-w-0 flex-col gap-1.5">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <span className="truncate text-sm font-medium text-foreground">{block.repository}</span>
+          <span className="truncate text-sm font-medium text-foreground">
+            {block.label ?? block.repository}
+          </span>
           <Facts
             facts={[
               ...(block.pullRequestNumber === undefined

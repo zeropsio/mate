@@ -350,3 +350,105 @@ describe("groupAddressEnvironments", () => {
     ).toEqual({ ownRole: undefined, environments: [], pending: true });
   });
 });
+
+describe("a thread's lease's addresses", () => {
+  const pool = svc("webpool", ["https://webpool-1df2-3000.prg1.zerops.app"]);
+  const LEASE_URL = "https://webpool-3-1df2-3000.prg1.zerops.app";
+  const lease = (
+    devServers?: NonNullable<MateAddressInput["leases"]>[number]["devServers"],
+    alias = "webpool-3",
+    label = "webpool · feat-x",
+  ) => ({
+    alias,
+    label,
+    ...(devServers === undefined ? {} : { devServers }),
+  });
+
+  it("a bound thread lists its lease's dev server under the lease's name, as a dev", () => {
+    const addresses = mateAddresses({
+      services: [pool],
+      leases: [lease([{ name: "web", port: 3000, url: LEASE_URL }])],
+    });
+    expect(addresses).toContainEqual({
+      service: "webpool-3",
+      role: "dev",
+      url: LEASE_URL,
+      host: "webpool-3-1df2-3000.prg1.zerops.app",
+      name: "webpool · feat-x",
+    });
+  });
+
+  it("each named dev server on a lease is its own address, by the lease and the server", () => {
+    const addresses = mateAddresses({
+      services: [],
+      leases: [
+        lease([
+          { name: "web", port: 3000, url: LEASE_URL },
+          { name: "api", port: 8080, url: "https://webpool-3-1df2-8080.prg1.zerops.app" },
+          { name: "worker" },
+        ]),
+      ],
+    });
+    expect(addresses.map(({ service, name, url }) => ({ service, name, url }))).toEqual([
+      { service: "webpool-3 web", name: "webpool · feat-x · web :3000", url: LEASE_URL },
+      {
+        service: "webpool-3 api",
+        name: "webpool · feat-x · api :8080",
+        url: "https://webpool-3-1df2-8080.prg1.zerops.app",
+      },
+    ]);
+  });
+
+  it("a lease the envelope carries no address for adds nothing, and never the pool's own address", () => {
+    const before = mateAddresses({ services: [pool] });
+    expect(mateAddresses({ services: [pool], leases: [lease()] })).toEqual(before);
+    expect(
+      mateAddresses({ services: [pool], leases: [lease([{ name: "web", port: 3000 }])] }),
+    ).toEqual(before);
+  });
+
+  it("a bound thread lists the dev servers of every lease of its branch, each under its lease's name", () => {
+    const HQ_URL = "https://hqpool-2-1df2-8080.prg1.zerops.app";
+    const addresses = mateAddresses({
+      services: [pool],
+      leases: [
+        lease([{ name: "web", port: 3000, url: LEASE_URL }]),
+        lease([{ name: "hq", port: 8080, url: HQ_URL }], "hqpool-2", "hqpool · feat-x"),
+      ],
+    });
+    expect(
+      addresses
+        .filter(({ url }) => url === LEASE_URL || url === HQ_URL)
+        .map(({ service, role, name, url }) => ({ service, role, name, url })),
+    ).toEqual([
+      { service: "webpool-3", role: "dev", name: "webpool · feat-x", url: LEASE_URL },
+      { service: "hqpool-2", role: "dev", name: "hqpool · feat-x", url: HQ_URL },
+    ]);
+  });
+});
+
+describe("a part migrated to a dev pool", () => {
+  // The dev service is gone and zcp keys the pair by the pool, whose envelope snapshot carries the
+  // stage (zcp spec-mate §2.8a.3): the stage is still the Mate's preview.
+  const STAGE_URL = "https://appstage-1df2-3000.prg1.zerops.app";
+  const services = [
+    {
+      ...svc("apppool", ["https://apppool-1df2-3000.prg1.zerops.app"], "infrastructure"),
+      type: "swarm@1",
+    },
+    { ...svc("appstage", [STAGE_URL]), type: "bun@1.3" },
+  ];
+
+  it("its stage is the Mate's preview, paired with the pool, and the pool's own address is never listed", () => {
+    expect(
+      brief({
+        services,
+        poolPairs: [{ pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] }],
+      }),
+    ).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
+  });
+
+  it("before the envelope pairs it, its stage stands alone, by its name", () => {
+    expect(brief({ services })).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+  });
+});

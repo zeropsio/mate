@@ -19,6 +19,10 @@
  * One seam for every surface that hands work over — a change's page, the
  * crew, the review — so each asks the same way.
  *
+ * A Mate holds a change per branch, each worked in the conversation bound to a
+ * lease of that branch: what is asked of a change goes to that conversation,
+ * where its work and its leases are, and only else to the main chat.
+ *
  * A Mate not connected here, or with no conversation started yet, is asked
  * through its door, exactly as selecting its row opens it (`useOpenMate`): its
  * own view connects it, says what it waits for, and the ask is written in the
@@ -27,6 +31,7 @@
  */
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import {
+  leaseOfRepository,
   resolvePrimaryConversation,
   type ZeropsConversationCandidate,
 } from "@t3tools/client-runtime/zerops";
@@ -43,8 +48,9 @@ import { useOpenMate } from "./useOpenMate";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
 
 /**
- * Writes `ask` into the Mate's composer and goes there: its main chat, or the
- * person chat `options.threadId` names (*Deliver* asks in the chat you are in).
+ * Writes `ask` into the Mate's composer and goes there: the person chat
+ * `options.threadId` names (*Deliver* asks in the chat you are in), else the one
+ * bound to a lease of `options.branch` (a change's), else its main chat.
  * Sent at once, unless `options.send` is false: then it waits in the composer,
  * after anything the person had typed, for them to read and send ("Ask <your
  * Mate> to fix it").
@@ -54,6 +60,10 @@ export type AskMate = (
   ask: string,
   options?: {
     readonly threadId?: string | undefined;
+    /** The branch of the change asked about: its lease's conversation is asked. */
+    readonly branch?: string | undefined;
+    /** That change's repository's address: a conversation leased from another is not asked. */
+    readonly repositoryUrl?: string | undefined;
     readonly send?: boolean | undefined;
     /** The send's ids: whoever asked hears what became of it by them (`sendOutcomeOf`). */
     readonly ids?: ComposerSendIds | undefined;
@@ -74,18 +84,34 @@ export function askedDraft(draft: string | undefined, ask: string): string {
 
 /**
  * The chat an ask goes to among a Mate's threads: the one named when it is a
- * person chat of this Mate (open, not a crewmate's), otherwise the main chat.
+ * person chat of this Mate (open, not a crewmate's); else the person chat bound
+ * to a lease of `branch` in the change's repository at `repositoryUrl`
+ * (`leaseOfRepository`: two apps of one Mate may each have a change on one
+ * branch name), the most primary of several; otherwise the main chat.
  */
-export function askMateThread<T extends ZeropsConversationCandidate>(
+export function askMateThread<
+  T extends ZeropsConversationCandidate & {
+    readonly lease?:
+      | { readonly branch: string | null; readonly repo?: string | undefined }
+      | null
+      | undefined;
+  },
+>(
   threads: ReadonlyArray<T>,
   threadId: string | undefined,
+  branch?: string,
+  repositoryUrl?: string,
 ): T | undefined {
   const { primary, hidden } = resolvePrimaryConversation(threads);
-  const named =
-    threadId === undefined
+  const chats = primary === undefined ? hidden : [primary, ...hidden];
+  const named = threadId === undefined ? undefined : chats.find((thread) => thread.id === threadId);
+  const bound =
+    branch === undefined
       ? undefined
-      : [primary, ...hidden].find((thread) => thread?.id === threadId);
-  return named ?? primary;
+      : chats.find(
+          ({ lease }) => lease?.branch === branch && leaseOfRepository(lease.repo, repositoryUrl),
+        );
+  return named ?? bound ?? primary;
 }
 
 /**
@@ -163,6 +189,8 @@ export function useAskMate(
           : askMateThread(
               threads.filter((thread) => thread.environmentId === target.environmentId),
               options?.threadId,
+              options?.branch,
+              options?.repositoryUrl,
             );
       onNavigate?.();
       if (target.kind === "mate" || chat === undefined) {

@@ -14,6 +14,7 @@ import {
   backfillThreadMedia,
   captureActivityMedia,
   captureConversationText,
+  threadWorkspaceRoot,
 } from "./ConversationMedia.ts";
 import * as AssetSigningKey from "./AssetSigningKey.ts";
 import * as ProjectFaviconResolver from "../project/ProjectFaviconResolver.ts";
@@ -420,3 +421,27 @@ it.effect("an engine conversation resolves the screenshot captured by its provid
     yield* w.shutdown;
   }).pipe(Effect.provide(layer)),
 );
+
+it.each([
+  {
+    // Its agent writes paths from where it works, which holds the lease's mount.
+    sentence: "a thread bound to a lease captures its pictures where its agent works",
+    thread: {
+      lease: { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
+      worktreePath: null,
+    },
+    root: "/var/www",
+  },
+  {
+    sentence: "a thread with a worktree captures from its worktree",
+    thread: { lease: null, worktreePath: "/var/www/.lanes/nova" },
+    root: "/var/www/.lanes/nova",
+  },
+  {
+    sentence: "any other thread captures from its project's root",
+    thread: { worktreePath: null },
+    root: "/var/www",
+  },
+])("$sentence", ({ thread, root }) => {
+  expect(threadWorkspaceRoot(thread, { workspaceRoot: "/var/www" })).toBe(root);
+});

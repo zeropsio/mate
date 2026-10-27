@@ -540,6 +540,41 @@ export const ThreadCrewOrigin = Schema.Struct({
 });
 export type ThreadCrewOrigin = typeof ThreadCrewOrigin.Type;
 
+/**
+ * A lease's alias, `<pool>-<number>`: the name zcp gives one container of a Swarm pool, its mount
+ * point's last segment (`/var/www/<alias>`) and its ssh host. A path segment, so nothing else.
+ */
+export const LeaseAlias = TrimmedNonEmptyString.check(
+  Schema.isPattern(/^[a-zA-Z0-9][a-zA-Z0-9-]*$/u),
+);
+export type LeaseAlias = typeof LeaseAlias.Type;
+
+/**
+ * The pool container a thread's agent leased (zcp's `zerops_lease`), which the thread works in
+ * from then on: its first lease (a group acquire's first), until that lease is released, lost or
+ * acquired again by another thread — then the earliest-acquired lease of its repository and branch
+ * zcp still holds, if any. The thread also shows every other lease of its repository and branch,
+ * read from zcp's leases, never kept here. Never a worktree: nothing removes it with the thread.
+ */
+export const ThreadLease = Schema.Struct({
+  alias: LeaseAlias,
+  pool: TrimmedNonEmptyString,
+  /** The branch zcp checked out there; null for a lease acquired for none. */
+  branch: Schema.NullOr(TrimmedNonEmptyString),
+  /**
+   * The repository its group is keyed by beside `branch` (zcp's `repo`); absent where zcp named
+   * none, and in a binding recorded before it did — such a lease's group is its branch's alone.
+   */
+  repo: Schema.optionalKey(TrimmedNonEmptyString),
+  /**
+   * When zcp acquired it (zcp's `acquiredAt`): a pool hands a released container out again under
+   * the same alias, so the alias read acquired at another time is another lease than the one bound.
+   * Absent where zcp said none, and in a binding recorded before it was kept.
+   */
+  acquiredAt: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type ThreadLease = typeof ThreadLease.Type;
+
 export const OrchestrationThread = Schema.Struct({
   id: ThreadId,
   projectId: ProjectId,
@@ -551,6 +586,9 @@ export const OrchestrationThread = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // The pool container its agent leased (ThreadLease). Optional so payloads from older servers
+  // still decode; absent or null: none.
+  lease: Schema.optional(Schema.NullOr(ThreadLease)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,
@@ -724,6 +762,9 @@ export const OrchestrationThreadShell = Schema.Struct({
   ),
   branch: Schema.NullOr(TrimmedNonEmptyString),
   worktreePath: Schema.NullOr(TrimmedNonEmptyString),
+  // The pool container its agent leased (ThreadLease). Optional so payloads from older servers
+  // still decode; absent or null: none.
+  lease: Schema.optional(Schema.NullOr(ThreadLease)),
   linkedPullRequest: Schema.optional(Schema.NullOr(ThreadLinkedPullRequest)),
   latestTurn: Schema.NullOr(OrchestrationLatestTurn),
   createdAt: IsoDateTime,

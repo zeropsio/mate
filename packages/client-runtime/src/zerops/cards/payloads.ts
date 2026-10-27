@@ -9,10 +9,11 @@
  * block when one does. That is the normal path for a payload this build does
  * not recognise, and it is what the brief means by a card degrading.
  */
-import { ZeropsDevServer } from "@t3tools/contracts";
+import { ForwardCompatibleArray, ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
+import { leaseDevServersIn } from "../serviceMap.ts";
 import {
   type ZeropsCardSource,
   readBoolean,
@@ -150,6 +151,12 @@ export type ZeropsCardPayload =
        * runs more than one (spec-mate §2.8a.3); absent for one, whose card stays as it was.
        */
       readonly servers?: ReadonlyArray<ZeropsDevServer>;
+      /**
+       * A lease's address where zcp read one dev server on it in this call: that server's `url`,
+       * the pool's per-port subdomain of its preview (spec-mate §2.8a.3 `leases[]`). A lease is in
+       * no topology view, so its one server's card opens this, as a service's opens the view's.
+       */
+      readonly leaseUrl?: string;
     }
   | {
       readonly kind: "browser";
@@ -521,27 +528,36 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
     ...optional("message", readString(document.message)),
     ...optional("reason", readString(document.reason)),
     ...optional("logTail", readString(document.logTail)),
-    ...servers(devServersOf(document.envelope, hostname)),
+    ...devServersOf(document.envelope, hostname),
   };
 }
 
-const servers = (value: ReadonlyArray<ZeropsDevServer> | undefined) =>
-  value === undefined ? {} : { servers: value };
-
 const decodeDevServerEntry = Schema.decodeUnknownOption(ZeropsDevServer);
+const decodeLeases = Schema.decodeUnknownOption(ForwardCompatibleArray(ZeropsLease));
 
-/** The named dev servers the result's `envelope` read for `hostname`, where there are several. */
+/**
+ * What the result's `envelope` read of `hostname`'s named dev servers: each of them where there
+ * are several — a lease's (`leases[].devServers`) when the call named a lease by its alias, else
+ * the service's — and a lease's one server's address where it has one.
+ */
 function devServersOf(
   envelope: unknown,
   hostname: string,
-): ReadonlyArray<ZeropsDevServer> | undefined {
-  const service = readRecordArray(readRecord(envelope)?.services).find(
+): { readonly servers?: ReadonlyArray<ZeropsDevServer>; readonly leaseUrl?: string } {
+  const read = readRecord(envelope);
+  const leases = Option.getOrUndefined(decodeLeases(read?.leases));
+  const leaseServers = leaseDevServersIn(hostname, { leases });
+  const service = readRecordArray(read?.services).find(
     (entry) => readString(entry.hostname) === hostname,
   );
-  const servers = readRecordArray(service?.devServers).flatMap((entry) =>
-    Option.toArray(decodeDevServerEntry(entry)),
-  );
-  return servers.length > 1 ? servers : undefined;
+  const servers =
+    leaseServers ??
+    readRecordArray(service?.devServers).flatMap((entry) =>
+      Option.toArray(decodeDevServerEntry(entry)),
+    );
+  if (servers.length > 1) return { servers };
+  const leaseUrl = leaseServers?.[0]?.url;
+  return leaseUrl === undefined ? {} : { leaseUrl };
 }
 
 const stepError = (error: string | undefined): string | undefined => {

@@ -41,7 +41,8 @@ export type IsoDateTime = typeof IsoDateTime.Type;
  *
  * Decoding runs each value through its own schema, so transformations (dates,
  * trimming, decoding defaults) apply as usual. Only values that schema
- * rejects are dropped, on either side.
+ * rejects are dropped, on either side. A value holding another such array
+ * keeps itself when that array drops one of its own.
  *
  * For a tagged union, prefer {@link ForwardCompatibleUnion}: it drops only
  * values whose tag this build does not know, so a known member with a broken
@@ -49,13 +50,12 @@ export type IsoDateTime = typeof IsoDateTime.Type;
  */
 export const ForwardCompatibleArray = <Element extends Schema.Top>(element: Element) =>
   Schema.Array(
-    Schema.UndefinedOr(element).pipe(
-      // An element this build cannot read becomes a hole, filtered out below.
-      Schema.catchDecoding(() => Effect.succeedSome(undefined)),
-      // Likewise an element that cannot be encoded is sent as a hole, so one
-      // bad element costs only itself rather than the whole payload.
-      Schema.catchEncoding(() => Effect.succeedSome(undefined)),
-    ),
+    // An element this build cannot read becomes a hole, filtered out below.
+    // No catch on encoding here: one makes decoding first check the element
+    // against its bare encoded shape, where nothing inside it recovers, so an
+    // entry a nested array would drop, or a field would fall back on, fails
+    // the whole element. Encoding catches on the decoded side instead.
+    Schema.UndefinedOr(element).pipe(Schema.catchDecoding(() => Effect.succeedSome(undefined))),
   ).pipe(
     Schema.decodeTo(
       Schema.Array(
