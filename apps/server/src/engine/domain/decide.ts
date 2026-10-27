@@ -160,7 +160,8 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
-  "lease.release": { lane: "side", class: "replay-safe" },
+  // Its own lane, run by the Mate-wide fibers: a parked container waking holds no session's work.
+  "lease.release": { lane: "workspace", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -1861,6 +1862,8 @@ const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
 const askLeaseRelease = (b: StepBuilder): void => {
   const lease = b.state.lease;
   if (lease === null || lease.branch === null) return;
+  // One release at a time: archived again before it started, the one asked still runs.
+  if (Object.values(b.state.effects).some((effect) => effect.kind === "lease.release")) return;
   b.effect(
     "lease.release",
     `${b.state.conversationId}/lease/${lease.alias}`,

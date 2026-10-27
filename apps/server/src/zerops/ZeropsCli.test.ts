@@ -190,7 +190,7 @@ describe("ZeropsCli.leaseRelease", () => {
     const log =
       input.calls === undefined
         ? ""
-        : `require("node:fs").appendFileSync(${JSON.stringify(input.calls)}, process.argv.slice(1).join(" ") + "\n");`;
+        : `require("node:fs").appendFileSync(${JSON.stringify(input.calls)}, process.argv.slice(1).join(" ") + "\\n");`;
     const version = JSON.stringify(`zcp v${input.version ?? "9.223.0"} (0869cf51a, 2026-10-27)\n`);
     return ZeropsCli.make({
       command: process.execPath,
@@ -295,7 +295,7 @@ describe("ZeropsCli.leaseRelease", () => {
     Effect.gen(function* () {
       const result = yield* run(
         zcp({
-          release: `process.stdout.write('zcp v9.224.0 is available\n{"released":[{"lease":"webpool-3","outcome":"removed"}]}\n')`,
+          release: `process.stdout.write('zcp v9.224.0 is available\\n{"released":[{"lease":"webpool-3","outcome":"removed"}]}\\n')`,
         }),
         (cli) => cli.leaseRelease(branch),
       );

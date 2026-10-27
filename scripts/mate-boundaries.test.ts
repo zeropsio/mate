@@ -17,7 +17,7 @@ import type { PlatformError } from "effect/PlatformError";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const ZONE = "apps/server/src/zerops";
-const ALLOWED_ARGV = ["mate status", "mate update", "studio console serve"];
+const ALLOWED_ARGV = ["mate status", "mate update", "studio console serve", "version"];
 
 // The leading string literals of the argv; a trailing identifier (`agentId`) is not a verb.
 const ZCP_ARGV_PATTERN = /\[\s*\.\.\.baseArgs\s*,\s*((?:"[^"\n]*"\s*,\s*)*"[^"\n]*")/g;

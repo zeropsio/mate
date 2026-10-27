@@ -65,22 +65,21 @@ export const engineLayerWith = <E>(
   storeOptions: EngineStoreOptions = {},
   domains: ReadonlyArray<AnyDomain> = [],
 ) =>
-  handlers
-    .pipe(Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)))
-    .pipe(
-      Layer.provideMerge(
-        Layer.mergeAll(
-          Layer.effect(EngineStore, makeEngineStore(storeOptions)),
-          EngineSignals.layer,
-          Layer.succeed(OwnerDomains, domains),
-        ),
+  handlers.pipe(
+    Layer.provideMerge(Layer.mergeAll(ConversationsModule.layer(), EffectOutboxModule.layer)),
+    Layer.provideMerge(
+      Layer.mergeAll(
+        Layer.effect(EngineStore, makeEngineStore(storeOptions)),
+        EngineSignals.layer,
+        Layer.succeed(OwnerDomains, domains),
       ),
-      Layer.provideMerge(
-        Layer.effectDiscard(runEngineMigrations()).pipe(
-          Layer.provideMerge(NodeSqliteClient.layer({ filename })),
-        ),
+    ),
+    Layer.provideMerge(
+      Layer.effectDiscard(runEngineMigrations()).pipe(
+        Layer.provideMerge(NodeSqliteClient.layer({ filename })),
       ),
-    );
+    ),
+  );
 
 export type Engine =
   | Conversations

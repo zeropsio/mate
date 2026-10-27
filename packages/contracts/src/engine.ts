@@ -1147,8 +1147,10 @@ export const LeaseBound = event("LeaseBound", { lease: ThreadLease });
 export const LeaseUnbound = event("LeaseUnbound", { alias: LeaseAlias });
 /**
  * What zcp answered when an archived conversation's branch was given back (`zcp lease release`,
- * never forced): every lease of the branch released, each kept warm or removed; the branch kept
- * because a lease of it holds unsaved work, which zcp names; or no release made, in words.
+ * never forced): every lease of the branch released, each kept warm or removed (none: the branch
+ * held none any more); the branch kept because a lease of it holds unsaved work, which zcp names,
+ * or another live zcp session holds or reused it; no release made, in words; or none asked,
+ * because the conversation was unarchived before its release started.
  */
 export const LeaseReleaseResult = Schema.Union([
   Schema.Struct({
@@ -1160,14 +1162,18 @@ export const LeaseReleaseResult = Schema.Union([
     leases: Schema.Array(
       Schema.Struct({
         lease: Schema.String,
-        unsaved: Schema.Struct({
-          files: Schema.Array(Schema.String),
-          commits: Schema.Array(Schema.String),
-        }),
+        unsaved: Schema.optionalKey(
+          Schema.Struct({
+            files: Schema.Array(Schema.String),
+            commits: Schema.Array(Schema.String),
+          }),
+        ),
+        inUse: Schema.optionalKey(Schema.Struct({ sessions: Schema.Number })),
       }),
     ),
   }),
   Schema.Struct({ outcome: Schema.Literal("failed"), reason: Schema.String }),
+  Schema.Struct({ outcome: Schema.Literal("withdrawn") }),
 ]);
 export type LeaseReleaseResult = typeof LeaseReleaseResult.Type;
 /**
