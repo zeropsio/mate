@@ -266,9 +266,57 @@ describe("matesActivityOf — a Mate that publishes its attention", () => {
       attention: attention(said({ working: 1 })),
       threads: [shell],
       overviews: new Map([["p-vera", VERA]]),
+      // Its socket stands: the shell this page holds is current.
+      sockets: new Map([["p-vera", VERA_ENV]]),
+      standing: new Set([VERA_ENV]),
     });
     expect(activity).toMatchObject({ threadId: "t1", kind: "working", subject: "Fix the build" });
     expect(activity?.remembered).toBeUndefined();
+  });
+
+  // The owner, 2026-10-27: a row read "Thinking" for the 16 minutes and 49 steps its Mate worked.
+  // This page follows a Mate's conversations only while it is open: the shell it held from then
+  // stops where the run was when the person left.
+  it("reads HQ's live word of the chat over a shell this page no longer follows: its steps go on", () => {
+    const left = { ...WORKING, liveStep: { kind: "thinking" as const, since: ASKED } };
+    const onIt = Schema.decodeUnknownSync(MateLiveView)({
+      ...Schema.encodeSync(MateLiveView)(VERA),
+      main: {
+        ...Schema.encodeSync(MateLiveView)(VERA).main,
+        session: { status: "running", lastError: null },
+        latestTurn: {
+          turnId: "turn-1",
+          state: "running",
+          requestedAt: ASKED,
+          startedAt: ASKED,
+          completedAt: null,
+        },
+        liveStep: {
+          kind: "calls",
+          since: ASKED,
+          calls: [
+            {
+              id: "call-build",
+              activityKind: "tool.updated",
+              itemType: "command_execution",
+              title: "Command run",
+              detail: "Bash: pnpm build",
+              toolName: "Bash",
+              command: "pnpm build",
+              input: { description: "Build the app" },
+              startedAt: ASKED,
+            },
+          ],
+        },
+      },
+    });
+    const activity = read({
+      attention: attention(said({ working: 1 })),
+      threads: [left],
+      overviews: new Map([["p-vera", onIt]]),
+      standing: new Set(),
+    });
+    expect(activity).toMatchObject({ kind: "working", liveStep: { words: "Build the app" } });
   });
 
   it.each([
