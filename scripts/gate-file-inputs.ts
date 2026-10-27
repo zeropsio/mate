@@ -71,6 +71,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "pnpm-workspace.yaml",
     "apps/server/package.json",
   ],
+  "apps/server/scripts/releaseRollbackCompatibility.test.ts": [
+    "apps/server/src/**",
+    "packages/shared/src/**",
+    "packages/contracts/src/**",
+  ],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
   "apps/server/src/assets/ContentAssetHttp.test.ts": [],
