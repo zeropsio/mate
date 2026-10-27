@@ -88,7 +88,9 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
-  Partial<Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream">> &
+  Partial<
+    Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream" | "deleteRepo">
+  > &
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
@@ -781,6 +783,28 @@ export function makeHqExecutor(ports: {
             });
           yield* Effect.tryPromise({
             try: () => api.unfollowRepoUpstream!(intent.appId, intent.repo),
+            catch: faultOf,
+          });
+          return {
+            ...answered(requestId, intent.appId),
+            affected: [{ family: "hqAppDetail", id: `${intent.appId}/repos` }],
+            outcome: { kind: "pending" },
+          };
+        }
+        if (intent.kind === "delete-repository") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          if (api.deleteRepo === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to delete a repository.",
+            });
+          yield* Effect.tryPromise({
+            try: () => api.deleteRepo!(intent.appId, intent.repo),
             catch: faultOf,
           });
           return {

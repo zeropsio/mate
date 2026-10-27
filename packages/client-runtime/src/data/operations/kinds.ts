@@ -33,6 +33,7 @@ import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
 import {
   connectGitRemoteViaApp,
+  deleteRepository,
   followGithubRepository,
   stopFollowingGithubRepository,
 } from "./hqGithubRemote.ts";
@@ -110,6 +111,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   connectGitRemoteViaApp,
   followGithubRepository,
   stopFollowingGithubRepository,
+  deleteRepository,
   vaultWrite,
   serviceRestart,
   ...FLOW_WRITE_KINDS,
