@@ -2651,36 +2651,97 @@ describe("a group of Mates folded to its row", () => {
     expect(selected).toEqual(theirs.length === 1 ? theirs : []);
   });
 
-  it("a Mate's row stays put under the pointer while its list re-sorts", () => {
-    // HQ names Bo's owner a colleague while the pointer is over the list: Bo's row would drop
-    // below the viewer's Mates, under a pointer aimed at it.
-    const owners = (theirs: ReadonlyArray<string>) => (item: ZeropsCandidate) =>
-      theirs.includes(item.project.id)
-        ? { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false }
-        : { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true };
-    const rowOrder = (mounted: ReactTestRenderer) =>
-      mounted.root
-        .findAll(
-          (node) =>
-            typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
-        )
-        .map((node) => node.props["data-zerops-mate-row"] as string);
+  // HQ names a Mate's owner a colleague while the pointer is over the list: its row would drop
+  // below the viewer's Mates, under a pointer aimed at it.
+  const owners = (theirs: ReadonlyArray<string>) => (item: ZeropsCandidate) =>
+    theirs.includes(item.project.id)
+      ? { name: "Jan Novák", initials: "JN", avatarUrl: null, isViewer: false }
+      : { name: "Ada Lovelace", initials: "AL", avatarUrl: null, isViewer: true };
+  const rowOrder = (mounted: ReactTestRenderer) =>
+    mounted.root
+      .findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      )
+      .map((node) => node.props["data-zerops-mate-row"] as string);
+  const pointer = (mounted: ReactTestRenderer, event: "onPointerEnter" | "onPointerLeave") => {
+    act(() => {
+      surface(mounted, "sidebar-environments").props[event]({ pointerType: "mouse" });
+    });
+  };
+  /** The group opened, its Mates' order as drawn, and the pointer over the list. */
+  const openUnderPointer = () => {
     const mounted = mount(tree({ getOwner: owners([]) }));
     press(mounted, "sidebar-project");
     const before = rowOrder(mounted);
     expect(before).toHaveLength(2);
-    const pointer = (event: "onPointerEnter" | "onPointerLeave") => {
-      act(() => {
-        surface(mounted, "sidebar-environments").props[event]({ pointerType: "mouse" });
-      });
-    };
-    pointer("onPointerEnter");
+    pointer(mounted, "onPointerEnter");
+    return { mounted, before };
+  };
+  const reSort = (mounted: ReactTestRenderer, colleague: string) => {
     act(() => {
-      mounted.update(tree({ getOwner: owners([before[0]!]) }));
+      mounted.update(tree({ getOwner: owners([colleague]) }));
     });
+  };
+
+  it("a Mate's row stays put under the pointer while its list re-sorts", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
     expect(rowOrder(mounted)).toEqual(before);
     // The pointer gone, the list takes its order.
-    pointer("onPointerLeave");
+    pointer(mounted, "onPointerLeave");
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
+  });
+
+  it("a Mate's number is the place its row is drawn at, while the list holds its order", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("keydown"), { key: "Alt" }));
+    });
+    const numbered = mounted.root
+      .findAll(
+        (node) => typeof node.type === "string" && node.props["data-zerops-mate-row"] !== undefined,
+      )
+      .map((row) => [
+        row.props["data-zerops-mate-row"] as string,
+        text(
+          row.find(
+            (node) =>
+              typeof node.type === "string" &&
+              node.props["data-zerops-surface"] === "sidebar-mate-number",
+          ),
+        ),
+      ]);
+    expect(numbered).toEqual([
+      [before[0], "1"],
+      [before[1], "2"],
+    ]);
+    // "The next one that waits" walks the rows as drawn too.
+    expect(useSidebarReveal.getState().mateOrder.filter((id) => before.includes(id))).toEqual(
+      before,
+    );
+    act(() => {
+      window.dispatchEvent(Object.assign(new Event("keyup"), { key: "Alt" }));
+    });
+  });
+
+  it("opens a folded project's Mates in their order now, not the order they were folded in", () => {
+    const { mounted, before } = openUnderPointer();
+    press(mounted, "sidebar-project");
+    reSort(mounted, before[0]!);
+    press(mounted, "sidebar-project");
+    expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
+  });
+
+  // A row's menu or the Sites popover is the list's own, drawn elsewhere: closed by a click
+  // outside the list, the list never hears the pointer leave it.
+  it("lets the rows take their order once the pointer is seen outside the list, unheard leaving", () => {
+    const { mounted, before } = openUnderPointer();
+    reSort(mounted, before[0]!);
+    expect(rowOrder(mounted)).toEqual(before);
+    act(() => {
+      window.dispatchEvent(new Event("pointerover"));
+    });
     expect(rowOrder(mounted)).toEqual([before[1], before[0]]);
   });
 
