@@ -331,7 +331,7 @@ export const HqNavigationMate = Schema.Struct({
   closedOff: Schema.Boolean,
   /** Presence of the setup press marker; null until HQ has usable evidence. */
   setupMarker: Schema.NullOr(Schema.Boolean),
-  /** Still sent by the in-tree HQ; no client reads it. Goes with `apps/hq` at the cutover. */
+  /** Still sent by older HQ builds; no client reads it. */
   keyWider: Schema.optionalKey(Schema.Boolean),
   birthId: Schema.optionalKey(Schema.String),
   /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */

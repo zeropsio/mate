@@ -77,15 +77,6 @@ const sourcesMatching = (dir: string, pattern: RegExp) =>
     .sort();
 
 describe("HQ deletes a service only from a person's Delete action", () => {
-  it("HQ holds no path that deletes a service", () => {
-    expect(
-      sourcesMatching(
-        "apps/hq/src",
-        /deleteService|HttpClientRequest\.del\b|service-stack[^\n]*["']DELETE["']/u,
-      ),
-    ).toEqual([]);
-  });
-
   it("the only caller of a service's deletion is the Delete a person confirms", () => {
     const where = (pattern: RegExp) => [
       ...sourcesMatching("packages/client-runtime/src", pattern),

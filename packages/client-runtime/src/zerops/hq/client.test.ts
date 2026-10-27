@@ -2409,7 +2409,7 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
   } as const;
   const channel = { appId: "app-1", channelId: "C042", channel: "support" };
 
-  // HQ's own answers (`apps/hq/src/automationApi.ts`, `slackRoutes.ts`, `discordRoutes.ts`).
+  // HQ's own answers (`mate-hq apps/hq/src/automationApi.ts`, `slackRoutes.ts`, `discordRoutes.ts`).
   it.each([
     {
       case: "an application's webhooks, which HQ answers wrapped",

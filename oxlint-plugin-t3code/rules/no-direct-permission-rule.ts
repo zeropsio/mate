@@ -6,10 +6,9 @@ import { formatFindingMessage, normalizeFingerprint } from "../exceptions.ts";
 import { getPropertyName, resolveVariable, unwrapExpression } from "../utils.ts";
 
 /**
- * HQ's permission rule (`can`, `apps/hq/src/permissions.ts`) is HQ's alone: HQ decides every verb,
+ * HQ's permission rule (`can`, in mate-hq) is HQ's alone: HQ decides every verb,
  * enforces each write by it and streams what it offers (`@t3tools/shared/hqOffers`); the client
- * draws those decisions and decides none. In the client and shared sources, any import of HQ's
- * module at all, anything from the rule's wire contract (`@t3tools/shared/zeropsPermissions`) but
+ * draws those decisions and decides none. In the client and shared sources, anything from the rule's wire contract (`@t3tools/shared/zeropsPermissions`) but
  * its reasons and a decision's shape (`REASONS`, `Reason`, `Decision`), and any facts built `fresh`
  * are reported — with no exception. HQ and the server are not client sources; tests are not either.
  *
@@ -30,8 +29,6 @@ const SCOPE_MARKERS = [
 ] as const;
 const RULE_MODULE = "packages/shared/src/zeropsPermissions.ts";
 const MODULE_SOURCE = /(^|\/)zeropsPermissions(\.[cm]?[jt]s)?$/u;
-/** HQ's own sources, where `can` lives: by its package, or by a path into it. */
-const HQ_SOURCE = /^@t3tools\/hq(\/|$)|(^|\/)apps\/hq\/|(^|\/)hq\/src\//u;
 
 /** The file's repo path where it is a client or shared source the rule covers. */
 const coveredPath = (filename: string): string | undefined => {
@@ -57,8 +54,6 @@ const sourceOf = (source: unknown): string | undefined =>
     : undefined;
 
 const namesRuleModule = (source: unknown): boolean => MODULE_SOURCE.test(sourceOf(source) ?? "");
-
-const namesHq = (source: unknown): boolean => HQ_SOURCE.test(sourceOf(source) ?? "");
 
 /** The rule's wire contract: what a client may take from its module. */
 const WIRE_CONTRACT: ReadonlySet<string> = new Set(["REASONS", "Reason", "Decision"]);
@@ -111,8 +106,6 @@ export default defineRule({
         }),
       });
     };
-    const HQ_ALONE = "HQ's rule is HQ's alone: draw what HQ offers (hqOffers.ts), never import it.";
-
     /** A constant whose value is the literal `"fresh"`. */
     const freshByName = (node: ESTree.Node): boolean => {
       const variable = resolveVariable(context, node);
@@ -126,24 +119,20 @@ export default defineRule({
 
     return {
       ImportDeclaration(node) {
-        if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
         if (node.importKind === "type" || contractOnly(node.specifiers)) return;
         report(node, "Import the rule's wire contract alone: HQ decides, the client draws.");
       },
       ExportNamedDeclaration(node) {
-        if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
         if (node.exportKind === "type" || contractOnly(node.specifiers)) return;
         report(node, "Re-export the rule's wire contract alone.");
       },
       ExportAllDeclaration(node) {
-        if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source) || node.exportKind === "type") return;
         report(node, "Re-export the rule's wire contract alone, by name.");
       },
       ImportExpression(node) {
-        if (namesHq(node.source)) return report(node, HQ_ALONE);
         if (!namesRuleModule(node.source)) return;
         report(node, "Never load the rule's wire contract here: import it by name.");
       },

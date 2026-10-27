@@ -321,8 +321,6 @@ const scenarioPaths = NodeFS.readdirSync(NodePath.join(root, "apps/web/test/scen
   .map((entry) => `apps/web/test/scenarios/areas/${entry.name}/journey.scenario.ts`);
 
 it.each([
-  "apps/hq/src/core.ts",
-  "apps/hq/package.json",
   ...scenarioPaths,
   "apps/web/test/scenarios/areas/future/journey.scenario.ts",
   "apps/web/test/scenarios/fakes/g-outage/outage.ts",
@@ -590,13 +588,12 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     "prepare",
     "test_packages",
     "test_scripts",
-    "test_hq",
     "test_client_runtime",
   ]);
   expect(workflow.jobs.test.if).toContain("!cancelled() && needs.prepare.result == 'success'");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
-  for (const name of ["test_scripts", "test_hq", "test_client_runtime"]) {
+  for (const name of ["test_scripts", "test_client_runtime"]) {
     expect(
       workflow.jobs[name].strategy.matrix.shard,
       "ASSERTION: short suites must not pay duplicate checkout and installation",
@@ -614,22 +611,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     (step: { name: string }) => step.name === "Test",
   ).run;
   expect(command).toContain("--filter '!@t3tools/scripts'");
-  expect(command).toContain("--filter '!@t3tools/hq'");
   expect(command).toContain("--filter '!@t3tools/client-runtime'");
-});
-
-it("HQ's offline shallow clone receives every object in its current commit", () => {
-  const workflow = parse(
-    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
-  );
-  const checkout = workflow.jobs.test_hq.steps.find(
-    (step: { name: string }) => step.name === "Checkout",
-  );
-  expect(
-    checkout.with?.["sparse-checkout"],
-    "ASSERTION: HQ's offline clone cannot serve missing promisor objects",
-  ).toBeUndefined();
-  expect(checkout.with?.filter).toBeUndefined();
 });
 
 it("hosted suites install their working set while native jobs retain their dependencies", () => {
@@ -639,7 +621,7 @@ it("hosted suites install their working set while native jobs retain their depen
   const install = (name: string) =>
     workflow.jobs[name].steps.find((step: { name: string }) => step.name === "Install dependencies")
       .run;
-  for (const name of ["state_smoke", "test_hq", "test_client_runtime", "test_web"]) {
+  for (const name of ["state_smoke", "test_client_runtime", "test_web"]) {
     expect(
       install(name),
       "ASSERTION: hosted-only test runners must not install unused native workspaces",
@@ -1641,7 +1623,6 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     state_smoke: 3,
     test_packages: 7,
     test_scripts: 4,
-    test_hq: 4,
     test_client_runtime: 4,
     test_web: 5,
     test_server: 7,

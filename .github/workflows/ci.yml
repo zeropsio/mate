@@ -37,7 +37,6 @@ jobs:
       jobs: ${{ steps.blame.outputs.jobs }}
       blame: ${{ steps.blame.outputs.blame }}
       test_scripts: ${{ steps.blame.outputs.test_scripts }}
-      test_hq: ${{ steps.blame.outputs.test_hq }}
       test_client_runtime: ${{ steps.blame.outputs.test_client_runtime }}
       test_web: ${{ steps.blame.outputs.test_web }}
       test_server: ${{ steps.blame.outputs.test_server }}
@@ -616,7 +615,7 @@ jobs:
   # their combined verdict without serializing package execution.
   test:
     name: Test
-    needs: [prepare, test_packages, test_scripts, test_hq, test_client_runtime]
+    needs: [prepare, test_packages, test_scripts, test_client_runtime]
     if: ${{ !cancelled() && needs.prepare.result == 'success' && contains(fromJSON(needs.prepare.outputs.jobs), 'test') }}
     runs-on: ubuntu-latest
     timeout-minutes: 1
@@ -668,7 +667,7 @@ jobs:
         run: vp run --filter @t3tools/desktop ensure:electron
 
       - name: Test
-        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/hq' --filter '!@t3tools/client-runtime' test
+        run: vp run --parallel --concurrency-limit 4 --filter '!t3' --filter '!@t3tools/web' --filter '!@t3tools/mobile' --filter '!@t3tools/monorepo' --filter '!@t3tools/scripts' --filter '!@t3tools/client-runtime' test
 
       - name: Test scenario drivers
         run: |
@@ -759,42 +758,6 @@ jobs:
 
       - name: Test
         run: vp run --filter @t3tools/scripts test --shard ${{ matrix.shard }}/${{ matrix.total }}
-
-  test_hq:
-    name: Test HQ ${{ matrix.shard }}
-    needs: prepare
-    if: ${{ !cancelled() && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'test_hq') }}
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.prepare.outputs.test_hq) }}
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version-file: package.json
-          cache: false
-          run-install: false
-
-      - name: Resolve store path
-        id: paths
-        shell: bash
-        run: *store_path
-
-      - name: Restore pnpm store
-        uses: actions/cache/restore@v4
-        with: *pnpm_store
-
-      - name: Install dependencies
-        env: *verified_lockfile
-        run: *hosted_dependencies
-
-      - name: Test
-        run: vp run --filter @t3tools/hq test --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # client-runtime alone outran every other package in Test Packages and set that job's length.
   test_client_runtime:
@@ -1079,7 +1042,7 @@ jobs:
           gate native_clients "^apps/(mobile|desktop)/|${native_packages}"
 
           # The bundle feeds every scenario area, all of which run real HQ Core.
-          gate chat "${shared}|^apps/(hq|server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres|test-ports)"
+          gate chat "${shared}|^apps/(server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres|test-ports)"
 
           if [[ -n "${PR_NUMBER}" ]]; then
             gate resource_monitor '^native/resource-monitor/|^\.github/workflows/ci\.yml$'

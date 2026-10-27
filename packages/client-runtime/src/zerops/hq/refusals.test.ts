@@ -28,7 +28,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
     expect(words).toMatch(/^[A-Z].*\.$/u);
   });
 
-  // Automated Mates' sources (`apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`).
+  // Automated Mates' sources (`mate-hq apps/hq/src/{intake,slack,discord,webhooks,schedules,taskLimits}.ts`).
   it.each([...AUTOMATION_REFUSALS])(
     "says why HQ refused a task source's setting (%s) in words of its own, never the code",
     (reason) => {
@@ -218,7 +218,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
   });
 });
 
-// zcp's enrollment, refused (`MateRefused` in `apps/hq/src/mateCredentials.ts`): what stands, and
+// zcp's enrollment, refused (`MateRefused` in `mate-hq apps/hq/src/mateCredentials.ts`): what stands, and
 // what the person can do — or that it tries again on its own.
 describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () => {
   it.each([

@@ -184,24 +184,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: ["apps/web/src/zerops/activity/useOperationCard.ts"],
   },
   {
-    token: "options.pollEvery ?? Duration.seconds(10)",
-    family: "running work/processes",
-    reason: "the deploy rollout polls on its own clock; the source's stream drives the state",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
-    token: "followFor",
-    family: "running work/processes",
-    reason: "a deploy outcome decided by the clock; only the source settles an operation",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
-    token: "untakenAfter",
-    family: "running work/processes",
-    reason: "a deploy outcome decided by the clock; only the source settles an operation",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
     token: "UNREACHABLE_GRACE_MS",
     family: "running work/processes",
     reason:
@@ -500,12 +482,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     ],
   },
   {
-    token: "const appReads: Record<string, AppRead>",
-    family: "HQ structure/apps",
-    reason: "every app's detail is hydrated before the first snapshot; read on open",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
     token: "event.appReads === null",
     family: "HQ structure/apps",
     reason: "null-means-delete in HQ data overwrites whole apps; events carry what changed",
@@ -521,32 +497,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "STRUCTURE_SEGMENT_LIFETIME",
     family: "HQ structure/apps",
     reason: "HQ sends a full structure snapshot every 100 s segment; it streams changes",
-  },
-  {
-    token: "structureTick",
-    family: "HQ structure/apps",
-    reason:
-      "HQ recomputes the whole view per subscriber on every tick; it computes once per change",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
-    token: "Stream.tick(recheck)",
-    family: "HQ structure/apps",
-    reason:
-      "HQ recomputes the whole view per subscriber on every tick; it computes once per change",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
-    token: "moveOffers",
-    family: "HQ structure/apps",
-    reason: "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    paths: ["apps/hq/src/offers.ts", "apps/hq/src/structure.ts"],
-  },
-  {
-    token: "moveTo: moveOffers(",
-    family: "HQ structure/apps",
-    reason: "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    paths: ["apps/hq/src/structure.ts"],
   },
   {
     token: "mate:zerops:composer-top-memory",

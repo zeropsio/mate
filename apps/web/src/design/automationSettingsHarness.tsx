@@ -88,7 +88,7 @@ const DISCORD_ON = {
   inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
   allowed: ["123456789012345678"],
 };
-// As HQ makes it (`apps/hq/src/slack.ts`).
+// As HQ makes it (`mate-hq apps/hq/src/slack.ts`).
 const SLACK_MANIFEST = JSON.stringify({
   display_information: { name: "Mate" },
   features: { bot_user: { display_name: "Mate", always_online: true } },

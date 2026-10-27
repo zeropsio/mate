@@ -141,7 +141,7 @@ describe("hqCardView — what an admin is told is wrong", () => {
       parts({ backup: { state: "failed", reason: "database" } }),
       ["The last backup failed: HQ's database didn't answer."],
     ],
-    // HQ refuses every stage or production deploy it cannot open a token for (`apps/hq/src/deploys.ts`).
+    // HQ refuses every stage or production deploy it cannot open a token for (`mate-hq apps/hq/src/deploys.ts`).
     [
       "no key for deploy tokens",
       parts({ keys: "no_secret" }),

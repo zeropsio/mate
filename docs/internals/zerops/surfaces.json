@@ -991,7 +991,6 @@
       },
       "tests": [
         "apps/server/src/zerops/mateResourceHealth.test.ts",
-        "apps/hq/src/mateOverviews.test.ts",
         "packages/client-runtime/src/data/projections/mateHealth.test.ts",
         "apps/web/test/engine-oracle/mateHealth.oracle.test.ts",
         "apps/web/test/scenarios/areas/c-mate/health.scenario.ts"
@@ -1845,8 +1844,7 @@
         "apps/web/src/components/settings/ZeropsSettings.test.tsx",
         "apps/web/src/components/settings/settingsSearch.test.ts",
         "packages/client-runtime/src/data/adapters/hqAutoUpdatePolicy.test.ts",
-        "packages/client-runtime/src/data/operations/hqWrites.test.ts",
-        "apps/hq/src/autoUpdate.test.ts"
+        "packages/client-runtime/src/data/operations/hqWrites.test.ts"
       ],
       "captures": []
     },

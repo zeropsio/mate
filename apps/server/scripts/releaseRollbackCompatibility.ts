@@ -69,7 +69,6 @@ export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompa
       path.startsWith("packages/contracts/") ||
       path.startsWith("packages/shared/") ||
       path.startsWith("packages/effect-") ||
-      path.startsWith("packages/hq-git/") ||
       path.startsWith("packages/ssh/") ||
       path === "pnpm-lock.yaml" ||
       path === "pnpm-workspace.yaml" ||

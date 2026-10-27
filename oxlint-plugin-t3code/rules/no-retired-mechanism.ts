@@ -22,7 +22,6 @@ const SCOPE_MARKERS = [
   "/apps/web/src/",
   "/apps/mobile/src/",
   "/apps/desktop/src/",
-  "/apps/hq/src/",
   "/packages/client-runtime/src/",
   "/packages/shared/src/",
 ] as const;

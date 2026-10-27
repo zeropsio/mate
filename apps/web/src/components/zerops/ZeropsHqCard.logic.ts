@@ -102,7 +102,7 @@ function quarantineTrouble(names: ReadonlyArray<string>): ReadonlyArray<string> 
   ];
 }
 
-/** Bytes as HQ's backup counts them (`apps/hq/src/backup.ts`, 1 GB = 10⁹), in whole GB past 10. */
+/** Bytes as HQ's backup counts them (`mate-hq apps/hq/src/backup.ts`, 1 GB = 10⁹), in whole GB past 10. */
 function gigabytes(bytes: number): string {
   const gb = bytes / 1e9;
   return gb >= 10 ? String(Math.round(gb)) : gb.toFixed(1).replace(/\.0$/u, "");
@@ -119,7 +119,7 @@ const BACKUP_FAILURES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Why HQ's newest set failed, by HQ's reason (`apps/hq/src/backup.ts` `BackupStatus`); `undefined`
+ * Why HQ's newest set failed, by HQ's reason (`mate-hq apps/hq/src/backup.ts` `BackupStatus`); `undefined`
  * where only HQ's log says it.
  */
 function backupFailure(
@@ -169,7 +169,7 @@ function backupTrouble(
 
 /**
  * Where HQ's key for deploy tokens stands, where that is wrong: HQ refuses every stage or
- * production deploy whose token it cannot open (`apps/hq/src/deploys.ts`).
+ * production deploy whose token it cannot open (`mate-hq apps/hq/src/deploys.ts`).
  */
 const KEYS_TROUBLES: Readonly<Partial<Record<HqKeys, string>>> = {
   no_secret: "HQ has no key for its deploy tokens, so it can't deploy stages or production.",

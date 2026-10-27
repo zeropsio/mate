@@ -143,9 +143,9 @@ it("editing a nested changed dependency reruns its consumer and package readers 
         }),
       );
     gate.write(
-      "apps/hq/package.json",
+      "apps/reader/package.json",
       JSON.stringify({
-        name: "@fixture/hq",
+        name: "@fixture/reader",
         type: "module",
         scripts: { typecheck: "tsc --noEmit" },
         dependencies: { "@fixture/a": "workspace:*" },
@@ -158,7 +158,7 @@ it("editing a nested changed dependency reruns its consumer and package readers 
       'import { value } from "./index.ts";\nvoid value;\n',
     );
     gate.write("packages/b/src/index.ts", "export const value = 0;\n");
-    gate.write("apps/hq/src/read.ts", 'import { value } from "@fixture/a";\nvoid value;\n');
+    gate.write("apps/reader/src/read.ts", 'import { value } from "@fixture/a";\nvoid value;\n');
     gate.baseline();
     gate.write(
       "packages/a/src/index.ts",
@@ -173,7 +173,7 @@ it("editing a nested changed dependency reruns its consumer and package readers 
     const edited = gate.run();
     expect(edited.status, edited.stderr).toBe(0);
     const typechecks = gate.checks().filter((check) => check.args[0] === "exec");
-    expect(typechecks.map((check) => check.cwd).sort()).toEqual(["apps/hq", "packages/a"]);
+    expect(typechecks.map((check) => check.cwd).sort()).toEqual(["apps/reader", "packages/a"]);
     expect(gate.checks().some((check) => check.args.includes("packages/a/src/index.test.ts"))).toBe(
       true,
     );

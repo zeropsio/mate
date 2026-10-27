@@ -15,10 +15,6 @@ it.effect(
       const path = yield* Path.Path;
       const root = path.join(import.meta.dirname, "../..");
       const filenames = [
-        "apps/hq/src/deploys.ts",
-        "apps/hq/src/environmentNavigation.ts",
-        "apps/hq/src/rollouts.ts",
-        "apps/hq/src/structure.ts",
         "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx",
         "apps/web/src/routes/_chat.mate.$projectId.tsx",
         "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
@@ -38,8 +34,7 @@ it.effect(
         if (text === undefined) throw new Error(`Missing source fixture: ${filename}`);
         return text;
       };
-      const deploys = "apps/hq/src/deploys.ts";
-      const navigation = "apps/hq/src/environmentNavigation.ts";
+      const sqlFile = "packages/shared/src/fixtureSql.ts";
       const route = "apps/web/src/routes/_chat.group.$groupId.$projectId.tsx";
       const owner = "packages/client-runtime/src/data/projections/identity.ts";
       const mutate = (filename: string, before: string, after: string) => {
@@ -47,52 +42,7 @@ it.effect(
         expect(original).toContain(before);
         return original.replace(before, after);
       };
-      // Pin the canonical column/join owner and the full active source.
-      const deployJoin = source(deploys).match(
-        /const JOB_COLUMNS = `[\s\S]*?const JOB_FROM = `[\s\S]*?`;/u,
-      )?.[0];
-      expect(deployJoin).toBeDefined();
-      const deployRead = `${deployJoin} export const read = sql\`SELECT \${sql.unsafe(JOB_COLUMNS)} FROM \${sql.unsafe(JOB_FROM)}\`;`;
-      const newestRead = source(deploys).match(
-        /SELECT id::text AS id, state,[\s\S]*?ORDER BY id DESC LIMIT 1/u,
-      )?.[0];
-      expect(newestRead).toBeDefined();
-      // Template expressions can contain nested templates; use the source AST for the full SQL.
-      const text = source(deploys);
-      const parsed = parseSync(deploys, text);
-      expect(parsed.errors).toEqual([]);
-      const inserts: string[] = [];
-      new Visitor({
-        TaggedTemplateExpression(node) {
-          if (
-            node.tag.type === "Identifier" &&
-            node.tag.name === "sql" &&
-            /^\s*INSERT INTO hq_deploy_job\b/u.test(node.quasi.quasis[0]!.value.raw)
-          ) {
-            inserts.push(text.slice(node.start, node.end));
-          }
-        },
-      }).visit(parsed.program);
-      expect(inserts.length).toBeGreaterThan(0);
       const cases = [
-        ...inserts.map((insert) => ({
-          filename: deploys,
-          source: "export const write = " + insert + ";",
-          kind: undefined,
-        })),
-        { filename: deploys, source: deployRead, kind: undefined },
-        { filename: deploys, source: source(deploys), kind: undefined },
-        { filename: navigation, source: source(navigation), kind: undefined },
-        {
-          filename: "apps/hq/src/rollouts.ts",
-          source: source("apps/hq/src/rollouts.ts"),
-          kind: undefined,
-        },
-        {
-          filename: "apps/hq/src/structure.ts",
-          source: source("apps/hq/src/structure.ts"),
-          kind: undefined,
-        },
         { filename: route, source: source(route), kind: undefined },
         {
           filename: "apps/web/src/routes/_chat.mate.$projectId.tsx",
@@ -103,28 +53,6 @@ it.effect(
           filename: "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
           source: source("apps/web/src/components/zerops/ZeropsGroupDetail.tsx"),
           kind: undefined,
-        },
-        {
-          filename: deploys,
-          source:
-            "export const read = sql`" +
-            newestRead!.replace("WHERE environment_id", "WHERE project_id") +
-            "`;",
-          kind: "sql-project-identity-read",
-        },
-        {
-          filename: deploys,
-          source: deployRead.replace("e.id = j.environment_id", "e.id = j.project_id"),
-          kind: "sql-project-identity-read",
-        },
-        {
-          filename: navigation,
-          source: mutate(
-            navigation,
-            "l(environment_id text, service text",
-            "l(project_id text, service text",
-          ),
-          kind: "sql-project-identity-read",
         },
         {
           filename: route,
@@ -142,7 +70,7 @@ it.effect(
           "sql`SELECT l.project_id FROM hq_rollout r, jsonb_to_recordset(r.left_out) AS l(project_id text)`",
           "const columns = 'j.project_id'; const from = 'hq_deploy_job j'; sql`SELECT ${sql.unsafe(columns)} FROM ${sql.unsafe(from)}`",
         ].map((expression) => ({
-          filename: deploys,
+          filename: sqlFile,
           source: `export function read() { ${expression}; }`,
           kind: "sql-project-identity-read",
         })),

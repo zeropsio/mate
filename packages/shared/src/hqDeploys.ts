@@ -1,6 +1,6 @@
 /**
  * What an event that asks for deploys is answered with (the deploy-jobs design,
- * `apps/hq/src/deploys.ts`): HQ submits each of its environments' jobs in the request that asked —
+ * `mate-hq apps/hq/src/deploys.ts`): HQ submits each of its environments' jobs in the request that asked —
  * a merge, a release, a Run again, an Add service, an environment attached, a deploy key kept — and
  * answers where each stands once it did. A deploy that did not go through never undoes the event:
  * the merge stays merged, the release made.
@@ -116,7 +116,7 @@ export const HqPushCiFailure = Schema.Struct({
 export type HqPushCiFailure = typeof HqPushCiFailure.Type;
 
 /**
- * What the origin's CI reported for the pushed commit, as HQ last read it (`apps/hq/src/gitCi.ts`):
+ * What the origin's CI reported for the pushed commit, as HQ last read it (`mate-hq apps/hq/src/gitCi.ts`):
  * `none` (no check reported), `running` (`done` of `total` counted checks complete), `passed`,
  * `failed` (`failed` names each counted check that did not pass) or `unreadable` (`reason` says
  * why). `required` lists the branch rules' required checks, which alone count; null counts every
@@ -261,7 +261,7 @@ export type WithDeploys = typeof WithDeploys.Type;
 
 /**
  * Whether an environment HQ brought up is up as far as HQ takes it, as its structure streams it
- * beside the environment (`apps/hq/src/births.ts`), never stored: from the rollout its attach asked
+ * beside the environment (`mate-hq apps/hq/src/births.ts`), never stored: from the rollout its attach asked
  * for (`env_added`) to its first deploy that ran, with every deploy key kept and Run again between.
  * Ended once those rollouts were planned and their jobs ended — a first deploy HQ makes ends live
  * only after its subdomain, where one was intended, came on or said why not — and a deploy ran, or

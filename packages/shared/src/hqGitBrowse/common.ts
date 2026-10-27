@@ -36,7 +36,7 @@ export const GitRevision = Schema.String.check(
 );
 
 /**
- * A path as HQ reads it from git (hq-git `pathText`): a byte that is not UTF-8 is the lone
+ * A path as HQ reads it from git (mate-hq `hq-git` `pathText`): a byte that is not UTF-8 is the lone
  * surrogate U+DC00 + byte, shown as "�". A URL cannot carry a lone surrogate: a query writes it
  * `\xHH` and a backslash `\\`, so a path of text without a backslash reads the same in both.
  */
