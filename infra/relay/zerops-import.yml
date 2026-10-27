@@ -1,0 +1,31 @@
+# Project import for the standalone relay deployment: one Node service plus
+# its own PostgreSQL 16 database. Deploy the `db` service first (priority)
+# so `relay`'s migrate step has something to connect to.
+#
+# Secrets (CLOUD_MINT_PRIVATE_KEY, CLOUD_MINT_PUBLIC_KEY,
+# APNS_DELIVERY_JOB_SIGNING_SECRET, APNS_*) are placeholders below — set real
+# values on the `relay` service after import, never commit them here.
+project:
+  name: z3-relay
+
+services:
+  - hostname: db
+    type: postgresql:single@16
+    priority: 10
+
+  - hostname: relay
+    type: ubuntu/nodejs@22
+    mode: NON_HA
+    buildFromGit: https://github.com/zeropsio/mate
+    enableSubdomainAccess: true
+    verticalAutoscaling:
+      minRam: 0.5
+    envSecrets:
+      CLOUD_MINT_PRIVATE_KEY: replace-me
+      CLOUD_MINT_PUBLIC_KEY: replace-me
+      APNS_DELIVERY_JOB_SIGNING_SECRET: replace-me
+      APNS_ENVIRONMENT: sandbox
+      APNS_TEAM_ID: replace-me
+      APNS_KEY_ID: replace-me
+      APNS_BUNDLE_ID: replace-me
+      APNS_PRIVATE_KEY: replace-me

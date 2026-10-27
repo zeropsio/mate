@@ -1,0 +1,668 @@
+{
+  "web:service-map-live": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "serviceTones": ["apidev:ACTIVE:outline", "db:RUNNING:outline", "zcp:ACTIVE:outline"]
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "cards": []
+  },
+  "web:service-map-live#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["apidev:ACTIVE:outline", "db:RUNNING:outline", "zcp:ACTIVE:outline"]
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:service-map-live#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "serviceTones": [
+        "apidev:FUTURE_STATUS:warning",
+        "db:FUTURE_STATUS:warning",
+        "zcp:FUTURE_STATUS:warning"
+      ]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "cards": []
+  },
+  "web:service-map-degraded": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "serviceTones": ["apidev:FAILED:error", "db:CREATING:warning", "zcp:ACTIVE:outline"]
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "cards": []
+  },
+  "web:service-map-degraded#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["apidev:FAILED:error", "db:CREATING:warning", "zcp:ACTIVE:outline"]
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:service-map-degraded#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Runtimes", "Data", "Infrastructure"],
+      "serviceTones": [
+        "apidev:FUTURE_STATUS:warning",
+        "db:FUTURE_STATUS:warning",
+        "zcp:FUTURE_STATUS:warning"
+      ]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["deploy:Deploy", "logs:Show logs", "add-redis:Add Redis"],
+    "cards": []
+  },
+  "web:no-zerops": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:no-zerops#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:no-zerops#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-active": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [
+      "active:developing apidev",
+      "waiting:waiting for you",
+      "done:task complete",
+      "waiting:waiting for you"
+    ],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-active#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-active#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": [
+      "idle:future-phase",
+      "waiting:waiting for you",
+      "done:task complete",
+      "waiting:waiting for you"
+    ],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-waiting": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": ["active:developing apidev", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-waiting#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:lifecycle-waiting#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-attention": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "sign-in",
+        "authLabel": "Not signed in",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "awaiting-browser",
+        "loginLabel": "Waiting for you to finish signing in"
+      }
+    ],
+    "agentAuthNeedsAttention": true,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-attention#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "sign-in",
+        "authLabel": "Not signed in",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": true,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-attention#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "sign-in",
+        "authLabel": "Not signed in",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "awaiting-browser",
+        "loginLabel": "Waiting for you to finish signing in"
+      }
+    ],
+    "agentAuthNeedsAttention": true,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-ok": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-ok#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:agent-auth-ok#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": []
+  },
+  "web:cards": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": [
+      "cards-deploy:deploy",
+      "cards-verify:verify",
+      "cards-import:import",
+      "cards-mount:mount",
+      "cards-subdomain:subdomain",
+      "cards-plan:plan",
+      "cards-error:error",
+      "cards-delete:generic",
+      "cards-malformed:generic",
+      "cards-over-cap:generic",
+      "cards-running:generic",
+      "cards-command:generic",
+      "cards-dev-server:devServer",
+      "cards-browser:browser"
+    ]
+  },
+  "web:cards#withoutOptionals": {
+    "map": {
+      "kind": "visible",
+      "groups": [],
+      "serviceTones": []
+    },
+    "strips": [null, null],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": [
+      "cards-deploy:generic",
+      "cards-verify:generic",
+      "cards-import:generic",
+      "cards-mount:generic",
+      "cards-subdomain:generic",
+      "cards-plan:generic",
+      "cards-error:generic",
+      "cards-delete:generic",
+      "cards-malformed:generic",
+      "cards-over-cap:generic",
+      "cards-running:generic",
+      "cards-command:generic",
+      "cards-dev-server:generic",
+      "cards-browser:generic"
+    ]
+  },
+  "web:cards#withUnknownShape": {
+    "map": {
+      "kind": "visible",
+      "groups": ["Infrastructure"],
+      "serviceTones": ["futuredev:FUTURE_STATUS:warning"]
+    },
+    "strips": ["idle:future-phase", "waiting:waiting for you"],
+    "agents": [
+      {
+        "agentId": "claude-code",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      },
+      {
+        "agentId": "codex",
+        "authAction": "none",
+        "authLabel": "Authorized",
+        "loginKind": "none",
+        "loginLabel": ""
+      }
+    ],
+    "agentAuthNeedsAttention": false,
+    "quickActions": ["bootstrap:Build something"],
+    "cards": [
+      "cards-deploy:deploy",
+      "cards-verify:verify",
+      "cards-import:import",
+      "cards-mount:mount",
+      "cards-subdomain:subdomain",
+      "cards-plan:plan",
+      "cards-error:error",
+      "cards-delete:generic",
+      "cards-malformed:generic",
+      "cards-over-cap:generic",
+      "cards-running:generic",
+      "cards-command:generic",
+      "cards-dev-server:devServer",
+      "cards-browser:browser"
+    ]
+  }
+}

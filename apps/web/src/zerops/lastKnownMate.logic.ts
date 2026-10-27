@@ -1,0 +1,82 @@
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
+import { formatDayAwareTimestamp } from "../timestampFormat";
+import type { ZeropsAgentActivity } from "./agentActivity";
+import { mateFailureWords, usageLimitHistoryWords } from "./noticeWords";
+
+/** Source state is always qualified by its own time, never a reconnect or browser clock. */
+export function lastKnownMateWords(
+  activity: ZeropsAgentActivity | undefined,
+  name: string,
+  timestampFormat: TimestampFormat = "locale",
+): string | undefined {
+  const held = activity?.lastKnown;
+  if (activity === undefined || held === undefined) return undefined;
+  const words =
+    activity.limitHistory !== undefined || held.usageLimited || held.pausedUntil !== undefined
+      ? usageLimitHistoryWords(
+          activity.limitHistory?.provider ?? held.limitProvider ?? "coding agent",
+          null,
+          activity.limitHistory?.resetsAt ?? held.pausedUntil ?? null,
+          name,
+          timestampFormat,
+        )
+      : held.kind === "failed"
+        ? held.errorLine === undefined
+          ? `${name}'s work failed.`
+          : mateFailureWords(held.errorLine, undefined, name)
+        : held.kind === "approval"
+          ? `${name} was waiting for approval.`
+          : held.kind === "input"
+            ? activity.question === undefined
+              ? `${name} was waiting for an answer.`
+              : `${name} was waiting for an answer: ${activity.question}`
+            : held.kind === "planReady"
+              ? `${name} had a plan ready for review.`
+              : held.waitsOnHelpers === true
+                ? `${name} was waiting for its helpers.`
+                : held.kind === "working" ||
+                    held.kind === "connecting" ||
+                    held.kind === "monitoring"
+                  ? // What it was on, as its row said it: the row's one line is this line now.
+                    activity.task === undefined
+                    ? `${name} was working.`
+                    : `${name} was working on: ${activity.task}`
+                  : held.kind === "done"
+                    ? `${name} had finished the work.`
+                    : `${name} had no active work.`;
+  const preview =
+    activity.limitHistory !== undefined ||
+    held.usageLimited ||
+    held.pausedUntil !== undefined ||
+    held.kind === "failed" ||
+    held.kind === "input"
+      ? undefined
+      : // Plain words on one line, cut with an ellipsis: a row quotes the agent's markdown raw.
+        activity.snippet === undefined
+        ? undefined
+        : (messagePreviewText(activity.snippet) ?? undefined);
+  return `Last known ${formatDayAwareTimestamp(held.at, timestampFormat)}: ${words}${preview === undefined ? "" : ` ${preview}`}`;
+}
+
+/** Only a current offline presence establishes when the Mate stopped answering. */
+export function mateUnreachableWords(
+  name: string,
+  since: string | undefined,
+  timestampFormat: TimestampFormat = "locale",
+  reconnecting = false,
+): string {
+  return `${name} ${reconnecting ? "is reconnecting" : "isn't answering"}${since === undefined ? "" : ` since ${formatDayAwareTimestamp(since, timestampFormat)}`}.`;
+}
+
+/**
+ * How long a Mate may be away before its row says it isn't answering: an update's restart is back
+ * within it (run 2 measured 23 s).
+ */
+export const MATE_AWAY_GRACE_MS = 30_000;
+
+/** Whether a Mate away since `offlineSince` is still within its grace at `nowMs`. */
+export function mateAwaySettling(offlineSince: string, nowMs: number | undefined): boolean {
+  const since = Date.parse(offlineSince);
+  return nowMs !== undefined && Number.isFinite(since) && nowMs - since < MATE_AWAY_GRACE_MS;
+}

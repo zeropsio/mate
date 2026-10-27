@@ -1,0 +1,409 @@
+import * as Schema from "effect/Schema";
+import {
+  HqRemoteRefusalReason,
+  remoteRefusalWords,
+  HqGitEnvironmentRefusalReason,
+  HqGitRequestRefusalReason,
+  type HqRemoteRefusal,
+} from "@t3tools/shared/hqGitTargets";
+/**
+ * HQ's refusals in the person's words. HQ answers a refusal with a code and, for its structure, a
+ * reason (`apps/hq/src/api.ts`): a permission's (`@t3tools/shared/zeropsPermissions`'s `REASONS`,
+ * every one of which has words here, or the type fails) or one of the structure's own. The words are
+ * the client's; a reason this build has none for is named by itself.
+ *
+ * Pure (rule R1).
+ *
+ * @module hq/refusals
+ */
+import type { MERGE_REFUSALS } from "@t3tools/shared/hqChanges";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
+import type { ReleaseRefusal } from "@t3tools/shared/hqRelease";
+import type { Reason } from "@t3tools/shared/zeropsPermissions";
+
+/** Every permission's refusal, in words: a reason left out does not compile. */
+const PERMISSION_WORDS: { readonly [R in Reason]: string } = {
+  wrong_principal: "HQ takes this only from a person signed in to Zerops.",
+  not_your_project: "A Mate speaks only for its own Zerops project.",
+  not_active_member: "You are not an active member of this organization in Zerops.",
+  unknown_kind:
+    "HQ and this version of Mate do not know the same kinds of project, so this one is left as it is.",
+  not_project_reader: "You have no access to this Zerops project.",
+  not_mate_operator: "You need more than Read access to this Mate's Zerops project.",
+  app_not_seen: "You have no access to that project.",
+  cannot_create_projects: "Your Zerops membership does not allow creating projects.",
+  not_structure_writer: "Only an owner or admin of the organization can do this.",
+  not_project_admin: "You need Admin access to this Zerops project.",
+  not_own_new_mate:
+    "Only an owner or admin of the organization adds this here, or you, with a Mate you have just made.",
+  kind_class_change:
+    "Only an owner or admin of the organization turns a Mate into a stage or production, or back.",
+  project_gone: "This Zerops project is gone.",
+  held_as_environment: "This Zerops project is its project's stage or production, not a Mate.",
+  not_a_mate: "HQ holds this Zerops project as no Mate.",
+  mate_not_in_app: "This Mate is in no project in HQ yet.",
+  unknown_change: "HQ has no such change.",
+  not_your_change: "A Mate words only its own change.",
+  not_your_app: "A Mate reaches only its own project's repositories.",
+  changes_not_seen:
+    "You need more than Read access to one of this project's Zerops projects to see its changes.",
+  slot_taken:
+    "This project has one of this kind already. Only an owner or admin of the organization replaces it.",
+  not_app_developer:
+    "You need more than Read access to one of this project's Zerops projects to do this.",
+  not_recipe_repo: "Only the project's recipe lands by itself.",
+  author_not_in_app: "Only a Mate of this project proposes its recipe.",
+  recipe_empty: "This change changes nothing, so it was closed.",
+  recipe_changes_files:
+    "This change edits the project's recipe, so it waits for someone who develops the project to merge it.",
+  no_production: "This project has no production yet.",
+  not_releaser:
+    "To release, this project needs a Zerops project, and you need more than Read access to its production.",
+};
+
+/**
+ * Why HQ did not merge a change (`MERGE_REFUSALS`), in words: what stopped it, so the person knows
+ * whether pressing again can help. A refusal left out does not compile.
+ */
+const MERGE_WORDS: { readonly [R in (typeof MERGE_REFUSALS)[number]]: string } = {
+  head_moved: "Its Mate pushed to it since you opened it. Review it again.",
+  conflict: "It no longer merges cleanly into main.",
+  empty: "There is nothing in it that main does not have.",
+  already_merged: "It is on main already.",
+  unrelated: "It shares no history with main.",
+  no_change: "Nothing was pushed to it yet.",
+  main_moved: "Other changes kept landing on main meanwhile. Try again.",
+  change_not_open: "This change is merged or closed already.",
+  github_blocked:
+    "GitHub won't merge its PR yet: the repository's rules or required checks hold it back. See its PR on GitHub.",
+  github_refused: "GitHub refused to merge its PR. See its PR on GitHub.",
+  github_unreachable: "GitHub did not answer, so nothing was merged. Try again.",
+  github_no_pull: "Its pull request on GitHub isn't open yet. Try again in a minute.",
+  github_closed: "Its pull request was closed on GitHub.",
+  github_landing:
+    "It was merged on GitHub; Mate is still bringing main up to date. It shows as merged shortly.",
+  github_wrong_base:
+    "Its pull request on GitHub now merges into another branch, not the repository's default one, so Mate won't merge it. See the pull request on GitHub.",
+};
+
+/** HQ's code for a call Zerops refused HQ outright (`apps/hq/src/api.ts`): never retried. */
+const ZEROPS_REFUSED = "zerops_refused";
+
+type ZeropsRefusal = "unauthorized" | "forbidden" | "not_found" | "invalid";
+
+/**
+ * What Zerops said no to when it refused HQ itself, and who can change it: Zerops' reason, never
+ * the person's permission. A reason left out does not compile.
+ */
+const ZEROPS_REFUSAL_WORDS: { readonly [R in ZeropsRefusal]: string } = {
+  unauthorized:
+    "Zerops no longer accepts HQ's access. An owner or admin of the organization sets HQ up again.",
+  forbidden:
+    "Zerops does not let HQ read this. An owner or admin of the organization checks HQ's access in Zerops.",
+  not_found: "Zerops has no such project or service any more.",
+  invalid: "Zerops did not accept HQ's request. Tell an owner or admin of the organization.",
+};
+
+const isZeropsRefusal = (reason: string): reason is ZeropsRefusal =>
+  Object.hasOwn(ZEROPS_REFUSAL_WORDS, reason);
+
+/**
+ * Why HQ made no release or rollback (`RELEASE_REFUSALS`), in words: only a main that moved, or a
+ * newer release, is helped by reviewing it again. A refusal left out does not compile.
+ */
+const RELEASE_WORDS: { readonly [R in ReleaseRefusal]: string } = {
+  production_moved: "Production changed since the review. Open the review again.",
+  group_moved: "Main moved since you opened this. Review it again.",
+  no_group_main: "The project's recipe has nothing on main to tag yet.",
+  tag_taken: "A release of this name was made meanwhile. Review it again.",
+  tag_not_newer: "A newer release was made meanwhile. Review it again.",
+  unknown_service: "It lists a service the project's production does not have.",
+  entry_not_on_main: "It lists a commit that is not on main.",
+  release_not_approved: "That release was refused, so production cannot go back to it.",
+  git_release_blocked:
+    "Mate couldn't confirm the production branch is ready for this release, so nothing was pushed. Review it again.",
+  release_running: "The previous release is still being pushed. Release again once it is pushed.",
+};
+
+/**
+ * HQ's own refusals — its structure's (`StructureRefused` in `apps/hq/src/structure.ts`) and its
+ * changes' (`ChangeRefused` in `apps/hq/src/changes.ts`) — in words.
+ */
+const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
+  name_length: "A name has 1 to 100 characters.",
+  face_length: "A face has at most 64 characters.",
+  hq_project: "HQ's own project belongs to no project.",
+  mate_record_with_kind: "Only a Mate has a face.",
+  mate_record_missing: "HQ has no record of this Mate yet.",
+  mate_record_exists: "This Mate is set up already.",
+  app_name_taken: "Another project already has this name.",
+  app_not_found: "That project is gone from HQ.",
+  app_not_empty:
+    "This project is no longer empty: a Mate, an environment or a change is in it now.",
+  app_has_mate:
+    "A Mate still works on this project. Delete it first, or try again in a minute if it was just deleted.",
+  mate_not_found: "HQ has no such Mate.",
+  placed_or_production_taken:
+    "This Zerops project is in a project already, or that project has its production.",
+  production_taken:
+    "That project has its production already. Close this form and open the existing production.",
+  branch_taken: "An environment already uses this branch. Choose another branch.",
+  class_move_receipt_required:
+    "This Move needs a credential and job migration that HQ cannot complete yet.",
+  key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
+  held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
+  // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
+  repo_not_found: "HQ has no such repository.",
+  change_not_found: "HQ has no such change.",
+  attachment_not_found: "HQ has no such picture.",
+  commit_not_found: "HQ has no such commit.",
+  // A change handed to another Mate once its own is gone (`HAND_REFUSALS`).
+  change_has_mate: "This change's Mate is in the project, so it stays that Mate's.",
+  not_app_mate: "That Mate is no longer in this project.",
+  mate_has_change: "That Mate has an open change of its own in this repository.",
+  // An application's recipe (`@t3tools/shared/hqRecipe`).
+  recipe_too_large: "This project's recipe is too large to read here.",
+  // An application's environments and their deploy keys (`apps/hq/src/environments.ts`).
+  environment_with_kind: "Only a stage or a production is an environment.",
+  environment_name_missing: "An environment needs a name.",
+  environment_name_long: "An environment's name has at most 63 characters.",
+  environment_name_invalid:
+    "An environment's name starts with a letter and has only small letters, digits and dashes.",
+  environment_name_taken:
+    "This project has an environment of that name already. Close this form and open Add again to get a new name.",
+  environment_not_found: "HQ has no such environment.",
+  deploy_token_refused: "Zerops did not accept this deploy key.",
+  deploy_token_scope: "This deploy key reaches more than its own project.",
+  // HQ keeps a deploy key only sealed under its own key (`apps/hq/src/deployKeys.ts`).
+  no_key_secret:
+    "HQ has no key to keep deploy keys with yet. Whoever runs this HQ sets its HQ_KEY_SECRET.",
+  // A deploy asked again ("Run again", `apps/hq/src/deploys.ts`).
+  deploy_not_found: "HQ has no such deploy.",
+  deploy_superseded: "A newer deploy took this one's place.",
+  deploy_running: "HQ is deploying it now.",
+  service_not_declared: "The recipe declares no such service here.",
+  // A release rolled back to (`apps/hq/src/releases.ts`).
+  release_not_found: "HQ has no such release.",
+};
+
+/**
+ * Why HQ refused a setting of automated Mates' sources — an intake, the organization's Slack app or
+ * Discord application, its GitHub app, an application's channel, webhooks and schedules, the limits
+ * on each task (`AutomationRefused` in
+ * `apps/hq/src/{intake,githubApp,slack,discord,webhooks,schedules,taskLimits}.ts`) —
+ * in words: what is wrong, and what the person does.
+ */
+const AUTOMATION_WORDS = {
+  // An intake (GitHub).
+  repo_not_connected: "Connect this repository to the project in HQ first.",
+  repo: "That is no GitHub repository. Name it as owner/name.",
+  label: "A label has 1 to 50 characters.",
+  hq_address_unknown:
+    "HQ does not know its own public address yet. Give HQ's service a public address, then try again.",
+  repository_changed:
+    "The repository on GitHub is no longer the one connected. Connect it again under Repositories.",
+  // The organization's GitHub app (`apps/hq/src/githubApp.ts`).
+  github_unavailable: "HQ could not set the GitHub app up just now. Try again.",
+  // Slack.
+  slack_unavailable: "HQ could not set Slack up just now. Try again.",
+  bot_token: "That is not a bot token. Copy it again from the app's settings.",
+  bot_token_refused: "Slack refused that bot token. Install the app again and copy its new token.",
+  signing_secret: "That is not a signing secret. Copy it again from Basic Information.",
+  slack_unreachable: "HQ could not reach Slack. Try again in a moment.",
+  slack_not_connected: "Connect Slack first.",
+  channel: "That is not a Slack channel ID. Copy it from the channel's details.",
+  not_in_channel: "Invite @Mate to the channel first, then try again.",
+  // Slack and Discord.
+  channel_not_found:
+    "There is no such channel the bot can see. Copy the ID from the channel's details, and add the bot first.",
+  channel_taken: "Another project takes tasks from that channel already.",
+  // Discord.
+  discord_unreachable: "HQ could not reach Discord. Try again in a moment.",
+  application_id:
+    "That application ID does not match the bot token. Copy both again from the Developer Portal.",
+  public_key:
+    "That public key does not match the application. Copy it again from General Information.",
+  commands_refused:
+    "Discord refused Mate's /mate command. Check the bot token and the application, then connect again.",
+  user_ids: "A Discord user ID is a number of up to 20 digits, and the list holds at most 500.",
+  channel_id: "That is not a Discord channel ID. Copy it with Developer Mode on.",
+  not_connected: "Connect Discord first.",
+  channel_kind: "Mate opens threads only in a text or forum channel. Choose one of those.",
+  // Webhooks and schedules.
+  name: "A name has at most 80 characters.",
+  too_many: "A project holds at most 20 of these. Delete one first.",
+  webhook_not_found: "That webhook is gone already.",
+  brief: "A brief has at most 16,000 characters.",
+  day: "Choose the day of the week it runs on.",
+  time_zone: "HQ does not know that time zone. Use one like Europe/Prague.",
+  rule: "HQ could not work out when this runs. Check the time and the time zone.",
+  schedule_not_found: "That schedule is gone already.",
+  // The limits on each task.
+  minutes: "Minutes are a whole number from 1 to 1,440.",
+  cost: "Cost is an amount above $0 and at most $10,000, or empty for none.",
+} as const;
+
+/** Every reason of automated Mates' sources this build has words for. */
+export const AUTOMATION_REFUSALS = Object.keys(AUTOMATION_WORDS) as ReadonlyArray<
+  keyof typeof AUTOMATION_WORDS
+>;
+const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_WORDS =>
+  Object.hasOwn(AUTOMATION_WORDS, reason);
+
+/**
+ * Why HQ did not enroll a Mate (`MateRefused` in `apps/hq/src/mateCredentials.ts`; zcp's
+ * `~/.zcp/hq/outcome.json`), in words: what stands, and what the person can do — or that zcp tries
+ * again on its own, which it does for every refusal but `not_this_projects_mate`.
+ */
+const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
+  // Its record comes with its press: one that stopped before it wrote it, Finish setup writes it.
+  not_a_mate: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+  project_not_in_org: "Its Zerops project is not in this HQ's organization.",
+  project_gone: "Its Zerops project is gone.",
+  // HQ reads zcp's proof off the project a moment later than zcp writes it.
+  env_mismatch: "HQ could not check its Zerops project yet. It tries again on its own.",
+  expired: "HQ could not check its Zerops project yet. It tries again on its own.",
+  unknown_nonce: "HQ could not check its Zerops project yet. It tries again on its own.",
+  // One Mate per project (audit D2): zcp stops asking once HQ names another as its project's Mate.
+  not_this_projects_mate:
+    "Another Zerops Control Plane in its project is the project's Mate, and a project holds one. Delete this one in Zerops, or delete the other and restart this one.",
+};
+
+/** HQ's refusal of a Mate's enrollment, in words; a code this build has none for is named. */
+export function enrollmentRefusalWords(code: string | undefined): string {
+  if (code === undefined) return "HQ refused it. It tries again on its own.";
+  return ENROLLMENT_WORDS[code] ?? `HQ refused it (${code}). It tries again on its own.`;
+}
+
+/** Where zcp found no official HQ in the organization: an admin sets one up. */
+export const NO_HQ_WORDS = "This organization has no HQ yet. Ask an admin to set it up.";
+
+/**
+ * What a write HQ refused says when Zerops did not answer the roles it is decided over
+ * (`503 zerops_unanswered`): nothing was done, and pressing again may go through.
+ */
+export const ZEROPS_UNANSWERED = "Zerops is not answering, so HQ did nothing. Try again.";
+
+/** What anything asked of the organization's HQ says where its official HQ is not open here. */
+export const HQ_NOT_OPEN = "This organization's HQ is not open here.";
+
+const isPermissionReason = (reason: string): reason is Reason =>
+  Object.hasOwn(PERMISSION_WORDS, reason);
+const isMergeRefusal = (reason: string): reason is keyof typeof MERGE_WORDS =>
+  Object.hasOwn(MERGE_WORDS, reason);
+const isReleaseRefusal = (reason: string): reason is ReleaseRefusal =>
+  Object.hasOwn(RELEASE_WORDS, reason);
+
+const GIT_ENVIRONMENT_WORDS: Record<HqGitEnvironmentRefusalReason, string> = {
+  forbidden:
+    "Your role cannot change Git environments. Ask an organization owner or admin to do this.",
+  app_not_found:
+    "This application is no longer available. Return to the application list and choose another.",
+  environment_not_found:
+    "This environment is no longer available. Refresh the application and choose another.",
+  production_taken:
+    "This application already has a production environment. Remove it before adding another.",
+  branch_taken:
+    "This branch already has a Git environment. Choose another branch or open its existing environment.",
+  environment_name_taken: "An environment already uses this name. Choose another name.",
+  environment_name_missing: "The environment needs a name. Enter one to continue.",
+  environment_name_long: "The environment name is too long. Use at most 63 characters.",
+  environment_name_invalid:
+    "The environment name is invalid. Start with a letter and use lowercase letters, digits and dashes.",
+  review_stale: "The repositories changed since your review. Review them again before continuing.",
+  no_repositories:
+    "This application has no connected repositories. Connect a repository before adding a Git environment.",
+  history_loss_confirmation_required:
+    "This adoption would replace repository history. Review the changes and confirm the replacement to continue.",
+};
+const GIT_REQUEST_WORDS: Record<HqGitRequestRefusalReason, string> = {
+  request_changed:
+    "This request was already used for different settings. Close Git setup and start it again.",
+};
+const isRemoteRefusal = Schema.is(HqRemoteRefusalReason);
+const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
+const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
+
+/**
+ * HQ serves an organization once an Owner or Admin started it by signing in (`409
+ * org_not_started`); until then, its other people wait for one.
+ */
+const HQ_ORG_NOT_STARTED =
+  "An Owner or Admin of this organization must sign in to Mate first. Then try again.";
+
+/**
+ * HQ checks the key an Owner's or Admin's sign-in starts it with — the organization's, read-only —
+ * and the person's role, and refuses either (`403 forbidden` `org_key_rejected`).
+ */
+const HQ_ORG_KEY_REJECTED =
+  "HQ did not accept the organization's key. Sign in again as an Owner or Admin.";
+
+/** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
+export function hqRefusalWords(refusal: {
+  readonly code: string;
+  readonly reason: string | undefined;
+  readonly remote?: HqRemoteRefusal;
+  readonly gitSetup?: boolean;
+}): string {
+  const { reason } = refusal;
+  if (refusal.code === "remote_refused") {
+    return isRemoteRefusal(reason)
+      ? remoteRefusalWords(refusal.remote ?? { reason })
+      : "Mate could not change this repository connection. Review its settings and try again.";
+  }
+  if (refusal.code === "org_not_started") return HQ_ORG_NOT_STARTED;
+  if (reason === "org_key_rejected") return HQ_ORG_KEY_REJECTED;
+  if (isGitRequestRefusal(reason)) return GIT_REQUEST_WORDS[reason];
+  if (
+    refusal.gitSetup &&
+    (refusal.code === "conflict" || refusal.code === "forbidden") &&
+    isGitEnvironmentRefusal(reason)
+  )
+    return GIT_ENVIRONMENT_WORDS[reason];
+  if (refusal.code === ZEROPS_REFUSED && reason !== undefined && isZeropsRefusal(reason)) {
+    return ZEROPS_REFUSAL_WORDS[reason];
+  }
+  if (reason !== undefined) {
+    if (isPermissionReason(reason)) return PERMISSION_WORDS[reason];
+    if (isMergeRefusal(reason)) return MERGE_WORDS[reason];
+    if (isReleaseRefusal(reason)) return RELEASE_WORDS[reason];
+    const words = STRUCTURE_WORDS[reason];
+    if (words !== undefined) return words;
+    if (isAutomationRefusal(reason)) return AUTOMATION_WORDS[reason];
+  }
+  if (refusal.gitSetup)
+    return "Mate could not complete Git setup. Review the settings and try again.";
+  return `HQ refused this (${reason ?? refusal.code}).`;
+}
+
+/** How a verb's state is worded: a wall time, and when Zerops answered HQ's view of the roles. */
+interface OfferWording {
+  readonly at: (ms: number) => string;
+  readonly rolesAnsweredAt: string | null;
+}
+
+/**
+ * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
+ * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
+ * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
+ */
+export function hqOfferWords(
+  state: Exclude<HqOfferState, { readonly kind: "allowed" }>,
+  input: OfferWording,
+): string;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined;
+export function hqOfferWords(state: HqOfferState, input: OfferWording): string | undefined {
+  switch (state.kind) {
+    case "allowed":
+      return undefined;
+    case "refused": {
+      const words = hqRefusalWords({ code: "forbidden", reason: state.reason });
+      const answered = input.rolesAnsweredAt === null ? NaN : Date.parse(input.rolesAnsweredAt);
+      return Number.isNaN(answered) ? words : `${words} Zerops roles as of ${input.at(answered)}.`;
+    }
+    case "unknown":
+      return "HQ has not said yet.";
+    case "unavailable":
+      return `HQ unavailable since ${input.at(state.since)}.`;
+  }
+}

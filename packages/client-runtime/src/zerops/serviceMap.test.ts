@@ -1,0 +1,1024 @@
+import { describe, expect, it } from "@effect/vitest";
+import type { ZeropsLifecycle } from "@t3tools/contracts";
+
+import type { Known } from "./knowledge/index.ts";
+
+import {
+  buildZeropsServiceMap,
+  formatAmount,
+  formatRange,
+  leaseDevServersOf,
+  threadLeasesOf,
+  serviceStatusNeedsWord,
+  serviceStatusTone,
+  zeropsPortLabel,
+  zeropsRouteChoices,
+  zeropsRoutesFolded,
+  zeropsServiceFacts,
+  zeropsServiceMetrics,
+  zeropsStatusWord,
+  zeropsTypeShort,
+  zeropsUsageTrends,
+} from "./serviceMap.ts";
+import type { ZeropsTopologyService, ZeropsTopologyView } from "./topology.ts";
+
+const service = (
+  overrides: Partial<ZeropsTopologyService> & { hostname: string },
+): ZeropsTopologyService => ({
+  serviceId: `svc-${overrides.hostname}`,
+  type: "ubuntu/nodejs@22",
+  status: "ACTIVE",
+  group: "runtimes",
+  transient: false,
+  routes: [],
+  ports: [],
+  ...overrides,
+});
+
+const topology = (
+  services: ReadonlyArray<ZeropsTopologyService>,
+  overrides?: Partial<ZeropsTopologyView>,
+): ZeropsTopologyView => ({
+  project: { id: "TEST000000000000000023", name: "z3-eval", status: "ACTIVE" },
+  services,
+  warnings: [],
+  usageRead: false,
+  ...overrides,
+});
+
+/** The `z3-eval` project's real six non-system services, grouped as `topology.test.ts` proves. */
+const realServices: ReadonlyArray<ZeropsTopologyService> = [
+  service({ hostname: "s6fix1" }),
+  service({
+    hostname: "s6db",
+    type: "valkey:single@7.2",
+    group: "data",
+  }),
+  service({ hostname: "s6fix2" }),
+  service({
+    hostname: "zcp",
+    type: "zcp@1",
+    group: "infrastructure",
+    subdomainUrl: "https://zcp-26a7-8080.prg1.zerops.app",
+  }),
+];
+
+/** The lifecycle feed's live answer. */
+const lifecycle = (overrides: Partial<ZeropsLifecycle>): Known<ZeropsLifecycle> => ({
+  state: "known",
+  value: { threadId: "thread-1", recentTools: [], ...overrides } as unknown as ZeropsLifecycle,
+  asOf: { ordinal: 1, atMs: 0 },
+  coverage: "complete",
+  freshness: { kind: "live" },
+});
+
+describe("control-plane identity", () => {
+  it.each([
+    ["zcp@1", "renamed", true],
+    ["ubuntu/ZCP@1", "probe", true],
+    ["core@1", "core", false],
+    ["ubuntu/nodejs@22", "zcp", false],
+  ] as const)(
+    "classifies %s by type rather than hostname or infrastructure group",
+    (type, hostname, expected) => {
+      const row = buildZeropsServiceMap(
+        topology([service({ hostname, type, group: "infrastructure" })]),
+      )?.groups[0]?.rows[0];
+      expect(row?.isControlPlane).toBe(expected);
+      expect(row?.title).toBe(expected ? "Zerops Control Plane" : hostname);
+    },
+  );
+});
+
+describe("serviceStatusTone", () => {
+  it.each([
+    ["FAILED", false, "error"],
+    ["ACTION_FAILED", false, "error"],
+    ["CONTAINER_FAILED", false, "error"],
+    ["REPAIR_FAILED", false, "error"],
+    ["CREATING", true, "warning"],
+    ["ACTIVE", false, "outline"],
+    ["RUNNING", false, "outline"],
+    ["STOPPED", false, "muted"],
+    ["SERVICE_STOPPED", false, "muted"],
+    ["READY_TO_DEPLOY", false, "muted"],
+    ["DELETED", false, "muted"],
+    // In flight outranks settled-but-off: a stopping service is busy.
+    ["STOPPED", true, "warning"],
+  ] as const)("maps %s (transient=%s) to %s", (status, transient, tone) => {
+    expect(serviceStatusTone(service({ hostname: "app", status, transient }))).toBe(tone);
+  });
+});
+
+describe("buildZeropsServiceMap", () => {
+  it("orders the groups runtimes, data, infrastructure", () => {
+    const view = buildZeropsServiceMap(topology(realServices));
+
+    expect(view?.groups.map((group) => group.group)).toEqual([
+      "runtimes",
+      "data",
+      "infrastructure",
+    ]);
+    expect(view?.groups.map((group) => group.rows.map((row) => row.service.hostname))).toEqual([
+      ["s6fix1", "s6fix2"],
+      ["s6db"],
+      ["zcp"],
+    ]);
+  });
+
+  it("orders rows inside a section by hostname regardless of backend order", () => {
+    const shuffled = realServices.toReversed();
+    const view = buildZeropsServiceMap(topology(shuffled));
+
+    expect(view?.groups.map((group) => group.rows.map((row) => row.service.hostname))).toEqual([
+      ["s6fix1", "s6fix2"],
+      ["s6db"],
+      ["zcp"],
+    ]);
+  });
+
+  it("orders hostnames numerically, not lexically: db < db2 < db10", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "db10" }),
+        service({ hostname: "db" }),
+        service({ hostname: "db2" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows.map((row) => row.service.hostname)).toEqual(["db", "db2", "db10"]);
+  });
+
+  it("puts the control plane first in Infrastructure, ahead of other services", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "aardvark", type: "core@1", group: "infrastructure" }),
+        service({ hostname: "zcp", type: "zcp@1", group: "infrastructure" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows.map((row) => row.service.hostname)).toEqual(["zcp", "aardvark"]);
+  });
+
+  it("omits a group with no services rather than showing it empty", () => {
+    const view = buildZeropsServiceMap(topology([realServices[3]!]));
+
+    expect(view?.groups.map((group) => group.group)).toEqual(["infrastructure"]);
+  });
+
+  /**
+   * Types carry an OS prefix (`ubuntu/nodejs@22`). The runtime is what a reader
+   * is looking for; the base image is noise in a one-line row.
+   */
+  it("strips the OS prefix from the type label", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "app" }),
+        service({ hostname: "db", type: "postgresql:single@18", group: "data" }),
+        service({ hostname: "zcp", type: "zcp@1", group: "infrastructure" }),
+      ]),
+    );
+    const labels = view?.groups.flatMap((group) => group.rows.map((row) => row.typeLabel));
+
+    expect(labels).toEqual(["nodejs@22", "postgresql:single@18", "zcp@1"]);
+  });
+
+  it("folds a stage service into its dev row", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "kanbandev" }),
+        service({ hostname: "kanbanstage", status: "CREATING", transient: true }),
+      ]),
+    );
+    const rows = view?.groups[0]?.rows ?? [];
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.service.hostname).toBe("kanbandev");
+    expect(rows[0]?.stage?.hostname).toBe("kanbanstage");
+    expect(rows[0]?.stage?.transient).toBe(true);
+  });
+
+  it("folds a stage under the single service it was expanded from", () => {
+    // Dara's `todoapp` (2026-09-17): made in simple mode, then expanded into
+    // a pair — the dev half keeps its hostname and the stage is `todoappstage`.
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "todoapp" }), service({ hostname: "todoappstage" })]),
+    );
+    const rows = view?.groups[0]?.rows ?? [];
+
+    expect(rows.map((row) => row.service.hostname)).toEqual(["todoapp"]);
+    expect(rows[0]?.stage?.hostname).toBe("todoappstage");
+  });
+
+  /**
+   * A stage half is a container of its own, with its own allocation and its
+   * own load. Folding it in as a bare status line rendered it exactly like a
+   * service holding nothing — the card's other one-line state — so a running
+   * stage read as one that had never been deployed. The owner asked why the
+   * pair had no graphs; this is the answer.
+   */
+  it("derives the folded stage's resources, not just its status", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "kanbandev" }),
+        service({
+          hostname: "kanbanstage",
+          usage: {
+            containers: 1,
+            cores: { used: 0.08, limit: 1 },
+            memoryGb: { used: 0.12, limit: 0.25 },
+            diskGb: { used: 0.4, limit: 1 },
+          },
+        }),
+      ]),
+    );
+    const row = view?.groups[0]?.rows[0];
+
+    expect(row?.stage?.hostname).toBe("kanbanstage");
+    expect(row?.stageMetrics?.map((metric) => metric.id)).toEqual([
+      "containers",
+      "cores",
+      "memory",
+      "disk",
+    ]);
+  });
+
+  /**
+   * The owner, on the first pass: "why is the active on different place and
+   * there is no link to the appstage?" Both halves of a pair are services, so
+   * both get the same header — status word, name with its port, and a button
+   * per public route.
+   */
+  it("carries the folded stage's port so its name reads like the dev's", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "kanbandev", ports: [{ port: 3000, httpSupport: true }] }),
+        service({ hostname: "kanbanstage", ports: [{ port: 3000, httpSupport: true }] }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.stagePortLabel).toBe(":3000");
+  });
+
+  it("gives a stage holding nothing no resources, the same as any service", () => {
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.stageMetrics).toEqual([]);
+  });
+
+  it("leaves a stage service standing alone when it has no dev partner", () => {
+    const view = buildZeropsServiceMap(topology([service({ hostname: "orphanstage" })]));
+    const rows = view?.groups[0]?.rows ?? [];
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.service.hostname).toBe("orphanstage");
+    expect(rows[0]?.stage).toBeUndefined();
+  });
+
+  it("does not pair across groups", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "cachedev" }),
+        service({ hostname: "cachestage", group: "data" }),
+      ]),
+    );
+
+    expect(view?.groups.flatMap((group) => group.rows.map((row) => row.service.hostname))).toEqual([
+      "cachedev",
+      "cachestage",
+    ]);
+  });
+
+  it("offers Open only where the feed carries a subdomain URL", () => {
+    const view = buildZeropsServiceMap(topology(realServices));
+    const open = view?.groups.flatMap((group) =>
+      group.rows.map((row) => [row.service.hostname, row.service.subdomainUrl] as const),
+    );
+
+    expect(open).toEqual([
+      ["s6fix1", undefined],
+      ["s6fix2", undefined],
+      ["s6db", undefined],
+      ["zcp", "https://zcp-26a7-8080.prg1.zerops.app"],
+    ]);
+  });
+
+  it("says so when there are no services yet", () => {
+    const view = buildZeropsServiceMap(topology([]));
+
+    expect(view?.isEmpty).toBe(true);
+    expect(view?.groups).toEqual([]);
+  });
+
+  /** No view yet — no session, no resolved project, or the first read still pending. */
+  it("renders nothing at all when there is no topology view", () => {
+    expect(buildZeropsServiceMap(undefined)).toBeUndefined();
+  });
+
+  it("carries the projection's warnings through opaquely", () => {
+    const view = buildZeropsServiceMap(topology(realServices, { warnings: ["something to say"] }));
+
+    expect(view?.warnings).toEqual(["something to say"]);
+  });
+
+  /**
+   * The topology projection carries no live process state beyond `transient`
+   * — so a running tool is the only signal that something is happening right
+   * now. It belongs to the map, not to a row: the caller passes it in from
+   * `ZeropsThreadModel.running` (the one owner of "which call is running"),
+   * never derived from `lifecycle.recentTools` here.
+   */
+  it("surfaces the caller's runningTool as the map's live indicator", () => {
+    const view = buildZeropsServiceMap(topology(realServices), lifecycle({}), "zerops_deploy");
+
+    expect(view?.runningTool).toBe("zerops_deploy");
+  });
+
+  it("has no live indicator when the caller passes none", () => {
+    const view = buildZeropsServiceMap(topology(realServices), lifecycle({}));
+
+    expect(view?.runningTool).toBeUndefined();
+  });
+
+  /**
+   * The envelope renders each production launch as `"<name> (<projectId>)"`
+   * (`zcp internal/workflow/compute_envelope.go` `prodLaunchRefsRender`). The
+   * id is what makes it a link; a string that does not match still renders as
+   * a label, because a production launch the client cannot parse is still worth
+   * telling the user about.
+   */
+  it("turns a production launch into a project link", () => {
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "kanbandev" })]),
+      lifecycle({
+        envelope: {
+          services: [
+            {
+              hostname: "kanbandev",
+              feedsProduction: ["kanban-prod (aBcD1234EfGh)", "malformed entry"],
+            },
+          ],
+        },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+    const production = view?.groups[0]?.rows[0]?.production ?? [];
+
+    expect(production).toEqual([
+      {
+        label: "kanban-prod",
+        projectId: "aBcD1234EfGh",
+        url: "https://app.zerops.io/project/aBcD1234EfGh",
+      },
+      { label: "malformed entry" },
+    ]);
+  });
+
+  it("a lifecycle not known yet lists no production link: only a known envelope names one", () => {
+    const view = buildZeropsServiceMap(topology([service({ hostname: "kanbandev" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+
+    expect(view?.groups[0]?.rows[0]?.production).toEqual([]);
+  });
+
+  it("has no production links when the envelope carries none", () => {
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "kanbandev" })]),
+      lifecycle({}),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.production).toEqual([]);
+  });
+
+  it("a dev row carries the dev servers its envelope last read", () => {
+    const devServers = [
+      { name: "web", port: 3000, status: "running", readAt: "2026-10-14T21:04:00Z" },
+      { name: "worker", status: "crashed", readAt: "2026-10-14T21:04:00Z" },
+    ];
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "appdev" })]),
+      lifecycle({
+        envelope: { services: [{ hostname: "appdev", devServers }] },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.devServers).toEqual(devServers);
+  });
+
+  it("a row whose envelope has not read its dev servers carries none", () => {
+    const unread = buildZeropsServiceMap(topology([service({ hostname: "appdev" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+    const today = buildZeropsServiceMap(
+      topology([service({ hostname: "appdev" })]),
+      lifecycle({
+        envelope: { services: [{ hostname: "appdev", stageHostname: "appstage" }] },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+
+    expect(unread?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
+    expect(today?.groups[0]?.rows[0]).not.toHaveProperty("devServers");
+  });
+});
+
+describe("buildZeropsServiceMap — a part migrated to a dev pool", () => {
+  const pool = service({ hostname: "apppool", type: "swarm@1", group: "infrastructure" });
+  /** The envelope zcp computes from the re-keyed pair: the pool's snapshot carries its stages. */
+  const envelope = (stages: ReadonlyArray<{ hostname: string; setup?: string }>) =>
+    lifecycle({
+      envelope: {
+        services: [
+          { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool", stages },
+          ...stages.map(({ hostname }) => ({
+            hostname,
+            typeVersion: "bun@1.3",
+            runtimeClass: "dynamic",
+            mode: "stage",
+          })),
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+  const placed = (view: ReturnType<typeof buildZeropsServiceMap>) =>
+    view?.groups.map((group) => [
+      group.group,
+      group.rows.map((row) => [row.service.hostname, row.stage?.hostname]),
+    ]);
+
+  it("folds the stage under its pool, never standing alone", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "appstage" })]),
+      envelope([{ hostname: "appstage", setup: "prod" }]),
+    );
+
+    expect(placed(view)).toEqual([["infrastructure", [["apppool", "appstage"]]]]);
+  });
+
+  it("leaves the stage on its own while the lifecycle is not known", () => {
+    const view = buildZeropsServiceMap(topology([pool, service({ hostname: "appstage" })]), {
+      state: "unread",
+      waitingFor: null,
+    });
+
+    expect(placed(view)).toEqual([
+      ["runtimes", [["appstage", undefined]]],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
+  });
+
+  it("a pair of several stages leaves each on its own: a row folds one stage, and no service is hidden", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool, service({ hostname: "webstage" }), service({ hostname: "apistage" })]),
+      envelope([
+        { hostname: "webstage", setup: "web" },
+        { hostname: "apistage", setup: "api" },
+      ]),
+    );
+
+    expect(placed(view)).toEqual([
+      [
+        "runtimes",
+        [
+          ["apistage", undefined],
+          ["webstage", undefined],
+        ],
+      ],
+      ["infrastructure", [["apppool", undefined]]],
+    ]);
+  });
+});
+
+describe("buildZeropsServiceMap — the row's identity", () => {
+  const rowFor = (entry: ZeropsTopologyService) =>
+    buildZeropsServiceMap(topology([entry]))?.groups[0]?.rows[0];
+
+  it("names a service by its hostname, with its type-version as the one meta segment", () => {
+    const row = rowFor(service({ hostname: "kanbandev" }));
+
+    expect(row?.title).toBe("kanbandev");
+    expect(row?.meta).toEqual([{ id: "type", label: "nodejs@22" }]);
+    expect(row).not.toHaveProperty("portLabel");
+  });
+
+  it("shows the declared ports after the name", () => {
+    const row = rowFor(
+      service({
+        hostname: "api",
+        ports: [
+          { port: 80, scheme: "http" },
+          { port: 443, scheme: "https" },
+        ],
+      }),
+    );
+
+    expect(row?.portLabel).toBe(":80, :443");
+  });
+
+  it("names the control plane by its glossary word, hostname and port first in the meta line", () => {
+    const row = rowFor(
+      service({
+        hostname: "zcp",
+        type: "zcp@1",
+        group: "infrastructure",
+        typeName: "Zerops Control Plane",
+        version: "v1",
+        deploy: { source: "GIT" },
+        ports: [{ port: 8080, scheme: "http" }],
+      }),
+    );
+
+    expect(row?.title).toBe("Zerops Control Plane");
+    expect(row).not.toHaveProperty("portLabel");
+    expect(row?.meta).toEqual([
+      { id: "hostname", label: "zcp:8080" },
+      { id: "deploy", label: "Deployed from Git" },
+    ]);
+  });
+
+  it("links every row to its own page in the Zerops dashboard", () => {
+    const row = rowFor(service({ hostname: "kanbandev", serviceId: "TEST000000000000000005" }));
+
+    expect(row?.dashboardUrl).toBe("https://app.zerops.io/service-stack/TEST000000000000000005");
+  });
+
+  it("carries the live strip once usage is known", () => {
+    const row = rowFor(
+      service({
+        hostname: "app",
+        usage: {
+          containers: 1,
+          cores: { used: 0.076, limit: 2 },
+          memoryGb: { used: 0.512, limit: 2.625 },
+          diskGb: { used: 0.161, limit: 2 },
+        },
+      }),
+    );
+
+    expect(row?.metrics.map((metric) => metric.id)).toEqual([
+      "containers",
+      "cores",
+      "memory",
+      "disk",
+    ]);
+  });
+});
+
+describe("serviceStatusNeedsWord", () => {
+  it.each([
+    { status: "ACTIVE", transient: false, needsWord: false },
+    { status: "SERVICE_ACTIVE", transient: false, needsWord: false },
+    { status: "ACTIVE", transient: true, needsWord: true },
+    { status: "STOPPED", transient: false, needsWord: true },
+    { status: "READY_TO_DEPLOY", transient: false, needsWord: true },
+    { status: "CONTAINER_FAILED", transient: false, needsWord: true },
+    { status: "SOME_NEW_THING", transient: false, needsWord: true },
+  ])(
+    "a running service leaves its state to the dot; any other says it: $status (busy $transient) → $needsWord",
+    ({ status, transient, needsWord }) => {
+      expect(serviceStatusNeedsWord(service({ hostname: "app", status, transient }))).toBe(
+        needsWord,
+      );
+    },
+  );
+});
+
+describe("zeropsStatusWord", () => {
+  it.each([
+    ["ACTIVE", "Active"],
+    ["READY_TO_DEPLOY", "Ready to deploy"],
+    ["CONTAINER_FAILED", "Container failed"],
+    ["SOME_NEW_THING", "Some new thing"],
+  ])("reads %s as %s", (status, word) => {
+    expect(zeropsStatusWord(status)).toBe(word);
+  });
+
+  it("rides on the row", () => {
+    const row = buildZeropsServiceMap(
+      topology([service({ hostname: "app", status: "READY_TO_DEPLOY" })]),
+    )?.groups[0]?.rows[0];
+
+    expect(row?.statusLabel).toBe("Ready to deploy");
+  });
+});
+
+/** appdev as the owner saw it: its own :3000 and four crew ports, declared crew ports first. */
+const appdev = service({
+  hostname: "appdev",
+  ports: [3001, 3002, 3003, 3004, 3000].map((port) => ({ port, httpSupport: true })),
+  routes: [3001, 3002, 3003, 3004, 3000].map((port) => ({
+    port,
+    url: `https://appdev-1df2-${port}.prg1.zerops.app`,
+    host: `appdev-1df2-${port}.prg1.zerops.app`,
+  })),
+});
+const crewPorts = new Map([
+  [
+    "appdev",
+    new Map<number, string | null>([
+      [3001, "Backend"],
+      [3002, "Frontend"],
+      [3003, null],
+      [3004, null],
+    ]),
+  ],
+]);
+
+describe("zeropsPortLabel", () => {
+  it("is absent for a service with no ports", () => {
+    expect(zeropsPortLabel(service({ hostname: "worker" }))).toBeUndefined();
+  });
+
+  it("puts the service's own port first, then the rest ascending", () => {
+    expect(zeropsPortLabel(appdev)).toBe(":3000, :3001, :3002, :3003, :3004");
+    expect(zeropsPortLabel(appdev, crewPorts.get("appdev"))).toBe(
+      ":3000, :3001, :3002, :3003, :3004",
+    );
+    const crewLow = new Map<number, string | null>([[2000, null]]);
+    expect(
+      zeropsPortLabel(service({ hostname: "x", ports: [{ port: 3000 }, { port: 2000 }] }), crewLow),
+    ).toBe(":3000, :2000");
+  });
+});
+
+describe("zeropsRouteChoices", () => {
+  it("names each route by its port and who it serves, the service's own first", () => {
+    expect(
+      zeropsRouteChoices(appdev, crewPorts.get("appdev")).map((choice) => choice.label),
+    ).toEqual([
+      ":3000 · the service's own",
+      ":3001 · Backend's app",
+      ":3002 · Frontend's app",
+      ":3003",
+      ":3004",
+    ]);
+  });
+
+  it("without the crew's ports, names only the lowest as the service's own", () => {
+    expect(zeropsRouteChoices(appdev).map((choice) => choice.label)).toEqual([
+      ":3000 · the service's own",
+      ":3001",
+      ":3002",
+      ":3003",
+      ":3004",
+    ]);
+  });
+
+  it("folds more than two routes into a menu", () => {
+    const choices = zeropsRouteChoices(appdev);
+    expect([1, 2, 3, 5].map((count) => zeropsRoutesFolded(choices.slice(0, count)))).toEqual([
+      false,
+      false,
+      true,
+      true,
+    ]);
+  });
+
+  it("gives every row its routes in that order", () => {
+    const view = buildZeropsServiceMap(
+      { project: { id: "p", name: "p" }, services: [appdev], warnings: [], usageRead: false },
+      undefined,
+      undefined,
+      crewPorts,
+    );
+    const row = view?.groups.flatMap((group) => group.rows)[0];
+    expect(row?.routes.map((choice) => choice.route.port)).toEqual([3000, 3001, 3002, 3003, 3004]);
+    expect(row?.portLabel).toBe(":3000, :3001, :3002, :3003, :3004");
+    expect(row?.routesFolded).toBe(true);
+  });
+});
+
+describe("formatAmount", () => {
+  it.each([
+    [2, "2"],
+    [2.625, "2.63"],
+    [0.5, "0.5"],
+    [0.375, "0.38"],
+    [0.10000000149011612, "0.1"],
+    [100, "100"],
+  ])("prints %s as %s", (value, expected) => {
+    expect(formatAmount(value)).toBe(expected);
+  });
+});
+
+describe("zeropsServiceMetrics", () => {
+  it("lays a service's allocation out as the dashboard's strip, with how much is in use", () => {
+    expect(
+      zeropsServiceMetrics({
+        containers: 1,
+        cores: { used: 0.076, limit: 2 },
+        memoryGb: { used: 0.512, limit: 2.625 },
+        diskGb: { used: 0.161, limit: 2 },
+      }),
+    ).toEqual([
+      { id: "containers", label: "container", value: "1" },
+      { id: "cores", label: "Cores", value: "2", used: "0.08", fraction: 0.038 },
+      {
+        id: "memory",
+        label: "RAM",
+        value: "2.63",
+        used: "0.51",
+        unit: "GB",
+        fraction: 0.512 / 2.625,
+      },
+      { id: "disk", label: "Disk", value: "2", used: "0.16", unit: "GB", fraction: 0.0805 },
+    ]);
+  });
+
+  it("pluralises the containers and clamps a fraction to one", () => {
+    const metrics = zeropsServiceMetrics({
+      containers: 3,
+      cores: { used: 4, limit: 3 },
+      memoryGb: { used: 0, limit: 0 },
+      diskGb: { used: 1, limit: 3 },
+    });
+
+    expect(metrics[0]).toEqual({ id: "containers", label: "containers", value: "3" });
+    expect(metrics[1]?.fraction).toBe(1);
+    // Nothing to fill when the allocation is zero.
+    expect(metrics[2]).not.toHaveProperty("fraction");
+  });
+
+  it("is empty when usage is unknown", () => {
+    expect(zeropsServiceMetrics(undefined)).toEqual([]);
+  });
+
+  const scaling = {
+    containers: { min: 1, max: 3 },
+    cores: { min: 1, max: 3 },
+    memoryGb: { min: 0.125, max: 6 },
+    diskGb: { min: 1, max: 100 },
+    cpuMode: "SHARED",
+  };
+
+  it("puts each figure's autoscaling range beside it, the cores' with the CPU mode", () => {
+    const metrics = zeropsServiceMetrics(
+      {
+        containers: 1,
+        cores: { used: 0.04, limit: 1 },
+        memoryGb: { used: 0.07, limit: 0.25 },
+        diskGb: { used: 0.01, limit: 1 },
+      },
+      scaling,
+    );
+
+    expect(metrics.map((metric) => [metric.id, metric.value, metric.range])).toEqual([
+      ["containers", "1", "1 – 3"],
+      ["cores", "1", "1 – 3"],
+      ["memory", "0.25", "0.13 – 6"],
+      ["disk", "1", "1 – 100"],
+    ]);
+    expect(metrics[1]?.cpuMode).toBe("Shared");
+    expect(metrics[2]).not.toHaveProperty("cpuMode");
+  });
+
+  it("lays the envelope out on its own for a service holding no container yet", () => {
+    const metrics = zeropsServiceMetrics(undefined, {
+      containers: { min: 1, max: 1 },
+      cores: { min: 2, max: 3 },
+    });
+
+    expect(metrics).toEqual([
+      { id: "containers", label: "containers", range: "stays at 1" },
+      { id: "cores", label: "Cores", range: "2 – 3" },
+      { id: "memory", label: "RAM", unit: "GB" },
+      { id: "disk", label: "Disk", unit: "GB" },
+    ]);
+    expect(metrics.every((metric) => metric.value === undefined)).toBe(true);
+  });
+});
+
+describe("formatRange", () => {
+  it.each([
+    [{ min: 1, max: 3 }, "1 – 3"],
+    [{ min: 0.125, max: 6 }, "0.13 – 6"],
+    [{ min: 1, max: 1 }, "stays at 1"],
+  ])("%j reads %s", (range, expected) => {
+    expect(formatRange(range)).toBe(expected);
+  });
+});
+
+describe("zeropsTypeShort", () => {
+  it.each([
+    [{ type: "ubuntu/nodejs@22", typeName: "Node.js" }, "Node.js 22"],
+    [{ type: "postgresql:single@16", typeName: "PostgreSQL" }, "PostgreSQL 16"],
+    [{ type: "valkey:single@7.2", typeName: "Valkey" }, "Valkey 7.2"],
+    [{ type: "ubuntu/nodejs@22" }, "nodejs@22"],
+    [{ type: "zcp@1", typeName: "zcp" }, "zcp 1"],
+  ])("%j reads %s", (service, expected) => {
+    expect(zeropsTypeShort(service)).toBe(expected);
+  });
+
+  it("rides on every row but the control plane's", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        service({ hostname: "app", typeName: "Node.js" }),
+        service({ hostname: "zcp", type: "zcp@1", typeName: "zcp", group: "infrastructure" }),
+      ]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.typeShort).toBe("Node.js 22");
+    expect(view?.groups[1]?.rows[0]).not.toHaveProperty("typeShort");
+  });
+});
+
+describe("zeropsUsageTrends", () => {
+  const samples = [
+    {
+      at: "2026-09-05T01:00:00+02:00",
+      containers: 0,
+      cores: { used: 0, limit: 0 },
+      memoryGb: { used: 0, limit: 0 },
+      diskGb: { used: 0, limit: 0 },
+    },
+    {
+      at: "2026-09-06T00:00:00+02:00",
+      containers: 1,
+      cores: { used: 0.062, limit: 2 },
+      memoryGb: { used: 0.512, limit: 2.75 },
+      diskGb: { used: 0.167, limit: 2 },
+    },
+  ];
+
+  it("is absent until the history answers", () => {
+    expect(zeropsUsageTrends(undefined)).toBeUndefined();
+  });
+
+  it("is each resource held and used per bucket", () => {
+    expect(zeropsUsageTrends(samples)).toEqual({
+      cores: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.062, limit: 2 },
+      ],
+      memory: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.512, limit: 2.75 },
+      ],
+      disk: [
+        { at: "2026-09-05T01:00:00+02:00", used: 0, limit: 0 },
+        { at: "2026-09-06T00:00:00+02:00", used: 0.167, limit: 2 },
+      ],
+    });
+  });
+
+  it("rides on the row", () => {
+    const row = buildZeropsServiceMap(topology([service({ hostname: "app", history: samples })]))
+      ?.groups[0]?.rows[0];
+
+    expect(row?.trends?.memory).toHaveLength(2);
+    expect(
+      buildZeropsServiceMap(topology([service({ hostname: "app" })]))?.groups[0]?.rows[0],
+    ).not.toHaveProperty("trends");
+  });
+});
+
+describe("zeropsServiceFacts", () => {
+  it("states the type by its display name and exact version", () => {
+    const facts = zeropsServiceFacts(
+      service({ hostname: "app", typeName: "Node.js", version: "v22.22.3" }),
+    );
+
+    expect(facts).toEqual([{ id: "type", label: "Node.js v22.22.3" }]);
+  });
+
+  it("states the type by its name alone when the version is unknown", () => {
+    expect(zeropsServiceFacts(service({ hostname: "app", typeName: "Node.js" }))).toEqual([
+      { id: "type", label: "Node.js" },
+    ]);
+  });
+
+  it("falls back to the type-version when the platform gave no display name", () => {
+    expect(zeropsServiceFacts(service({ hostname: "app", type: "ubuntu/go@1.22" }))).toEqual([
+      { id: "type", label: "go@1.22" },
+    ]);
+  });
+
+  it.each([
+    ["CLI", "Deployed from CLI"],
+    ["GIT", "Deployed from Git"],
+    ["GITHUB", "Deployed from GitHub"],
+    ["GITLAB", "Deployed from GitLab"],
+    ["GUI", "Uploaded in the GUI"],
+    ["SOMETHING_NEW", "Deployed"],
+  ])("phrases a %s deploy as %s, dated at its activation", (source, label) => {
+    const facts = zeropsServiceFacts(
+      service({
+        hostname: "app",
+        typeName: "Node.js",
+        deploy: { source, activatedAt: "2026-09-01T08:30:34Z" },
+      }),
+    );
+
+    expect(facts[1]).toEqual({ id: "deploy", label, at: "2026-09-01T08:30:34Z" });
+  });
+
+  it("names the branch and short commit of a git deploy", () => {
+    const facts = zeropsServiceFacts(
+      service({
+        hostname: "app",
+        typeName: "Node.js",
+        deploy: { source: "GITHUB", branch: "main", commit: "abc1234def5678" },
+      }),
+    );
+
+    expect(facts[1]?.label).toBe("Deployed from GitHub · main@abc1234");
+  });
+
+  it("names a tag, or the version's own name, when there is no branch", () => {
+    expect(
+      zeropsServiceFacts(
+        service({
+          hostname: "app",
+          typeName: "Node.js",
+          deploy: { source: "GITHUB", tag: "v2.0.0" },
+        }),
+      )[1]?.label,
+    ).toBe("Deployed from GitHub · v2.0.0");
+    expect(
+      zeropsServiceFacts(
+        service({
+          hostname: "app",
+          typeName: "Node.js",
+          deploy: { source: "CLI", name: "hotfix" },
+        }),
+      )[1]?.label,
+    ).toBe("Deployed from CLI · hotfix");
+  });
+
+  it("does not repeat the row's title as a type fact", () => {
+    const zcp = service({
+      hostname: "zcp",
+      type: "zcp@1",
+      group: "infrastructure",
+      typeName: "Zerops Control Plane",
+      version: "v1",
+      deploy: { source: "GIT" },
+    });
+
+    expect(zeropsServiceFacts(zcp, "Zerops Control Plane").map((fact) => fact.id)).toEqual([
+      "deploy",
+    ]);
+  });
+});
+
+describe("a lease's dev servers", () => {
+  const preview = {
+    name: "webpool-3",
+    port: 3000,
+    url: "https://webpool-3003.zerops.app",
+    status: "running",
+    readAt: "2026-10-23T12:00:00Z",
+  };
+  const leased = (devServers?: ReadonlyArray<unknown>) =>
+    lifecycle({
+      envelope: {
+        services: [{ hostname: "webpool-3", devServers: [{ ...preview, name: "stale" }] }],
+        leases: [
+          {
+            alias: "webpool-3",
+            pool: "webpool",
+            state: "held",
+            ...(devServers === undefined ? {} : { devServers }),
+          },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+
+  it("are the ones zcp read on the lease, never a service's of its name", () => {
+    expect(leaseDevServersOf("webpool-3", leased([preview]))).toEqual([preview]);
+    expect(leaseDevServersOf("webpool-3", leased())).toBeUndefined();
+    expect(leaseDevServersOf("webpool-4", leased([preview]))).toBeUndefined();
+  });
+
+  it("are none while the lifecycle is not known", () => {
+    expect(leaseDevServersOf("webpool-3", undefined)).toBeUndefined();
+  });
+});
+
+describe("a thread's leases", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("are every lease of its branch its lifecycle last read zcp holding, its own first", () => {
+    const read = lifecycle({
+      envelope: {
+        services: [],
+        leases: [
+          { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
+          { alias: "webpool-3", pool: "webpool", branch: "feat-x", state: "held" },
+          { alias: "apipool-4", pool: "apipool", branch: "feat-y", state: "held" },
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+    expect(threadLeasesOf(LEASE, read)).toEqual([
+      LEASE,
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+    ]);
+  });
+
+  it("are the one it is bound to while the lifecycle is not known", () => {
+    expect(threadLeasesOf(LEASE, undefined)).toEqual([LEASE]);
+    expect(threadLeasesOf(null, undefined)).toEqual([]);
+  });
+});

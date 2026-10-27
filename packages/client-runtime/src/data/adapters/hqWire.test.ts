@@ -1,0 +1,199 @@
+import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Stream from "effect/Stream";
+
+import { HqError, type HqApi } from "../../zerops/hq/client.ts";
+import { classifyHqCall, makeHqWire } from "./hqWire.ts";
+
+/** One socket the test ends with a close code, after the messages it names. */
+const socketClosing = (messages: ReadonlyArray<string>, code: number) => {
+  const sent: string[] = [];
+  let closed = false;
+  const api: Pick<HqApi, "openScopeSocket"> = {
+    openScopeSocket: async (on) => {
+      queueMicrotask(() => {
+        on.open();
+        for (const message of messages) on.message(message);
+        on.close(code);
+      });
+      return {
+        send: (data) => void sent.push(data),
+        close: () => {
+          closed = true;
+        },
+      };
+    },
+  };
+  return { api, sent, closed: () => closed };
+};
+
+describe("makeHqWire", () => {
+  it.effect.each(["metadata", "commits"] as const)(
+    "%s distinguishes an unavailable endpoint from a missing change.",
+    (purpose) =>
+      Effect.gen(function* () {
+        for (const code of ["http_404", "change_not_found"]) {
+          const fail = async () => {
+            throw new HqError({
+              kind: "refused",
+              status: 404,
+              code,
+              message: "HQ refused this read.",
+            });
+          };
+          const wire = makeHqWire({
+            ...socketClosing([], 1000).api,
+            changeMetadata: fail,
+            changeCommits: fail,
+          });
+          const request = { link: { appId: "app", repo: "web", number: 1 } };
+          const fault = yield* purpose === "metadata"
+            ? Effect.flip(wire.metadata!(request))
+            : Effect.flip(wire.commits!(request));
+          expect(fault.code).toBe(code === "change_not_found" ? "not_found" : "http_404");
+        }
+      }),
+  );
+
+  it.effect("reads a segment's messages until HQ ends it as planned, and closes its socket", () =>
+    Effect.gen(function* () {
+      const fake = socketClosing(["a", "b"], 4410);
+      const read = yield* Effect.scoped(
+        Effect.gen(function* () {
+          const segment = yield* makeHqWire(fake.api).open(Effect.void);
+          yield* segment.send({ type: "pong" });
+          return yield* Stream.runCollect(segment.messages);
+        }),
+      );
+      expect(read).toEqual(["a", "b"]);
+      expect(fake.sent).toEqual(['{"type":"pong"}']);
+      expect(fake.closed()).toBe(true);
+    }),
+  );
+
+  it.effect.each([
+    { code: 4401, outcome: "transient" },
+    { code: 4403, outcome: "definitive-refusal" },
+    { code: 1011, outcome: "transient" },
+  ])("fails a segment HQ closed with $code as $outcome", ({ code, outcome }) =>
+    Effect.gen(function* () {
+      const fault = yield* Effect.flip(
+        Effect.scoped(
+          Effect.flatMap(makeHqWire(socketClosing([], code).api).open(Effect.void), (segment) =>
+            Stream.runDrain(segment.messages),
+          ),
+        ),
+      );
+      expect(fault.outcome).toBe(outcome);
+    }),
+  );
+});
+
+describe("an HQ socket opening", () => {
+  /** A socket the test opens or closes by hand. */
+  const socketHeld = () => {
+    let on: Parameters<HqApi["openScopeSocket"]>[0] | undefined;
+    const api: Pick<HqApi, "openScopeSocket"> = {
+      openScopeSocket: async (handlers) => {
+        on = handlers;
+        return { send: () => {}, close: () => {} };
+      },
+    };
+    return { api, on: () => on! };
+  };
+
+  it.effect("a segment begins only once its socket is open: until then nothing is connected", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      expect(opening.pollUnsafe()).toBeUndefined();
+      socket.on().open();
+      const opened = yield* Fiber.await(opening);
+      expect(opened._tag).toBe("Success");
+    }),
+  );
+
+  it.effect("a socket closed before it opened fails its segment as its close classifies", () =>
+    Effect.gen(function* () {
+      const socket = socketHeld();
+      const opening = yield* Effect.forkChild(
+        Effect.scoped(makeHqWire(socket.api).open(Effect.void)),
+      );
+      yield* Effect.yieldNow;
+      yield* Effect.promise(() => Promise.resolve());
+      socket.on().close(4403);
+      const fault = yield* Effect.flip(Fiber.join(opening));
+      expect(fault.outcome).toBe("definitive-refusal");
+    }),
+  );
+});
+
+describe("classifyHqCall", () => {
+  const refused = (code: string) =>
+    new HqError({ kind: "refused", code, status: 403, message: code });
+  it.each([
+    {
+      name: "a renewed session HQ still refuses",
+      cause: refused("session_required"),
+      outcome: "definitive-refusal",
+    },
+    { name: "Zerops refusing HQ", cause: refused("zerops_refused"), outcome: "definitive-refusal" },
+    {
+      name: "HQ unreachable",
+      cause: new HqError({ kind: "unavailable", code: "network", message: "down" }),
+      outcome: "transient",
+    },
+    { name: "anything else", cause: new Error("boom"), outcome: "transient" },
+  ])("$name is $outcome", ({ cause, outcome }) => {
+    expect(classifyHqCall(cause).outcome).toBe(outcome);
+  });
+  it("an unreadable version names reload as the next action", () => {
+    expect(classifyHqCall(refused("unreadable"))).toMatchObject({
+      outcome: "definitive-refusal",
+      code: "unreadable",
+      message: expect.stringContaining("Reload Mate to get the current version."),
+    });
+  });
+});
+
+describe("HQ attachment wire", () => {
+  it.effect.each([
+    { name: "bytes", cause: null, outcome: null },
+    {
+      name: "refusal",
+      cause: new HqError({ kind: "refused", code: "forbidden", message: "No picture." }),
+      outcome: "definitive-refusal",
+    },
+    {
+      name: "outage",
+      cause: new HqError({ kind: "unavailable", code: "network", message: "HQ unavailable." }),
+      outcome: "transient",
+    },
+  ] as const)(
+    "reads $name through the account API without opening a socket",
+    ({ cause, outcome }) =>
+      Effect.gen(function* () {
+        const link = { appId: "app", repo: "web", number: 1, id: "picture" };
+        const blob = new Blob(["picture"], { type: "image/png" });
+        const api: Pick<HqApi, "openScopeSocket" | "changeAttachment"> = {
+          openScopeSocket: async () => {
+            throw new Error("An attachment opens no socket.");
+          },
+          changeAttachment: async (asked, signal) => {
+            expect(asked).toEqual(link);
+            expect(signal?.aborted).toBe(false);
+            if (cause !== null) throw cause;
+            return blob;
+          },
+        };
+        const read = makeHqWire(api).picture!(link);
+        if (outcome === null) expect(yield* read).toBe(blob);
+        else expect((yield* Effect.flip(read)).outcome).toBe(outcome);
+      }),
+  );
+});

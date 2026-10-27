@@ -1,0 +1,231 @@
+import "vite-plus/test/config";
+import GateTimingReporter from "./scripts/gate-timing-reporter.ts";
+import { defineConfig } from "vite-plus";
+import * as NodeURL from "node:url";
+import * as NodeOS from "node:os";
+import { testWorkerBudget } from "./scripts/lib/test-worker-budget.ts";
+import { useTestScratchRoot } from "./scripts/lib/test-scratch-root.ts";
+
+/** Import restrictions every file keeps. */
+const RESTRICTED_IMPORT_PATHS = [
+  {
+    name: "@t3tools/client-runtime",
+    message:
+      "Import from an explicit @t3tools/client-runtime/* subpath. The package has no root export.",
+  },
+  {
+    name: "@pierre/diffs/react",
+    importNames: ["CodeView"],
+    message: "Use StyledDiffCodeView so web diff surfaces share styling and virtualized geometry.",
+  },
+];
+
+/**
+ * The cva functions behind components/ui exports. They style a foreign element to look
+ * like a Button or Toggle, which bypasses the component's variants; render the component
+ * instead (`render={<Button …/>}`, or `SelectButton` for a picker trigger).
+ */
+const RESTRICTED_UI_VARIANT_PATTERNS = [
+  {
+    group: ["**/components/ui/*", "**/ui/*", "./ui/*"],
+    importNames: ["buttonVariants", "toggleVariants", "badgeVariants", "selectTriggerVariants"],
+    message:
+      "Render the components/ui export instead of borrowing its class recipe (render={<Button …/>}, SelectButton, ToggleGroup).",
+  },
+];
+
+useTestScratchRoot(process.env);
+
+const maxWorkers = testWorkerBudget(process.env.MATE_TEST_JOBS, NodeOS.availableParallelism());
+
+export default defineConfig({
+  assetsInclude: ["**/*.wasm"],
+  resolve: {
+    alias: {
+      "~": NodeURL.fileURLToPath(new URL("./apps/web/src", import.meta.url)),
+    },
+  },
+  test: {
+    reporters: ["default", new GateTimingReporter()],
+    ...(maxWorkers === undefined ? {} : { maxWorkers }),
+    environment: "node",
+    exclude: [
+      "**/.repos/**",
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/dist-electron/**",
+      "**/.{idea,git,cache,output,temp}/**",
+      // Agents work in throwaway worktrees under `.claude/worktrees`. They
+      // hold a whole second copy of this repository and no `node_modules`,
+      // so a run from the root collected each test twice and failed the copy
+      // on an import it could not resolve.
+      "**/.claude/worktrees/**",
+      "**/.plans/**",
+    ],
+    hookTimeout: 60_000,
+    testTimeout: 60_000,
+    // Tables declare tests through `it.each(rows)("$title", …)`: the title is the row's whole sentence.
+    taskTitleValueFormatTruncate: Number.MAX_SAFE_INTEGER,
+    setupFiles: [
+      NodeURL.fileURLToPath(
+        new URL("./packages/shared/src/testing/longTempDir.ts", import.meta.url),
+      ),
+    ],
+  },
+  staged: {
+    // Formatter only for now — no lint or typecheck on commit.
+    "*": "vp fmt --no-error-on-unmatched-pattern",
+  },
+  fmt: {
+    ignorePatterns: [
+      ".reference",
+      ".repos/**",
+      // Throwaway agent worktrees hold a whole second copy of the repository,
+      // their own `.repos` included. CI checks out a clean tree and never sees
+      // them; a repo-wide run here walked into them and died before analysis.
+      ".claude/worktrees/**",
+      ".alchemy",
+      "dist",
+      "dist-electron",
+      "node_modules",
+      "pnpm-lock.yaml",
+      "*.tsbuildinfo",
+      "**/routeTree.gen.ts",
+      "apps/mobile/android/**",
+      "apps/mobile/ios/**",
+      "apps/web/src/lib/vendor/qrcodegen.ts",
+      // The Import zone is upstream's bytes, pinned by imported.lock; its recorded transform
+      // (fork.md §3.1) shortens import paths, which the formatter would reflow.
+      "packages/effect-codex-app-server/**",
+      "packages/effect-acp/**",
+      // zcp's contract fixtures are zcp's bytes, pinned by sha256 in their SOURCE.json.
+      "packages/client-runtime/src/zerops/fixtures/zcp/**",
+      "apps/mobile/uniwind-types.d.ts",
+      "*.icon/**",
+    ],
+    sortPackageJson: {},
+    overrides: [
+      {
+        files: [".devcontainer/devcontainer.json"],
+        options: {
+          trailingComma: "none",
+        },
+      },
+    ],
+  },
+  lint: {
+    ignorePatterns: [
+      ".repos",
+      ".repos/**",
+      ".claude/worktrees/**",
+      "dist",
+      "dist-electron",
+      "node_modules",
+      "pnpm-lock.yaml",
+      "*.tsbuildinfo",
+      "**/routeTree.gen.ts",
+      "apps/mobile/android/**",
+      "apps/mobile/ios/**",
+      "apps/mobile/uniwind-types.d.ts",
+    ],
+    plugins: ["eslint", "oxc", "react", "unicorn", "typescript"],
+    jsPlugins: ["./oxlint-plugin-t3code/index.ts"],
+    categories: {
+      correctness: "warn",
+      suspicious: "warn",
+      perf: "warn",
+    },
+    rules: {
+      "unicorn/no-array-sort": "off",
+      "unicorn/consistent-function-scoping": "off",
+      "oxc/no-map-spread": "off",
+      "react-in-jsx-scope": "off",
+      "react-hooks/exhaustive-deps": "off",
+      "eslint/no-shadow": "off",
+      "eslint/no-await-in-loop": "off",
+      "eslint/no-underscore-dangle": "off",
+      "typescript/consistent-return": "off",
+      "typescript/no-base-to-string": "off",
+      "typescript/no-duplicate-type-constituents": "off",
+      "typescript/no-floating-promises": "off",
+      "typescript/no-implied-eval": "off",
+      "typescript/no-meaningless-void-operator": "off",
+      "typescript/no-redundant-type-constituents": "off",
+      "typescript/no-unnecessary-boolean-literal-compare": "off",
+      "typescript/no-unnecessary-type-conversion": "off",
+      "typescript/no-unnecessary-type-arguments": "off",
+      "typescript/no-unnecessary-type-assertion": "off",
+      "typescript/no-unnecessary-type-parameters": "off",
+      "typescript/no-unsafe-type-assertion": "off",
+      "typescript/await-thenable": "off",
+      "typescript/require-array-sort-compare": "off",
+      "typescript/restrict-template-expressions": "off",
+      "typescript/unbound-method": "off",
+      "eslint/no-restricted-imports": ["error", { paths: RESTRICTED_IMPORT_PATHS }],
+      "t3code/no-environment-as-project": "error",
+      "t3code/no-failure-to-empty": "error",
+      "t3code/no-global-process-runtime": "error",
+      "t3code/no-infinite-motion": "error",
+      "t3code/no-inline-schema-compile": "warn",
+      "t3code/no-legacy-vocabulary": "error",
+      "t3code/no-manual-effect-runtime-in-tests": "error",
+      "t3code/no-native-title-tooltip": "error",
+      "t3code/no-test-in-loop": "error",
+      "t3code/no-platform-globals": "error",
+      "t3code/no-remote-data-in-browser-storage": "error",
+      "t3code/no-remote-io-outside-data-layer": "error",
+      "t3code/no-arbitrary-values": "error",
+      "t3code/no-direct-permission-rule": "error",
+      "t3code/no-restyle": "error",
+      "t3code/no-legacy-notice-api": "error",
+      "t3code/no-legacy-notice-policy": "error",
+      "t3code/no-retired-mechanism": "error",
+      "t3code/no-unknown-classes": "error",
+      "t3code/no-unguarded-storage-write": "error",
+      "t3code/no-unscoped-has": "error",
+      "t3code/require-static-classes": "error",
+      "t3code/no-theme-escape-hatches": "error",
+      "t3code/namespace-node-imports": "error",
+      "t3code/prefer-catch-tags": "error",
+    },
+    overrides: [
+      {
+        // The Import zone is upstream's bytes (imported.lock): its tests change with a re-import.
+        files: ["packages/effect-acp/**", "packages/effect-codex-app-server/**"],
+        rules: { "t3code/no-test-in-loop": "off" },
+      },
+      {
+        files: ["apps/web/src/**"],
+        excludeFiles: ["apps/web/src/components/ui/**"],
+        rules: {
+          "eslint/no-restricted-imports": [
+            "error",
+            { paths: RESTRICTED_IMPORT_PATHS, patterns: RESTRICTED_UI_VARIANT_PATTERNS },
+          ],
+        },
+      },
+      {
+        // Shared client code must not call APIs missing from Hermes. Our ESNext
+        // TypeScript target accepts them even when they would crash mobile at launch.
+        // Tests run on Node and are exempt.
+        files: [
+          "apps/mobile/src/**",
+          "packages/client-runtime/src/**",
+          "packages/contracts/src/**",
+          "packages/shared/src/**",
+        ],
+        excludeFiles: ["**/*.test.ts", "**/*.test.tsx"],
+        rules: {
+          "t3code/no-hermes-unsupported-apis": "error",
+          // Its toReversed() suggestion is exactly what Hermes lacks.
+          "unicorn/no-array-reverse": "off",
+        },
+      },
+    ],
+    options: {
+      // Revisit once Oxlint's tsgolint path can integrate with @effect/tsgo diagnostics.
+      typeAware: false,
+      typeCheck: false,
+    },
+  },
+});

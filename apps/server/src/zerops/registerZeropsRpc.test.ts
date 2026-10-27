@@ -1,0 +1,423 @@
+/**
+ * spec-mate.md §2.9 MU-2: `zerops.mate.update` is offered only inside a
+ * Zerops project with `zcp` on PATH; a failing `zcp mate update` is a
+ * successful RPC carrying its JSON, never a transport error.
+ */
+import { describe, expect, it } from "@effect/vitest";
+import {
+  ProviderInstanceId,
+  type TerminalError,
+  type ZeropsAgentLoginError,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+
+import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
+import {
+  runZeropsMateCheckUpdate,
+  runZeropsMateUpdate,
+  runAgentAuthCheck,
+  runCrewPropose,
+  runAgentLoginCancel,
+  runAgentLoginSignOut,
+  runAgentLoginSubmitCode,
+  runLoginRemove,
+} from "./registerZeropsRpc.ts";
+
+const stubMateUpdate = (result: Effect.Effect<any, ZeropsCliNotFound | ZeropsCliFailed>) => ({
+  mateStatus: () => Effect.die("not used"),
+  mateUpdate: () => result,
+});
+
+const stubMateUpdateService = (
+  refresh: Effect.Effect<void> = Effect.void,
+  check: Effect.Effect<any> = Effect.die("not used"),
+) => ({
+  current: Effect.succeed(undefined),
+  changes: Stream.make(undefined),
+  refresh,
+  check,
+});
+
+describe("runZeropsMateUpdate", () => {
+  it.effect(
+    "fails with EnvironmentAuthorizationError outside a Zerops project, without calling zcp",
+    () =>
+      Effect.gen(function* () {
+        let called = false;
+        const error = yield* Effect.flip(
+          runZeropsMateUpdate({
+            zeropsCli: stubMateUpdate(
+              Effect.sync(() => {
+                called = true;
+                return { action: "none", from: "0.8.0", to: "0.8.0", restarted: false };
+              }),
+            ),
+            zeropsMateUpdate: stubMateUpdateService(),
+            isZeropsEnvironment: false,
+            serverVersion: "0.8.0",
+          }),
+        );
+        expect(error._tag).toBe("EnvironmentAuthorizationError");
+        expect(called).toBe(false);
+      }),
+  );
+
+  it.effect("maps a missing zcp binary to ZeropsMateUpdateError, not an authorization error", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateUpdate({
+          zeropsCli: stubMateUpdate(Effect.fail(new ZeropsCliNotFound({ command: "zcp" }))),
+          zeropsMateUpdate: stubMateUpdateService(),
+          isZeropsEnvironment: true,
+          serverVersion: "0.8.0",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("zcp-not-found");
+    }),
+  );
+
+  it.effect("maps a zcp spawn/parse failure to ZeropsMateUpdateError with reason zcp-failed", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateUpdate({
+          zeropsCli: stubMateUpdate(
+            Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "not json" })),
+          ),
+          zeropsMateUpdate: stubMateUpdateService(),
+          isZeropsEnvironment: true,
+          serverVersion: "0.8.0",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("zcp-failed");
+    }),
+  );
+
+  it.effect("maps a timed-out zcp run to ZeropsMateUpdateError with reason timed-out", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateUpdate({
+          zeropsCli: stubMateUpdate(
+            Effect.fail(
+              new ZeropsCliFailed({
+                command: "zcp",
+                reason: "Process zcp mate update timed out after 300000ms",
+              }),
+            ),
+          ),
+          zeropsMateUpdate: stubMateUpdateService(),
+          isZeropsEnvironment: true,
+          serverVersion: "0.8.0",
+        }),
+      );
+      expect(error._tag).toBe("ZeropsMateUpdateError");
+      expect((error as { reason?: string }).reason).toBe("timed-out");
+    }),
+  );
+
+  it.effect("succeeds with the CLI's JSON even when the update itself failed (MU-2)", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateUpdate({
+        zeropsCli: stubMateUpdate(
+          Effect.succeed({
+            action: "none",
+            from: "0.8.0",
+            to: "0.8.0",
+            restarted: false,
+            error: "manifest unreachable",
+          }),
+        ),
+        zeropsMateUpdate: stubMateUpdateService(),
+        isZeropsEnvironment: true,
+        serverVersion: "0.8.0",
+      });
+      expect(result).toEqual({
+        action: "none",
+        from: "0.8.0",
+        to: "0.8.0",
+        restarted: false,
+        error: "manifest unreachable",
+        serverVersion: "0.8.0",
+      });
+    }),
+  );
+
+  it.effect("refreshes ZeropsMateUpdate after a successful update, not otherwise", () =>
+    Effect.gen(function* () {
+      let refreshCount = 0;
+      const refresh = Effect.sync(() => {
+        refreshCount += 1;
+      });
+
+      yield* runZeropsMateUpdate({
+        zeropsCli: stubMateUpdate(
+          Effect.succeed({ action: "none", from: "0.8.0", to: "0.8.0", restarted: false }),
+        ),
+        zeropsMateUpdate: stubMateUpdateService(refresh),
+        isZeropsEnvironment: true,
+        serverVersion: "0.8.0",
+      });
+      expect(refreshCount).toBe(0);
+
+      yield* runZeropsMateUpdate({
+        zeropsCli: stubMateUpdate(
+          Effect.succeed({ action: "updated", from: "0.8.0", to: "0.8.1", restarted: true }),
+        ),
+        zeropsMateUpdate: stubMateUpdateService(refresh),
+        isZeropsEnvironment: true,
+        serverVersion: "0.8.0",
+      });
+      expect(refreshCount).toBe(1);
+    }),
+  );
+});
+
+describe("runZeropsMateCheckUpdate", () => {
+  it.effect("fails with EnvironmentAuthorizationError outside a Zerops project", () =>
+    Effect.gen(function* () {
+      const error = yield* Effect.flip(
+        runZeropsMateCheckUpdate({
+          zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.die("not used")),
+          isZeropsEnvironment: false,
+        }),
+      );
+      expect(error._tag).toBe("EnvironmentAuthorizationError");
+    }),
+  );
+
+  it.effect("returns the checked value inside a Zerops project", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateCheckUpdate({
+        zeropsMateUpdate: stubMateUpdateService(
+          Effect.void,
+          Effect.succeed({
+            installed: "0.8.0",
+            latest: "0.8.1",
+            available: true,
+            checkedAt: "2026-09-09T00:00:00Z",
+          }),
+        ),
+        isZeropsEnvironment: true,
+      });
+      expect(result).toEqual({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      });
+    }),
+  );
+
+  it.effect("maps an undefined check result to null", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateCheckUpdate({
+        zeropsMateUpdate: stubMateUpdateService(Effect.void, Effect.succeed(undefined)),
+        isZeropsEnvironment: true,
+      });
+      expect(result).toBeNull();
+    }),
+  );
+});
+
+describe("manual auth check", () => {
+  it.effect("makes one new attempt for the operator and refuses another member", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const deps = {
+        zeropsAgentAuth: {
+          latest: Effect.succeed({
+            available: true,
+            agents: [
+              {
+                agentId: "codex" as const,
+                credPresent: true,
+                flagOAuth: false,
+                flagToken: false,
+                providerAuth: "unknown" as const,
+                state: "local-only" as const,
+                authorizedBy: { subject: "owner" },
+              },
+            ],
+          }),
+          recheckNow: (id: string) =>
+            Effect.sync(() => {
+              calls.push(id);
+            }),
+        },
+        zeropsLogins: {
+          latest: Effect.succeed([]),
+          resolve: () => Effect.succeed(undefined),
+          recheckNow: () => Effect.void,
+        },
+        subject: "zerops-user:owner",
+      };
+      yield* runAgentAuthCheck(deps, { agentId: "codex" });
+      expect(calls).toEqual(["codex"]);
+      const refused = yield* Effect.flip(
+        runAgentAuthCheck({ ...deps, subject: "zerops-user:someone-else" }, { agentId: "codex" }),
+      );
+      expect(refused.reason).toBe("invalid-login");
+      expect(calls).toEqual(["codex"]);
+    }),
+  );
+});
+
+describe("a personal login acts for its person alone", () => {
+  /** Jan signed codex in and runs a sign-in on `claude-code:work`; `claude-code` has a project token. */
+  const loginDeps = (subject: string, ran: string[]) => ({
+    subject,
+    zeropsAgentAuth: {
+      latest: Effect.succeed({
+        available: true,
+        agents: [
+          {
+            agentId: "codex" as const,
+            credPresent: true,
+            flagOAuth: true,
+            flagToken: false,
+            providerAuth: "unknown" as const,
+            state: "authorized" as const,
+            authorizedBy: { subject: "jan" },
+          },
+          {
+            agentId: "claude-code" as const,
+            credPresent: false,
+            flagOAuth: false,
+            flagToken: true,
+            providerAuth: "unknown" as const,
+            state: "authorized" as const,
+          },
+        ],
+      }),
+    },
+    zeropsLogins: {
+      latest: Effect.succeed([
+        {
+          id: "claude-code:work",
+          agent: "claude-code" as const,
+          label: "work",
+          kind: "subscription" as const,
+          default: false,
+          state: "authorized" as const,
+          token: false,
+          signedInBy: "jan",
+        },
+      ]),
+    },
+    zeropsAgentLogin: {
+      latest: Effect.succeed({
+        "claude-code": undefined,
+        codex: undefined,
+        "claude-code:work": {
+          phase: "awaiting-code" as const,
+          terminalId: "t",
+          startedAt: DateTime.makeUnsafe(0),
+          startedBy: "jan",
+        },
+      }),
+      cancel: (agentId: string, loginId?: string) =>
+        Effect.sync(() => void ran.push(`cancel ${loginId ?? agentId}`)),
+      submitCode: (agentId: string, _code: string, loginId?: string) =>
+        Effect.sync(() => void ran.push(`code ${loginId ?? agentId}`)),
+    },
+    zeropsSignOut: {
+      signOut: (target: { readonly agentId: string } | { readonly loginId: string }) =>
+        Effect.sync(
+          () => void ran.push(`sign out ${"agentId" in target ? target.agentId : target.loginId}`),
+        ),
+      remove: (loginId: string) => Effect.sync(() => void ran.push(`remove ${loginId}`)),
+    },
+  });
+  type LoginDeps = ReturnType<typeof loginDeps>;
+
+  it.effect.each<
+    readonly [
+      string,
+      (deps: LoginDeps) => Effect.Effect<void, TerminalError | ZeropsAgentLoginError>,
+      string,
+    ]
+  >([
+    [
+      "signing an agent's own login out",
+      (deps) => runAgentLoginSignOut(deps, { agentId: "codex" }),
+      "sign out codex",
+    ],
+    [
+      "signing a login beyond the two out",
+      (deps) => runAgentLoginSignOut(deps, { agentId: "claude-code", loginId: "claude-code:work" }),
+      "sign out claude-code:work",
+    ],
+    [
+      "removing a login",
+      (deps) => runLoginRemove(deps, { id: "claude-code:work" }),
+      "remove claude-code:work",
+    ],
+    [
+      "cancelling a sign-in",
+      (deps) => runAgentLoginCancel(deps, { agentId: "claude-code", loginId: "claude-code:work" }),
+      "cancel claude-code:work",
+    ],
+    [
+      "entering a sign-in's code",
+      (deps) =>
+        runAgentLoginSubmitCode(deps, {
+          agentId: "claude-code",
+          code: "c",
+          loginId: "claude-code:work",
+        }),
+      "code claude-code:work",
+    ],
+  ])("only its person may do it: %s", ([, run, action]) =>
+    Effect.gen(function* () {
+      const ran: string[] = [];
+      const refused = yield* Effect.result(run(loginDeps("zerops-user:eva", ran)));
+      expect(ran).toEqual([]);
+      expect(refused).toMatchObject({ failure: { reason: "invalid-login" } });
+      yield* run(loginDeps("zerops-user:jan", ran));
+      expect(ran).toEqual([action]);
+    }),
+  );
+
+  it.effect("a project-token login is nobody's: any member may still ask to sign it out", () =>
+    Effect.gen(function* () {
+      const ran: string[] = [];
+      yield* runAgentLoginSignOut(loginDeps("zerops-user:eva", ran), { agentId: "claude-code" });
+      yield* runAgentLoginCancel(loginDeps("zerops-user:eva", ran), { agentId: "codex" });
+      expect(ran).toEqual(["sign out claude-code", "cancel codex"]);
+    }),
+  );
+});
+
+describe("crew proposals", () => {
+  it.effect("proposes a crew as the connecting session, never as anyone the input names", () =>
+    Effect.gen(function* () {
+      const asked: Array<string> = [];
+      yield* runCrewPropose(
+        {
+          zeropsCrewProposals: {
+            propose: (_input, subject) => {
+              asked.push(subject);
+              return Effect.succeed({
+                lead: { name: "Lead", part: "Plans the tea shop." },
+                builders: [{ name: "Checkout", part: "Builds the checkout." }],
+              });
+            },
+          },
+          subject: "zerops-user:owner",
+          admit: (_method, effect) => effect,
+        },
+        {
+          goal: "A tea shop that ships weekly.",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claude"),
+            model: "claude-sonnet-4-5",
+          },
+        },
+      );
+      expect(asked).toEqual(["zerops-user:owner"]);
+    }),
+  );
+});

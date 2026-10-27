@@ -1,0 +1,944 @@
+import { describe, expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Result from "effect/Result";
+
+import { ZeropsApiError, type ZeropsOrganizationMember } from "../../../zerops/api.ts";
+import { presetMembership } from "../../../zerops/teamRoles.ts";
+import { appAccessExecutor, type AppAccessPlatform } from "./appAccess.ts";
+
+const ORG = "org-1";
+const PROJECTS = { places: ["prod", "stage"], mates: ["m-1"] };
+
+type Verb = keyof AppAccessPlatform;
+
+/**
+ * A Zerops organization in memory: its members and each one's own grants, answering as Zerops
+ * does unless `fail` says a verb answers otherwise. Records each call and each read-back.
+ */
+function organization(
+  members: Array<ZeropsOrganizationMember>,
+  grants: Record<string, Array<{ projectId: string; roleCode: string }>> = {},
+  fail: Partial<Record<Verb, "landed" | (() => Promise<never>)>> = {},
+) {
+  const calls: Array<string> = [];
+  const readBack: Array<ReadonlyArray<string>> = [];
+  const readBackMembers: Array<ReadonlyArray<string>> = [];
+  const failing = <A>(verb: Verb, run: () => A | Promise<A>) => {
+    calls.push(verb);
+    const failure = fail[verb];
+    if (failure === undefined) return Promise.resolve().then(run);
+    // Zerops took it; only its answer was lost.
+    if (failure === "landed") return Promise.resolve().then(run).then(lost);
+    return failure();
+  };
+  const projects: Record<
+    string,
+    {
+      id: string;
+      name: string;
+      status: string;
+      userRoles: Array<{ clientUserId: string; roleCode: string }>;
+    }
+  > = {
+    "p-new": {
+      id: "p-new",
+      name: "Shop - stage",
+      status: "ACTIVE",
+      userRoles: [{ clientUserId: "cu-creator", roleCode: "OWNER" }],
+    },
+  };
+  const platform: AppAccessPlatform = {
+    writeNewProjectAccess: (projectId, userRoles) =>
+      failing("writeNewProjectAccess", () => {
+        const project = projects[projectId]!;
+        project.userRoles = [
+          ...project.userRoles,
+          ...userRoles.map(({ clientUserId, roleCode }) => ({ clientUserId, roleCode })),
+        ];
+        return project;
+      }),
+    fetchProject: (projectId) => failing("fetchProject", () => projects[projectId]!),
+    validateOrganizationUser: (_org, email) =>
+      failing("validateOrganizationUser", () => {
+        if (members.some((one) => one.user?.email === email))
+          throw new ZeropsApiError(
+            "Already.",
+            "invalid-input",
+            400,
+            "userAlreadyConnectedToCompany",
+          );
+        return email === "known@example.com"
+          ? { kind: "existing" as const, userId: "u-known" }
+          : { kind: "new" as const };
+      }),
+    inviteOrganizationUser: (_org, invite) =>
+      failing("inviteOrganizationUser", () => {
+        members.push({
+          id: "cu-new",
+          status: "WAITING_AUTHORIZATION",
+          roleCode: invite.roleCode,
+          canCreateProjects: invite.canCreateProjects,
+          user: { id: "u-new", email: invite.email },
+        });
+      }),
+    connectOrganizationUser: (_org, invite) =>
+      failing("connectOrganizationUser", () => {
+        members.push({
+          id: "cu-known",
+          status: "WAITING_AUTHORIZATION",
+          roleCode: invite.roleCode,
+          user: { id: invite.userId, email: "Known@Example.com" },
+        });
+      }),
+    listOrganizationMembers: () => failing("listOrganizationMembers", () => [...members]),
+    readMemberProjectRoles: (id) =>
+      failing("readMemberProjectRoles", () => [...(grants[id] ?? [])]),
+    writeMemberProjectRoles: (id, list) =>
+      failing("writeMemberProjectRoles", () => {
+        grants[id] = [...list];
+      }),
+    removeOrganizationMember: (id) =>
+      failing("removeOrganizationMember", () => {
+        members.splice(
+          members.findIndex((one) => one.id === id),
+          1,
+        );
+      }),
+  };
+  const executor = appAccessExecutor(platform, async (orgId, projectIds, memberIds = []) => {
+    expect(orgId).toBe(ORG);
+    readBack.push(projectIds);
+    readBackMembers.push(memberIds);
+  });
+  return { executor, calls, readBack, readBackMembers, members, grants, projects };
+}
+
+const member = (id: string, roleCode: string, status = "ACTIVE"): ZeropsOrganizationMember => ({
+  id,
+  status,
+  roleCode,
+  user: { id: `u-${id}`, email: `${id}@example.com` },
+});
+
+const lost = () => Promise.reject(new ZeropsApiError("Lost.", "uncertain"));
+const forbidden = () =>
+  Promise.reject(new ZeropsApiError("Not allowed.", "forbidden", 403, "forbidden"));
+
+describe("checking an address before it is invited", () => {
+  it.effect.each([
+    { email: "known@example.com", result: { kind: "existing", userId: "u-known" } },
+    { email: "new@example.com", result: { kind: "new" } },
+  ])("An address is answered as who it is to Zerops: $email", ({ email, result }) =>
+    Effect.gen(function* () {
+      const { executor } = organization([]);
+      const receipt = yield* executor.check("r1", { kind: "check-invitee", orgId: ORG, email });
+      expect(receipt).toMatchObject({
+        acceptance: { kind: "accepted", result },
+        outcome: { kind: "succeeded" },
+      });
+    }),
+  );
+
+  it.effect("An address already in the organization is answered as that member", () =>
+    Effect.gen(function* () {
+      const { executor } = organization([member("cu-eva", "NO_ACCESS")]);
+      const receipt = yield* executor.check("r1", {
+        kind: "check-invitee",
+        orgId: ORG,
+        email: "cu-eva@example.com",
+      });
+      expect(receipt).toMatchObject({
+        acceptance: {
+          result: {
+            kind: "member",
+            clientUserId: "cu-eva",
+            userId: "u-cu-eva",
+            roleCode: "NO_ACCESS",
+          },
+        },
+      });
+    }),
+  );
+
+  it.effect.each([
+    {
+      sentence:
+        "An address Zerops says is taken, which its member list doesn't show, is said in words",
+      fail: {
+        validateOrganizationUser: () =>
+          Promise.reject(new ZeropsApiError("Dup.", "invalid-input", 400, "duplicatedUser")),
+      },
+      message: "Already in this organization — change their access in the list.",
+    },
+    {
+      sentence: "Zerops refusing the viewer says who may invite",
+      fail: { validateOrganizationUser: forbidden },
+      message: "Only an organization owner or admin can invite.",
+    },
+  ])("$sentence", ({ fail, message }) =>
+    Effect.gen(function* () {
+      const { executor } = organization([], {}, fail);
+      const answer = yield* Effect.result(
+        executor.check("r1", { kind: "check-invitee", orgId: ORG, email: "eva@example.com" }),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({ message });
+    }),
+  );
+
+  it.effect("A check whose answer was lost is asked again by the person, never a write", () =>
+    Effect.gen(function* () {
+      const { executor } = organization([], {}, { validateOrganizationUser: lost });
+      const answer = yield* Effect.result(
+        executor.check("r1", { kind: "check-invitee", orgId: ORG, email: "new@example.com" }),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({ outcome: "transient" });
+    }),
+  );
+});
+
+describe("inviting someone to an app", () => {
+  it.effect(
+    "A new address is invited with no organization access, then given the app's places",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([member("cu-owner", "OWNER")]);
+        const receipt = yield* org.executor.invite("r1", {
+          kind: "invite-member",
+          orgId: ORG,
+          email: "eva@example.com",
+          invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+          level: "work",
+          projects: PROJECTS,
+        });
+        expect(org.calls).toEqual([
+          "inviteOrganizationUser",
+          "listOrganizationMembers",
+          "readMemberProjectRoles",
+          "writeMemberProjectRoles",
+        ]);
+        expect(org.members.at(-1)).toMatchObject({
+          roleCode: "NO_ACCESS",
+          canCreateProjects: true,
+        });
+        expect(org.grants["cu-new"]).toEqual([
+          { projectId: "prod", roleCode: "BASIC_USER" },
+          { projectId: "stage", roleCode: "BASIC_USER" },
+          { projectId: "m-1", roleCode: "READ_ONLY" },
+        ]);
+        expect(org.readBack).toEqual([["prod", "stage"]]);
+        expect(receipt).toMatchObject({
+          acceptance: { kind: "accepted", result: { clientUserId: "cu-new" } },
+          outcome: { kind: "succeeded" },
+        });
+      }),
+  );
+
+  it.effect("An existing account is connected, and someone who only looks can't add projects", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "known@example.com",
+        invitee: { kind: "existing", userId: "u-known" },
+        level: "look",
+        projects: PROJECTS,
+      });
+      expect(org.calls[0]).toBe("connectOrganizationUser");
+      expect(org.grants["cu-known"]).toEqual([
+        { projectId: "prod", roleCode: "READ_ONLY" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ]);
+    }),
+  );
+
+  const inviteEva = (org: ReturnType<typeof organization>) =>
+    org.executor.invite("r1", {
+      kind: "invite-member",
+      orgId: ORG,
+      email: "eva@example.com",
+      invitee: { kind: "new", firstName: "Eva", lastName: "D" },
+      level: "work",
+      projects: PROJECTS,
+    });
+
+  it.effect("An invitation whose answer was lost goes on once the member list shows it", () =>
+    Effect.gen(function* () {
+      const org = organization([], {}, { inviteOrganizationUser: "landed" });
+      const receipt = yield* inviteEva(org);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      expect(org.calls.filter((verb) => verb === "inviteOrganizationUser")).toHaveLength(1);
+    }),
+  );
+
+  it.effect(
+    "An invitation whose answer was lost, and that the list doesn't show, is the person's to check",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([], {}, { inviteOrganizationUser: lost });
+        const answer = yield* inviteEva(org);
+        expect(answer).toMatchObject({
+          unobservable: {
+            nextActor: "person",
+            nextAction: "Check the organization's members in Zerops, then invite again",
+          },
+        });
+        expect(org.calls.filter((verb) => verb === "inviteOrganizationUser")).toHaveLength(1);
+      }),
+  );
+
+  it.effect("An invitation Zerops took, but whose access it refused, says both", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [],
+        {},
+        {
+          writeMemberProjectRoles: () =>
+            Promise.reject(new ZeropsApiError("Nope.", "invalid-input", 400, "x", "Nope.")),
+        },
+      );
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "D" },
+        level: "work",
+        projects: PROJECTS,
+      });
+      expect(receipt).toMatchObject({
+        outcome: {
+          kind: "failed",
+          evidence: "They're invited, but Zerops didn't take their access here: Nope.",
+        },
+      });
+    }),
+  );
+
+  it.effect("An address invited meanwhile is said in words", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [],
+        {},
+        {
+          inviteOrganizationUser: () =>
+            Promise.reject(new ZeropsApiError("Dup.", "invalid-input", 400, "duplicatedUser")),
+        },
+      );
+      const answer = yield* Effect.result(
+        org.executor.invite("r1", {
+          kind: "invite-member",
+          orgId: ORG,
+          email: "eva@example.com",
+          invitee: { kind: "new", firstName: "Eva", lastName: "D" },
+          level: "work",
+          projects: PROJECTS,
+        }),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "Already in this organization — change their access in the list.",
+      });
+    }),
+  );
+});
+
+describe("inviting someone to the team", () => {
+  const TWO_APPS = { places: ["prod", "stage", "other-prod"], mates: ["m-1"] };
+
+  it.effect.each([
+    {
+      sentence: "A guest gets only the projects chosen for them, and can't start new ones",
+      role: "guest" as const,
+      level: "work" as const,
+      membership: { roleCode: "NO_ACCESS", canCreateProjects: false },
+      grants: [
+        { projectId: "prod", roleCode: "BASIC_USER" },
+        { projectId: "stage", roleCode: "BASIC_USER" },
+        { projectId: "other-prod", roleCode: "BASIC_USER" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence: "A developer gets the chosen projects at the level chosen, and can start new ones",
+      role: "developer" as const,
+      level: "look" as const,
+      membership: { roleCode: "NO_ACCESS", canCreateProjects: true },
+      grants: [
+        { projectId: "prod", roleCode: "READ_ONLY" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+        { projectId: "other-prod", roleCode: "READ_ONLY" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence: "An admin reaches everything by their role: no project is written for them",
+      role: "admin" as const,
+      level: "work" as const,
+      membership: { roleCode: "ADMIN", canCreateProjects: true },
+      grants: undefined,
+    },
+  ])("$sentence", ({ role, level, membership, grants }) =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-owner", "OWNER")]);
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+        level,
+        membership: presetMembership(role),
+        projects: TWO_APPS,
+      });
+      expect(org.members.at(-1)).toMatchObject(membership);
+      expect(org.grants["cu-new"]).toEqual(grants);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+});
+
+describe("inviting someone from the Team page, project by project", () => {
+  it.effect.each([
+    {
+      sentence: "A guest gets each project at the level set for it",
+      membership: presetMembership("guest"),
+      grants: [
+        { projectId: "prod", roleCode: "ADMIN" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
+      ],
+      written: [
+        { projectId: "prod", roleCode: "ADMIN" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+      ],
+    },
+    {
+      sentence:
+        "A member who sees every project, invited with one hidden, gets no access written there",
+      membership: {
+        roleCode: "READ_ONLY",
+        canCreateProjects: false,
+        canViewFinances: false,
+        canEditFinances: false,
+      } as const,
+      grants: [
+        { projectId: "prod", roleCode: "NO_ACCESS" as const },
+        { projectId: "stage", roleCode: "READ_ONLY" as const },
+      ],
+      written: [{ projectId: "prod", roleCode: "NO_ACCESS" }],
+    },
+  ])("$sentence", ({ membership, grants, written }) =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-owner", "OWNER")]);
+      const receipt = yield* org.executor.invite("r1", {
+        kind: "invite-member",
+        orgId: ORG,
+        email: "eva@example.com",
+        invitee: { kind: "new", firstName: "Eva", lastName: "Dvořáková" },
+        membership,
+        grants,
+      });
+      expect(org.members.at(-1)).toMatchObject({ roleCode: membership.roleCode });
+      expect(org.grants["cu-new"]).toEqual(written);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+});
+
+describe("sending an invitation again", () => {
+  /** An invitation not joined yet: a developer on one project, who may start their own. */
+  const invited = (email = "known@example.com"): ZeropsOrganizationMember => ({
+    id: "cu-invited",
+    status: "WAITING_AUTHORIZATION",
+    roleCode: "NO_ACCESS",
+    canCreateProjects: true,
+    canViewFinances: false,
+    canEditFinances: false,
+    user: { id: "u-invited", email },
+  });
+  const ON_SHOP = [{ projectId: "prod", roleCode: "BASIC_USER" }];
+  const resend = (
+    org: ReturnType<typeof organization>,
+    names?: { firstName: string; lastName: string },
+  ) =>
+    org.executor.resend("r1", {
+      kind: "resend-invitation",
+      orgId: ORG,
+      clientUserId: "cu-invited",
+      ...(names === undefined ? {} : { names }),
+    });
+
+  it.effect(
+    "Send again withdraws the invitation and invites the same address with the same role and projects",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([member("cu-owner", "OWNER"), invited()], {
+          "cu-invited": [...ON_SHOP],
+        });
+        const receipt = yield* resend(org);
+        expect(org.calls.indexOf("removeOrganizationMember")).toBeLessThan(
+          org.calls.indexOf("connectOrganizationUser"),
+        );
+        expect(org.members.map(({ id }) => id)).toEqual(["cu-owner", "cu-known"]);
+        expect(org.members.at(-1)).toMatchObject({ roleCode: "NO_ACCESS" });
+        expect(org.grants["cu-known"]).toEqual(ON_SHOP);
+        expect(org.readBackMembers.at(-1)).toEqual(["cu-known"]);
+        expect(receipt).toMatchObject({
+          acceptance: {
+            kind: "accepted",
+            result: {
+              clientUserId: "cu-known",
+              invitation: {
+                email: "known@example.com",
+                membership: {
+                  roleCode: "NO_ACCESS",
+                  canCreateProjects: true,
+                  canViewFinances: false,
+                  canEditFinances: false,
+                },
+                grants: ON_SHOP,
+              },
+            },
+          },
+          outcome: { kind: "succeeded" },
+        });
+      }),
+  );
+
+  it.effect(
+    "An address with no Zerops account is invited again by the name its inviter typed",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([invited("eva@example.com")], { "cu-invited": [...ON_SHOP] });
+        const receipt = yield* resend(org, { firstName: "Eva", lastName: "Dvořáková" });
+        expect(org.calls).toContain("inviteOrganizationUser");
+        expect(org.grants["cu-new"]).toEqual(ON_SHOP);
+        expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      }),
+  );
+
+  it.effect("A withdrawal Zerops refuses leaves the invitation standing and sends nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([invited()], {}, { removeOrganizationMember: forbidden });
+      const failure = yield* Effect.flip(resend(org));
+      expect(failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message: "Only an organization owner or admin can invite.",
+      });
+      expect(org.members.map(({ id }) => id)).toEqual(["cu-invited"]);
+      expect(org.calls).not.toContain("connectOrganizationUser");
+      expect(org.calls).not.toContain("inviteOrganizationUser");
+    }),
+  );
+
+  it.effect(
+    "A withdrawal whose answer was lost goes on once the member list no longer shows it",
+    () =>
+      Effect.gen(function* () {
+        const org = organization([invited()], {}, { removeOrganizationMember: "landed" });
+        const receipt = yield* resend(org);
+        expect(org.members.map(({ id }) => id)).toEqual(["cu-known"]);
+        expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+      }),
+  );
+
+  it.effect(
+    "An invitation Zerops refuses after the withdrawal says so and hands back what to invite again",
+    () =>
+      Effect.gen(function* () {
+        const org = organization(
+          [invited()],
+          { "cu-invited": [...ON_SHOP] },
+          {
+            connectOrganizationUser: () =>
+              Promise.reject(new ZeropsApiError("Too many invitations.", "invalid-input", 400)),
+          },
+        );
+        const receipt = yield* resend(org);
+        expect(org.members).toEqual([]);
+        expect(receipt).toMatchObject({
+          acceptance: {
+            kind: "accepted",
+            result: {
+              clientUserId: null,
+              invitation: { email: "known@example.com", grants: ON_SHOP },
+              unsent:
+                "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations.",
+            },
+          },
+          outcome: {
+            kind: "failed",
+            evidence:
+              "Their earlier invitation is withdrawn, but Zerops didn't send the new one: Too many invitations.",
+          },
+        });
+      }),
+  );
+
+  it.effect("Inviting again from what a failed Send again handed back withdraws nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      const receipt = yield* org.executor.resend("r2", {
+        kind: "resend-invitation",
+        orgId: ORG,
+        clientUserId: "cu-invited",
+        invitation: {
+          email: "known@example.com",
+          membership: presetMembership("developer"),
+          grants: ON_SHOP,
+        },
+      });
+      expect(org.calls).not.toContain("removeOrganizationMember");
+      expect(org.grants["cu-known"]).toEqual(ON_SHOP);
+      expect(receipt).toMatchObject({
+        acceptance: { kind: "accepted", result: { clientUserId: "cu-known" } },
+        outcome: { kind: "succeeded" },
+      });
+    }),
+  );
+
+  it.effect("Someone who has joined since is sent nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([{ ...invited(), status: "ACTIVE" }]);
+      const failure = yield* Effect.flip(resend(org));
+      expect(failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message: "They've joined already.",
+      });
+      expect(org.calls).toEqual(["listOrganizationMembers"]);
+    }),
+  );
+});
+
+describe("changing a member's access to an app", () => {
+  const set = (
+    org: ReturnType<typeof organization>,
+    clientUserId: string,
+    change: "work" | "look" | "remove" | "withdraw",
+  ) =>
+    org.executor.setAccess("r1", {
+      kind: "set-app-access",
+      orgId: ORG,
+      clientUserId,
+      change,
+      projects: PROJECTS,
+      owned: [],
+    });
+
+  it.effect("A level is written into the member's whole list, their other projects kept", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-jan", "NO_ACCESS")], {
+        "cu-jan": [{ projectId: "p-far", roleCode: "OWNER" }],
+      });
+      const receipt = yield* set(org, "cu-jan", "look");
+      expect(org.grants["cu-jan"]).toEqual([
+        { projectId: "p-far", roleCode: "OWNER" },
+        { projectId: "prod", roleCode: "READ_ONLY" },
+        { projectId: "stage", roleCode: "READ_ONLY" },
+        { projectId: "m-1", roleCode: "READ_ONLY" },
+      ]);
+      expect(org.readBack).toEqual([["prod", "stage"]]);
+      expect(receipt).toMatchObject({
+        acceptance: { result: { membershipEnded: false } },
+        outcome: { kind: "succeeded" },
+      });
+    }),
+  );
+
+  it.effect("A level the member already has writes nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-jan", "READ_ONLY")]);
+      yield* set(org, "cu-jan", "look");
+      expect(org.calls).not.toContain("writeMemberProjectRoles");
+    }),
+  );
+
+  it.effect("Withdrawing an invitation that opened only this app ends it", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-iva", "NO_ACCESS", "WAITING_AUTHORIZATION")], {
+        "cu-iva": [{ projectId: "prod", roleCode: "BASIC_USER" }],
+      });
+      const receipt = yield* set(org, "cu-iva", "withdraw");
+      expect(org.calls.slice(-2)).toEqual(["writeMemberProjectRoles", "removeOrganizationMember"]);
+      expect(org.members).toEqual([]);
+      expect(receipt).toMatchObject({ acceptance: { result: { membershipEnded: true } } });
+    }),
+  );
+
+  it.effect("Withdrawing an invitation that opens another app too keeps it", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-iva", "NO_ACCESS", "WAITING_AUTHORIZATION")], {
+        "cu-iva": [
+          { projectId: "prod", roleCode: "BASIC_USER" },
+          { projectId: "p-other-app", roleCode: "BASIC_USER" },
+        ],
+      });
+      yield* set(org, "cu-iva", "withdraw");
+      expect(org.calls).not.toContain("removeOrganizationMember");
+    }),
+  );
+
+  it.effect("A grants write whose answer was lost is proven by reading the list back", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-jan", "NO_ACCESS")],
+        {},
+        {
+          writeMemberProjectRoles: "landed",
+        },
+      );
+      const receipt = yield* set(org, "cu-jan", "work");
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect(
+    "A lost grants write the list doesn't show is the person's to check, never resent",
+    () =>
+      Effect.gen(function* () {
+        const org = organization(
+          [member("cu-jan", "NO_ACCESS")],
+          {},
+          {
+            writeMemberProjectRoles: lost,
+          },
+        );
+        const answer = yield* set(org, "cu-jan", "work");
+        expect(answer).toMatchObject({
+          unobservable: {
+            nextActor: "person",
+            nextAction: "Check their access, then choose again",
+          },
+        });
+        expect(org.calls.filter((verb) => verb === "writeMemberProjectRoles")).toHaveLength(1);
+      }),
+  );
+
+  it.effect("Someone no longer in the organization is said so, and nothing is written", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      const answer = yield* Effect.result(set(org, "cu-gone", "work"));
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "They're no longer in this organization.",
+      });
+      expect(org.calls).toEqual(["listOrganizationMembers"]);
+    }),
+  );
+
+  it.effect("Zerops refusing the viewer says who may change access", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-jan", "NO_ACCESS")],
+        {},
+        {
+          writeMemberProjectRoles: forbidden,
+        },
+      );
+      const answer = yield* Effect.result(set(org, "cu-jan", "work"));
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "Only an organization owner or admin can change who has access.",
+      });
+    }),
+  );
+});
+
+describe("setting who reaches some projects", () => {
+  const set = (
+    org: ReturnType<typeof organization>,
+    changes: ReadonlyArray<{
+      clientUserId: string;
+      projectId: string;
+      roleCode: "ADMIN" | "READ_ONLY" | "NO_ACCESS" | null;
+    }>,
+  ) => org.executor.setProjectAccess("r1", { kind: "set-project-access", orgId: ORG, changes });
+
+  it.effect.each([
+    {
+      sentence: "Zerops keeping a project visible to an admin says so, not that the viewer may not",
+      code: "noAccessRoleInvalid",
+      detail:
+        "'ADMIN' users cannot be given 'NO_ACCESS' on projects - they must retain visibility to all projects.",
+      message: "Zerops keeps every project visible to organization owners and admins.",
+    },
+    {
+      sentence: "A refusal Zerops gives a rule of its own is said in Zerops's words",
+      code: "somethingNew",
+      detail: "Projects can't be changed right now.",
+      message: "Projects can't be changed right now.",
+    },
+    {
+      sentence: "Zerops refusing the viewer's permission says who may change access",
+      code: "insufficientPermissions",
+      detail: "Insufficient permissions",
+      message: "Only an organization owner or admin can change who has access.",
+    },
+  ])("$sentence", ({ code, detail, message }) =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-adm", "ADMIN")],
+        {},
+        {
+          writeMemberProjectRoles: () =>
+            Promise.reject(new ZeropsApiError("Forbidden.", "forbidden", 403, code, detail)),
+        },
+      );
+      const answer = yield* Effect.result(
+        set(org, [{ clientUserId: "cu-adm", projectId: "prod", roleCode: "NO_ACCESS" }]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        outcome: "definitive-refusal",
+        message,
+      });
+    }),
+  );
+
+  it.effect("Setting someone's project access reads their own grants again before it is done", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ro", "READ_ONLY")]);
+      yield* set(org, [{ clientUserId: "cu-ro", projectId: "stage", roleCode: "NO_ACCESS" }]);
+      expect(org.readBackMembers).toEqual([["cu-ro"]]);
+    }),
+  );
+
+  it.effect("Each person's change is one write of their own list, their other projects kept", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "NO_ACCESS"), member("cu-bo", "BASIC_USER")], {
+        "cu-ada": [{ projectId: "p-far", roleCode: "OWNER" }],
+        "cu-bo": [{ projectId: "stage", roleCode: "READ_ONLY" }],
+      });
+      const receipt = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+        { clientUserId: "cu-ada", projectId: "prod", roleCode: "ADMIN" },
+        { clientUserId: "cu-bo", projectId: "stage", roleCode: null },
+      ]);
+      expect(org.grants).toEqual({
+        "cu-ada": [
+          { projectId: "p-far", roleCode: "OWNER" },
+          { projectId: "stage", roleCode: "ADMIN" },
+          { projectId: "prod", roleCode: "ADMIN" },
+        ],
+        "cu-bo": [],
+      });
+      expect(org.calls.filter((verb) => verb === "writeMemberProjectRoles")).toHaveLength(2);
+      // The member list and every project touched are read again before it reports done.
+      expect(org.readBack).toEqual([["stage", "prod"]]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A change someone already has writes nothing", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "READ_ONLY")]);
+      yield* set(org, [{ clientUserId: "cu-ada", projectId: "stage", roleCode: "READ_ONLY" }]);
+      expect(org.calls).not.toContain("writeMemberProjectRoles");
+    }),
+  );
+
+  it.effect("A project write whose answer was lost is proven by reading the list back", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: "landed" },
+      );
+      const receipt = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+      ]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost project write the list doesn't show is the person's to check", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: lost },
+      );
+      const answer = yield* set(org, [
+        { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+      ]);
+      expect(answer).toMatchObject({
+        unobservable: { nextActor: "person", nextAction: "Check their access, then choose again" },
+      });
+      expect(org.readBack).toEqual([["stage"]]);
+    }),
+  );
+
+  it.effect("Someone who left the organization is said so before anything is written", () =>
+    Effect.gen(function* () {
+      const org = organization([member("cu-ada", "NO_ACCESS")]);
+      const answer = yield* Effect.result(
+        set(org, [
+          { clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" },
+          { clientUserId: "cu-gone", projectId: "stage", roleCode: "ADMIN" },
+        ]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "They're no longer in this organization.",
+      });
+      expect(org.calls).toEqual(["listOrganizationMembers"]);
+    }),
+  );
+
+  it.effect("Zerops refusing a project change says who may change access", () =>
+    Effect.gen(function* () {
+      const org = organization(
+        [member("cu-ada", "NO_ACCESS")],
+        {},
+        { writeMemberProjectRoles: forbidden },
+      );
+      const answer = yield* Effect.result(
+        set(org, [{ clientUserId: "cu-ada", projectId: "stage", roleCode: "ADMIN" }]),
+      );
+      expect(Result.isFailure(answer) && answer.failure).toMatchObject({
+        message: "Only an organization owner or admin can change who has access.",
+      });
+      expect(org.readBack).toEqual([["stage"]]);
+    }),
+  );
+});
+
+describe("giving a project just made its people", () => {
+  const grant = (org: ReturnType<typeof organization>) =>
+    org.executor.grantNewProject("r1", {
+      kind: "grant-new-project-access",
+      orgId: ORG,
+      projectId: "p-new",
+      userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }],
+    });
+
+  it.effect("A project imported whole is given the people its creator chose, then read again", () =>
+    Effect.gen(function* () {
+      const org = organization([]);
+      const receipt = yield* grant(org);
+      expect(org.projects["p-new"]?.userRoles).toEqual([
+        { clientUserId: "cu-creator", roleCode: "OWNER" },
+        { clientUserId: "cu-ada", roleCode: "ADMIN" },
+      ]);
+      expect(org.readBack).toEqual([["p-new"]]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost answer is proven by the project's own list", () =>
+    Effect.gen(function* () {
+      const org = organization([], {}, { writeNewProjectAccess: "landed" });
+      const receipt = yield* grant(org);
+      expect(org.calls).toEqual(["writeNewProjectAccess", "fetchProject"]);
+      expect(receipt).toMatchObject({ outcome: { kind: "succeeded" } });
+    }),
+  );
+
+  it.effect("A lost answer the project doesn't show is the person's to check, never resent", () =>
+    Effect.gen(function* () {
+      const org = organization([], {}, { writeNewProjectAccess: lost });
+      const answer = yield* grant(org);
+      expect(answer).toMatchObject({
+        unobservable: {
+          nextActor: "person",
+          nextAction: "Check who has access on the project's page",
+        },
+      });
+      expect(org.calls.filter((verb) => verb === "writeNewProjectAccess")).toHaveLength(1);
+    }),
+  );
+});

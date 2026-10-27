@@ -1,0 +1,40 @@
+/* Loaded by the document before its first frame, shared with the rendered menu. */
+:root {
+  --sidebar-content-inset: 0.75rem;
+  --sidebar-chief-row-height: 66px;
+  --sidebar-menu-header-height: calc(
+    var(--sidebar-content-inset) + 1px + var(--sidebar-chief-row-height)
+  );
+}
+
+#boot-shell-menu > [inert] {
+  padding-top: var(--sidebar-menu-header-height);
+  padding-inline: calc(var(--sidebar-content-inset) + 1px) var(--sidebar-content-inset);
+}
+
+[data-zerops-surface="sidebar-environments-skeleton"] {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 10px;
+}
+
+[data-zerops-surface="sidebar-environments-skeleton"] > div {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: 28px;
+}
+
+[data-zerops-surface="sidebar-environments-skeleton"] > div > span {
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  border-radius: 9999px;
+}
+
+[data-zerops-surface="sidebar-environments-skeleton"] > div > span + span {
+  flex-shrink: 1;
+  width: 66.6667%;
+  height: 8px;
+}

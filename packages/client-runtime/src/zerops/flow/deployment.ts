@@ -1,0 +1,811 @@
+/**
+ * What a stop runs, as a fact (DESIGN §4.7 "Deployment", D6).
+ *
+ * Existence comes from the platform's deployment facet, not from the group's
+ * deploy pass, and without HQ. A native frame states the active version's
+ * id, status and times but not its source or name (A14): a version whose
+ * source nobody has stated yet is pending, never running and never none. The
+ * pass's REST read (`userData`) names a version only where nothing else does.
+ *
+ * The project's running processes say the rest (A11). While a `stack.build`
+ * runs for a service, the service is deploying the version it builds, whose
+ * name is the commit on a Mate's deploys. Once the active version's id is the
+ * one a build named, that name is what runs, the build over or not. A version
+ * no build named is read from the service directly (`unnamedVersions`), which
+ * states its source and, while it is the newest deploy started, its name.
+ *
+ * The one negative, "Nothing deployed yet", is earned: only a complete listing
+ * whose every runtime service is observed with no active deploy, and a
+ * complete process listing with no build for it, says it. A facet not yet read
+ * is `unread`, and the stop holds its line; a facet the platform will not show
+ * fails the stop rather than proving it empty.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ *
+ * @module flow/deployment
+ */
+import { isZcpService } from "../containerAddress.ts";
+import type { ZeropsServiceDeployedVersion } from "../../data/projections/serviceRuns.ts";
+import type { ProjectRef, ServiceRef } from "../data/types.ts";
+import { ZeropsServiceId } from "../data/types.ts";
+import type { ProjectServices } from "../../data/projections/services.ts";
+import type { ServiceValue } from "../../data/families/service.ts";
+import type { ZeropsAppVersion } from "../api.ts";
+
+export interface DeploymentServices extends ProjectServices {
+  readonly project: ProjectRef;
+}
+export interface ServiceDeployInfo {
+  readonly id: string | null;
+  readonly status: string | null;
+  readonly source: string | null;
+  readonly activatedAt: string | null;
+  readonly name: string | null;
+  readonly branch: string | null;
+  readonly commit: string | null;
+  readonly tag: string | null;
+  readonly repository: string | null;
+}
+function deployOf(service: ServiceValue, version: ZeropsAppVersion): ServiceDeployInfo {
+  const variable = (key: string) =>
+    service.userData?.find((entry) => entry.key === key)?.content?.trim() || null;
+  const id = version.id ?? null;
+  return {
+    id,
+    status: version.status ?? null,
+    source: version.source ?? null,
+    activatedAt: version.lastUpdate || version.created || null,
+    name:
+      version.name ??
+      (id !== null && variable("appVersionId") === id ? variable("appVersionName") : null),
+    branch:
+      version.githubIntegration?.branchName ??
+      version.gitlabIntegration?.branchName ??
+      version.publicGitSource?.branchName ??
+      null,
+    commit: version.githubIntegration?.commit ?? version.gitlabIntegration?.commit ?? null,
+    tag: version.githubIntegration?.tagName ?? version.gitlabIntegration?.tagName ?? null,
+    repository:
+      version.githubIntegration?.repositoryFullName ??
+      version.gitlabIntegration?.repositoryFullName ??
+      version.publicGitSource?.repositoryUrl ??
+      null,
+  };
+}
+const serviceRef = (project: ProjectRef, service: ServiceValue): ServiceRef => ({
+  kind: "service",
+  project,
+  serviceId: ZeropsServiceId.make(service.id),
+});
+import { deployWord } from "../groupDeploys.ts";
+import {
+  deployedCommit,
+  deployedVersion,
+  type DeployedVersion,
+  type EnvironmentRow,
+  type GroupRowTone,
+} from "../groupRows.ts";
+import type { FailureReason, Freshness, Known, Shown, Stamp } from "../knowledge/known.ts";
+import { knownPresentation, type KnownSurface } from "../knowledge/presentation.ts";
+import { shortCommit } from "../release.ts";
+import { sameCommit } from "../versionName.ts";
+import type { StopBuild, StopWork } from "../../data/projections/stopWork.ts";
+import type { VersionSource } from "../../data/projections/versionSource.ts";
+
+/** A build of a service that Zerops ended failed or canceled, by its process (`noneAfter`). */
+export interface FailedBuild {
+  readonly processId: string;
+  /** Zerops' end of it, in words. */
+  readonly reason: string;
+}
+
+export type Deployment =
+  /**
+   * The deployment facet is observed and names no active deploy. `failedBuild`: the build of it
+   * followed while it was demanded, which Zerops ended failed — nothing it built runs.
+   */
+  | { readonly kind: "none"; readonly failedBuild?: FailedBuild }
+  | {
+      readonly kind: "running";
+      /** When the active deploy was activated, as the platform pushed it. */
+      readonly activatedAt: string | null;
+      /** The pushed name, and the commit only where the platform named none. */
+      readonly version: DeployedVersion;
+    }
+  /**
+   * A build for the service runs: the version it builds, named by the build (A11), and what ran
+   * when it started — `null` while nothing states that — which runs on if the build fails.
+   */
+  | {
+      readonly kind: "deploying";
+      readonly version: DeployedVersion;
+      readonly previous: SettledDeployment | null;
+    };
+
+/** What a service runs with no build of it in the way. */
+export type SettledDeployment = Exclude<Deployment, { readonly kind: "deploying" }>;
+
+export const NOTHING_DEPLOYED = "Nothing deployed yet";
+export const CHECKING_WHAT_RUNS = "Checking what runs here…";
+/** A stop's word for a deploy nobody has reported a build status for. */
+export const RUNNING_WORD = "Deployed";
+
+/**
+ * When the version a stop runs went live: `null` while it runs nothing, builds,
+ * or nothing is known yet. A surface reads it here, never off the Known itself.
+ */
+export function deployActivatedAt(deployment: Shown<Deployment> | undefined): string | null {
+  return deployment?.state === "known" && deployment.value.kind === "running"
+    ? deployment.value.activatedAt
+    : null;
+}
+
+/**
+ * Whether a stop runs a version now, as the platform pushed it: `false` while it
+ * runs nothing, builds, or nothing is known yet. A surface reads it here, never
+ * off the Known itself.
+ */
+export function deployRuns(deployment: Shown<Deployment> | undefined): boolean {
+  return deployment?.state === "known" && deployment.value.kind === "running";
+}
+
+/**
+ * A deploy on its way on a stop: the version it builds and what served before
+ * it. `undefined` while nothing builds, or nothing is known yet.
+ */
+export function deployBuilding(
+  deployment: Shown<Deployment> | undefined,
+): { readonly version: DeployedVersion; readonly previous: SettledDeployment | null } | undefined {
+  if (deployment?.state !== "known" || deployment.value.kind !== "deploying") return undefined;
+  return { version: deployment.value.version, previous: deployment.value.previous };
+}
+
+export const DEPLOYMENT_SURFACE: KnownSurface<Deployment> = {
+  subject: "what runs here",
+  entity: "service",
+  source: "zerops",
+  checking: CHECKING_WHAT_RUNS,
+  negative: (deployment) => (deployment.kind === "none" ? NOTHING_DEPLOYED : null),
+};
+
+/** The version a pushed deploy names: its name, else its commit. */
+function pushedVersion(deploy: ServiceDeployInfo): DeployedVersion {
+  const named = deployedVersion(deploy.name ?? undefined);
+  if (named.label !== undefined) return named;
+  const sha = deployedCommit(deploy.commit ?? undefined);
+  if (sha === undefined) return named;
+  const commit = shortCommit(sha);
+  return { name: undefined, commit, sha, taggedBy: undefined, label: commit };
+}
+
+/**
+ * A never-deployed runtime still carries an `ACTIVE` version whose source is
+ * `NONE` (measured on `z3-eval`'s `s3git1`); it runs nothing.
+ */
+const runsNothing = (deploy: ServiceDeployInfo | null): deploy is null =>
+  deploy === null || deploy.source === "NONE";
+
+/** What one service contributes to its stop. */
+type ServiceAnswer =
+  | { readonly kind: "not-a-stop" }
+  | { readonly kind: "pending" }
+  /** The platform shows the service but will not say what it runs: no answer, never a none. */
+  | { readonly kind: "withheld"; readonly reason: string; readonly atMs: number }
+  | { readonly kind: "none"; readonly asOf: Stamp }
+  /** An active version whose source nobody stated (A14): only a build's name can say it runs. */
+  | { readonly kind: "unstated"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp }
+  | { readonly kind: "running"; readonly deploy: ServiceDeployInfo; readonly asOf: Stamp };
+
+function serviceAnswer(service: ServiceValue): ServiceAnswer {
+  if (service.isSystem === true || isZcpService(service)) return { kind: "not-a-stop" };
+  if (service.activeAppVersion === undefined) return { kind: "pending" };
+  const deploy =
+    service.activeAppVersion === null ? null : deployOf(service, service.activeAppVersion);
+  const asOf = { ordinal: 0, atMs: 0 };
+  if (runsNothing(deploy)) return { kind: "none", asOf };
+  if (deploy.source === null) return { kind: "unstated", deploy, asOf };
+  return { kind: "running", deploy, asOf };
+}
+
+/** The worst of the reads a stop needs, which is what vouches for it. */
+type SourceState =
+  | { readonly kind: "observing" }
+  | { readonly kind: "establishing"; readonly sinceMs: number }
+  | { readonly kind: "paused"; readonly reason: "background" | "offline" | "no-leases" }
+  | {
+      readonly kind: "failed";
+      readonly failure: FailureReason;
+      readonly attempts: number;
+      readonly retryAtMs: number | null;
+    };
+
+const SEVERITY: Record<SourceState["kind"], number> = {
+  observing: 0,
+  establishing: 1,
+  paused: 2,
+  failed: 4,
+};
+
+function sourceOf(read: ProjectServices): SourceState {
+  if (read.unavailableReason !== undefined)
+    return {
+      kind: "failed",
+      failure: { kind: "refused", code: read.unavailableReason, words: "" },
+      attempts: 1,
+      retryAtMs: null,
+    };
+  if (read.live) return { kind: "observing" };
+  if (read.reconnecting)
+    return {
+      kind: "failed",
+      failure: { kind: "transport", detail: "catching up" },
+      attempts: 1,
+      retryAtMs: null,
+    };
+  return { kind: "establishing", sinceMs: 0 };
+}
+
+function worstSource(sources: ReadonlyArray<SourceState>): SourceState {
+  let worst: SourceState = { kind: "observing" };
+  for (const source of sources) {
+    if (SEVERITY[source.kind] > SEVERITY[worst.kind]) worst = source;
+  }
+  return worst;
+}
+
+/** How current a value is, by the source that delivered it (DESIGN §3.5). */
+function freshnessOf(source: SourceState, nowMs: number): Freshness {
+  switch (source.kind) {
+    case "observing":
+      return { kind: "live" };
+    case "establishing":
+      return { kind: "revalidating", sinceMs: source.sinceMs };
+    case "paused":
+      return { kind: "paused", by: source.reason === "offline" ? "offline" : "background" };
+    case "failed":
+      return {
+        kind: "stale",
+        reason: {
+          kind: "revalidation-failed",
+          failure: source.failure,
+          attempt: source.attempts,
+          retryAtMs: source.retryAtMs,
+        },
+        sinceMs: nowMs,
+      };
+  }
+}
+
+/** What a stop, or its list of services, is while no value is known for it (DESIGN §3.5). */
+function notYetKnown<T>(source: SourceState, nowMs: number): Known<T> {
+  switch (source.kind) {
+    case "observing":
+      return { state: "unread", waitingFor: null };
+    case "establishing":
+      return { state: "reading", sinceMs: source.sinceMs, attempt: 1 };
+    case "paused":
+      return {
+        state: "unread",
+        waitingFor:
+          source.reason === "background"
+            ? "visible"
+            : source.reason === "offline"
+              ? "online"
+              : null,
+      };
+    case "failed":
+      return {
+        state: "failed",
+        failure: source.failure,
+        atMs: nowMs,
+        attempt: source.attempts,
+        retryAtMs: source.retryAtMs,
+      };
+  }
+}
+
+/** One runtime service of a stop, and what it runs: the deployment is a fact per service (D6). */
+export interface StopService {
+  readonly service: ServiceRef;
+  readonly hostname: string;
+  readonly deployment: Shown<Deployment>;
+}
+
+/** What a stop is read from: its services' listing, and the account's store's word on its work. */
+export interface StopReads {
+  readonly services: DeploymentServices;
+  /** The stop's running builds, what its builds named, its services' active versions. */
+  readonly work: StopWork;
+  /** What the organization's active versions state of each version a service runs, by its id. */
+  readonly versions: ReadonlyMap<string, VersionSource>;
+  /**
+   * What the service's own variables name an active version a push left unnamed and no build
+   * named, by that version's id (A11, `unnamedVersions`).
+   */
+  readonly stated: ReadonlyMap<string, Shown<ZeropsServiceDeployedVersion>>;
+  /** Read in detail: a version nothing else names waits for its variables to name it. */
+  readonly detail: boolean;
+}
+
+/** The store's word on running work and versions, as the stop's sources say it. */
+function workSource(work: StopWork): SourceState {
+  switch (work.source.kind) {
+    case "observing":
+      return { kind: "observing" };
+    case "establishing":
+      return { kind: "establishing", sinceMs: 0 };
+    case "catching-up":
+      return {
+        kind: "failed",
+        failure: { kind: "transport", detail: "catching up" },
+        attempts: 1,
+        retryAtMs: null,
+      };
+    case "refused":
+      return {
+        kind: "failed",
+        failure: { kind: "transport", detail: work.source.reason },
+        attempts: 1,
+        retryAtMs: null,
+      };
+  }
+}
+
+/**
+ * The services whose active version a push left unnamed and no build named, each with that
+ * version's id: only the service's own variables can name it (A11).
+ */
+export function unnamedVersions(
+  services: DeploymentServices,
+  names: StopWork["names"],
+): ReadonlyArray<{ readonly service: ServiceRef; readonly versionId: string }> {
+  return (services.services ?? []).flatMap((service) => {
+    const answer = serviceAnswer(service);
+    if (answer.kind !== "unstated") return [];
+    const versionId = answer.deploy.id;
+    return versionId === null || answer.deploy.name !== null || Object.hasOwn(names, versionId)
+      ? []
+      : [{ service: serviceRef(services.project, service), versionId }];
+  });
+}
+
+export function listedVersions(
+  services: DeploymentServices,
+): ReadonlyArray<{ readonly serviceId: string; readonly versionId: string | null }> {
+  return (services.services ?? []).map((service) => ({
+    serviceId: service.id,
+    versionId: activeVersionId(serviceAnswer(service)),
+  }));
+}
+
+/** What one listed service contributes to its stop's list. */
+type ListedService =
+  | { readonly kind: "not-a-stop" }
+  /** Listed, but not read far enough to say whether it is a runtime service. */
+  | { readonly kind: "unidentified" }
+  | { readonly kind: "stop"; readonly stop: StopService };
+
+/** The active version a facet states, whatever its source. */
+function activeVersionId(answer: ServiceAnswer): string | null {
+  return answer.kind === "running" || answer.kind === "unstated" ? answer.deploy.id : null;
+}
+
+/** What a stop's services are measured against: the store's word on its work, what was read. */
+interface StopContext {
+  readonly work: StopWork;
+  readonly versions: StopReads["versions"];
+  readonly stated: StopReads["stated"];
+  readonly detail: boolean;
+  readonly source: SourceState;
+  readonly nowMs: number;
+}
+
+/**
+ * What the service's active version is, as far as anything states it: a build's name for it first,
+ * else what the platform pushed, else the organization's active versions' source for it, named by
+ * the service's variables where they name it; `null` while nothing names or sources it (A14).
+ */
+function activeDeployment(answer: ServiceAnswer, context: StopContext): SettledDeployment | null {
+  switch (answer.kind) {
+    case "none":
+      return { kind: "none" };
+    case "running":
+    case "unstated": {
+      const { id, activatedAt } = answer.deploy;
+      const named = id === null ? undefined : context.work.names[id];
+      if (named !== undefined)
+        return { kind: "running", activatedAt, version: deployedVersion(named) };
+      // The embedded name is admitted only when appVersionId matches the active id (A14).
+      // It proves a deployed build just as a process's name does.
+      if (answer.kind === "running" || answer.deploy.name !== null)
+        return { kind: "running", activatedAt, version: pushedVersion(answer.deploy) };
+      const version = id === null ? undefined : context.versions.get(id);
+      if (version?.kind !== "known" || id === null) return null;
+      // Only `NONE` runs nothing: a row that states no source runs what it was built from.
+      if (version.source === "NONE") return { kind: "none" };
+      const read = context.stated.get(id);
+      // An answer for another version says nothing of this one.
+      const name = read?.state === "known" && read.value.activeId === id ? read.value.name : null;
+      // Detail reads the service's variables: a version they will name waits for its name.
+      if (name === null && context.detail && read?.state !== "known") return null;
+      return { kind: "running", activatedAt, version: deployedVersion(name ?? undefined) };
+    }
+    default:
+      return null;
+  }
+}
+
+/**
+ * An active version nothing states yet. One with no id no read can ever state: a stop read whole —
+ * its services and its running work both observed — ends it with a manual failure, never an idle
+ * placeholder. One with an id waits for the organization's active versions, which deliver it or
+ * have it read by id (`versionSource`); one the platform does not have, or whose versions were
+ * refused, fails. Meanwhile a service that ran nothing still runs nothing, revalidating: the
+ * import's own no-code version, which a push names only by its id (A14), never reads Checking (F5).
+ */
+function unstatedDeployment(
+  answer: Extract<ServiceAnswer, { readonly kind: "running" | "unstated" }>,
+  serviceId: string,
+  context: StopContext,
+): Shown<Deployment> {
+  const { work, source, nowMs } = context;
+  if (answer.deploy.id === null && work.complete && source.kind === "observing")
+    return {
+      state: "failed",
+      failure: { kind: "malformed", detail: "Zerops did not state the active version." },
+      atMs: nowMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
+  const version = answer.deploy.id === null ? undefined : context.versions.get(answer.deploy.id);
+  if (
+    version?.kind === "not-listed" ||
+    version?.kind === "refused" ||
+    version?.kind === "unreadable"
+  )
+    return {
+      state: "failed",
+      failure:
+        version.kind === "not-listed"
+          ? { kind: "malformed", detail: "Its active version is not listed." }
+          : version.kind === "unreadable"
+            ? { kind: "malformed", detail: "Zerops sent an answer that couldn't be read." }
+            : { kind: "transport", detail: "Zerops refused its active versions." },
+      atMs: nowMs,
+      attempt: 1,
+      retryAtMs: null,
+    };
+  // Only while the version is not held yet: one held and waiting for its name runs code.
+  const before = work.active[serviceId];
+  if (
+    version?.kind !== "known" &&
+    before !== undefined &&
+    before.source === "NONE" &&
+    source.kind !== "paused"
+  )
+    return {
+      state: "known",
+      value: { kind: "none" },
+      asOf: answer.asOf,
+      coverage: "complete",
+      freshness: { kind: "revalidating", sinceMs: nowMs },
+    };
+  return notYetKnown(source, nowMs);
+}
+
+/** Zerops' end of a build that deployed nothing, in words; none for any other status. */
+function failedWords(status: string | undefined): string | undefined {
+  switch (status) {
+    case "FAILED":
+      return "Zerops reports its build failed";
+    case "CANCELED":
+      return "Zerops reports its build was canceled";
+    default:
+      return undefined;
+  }
+}
+
+/**
+ * Nothing runs: once the newest build of the service the running work showed ended, its end is
+ * Zerops' to say. One Zerops ended failed or canceled failed (`failedBuild`), in its words; any
+ * other end says nothing more than the service does. One that HQ made is HQ's job's to say
+ * (`stageFirstDeploy`). No clock waits on any of it.
+ */
+function noneAfter(serviceId: string, work: StopWork): Deployment {
+  const build = work.lastBuilds[serviceId];
+  const reason = failedWords(build?.status);
+  return build === undefined || reason === undefined
+    ? { kind: "none" }
+    : { kind: "none", failedBuild: { processId: build.processId, reason } };
+}
+
+const buildStamp = (build: StopBuild): Stamp => ({
+  ordinal: 0,
+  atMs: Date.parse(build.created) || 0,
+});
+
+function serviceDeployment(
+  answer: Exclude<ServiceAnswer, { readonly kind: "not-a-stop" }>,
+  serviceId: string,
+  context: StopContext,
+): Shown<Deployment> {
+  const { work, source, nowMs } = context;
+  const known = (value: Deployment, asOf: Stamp): Shown<Deployment> => ({
+    state: "known",
+    value,
+    asOf,
+    coverage: "complete",
+    freshness: freshnessOf(source, nowMs),
+  });
+  const active = activeVersionId(answer);
+  const settled = activeDeployment(answer, context);
+  // A build whose version is already the active one has deployed: the service runs it.
+  const build = work.builds.find(
+    ({ serviceIds, appVersionId }) =>
+      serviceIds.includes(serviceId) && (appVersionId === null || appVersionId !== active),
+  );
+  if (build !== undefined)
+    return known(
+      { kind: "deploying", version: deployedVersion(build.name ?? undefined), previous: settled },
+      buildStamp(build),
+    );
+  switch (answer.kind) {
+    case "running":
+    case "unstated":
+    case "none": {
+      if (settled === null) {
+        if (answer.kind === "none") return notYetKnown(source, nowMs);
+        // What the service runs failing to be stated says why nothing names the version.
+        const read = active === null ? undefined : context.stated.get(active);
+        if (read?.state === "failed") return read;
+        return unstatedDeployment(answer, serviceId, context);
+      }
+      // Nothing active is no proof while a build for it may be running unseen.
+      if (settled.kind === "none" && !work.complete) return notYetKnown(source, nowMs);
+      return known(settled.kind === "none" ? noneAfter(serviceId, work) : settled, answer.asOf);
+    }
+    case "withheld":
+      return {
+        state: "failed",
+        failure: { kind: "refused", code: answer.reason, words: "" },
+        atMs: answer.atMs,
+        attempt: 1,
+        retryAtMs: null,
+      };
+    // A facet the service has not stated yet is unknown until it does.
+    case "pending":
+      return notYetKnown(source, nowMs);
+  }
+}
+
+function listedService(
+  service: ServiceValue,
+  project: ProjectRef,
+  context: StopContext,
+): ListedService {
+  const answer = serviceAnswer(service);
+  if (answer.kind === "not-a-stop") return answer;
+  const ref = serviceRef(project, service);
+  return {
+    kind: "stop",
+    stop: {
+      service: ref,
+      hostname: service.name,
+      deployment: serviceDeployment(answer, ref.serviceId, context),
+    },
+  };
+}
+
+/** A complete service listing earns the stop's list; a missing deployment holds only its row. */
+export function stopServices(reads: StopReads, nowMs: number): Known<ReadonlyArray<StopService>> {
+  const read = reads.services;
+  const listing = sourceOf(read);
+  const context: StopContext = {
+    work: reads.work,
+    versions: reads.versions,
+    stated: reads.stated,
+    detail: reads.detail,
+    source: worstSource([listing, workSource(reads.work)]),
+    nowMs,
+  };
+  if (read.services === undefined) return notYetKnown(listing, nowMs);
+  return {
+    state: "known",
+    value: read.services
+      .flatMap((service) => {
+        const entry = listedService(service, read.project, context);
+        return entry.kind === "stop" ? [entry.stop] : [];
+      })
+      .sort((a, b) => a.hostname.localeCompare(b.hostname)),
+    asOf: { ordinal: 0, atMs: 0 },
+    coverage: "complete",
+    freshness: freshnessOf(listing, nowMs),
+  };
+}
+
+/** What a stop's row draws: the badge, its word, and the line under the name. */
+export interface StopView {
+  readonly tone: GroupRowTone;
+  /** The badge's word, which its tooltip and accessible name carry. */
+  readonly word: string;
+  readonly line: string;
+  /** What runs there, when anything is known to; the menu spells it out. */
+  readonly version: DeployedVersion | undefined;
+  /** When what runs there started running, where the platform says it runs and says when. */
+  readonly activatedAt: string | null;
+  /** How long the line waits before it shows: a quick answer never flickers a placeholder. */
+  readonly afterMs: number;
+}
+
+/**
+ * Whether two versions name the same deploy: by commit where both carry one — either may spell it
+ * short, as a name written since 2026-09-30 does (`sameCommit`).
+ */
+const sameVersion = (left: DeployedVersion, right: DeployedVersion): boolean =>
+  left.sha !== undefined && right.sha !== undefined
+    ? sameCommit(left.sha, right.sha) || sameCommit(right.sha, left.sha)
+    : left.label === right.label;
+
+/**
+ * What a running stop runs, the one precedence every surface names it by: the platform's answer,
+ * and the deploy half's row where nothing else names it, or where it read the deploy the platform
+ * names under a name of its own — the release every service of the stop runs
+ * (`nameStopByRelease`), where the platform names one service's.
+ */
+export function runningVersion(
+  runs: DeployedVersion | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
+): DeployedVersion | undefined {
+  const named = runs?.label === undefined ? undefined : runs;
+  const read = row?.version.label === undefined ? undefined : row.version;
+  const same = read !== undefined && named !== undefined && sameVersion(named, read);
+  return same && read.name !== undefined ? read : (named ?? read);
+}
+
+/**
+ * How the deploy a stop runs went, the one rule every surface colours a running stop by — its
+ * page (`stopView`), the menu, the chips and the projects page's cards (`groupFlow`'s `stopOf`,
+ * {@link stopTone}).
+ *
+ * A deploy of a commit only moves forward: a stop that runs a version is deployed. The row's tone
+ * is HQ's record of each service's newest deploy; HQ never asks for a commit a service already
+ * runs, and records a deploy live only once it reads that version back (B17). So a record still
+ * queued or deploying where the platform runs the version was read before HQ saw it go active
+ * (run 4, 2026-10-02: active at +1478.7 s, its status success by +1482.9 s), and never moves a
+ * running stop back to deploying, whether or not the platform's own answer is known just now. A
+ * newer commit starts its own sequence, from the platform's build.
+ *
+ * A failure on the version the stop runs still says Failed. A row read at another version — the
+ * one before, or a build that failed after its name moved (A11, A14) — names nothing there
+ * (`runningVersion`) and fails nothing there; the platform says the stop runs, so it is deployed.
+ * What the row still says is whether HQ recorded a deploy there at all: a stop with none has no
+ * colour and no word (`deployWord`).
+ */
+export function runningTone(
+  runs: DeployedVersion | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
+): GroupRowTone {
+  const named = runs?.label === undefined ? undefined : runs;
+  const read = row?.version.label === undefined ? undefined : row;
+  if (read === undefined || read.tone === "neutral") return "neutral";
+  const same = named === undefined || sameVersion(named, read.version);
+  return read.tone === "bad" && same ? "bad" : "good";
+}
+
+/** A failed runtime attempt is visible even when its last successful answer is held. */
+export function deploymentReadFailed(deployment: Shown<Deployment> | undefined): boolean {
+  return (
+    deployment?.state === "failed" ||
+    deployment?.state === "withheld" ||
+    deployment?.state === "gone" ||
+    (deployment?.state === "known" && deployment.freshness.kind === "stale")
+  );
+}
+
+/**
+ * A stop's tone with no clock — what `stopView` colours it, for a surface that draws only the dot
+ * and its word: a build the platform runs is deploying; a version it runs, or the flow's while its
+ * answer is on its way, is {@link runningTone}'s; nothing running, or nothing known, says nothing.
+ */
+export function stopTone(
+  deployment: Shown<Deployment> | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
+): GroupRowTone {
+  if (deploymentReadFailed(deployment)) return "neutral";
+  if (deployment?.state === "known" && deployment.value.kind === "deploying") return "pending";
+  // "Nothing deployed yet" is earned only by a complete answer; a partial one leaves the row's.
+  if (deployment?.state === "known" && deployment.value.kind === "none") {
+    if (deployment.coverage === "complete") return "neutral";
+  }
+  if (deployment?.state === "known" && deployment.value.kind === "running")
+    return runningTone(deployment.value.version, row);
+  return runningTone(undefined, row);
+}
+
+/**
+ * A stop that runs something, named by `runningVersion` and coloured by `runningTone`.
+ */
+function runningView(
+  runs: Extract<Deployment, { readonly kind: "running" }> | undefined,
+  row: Omit<EnvironmentRow, "projectId"> | undefined,
+): StopView {
+  const version = runningVersion(runs?.version, row);
+  const tone = runningTone(runs?.version, row);
+  return {
+    tone,
+    word: deployWord(tone) ?? RUNNING_WORD,
+    line: version?.label ?? RUNNING_WORD,
+    version,
+    activatedAt: runs?.activatedAt ?? null,
+    afterMs: 0,
+  };
+}
+
+/**
+ * A stop's row from its deployment and, where the deploy half read one, its
+ * environment row. The platform decides whether anything runs and names it; the
+ * row colours the version it read, and names it only where nothing else does. A
+ * version the row read stands while the platform's answer is on its way. A runtime failure
+ * still says why it could not be read, and a complete none overrides the row.
+ */
+export function stopView(input: {
+  readonly deployment: Shown<Deployment>;
+  readonly row: Omit<EnvironmentRow, "projectId"> | undefined;
+  readonly nowMs: number;
+}): StopView {
+  const { deployment, row } = input;
+  if (deploymentReadFailed(deployment)) {
+    const presentation = knownPresentation(deployment, DEPLOYMENT_SURFACE, {
+      nowMs: input.nowMs,
+      updateOffered: false,
+    });
+    const text =
+      presentation.message?.text ?? presentation.banner?.message.text ?? CHECKING_WHAT_RUNS;
+    return {
+      tone: "neutral",
+      word: text,
+      line: text,
+      version: undefined,
+      activatedAt: null,
+      afterMs: 0,
+    };
+  }
+  if (deployment.state === "known" && deployment.value.kind === "running")
+    return runningView(deployment.value, row);
+  // A build runs now: what it builds is the stop's answer, whatever the row read before it.
+  if (deployment.state === "known" && deployment.value.kind === "deploying") {
+    const { version } = deployment.value;
+    const word = deployWord("pending") ?? RUNNING_WORD;
+    return {
+      tone: "pending",
+      word,
+      line: version.label ?? word,
+      version: version.label === undefined ? undefined : version,
+      activatedAt: null,
+      afterMs: 0,
+    };
+  }
+  const presentation = knownPresentation(deployment, DEPLOYMENT_SURFACE, {
+    nowMs: input.nowMs,
+    updateOffered: false,
+  });
+  if (presentation.negative !== null)
+    return {
+      tone: "neutral",
+      word: presentation.negative,
+      line: presentation.negative,
+      version: undefined,
+      activatedAt: null,
+      afterMs: 0,
+    };
+  if (row !== undefined && row.version.label !== undefined) return runningView(undefined, row);
+  const text = presentation.message?.text ?? CHECKING_WHAT_RUNS;
+  return {
+    tone: "neutral",
+    word: text,
+    line: text,
+    version: undefined,
+    activatedAt: null,
+    afterMs: presentation.message?.afterMs ?? 0,
+  };
+}

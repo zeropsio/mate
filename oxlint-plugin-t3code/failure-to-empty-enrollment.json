@@ -1,0 +1,614 @@
+[
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "serverConfig?.availableEditors ?? []",
+    "owner": "maintainers",
+    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/ChatView.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "animation.finished .catch(() => undefined)",
+    "owner": "maintainers",
+    "reason": "Animation cancellation carries no remote fact; completion performs local animation cleanup.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/ChatView.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "crew.snapshot?.board.tasks ?? []",
+    "owner": "maintainers",
+    "reason": "Unread crew snapshots can resemble no members or tasks; retain snapshot state before presenting empty collections.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/ChatView.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "crew.snapshot?.crewmates ?? []",
+    "owner": "maintainers",
+    "reason": "Unread crew snapshots can resemble no members or tasks; retain snapshot state before presenting empty collections.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/CommandPalette.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "browseResult?.entries ?? EMPTY_BROWSE_ENTRIES",
+    "owner": "maintainers",
+    "reason": "Failed folder discovery can imply an absent path that needs creation; preserve the discovery state.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "localBranchRefs.data?.refs.filter((ref) => ref.name !== selectedGitSource?.headRef) ?? []",
+    "owner": "maintainers",
+    "reason": "Unread ref lists can display no matching refs; distinguish unread or failed discovery from known empty refs.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "remoteBranchRefs.data?.refs ?? []",
+    "owner": "maintainers",
+    "reason": "Unread ref lists can display no matching refs; distinguish unread or failed discovery from known empty refs.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/DiffPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "serverConfig?.availableEditors ?? []",
+    "owner": "maintainers",
+    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "gitStatusForActions?.workingTree.files ?? []",
+    "owner": "maintainers",
+    "reason": "Unread changed files can resemble a clean working tree; retain discovery state in the presentation.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "serverConfig?.availableEditors ?? []",
+    "owner": "maintainers",
+    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "sourceControlDiscovery.data?.sourceControlProviders ?? []",
+    "owner": "maintainers",
+    "reason": "Optional source-control provider discovery retains query status separately; the fallback builds choices only.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "sourceControlDiscovery.data?.sourceControlProviders ?? []",
+    "owner": "maintainers",
+    "reason": "Optional source-control provider discovery retains query status separately; the fallback builds choices only.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/ReopenClosedViewShortcut.tsx",
+    "kind": "CallExpression",
+    "fingerprint": "pending.current .then(() => reopenNext()) .catch((error: unknown) => { toastManager.add({ type: \"error\", title: \"Could not reopen the tab\", description: error instanceof Error ? error.message : String(error), }); })",
+    "owner": "maintainers",
+    "reason": "Serialized reopen commands retain their error toast; this queue carries no remote fact payload.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/ThreadNotificationCoordinator.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "view?.mates.keys() ?? []",
+    "owner": "maintainers",
+    "reason": "Notification enumeration only visits present authorized Mates; missing reads do not announce a negative result.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/ThreadTerminalDrawer.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "serverConfig?.availableEditors ?? []",
+    "owner": "maintainers",
+    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/ConversationWorking.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "topology?.services ?? []",
+    "owner": "maintainers",
+    "reason": "Unread topology can suppress transient-service incidents; preserve topology read state before deriving incident absence.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/chat/draftHeroTransition.ts",
+    "kind": "CallExpression",
+    "fingerprint": "transition.finished.catch(() => undefined)",
+    "owner": "maintainers",
+    "reason": "Animation cancellation carries no remote fact; completion performs local animation cleanup.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/files/FileBrowserPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "entriesQuery.data?.entries ?? []",
+    "owner": "maintainers",
+    "reason": "The current file tree is rendered inside FileBrowserPanelState with the same query data/error status. This reviewed occurrence is debt, not a file-wide allowance for unguarded consumers.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "settings.providerInstances ?? {}",
+    "owner": "maintainers",
+    "reason": "Optional provider settings retain the owning settings status; default collections supply configuration choices.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "availableEditors ?? []",
+    "owner": "maintainers",
+    "reason": "Unread editor configuration resembles no available editors; preserve read state before deciding availability.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "processData?.processes ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "resourceData?.buckets ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "resourceData?.topProcesses ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "readProviders ?? EMPTY_SERVER_PROVIDERS",
+    "owner": "maintainers",
+    "reason": "Provider defaults decorate the retained configuration view; pending and failure status are presented separately.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "settings.favorites ?? []",
+    "owner": "maintainers",
+    "reason": "Optional provider settings retain the owning settings status; default collections supply configuration choices.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "settings.favorites ?? []",
+    "owner": "maintainers",
+    "reason": "Optional provider settings retain the owning settings status; default collections supply configuration choices.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "settings.providerInstances ?? {}",
+    "owner": "maintainers",
+    "reason": "Optional provider settings retain the owning settings status; default collections supply configuration choices.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "history.data?.buckets ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "history.data?.topProcesses ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "snapshot?.attribution.entries ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "LogicalExpression",
+    "fingerprint": "snapshot?.processes ?? []",
+    "owner": "maintainers",
+    "reason": "Unread process or resource collections can display no data; keep loading and failure distinct from known empty measurements.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "apps/web/src/state/queries.ts",
+    "kind": "LogicalExpression",
+    "fingerprint": "result.data?.entries ?? []",
+    "owner": "maintainers",
+    "reason": "File-picker/search views retain pending and error state separately; empty items supply the current optional list.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/state/queries.ts",
+    "kind": "LogicalExpression",
+    "fingerprint": "result.data?.matches ?? EMPTY_CONTENT_MATCHES",
+    "owner": "maintainers",
+    "reason": "File-picker/search views retain pending and error state separately; empty items supply the current optional list.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/state/terminalSessions.ts",
+    "kind": "LogicalExpression",
+    "fingerprint": "attach.data ?? EMPTY_TERMINAL_BUFFER_STATE",
+    "owner": "maintainers",
+    "reason": "Terminal replay retains connection and attach status separately; the buffer default supplies no invented terminal receipt.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "apps/web/src/terminal/ghostty/keyCodes.ts",
+    "kind": "CallExpression",
+    "fingerprint": "keyboard?.getLayoutMap().catch(() => undefined)",
+    "owner": "maintainers",
+    "reason": "Optional keyboard layout enrichment may be unavailable; key handling retains its base mapping.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/adapters/database.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
+    "owner": "maintainers",
+    "reason": "The database adapter loses unknown/withheld/deleted distinctions before selecting its panel fallback; review owner evidence and read status at this boundary.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/adapters/mateImages.ts",
+    "kind": "CallExpression",
+    "fingerprint": "response.json().catch(() => null)",
+    "owner": "maintainers",
+    "reason": "JSON decoding fallback is inspected for an error payload; malformed image responses still fail the read.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/changeComment.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value.comments : []",
+    "owner": "maintainers",
+    "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/executors/hqPressLease.ts",
+    "kind": "CallExpression",
+    "fingerprint": "hold().catch(() => undefined)",
+    "owner": "maintainers",
+    "reason": "Renewal holds a serialized command with no result payload; the accepted press and operation outcome remain separately owned.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/flowWrites.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
+    "owner": "maintainers",
+    "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/hqWrites.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "app.kind === \"known\" ? app.value : undefined",
+    "owner": "maintainers",
+    "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/hqWrites.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "placement.kind === \"known\" ? placement.value : undefined",
+    "owner": "maintainers",
+    "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "conversation.kind === \"known\" ? conversation.value.header : null",
+    "owner": "maintainers",
+    "reason": "Engine operation predicates retain unresolved receipts separately; an absent optional header does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "run.kind === \"known\" ? run.value : null",
+    "owner": "maintainers",
+    "reason": "Conversation pagination, header and earlier-window composition preserve their owning read and stream state; absent optional content is not a settled negative.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/operations/vaultWrite.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value.rows : []",
+    "owner": "maintainers",
+    "reason": "Non-known variable facts can manufacture removal evidence; require affirmative complete evidence before settlement.",
+    "expires": "never",
+    "class": "misleading"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/database.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
+    "owner": "maintainers",
+    "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "project.kind === \"known\" ? [{ ...project.value, hq: placement.get(projectId) }] : []",
+    "owner": "maintainers",
+    "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "project.kind === \"known\" ? project.value.can : undefined",
+    "owner": "maintainers",
+    "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/gitCredentials.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "request.kind === \"known\" ? read.operation(request.value.requestId) : undefined",
+    "owner": "maintainers",
+    "reason": "Positive-only operation predicates retain unresolved receipts separately; the default does not itself settle an operation.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/hqBirth.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "project.kind === \"known\" ? project.value.publicZone : undefined",
+    "owner": "maintainers",
+    "reason": "Optional public-zone lookup accompanies separate project setup state.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/hqMates.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? { presence: fact.value.presence, ...fact.value.overview } : null",
+    "owner": "maintainers",
+    "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/hqNavigation.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? [{ id, value: fact.value }] : []",
+    "owner": "maintainers",
+    "reason": "Authorized navigation assembly includes known facts only; coverage and access remain on the owning projection.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/hqNavigation.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "organizationFact.kind === \"known\" ? organizationFact.value : null",
+    "owner": "maintainers",
+    "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/hqProjectPeople.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "person.kind === \"known\" ? { userId, name: person.value.name ?? \"Unknown\", avatarUrl: person.value.avatarUrl } : null",
+    "owner": "maintainers",
+    "reason": "Authorized person collection includes known identities only; membership and access evidence remain separate.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "conversation.kind === \"known\" ? conversation.value.window : null",
+    "owner": "maintainers",
+    "reason": "Conversation pagination, header and earlier-window composition preserve their owning read and stream state; absent optional content is not a settled negative.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? [fact.value] : []",
+    "owner": "maintainers",
+    "reason": "Engine window assembly includes only known authorized records; stream and conversation read state remain separately owned.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "gauge.kind === \"known\" ? gauge.value.earlier : undefined",
+    "owner": "maintainers",
+    "reason": "Conversation pagination, header and earlier-window composition preserve their owning read and stream state; absent optional content is not a settled negative.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateEngine.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "held.kind === \"known\" ? held.value.header.model : null",
+    "owner": "maintainers",
+    "reason": "Conversation pagination, header and earlier-window composition preserve their owning read and stream state; absent optional content is not a settled negative.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateHealth.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "attention.kind === \"known\" ? attention.value : null",
+    "owner": "maintainers",
+    "reason": "Health attention is optional enrichment; health evidence and transport availability retain their own state.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateLinks.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : null",
+    "owner": "maintainers",
+    "reason": "Optional link composition retains link reachability state separately; an absent payload is not a refusal.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateUpdate.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "availability.kind === \"known\" ? availability.value : undefined",
+    "owner": "maintainers",
+    "reason": "Update enumeration includes known environment references only; update availability state remains separate.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/mateUpdate.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "ref.kind === \"known\" ? [ [ environmentId, { environmentId, containerKey: ref.value.containerKey, state: mateUpdate.derive(read, environmentId).state, }, ] as const, ] : []",
+    "owner": "maintainers",
+    "reason": "Update enumeration includes known environment references only; update availability state remains separate.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/processes.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? [fact.value] : []",
+    "owner": "maintainers",
+    "reason": "Authorized process enumeration retains live and history status; only available records enter the collection.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/projects.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : null",
+    "owner": "maintainers",
+    "reason": "Project standing remains separate from the optional known project value.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/recordedEnvironment.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "app.kind === \"known\" ? app.value.environments : undefined",
+    "owner": "maintainers",
+    "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/sampled.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? fact.value : undefined",
+    "owner": "maintainers",
+    "reason": "Sampled projection retains read, live and failure status alongside the optional value.",
+    "expires": "never",
+    "class": "justified"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/usage.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "fact.kind === \"known\" ? [fact.value] : []",
+    "owner": "maintainers",
+    "reason": "Projection fallback discards public-read distinctions; review downstream access, coverage and unavailable presentation.",
+    "expires": "never",
+    "class": "review"
+  },
+  {
+    "path": "packages/client-runtime/src/data/projections/vault.ts",
+    "kind": "ConditionalExpression",
+    "fingerprint": "projectFact.kind === \"known\" ? projectFact.value.rows : []",
+    "owner": "maintainers",
+    "reason": "Vault collection assembly needs access and coverage review; an unknown listing alone cannot prove no variables.",
+    "expires": "never",
+    "class": "review"
+  }
+]

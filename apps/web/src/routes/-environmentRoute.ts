@@ -1,0 +1,41 @@
+/**
+ * The environment a `/{environmentId}/{threadId}` pathname targets, or null
+ * for every other two-segment route. The root's route gate judges the
+ * environment this names, so a non-environment prefix must never be mistaken
+ * for one — `/draft/<id>` is a conversation that has no environment yet, not
+ * a missing environment called "draft", and `/mate/<projectId>` a Mate's own view.
+ */
+const NON_ENVIRONMENT_PREFIXES = new Set(["draft", "settings", "zerops", "projects", "mate"]);
+
+export function environmentIdFromPathname(pathname: string): string | null {
+  const match = /^\/([^/]+)\/[^/]+\/?$/.exec(pathname);
+  const prefix = match?.[1];
+  if (prefix === undefined || NON_ENVIRONMENT_PREFIXES.has(prefix)) return null;
+  return prefix;
+}
+
+/**
+ * The environment the address bar's route names, under the prefix the bundle is served at
+ * (`appBasePath`): what a reload opens on, read before the router has mounted. An address outside
+ * the prefix names none.
+ */
+export function environmentIdFromAddress(pathname: string, basePath: string): string | null {
+  if (basePath === "") return environmentIdFromPathname(pathname);
+  if (pathname !== basePath && !pathname.startsWith(`${basePath}/`)) return null;
+  return environmentIdFromPathname(pathname.slice(basePath.length) || "/");
+}
+
+/** The draft a `/draft/{draftId}` pathname opens, or null for every other route. */
+export function draftIdFromPathname(pathname: string): string | null {
+  return /^\/draft\/([^/]+)\/?$/.exec(pathname)?.[1] ?? null;
+}
+
+/**
+ * Whether the address bar opens a conversation — a thread's or a draft's — under the prefix the
+ * bundle is served at: a reload there fetches the conversation's code at boot, beside the data.
+ */
+export function addressOpensConversation(pathname: string, basePath: string): boolean {
+  if (environmentIdFromAddress(pathname, basePath) !== null) return true;
+  if (basePath !== "" && !pathname.startsWith(`${basePath}/`)) return false;
+  return draftIdFromPathname(pathname.slice(basePath.length)) !== null;
+}

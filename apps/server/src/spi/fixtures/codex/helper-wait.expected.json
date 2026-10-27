@@ -1,0 +1,112 @@
+[
+  {
+    "eventId": "evt-0",
+    "provider": "codex",
+    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/started",
+      "payload": {
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "item-0",
+          "tool": "wait",
+          "status": "inProgress",
+          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "receiverThreadIds": [],
+          "prompt": null,
+          "model": null,
+          "reasoningEffort": null,
+          "agentsStates": {}
+        },
+        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "turnId": "turn-0",
+        "startedAtMs": 1785898349931
+      }
+    },
+    "type": "item.started",
+    "payload": {
+      "itemType": "collab_agent_tool_call",
+      "status": "inProgress",
+      "data": {
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "item-0",
+          "tool": "wait",
+          "status": "inProgress",
+          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "receiverThreadIds": [],
+          "prompt": null,
+          "model": null,
+          "reasoningEffort": null,
+          "agentsStates": {}
+        },
+        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "turnId": "turn-0",
+        "startedAtMs": 1785898349931
+      }
+    }
+  },
+  {
+    "eventId": "evt-1",
+    "provider": "codex",
+    "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "turnId": "turn-0",
+    "itemId": "item-0",
+    "providerRefs": {
+      "providerTurnId": "turn-0",
+      "providerItemId": "item-0"
+    },
+    "raw": {
+      "source": "codex.app-server.notification",
+      "method": "item/completed",
+      "payload": {
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "item-0",
+          "tool": "wait",
+          "status": "completed",
+          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "receiverThreadIds": [],
+          "prompt": null,
+          "model": null,
+          "reasoningEffort": null,
+          "agentsStates": {}
+        },
+        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "turnId": "turn-0",
+        "completedAtMs": 1785898349931
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "collab_agent_tool_call",
+      "status": "completed",
+      "data": {
+        "item": {
+          "type": "collabAgentToolCall",
+          "id": "item-0",
+          "tool": "wait",
+          "status": "completed",
+          "senderThreadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+          "receiverThreadIds": [],
+          "prompt": null,
+          "model": null,
+          "reasoningEffort": null,
+          "agentsStates": {}
+        },
+        "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
+        "turnId": "turn-0",
+        "completedAtMs": 1785898349931
+      }
+    }
+  }
+]

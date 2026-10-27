@@ -1,0 +1,176 @@
+/**
+ * The landings of a conversation's Mate, and the ones its timeline places.
+ *
+ * A Mate's message is frozen when it is written, so what it said about a change
+ * stops being true the moment somebody merges (the owner, 2026-09-20). The chip
+ * inside the message says where the change stands now; the timeline says when it
+ * moved, in the place a person reads the work in order.
+ *
+ * The Mate's application's landed changes are read while its conversation is
+ * drawn, and `changeLandedEvents` keeps the ones belonging to this Mate.
+ * Outside a Zerops session there is no Mate, and it takes nothing.
+ *
+ * A Mate has many conversations and its landings are all of theirs. The Mate is
+ * told of every one; a timeline places only the ones its own messages named
+ * (the owner, 2026-09-24: a long conversation opened on a stack of landings that
+ * "belong to the previous conversations").
+ */
+import {
+  changeLandedEvents,
+  linkedChanges,
+  productionRelease,
+  readZeropsMembership,
+  type ChangeLandedEvent,
+  type FlowPullRequest,
+  type ProductionLive,
+} from "@t3tools/client-runtime/zerops";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
+import { findCandidate, type CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import { useMemo } from "react";
+
+import { useProductionAddresses } from "../components/zerops/review/reviewReads";
+import { useAppsChanges, useCompactProjectFlows, useHqAddress } from "./projectFlows";
+import { useHqAppDetailHold } from "./useHqAppDetail";
+import { useHeldZeropsDetailCandidates } from "./useZeropsCandidates";
+
+const NONE: ReadonlyArray<ChangeLandedEvent> = [];
+
+/** The Mate that lives in `environmentId`, as the listing names it; none until it does. */
+function mateIn(
+  listing: Shown<ReadonlyArray<CandidateRow>>,
+  environmentId: string,
+): CandidateRow | undefined {
+  const mate = findCandidate(
+    listing,
+    (candidate) => String(candidate.environmentId) === environmentId,
+  );
+  return mate.kind === "found" ? mate.row : undefined;
+}
+
+/**
+ * The landings of the Mate that lives in `environmentId`. Which Mate that is comes from the
+ * listing; until it names one, no landing is placed — a timeline without them says nothing, where
+ * one with another Mate's would say something false.
+ */
+export function changeLandedEventsFor(
+  listing: Shown<ReadonlyArray<CandidateRow>>,
+  environmentId: string,
+  changes: ReadonlyMap<string, { readonly merged: ReadonlyArray<FlowPullRequest> }>,
+): ReadonlyArray<ChangeLandedEvent> {
+  const mate = mateIn(listing, environmentId);
+  if (mate === undefined) return NONE;
+  const merged = [...changes.values()].flatMap((app) => [...app.merged]);
+  const events = changeLandedEvents(merged, mate.project.id);
+  return events.length === 0 ? NONE : events;
+}
+
+/**
+ * Holds the application detail of the Mate that lives in `environmentId` while its conversation is
+ * drawn: its landings are that detail's, and nothing else holds it for a conversation.
+ */
+export function useZeropsMateAppDetailHold(environmentId: string | null | undefined): void {
+  const rows = useHeldZeropsDetailCandidates();
+  const mate =
+    environmentId === null || environmentId === undefined
+      ? undefined
+      : rows.find((candidate) => String(candidate.environmentId) === environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  useHqAppDetailHold(groupId === undefined || groupId === null ? [] : [groupId]);
+}
+
+const NO_APPS: ReadonlyArray<string> = [];
+
+export function useZeropsChangeLandedEvents(
+  environmentId: string | null | undefined,
+): ReadonlyArray<ChangeLandedEvent> {
+  const rows = useHeldZeropsDetailCandidates();
+  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  // Only the Mate's own application's changes are read, while its conversation is drawn.
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const { changes } = useAppsChanges(appIds);
+  return useMemo(() => {
+    if (mate === undefined) return NONE;
+    const events = changeLandedEvents(
+      [...changes.values()].flatMap((app) => [...app.merged]),
+      mate.project.id,
+    );
+    return events.length === 0 ? NONE : events;
+  }, [changes, mate]);
+}
+
+/**
+ * The release the application's production runs, and where it answers, for the Mate that lives in
+ * `environmentId`: what its next turn is told once that release is newer than its last words
+ * (`productionTurnNotes`). None outside an application, or before a release runs there.
+ */
+export function useZeropsProductionLive(
+  environmentId: string | null | undefined,
+): ProductionLive | undefined {
+  const rows = useHeldZeropsDetailCandidates();
+  const mate = rows.find((row) => String(row.environmentId) === environmentId);
+  const groupId = mate === undefined ? undefined : readZeropsMembership(mate.project).groupId;
+  const appIds = useMemo(() => (groupId === undefined ? NO_APPS : [groupId]), [groupId]);
+  const live = productionRelease(useCompactProjectFlows(appIds).flows.get(groupId ?? ""));
+  const address = useProductionAddresses(live?.projectId)[0]?.url;
+  const tag = live?.tag;
+  const taggedAt = live?.taggedAt;
+  return useMemo(
+    () => (tag === undefined || taggedAt === undefined ? undefined : { tag, taggedAt, address }),
+    [address, tag, taggedAt],
+  );
+}
+
+type SaidMessage = { readonly text: string; readonly createdAt: string };
+
+/**
+ * Messages are immutable and the list is re-read on every streamed token, so each message is
+ * scanned once per official HQ.
+ */
+const mentionsByMessage = new WeakMap<
+  SaidMessage,
+  { hqAddress: string; changes: ReadonlyArray<string> }
+>();
+
+/** `repository#number` of every change at the official HQ the message links to. */
+function mentionedChanges(message: SaidMessage, hqAddress: string): ReadonlyArray<string> {
+  const cached = mentionsByMessage.get(message);
+  if (cached?.hqAddress === hqAddress) return cached.changes;
+  const changes = linkedChanges(message.text, hqAddress).map(
+    (link) => `${link.repo}#${String(link.number)}`,
+  );
+  mentionsByMessage.set(message, { hqAddress, changes });
+  return changes;
+}
+
+/**
+ * The landings a conversation places: the changes its loaded messages link to, landed after the
+ * first of them. A landing earlier than that would sit above everything that is loaded, cut off
+ * from the message that named it; it is placed once the turns before it are.
+ */
+export function conversationLandings(
+  events: ReadonlyArray<ChangeLandedEvent>,
+  messages: ReadonlyArray<SaidMessage>,
+  hqAddress: string | undefined,
+): ReadonlyArray<ChangeLandedEvent> {
+  const first = messages[0];
+  if (events.length === 0 || first === undefined || hqAddress === undefined) return NONE;
+  const mentioned = new Set(messages.flatMap((message) => mentionedChanges(message, hqAddress)));
+  const placed = events.filter(
+    (event) =>
+      mentioned.has(`${event.repository}#${String(event.number)}`) &&
+      event.landedAt >= first.createdAt,
+  );
+  return placed.length === 0 ? NONE : placed;
+}
+
+export function useZeropsConversationLandings(
+  events: ReadonlyArray<ChangeLandedEvent>,
+  messages: ReadonlyArray<SaidMessage>,
+): ReadonlyArray<ChangeLandedEvent> {
+  const hqAddress = useHqAddress();
+  return useMemo(
+    () => conversationLandings(events, messages, hqAddress),
+    [events, messages, hqAddress],
+  );
+}

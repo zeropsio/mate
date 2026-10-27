@@ -1,0 +1,31 @@
+{
+  "driver": "codex",
+  "cliVersion": "codex-cli 0.160.0",
+  "model": "gpt-6-luna",
+  "prompt": "Trace probe only, no project changes. Start one helper named trace-helper to reply with helper-ok (no tools). In this main thread run printf native-ok, then call zerops_discover once. Wait for the helper and reply with exactly trace-ok. Do not read files or credentials.",
+  "capturedAt": "2026-10-07T22:43:01.108Z",
+  "capturedOn": "Example Org disposable e2e rig / zcp",
+  "capturedBy": "chat3",
+  "synthetic": false,
+  "terminal": {
+    "id": "01a11888-b181-7d90-9082-f49318301e83",
+    "items": [
+      {
+        "type": "agentMessage",
+        "id": "msg_0d240ea1727087cc016ac6caf4bc6481918e6bad4566f893d8",
+        "text": "trace-ok",
+        "phase": "final_answer",
+        "memoryCitation": null,
+        "delivery": null,
+        "questions": null
+      }
+    ],
+    "itemsView": "summary",
+    "status": "completed",
+    "error": null,
+    "startedAt": 1791412974,
+    "completedAt": 1791412980,
+    "durationMs": 6913
+  },
+  "notes": "Recorded current app-server notifications in arrival order, omitting legacy codex/event duplicates. Native printf, read-only Zerops discovery and one helper. Fixture project/service identities and public URLs anonymized consistently; all tool content and lifecycle shapes retained. Replays the adapter mapper, not session-runtime child routing. The old collabAgentToolCall wait shapes are retained in helper-wait."
+}

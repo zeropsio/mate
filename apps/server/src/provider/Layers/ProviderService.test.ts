@@ -1,0 +1,3314 @@
+// @effect-diagnostics nodeBuiltinImport:off
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import type {
+  ProviderApprovalDecision,
+  ProviderRuntimeEvent,
+  ProviderSendTurnInput,
+  ProviderSession,
+  ProviderTurnStartResult,
+  ProviderUploadFeedbackInput,
+  ProviderUploadFeedbackResult,
+} from "@t3tools/contracts";
+import {
+  ApprovalRequestId,
+  EventId,
+  MessageId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  PROVIDER_SEND_TURN_MAX_INPUT_CHARS,
+  ProviderSessionStartInput,
+  ThreadId,
+  TurnId,
+} from "@t3tools/contracts";
+import { createModelSelection } from "@t3tools/shared/model";
+import { it, assert } from "@effect/vitest";
+import { afterAll, vi } from "vite-plus/test";
+
+import * as Cause from "effect/Cause";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Metric from "effect/Metric";
+import * as Option from "effect/Option";
+import * as PubSub from "effect/PubSub";
+import * as Ref from "effect/Ref";
+import * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import {
+  ProviderAdapterRequestError,
+  ProviderAdapterSessionNotFoundError,
+  ProviderUnsupportedError,
+  ProviderValidationError,
+  ProviderWorkspaceMissingError,
+  type ProviderAdapterError,
+} from "../Errors.ts";
+import type { ProviderAdapterShape } from "../Services/ProviderAdapter.ts";
+import * as ProviderAdapterRegistry from "../Services/ProviderAdapterRegistry.ts";
+import * as ProviderService from "../Services/ProviderService.ts";
+import * as ProviderSessionDirectory from "../Services/ProviderSessionDirectory.ts";
+import { makeProviderServiceLive } from "./ProviderService.ts";
+import * as ProviderEventLoggers from "./ProviderEventLoggers.ts";
+import { ProviderSessionDirectoryLive } from "./ProviderSessionDirectory.ts";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as ProviderSessionRuntime from "../../persistence/ProviderSessionRuntime.ts";
+import {
+  makeSqlitePersistenceLive,
+  SqlitePersistenceMemory,
+} from "../../persistence/Layers/Sqlite.ts";
+import * as ServerConfig from "../../config.ts";
+import * as ServerSettings from "../../serverSettings.ts";
+import { makeAdapterRegistryMock } from "../testUtils/providerAdapterRegistryMock.ts";
+
+const defaultServerSettingsLayer = ServerSettings.ServerSettingsService.layerTest();
+const serverConfigTestLayer = ServerConfig.layerTest(process.cwd(), process.cwd()).pipe(
+  Layer.provide(NodeServices.layer),
+);
+
+// startSession verifies the workspace folder exists before dispatching to an
+// adapter, so session cwd fixtures must be real directories.
+const fixtureCwdRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "provider-service-test-"));
+afterAll(() => NodeFS.rmSync(fixtureCwdRoot, { recursive: true, force: true }));
+// A send's uploads copies held until the test lets them go.
+const keepGate = vi.hoisted(() => ({ held: null as Promise<void> | null, admitted: () => {} }));
+
+vi.mock("../../uploadsFolder.ts", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../uploadsFolder.ts")>();
+  const { andThen, promise } = await import("effect/Effect");
+  const keepSentFiles: typeof actual.keepSentFiles = (input) => {
+    const held = keepGate.held;
+    if (input.items.length > 0 && held !== null) keepGate.admitted();
+    return input.items.length > 0 && held !== null
+      ? andThen(
+          promise(() => held),
+          () => actual.keepSentFiles(input),
+        )
+      : actual.keepSentFiles(input);
+  };
+  return { ...actual, keepSentFiles };
+});
+
+function fixtureCwd(name: string): string {
+  const dir = NodePath.join(fixtureCwdRoot, name);
+  NodeFS.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+const asRequestId = (value: string): ApprovalRequestId => ApprovalRequestId.make(value);
+const asEventId = (value: string): EventId => EventId.make(value);
+const asThreadId = (value: string): ThreadId => ThreadId.make(value);
+const asTurnId = (value: string): TurnId => TurnId.make(value);
+const codexInstanceId = ProviderInstanceId.make("codex");
+const claudeAgentInstanceId = ProviderInstanceId.make("claudeAgent");
+const CODEX_DRIVER = ProviderDriverKind.make("codex");
+const CLAUDE_AGENT_DRIVER = ProviderDriverKind.make("claudeAgent");
+const CURSOR_DRIVER = ProviderDriverKind.make("cursor");
+
+type LegacyProviderRuntimeEvent = {
+  readonly type: string;
+  readonly eventId: EventId;
+  readonly provider: ProviderDriverKind;
+  readonly createdAt: string;
+  readonly threadId: ThreadId;
+  readonly turnId?: string | undefined;
+  readonly itemId?: string | undefined;
+  readonly requestId?: string | undefined;
+  readonly payload?: unknown | undefined;
+  readonly [key: string]: unknown;
+};
+
+function makeFakeCodexAdapter(
+  provider: ProviderDriverKind = CODEX_DRIVER,
+  supportsConversationRollback?: boolean,
+) {
+  const sessions = new Map<ThreadId, ProviderSession>();
+  const runtimeEventPubSub = Effect.runSync(PubSub.unbounded<ProviderRuntimeEvent>());
+
+  const startSession = vi.fn((input: ProviderSessionStartInput) =>
+    Effect.sync(() => {
+      const now = "2026-01-01T00:00:00.000Z";
+      const session: ProviderSession = {
+        provider,
+        ...(input.providerInstanceId !== undefined
+          ? { providerInstanceId: input.providerInstanceId }
+          : {}),
+        status: "ready",
+        runtimeMode: input.runtimeMode,
+        threadId: input.threadId,
+        resumeCursor: input.resumeCursor ?? {
+          opaque: `resume-${String(input.threadId)}`,
+        },
+        cwd: input.cwd ?? process.cwd(),
+        createdAt: now,
+        updatedAt: now,
+      };
+      sessions.set(session.threadId, session);
+      return session;
+    }),
+  );
+
+  const sendTurn = vi.fn(
+    (
+      input: ProviderSendTurnInput,
+    ): Effect.Effect<ProviderTurnStartResult, ProviderAdapterError> => {
+      if (!sessions.has(input.threadId)) {
+        return Effect.fail(
+          new ProviderAdapterSessionNotFoundError({
+            provider,
+            threadId: input.threadId,
+          }),
+        );
+      }
+
+      return Effect.succeed({
+        threadId: input.threadId,
+        turnId: TurnId.make(`turn-${String(input.threadId)}`),
+      });
+    },
+  );
+
+  const interruptTurn = vi.fn(
+    (_threadId: ThreadId, _turnId?: TurnId): Effect.Effect<void, ProviderAdapterError> =>
+      Effect.void,
+  );
+
+  const compactThread = vi.fn((threadId: ThreadId): Effect.Effect<void, ProviderAdapterError> =>
+    Effect.sync(() =>
+      emit({
+        type: "thread.state.changed",
+        eventId: asEventId("evt-native-compact"),
+        provider,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        payload: { state: "compacted" },
+      }),
+    ),
+  );
+  const respondToRequest = vi.fn(
+    (
+      _threadId: ThreadId,
+      _requestId: string,
+      _decision: ProviderApprovalDecision,
+    ): Effect.Effect<void, ProviderAdapterError> => Effect.void,
+  );
+
+  const respondToUserInput = vi.fn(
+    (
+      _threadId: ThreadId,
+      _requestId: string,
+      _answers: Record<string, unknown>,
+    ): Effect.Effect<void, ProviderAdapterError> => Effect.void,
+  );
+
+  const stopSession = vi.fn((threadId: ThreadId): Effect.Effect<void, ProviderAdapterError> =>
+    Effect.sync(() => {
+      sessions.delete(threadId);
+    }),
+  );
+
+  const listSessions = vi.fn((): Effect.Effect<ReadonlyArray<ProviderSession>> =>
+    Effect.sync(() => Array.from(sessions.values())),
+  );
+
+  const hasSession = vi.fn((threadId: ThreadId): Effect.Effect<boolean> =>
+    Effect.succeed(sessions.has(threadId)),
+  );
+
+  const readThread = vi.fn(
+    (
+      threadId: ThreadId,
+    ): Effect.Effect<
+      {
+        threadId: ThreadId;
+        turns: ReadonlyArray<{ id: TurnId; items: readonly [] }>;
+      },
+      ProviderAdapterError
+    > =>
+      Effect.succeed({
+        threadId,
+        turns: [{ id: asTurnId("turn-1"), items: [] }],
+      }),
+  );
+
+  const rollbackThread = vi.fn(
+    (
+      threadId: ThreadId,
+      _numTurns: number,
+    ): Effect.Effect<{ threadId: ThreadId; turns: readonly [] }, ProviderAdapterError> =>
+      Effect.succeed({ threadId, turns: [] }),
+  );
+
+  const uploadFeedback = vi.fn(
+    (
+      input: ProviderUploadFeedbackInput,
+    ): Effect.Effect<ProviderUploadFeedbackResult, ProviderAdapterError> =>
+      Effect.succeed({ feedbackId: `feedback-${input.threadId}` }),
+  );
+
+  const stopAll = vi.fn((): Effect.Effect<void, ProviderAdapterError> =>
+    Effect.sync(() => {
+      sessions.clear();
+    }),
+  );
+
+  const adapter: ProviderAdapterShape<ProviderAdapterError> = {
+    provider,
+    capabilities: {
+      sessionModelSwitch: "in-session",
+      ...(supportsConversationRollback !== undefined ? { supportsConversationRollback } : {}),
+      ...(provider === CODEX_DRIVER ? { promptlessTurnContinuation: true } : {}),
+    },
+    startSession,
+    sendTurn,
+    ...(provider === CODEX_DRIVER
+      ? { compaction: { type: "native", start: compactThread } }
+      : provider === CURSOR_DRIVER
+        ? { compaction: { type: "slash-command", command: "/compress" } }
+        : provider === CLAUDE_AGENT_DRIVER
+          ? { compaction: { type: "slash-command", command: "/compact" } }
+          : {}),
+    interruptTurn,
+    respondToRequest,
+    respondToUserInput,
+    stopSession,
+    listSessions,
+    hasSession,
+    readThread,
+    rollbackThread,
+    ...(provider === CODEX_DRIVER ? { uploadFeedback } : {}),
+    stopAll,
+    get streamEvents() {
+      return Stream.fromPubSub(runtimeEventPubSub);
+    },
+  };
+
+  const emit = (event: LegacyProviderRuntimeEvent): void => {
+    Effect.runSync(PubSub.publish(runtimeEventPubSub, event as unknown as ProviderRuntimeEvent));
+  };
+
+  const updateSession = (
+    threadId: ThreadId,
+    update: (session: ProviderSession) => ProviderSession,
+  ): void => {
+    const existing = sessions.get(threadId);
+    if (!existing) {
+      return;
+    }
+    sessions.set(threadId, update(existing));
+  };
+
+  return {
+    adapter,
+    emit,
+    updateSession,
+    startSession,
+    sendTurn,
+    compactThread,
+    interruptTurn,
+    respondToRequest,
+    respondToUserInput,
+    stopSession,
+    listSessions,
+    hasSession,
+    readThread,
+    rollbackThread,
+    uploadFeedback,
+    stopAll,
+  };
+}
+
+const advanceTestClock = (ms: number) =>
+  TestClock.adjust(`${ms} millis`).pipe(Effect.andThen(Effect.yieldNow));
+
+const hasMetricSnapshot = (
+  snapshots: ReadonlyArray<Metric.Metric.Snapshot>,
+  id: string,
+  attributes: Readonly<Record<string, string>>,
+) =>
+  snapshots.some(
+    (snapshot) =>
+      snapshot.id === id &&
+      Object.entries(attributes).every(([key, value]) => snapshot.attributes?.[key] === value),
+  );
+
+function makeStaticInstanceRegistry(
+  entries: ReadonlyArray<readonly [ProviderInstanceId, ProviderAdapterShape<ProviderAdapterError>]>,
+): ProviderAdapterRegistry.ProviderAdapterRegistry["Service"] {
+  const adapters = new Map(entries);
+  const unsupported = (instanceId: ProviderInstanceId) =>
+    new ProviderUnsupportedError({
+      provider: ProviderDriverKind.make(instanceId),
+    });
+
+  return {
+    getByInstance: (instanceId) => {
+      const adapter = adapters.get(instanceId);
+      return adapter ? Effect.succeed(adapter) : Effect.fail(unsupported(instanceId));
+    },
+    getInstanceInfo: (instanceId) => {
+      const adapter = adapters.get(instanceId);
+      return adapter
+        ? Effect.succeed({
+            instanceId,
+            driverKind: adapter.provider,
+            displayName: undefined,
+            enabled: true,
+            continuationIdentity: {
+              driverKind: adapter.provider,
+              continuationKey: `${adapter.provider}:instance:${instanceId}`,
+            },
+          })
+        : Effect.fail(unsupported(instanceId));
+    },
+    listInstances: () => Effect.succeed(Array.from(adapters.keys())),
+    subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+      PubSub.subscribe(pubsub),
+    ),
+  };
+}
+
+function makeProviderServiceLayer(
+  input: {
+    readonly directory?: ProviderSessionDirectory.ProviderSessionDirectory["Service"];
+    readonly supportsConversationRollback?: boolean;
+    readonly registry?: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"];
+  } = {},
+) {
+  const codex = makeFakeCodexAdapter(CODEX_DRIVER, input.supportsConversationRollback);
+  const claude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+  const cursor = makeFakeCodexAdapter(CURSOR_DRIVER);
+  const registry =
+    input.registry ??
+    makeAdapterRegistryMock({
+      [ProviderDriverKind.make("codex")]: codex.adapter,
+      [ProviderDriverKind.make("claudeAgent")]: claude.adapter,
+      [ProviderDriverKind.make("cursor")]: cursor.adapter,
+    });
+
+  const providerAdapterLayer = Layer.succeed(
+    ProviderAdapterRegistry.ProviderAdapterRegistry,
+    registry,
+  );
+  const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+    Layer.provide(SqlitePersistenceMemory),
+  );
+  const directoryLayer =
+    input.directory === undefined
+      ? ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer))
+      : Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, input.directory);
+
+  const layer = it.layer(
+    Layer.mergeAll(
+      makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(providerAdapterLayer),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      ),
+      directoryLayer,
+
+      runtimeRepositoryLayer,
+      NodeServices.layer,
+    ),
+  );
+
+  return {
+    codex,
+    claude,
+    cursor,
+    layer,
+  };
+}
+
+it.effect("ProviderServiceLive catches stopAll failures during shutdown", () =>
+  Effect.gen(function* () {
+    const codex = makeFakeCodexAdapter();
+    codex.stopAll.mockImplementation(() =>
+      Effect.fail(
+        new ProviderAdapterRequestError({
+          provider: String(CODEX_DRIVER),
+          method: "stopAll",
+          detail: "simulated stopAll failure",
+        }),
+      ),
+    );
+    const registry = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+    });
+    const providerAdapterLayer = Layer.succeed(
+      ProviderAdapterRegistry.ProviderAdapterRegistry,
+      registry,
+    );
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const providerLayer = Layer.mergeAll(
+      makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(providerAdapterLayer),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      ),
+      directoryLayer,
+      runtimeRepositoryLayer,
+      NodeServices.layer,
+    );
+    const scope = yield* Scope.make();
+    const runtimeServices = yield* Layer.build(providerLayer).pipe(Scope.provide(scope));
+
+    yield* ProviderService.ProviderService.pipe(Effect.provide(runtimeServices));
+    const closeExit = yield* Scope.close(scope, Exit.void).pipe(Effect.exit);
+
+    assert.equal(Exit.isSuccess(closeExit), true);
+    assert.equal(codex.stopAll.mock.calls.length, 1);
+  }),
+);
+
+it.effect("ProviderServiceLive shutdown leaves settled session rows untouched", () =>
+  Effect.gen(function* () {
+    const codex = makeFakeCodexAdapter();
+    const persistence = yield* Layer.build(
+      ProviderSessionDirectoryLive.pipe(
+        Layer.provide(ProviderSessionRuntime.layer.pipe(Layer.provide(SqlitePersistenceMemory))),
+      ),
+    );
+    const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory.pipe(
+      Effect.provide(persistence),
+    );
+    const seed = (threadId: ThreadId, status: "running" | "stopped", activeTurnId: TurnId | null) =>
+      directory.upsert({
+        threadId,
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        status,
+        runtimePayload: { cwd: "/repo", activeTurnId },
+      });
+    const readBindings = directory
+      .listBindings()
+      .pipe(
+        Effect.map((bindings) => new Map(bindings.map((binding) => [binding.threadId, binding]))),
+      );
+    const settledId = asThreadId("shutdown-settled");
+    const runningId = asThreadId("shutdown-running");
+    const stoppedWithTurnId = asThreadId("shutdown-stopped-with-turn");
+    yield* seed(settledId, "stopped", null);
+    yield* seed(runningId, "running", asTurnId("running-turn"));
+    yield* seed(stoppedWithTurnId, "stopped", asTurnId("stale-turn"));
+    const settledBefore = (yield* readBindings).get(settledId);
+    assert(settledBefore !== undefined);
+
+    const scope = yield* Scope.make();
+    yield* Layer.build(
+      makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.succeed(ProviderSessionDirectory.ProviderSessionDirectory, directory)),
+        Layer.provide(
+          Layer.succeed(
+            ProviderAdapterRegistry.ProviderAdapterRegistry,
+            makeStaticInstanceRegistry([[codexInstanceId, codex.adapter]]),
+          ),
+        ),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      ),
+    ).pipe(Scope.provide(scope));
+    yield* TestClock.adjust("1 minute");
+    yield* Scope.close(scope, Exit.void);
+
+    const byThread = yield* readBindings;
+    assert.deepStrictEqual(byThread.get(settledId), settledBefore);
+    for (const threadId of [runningId, stoppedWithTurnId]) {
+      const binding = byThread.get(threadId);
+      assert.equal(binding?.status, "stopped");
+      assert.propertyVal(binding?.runtimePayload, "activeTurnId", null);
+      assert.propertyVal(binding?.runtimePayload, "lastRuntimeEvent", "provider.stopAll");
+    }
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive rejects new sessions for disabled providers", () =>
+  Effect.gen(function* () {
+    const codex = makeFakeCodexAdapter();
+    const claude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+    const registryBase = makeAdapterRegistryMock({
+      [CODEX_DRIVER]: codex.adapter,
+      [CLAUDE_AGENT_DRIVER]: claude.adapter,
+    });
+    const registry: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"] = {
+      ...registryBase,
+      getInstanceInfo: (instanceId) =>
+        instanceId === claudeAgentInstanceId
+          ? Effect.succeed({
+              instanceId,
+              driverKind: CLAUDE_AGENT_DRIVER,
+              displayName: undefined,
+              enabled: false,
+              continuationIdentity: {
+                driverKind: CLAUDE_AGENT_DRIVER,
+                continuationKey: "claudeAgent:instance:claudeAgent",
+              },
+            })
+          : registryBase.getInstanceInfo(instanceId),
+    };
+    const providerAdapterLayer = Layer.succeed(
+      ProviderAdapterRegistry.ProviderAdapterRegistry,
+      registry,
+    );
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(NodeServices.layer),
+      Layer.provide(providerAdapterLayer),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(serverConfigTestLayer),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+    );
+
+    const failure = yield* Effect.flip(
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        return yield* provider.startSession(asThreadId("thread-disabled"), {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId("thread-disabled"),
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(providerLayer)),
+    );
+
+    assert.instanceOf(failure, ProviderValidationError);
+    assert.include(failure.issue, "Provider instance 'claudeAgent' is disabled");
+    assert.equal(claude.startSession.mock.calls.length, 0);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "ProviderServiceLive allows enabled custom instances when legacy driver is disabled",
+  () =>
+    Effect.gen(function* () {
+      const instanceId = ProviderInstanceId.make("codex_personal");
+      const driverKind = CODEX_DRIVER;
+      const codex = makeFakeCodexAdapter();
+      const unsupported = () =>
+        new ProviderUnsupportedError({
+          provider: driverKind,
+        });
+      const registry: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"] = {
+        getByInstance: (requestedInstanceId) =>
+          requestedInstanceId === instanceId
+            ? Effect.succeed(codex.adapter)
+            : Effect.fail(unsupported()),
+        getInstanceInfo: (requestedInstanceId) =>
+          requestedInstanceId === instanceId
+            ? Effect.succeed({
+                instanceId,
+                driverKind,
+                displayName: "Codex Personal",
+                enabled: true,
+                continuationIdentity: {
+                  driverKind,
+                  continuationKey: "codex:/Users/example/.codex",
+                },
+              })
+            : Effect.fail(unsupported()),
+        listInstances: () => Effect.succeed([instanceId]),
+        subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+          PubSub.subscribe(pubsub),
+        ),
+      };
+      const providerAdapterLayer = Layer.succeed(
+        ProviderAdapterRegistry.ProviderAdapterRegistry,
+        registry,
+      );
+      const serverSettingsLayer = ServerSettings.ServerSettingsService.layerTest({
+        providers: {
+          codex: {
+            enabled: false,
+          },
+        },
+      });
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(SqlitePersistenceMemory),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(providerAdapterLayer),
+        Layer.provide(directoryLayer),
+        Layer.provide(serverSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      const session = yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        return yield* provider.startSession(asThreadId("thread-enabled-custom"), {
+          provider: driverKind,
+          providerInstanceId: instanceId,
+          threadId: asThreadId("thread-enabled-custom"),
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(providerLayer));
+
+      assert.equal(session.providerInstanceId, instanceId);
+      assert.equal(codex.startSession.mock.calls.length, 1);
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive rejects new sessions for disabled custom instances", () =>
+  Effect.gen(function* () {
+    const instanceId = ProviderInstanceId.make("codex_personal");
+    const driverKind = ProviderDriverKind.make("codex");
+    const codex = makeFakeCodexAdapter();
+    const unsupported = () =>
+      new ProviderUnsupportedError({
+        provider: ProviderDriverKind.make("codex"),
+      });
+    const registry: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"] = {
+      getByInstance: (requestedInstanceId) =>
+        requestedInstanceId === instanceId
+          ? Effect.succeed(codex.adapter)
+          : Effect.fail(unsupported()),
+      getInstanceInfo: (requestedInstanceId) =>
+        requestedInstanceId === instanceId
+          ? Effect.succeed({
+              instanceId,
+              driverKind,
+              displayName: "Codex Personal",
+              enabled: false,
+              continuationIdentity: {
+                driverKind,
+                continuationKey: "codex:/Users/example/.codex",
+              },
+            })
+          : Effect.fail(unsupported()),
+      listInstances: () => Effect.succeed([instanceId]),
+      subscribeChanges: Effect.flatMap(PubSub.unbounded<void>(), (pubsub) =>
+        PubSub.subscribe(pubsub),
+      ),
+    };
+    const providerAdapterLayer = Layer.succeed(
+      ProviderAdapterRegistry.ProviderAdapterRegistry,
+      registry,
+    );
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(NodeServices.layer),
+      Layer.provide(providerAdapterLayer),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(serverConfigTestLayer),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+    );
+
+    const failure = yield* Effect.flip(
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        return yield* provider.startSession(asThreadId("thread-disabled-instance"), {
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: instanceId,
+          threadId: asThreadId("thread-disabled-instance"),
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(providerLayer)),
+    );
+
+    assert.instanceOf(failure, ProviderValidationError);
+    assert.include(failure.issue, "Provider instance 'codex_personal' is disabled");
+    assert.equal(codex.startSession.mock.calls.length, 0);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+const routing = makeProviderServiceLayer();
+
+const customCompactionDriver = ProviderDriverKind.make("custom-compaction-provider");
+const nativeCompactionInstanceId = ProviderInstanceId.make("native-compaction");
+const slashCompactionInstanceId = ProviderInstanceId.make("slash-compaction");
+const unsupportedCompactionInstanceId = ProviderInstanceId.make("unsupported-compaction");
+const customNativeCompaction = makeFakeCodexAdapter(customCompactionDriver);
+const customSlashCompaction = makeFakeCodexAdapter(customCompactionDriver);
+const unsupportedCompaction = makeFakeCodexAdapter(customCompactionDriver);
+const declaredCompaction = makeProviderServiceLayer({
+  registry: makeStaticInstanceRegistry([
+    [
+      nativeCompactionInstanceId,
+      {
+        ...customNativeCompaction.adapter,
+        compaction: { type: "native", start: customNativeCompaction.compactThread },
+      },
+    ],
+    [
+      slashCompactionInstanceId,
+      {
+        ...customSlashCompaction.adapter,
+        compaction: { type: "slash-command", command: "/reduce-context" },
+      },
+    ],
+    [unsupportedCompactionInstanceId, unsupportedCompaction.adapter],
+  ]),
+});
+
+declaredCompaction.layer("ProviderService declared compaction", (it) => {
+  it.effect("starts declared native compaction instead of sending a prompt", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("custom-native-compaction");
+      const requestId = MessageId.make("custom-native-request");
+      yield* provider.startSession(threadId, {
+        providerInstanceId: nativeCompactionInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const compactedEventFiber = yield* provider.streamEvents.pipe(
+        Stream.filter(
+          (event) => event.threadId === threadId && event.type === "thread.state.changed",
+        ),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      yield* advanceTestClock(50);
+      yield* provider.compactThread(threadId, undefined, requestId);
+      const compacted = Option.getOrThrow(yield* Fiber.join(compactedEventFiber));
+      assert.equal(compacted.requestId, String(requestId));
+      assert.equal(customNativeCompaction.compactThread.mock.calls.length, 1);
+      assert.equal(customNativeCompaction.sendTurn.mock.calls.length, 0);
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("sends the declared slash command as the compaction turn", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("custom-slash-compaction");
+      const requestId = MessageId.make("custom-slash-request");
+      const modelSelection = createModelSelection(slashCompactionInstanceId, "custom-model");
+      yield* provider.startSession(threadId, {
+        providerInstanceId: slashCompactionInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const compactedEventFiber = yield* provider.streamEvents.pipe(
+        Stream.filter(
+          (event) => event.threadId === threadId && event.type === "thread.state.changed",
+        ),
+        Stream.runHead,
+        Effect.forkChild({ startImmediately: true }),
+      );
+      const compactFiber = yield* provider
+        .compactThread(threadId, modelSelection, requestId)
+        .pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+      customSlashCompaction.emit({
+        type: "turn.completed",
+        eventId: asEventId("custom-slash-completed"),
+        provider: customCompactionDriver,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId: asTurnId(`turn-${threadId}`),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(compactFiber);
+      const compacted = Option.getOrThrow(yield* Fiber.join(compactedEventFiber));
+      assert.equal(compacted.requestId, String(requestId));
+      assert.equal(customSlashCompaction.compactThread.mock.calls.length, 0);
+      assert.equal(customSlashCompaction.sendTurn.mock.calls.length, 1);
+      assert.equal(customSlashCompaction.sendTurn.mock.calls[0]?.[0].input, "/reduce-context");
+      assert.deepEqual(
+        customSlashCompaction.sendTurn.mock.calls[0]?.[0].modelSelection,
+        modelSelection,
+      );
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("rejects compaction for adapters without a declared strategy", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("custom-unsupported-compaction");
+      yield* provider.startSession(threadId, {
+        providerInstanceId: unsupportedCompactionInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const failure = yield* provider.compactThread(threadId).pipe(Effect.flip);
+      assert.instanceOf(failure, ProviderValidationError);
+      assert.include(failure.message, "does not support context compaction");
+      assert.equal(unsupportedCompaction.sendTurn.mock.calls.length, 0);
+      assert.equal(unsupportedCompaction.compactThread.mock.calls.length, 0);
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+});
+
+const antigravityDriver = ProviderDriverKind.make("antigravity");
+const replacementAntigravity = makeFakeCodexAdapter(antigravityDriver);
+const originalAntigravityInstanceId = ProviderInstanceId.make("antigravity-personal");
+const replacementAntigravityInstanceId = ProviderInstanceId.make("antigravity");
+const antigravityRegistry = makeAdapterRegistryMock({
+  [antigravityDriver]: replacementAntigravity.adapter,
+});
+let originalAntigravityInstanceAvailable = true;
+const antigravityInstanceRouting = makeProviderServiceLayer({
+  registry: {
+    ...antigravityRegistry,
+    getInstanceInfo: (instanceId) =>
+      instanceId === originalAntigravityInstanceId && originalAntigravityInstanceAvailable
+        ? Effect.succeed({
+            instanceId,
+            driverKind: antigravityDriver,
+            displayName: undefined,
+            enabled: true,
+            continuationIdentity: {
+              driverKind: antigravityDriver,
+              continuationKey: `${antigravityDriver}:instance:${instanceId}`,
+            },
+          })
+        : antigravityRegistry.getInstanceInfo(instanceId),
+  },
+});
+antigravityInstanceRouting.layer("ProviderServiceLive instance-owned conversations", (it) => {
+  it.effect(
+    "does not replace a native conversation with another instance or a removed-instance fallback",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+
+        for (const originalAvailable of [true, false]) {
+          originalAntigravityInstanceAvailable = originalAvailable;
+          for (const passCursor of [true, false]) {
+            const threadId = asThreadId(
+              `thread-antigravity-instance-${originalAvailable}-${passCursor}`,
+            );
+            const resumeCursor = { sessionId: "native-session" };
+            yield* directory.upsert({
+              threadId,
+              provider: antigravityDriver,
+              providerInstanceId: originalAntigravityInstanceId,
+              status: "stopped",
+              runtimeMode: "approval-required",
+              ...(passCursor ? {} : { resumeCursor }),
+            });
+            const originalBinding = yield* directory.getBinding(threadId);
+            replacementAntigravity.startSession.mockClear();
+
+            const error = yield* Effect.flip(
+              provider.startSession(threadId, {
+                providerInstanceId: replacementAntigravityInstanceId,
+                threadId,
+                runtimeMode: "approval-required",
+                ...(passCursor ? { resumeCursor } : {}),
+              }),
+            );
+
+            assert.equal(
+              error._tag,
+              originalAvailable ? "ProviderValidationError" : "ProviderUnsupportedError",
+            );
+            assert.equal(replacementAntigravity.startSession.mock.calls.length, 0);
+            assert.deepEqual(yield* directory.getBinding(threadId), originalBinding);
+          }
+        }
+      }),
+  );
+});
+
+const unsupportedRollback = makeProviderServiceLayer({ supportsConversationRollback: false });
+unsupportedRollback.layer("ProviderServiceLive unsupported rewind", (it) => {
+  it.effect("rejects rewind without starting or changing the provider conversation", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+
+      for (const active of [true, false]) {
+        const threadId = asThreadId(`thread-unsupported-rewind-${active}`);
+        yield* provider.startSession(threadId, {
+          providerInstanceId: codexInstanceId,
+          threadId,
+          cwd: fixtureCwd("project"),
+          runtimeMode: "approval-required",
+        });
+        if (!active) {
+          yield* unsupportedRollback.codex.stopSession(threadId);
+        }
+        const originalBinding = yield* directory.getBinding(threadId);
+        unsupportedRollback.codex.startSession.mockClear();
+        unsupportedRollback.codex.rollbackThread.mockClear();
+
+        const preflightError = yield* Effect.flip(
+          provider.assertConversationRollbackSupported(threadId),
+        );
+        const rollbackError = yield* Effect.flip(
+          provider.rollbackConversation({ threadId, numTurns: 1 }),
+        );
+
+        assert.instanceOf(preflightError, ProviderValidationError);
+        assert.include(preflightError.message, "does not support conversation rewind");
+        assert.instanceOf(rollbackError, ProviderValidationError);
+        assert.equal(unsupportedRollback.codex.startSession.mock.calls.length, 0);
+        assert.equal(unsupportedRollback.codex.rollbackThread.mock.calls.length, 0);
+        assert.deepEqual(yield* directory.getBinding(threadId), originalBinding);
+      }
+    }),
+  );
+});
+
+it.effect(
+  "ProviderServiceLive uploads feedback through the adapter that recovered the session",
+  () =>
+    Effect.gen(function* () {
+      const original = makeFakeCodexAdapter();
+      const replacement = makeFakeCodexAdapter();
+      const baseRegistry = makeAdapterRegistryMock({ [CODEX_DRIVER]: original.adapter });
+      let swapAfterFirstLookup = false;
+      let feedbackLookupCount = 0;
+      const registry: ProviderAdapterRegistry.ProviderAdapterRegistry["Service"] = {
+        ...baseRegistry,
+        getByInstance: (instanceId) => {
+          if (instanceId !== codexInstanceId) {
+            return baseRegistry.getByInstance(instanceId);
+          }
+          const useReplacement = swapAfterFirstLookup && feedbackLookupCount++ > 0;
+          return Effect.succeed(useReplacement ? replacement.adapter : original.adapter);
+        },
+      };
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(SqlitePersistenceMemory),
+      );
+      const directoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const providerLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+        Layer.provide(directoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId("thread-feedback-adapter-replacement");
+        yield* provider.startSession(threadId, {
+          provider: CODEX_DRIVER,
+          providerInstanceId: codexInstanceId,
+          threadId,
+          runtimeMode: "full-access",
+        });
+        yield* original.stopSession(threadId);
+        original.uploadFeedback.mockClear();
+        replacement.uploadFeedback.mockClear();
+        swapAfterFirstLookup = true;
+
+        const result = yield* provider.uploadFeedback({ threadId });
+
+        assert.deepStrictEqual(result, { feedbackId: `feedback-${threadId}` });
+        assert.strictEqual(original.uploadFeedback.mock.calls.length, 0);
+        assert.deepStrictEqual(replacement.uploadFeedback.mock.calls, [[{ threadId }]]);
+      }).pipe(Effect.provide(providerLayer));
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive writes canonical events to the emitting thread segment", () =>
+  Effect.gen(function* () {
+    const codex = makeFakeCodexAdapter();
+    const canonicalEvents: ProviderRuntimeEvent[] = [];
+    const canonicalThreadIds: Array<string | null> = [];
+    const registry = makeAdapterRegistryMock({
+      [ProviderDriverKind.make("codex")]: codex.adapter,
+    });
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(SqlitePersistenceMemory),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+    const providerLayer = makeProviderServiceLive({
+      canonicalEventLogger: {
+        filePath: "memory://provider-canonical-events",
+        write: (event, threadId) => {
+          canonicalEvents.push(event as ProviderRuntimeEvent);
+          canonicalThreadIds.push(threadId ?? null);
+          return Effect.void;
+        },
+        close: () => Effect.void,
+      },
+    }).pipe(
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(serverConfigTestLayer),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+    );
+
+    yield* Effect.gen(function* () {
+      yield* ProviderService.ProviderService;
+      yield* advanceTestClock(10);
+      codex.emit({
+        eventId: asEventId("evt-canonical-thread-segment"),
+        provider: ProviderDriverKind.make("codex"),
+        threadId: asThreadId("thread-canonical-thread-segment"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        type: "turn.completed",
+        payload: {
+          state: "completed",
+        },
+      });
+      yield* advanceTestClock(20);
+    }).pipe(Effect.provide(providerLayer));
+
+    assert.equal(canonicalEvents.length, 1);
+    assert.equal(canonicalEvents[0]?.threadId, "thread-canonical-thread-segment");
+    assert.deepEqual(canonicalThreadIds, ["thread-canonical-thread-segment"]);
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect("ProviderServiceLive keeps persisted resumable sessions on startup", () =>
+  Effect.gen(function* () {
+    const tempDir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-provider-service-"));
+    const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+
+    const codex = makeFakeCodexAdapter();
+    const registry = makeAdapterRegistryMock({
+      [ProviderDriverKind.make("codex")]: codex.adapter,
+    });
+
+    const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+    const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+      Layer.provide(persistenceLayer),
+    );
+    const directoryLayer = ProviderSessionDirectoryLive.pipe(Layer.provide(runtimeRepositoryLayer));
+
+    yield* Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      yield* directory.upsert({
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: ThreadId.make("thread-stale"),
+      });
+    }).pipe(Effect.provide(directoryLayer));
+
+    const providerLayer = makeProviderServiceLive().pipe(
+      Layer.provide(NodeServices.layer),
+      Layer.provide(Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, registry)),
+      Layer.provide(directoryLayer),
+      Layer.provide(defaultServerSettingsLayer),
+      Layer.provide(serverConfigTestLayer),
+      Layer.provide(
+        Layer.succeed(
+          ProviderEventLoggers.ProviderEventLoggers,
+          ProviderEventLoggers.NoOpProviderEventLoggers,
+        ),
+      ),
+    );
+
+    yield* ProviderService.ProviderService.pipe(Effect.provide(providerLayer));
+
+    const persistedProvider = yield* Effect.gen(function* () {
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      return yield* directory.getProvider(asThreadId("thread-stale"));
+    }).pipe(Effect.provide(directoryLayer));
+    assert.equal(persistedProvider, "codex");
+
+    const runtime = yield* Effect.gen(function* () {
+      const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      return yield* repository.getByThreadId({
+        threadId: asThreadId("thread-stale"),
+      });
+    }).pipe(Effect.provide(runtimeRepositoryLayer));
+    assert.equal(Option.isSome(runtime), true);
+
+    const legacyTableRows = yield* Effect.gen(function* () {
+      const sql = yield* SqlClient.SqlClient;
+      return yield* sql<{ readonly name: string }>`
+        SELECT name
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'provider_sessions'
+      `;
+    }).pipe(Effect.provide(persistenceLayer));
+    assert.equal(legacyTableRows.length, 0);
+
+    NodeFS.rmSync(tempDir, { recursive: true, force: true });
+  }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+it.effect(
+  "ProviderServiceLive restores rollback routing after restart using persisted thread mapping",
+  () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-provider-service-restart-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+
+      const firstCodex = makeFakeCodexAdapter();
+      const firstRegistry = makeAdapterRegistryMock({
+        [ProviderDriverKind.make("codex")]: firstCodex.adapter,
+      });
+
+      const firstDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const firstProviderLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(
+          Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, firstRegistry),
+        ),
+        Layer.provide(firstDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+      const updatedResumeCursor = {
+        threadId: asThreadId("thread-1"),
+        resume: "resume-session-1",
+        resumeSessionAt: "assistant-message-1",
+        turnCount: 1,
+      };
+
+      const startedSession = yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId("thread-1");
+        const session = yield* provider.startSession(threadId, {
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: codexInstanceId,
+          cwd: fixtureCwd("project"),
+          runtimeMode: "full-access",
+          threadId,
+        });
+        firstCodex.updateSession(threadId, (existing) => ({
+          ...existing,
+          status: "ready",
+          resumeCursor: updatedResumeCursor,
+          updatedAt: "2026-01-01T00:00:01.000Z",
+        }));
+        return session;
+      }).pipe(Effect.provide(firstProviderLayer));
+
+      const persistedAfterStopAll = yield* Effect.gen(function* () {
+        const repository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+        return yield* repository.getByThreadId({
+          threadId: startedSession.threadId,
+        });
+      }).pipe(Effect.provide(runtimeRepositoryLayer));
+      assert.equal(Option.isSome(persistedAfterStopAll), true);
+      if (Option.isSome(persistedAfterStopAll)) {
+        assert.equal(persistedAfterStopAll.value.status, "stopped");
+        assert.deepEqual(persistedAfterStopAll.value.resumeCursor, updatedResumeCursor);
+      }
+
+      const secondCodex = makeFakeCodexAdapter();
+      const secondRegistry = makeAdapterRegistryMock({
+        [ProviderDriverKind.make("codex")]: secondCodex.adapter,
+      });
+      const secondDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const secondProviderLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(
+          Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, secondRegistry),
+        ),
+        Layer.provide(secondDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      secondCodex.startSession.mockClear();
+      secondCodex.rollbackThread.mockClear();
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        yield* provider.rollbackConversation({
+          threadId: startedSession.threadId,
+          numTurns: 1,
+        });
+      }).pipe(Effect.provide(secondProviderLayer));
+
+      assert.equal(secondCodex.startSession.mock.calls.length, 1);
+      const resumedStartInput = secondCodex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, fixtureCwd("project"));
+        assert.deepEqual(startPayload.resumeCursor, updatedResumeCursor);
+        assert.equal(startPayload.threadId, startedSession.threadId);
+      }
+      assert.equal(secondCodex.rollbackThread.mock.calls.length, 1);
+      const rollbackCall = secondCodex.rollbackThread.mock.calls[0];
+      assert.equal(typeof rollbackCall?.[0], "string");
+      assert.equal(rollbackCall?.[1], 1);
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+);
+
+routing.layer("ProviderServiceLive routing", (it) => {
+  it.effect.each([CODEX_DRIVER, CLAUDE_AGENT_DRIVER, CURSOR_DRIVER])(
+    "rejects missing, file, and saved workspace paths before starting %s",
+    (driver) =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const adapter =
+          driver === CODEX_DRIVER
+            ? routing.codex
+            : driver === CLAUDE_AGENT_DRIVER
+              ? routing.claude
+              : routing.cursor;
+        const cwd = fixtureCwd(`missing-workspace-${driver}`);
+        const movedCwd = `${cwd}-moved`;
+        const threadId = asThreadId(`missing-workspace-${driver}`);
+        const input = {
+          provider: driver,
+          providerInstanceId: ProviderInstanceId.make(driver),
+          threadId,
+          runtimeMode: "full-access" as const,
+          cwd,
+        };
+
+        yield* provider.startSession(threadId, input);
+        yield* provider.stopSession({ threadId });
+        adapter.startSession.mockClear();
+        NodeFS.renameSync(cwd, movedCwd);
+
+        const failure = yield* provider.startSession(threadId, input).pipe(Effect.flip);
+        assert.instanceOf(failure, ProviderWorkspaceMissingError);
+        assert.include(failure.message, cwd);
+        assert.equal(adapter.startSession.mock.calls.length, 0);
+
+        const { cwd: _cwd, ...savedInput } = input;
+        const savedFailure = yield* provider.startSession(threadId, savedInput).pipe(Effect.flip);
+        assert.instanceOf(savedFailure, ProviderWorkspaceMissingError);
+        assert.include(savedFailure.message, cwd);
+        assert.equal(adapter.startSession.mock.calls.length, 0);
+
+        NodeFS.writeFileSync(cwd, "not a directory");
+        const fileFailure = yield* provider.startSession(threadId, input).pipe(Effect.flip);
+        assert.instanceOf(fileFailure, ProviderWorkspaceMissingError);
+        assert.include(fileFailure.message, cwd);
+        assert.equal(adapter.startSession.mock.calls.length, 0);
+
+        NodeFS.unlinkSync(cwd);
+        NodeFS.renameSync(movedCwd, cwd);
+        const restored = yield* provider.startSession(threadId, savedInput);
+        assert.equal(restored.cwd, cwd);
+        assert.equal(adapter.startSession.mock.calls.length, 1);
+        yield* provider.stopSession({ threadId });
+        adapter.startSession.mockClear();
+        adapter.stopSession.mockClear();
+      }),
+  );
+
+  // Nothing else would stop it: the session is recorded nowhere, and the reaper walks bindings.
+  it.effect.each(["stopped while it starts", "refused once its agent answered"] as const)(
+    "a session start %s leaves no agent session running",
+    (ending) =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const threadId = asThreadId(`start-${ending.replaceAll(" ", "-")}`);
+        const open = routing.codex.startSession.getMockImplementation()!;
+        const opened = yield* Deferred.make<void>();
+        routing.codex.startSession.mockImplementationOnce((input) =>
+          open(input).pipe(
+            Effect.tap(() => Deferred.succeed(opened, undefined)),
+            Effect.flatMap((session) =>
+              ending === "stopped while it starts"
+                ? Effect.never
+                : Effect.succeed({ ...session, provider: CLAUDE_AGENT_DRIVER }),
+            ),
+          ),
+        );
+
+        const start = yield* provider
+          .startSession(threadId, {
+            provider: CODEX_DRIVER,
+            providerInstanceId: codexInstanceId,
+            threadId,
+            runtimeMode: "full-access",
+            cwd: fixtureCwd("project"),
+          })
+          .pipe(Effect.forkChild);
+        yield* Deferred.await(opened);
+        if (ending === "stopped while it starts") yield* Fiber.interrupt(start);
+
+        assert.isTrue(Exit.isFailure(yield* Fiber.await(start)));
+        assert.isFalse(yield* routing.codex.adapter.hasSession(threadId));
+      }),
+  );
+
+  it.effect("routes provider operations and rollback conversation", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const modelSelection = createModelSelection(codexInstanceId, "gpt-5.6-sol", [
+        { id: "reasoningEffort", value: "high" },
+      ]);
+
+      const session = yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      assert.equal(session.provider, "codex");
+
+      const sessions = yield* provider.listSessions();
+      assert.equal(sessions.length, 1);
+
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "hello",
+        attachments: [],
+        modelSelection,
+      });
+      assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
+
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      assert.deepEqual(routing.codex.interruptTurn.mock.calls, [[session.threadId, undefined]]);
+
+      yield* provider.respondToRequest({
+        threadId: session.threadId,
+        requestId: asRequestId("req-1"),
+        decision: "accept",
+      });
+      assert.deepEqual(routing.codex.respondToRequest.mock.calls, [
+        [session.threadId, asRequestId("req-1"), "accept"],
+      ]);
+
+      yield* provider.respondToUserInput({
+        threadId: session.threadId,
+        requestId: asRequestId("req-user-input-1"),
+        answers: {
+          sandbox_mode: "workspace-write",
+        },
+      });
+      assert.deepEqual(routing.codex.respondToUserInput.mock.calls, [
+        [
+          session.threadId,
+          asRequestId("req-user-input-1"),
+          {
+            sandbox_mode: "workspace-write",
+          },
+        ],
+      ]);
+
+      yield* provider.rollbackConversation({
+        threadId: session.threadId,
+        numTurns: 0,
+      });
+
+      const rewindCursor = { threadId: "rewound-provider-thread" };
+      routing.codex.updateSession(session.threadId, (session) => ({
+        ...session,
+        resumeCursor: rewindCursor,
+      }));
+      yield* provider.rollbackConversation({ threadId: session.threadId, numTurns: 1 });
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const rewoundBinding = yield* directory.getBinding(session.threadId);
+      assert(Option.isSome(rewoundBinding));
+      assert.deepEqual(rewoundBinding.value.resumeCursor, rewindCursor);
+      assert.deepEqual(
+        (rewoundBinding.value.runtimePayload as { modelSelection?: unknown }).modelSelection,
+        modelSelection,
+      );
+
+      yield* provider.stopSession({ threadId: session.threadId });
+      routing.codex.startSession.mockClear();
+      routing.codex.sendTurn.mockClear();
+
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "after-stop",
+        attachments: [],
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+          modelSelection?: unknown;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, fixtureCwd("project"));
+        assert.deepEqual(startPayload.resumeCursor, rewindCursor);
+        assert.deepEqual(startPayload.modelSelection, modelSelection);
+        assert.equal(startPayload.threadId, session.threadId);
+      }
+      assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("preserves background turn boundaries when stopping before rollback recovery", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-background-rewind");
+      const initial = yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const cursor = {
+        resume: "550e8400-e29b-41d4-a716-446655440010",
+        turnCount: 2,
+        turnStartMessageIds: ["user-prompt", "background-assistant"],
+      };
+      routing.claude.updateSession(threadId, (session) => ({ ...session, resumeCursor: cursor }));
+      const completed = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.eventId === "evt-background-rewind"),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      routing.claude.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-background-rewind"),
+        provider: CLAUDE_AGENT_DRIVER,
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId,
+        turnId: asTurnId("background-turn"),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(completed);
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const binding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(binding));
+      assert.deepEqual(binding.value.resumeCursor, cursor);
+      yield* provider.stopSession({ threadId });
+      routing.claude.startSession.mockClear();
+      yield* provider.rollbackConversation({ threadId, numTurns: 1 });
+      assert.deepEqual(routing.claude.startSession.mock.calls[0]?.[0].resumeCursor, cursor);
+
+      const replacement = yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.claude.listSessions.mockReturnValueOnce(
+        Effect.succeed([{ ...initial, resumeCursor: cursor }]),
+      );
+      const staleCompleted = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.eventId === "evt-stale-background-rewind"),
+        Stream.take(1),
+        Stream.runDrain,
+        Effect.forkChild,
+      );
+      yield* Effect.yieldNow;
+      routing.claude.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-stale-background-rewind"),
+        provider: CLAUDE_AGENT_DRIVER,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId: asTurnId("old-background-turn"),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(staleCompleted);
+      const replacementBinding = yield* directory.getBinding(threadId);
+      assert(Option.isSome(replacementBinding));
+      assert.equal(replacementBinding.value.providerInstanceId, codexInstanceId);
+      assert.deepEqual(replacementBinding.value.resumeCursor, replacement.resumeCursor);
+    }),
+  );
+
+  it.effect("marks a successful fallback compaction as compacted", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-compact-cursor");
+      yield* provider.startSession(threadId, {
+        provider: CURSOR_DRIVER,
+        providerInstanceId: ProviderInstanceId.make("cursor"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const compactedEventFiber = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.type === "thread.state.changed"),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      const requestId = MessageId.make("message-compact-cursor");
+      const compactFiber = yield* provider
+        .compactThread(threadId, undefined, requestId)
+        .pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+      routing.cursor.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-cursor-stale-turn-completed"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:00:00.500Z",
+        threadId,
+        turnId: asTurnId("turn-before-compaction"),
+        payload: { state: "completed" },
+      });
+      yield* Effect.yieldNow;
+      assert.equal(compactFiber.pollUnsafe(), undefined);
+      routing.cursor.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-cursor-compact-completed"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:00:01.000Z",
+        threadId,
+        turnId: asTurnId(`turn-${threadId}`),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(compactFiber);
+
+      const compacted = yield* Fiber.join(compactedEventFiber);
+      assert.equal(compacted._tag, "Some");
+      if (Option.isSome(compacted)) {
+        assert.equal(compacted.value.requestId, String(requestId));
+      }
+
+      const observedEvents = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const observedEventsFiber = yield* provider.streamEvents.pipe(
+        Stream.filter(
+          (event) =>
+            event.threadId === threadId &&
+            event.type === "thread.state.changed" &&
+            event.payload.state === "compacted",
+        ),
+        Stream.runForEach((event) => Ref.update(observedEvents, (events) => [...events, event])),
+        Effect.forkChild,
+      );
+      const observedRequestId = MessageId.make("message-observed-compact-cursor");
+      const observedCompactFiber = yield* provider
+        .compactThread(threadId, undefined, observedRequestId)
+        .pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+      routing.cursor.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("evt-cursor-provider-compacted"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:00:02.000Z",
+        threadId,
+        turnId: asTurnId(`turn-${threadId}`),
+        payload: { state: "compacted" },
+      });
+      routing.cursor.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-cursor-observed-compact-completed"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:00:03.000Z",
+        threadId,
+        turnId: asTurnId(`turn-${threadId}`),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(observedCompactFiber);
+      yield* Effect.yieldNow;
+      const observed = yield* Ref.get(observedEvents);
+      assert.equal(observed.length, 1);
+      assert.equal(observed[0]?.requestId, String(observedRequestId));
+      yield* Fiber.interrupt(observedEventsFiber);
+
+      const failedStartEventId = asEventId("evt-cursor-failed-compact-start");
+      const failedStartEventFiber = yield* provider.streamEvents.pipe(
+        Stream.filter((event) => event.eventId === failedStartEventId),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      routing.cursor.sendTurn.mockImplementationOnce((input) =>
+        Effect.gen(function* () {
+          routing.cursor.emit({
+            type: "turn.completed",
+            eventId: failedStartEventId,
+            provider: CURSOR_DRIVER,
+            createdAt: "2026-01-01T00:00:04.000Z",
+            threadId: input.threadId,
+            turnId: asTurnId("turn-cursor-failed-compact-start"),
+            payload: { state: "failed" },
+          });
+          yield* Effect.yieldNow;
+          return yield* new ProviderAdapterRequestError({
+            provider: String(CURSOR_DRIVER),
+            method: "turn/start",
+            detail: "Failed after emitting a terminal event.",
+          });
+        }),
+      );
+      const failedStart = yield* provider.compactThread(threadId).pipe(Effect.result);
+      assert.equal(failedStart._tag, "Failure");
+      assert.equal(Option.isSome(yield* Fiber.join(failedStartEventFiber)), true);
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("serializes native compaction and quarantines timed-out completions", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-compact-timeout");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.codex.compactThread.mockClear();
+      routing.codex.compactThread.mockImplementationOnce(() => Effect.never);
+
+      const resultFiber = yield* provider
+        .compactThread(threadId)
+        .pipe(Effect.result, Effect.forkChild);
+      yield* advanceTestClock(50);
+      const concurrent = yield* provider.compactThread(threadId).pipe(Effect.result);
+      assert.equal(concurrent._tag, "Failure");
+      assert.equal(routing.codex.compactThread.mock.calls.length, 1);
+
+      routing.cursor.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("evt-stale-provider-compact"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:00:00.100Z",
+        threadId,
+        payload: { state: "compacted" },
+      });
+      yield* Effect.yieldNow;
+      assert.equal(resultFiber.pollUnsafe(), undefined);
+
+      yield* advanceTestClock(600_001);
+      const result = yield* Fiber.join(resultFiber);
+      assert.equal(result._tag, "Failure");
+      if (result._tag === "Failure") {
+        assert.equal(result.failure._tag, "ProviderAdapterRequestError");
+      }
+
+      const blockedRetry = yield* provider.compactThread(threadId).pipe(Effect.result);
+      assert.equal(blockedRetry._tag, "Failure");
+      assert.equal(routing.codex.compactThread.mock.calls.length, 1);
+
+      routing.codex.emit({
+        type: "thread.state.changed",
+        eventId: asEventId("evt-native-compact-late"),
+        provider: CODEX_DRIVER,
+        createdAt: "2026-01-01T00:10:01.000Z",
+        threadId,
+        payload: { state: "compacted" },
+      });
+      yield* Effect.yieldNow;
+      yield* provider.compactThread(threadId);
+      assert.equal(routing.codex.compactThread.mock.calls.length, 2);
+
+      routing.codex.compactThread.mockImplementationOnce(() => Effect.void);
+      const stoppedResultFiber = yield* provider
+        .compactThread(threadId)
+        .pipe(Effect.result, Effect.forkChild);
+      yield* advanceTestClock(50);
+      yield* provider.stopSession({ threadId });
+      const stoppedResult = yield* Fiber.join(stoppedResultFiber);
+      assert.equal(stoppedResult._tag, "Failure");
+
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* provider.compactThread(threadId);
+      assert.equal(routing.codex.compactThread.mock.calls.length, 4);
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("times out fallback compaction when its turn never settles", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-compact-fallback-timeout");
+      yield* provider.startSession(threadId, {
+        provider: CURSOR_DRIVER,
+        providerInstanceId: ProviderInstanceId.make("cursor"),
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const resultFiber = yield* provider
+        .compactThread(threadId)
+        .pipe(Effect.result, Effect.forkChild);
+      yield* advanceTestClock(600_001);
+      const result = yield* Fiber.join(resultFiber);
+      assert.equal(result._tag, "Failure");
+
+      routing.cursor.sendTurn.mockImplementationOnce((input) =>
+        Effect.succeed({
+          threadId: input.threadId,
+          turnId: asTurnId("turn-compact-fallback-retry"),
+        }),
+      );
+      const retryFiber = yield* provider.compactThread(threadId).pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+      routing.cursor.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-compact-fallback-retry-completed"),
+        provider: CURSOR_DRIVER,
+        createdAt: "2026-01-01T00:10:02.000Z",
+        threadId,
+        turnId: asTurnId("turn-compact-fallback-retry"),
+        payload: { state: "completed" },
+      });
+      yield* Fiber.join(retryFiber);
+      yield* provider.stopSession({ threadId });
+    }),
+  );
+
+  it.effect("routes feedback to the Codex adapter and returns its feedback ID", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-feedback-route");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      routing.codex.uploadFeedback.mockClear();
+
+      const result = yield* provider.uploadFeedback({
+        threadId,
+        reason: "The agent stopped early.",
+      });
+
+      assert.deepStrictEqual(result, { feedbackId: `feedback-${threadId}` });
+      assert.deepStrictEqual(routing.codex.uploadFeedback.mock.calls, [
+        [{ threadId, reason: "The agent stopped early." }],
+      ]);
+    }),
+  );
+
+  it.effect("recovers a stopped Codex session before uploading feedback", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-feedback-recover");
+      yield* provider.startSession(threadId, {
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: fixtureCwd("feedback-project"),
+        runtimeMode: "full-access",
+      });
+      yield* routing.codex.stopSession(threadId);
+      routing.codex.startSession.mockClear();
+      routing.codex.uploadFeedback.mockClear();
+
+      const result = yield* provider.uploadFeedback({ threadId });
+
+      assert.deepStrictEqual(result, { feedbackId: `feedback-${threadId}` });
+      assert.strictEqual(routing.codex.startSession.mock.calls.length, 1);
+      assert.deepStrictEqual(routing.codex.uploadFeedback.mock.calls, [[{ threadId }]]);
+    }),
+  );
+
+  it.effect("rejects feedback for providers that do not support uploads", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-feedback-claude");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+
+      const error = yield* provider.uploadFeedback({ threadId }).pipe(Effect.flip);
+
+      assert.instanceOf(error, ProviderValidationError);
+      assert.include(error.issue, "does not support feedback uploads");
+      routing.claude.startSession.mockClear();
+    }),
+  );
+
+  it.effect("does not restart an unsupported provider before rejecting feedback", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-feedback-unsupported-stopped");
+      yield* provider.startSession(threadId, {
+        provider: CLAUDE_AGENT_DRIVER,
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* routing.claude.stopSession(threadId);
+      routing.claude.startSession.mockClear();
+
+      const error = yield* provider.uploadFeedback({ threadId }).pipe(Effect.flip);
+
+      assert.instanceOf(error, ProviderValidationError);
+      assert.include(error.issue, "does not support feedback uploads");
+      assert.strictEqual(routing.claude.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "a picture is named as its label names it",
+      input: "The header feels off:\n[Picture 1]\nFix it",
+      withOriginal: false,
+      lines: ["[Picture 1 is saved at: "],
+    },
+    {
+      name: "a kept original is named as its picture's",
+      input: "[Picture 1]\nUse the original on the site",
+      withOriginal: true,
+      lines: ["[Picture 1 is saved at: ", '[Picture 1\'s original, "home-page.png", is saved at: '],
+    },
+    {
+      name: "an image no label places keeps the plain line",
+      input: "use this screenshot",
+      withOriginal: false,
+      lines: ['[Attached image "picture.png" is saved at: '],
+    },
+  ])("names pictures in the path lines: $name", ({ input, withOriginal, lines }) =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-pictures"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-pictures"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      const picture = {
+        type: "image" as const,
+        id: "thread-pictures-12345678-1234-1234-1234-123456789abc",
+        name: "picture.png",
+        mimeType: "image/png",
+        sizeBytes: 123,
+      };
+      const original = {
+        type: "file" as const,
+        id: "thread-pictures-22345678-1234-1234-1234-123456789abc",
+        name: "home-page.png",
+        mimeType: "image/png",
+        sizeBytes: 456,
+      };
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input,
+        attachments: withOriginal ? [picture, original] : [picture],
+      });
+      const turnInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      const pathLines = (turnInput.input ?? "").split("\n\n").at(-1)?.split("\n") ?? [];
+      assert.deepEqual(
+        pathLines.map((line) => line.slice(0, line.indexOf(": ") + 2)),
+        lines,
+      );
+    }),
+  );
+
+  it.effect("appends attachment file paths to the turn input text", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const session = yield* provider.startSession(asThreadId("thread-attach"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-attach"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+
+      const attachment = {
+        type: "image" as const,
+        id: "thread-attach-12345678-1234-1234-1234-123456789abc",
+        name: "screenshot.png",
+        mimeType: "image/png",
+        sizeBytes: 123,
+      };
+
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "use this screenshot",
+        attachments: [attachment],
+      });
+
+      const turnInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      assert.equal(typeof turnInput.input, "string");
+      const turnText = turnInput.input ?? "";
+      assert.equal(turnText.startsWith("use this screenshot"), true);
+      assert.include(turnText, '[Attached image "screenshot.png" is saved at: ');
+      assert.equal(turnText.endsWith(`${attachment.id}.png"]`), true);
+
+      // An attachment-only turn stays valid and the injected line becomes the
+      // whole input text, so the agent still learns the path.
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        attachments: [attachment],
+      });
+      const imageOnlyInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      assert.equal(imageOnlyInput.input?.startsWith('[Attached image "screenshot.png"'), true);
+
+      const fileAttachment = {
+        type: "file" as const,
+        id: "thread-attach-12345678-1234-1234-1234-123456789abc-pdf",
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 456,
+      };
+
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "summarize the report",
+        attachments: [attachment, fileAttachment],
+      });
+      const mixedInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      assert.include(mixedInput.input ?? "", '[Attached file "report.pdf" is saved at: ');
+      assert.include(mixedInput.input ?? "", `${fileAttachment.id}.pdf"]`);
+      // Every attachment reaches the adapter; each adapter decides what its
+      // provider ingests natively.
+      assert.deepEqual(mixedInput.attachments, [attachment, fileAttachment]);
+
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({ threadId: session.threadId, attachments: [fileAttachment] });
+      const fileOnlyInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      assert.include(fileOnlyInput.input ?? "", '[Attached file "report.pdf" is saved at: ');
+      assert.deepEqual(fileOnlyInput.attachments, [fileAttachment]);
+
+      const pastedTextAttachment = {
+        type: "file" as const,
+        id: "thread-attach-12345678-1234-1234-1234-123456789abc-txt",
+        name: "pasted-text.txt",
+        mimeType: "text/plain;charset=utf-8",
+        sizeBytes: 32_768,
+        source: { _tag: "pasted-text" as const },
+      };
+      routing.codex.sendTurn.mockClear();
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "Investigate this crash",
+        attachments: [pastedTextAttachment],
+      });
+      const pastedInput = routing.codex.sendTurn.mock.calls[0]?.[0] as ProviderSendTurnInput;
+      assert.include(pastedInput.input ?? "", '[Pasted text "pasted-text.txt" is saved at: ');
+      assert.include(pastedInput.input ?? "", ". Inspect it as needed.]");
+      assert.deepEqual(pastedInput.attachments, [pastedTextAttachment]);
+
+      yield* provider.stopSession({ threadId: session.threadId });
+    }),
+  );
+
+  it.effect("hands a thread's messages to the agent in the order sent, a slow file copy too", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-order"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-order"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      const file = {
+        type: "file" as const,
+        id: "thread-order-12345678-1234-1234-1234-123456789abc-pdf",
+        name: "report.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 4,
+      };
+      const admitted = yield* Deferred.make<void>();
+      keepGate.admitted = () => Deferred.doneUnsafe(admitted, Effect.void);
+      let release!: () => void;
+      keepGate.held = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      routing.codex.sendTurn.mockClear();
+      const first = yield* Effect.forkChild(
+        provider.sendTurn({ threadId: session.threadId, input: "first", attachments: [file] }),
+        { startImmediately: true },
+      );
+      yield* Deferred.await(admitted).pipe(Effect.orDie);
+      const second = yield* Effect.forkChild(
+        provider.sendTurn({ threadId: session.threadId, input: "second" }),
+        { startImmediately: true },
+      );
+      release();
+      keepGate.held = null;
+      yield* Fiber.join(first);
+      yield* Fiber.join(second);
+      assert.deepEqual(
+        routing.codex.sendTurn.mock.calls.map(
+          (call) => ((call[0] as ProviderSendTurnInput).input ?? "").split("\n")[0],
+        ),
+        ["first", "second"],
+      );
+    }),
+  );
+
+  it.effect("recovers stale persisted sessions for rollback by resuming thread identity", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const initial = yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+      yield* routing.codex.stopSession(initial.threadId);
+      routing.codex.startSession.mockClear();
+      routing.codex.rollbackThread.mockClear();
+
+      yield* provider.assertConversationRollbackSupported(initial.threadId);
+      assert.equal(routing.codex.startSession.mock.calls.length, 0);
+
+      yield* provider.rollbackConversation({
+        threadId: initial.threadId,
+        numTurns: 1,
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, fixtureCwd("project"));
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+      assert.equal(routing.codex.rollbackThread.mock.calls.length, 1);
+      const rollbackCall = routing.codex.rollbackThread.mock.calls[0];
+      assert.equal(rollbackCall?.[1], 1);
+    }),
+  );
+
+  it.effect("preserves the persisted binding when stopping a session", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+
+      const initial = yield* provider.startSession(asThreadId("thread-reap-preserve"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-reap-preserve"),
+        cwd: fixtureCwd("project-reap-preserve"),
+        runtimeMode: "full-access",
+      });
+
+      yield* provider.stopSession({ threadId: initial.threadId });
+
+      const persistedAfterStop = yield* runtimeRepository.getByThreadId({
+        threadId: initial.threadId,
+      });
+      assert.equal(Option.isSome(persistedAfterStop), true);
+      if (Option.isSome(persistedAfterStop)) {
+        assert.equal(persistedAfterStop.value.status, "stopped");
+        assert.deepEqual(persistedAfterStop.value.resumeCursor, initial.resumeCursor);
+      }
+
+      routing.codex.startSession.mockClear();
+      routing.codex.sendTurn.mockClear();
+
+      yield* provider.sendTurn({
+        threadId: initial.threadId,
+        input: "resume after reap",
+        attachments: [],
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, fixtureCwd("project-reap-preserve"));
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+      assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  // The saved state goes with the thread, never with its folder: a provider resumes it in the new
+  // folder (Claude Code finds the transcript by its id in every project folder), so a move never
+  // costs the agent its conversation.
+  it.effect.each([
+    { name: "a move into a subfolder", thread: "thread-moved-in", from: "www", to: "www/appdev" },
+    { name: "a move back out", thread: "thread-moved-out", from: "www/appdev", to: "www" },
+  ])(
+    "after $name moves a thread to another folder, its next session resumes the provider's saved conversation there",
+    ({ thread, from, to }) =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        const initial = yield* provider.startSession(asThreadId(thread), {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId(thread),
+          cwd: fixtureCwd(from),
+          runtimeMode: "full-access",
+        });
+        yield* provider.stopSession({ threadId: initial.threadId });
+        routing.claude.startSession.mockClear();
+
+        yield* provider.startSession(initial.threadId, {
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: initial.threadId,
+          cwd: fixtureCwd(to),
+          runtimeMode: "full-access",
+        });
+
+        assert.equal(routing.claude.startSession.mock.calls.length, 1);
+        const resumed = routing.claude.startSession.mock.calls[0]?.[0];
+        assert.equal(resumed?.cwd, fixtureCwd(to));
+        assert.deepEqual(resumed?.resumeCursor, initial.resumeCursor);
+      }),
+  );
+
+  it.effect("routes explicit claudeAgent provider session starts to the claude adapter", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const session = yield* provider.startSession(asThreadId("thread-claude"), {
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: claudeAgentInstanceId,
+        threadId: asThreadId("thread-claude"),
+        cwd: fixtureCwd("project-claude"),
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(session.provider, "claudeAgent");
+      assert.equal(routing.claude.startSession.mock.calls.length, 1);
+      const startInput = routing.claude.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof startInput === "object" && startInput !== null, true);
+      if (startInput && typeof startInput === "object") {
+        const startPayload = startInput as {
+          provider?: string;
+          providerInstanceId?: ProviderInstanceId;
+          cwd?: string;
+        };
+        assert.equal(startPayload.provider, "claudeAgent");
+        assert.equal(startPayload.providerInstanceId, claudeAgentInstanceId);
+        assert.equal(startPayload.cwd, fixtureCwd("project-claude"));
+      }
+    }),
+  );
+
+  it.effect("dies when an active session conflicts with its persisted binding", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const directory = yield* ProviderSessionDirectory.ProviderSessionDirectory;
+      const threadId = asThreadId("thread-binding-mismatch");
+
+      yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-binding-mismatch"),
+        runtimeMode: "full-access",
+      });
+      yield* directory.upsert({
+        threadId,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: claudeAgentInstanceId,
+        runtimeMode: "full-access",
+      });
+
+      const exit = yield* Effect.exit(provider.listSessions());
+      assert.equal(Exit.hasDies(exit), true);
+      yield* directory.upsert({
+        threadId,
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        runtimeMode: "full-access",
+      });
+    }),
+  );
+
+  it.effect("stops stale sessions in other providers after a successful replacement start", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-provider-replacement");
+
+      const codexSession = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-provider-replacement"),
+        runtimeMode: "full-access",
+      });
+
+      routing.codex.stopSession.mockClear();
+      routing.claude.stopSession.mockClear();
+
+      const claudeSession = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: claudeAgentInstanceId,
+        threadId,
+        cwd: fixtureCwd("project-provider-replacement"),
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(codexSession.provider, "codex");
+      assert.equal(claudeSession.provider, "claudeAgent");
+      assert.deepEqual(routing.codex.stopSession.mock.calls, [[threadId]]);
+      assert.equal(routing.claude.stopSession.mock.calls.length, 0);
+
+      const sessions = yield* provider.listSessions();
+      assert.deepEqual(
+        sessions
+          .filter((session) => session.threadId === threadId)
+          .map((session) => session.provider),
+        ["claudeAgent"],
+      );
+    }),
+  );
+
+  it.effect("recovers stale sessions for sendTurn using persisted cwd", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const initial = yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        cwd: fixtureCwd("project-send-turn"),
+        runtimeMode: "full-access",
+      });
+
+      yield* routing.codex.stopAll();
+      routing.codex.startSession.mockClear();
+      routing.codex.sendTurn.mockClear();
+
+      yield* provider.sendTurn({
+        threadId: initial.threadId,
+        input: "resume",
+        attachments: [],
+      });
+
+      assert.equal(routing.codex.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.codex.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "codex");
+        assert.equal(startPayload.cwd, fixtureCwd("project-send-turn"));
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+      assert.equal(routing.codex.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("recovers stale claudeAgent sessions for sendTurn using persisted cwd", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const initial = yield* provider.startSession(asThreadId("thread-claude-send-turn"), {
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: claudeAgentInstanceId,
+        threadId: asThreadId("thread-claude-send-turn"),
+        cwd: fixtureCwd("project-claude-send-turn"),
+        modelSelection: createModelSelection(
+          ProviderInstanceId.make("claudeAgent"),
+          "claude-opus-4-6",
+          [{ id: "effort", value: "max" }],
+        ),
+        runtimeMode: "full-access",
+      });
+
+      yield* routing.claude.stopAll();
+      routing.claude.startSession.mockClear();
+      routing.claude.sendTurn.mockClear();
+
+      yield* provider.sendTurn({
+        threadId: initial.threadId,
+        input: "resume with claude",
+        attachments: [],
+      });
+
+      assert.equal(routing.claude.startSession.mock.calls.length, 1);
+      const resumedStartInput = routing.claude.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          modelSelection?: unknown;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "claudeAgent");
+        assert.equal(startPayload.cwd, fixtureCwd("project-claude-send-turn"));
+        assert.deepEqual(
+          startPayload.modelSelection,
+          createModelSelection(ProviderInstanceId.make("claudeAgent"), "claude-opus-4-6", [
+            { id: "effort", value: "max" },
+          ]),
+        );
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+      assert.equal(routing.claude.sendTurn.mock.calls.length, 1);
+    }),
+  );
+
+  it.effect("lists no sessions after adapter runtime clears", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+      });
+      yield* provider.startSession(asThreadId("thread-2"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-2"),
+        runtimeMode: "full-access",
+      });
+
+      yield* routing.codex.stopAll();
+      yield* routing.claude.stopAll();
+
+      const remaining = yield* provider.listSessions();
+      assert.equal(remaining.length, 0);
+    }),
+  );
+
+  it.effect("persists runtime status transitions in provider_session_runtime", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+
+      const threadId = asThreadId("thread-runtime-status");
+      const session = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      yield* provider.sendTurn({
+        threadId: session.threadId,
+        input: "hello",
+        attachments: [],
+      });
+
+      const runningRuntime = yield* runtimeRepository.getByThreadId({
+        threadId: session.threadId,
+      });
+      assert.equal(Option.isSome(runningRuntime), true);
+      if (Option.isSome(runningRuntime)) {
+        assert.equal(runningRuntime.value.status, "running");
+        assert.deepEqual(runningRuntime.value.resumeCursor, session.resumeCursor);
+        const payload = runningRuntime.value.runtimePayload;
+        assert.equal(payload !== null && typeof payload === "object", true);
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          const runtimePayload = payload as {
+            cwd: string;
+            model: string | null;
+            activeTurnId: string | null;
+            lastError: string | null;
+            lastRuntimeEvent: string | null;
+          };
+          assert.equal(runtimePayload.cwd, session.cwd);
+          assert.equal(runtimePayload.model, null);
+          assert.equal(runtimePayload.activeTurnId, `turn-${String(session.threadId)}`);
+          assert.equal(runtimePayload.lastError, null);
+          assert.equal(runtimePayload.lastRuntimeEvent, "provider.sendTurn");
+        }
+      }
+    }),
+  );
+
+  it.effect("does not persist running after a concurrent send is interrupted", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+      const sendStarted = yield* Deferred.make<void>();
+      const interrupted = yield* Deferred.make<void>();
+      routing.codex.sendTurn.mockImplementationOnce(() =>
+        Effect.gen(function* () {
+          yield* Deferred.succeed(sendStarted, undefined);
+          yield* Deferred.await(interrupted);
+          return yield* Effect.interrupt;
+        }),
+      );
+      routing.codex.interruptTurn.mockImplementationOnce(() =>
+        Deferred.succeed(interrupted, undefined).pipe(Effect.asVoid),
+      );
+
+      const threadId = asThreadId("thread-interrupted-send-directory");
+      const session = yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      const sendExitFiber = yield* provider
+        .sendTurn({
+          threadId: session.threadId,
+          input: "hold this prompt",
+          attachments: [],
+        })
+        .pipe(Effect.exit, Effect.forkChild);
+      yield* Deferred.await(sendStarted);
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      const sendExit = yield* Fiber.join(sendExitFiber);
+
+      assert.equal(Exit.isFailure(sendExit), true);
+      if (Exit.isFailure(sendExit)) {
+        assert.equal(Cause.hasInterruptsOnly(sendExit.cause), true);
+      }
+      const persisted = yield* runtimeRepository.getByThreadId({
+        threadId: session.threadId,
+      });
+      assert.equal(Option.isSome(persisted), true);
+      if (Option.isSome(persisted)) {
+        // The directory folds both adapter "ready" and "running" into its
+        // runtime "running" state. The payload proves sendTurn did not upsert.
+        assert.equal(persisted.value.status, "running");
+        const payload = persisted.value.runtimePayload;
+        assert.equal(payload !== null && typeof payload === "object", true);
+        if (payload !== null && typeof payload === "object" && !Array.isArray(payload)) {
+          const runtimePayload = payload as {
+            activeTurnId?: string | null;
+            lastRuntimeEvent?: string | null;
+          };
+          assert.equal(runtimePayload.activeTurnId ?? null, null);
+          assert.notEqual(runtimePayload.lastRuntimeEvent, "provider.sendTurn");
+        }
+      }
+    }),
+  );
+
+  it.effect("reuses persisted resume cursor when startSession is called after a restart", () =>
+    Effect.gen(function* () {
+      const tempDir = NodeFS.mkdtempSync(
+        NodePath.join(NodeOS.tmpdir(), "t3-provider-service-start-"),
+      );
+      const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+      const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+      const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+        Layer.provide(persistenceLayer),
+      );
+
+      const firstClaude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+      const firstRegistry = makeAdapterRegistryMock({
+        [ProviderDriverKind.make("claudeAgent")]: firstClaude.adapter,
+      });
+      const firstDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const firstProviderLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(
+          Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, firstRegistry),
+        ),
+        Layer.provide(firstDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      const initial = yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        return yield* provider.startSession(asThreadId("thread-claude-start"), {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId("thread-claude-start"),
+          cwd: fixtureCwd("project-claude-start"),
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(firstProviderLayer));
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        yield* provider.listSessions();
+      }).pipe(Effect.provide(firstProviderLayer));
+
+      const secondClaude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+      const secondRegistry = makeAdapterRegistryMock({
+        [ProviderDriverKind.make("claudeAgent")]: secondClaude.adapter,
+      });
+      const secondDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+        Layer.provide(runtimeRepositoryLayer),
+      );
+      const secondProviderLayer = makeProviderServiceLive().pipe(
+        Layer.provide(NodeServices.layer),
+        Layer.provide(
+          Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, secondRegistry),
+        ),
+        Layer.provide(secondDirectoryLayer),
+        Layer.provide(defaultServerSettingsLayer),
+        Layer.provide(serverConfigTestLayer),
+        Layer.provide(
+          Layer.succeed(
+            ProviderEventLoggers.ProviderEventLoggers,
+            ProviderEventLoggers.NoOpProviderEventLoggers,
+          ),
+        ),
+      );
+
+      secondClaude.startSession.mockClear();
+
+      yield* Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+        yield* provider.startSession(initial.threadId, {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: initial.threadId,
+          cwd: fixtureCwd("project-claude-start"),
+          runtimeMode: "full-access",
+        });
+      }).pipe(Effect.provide(secondProviderLayer));
+
+      assert.equal(secondClaude.startSession.mock.calls.length, 1);
+      const resumedStartInput = secondClaude.startSession.mock.calls[0]?.[0];
+      assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+      if (resumedStartInput && typeof resumedStartInput === "object") {
+        const startPayload = resumedStartInput as {
+          provider?: string;
+          cwd?: string;
+          resumeCursor?: unknown;
+          threadId?: string;
+        };
+        assert.equal(startPayload.provider, "claudeAgent");
+        assert.equal(startPayload.cwd, fixtureCwd("project-claude-start"));
+        assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+        assert.equal(startPayload.threadId, initial.threadId);
+      }
+
+      NodeFS.rmSync(tempDir, { recursive: true, force: true });
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect(
+    "reuses persisted cwd when startSession resumes a claude session without cwd input",
+    () =>
+      Effect.gen(function* () {
+        const tempDir = NodeFS.mkdtempSync(
+          NodePath.join(NodeOS.tmpdir(), "t3-provider-service-cwd-"),
+        );
+        const dbPath = NodePath.join(tempDir, "orchestration.sqlite");
+        const persistenceLayer = makeSqlitePersistenceLive(dbPath);
+        const runtimeRepositoryLayer = ProviderSessionRuntime.layer.pipe(
+          Layer.provide(persistenceLayer),
+        );
+
+        const firstClaude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+        const firstRegistry = makeAdapterRegistryMock({
+          [ProviderDriverKind.make("claudeAgent")]: firstClaude.adapter,
+        });
+        const firstDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+          Layer.provide(runtimeRepositoryLayer),
+        );
+        const firstProviderLayer = makeProviderServiceLive().pipe(
+          Layer.provide(NodeServices.layer),
+          Layer.provide(
+            Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, firstRegistry),
+          ),
+          Layer.provide(firstDirectoryLayer),
+          Layer.provide(defaultServerSettingsLayer),
+          Layer.provide(serverConfigTestLayer),
+          Layer.provide(
+            Layer.succeed(
+              ProviderEventLoggers.ProviderEventLoggers,
+              ProviderEventLoggers.NoOpProviderEventLoggers,
+            ),
+          ),
+        );
+
+        const initial = yield* Effect.gen(function* () {
+          const provider = yield* ProviderService.ProviderService;
+          return yield* provider.startSession(asThreadId("thread-claude-cwd"), {
+            provider: ProviderDriverKind.make("claudeAgent"),
+            providerInstanceId: claudeAgentInstanceId,
+            threadId: asThreadId("thread-claude-cwd"),
+            cwd: fixtureCwd("project-claude-cwd"),
+            runtimeMode: "full-access",
+          });
+        }).pipe(Effect.provide(firstProviderLayer));
+
+        const secondClaude = makeFakeCodexAdapter(CLAUDE_AGENT_DRIVER);
+        const secondRegistry = makeAdapterRegistryMock({
+          [ProviderDriverKind.make("claudeAgent")]: secondClaude.adapter,
+        });
+        const secondDirectoryLayer = ProviderSessionDirectoryLive.pipe(
+          Layer.provide(runtimeRepositoryLayer),
+        );
+        const secondProviderLayer = makeProviderServiceLive().pipe(
+          Layer.provide(NodeServices.layer),
+          Layer.provide(
+            Layer.succeed(ProviderAdapterRegistry.ProviderAdapterRegistry, secondRegistry),
+          ),
+          Layer.provide(secondDirectoryLayer),
+          Layer.provide(defaultServerSettingsLayer),
+          Layer.provide(serverConfigTestLayer),
+          Layer.provide(
+            Layer.succeed(
+              ProviderEventLoggers.ProviderEventLoggers,
+              ProviderEventLoggers.NoOpProviderEventLoggers,
+            ),
+          ),
+        );
+
+        secondClaude.startSession.mockClear();
+
+        yield* Effect.gen(function* () {
+          const provider = yield* ProviderService.ProviderService;
+          yield* provider.startSession(initial.threadId, {
+            provider: ProviderDriverKind.make("claudeAgent"),
+            providerInstanceId: claudeAgentInstanceId,
+            threadId: initial.threadId,
+            runtimeMode: "full-access",
+          });
+        }).pipe(Effect.provide(secondProviderLayer));
+
+        assert.equal(secondClaude.startSession.mock.calls.length, 1);
+        const resumedStartInput = secondClaude.startSession.mock.calls[0]?.[0];
+        assert.equal(typeof resumedStartInput === "object" && resumedStartInput !== null, true);
+        if (resumedStartInput && typeof resumedStartInput === "object") {
+          const startPayload = resumedStartInput as {
+            provider?: string;
+            cwd?: string;
+            resumeCursor?: unknown;
+            threadId?: string;
+          };
+          assert.equal(startPayload.provider, "claudeAgent");
+          assert.equal(startPayload.cwd, fixtureCwd("project-claude-cwd"));
+          assert.deepEqual(startPayload.resumeCursor, initial.resumeCursor);
+          assert.equal(startPayload.threadId, initial.threadId);
+        }
+
+        NodeFS.rmSync(tempDir, { recursive: true, force: true });
+      }).pipe(Effect.provide(NodeServices.layer)),
+  );
+});
+
+const fanout = makeProviderServiceLayer();
+fanout.layer("ProviderServiceLive fanout", (it) => {
+  it.effect("fans out adapter turn completion events", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+      });
+
+      const eventsRef = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const consumer = yield* Stream.runForEach(provider.streamEvents, (event) =>
+        Ref.update(eventsRef, (current) => [...current, event]),
+      ).pipe(Effect.forkChild);
+      yield* advanceTestClock(50);
+
+      const completedEvent: LegacyProviderRuntimeEvent = {
+        type: "turn.completed",
+        eventId: asEventId("evt-1"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: session.threadId,
+        turnId: asTurnId("turn-1"),
+        status: "completed",
+      };
+
+      fanout.codex.emit(completedEvent);
+      yield* advanceTestClock(50);
+
+      const events = yield* Ref.get(eventsRef);
+      yield* Fiber.interrupt(consumer);
+
+      assert.equal(
+        events.some((entry) => entry.type === "turn.completed"),
+        true,
+      );
+      assert.equal(
+        events.some(
+          (entry) =>
+            entry.type === "turn.completed" && entry.providerInstanceId === codexInstanceId,
+        ),
+        true,
+      );
+    }),
+  );
+
+  it.effect("fans out canonical runtime events in emission order", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-seq"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-seq"),
+        runtimeMode: "full-access",
+      });
+
+      const receivedRef = yield* Ref.make<Array<ProviderRuntimeEvent>>([]);
+      const consumer = yield* Stream.take(provider.streamEvents, 3).pipe(
+        Stream.runForEach((event) => Ref.update(receivedRef, (current) => [...current, event])),
+        Effect.forkChild,
+      );
+      yield* advanceTestClock(50);
+
+      fanout.codex.emit({
+        type: "tool.started",
+        eventId: asEventId("evt-seq-1"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: session.threadId,
+        turnId: asTurnId("turn-1"),
+        toolKind: "command",
+        title: "Ran command",
+      });
+      fanout.codex.emit({
+        type: "tool.completed",
+        eventId: asEventId("evt-seq-2"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: session.threadId,
+        turnId: asTurnId("turn-1"),
+        toolKind: "command",
+        title: "Ran command",
+      });
+      fanout.codex.emit({
+        type: "turn.completed",
+        eventId: asEventId("evt-seq-3"),
+        provider: ProviderDriverKind.make("codex"),
+        createdAt: "2026-01-01T00:00:00.000Z",
+        threadId: session.threadId,
+        turnId: asTurnId("turn-1"),
+        status: "completed",
+      });
+
+      yield* Fiber.join(consumer);
+      const received = yield* Ref.get(receivedRef);
+      assert.deepEqual(
+        received.map((event) => event.eventId),
+        [asEventId("evt-seq-1"), asEventId("evt-seq-2"), asEventId("evt-seq-3")],
+      );
+    }),
+  );
+
+  it.effect("keeps subscriber delivery ordered and isolates failing subscribers", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const session = yield* provider.startSession(asThreadId("thread-1"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-1"),
+        runtimeMode: "full-access",
+      });
+
+      const receivedByHealthy: string[] = [];
+      const expectedEventIds = new Set<string>(["evt-ordered-1", "evt-ordered-2", "evt-ordered-3"]);
+      const healthyFiber = yield* Stream.take(provider.streamEvents, 3).pipe(
+        Stream.runForEach((event) =>
+          Effect.sync(() => {
+            receivedByHealthy.push(event.eventId);
+          }),
+        ),
+        Effect.forkChild,
+      );
+      const failingFiber = yield* Stream.take(provider.streamEvents, 1).pipe(
+        Stream.runForEach(() => Effect.fail("listener crash")),
+        Effect.forkChild,
+      );
+      yield* advanceTestClock(50);
+
+      const events: ReadonlyArray<LegacyProviderRuntimeEvent> = [
+        {
+          type: "tool.completed",
+          eventId: asEventId("evt-ordered-1"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId: session.threadId,
+          turnId: asTurnId("turn-1"),
+          toolKind: "command",
+          title: "Ran command",
+          detail: "echo one",
+        },
+        {
+          type: "message.delta",
+          eventId: asEventId("evt-ordered-2"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId: session.threadId,
+          turnId: asTurnId("turn-1"),
+          delta: "hello",
+        },
+        {
+          type: "turn.completed",
+          eventId: asEventId("evt-ordered-3"),
+          provider: ProviderDriverKind.make("codex"),
+          createdAt: "2026-01-01T00:00:00.000Z",
+          threadId: session.threadId,
+          turnId: asTurnId("turn-1"),
+          status: "completed",
+        },
+      ];
+
+      for (const event of events) {
+        fanout.codex.emit(event);
+      }
+      const failingResult = yield* Effect.result(Fiber.join(failingFiber));
+      assert.equal(failingResult._tag, "Failure");
+      yield* Fiber.join(healthyFiber);
+
+      assert.deepEqual(
+        receivedByHealthy.filter((eventId) => expectedEventIds.has(eventId)).slice(0, 3),
+        ["evt-ordered-1", "evt-ordered-2", "evt-ordered-3"],
+      );
+    }),
+  );
+
+  it.effect("records provider metrics with the routed provider label", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const session = yield* provider.startSession(asThreadId("thread-metrics"), {
+        provider: ProviderDriverKind.make("claudeAgent"),
+        providerInstanceId: claudeAgentInstanceId,
+        threadId: asThreadId("thread-metrics"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+
+      yield* provider.interruptTurn({ threadId: session.threadId });
+      yield* provider.respondToRequest({
+        threadId: session.threadId,
+        requestId: asRequestId("req-metrics-1"),
+        decision: "accept",
+      });
+      yield* provider.respondToUserInput({
+        threadId: session.threadId,
+        requestId: asRequestId("req-metrics-2"),
+        answers: {
+          sandbox_mode: "workspace-write",
+        },
+      });
+      yield* provider.rollbackConversation({
+        threadId: session.threadId,
+        numTurns: 1,
+      });
+      yield* provider.stopSession({ threadId: session.threadId });
+
+      const snapshots = yield* Metric.snapshot;
+
+      assert.equal(
+        hasMetricSnapshot(snapshots, "t3_provider_turns_total", {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          operation: "interrupt",
+          outcome: "success",
+        }),
+        true,
+      );
+      assert.equal(
+        hasMetricSnapshot(snapshots, "t3_provider_turns_total", {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          operation: "approval-response",
+          outcome: "success",
+        }),
+        true,
+      );
+      assert.equal(
+        hasMetricSnapshot(snapshots, "t3_provider_turns_total", {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          operation: "user-input-response",
+          outcome: "success",
+        }),
+        true,
+      );
+      assert.equal(
+        hasMetricSnapshot(snapshots, "t3_provider_turns_total", {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          operation: "rollback",
+          outcome: "success",
+        }),
+        true,
+      );
+      assert.equal(
+        hasMetricSnapshot(snapshots, "t3_provider_sessions_total", {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          operation: "stop",
+          outcome: "success",
+        }),
+        true,
+      );
+    }),
+  );
+
+  it.effect(
+    "records sendTurn metrics with the resolved provider when modelSelection is omitted",
+    () =>
+      Effect.gen(function* () {
+        const provider = yield* ProviderService.ProviderService;
+
+        const session = yield* provider.startSession(asThreadId("thread-send-metrics"), {
+          provider: ProviderDriverKind.make("claudeAgent"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId("thread-send-metrics"),
+          cwd: fixtureCwd("project-send-metrics"),
+          runtimeMode: "full-access",
+        });
+
+        yield* provider.sendTurn({
+          threadId: session.threadId,
+          input: "hello",
+          attachments: [],
+        });
+
+        const snapshots = yield* Metric.snapshot;
+
+        assert.equal(
+          hasMetricSnapshot(snapshots, "t3_provider_turns_total", {
+            provider: ProviderDriverKind.make("claudeAgent"),
+            operation: "send",
+            outcome: "success",
+          }),
+          true,
+        );
+        assert.equal(
+          hasMetricSnapshot(snapshots, "t3_provider_turn_duration", {
+            provider: ProviderDriverKind.make("claudeAgent"),
+            operation: "send",
+          }),
+          true,
+        );
+      }),
+  );
+});
+
+const validation = makeProviderServiceLayer();
+validation.layer("ProviderServiceLive validation", (it) => {
+  it.effect("rejects input that leaves no room for pasted-text attachment context", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const attachment = {
+        type: "file" as const,
+        id: "thread-attach-12345678-1234-1234-1234-123456789abc-txt",
+        name: "pasted-text.txt",
+        mimeType: "text/plain;charset=utf-8",
+        sizeBytes: 32_768,
+        source: { _tag: "pasted-text" as const },
+      };
+      validation.codex.sendTurn.mockClear();
+
+      const failure = yield* provider
+        .sendTurn({
+          threadId: asThreadId("thread-pasted-text-context-limit"),
+          input: "x".repeat(PROVIDER_SEND_TURN_MAX_INPUT_CHARS),
+          attachments: [attachment],
+        })
+        .pipe(Effect.flip);
+
+      assert.instanceOf(failure, ProviderValidationError);
+      assert.include(failure.issue, String(PROVIDER_SEND_TURN_MAX_INPUT_CHARS));
+      assert.equal(validation.codex.sendTurn.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("rejects session starts without an explicit provider instance id", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      validation.codex.startSession.mockClear();
+      const failure = yield* Effect.flip(
+        provider.startSession(asThreadId("thread-missing-instance-id"), {
+          provider: ProviderDriverKind.make("codex"),
+          threadId: asThreadId("thread-missing-instance-id"),
+          runtimeMode: "full-access",
+        }),
+      );
+
+      assert.instanceOf(failure, ProviderValidationError);
+      assert.include(failure.issue, "Provider instance id is required for provider 'codex'.");
+      assert.equal(validation.codex.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("rejects mismatched provider kind and provider instance id", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      validation.codex.startSession.mockClear();
+      validation.claude.startSession.mockClear();
+      const failure = yield* Effect.flip(
+        provider.startSession(asThreadId("thread-instance-mismatch"), {
+          provider: ProviderDriverKind.make("codex"),
+          providerInstanceId: claudeAgentInstanceId,
+          threadId: asThreadId("thread-instance-mismatch"),
+          runtimeMode: "full-access",
+        }),
+      );
+
+      assert.instanceOf(failure, ProviderValidationError);
+      assert.include(
+        failure.issue,
+        "Provider instance 'claudeAgent' belongs to driver 'claudeAgent', not 'codex'.",
+      );
+      assert.equal(validation.codex.startSession.mock.calls.length, 0);
+      assert.equal(validation.claude.startSession.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("rejects a file when its path cannot fit in the prompt", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      validation.codex.sendTurn.mockClear();
+      const failure = yield* provider
+        .sendTurn({
+          threadId: asThreadId("thread-file-path-context-limit"),
+          input: "x".repeat(PROVIDER_SEND_TURN_MAX_INPUT_CHARS),
+          attachments: [
+            {
+              type: "file",
+              id: "thread-attach-12345678-1234-1234-1234-123456789abc-zip",
+              name: "archive.zip",
+              mimeType: "application/zip",
+              sizeBytes: 1024,
+            },
+          ],
+        })
+        .pipe(Effect.flip);
+
+      assert.instanceOf(failure, ProviderValidationError);
+      assert.include(failure.issue, String(PROVIDER_SEND_TURN_MAX_INPUT_CHARS));
+      assert.equal(validation.codex.sendTurn.mock.calls.length, 0);
+    }),
+  );
+
+  it.effect("sends a native image when its path cannot fit in the prompt", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const threadId = asThreadId("thread-image-path-context-limit");
+      yield* provider.startSession(threadId, {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId,
+        runtimeMode: "full-access",
+      });
+      validation.codex.sendTurn.mockClear();
+      const attachment = {
+        type: "image" as const,
+        id: "thread-attach-12345678-1234-1234-1234-123456789abc-png",
+        name: "screen.png",
+        mimeType: "image/png",
+        sizeBytes: 1024,
+      };
+      const input = "x".repeat(PROVIDER_SEND_TURN_MAX_INPUT_CHARS);
+      yield* provider.sendTurn({ threadId, input, attachments: [attachment] });
+      assert.equal(validation.codex.sendTurn.mock.calls[0]?.[0].input, input);
+      assert.deepEqual(validation.codex.sendTurn.mock.calls[0]?.[0].attachments, [attachment]);
+    }),
+  );
+
+  it.effect("returns ProviderValidationError for invalid input payloads", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+
+      const failure = yield* Effect.result(
+        provider.startSession(asThreadId("thread-validation"), {
+          threadId: asThreadId("thread-validation"),
+          provider: "invalid-provider",
+          runtimeMode: "full-access",
+        } as never),
+      );
+
+      assert.equal(failure._tag, "Failure");
+      if (failure._tag !== "Failure") {
+        return;
+      }
+      assert.equal(failure.failure._tag, "ProviderValidationError");
+      if (failure.failure._tag !== "ProviderValidationError") {
+        return;
+      }
+      assert.equal(failure.failure.operation, "ProviderService.startSession");
+      assert.equal(failure.failure.issue.includes("invalid-provider"), true);
+    }),
+  );
+
+  it.effect("accepts startSession when adapter has not emitted provider thread id yet", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      const runtimeRepository = yield* ProviderSessionRuntime.ProviderSessionRuntimeRepository;
+
+      validation.codex.startSession.mockImplementationOnce((input: ProviderSessionStartInput) =>
+        Effect.sync(() => {
+          const now = "2026-01-01T00:00:00.000Z";
+          return {
+            provider: ProviderDriverKind.make("codex"),
+            status: "ready",
+            threadId: input.threadId,
+            runtimeMode: input.runtimeMode,
+            cwd: input.cwd ?? process.cwd(),
+            createdAt: now,
+            updatedAt: now,
+          } satisfies ProviderSession;
+        }),
+      );
+
+      const session = yield* provider.startSession(asThreadId("thread-missing"), {
+        provider: ProviderDriverKind.make("codex"),
+        providerInstanceId: codexInstanceId,
+        threadId: asThreadId("thread-missing"),
+        cwd: fixtureCwd("project"),
+        runtimeMode: "full-access",
+      });
+
+      assert.equal(session.threadId, asThreadId("thread-missing"));
+
+      const runtime = yield* runtimeRepository.getByThreadId({
+        threadId: session.threadId,
+      });
+      assert.equal(Option.isSome(runtime), true);
+      if (Option.isSome(runtime)) {
+        assert.equal(runtime.value.threadId, session.threadId);
+      }
+    }),
+  );
+});
+
+const activeSessionThreadId = asThreadId("thread-active-session");
+const historicalSessionThreadId = asThreadId("thread-historical-session");
+const listThreadIds = vi.fn(() =>
+  Effect.succeed([activeSessionThreadId, historicalSessionThreadId]),
+);
+const getBinding = vi.fn((threadId: ThreadId) =>
+  Effect.succeedSome({
+    threadId,
+    provider: CODEX_DRIVER,
+    providerInstanceId: codexInstanceId,
+  }),
+);
+const boundedListing = makeProviderServiceLayer({
+  directory: {
+    upsert: () => Effect.void,
+    getProvider: () => Effect.die("ProviderService.listSessions does not use getProvider"),
+    getBinding,
+    listThreadIds,
+    listBindings: () => Effect.die("ProviderService.listSessions does not use listBindings"),
+  },
+});
+
+boundedListing.layer("ProviderServiceLive session listing", (it) => {
+  it.effect("looks up bindings for active sessions without scanning historical threads", () =>
+    Effect.gen(function* () {
+      const provider = yield* ProviderService.ProviderService;
+      yield* boundedListing.codex.startSession({
+        provider: CODEX_DRIVER,
+        providerInstanceId: codexInstanceId,
+        threadId: activeSessionThreadId,
+        cwd: fixtureCwd("project-active-session"),
+        runtimeMode: "full-access",
+      });
+      listThreadIds.mockClear();
+      getBinding.mockClear();
+
+      const sessions = yield* provider.listSessions();
+
+      assert.equal(sessions.length, 1);
+      assert.equal(listThreadIds.mock.calls.length, 0);
+      assert.deepEqual(getBinding.mock.calls, [[activeSessionThreadId]]);
+    }),
+  );
+});

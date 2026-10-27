@@ -1,0 +1,312 @@
+import type {
+  AuthClientMetadata,
+  AuthEnvironmentScope,
+  ServerAuthDescriptor,
+  ServerAuthSessionMethod,
+  AuthSessionId,
+  AuthSessionState,
+} from "@t3tools/contracts";
+import { EnvironmentHttpCommonError } from "@t3tools/contracts";
+import type { EnvironmentHttpCommonError as EnvironmentHttpCommonErrorType } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { HttpClientError } from "effect/http";
+
+import {
+  getPairingTokenFromUrl,
+  stripPairingTokenFromUrl as stripPairingTokenUrl,
+} from "../../pairingUrl";
+
+import { PrimaryEnvironmentHttpClient } from "./httpClient";
+import { runPrimaryHttp } from "../../lib/runtime";
+
+export type AuthGateState =
+  | { readonly status: "hosted-pairing" }
+  | { readonly status: "hosted-static" }
+  | { readonly status: "authenticated" }
+  | { readonly status: "requires-auth"; readonly auth: ServerAuthDescriptor };
+
+const PrimaryEnvironmentRequestOperation = Schema.Literals([
+  "fetch-session-state",
+  "exchange-bootstrap-credential",
+  "fetch-environment-descriptor",
+  "create-pairing-credential",
+  "list-pairing-links",
+  "revoke-pairing-link",
+  "list-client-sessions",
+  "revoke-client-session",
+  "revoke-other-client-sessions",
+]);
+type PrimaryEnvironmentRequestOperation = typeof PrimaryEnvironmentRequestOperation.Type;
+
+export class PrimaryEnvironmentRequestError extends Schema.TaggedError<PrimaryEnvironmentRequestError>()(
+  "PrimaryEnvironmentRequestError",
+  {
+    operation: PrimaryEnvironmentRequestOperation,
+    status: Schema.Number,
+    pairingLinkId: Schema.optional(Schema.String),
+    sessionId: Schema.optional(Schema.String),
+    cause: Schema.Defect(),
+  },
+) {
+  static fromCause(input: {
+    readonly operation: PrimaryEnvironmentRequestOperation;
+    readonly cause: unknown;
+    readonly pairingLinkId?: string;
+    readonly sessionId?: string;
+  }): PrimaryEnvironmentRequestError {
+    const status = readHttpApiStatus(input.cause) ?? 500;
+    return new PrimaryEnvironmentRequestError({
+      operation: input.operation,
+      status,
+      ...(input.pairingLinkId !== undefined ? { pairingLinkId: input.pairingLinkId } : {}),
+      ...(input.sessionId !== undefined ? { sessionId: input.sessionId } : {}),
+      cause: input.cause,
+    });
+  }
+
+  override get message(): string {
+    return `Primary environment request failed during ${this.operation} (HTTP ${this.status}).`;
+  }
+}
+
+const isPrimaryEnvironmentRequestError = Schema.is(PrimaryEnvironmentRequestError);
+
+export class PrimaryEnvironmentPairingCredentialRejectedError extends Schema.TaggedError<PrimaryEnvironmentPairingCredentialRejectedError>()(
+  "PrimaryEnvironmentPairingCredentialRejectedError",
+  {
+    providedLength: Schema.Number,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return "Invalid sign-in token. Check the token and try again.";
+  }
+}
+
+export const isPrimaryEnvironmentPairingCredentialRejectedError = Schema.is(
+  PrimaryEnvironmentPairingCredentialRejectedError,
+);
+
+export class PrimaryEnvironmentPairingCredentialRequiredError extends Schema.TaggedError<PrimaryEnvironmentPairingCredentialRequiredError>()(
+  "PrimaryEnvironmentPairingCredentialRequiredError",
+  {
+    providedLength: Schema.Number,
+  },
+) {
+  override get message(): string {
+    return "Enter a sign-in token to continue.";
+  }
+}
+
+const isEnvironmentHttpCommonError = Schema.is(EnvironmentHttpCommonError);
+
+export interface ServerPairingLinkRecord {
+  readonly id: string;
+  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
+  readonly subject: string;
+  readonly label?: string;
+  readonly createdAt: string;
+  readonly expiresAt: string;
+}
+
+export interface ServerClientSessionRecord {
+  readonly sessionId: AuthSessionId;
+  readonly subject: string;
+  readonly scopes: ReadonlyArray<AuthEnvironmentScope>;
+  readonly method: ServerAuthSessionMethod;
+  readonly client: AuthClientMetadata;
+  readonly issuedAt: string;
+  readonly expiresAt: string;
+  readonly lastConnectedAt: string | null;
+  readonly connected: boolean;
+  readonly current: boolean;
+}
+
+type ServerAuthGateState = Extract<
+  AuthGateState,
+  { readonly status: "authenticated" | "requires-auth" }
+>;
+
+let bootstrapPromise: Promise<ServerAuthGateState> | null = null;
+/** Cached until a local credential exchange or reload; pairing in another tab requires a reload. */
+let resolvedServerAuthGateState: ServerAuthGateState | null = null;
+
+export function peekPairingTokenFromUrl(): string | null {
+  return getPairingTokenFromUrl(new URL(window.location.href));
+}
+
+export function stripPairingTokenFromUrl() {
+  const url = new URL(window.location.href);
+  const next = stripPairingTokenUrl(url);
+  if (next.toString() === url.toString()) {
+    return;
+  }
+  window.history.replaceState({}, document.title, next.toString());
+}
+
+export function takePairingTokenFromUrl(): string | null {
+  const token = peekPairingTokenFromUrl();
+  if (!token) {
+    return null;
+  }
+  stripPairingTokenFromUrl();
+  return token;
+}
+
+export async function fetchSessionState(): Promise<AuthSessionState> {
+  return retryTransientBootstrap(async () => {
+    try {
+      return await runPrimaryHttp(
+        PrimaryEnvironmentHttpClient.pipe(
+          Effect.flatMap((client) => client.auth.session({ headers: {} })),
+        ),
+      );
+    } catch (error) {
+      throw PrimaryEnvironmentRequestError.fromCause({
+        operation: "fetch-session-state",
+        cause: error,
+      });
+    }
+  });
+}
+
+function readHttpApiStatus(error: unknown): number | null {
+  if (isEnvironmentHttpCommonError(error)) {
+    return readEnvironmentHttpErrorStatus(error);
+  }
+  return HttpClientError.isHttpClientError(error) && error.response !== undefined
+    ? error.response.status
+    : null;
+}
+
+function readEnvironmentHttpErrorStatus(error: EnvironmentHttpCommonErrorType): number {
+  switch (error._tag) {
+    case "EnvironmentRequestInvalidError":
+      return 400;
+    case "EnvironmentAuthInvalidError":
+      return 401;
+    case "EnvironmentScopeRequiredError":
+    case "EnvironmentOperationForbiddenError":
+      return 403;
+    case "EnvironmentResourceNotFoundError":
+      return 404;
+    case "EnvironmentInternalError":
+      return 500;
+  }
+}
+
+const TRANSIENT_BOOTSTRAP_STATUS_CODES = new Set([502, 503, 504]);
+const BOOTSTRAP_RETRY_TIMEOUT_MS = 15_000;
+const BOOTSTRAP_RETRY_STEP_MS = 500;
+
+export async function retryTransientBootstrap<T>(operation: () => Promise<T>): Promise<T> {
+  const startedAt = Date.now();
+  while (true) {
+    try {
+      return await operation();
+    } catch (error) {
+      if (!isTransientBootstrapError(error)) {
+        throw error;
+      }
+
+      if (Date.now() - startedAt >= BOOTSTRAP_RETRY_TIMEOUT_MS) {
+        throw error;
+      }
+
+      await waitForBootstrapRetry(BOOTSTRAP_RETRY_STEP_MS);
+    }
+  }
+}
+
+function waitForBootstrapRetry(delayMs: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, delayMs);
+  });
+}
+
+function isTransientBootstrapError(error: unknown): boolean {
+  if (isPrimaryEnvironmentRequestError(error)) {
+    return TRANSIENT_BOOTSTRAP_STATUS_CODES.has(error.status);
+  }
+
+  if (error instanceof TypeError) {
+    return true;
+  }
+
+  return error instanceof DOMException && error.name === "AbortError";
+}
+
+async function bootstrapServerAuth(): Promise<ServerAuthGateState> {
+  const currentSession = await fetchSessionState();
+  if (currentSession.authenticated) {
+    return { status: "authenticated" };
+  }
+
+  return {
+    status: "requires-auth",
+    auth: currentSession.auth,
+  };
+}
+
+export async function revokeServerClientSession(sessionId: AuthSessionId): Promise<void> {
+  try {
+    await runPrimaryHttp(
+      PrimaryEnvironmentHttpClient.pipe(
+        Effect.flatMap((client) =>
+          client.auth.revokeClient({ headers: {}, payload: { sessionId } }),
+        ),
+      ),
+    );
+  } catch (error) {
+    throw PrimaryEnvironmentRequestError.fromCause({
+      operation: "revoke-client-session",
+      sessionId,
+      cause: error,
+    });
+  }
+}
+
+export async function revokeOtherServerClientSessions(): Promise<number> {
+  try {
+    const result = await runPrimaryHttp(
+      PrimaryEnvironmentHttpClient.pipe(
+        Effect.flatMap((client) => client.auth.revokeOtherClients({ headers: {} })),
+      ),
+    );
+    return result.revokedCount;
+  } catch (error) {
+    throw PrimaryEnvironmentRequestError.fromCause({
+      operation: "revoke-other-client-sessions",
+      cause: error,
+    });
+  }
+}
+
+export async function resolveInitialServerAuthGateState(): Promise<ServerAuthGateState> {
+  if (resolvedServerAuthGateState !== null) {
+    return resolvedServerAuthGateState;
+  }
+
+  if (bootstrapPromise) {
+    return bootstrapPromise;
+  }
+
+  const nextPromise = bootstrapServerAuth();
+  bootstrapPromise = nextPromise;
+  return nextPromise
+    .then((result) => {
+      resolvedServerAuthGateState = result;
+      return result;
+    })
+    .finally(() => {
+      if (bootstrapPromise === nextPromise) {
+        bootstrapPromise = null;
+      }
+    });
+}
+
+export function __resetServerAuthBootstrapForTests() {
+  bootstrapPromise = null;
+  resolvedServerAuthGateState = null;
+}

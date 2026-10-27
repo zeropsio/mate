@@ -1,0 +1,33 @@
+{
+  "driver": "claude",
+  "cliVersion": "2.1.251 (Claude Code)",
+  "sdkVersion": "0.3.250",
+  "model": "claude-opus-5[1m]",
+  "capturedAt": "2026-08-29T08:22:33.462Z",
+  "capturedOn": "z3-eval/zcp",
+  "capturedBy": "spi-3",
+  "cwd": "/var/www",
+  "prompt": "Call zerops_workflow action=\"status\", then call zerops_mount action=\"status\", then stop.",
+  "allowedTools": [
+    "mcp__zerops__zerops_workflow",
+    "mcp__zerops__zerops_mount",
+    "mcp__zerops__zerops_discover"
+  ],
+  "notes": "Same prompt as zerops-workflow-envelope, but query.interrupt() (apps/server/src/provider/Layers/ClaudeAdapter.ts does NOT call this for its own interruptTurn -- it hard-closes the query instead, see stopSessionInternal's comment -- this fixture exercises the SDK-native graceful interrupt() path instead, which is what actually produces a CLI 'result' message describing the abort, per ClaudeAdapter.test.ts's 'treats aborted_tools/user-aborted results as interrupted' tests) fired the instant the first tool_use content_block_start stream_event appeared -- as early as observable, before the tool_use block finished streaming. Captured: a control line {name:interrupt, answer:{still_queued:[]}}, then a trailing user message with content [{type:text, text:'[Request interrupted by user]'}], then result: subtype=error_during_execution, is_error=true, errors=['[ede_diagnostic] result_type=user last_content_type=n/a stop_reason=null'], terminal_reason=aborted_streaming, stop_reason=null. This is the aborted_streaming variant (interrupt landed mid-tool_use-stream) rather than the aborted_tools variant (interrupt after the tool actually started executing) -- both are real CLI-native result subtypes; ClaudeAdapter.test.ts has fixtures for both. No 'result' arrived before the 500ms post-interrupt grace window elapsed, so the loop exited on the natural result message, not the grace timeout.",
+  "sdkOptions": {
+    "cwd": "/var/www",
+    "pathToClaudeCodeExecutable": "~/.local/bin/claude",
+    "systemPrompt": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "settingSources": ["user", "project", "local"],
+    "permissionMode": "auto",
+    "includePartialMessages": true,
+    "canUseTool": "<function>",
+    "onUserDialog": "<function>",
+    "supportedDialogKinds": ["resume_return"],
+    "env": "<omitted>",
+    "additionalDirectories": ["/var/www"]
+  }
+}

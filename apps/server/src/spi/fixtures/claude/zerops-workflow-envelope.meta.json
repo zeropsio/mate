@@ -1,0 +1,33 @@
+{
+  "driver": "claude",
+  "cliVersion": "2.1.251 (Claude Code)",
+  "sdkVersion": "0.3.250",
+  "model": "claude-opus-5[1m]",
+  "capturedAt": "2026-08-29T08:22:14.750Z",
+  "capturedOn": "z3-eval/zcp",
+  "capturedBy": "spi-3",
+  "cwd": "/var/www",
+  "prompt": "Call zerops_workflow action=\"status\", then call zerops_mount action=\"status\", then stop.",
+  "allowedTools": [
+    "mcp__zerops__zerops_workflow",
+    "mcp__zerops__zerops_mount",
+    "mcp__zerops__zerops_discover"
+  ],
+  "notes": "Confirms both StateEnvelope carriers on the wire per docs/spec-mate.md section 1: the zerops_workflow status tool_result text ends in a fenced ```json zcp-envelope block (grep -c 'zcp-envelope' == 1), and the zerops_mount status tool_result is JSON with a top-level \"envelope\" key (json.loads succeeds, 'envelope' in keys). Both MCP calls were auto-approved by the CLI's own auto-mode classifier under permissionMode=auto and never reached this recorder's canUseTool callback (0 control lines) -- a genuine capture of production auto-mode behavior for read-only status tools, not a recorder gap.",
+  "sdkOptions": {
+    "cwd": "/var/www",
+    "pathToClaudeCodeExecutable": "~/.local/bin/claude",
+    "systemPrompt": {
+      "type": "preset",
+      "preset": "claude_code"
+    },
+    "settingSources": ["user", "project", "local"],
+    "permissionMode": "auto",
+    "includePartialMessages": true,
+    "canUseTool": "<function>",
+    "onUserDialog": "<function>",
+    "supportedDialogKinds": ["resume_return"],
+    "env": "<omitted>",
+    "additionalDirectories": ["/var/www"]
+  }
+}

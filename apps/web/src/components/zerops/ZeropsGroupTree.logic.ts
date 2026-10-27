@@ -1,0 +1,80 @@
+/**
+ * Presentation decisions for the group tree — the words, not the pixels.
+ *
+ * Deliberately holds no status table. What an environment's container is
+ * doing is already classified by `candidates.ts` and phrased by the picker;
+ * a second table here would be a third opinion about the same fact, which
+ * design-system rule R5 exists to prevent. The tree takes status as an
+ * injected slot and decides only what is genuinely its own: role wording and
+ * what a group's header says about itself.
+ */
+
+import type { ZeropsEnvironmentRole, ZeropsGroup } from "@t3tools/client-runtime/zerops";
+
+/**
+ * How a role is written in a sentence — "Add production", "Acme Docs -
+ * production". Sentence case, not the tag's own spelling: `prod` is an
+ * identifier, "Production" is the word people use.
+ */
+export function environmentRoleLabel(role: ZeropsEnvironmentRole | undefined): string | null {
+  switch (role) {
+    case "dev":
+      return "Dev";
+    case "devstage":
+      return "Dev / Stage";
+    case "stage":
+      return "Stage";
+    case "prod":
+      return "Production";
+    case undefined:
+      return null;
+  }
+}
+
+/**
+ * How a role reads as a tag — the pill trailing an environment's name. The
+ * tag's own short spelling, because a pill is a tag, and `PROD` beside a
+ * name is what a developer calls it; `MicroLabel` sets the case.
+ */
+export function environmentRoleTag(role: ZeropsEnvironmentRole | undefined): string | null {
+  switch (role) {
+    case "dev":
+      return "dev";
+    case "devstage":
+      return "dev/stage";
+    case "stage":
+      return "stage";
+    case "prod":
+      return "prod";
+    case undefined:
+      return null;
+  }
+}
+
+/**
+ * Whether the group's name could not be read and its id stands in for it. HQ
+ * holds no application without a name, so this is a read problem: the tree
+ * marks it rather than pretending `7k2m9qx4vb1c` is a title.
+ */
+export function groupNameUnread(group: Pick<ZeropsGroup, "nameSource">): boolean {
+  return group.nameSource === "unread";
+}
+
+/**
+ * Which roles a group can still be given.
+ *
+ * Only production is capped, and only at one: it is what the pipeline deploys
+ * into, and a group holding two has no answer for which. A dev environment is
+ * a Mate, and a project is worked on by as many Mates as the people on it
+ * want; stage is likewise a thing you may want several of.
+ *
+ * Capping all three at one was what left a group with dev, stage and
+ * production showing no way to add anything at all — the state that reads as
+ * a missing feature rather than a full set.
+ */
+export function creatableRoles(group: {
+  readonly environments: ReadonlyArray<{ readonly role: ZeropsEnvironmentRole | undefined }>;
+}): ReadonlyArray<ZeropsEnvironmentRole> {
+  const hasProduction = group.environments.some((entry) => entry.role === "prod");
+  return (["dev", "stage", "prod"] as const).filter((role) => role !== "prod" || !hasProduction);
+}

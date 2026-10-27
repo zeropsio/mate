@@ -1,0 +1,648 @@
+export type BrandAppearance = "light" | "dark";
+
+export type ServiceStatusTone = Readonly<{
+  dot: string;
+  text?: string;
+  surface: string;
+}>;
+
+// Exact 7% #56d364 over the #141918 dark surface. Every dark tone surface is
+// the same 7% of its dot over that surface: at the light palette's 14% a
+// tinted header read as a solid green slab on the dark card.
+const DARK_MINT_SURFACE = "#19261d";
+
+export const PROVIDER_ACCENT_SWATCHES = [
+  "#0077cc",
+  "#16a34a",
+  "#ea580c",
+  "#dc2626",
+  "#7c3aed",
+  "#0891b2",
+] as const;
+
+export const FALLBACK_PROVIDER_ACCENT = "#5f6a72";
+
+export const SEMANTIC_INDICATORS = {
+  success: { light: "#00cc55", dark: "#56d364" },
+  successForeground: { light: "#0f7a38", dark: "#56d364" },
+  info: { light: "#0077cc", dark: "#58a6ff" },
+  infoForeground: { light: "var(--color-blue-700)", dark: "var(--color-blue-400)" },
+} as const;
+
+/**
+ * Service and agent-auth presentations consume these fixed platform tones.
+ * Thread-status tone ids are mapped by the later primitives slice, not here.
+ */
+export const SERVICE_STATUS_TONES = {
+  ok: {
+    light: { dot: "#66bb6a", text: "#2e7d32", surface: "#e8f7ec" },
+    dark: { dot: "#56d364", text: "#56d364", surface: DARK_MINT_SURFACE },
+  },
+  busy: {
+    // Light had no busy text colour, so every word that asked for one
+    // inherited the body's — a blue chip with black text beside an amber chip
+    // with amber text. Same mistake, same fix, as `failed` below.
+    light: { dot: "#42a5f5", text: "#1565c0", surface: "#eff9fd" },
+    dark: { dot: "#58a6ff", text: "#58a6ff", surface: "#192328" },
+  },
+  attention: {
+    light: { dot: "#ffa726", text: "#a26000", surface: "#fff4e0" },
+    dark: { dot: "#e8a33d", text: "#ffb74d", surface: "#23231b" },
+  },
+  failed: {
+    light: { dot: "#ef5350", text: "#c62828", surface: "#fdefef" },
+    dark: { dot: "#f47067", text: "#f47067", surface: "#241f1e" },
+  },
+  off: {
+    light: { dot: "#bdbdbd", surface: "#f3f5f7" },
+    dark: { dot: "#5e6e69", surface: "#151b1a" },
+  },
+} as const satisfies Readonly<Record<string, Readonly<Record<BrandAppearance, ServiceStatusTone>>>>;
+
+export type ServiceStatusToneId = keyof typeof SERVICE_STATUS_TONES;
+
+export const IDENTITY = {
+  mark: { main: "#3cbdb2", secondary: "#00b1a3" },
+  mint: { light: "#00b1a3", dark: "#00e5c0" },
+  pillTint: { light: "rgba(0,204,187,.13)", dark: "rgba(0,229,192,.13)" },
+} as const;
+
+export const CHIP_TINTS = {
+  "access-green": {
+    light: { surface: "rgba(76,175,80,.15)", text: "#388e3c" },
+    dark: { surface: "rgba(76,175,80,.1)", text: "#56d364" },
+  },
+  "region-purple": {
+    light: { surface: "rgba(156,39,176,.15)", text: "#7b1fa2" },
+    dark: { surface: "rgba(156,39,176,.15)", text: "#ba68c8" },
+  },
+  "info-chip": {
+    light: { surface: "rgba(255,255,255,.9)", text: "#424242" },
+    dark: { surface: "#151b1a", text: "#c9d4d1" },
+  },
+} as const;
+
+/** The unverified #bcfffa SCSS token is not carried into the client palette. */
+export const MINT_PANEL = {
+  light: "#e8f7ec",
+  dark: DARK_MINT_SURFACE,
+} as const;
+
+export const FLAT_CARD_BORDER = {
+  light: "transparent",
+  dark: "rgba(255,255,255,.06)",
+} as const;
+
+export const PROCESS_STEPS = {
+  glyphColumn: 30,
+  glyphSize: 17,
+  glyphBorderWidth: 2,
+} as const;
+
+/** Mate identity v1: the Zerops loop with its band retracted. Shared with the favicon. */
+export const MATE_MARK = {
+  viewBox: "0 0 44 52",
+  color: "#45a29a",
+  eyes: { light: "#17130f", dark: "#f4efe6" },
+  paths: [
+    "M0.46,27.54 V11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V17.99 L34.84,22.54 V13.71 L21.6,8.62 L8.36,13.7 V23 Z",
+    "M42.74,23.7 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 V33.26 L8.5,28.62 V37.74 L21.6,42.75 L34.84,37.69 V28.26 Z",
+  ],
+  silhouette:
+    "M0.46,11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 Z",
+  eyeXs: [12.332, 25.572],
+  eyeY: 19.06,
+  eyeWidth: 5.296,
+  eyeHeight: 10.592,
+} as const;
+
+/**
+ * The live mark's grid — identity v1's own derivation, in the logo's units.
+ *
+ * Every number below is measured from the logo rather than chosen: the stroke
+ * `S` is the wall thickness, the window `XL..XR` is five columns wide
+ * (¾ margin · eye · 1½ gap · eye · ¾ margin), and the eye unit `U` is one of
+ * those columns. `MATE_MARK`'s flat eye rectangles fall out of the same
+ * arithmetic, which `brand.test.ts` pins — so the still favicon and the live
+ * mark can never drift apart.
+ *
+ * Held in logo units, not identity v1's 100-box: the mark already renders in
+ * a `0 0 44 52` viewBox here, and rescaling would have moved the favicon.
+ */
+const MARK_STROKE = 7.9;
+const WINDOW = { xl: 8.36, xr: 34.84, yb: 42.75 } as const;
+/** The mark's centre in path space (`logo.svg` carries a translate(-.46,-.44)). */
+const MARK_CENTRE = { x: 21.59, y: 25.68 } as const;
+const EYE_UNIT = (WINDOW.xr - WINDOW.xl) / 5;
+const EYE_CENTRE_Y = MARK_CENTRE.y - 0.25 * EYE_UNIT;
+
+const COS30 = Math.cos(Math.PI / 6);
+const SIN30 = 0.5;
+/** Where the left slot's lower edge meets the inner wall: the band's upper edge. */
+const BAND_ANCHOR = { x: 8.5, y: 28.62 } as const;
+/** Axis distance from the anchor to the centre cut. */
+const BAND_CENTRE = (MARK_CENTRE.x - BAND_ANCHOR.x) / COS30;
+
+/** A point `t` along the band's axis and `k` across it. */
+function bandPoint(t: number, k: number): readonly [number, number] {
+  return [BAND_ANCHOR.x + t * COS30 + k * SIN30, BAND_ANCHOR.y - t * SIN30 + k * COS30];
+}
+
+function bandQuad(t0: number, t1: number): string {
+  const points = [
+    bandPoint(t0, 0),
+    bandPoint(t1, 0),
+    bandPoint(t1, MARK_STROKE),
+    bandPoint(t0, MARK_STROKE),
+  ];
+  return `M${points.map(([x, y]) => `${round(x)},${round(y)}`).join(" L")} Z`;
+}
+
+function round(value: number): number {
+  return Math.round(value * 1000) / 1000;
+}
+
+/**
+ * How far each lid travels, as `[openness, width, lift in eye units]`.
+ * `sleep`/`blink`/`closed` shut the eye; `needs`/`surprise` widen and lift it.
+ * `waking` shuts it as asleep does — a Mate on its way up, its agent not
+ * answering yet — and only the motion tells the two apart: it breathes.
+ */
+export const MATE_MARK_LIDS = {
+  idle: [1, 1, 0],
+  working: [0.5, 1, 0.2],
+  needs: [1.12, 1.12, -0.13],
+  surprise: [1.12, 1.12, -0.13],
+  done: [1, 1, 0],
+  blink: [0, 1, 0],
+  sleep: [0, 1, 0],
+  waking: [0, 1, 0],
+  closed: [0, 1, 0],
+} as const;
+
+export type MateMarkState = keyof typeof MATE_MARK_LIDS;
+
+export const MATE_MARK_LIVE = {
+  /** The extruded side wall is one stroke deep; the turn is capped at 5°. */
+  depth: MARK_STROKE,
+  tilt: 5,
+  /** Side-wall fill, so the extrusion reads as a turn rather than a shadow. */
+  side: { light: "#2d716b", dark: "#8ad4cb" },
+  eyeUnit: EYE_UNIT,
+  /** Eye centres, unlike `MATE_MARK.eyeXs` which are the rectangles' left edges. */
+  eyeCentres: [WINDOW.xl + 1.25 * EYE_UNIT, WINDOW.xr - 1.25 * EYE_UNIT] as const,
+  eyeCentreY: EYE_CENTRE_Y,
+  /** The mouth sits 60% of the way from the eye line to the window floor. */
+  mouth: {
+    y: EYE_CENTRE_Y + 0.6 * (WINDOW.yb - EYE_CENTRE_Y),
+    r: 0.42 * EYE_UNIT,
+    strokeWidth: 0.28 * EYE_UNIT,
+  },
+  /**
+   * The band the Zerops mark has pulled out, drawn back in as the one moving
+   * part: at rest it sits in place and the mark IS the Zerops logo; awake it
+   * retracts into the walls along its own 30° and the eyes open behind it.
+   * The halves overlap by 1.2 at rest so the seam never shows.
+   */
+  band: {
+    left: bandQuad(-16, BAND_CENTRE + 0.6),
+    right: bandQuad(BAND_CENTRE - 0.6, 46),
+    travel: 20,
+    cos30: COS30,
+    sin30: SIN30,
+  },
+} as const;
+
+/** The mark's box height, which is also the lockup's. */
+const MATE_LOCKUP_HEIGHT = 52;
+
+/**
+ * Identity v1 §06 — the wordmark. "mate", Sora SemiBold, lowercase,
+ * letter-spacing −0.015 em, shaped once (HarfBuzz, `kern` on) and outlined, so
+ * no page ever waits on a webfont to show the logo. Held in the mark's units,
+ * at the proportion the owner set from the reference lockup (2026-09-05) and
+ * tightened on 2026-09-06 ("a little smaller and a little closer to the
+ * logo"): the word reads small beside a large mark — x-height 0.35 of the
+ * mark's height, the x-height band centred on the mark, and the first stem's
+ * ink two fifths of the mark's height right of it. Derivation:
+ * `scripts/brand/wordmark.py`; this cut is the 2026-09-05 one scaled about the
+ * baseline at its first stem, which is the same layout the script re-derives.
+ */
+export const MATE_WORDMARK = {
+  font: "Sora SemiBold",
+  letterSpacingEm: -0.015,
+  xHeight: round(MATE_LOCKUP_HEIGHT * 0.35),
+  baseline: round(MATE_LOCKUP_HEIGHT / 2 + (MATE_LOCKUP_HEIGHT * 0.35) / 2),
+  gap: round(MATE_LOCKUP_HEIGHT * 0.4),
+  ink: { left: 63.54, top: 11.37, right: 147.15, bottom: 35.74 },
+  /** One outline per letter, m · a · t · e. */
+  paths: [
+    "M63.54 35.1V16.59H67.29V24.53H66.95Q66.95 21.74 67.67 19.85Q68.38 17.95 69.79 16.98Q71.21 16.01 73.32 16.01H73.53Q75.67 16.01 77.09 16.98Q78.5 17.95 79.2 19.85Q79.9 21.74 79.9 24.53H78.71Q78.71 21.74 79.44 19.85Q80.17 17.95 81.59 16.98Q83 16.01 85.12 16.01H85.31Q87.46 16.01 88.9 16.98Q90.33 17.95 91.06 19.85Q91.79 21.74 91.79 24.53V35.1H87.06V24.1Q87.06 22.35 86.17 21.31Q85.29 20.28 83.64 20.28Q82.01 20.28 81.02 21.35Q80.03 22.43 80.03 24.23V35.1H75.3V24.1Q75.3 22.35 74.41 21.31Q73.53 20.28 71.89 20.28Q70.25 20.28 69.26 21.35Q68.28 22.43 68.28 24.23V35.1Z",
+    "M107.57 35.1V29.61H106.79V23.51Q106.79 21.91 106.01 21.13Q105.22 20.34 103.59 20.34Q102.73 20.34 101.55 20.37Q100.35 20.41 99.14 20.47Q97.93 20.51 96.97 20.58V16.55Q97.76 16.49 98.75 16.42Q99.73 16.36 100.77 16.34Q101.82 16.32 102.73 16.32Q105.6 16.32 107.49 17.07Q109.39 17.82 110.36 19.42Q111.33 21.03 111.33 23.61V35.1ZM101.61 35.58Q99.59 35.58 98.08 34.86Q96.56 34.15 95.73 32.81Q94.9 31.49 94.9 29.61Q94.9 27.57 95.9 26.27Q96.91 24.97 98.73 24.33Q100.56 23.69 103.01 23.69H107.3V26.51H102.94Q101.3 26.51 100.43 27.32Q99.57 28.11 99.57 29.38Q99.57 30.64 100.43 31.42Q101.3 32.21 102.94 32.21Q103.93 32.21 104.77 31.84Q105.6 31.49 106.16 30.62Q106.73 29.75 106.79 28.25L107.95 29.57Q107.78 31.53 107.01 32.85Q106.25 34.18 104.9 34.88Q103.55 35.58 101.61 35.58Z",
+    "M123.94 35.34Q121.38 35.34 119.73 34.67Q118.07 34.01 117.25 32.42Q116.43 30.84 116.43 28.15L116.47 11.37H120.9L120.87 28.45Q120.87 29.82 121.6 30.55Q122.33 31.28 123.69 31.28H126.6V35.34ZM113.5 20.07V16.59H126.6V20.07Z",
+    "M138.24 35.74Q135.86 35.74 134.07 34.93Q132.28 34.11 131.1 32.73Q129.93 31.35 129.34 29.65Q128.74 27.94 128.74 26.17V25.52Q128.74 23.69 129.34 21.96Q129.93 20.24 131.1 18.9Q132.28 17.54 134.03 16.75Q135.76 15.95 138.05 15.95Q141.04 15.95 143.07 17.25Q145.09 18.57 146.12 20.7Q147.15 22.83 147.15 25.28V26.99H130.75V24.1H144.18L142.71 25.52Q142.71 23.75 142.2 22.49Q141.69 21.23 140.65 20.55Q139.62 19.87 138.05 19.87Q136.48 19.87 135.39 20.58Q134.3 21.3 133.74 22.64Q133.17 23.99 133.17 25.86Q133.17 27.61 133.72 28.95Q134.26 30.29 135.39 31.06Q136.51 31.82 138.24 31.82Q139.99 31.82 141.08 31.13Q142.16 30.43 142.47 29.41H146.84Q146.43 31.32 145.27 32.75Q144.11 34.18 142.32 34.96Q140.53 35.74 138.24 35.74Z",
+  ],
+} as const;
+
+/** The mark's box width — `MATE_MARK.viewBox` is `0 0 44 52`. */
+const MATE_MARK_WIDTH = 44;
+const MATE_LOCKUP_WIDTH = 148;
+
+/**
+ * The lockup: the mark and the wordmark in one box. Its height is the mark's
+ * own, so a lockup and a bare mark at the same CSS height draw the mark at the
+ * same size; the right margin mirrors the mark's left one.
+ *
+ * The box is also drawn as two: the mark in its own `viewBox` (so it can be
+ * the live mark, which turns and looks about on its own root) and the word in
+ * the rest of the box, `word.viewBox`, which starts at the mark's right edge
+ * and so carries the gap. Side by side at one height they are the one box.
+ */
+export const MATE_LOCKUP = {
+  viewBox: `0 0 ${MATE_LOCKUP_WIDTH} ${MATE_LOCKUP_HEIGHT}`,
+  width: MATE_LOCKUP_WIDTH,
+  height: MATE_LOCKUP_HEIGHT,
+  mark: { width: MATE_MARK_WIDTH },
+  word: {
+    viewBox: `${MATE_MARK_WIDTH} 0 ${MATE_LOCKUP_WIDTH - MATE_MARK_WIDTH} ${MATE_LOCKUP_HEIGHT}`,
+    width: MATE_LOCKUP_WIDTH - MATE_MARK_WIDTH,
+  },
+} as const;
+
+/**
+ * A Mate's colour. Each agent on an account gets one of eight, so a menu of
+ * six faces reads as six people rather than six copies of the logo. None of
+ * them is the brand teal: teal identifies the product (design-system §2), and
+ * a Mate is somebody in it. Light discs carry ink eyes, the deeper dark ones
+ * paper eyes — the mark's own rule for eyes on a ground (`MATE_MARK.eyes`).
+ * Which Mate gets which is `client-runtime/zerops/mateTints.ts`.
+ */
+export const MATE_TINT_IDS = [
+  "coral",
+  "amber",
+  "olive",
+  "sky",
+  "violet",
+  "rose",
+  "sand",
+  "slate",
+] as const;
+
+export type MateTintId = (typeof MATE_TINT_IDS)[number];
+
+export const MATE_TINTS = {
+  coral: { light: "#ef8f78", dark: "#b85f4b" },
+  amber: { light: "#e9b645", dark: "#9c7420" },
+  olive: { light: "#a9bf5a", dark: "#6f8436" },
+  sky: { light: "#7fb7e6", dark: "#3f7fb3" },
+  violet: { light: "#ab97e3", dark: "#6f5aab" },
+  rose: { light: "#e98bb5", dark: "#ad5580" },
+  sand: { light: "#d9a874", dark: "#9c6f42" },
+  slate: { light: "#8ea3c2", dark: "#556b8d" },
+} as const satisfies Record<MateTintId, Readonly<Record<BrandAppearance, string>>>;
+
+/**
+ * The face: a Mate's eyes on a disc of its colour, in a 100-box. The grid is
+ * the mark's own (identity v1 §02) carried over — the window is five eye
+ * units and spans 60 % of the mark's width, so here it spans 60 % of the disc:
+ * `u` = 12. Eyes are `u × 2u` pills a quarter-unit above the centre; the
+ * mouth, when a state has one, sits 2.08 u below the eye line, exactly where
+ * the mark's does (60 % of the way to the window floor).
+ *
+ * What moves is the state, never idle eyes: a menu of faces must not blink at
+ * you. `mateFaceParts` draws each state from `MATE_MARK_LIDS`, so the face and
+ * the live mark can never disagree about what "working" looks like; how a
+ * state moves once it is drawn is the face component's (`MateFace`).
+ */
+const FACE_UNIT = 12;
+const FACE_EYE_LINE = 50 - 0.25 * FACE_UNIT;
+
+export const MATE_FACE = {
+  viewBox: "0 0 100 100",
+  radius: 50,
+  eyeUnit: FACE_UNIT,
+  eyeCentres: [50 - 1.25 * FACE_UNIT, 50 + 1.25 * FACE_UNIT] as const,
+  eyeCentreY: FACE_EYE_LINE,
+  mouth: {
+    y: FACE_EYE_LINE + 2.08 * FACE_UNIT,
+    r: 0.42 * FACE_UNIT,
+    strokeWidth: 0.28 * FACE_UNIT,
+  },
+} as const;
+
+export interface MateFaceEye {
+  readonly x: number;
+  readonly y: number;
+  readonly width: number;
+  readonly height: number;
+  readonly rx: number;
+}
+
+export interface MateFaceParts {
+  /** The two eye pills, left then right — empty when the eyes are the happy arcs. */
+  readonly eyes: ReadonlyArray<MateFaceEye>;
+  /** The happy arcs' translations, left then right — only on `done`. */
+  readonly arcs: ReadonlyArray<readonly [number, number]>;
+  /** The mouth is an event: the "o" when the Mate needs you, the smile when it is done. */
+  readonly mouth: "o" | "smile" | null;
+}
+
+/** The live mark's arc and smile, in eye units around their own origin. */
+export const MATE_FACE_STROKES = {
+  arc: `M${-FACE_UNIT / 2},0 Q0,${round(-0.85 * FACE_UNIT)} ${FACE_UNIT / 2},0`,
+  smile: `M${round(-0.75 * FACE_UNIT)},${round(-0.05 * FACE_UNIT)} Q0,${round(1.22 * FACE_UNIT)} ${round(0.75 * FACE_UNIT)},${round(-0.05 * FACE_UNIT)}`,
+} as const;
+
+/**
+ * Where the eyes and mouth sit for a state — the still frame of the live
+ * mark's pose, from the same lid table. A shut eye keeps a hairline of height
+ * (0.22 u, the driver's own floor) so an asleep face still has eyes.
+ */
+export function mateFaceParts(state: MateMarkState): MateFaceParts {
+  const u = MATE_FACE.eyeUnit;
+  if (state === "done") {
+    const y = round(MATE_FACE.eyeCentreY + 0.05 * u);
+    return {
+      eyes: [],
+      arcs: MATE_FACE.eyeCentres.map((cx) => [cx, y] as const),
+      mouth: "smile",
+    };
+  }
+  const [openness, width, lift] = MATE_MARK_LIDS[state];
+  const w = round(u * width);
+  const h = round(Math.max(0.22 * u, 2 * u * openness));
+  const cy = MATE_FACE.eyeCentreY + lift * u;
+  return {
+    eyes: MATE_FACE.eyeCentres.map((cx) => ({
+      x: round(cx - w / 2),
+      y: round(cy - h / 2),
+      width: w,
+      height: h,
+      rx: round(Math.min(w, h) / 2),
+    })),
+    arcs: [],
+    mouth: state === "needs" || state === "surprise" ? "o" : null,
+  };
+}
+
+/**
+ * A Mate's silhouette. Eight discs that differ only in hue read as eight
+ * copies at a menu's 28 px — sky beside slate, amber beside sand — and as one
+ * face to anybody who does not see the hue at all; a silhouette is read before
+ * either. So each Mate wears a shape as well as a colour, drawn from the
+ * modern shape vocabulary (a squircle, a gem, a hexagon, a pentagon, a clover,
+ * a flower, a seal, a pick), each the same weight — every one holds the same
+ * area of its box, so none reads as bigger.
+ *
+ * Every shape turns onto itself: `step` is its symmetry, the angle after which
+ * it looks the same again. That is how a Mate at work moves — a notch at a
+ * time — without ever looking like someone else. There is no plain disc: a
+ * disc turning looks like nothing at all.
+ */
+export const MATE_SHAPE_IDS = [
+  "squircle",
+  "gem",
+  "hexagon",
+  "pentagon",
+  "clover",
+  "flower",
+  "seal",
+  "pick",
+] as const;
+
+export type MateShapeId = (typeof MATE_SHAPE_IDS)[number];
+
+/**
+ * The shape each tint wears. One shape per tint, so the account's first eight
+ * Mates, which never share a tint (`client-runtime/zerops/mateTints.ts`),
+ * never share a shape either; past eight both repeat, as the palette does. And
+ * every place that knows a Mate's tint knows its shape. The pairs keep the hues that sit close apart in silhouette: the three
+ * blues are a pick, a squircle and a gem; the warm four a pentagon, a hexagon,
+ * a flower and a seal; the one green is the clover.
+ */
+export const MATE_SHAPE_OF_TINT = {
+  coral: "pentagon",
+  amber: "hexagon",
+  olive: "clover",
+  sky: "pick",
+  violet: "gem",
+  rose: "flower",
+  sand: "seal",
+  slate: "squircle",
+} as const satisfies Record<MateTintId, MateShapeId>;
+
+export interface MateShape {
+  /** The outline in the face's 100-box, its bounds centred on (50, 50). */
+  readonly d: string;
+  /** Its symmetry: the turn, in degrees, after which it looks the same again. */
+  readonly step: number;
+  /**
+   * The point it turns about: its own centre, which for an odd number of lobes
+   * or corners is not its bounds' — a pick's top lobe reaches further than the
+   * valley under it, so turned about the box's centre it would wobble.
+   */
+  readonly origin: readonly [number, number];
+}
+
+/** A polar outline, first lobe or corner straight up, as a function of the angle. */
+type Outline = (angle: number) => number;
+
+/** Lobes: `count` bumps `depth` deep, `sharpness` above 1 narrowing their tips. */
+function lobes(count: number, depth: number, sharpness = 1, turn = 0): Outline {
+  return (angle) => {
+    const lobe = (1 + Math.cos(count * (angle - turn + Math.PI / 2))) / 2;
+    return 1 - depth + depth * lobe ** sharpness;
+  };
+}
+
+/** A superellipse: 4 is a squircle, below 2 a gem with full sides. */
+function superellipse(power: number): Outline {
+  return (angle) =>
+    1 / (Math.abs(Math.cos(angle)) ** power + Math.abs(Math.sin(angle)) ** power) ** (1 / power);
+}
+
+/** A regular polygon, a corner up, eased toward its inscribed circle at the corners. */
+function softPolygon(corners: number, softness: number): Outline {
+  const half = Math.PI / corners;
+  const inscribed = Math.cos(half);
+  return (angle) => {
+    const local = ((((angle + Math.PI / 2) % (2 * half)) + 2 * half) % (2 * half)) - half;
+    const sharp = inscribed / Math.cos(local);
+    return sharp * (1 - softness) + softness * (inscribed + 0.35 * (1 - inscribed));
+  };
+}
+
+const tenth = (value: number) => Math.round(value * 10) / 10;
+
+/** The area every shape holds: a disc of radius 44.8, the old disc's weight less its rim. */
+const SHAPE_AREA = 6300;
+/** No shape reaches past this from the centre, so none touches the box's edge. */
+const SHAPE_HALF_MAX = 49;
+
+function outlinePoints(outline: Outline, samples: number): Array<readonly [number, number]> {
+  const points: Array<readonly [number, number]> = [];
+  for (let index = 0; index < samples; index += 1) {
+    const angle = (index / samples) * 2 * Math.PI - Math.PI / 2;
+    const radius = outline(angle);
+    points.push([radius * Math.cos(angle), radius * Math.sin(angle)]);
+  }
+  return points;
+}
+
+export function polygonArea(points: ReadonlyArray<readonly [number, number]>): number {
+  let twice = 0;
+  for (let index = 0; index < points.length; index += 1) {
+    const [x1, y1] = points[index]!;
+    const [x2, y2] = points[(index + 1) % points.length]!;
+    twice += x1 * y2 - x2 * y1;
+  }
+  return Math.abs(twice) / 2;
+}
+
+/**
+ * Scaled to the one area (or to the box, if that is smaller) and centred on its
+ * bounds; with it, where its own centre — the outline's origin — lands.
+ */
+function fitShape(points: ReadonlyArray<readonly [number, number]>): {
+  readonly points: Array<readonly [number, number]>;
+  readonly origin: readonly [number, number];
+} {
+  let scale = Math.sqrt(SHAPE_AREA / polygonArea(points));
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const half =
+    (scale * Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys))) / 2;
+  if (half > SHAPE_HALF_MAX) scale *= SHAPE_HALF_MAX / half;
+  const cx = (scale * (Math.max(...xs) + Math.min(...xs))) / 2;
+  const cy = (scale * (Math.max(...ys) + Math.min(...ys))) / 2;
+  return {
+    points: points.map(([x, y]) => [x * scale - cx + 50, y * scale - cy + 50] as const),
+    origin: [tenth(50 - cx), tenth(50 - cy)],
+  };
+}
+
+/** A closed curve through every point: Catmull-Rom, as cubic Béziers. */
+function smoothPath(points: ReadonlyArray<readonly [number, number]>): string {
+  const at = (index: number) => points[(index + points.length) % points.length]!;
+  let d = `M${tenth(at(0)[0])},${tenth(at(0)[1])}`;
+  for (let index = 0; index < points.length; index += 1) {
+    const [x0, y0] = at(index - 1);
+    const [x1, y1] = at(index);
+    const [x2, y2] = at(index + 1);
+    const [x3, y3] = at(index + 2);
+    d +=
+      `C${tenth(x1 + (x2 - x0) / 6)},${tenth(y1 + (y2 - y0) / 6)} ` +
+      `${tenth(x2 - (x3 - x1) / 6)},${tenth(y2 - (y3 - y1) / 6)} ${tenth(x2)},${tenth(y2)}`;
+  }
+  return `${d}Z`;
+}
+
+const SHAPE_OUTLINES: Record<
+  MateShapeId,
+  { readonly outline: Outline; readonly samples: number; readonly step: number }
+> = {
+  squircle: { outline: superellipse(4), samples: 64, step: 90 },
+  gem: { outline: superellipse(1.55), samples: 64, step: 90 },
+  hexagon: { outline: softPolygon(6, 0.35), samples: 72, step: 60 },
+  pentagon: { outline: softPolygon(5, 0.38), samples: 70, step: 72 },
+  clover: { outline: lobes(4, 0.3, 1, Math.PI / 4), samples: 64, step: 90 },
+  flower: { outline: lobes(5, 0.2), samples: 60, step: 72 },
+  seal: { outline: lobes(12, 0.1, 1.6), samples: 96, step: 30 },
+  pick: { outline: lobes(3, 0.16), samples: 48, step: 120 },
+};
+
+export const MATE_SHAPES = Object.fromEntries(
+  MATE_SHAPE_IDS.map((id) => {
+    const { outline, samples, step } = SHAPE_OUTLINES[id];
+    const { points, origin } = fitShape(outlinePoints(outline, samples));
+    return [id, { d: smoothPath(points), step, origin }];
+  }),
+) as Record<MateShapeId, MateShape>;
+
+/** The shape's own points, for the tests that hold every shape to the one weight and the eyes. */
+export function mateShapePoints(id: MateShapeId): ReadonlyArray<readonly [number, number]> {
+  const { outline, samples } = SHAPE_OUTLINES[id];
+  return fitShape(outlinePoints(outline, samples)).points;
+}
+
+export const ZEROPS_MARK = {
+  viewBox: "0 0 42.27 50.48",
+  paths: [
+    {
+      d: "M20.19.7L3 7.27A4 4 0 0 0 .46 11v16.54L8.36 23v-9.3L21.6 8.62V.44a4 4 0 0 0-1.41.26z",
+      fill: IDENTITY.mark.main,
+    },
+    {
+      d: "M8.5 37.74l13.1-7.55v-9.12L1.36 32.74a1.82 1.82 0 0 0-.9 1.56v6.11A4 4 0 0 0 3 44.1l17.19 6.57a4 4 0 0 0 1.41.26v-8.18z",
+      fill: IDENTITY.mark.main,
+    },
+    {
+      d: "M41.9 18.47a1.67 1.67 0 0 0 .84-1.47v-6a4 4 0 0 0-2.54-3.73L23 .7a4 4 0 0 0-1.4-.26v8.18l13 5-13 7.49v9.12z",
+      fill: IDENTITY.mark.secondary,
+    },
+    {
+      d: "M23 50.67l17.2-6.57a4 4 0 0 0 2.54-3.69V23.7l-7.9 4.56v9.43L21.6 42.75v8.18a4 4 0 0 0 1.4-.26z",
+      fill: IDENTITY.mark.secondary,
+    },
+  ],
+} as const;
+
+/** Cross-platform intent names; each client resolves these through its native icon library. */
+export const ICON_MAP = {
+  project: "Folder",
+  cloudIde: "Cloud",
+  serviceMap: "LayoutGrid",
+  webTerminal: "Terminal",
+  sshTerminal: "SquareTerminal",
+  desktopIde: "Monitor",
+  externalLink: "ExternalLink",
+  refresh: "RotateCcw",
+  settings: "Settings",
+  database: "Database",
+  logs: "ScrollText",
+  add: "Plus",
+  deploy: "Rocket",
+  authorized: "CircleCheck",
+  warning: "TriangleAlert",
+  queued: "Clock",
+  running: "Play",
+  done: "Check",
+  failed: "CircleAlert",
+} as const satisfies Record<string, string>;
+
+/** Spacing sits on a 4 px grid: every gap, padding and line height is a multiple of it. */
+export const SPACING_UNIT = 4;
+
+/**
+ * Three nested radii that run parallel: a control, the card it sits in, the sheet the card sits
+ * in. Each outer edge is the inner one plus the 4 px between them. Pixels.
+ */
+export const RADII = {
+  control: 8,
+  card: 12,
+  sheet: 16,
+} as const;
+
+/**
+ * The one type scale: five steps, the sizes the owner's design canvas is built on. A size between
+ * two steps takes the nearer one. Pixels.
+ */
+export const TYPE_SCALE = {
+  caption: { fontSize: 12, lineHeight: 16 },
+  body: { fontSize: 13, lineHeight: 20 },
+  emphasis: { fontSize: 15, lineHeight: 24 },
+  title: { fontSize: 20, lineHeight: 28 },
+  display: { fontSize: 28, lineHeight: 36 },
+} as const;
+
+/**
+ * Only what the person did animates. Three durations in milliseconds; one strong ease-out for
+ * what arrives or answers a press, one ease-in-out for a paired enter and leave.
+ */
+export const MOTION = {
+  duration: { quick: 150, base: 200, slow: 260 },
+  easing: {
+    out: "cubic-bezier(0.23, 1, 0.32, 1)",
+    inOut: "cubic-bezier(0.65, 0, 0.35, 1)",
+  },
+} as const;

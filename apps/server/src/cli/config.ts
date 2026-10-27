@@ -1,0 +1,630 @@
+import { normalizeBasePath } from "@t3tools/shared/basePath";
+import * as NetService from "@t3tools/shared/Net";
+import {
+  OtlpHeadersFromString,
+  OtlpProtocol,
+  type SignalExport,
+} from "@t3tools/shared/observability";
+import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+import { parsePersistedServerObservabilitySettings } from "@t3tools/shared/serverSettings";
+import { DesktopBackendBootstrap, PortSchema } from "@t3tools/contracts";
+import * as Config from "effect/Config";
+import * as Duration from "effect/Duration";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as LogLevel from "effect/LogLevel";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import * as SchemaIssue from "effect/SchemaIssue";
+import * as SchemaTransformation from "effect/SchemaTransformation";
+import { Argument, Flag } from "effect/cli";
+import * as CliError from "effect/cli/CliError";
+
+import { readBootstrapEnvelope } from "../bootstrap.ts";
+import * as ServerConfig from "../config.ts";
+import { expandHomePath, hostHomeDir, resolveBaseDir } from "../os-jank.ts";
+import { isProcessAlive, readPersistedServerRuntimeState } from "../serverRuntimeState.ts";
+import {
+  HQ_GIT_CREDENTIAL_ENV,
+  publishHqGitCredential,
+  publishHqOrigin,
+  resolveHqGitCredentialPath,
+  resolveZeropsEnvironment,
+} from "../zerops/ZeropsEnvironment.ts";
+
+export const modeFlag = Flag.Literals("mode", ServerConfig.RuntimeMode.literals).pipe(
+  Flag.withDescription("Runtime mode. `desktop` keeps loopback defaults unless overridden."),
+  Flag.optional,
+);
+export const portFlag = Flag.Int("port").pipe(
+  Flag.withSchema(PortSchema),
+  Flag.withDescription("Port for the HTTP/WebSocket server."),
+  Flag.optional,
+);
+export const hostFlag = Flag.String("host").pipe(
+  Flag.withDescription("Host/interface to bind (for example 127.0.0.1, 0.0.0.0, or a VPN IP)."),
+  Flag.optional,
+);
+export const baseDirFlag = Flag.String("base-dir").pipe(
+  Flag.withDescription(
+    "Explicit Zerops Mate data directory; runtime state is stored under userdata (equivalent to T3CODE_HOME).",
+  ),
+  Flag.optional,
+);
+export const basePathFlag = Flag.String("base-path").pipe(
+  Flag.withDescription(
+    "Public path prefix this server is published under, for example /mate. Routes stay mounted at the root: the reverse proxy is expected to strip the prefix, and the server uses this for the URLs it emits (and tolerates a prefix a proxy forwarded).",
+  ),
+  Flag.optional,
+);
+export const devUrlFlag = Flag.String("dev-url").pipe(
+  Flag.withSchema(Schema.URLFromString),
+  Flag.withDescription("Dev web URL to proxy/redirect to (equivalent to VITE_DEV_SERVER_URL)."),
+  Flag.optional,
+);
+export const zeropsFixturesFlag = Flag.String("zerops-fixtures").pipe(
+  Flag.withDescription(
+    "Publish a Zerops showcase scene by web:<id> or an absolute scene JSON path (equivalent to T3CODE_ZEROPS_FIXTURES).",
+  ),
+  Flag.optional,
+);
+export const noBrowserFlag = Flag.Boolean("no-browser").pipe(
+  Flag.withDescription("Disable automatic browser opening."),
+  Flag.optional,
+);
+export const bootstrapFdFlag = Flag.Int("bootstrap-fd").pipe(
+  Flag.withSchema(Schema.Int),
+  Flag.withDescription("Read one-time bootstrap secrets from the given file descriptor."),
+  Flag.optional,
+);
+export const autoBootstrapProjectFromCwdFlag = Flag.Boolean("auto-bootstrap-project-from-cwd").pipe(
+  Flag.withDescription(
+    "Create a project for the current working directory on startup when missing.",
+  ),
+  Flag.optional,
+);
+export const logWebSocketEventsFlag = Flag.Boolean("log-websocket-events").pipe(
+  Flag.withDescription(
+    "Emit server-side logs for outbound WebSocket push traffic (equivalent to T3CODE_LOG_WS_EVENTS).",
+  ),
+  Flag.withAlias("log-ws-events"),
+  Flag.optional,
+);
+// Trace file location, shared by the server and `mate trace summary`.
+export const traceFileConfig = Config.String("T3CODE_TRACE_FILE").pipe(
+  Config.option,
+  Config.map(Option.getOrUndefined),
+);
+export const traceMaxFilesConfig = Config.Int("T3CODE_TRACE_MAX_FILES").pipe(
+  Config.withDefault(10),
+);
+
+const EnvServerConfig = Config.all({
+  logLevel: Config.LogLevel("T3CODE_LOG_LEVEL").pipe(Config.withDefault("Info")),
+  traceMinLevel: Config.LogLevel("T3CODE_TRACE_MIN_LEVEL").pipe(Config.withDefault("Info")),
+  traceTimingEnabled: Config.Boolean("T3CODE_TRACE_TIMING_ENABLED").pipe(Config.withDefault(true)),
+  traceFile: traceFileConfig,
+  traceMaxBytes: Config.Int("T3CODE_TRACE_MAX_BYTES").pipe(Config.withDefault(10 * 1024 * 1024)),
+  traceMaxFiles: traceMaxFilesConfig,
+  traceBatchWindowMs: Config.Int("T3CODE_TRACE_BATCH_WINDOW_MS").pipe(Config.withDefault(1_000)),
+  otlpTracesUrl: Config.String("T3CODE_OTLP_TRACES_URL").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  otlpMetricsUrl: Config.String("T3CODE_OTLP_METRICS_URL").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  otlpLogsUrl: Config.String("T3CODE_OTLP_LOGS_URL").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  otlpExportIntervalMs: Config.Int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
+    Config.withDefault(10_000),
+  ),
+  otlpServiceName: Config.String("T3CODE_OTLP_SERVICE_NAME").pipe(Config.withDefault("t3-server")),
+  otlpHeaders: Config.schema(OtlpHeadersFromString, "T3CODE_OTLP_HEADERS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  otlpProtocol: Config.schema(OtlpProtocol, "T3CODE_OTLP_PROTOCOL").pipe(
+    Config.withDefault("http/json"),
+  ),
+  mode: Config.schema(ServerConfig.RuntimeMode, "T3CODE_MODE").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  port: Config.Port("T3CODE_PORT").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  host: Config.String("T3CODE_HOST").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  basePath: Config.String("T3CODE_BASE_PATH").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  t3Home: Config.String("T3CODE_HOME").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  devUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  devAllowedOrigins: Config.String("T3CODE_DEV_ALLOWED_ORIGINS").pipe(
+    Config.withDefault(""),
+    Config.map((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ),
+  // Zerops container settings. `zeropsProjectId` alone decides whether this is
+  // a Zerops environment (see ZeropsEnvironment); the rest only shape it.
+  zeropsProjectId: Config.String("T3CODE_ZEROPS_PROJECT_ID").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsApiHost: Config.String("T3CODE_ZEROPS_API_HOST").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsAllowedOrigins: Config.String("T3CODE_ZEROPS_ALLOWED_ORIGINS").pipe(
+    Config.withDefault(""),
+    Config.map((value) =>
+      value
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0),
+    ),
+  ),
+  // This container's own public origin, as the platform names the service's subdomain
+  // (see ZeropsEnvironment.publicOrigin).
+  zeropsPublicOrigin: Config.String("zeropsSubdomain").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // The project key HQ verifies when this Mate links.
+  zeropsApiToken: Config.String("ZCP_API_KEY").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // Shared HQ origin, set per Mate at web birth or for development; otherwise the server's
+  // default is https://mate-hq.zerops.io (ZeropsHqLink).
+  zeropsHqOrigin: Config.String("T3CODE_ZEROPS_HQ_ORIGIN").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // A development override of the file the Mate's Git credential is kept in (ZeropsGitCredentialFile).
+  zeropsHqGitCredential: Config.String(HQ_GIT_CREDENTIAL_ENV).pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // Facts the platform and zcp put in every container's environment.
+  zeropsServiceId: Config.String("serviceId").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsHostname: Config.String("hostname").pipe(Config.option, Config.map(Option.getOrUndefined)),
+  zcpStatusFile: Config.String("ZCP_STATUS_FILE").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zcpMateUpdateStateFile: Config.String("ZCP_MATE_UPDATE_STATE_FILE").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  zeropsFixtures: Config.String("T3CODE_ZEROPS_FIXTURES").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  // Crew mode (ARCHITECTURE seam 25): an env variable only, never a flag.
+  zeropsCrew: Config.Boolean("T3CODE_ZEROPS_CREW").pipe(Config.withDefault(true)),
+  noBrowser: Config.Boolean("T3CODE_NO_BROWSER").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  bootstrapFd: Config.Int("T3CODE_BOOTSTRAP_FD").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  autoBootstrapProjectFromCwd: Config.Boolean("T3CODE_AUTO_BOOTSTRAP_PROJECT_FROM_CWD").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+  logWebSocketEvents: Config.Boolean("T3CODE_LOG_WS_EVENTS").pipe(
+    Config.option,
+    Config.map(Option.getOrUndefined),
+  ),
+});
+
+export interface CliServerFlags {
+  readonly mode: Option.Option<ServerConfig.RuntimeMode>;
+  readonly port: Option.Option<number>;
+  readonly host: Option.Option<string>;
+  readonly basePath: Option.Option<string>;
+  readonly baseDir: Option.Option<string>;
+  readonly cwd: Option.Option<string>;
+  readonly devUrl: Option.Option<URL>;
+  readonly zeropsFixtures: Option.Option<string>;
+  readonly noBrowser: Option.Option<boolean>;
+  readonly bootstrapFd: Option.Option<number>;
+  readonly autoBootstrapProjectFromCwd: Option.Option<boolean>;
+  readonly logWebSocketEvents: Option.Option<boolean>;
+}
+
+export interface CliAuthLocationFlags {
+  readonly baseDir: Option.Option<string>;
+  readonly devUrl?: Option.Option<URL>;
+}
+
+export const sharedServerLocationFlags = {
+  baseDir: baseDirFlag,
+  devUrl: devUrlFlag,
+} as const;
+
+export const projectLocationFlags = {
+  baseDir: baseDirFlag,
+} as const;
+
+export const sharedServerCommandFlags = {
+  mode: modeFlag,
+  port: portFlag,
+  host: hostFlag,
+  basePath: basePathFlag,
+  baseDir: baseDirFlag,
+  cwd: Argument.String("cwd").pipe(
+    Argument.withDescription(
+      "Working directory for provider sessions (defaults to the current directory).",
+    ),
+    Argument.optional,
+  ),
+  devUrl: devUrlFlag,
+  zeropsFixtures: zeropsFixturesFlag,
+  noBrowser: noBrowserFlag,
+  bootstrapFd: bootstrapFdFlag,
+  autoBootstrapProjectFromCwd: autoBootstrapProjectFromCwdFlag,
+  logWebSocketEvents: logWebSocketEventsFlag,
+} as const;
+
+export const authLocationFlags = sharedServerLocationFlags;
+
+const resolveOptionPrecedence = <Value>(
+  ...values: ReadonlyArray<Option.Option<Value>>
+): Option.Option<Value> => Option.firstSomeOf(values);
+
+const loadPersistedObservabilitySettings = Effect.fn(function* (settingsPath: string) {
+  const fs = yield* FileSystem.FileSystem;
+  const exists = yield* fs.exists(settingsPath).pipe(Effect.orElseSucceed(() => false));
+  if (!exists) {
+    return { otlpTracesUrl: undefined, otlpMetricsUrl: undefined, otlpLogsUrl: undefined };
+  }
+
+  const raw = yield* fs.readFileString(settingsPath).pipe(Effect.orElseSucceed(() => ""));
+  return parsePersistedServerObservabilitySettings(raw);
+});
+
+export const resolveServerConfig = (
+  flags: CliServerFlags,
+  cliLogLevel: Option.Option<LogLevel.LogLevel>,
+  options?: {
+    readonly startupPresentation?: ServerConfig.StartupPresentation;
+    readonly forceAutoBootstrapProjectFromCwd?: boolean;
+    readonly rejectRunningServer?: boolean;
+  },
+) =>
+  Effect.gen(function* () {
+    const { findAvailablePort } = yield* NetService.NetService;
+    const path = yield* Path.Path;
+    const fs = yield* FileSystem.FileSystem;
+    const env = yield* EnvServerConfig;
+    const normalizedFlags = {
+      mode: flags.mode ?? Option.none(),
+      port: flags.port ?? Option.none(),
+      host: flags.host ?? Option.none(),
+      basePath: flags.basePath ?? Option.none(),
+      baseDir: flags.baseDir ?? Option.none(),
+      cwd: flags.cwd ?? Option.none(),
+      devUrl: flags.devUrl ?? Option.none(),
+      zeropsFixtures: flags.zeropsFixtures ?? Option.none(),
+      noBrowser: flags.noBrowser ?? Option.none(),
+      bootstrapFd: flags.bootstrapFd ?? Option.none(),
+      autoBootstrapProjectFromCwd: flags.autoBootstrapProjectFromCwd ?? Option.none(),
+      logWebSocketEvents: flags.logWebSocketEvents ?? Option.none(),
+    } satisfies CliServerFlags;
+    const bootstrapFd = Option.getOrUndefined(normalizedFlags.bootstrapFd) ?? env.bootstrapFd;
+    const bootstrapEnvelope =
+      bootstrapFd !== undefined
+        ? yield* readBootstrapEnvelope(DesktopBackendBootstrap, bootstrapFd)
+        : Option.none();
+    const bootstrap = Option.getOrUndefined(bootstrapEnvelope);
+
+    const mode: ServerConfig.RuntimeMode = Option.getOrElse(
+      resolveOptionPrecedence(
+        normalizedFlags.mode,
+        Option.fromUndefinedOr(env.mode),
+        Option.fromUndefinedOr(bootstrap?.mode),
+      ),
+      () => "web",
+    );
+
+    const port = yield* Option.match(
+      resolveOptionPrecedence(
+        normalizedFlags.port,
+        Option.fromUndefinedOr(env.port),
+        Option.fromUndefinedOr(bootstrap?.port),
+      ),
+      {
+        onSome: (value) => Effect.succeed(value),
+        onNone: () => {
+          if (mode === "desktop") {
+            return Effect.succeed(ServerConfig.DEFAULT_PORT);
+          }
+          return findAvailablePort(ServerConfig.DEFAULT_PORT);
+        },
+      },
+    );
+    const devUrl = Option.getOrElse(
+      resolveOptionPrecedence(normalizedFlags.devUrl, Option.fromUndefinedOr(env.devUrl)),
+      () => undefined,
+    );
+    const explicitBaseDir = resolveOptionPrecedence(
+      normalizedFlags.baseDir,
+      Option.fromUndefinedOr(env.t3Home),
+    ).pipe(Option.filter((value) => value.trim().length > 0));
+    const baseDir = yield* resolveBaseDir(
+      Option.getOrUndefined(
+        resolveOptionPrecedence(explicitBaseDir, Option.fromUndefinedOr(bootstrap?.t3Home)),
+      ),
+    );
+    const rawCwd = Option.getOrElse(normalizedFlags.cwd, () => process.cwd());
+    const cwd = path.resolve(yield* expandHomePath(rawCwd.trim()));
+    const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, devUrl, {
+      baseDirIsExplicit: Option.isSome(explicitBaseDir),
+    });
+    // An interactive CLI must not start over a discovered server. Lifetime locking
+    // and supervisor handoff are separate; this preflight cannot arbitrate two starts.
+    if (options?.rejectRunningServer && mode === "web") {
+      const runtime = yield* readPersistedServerRuntimeState(derivedPaths.serverRuntimeStatePath);
+      if (Option.isSome(runtime) && runtime.value.pid > 0 && isProcessAlive(runtime.value.pid)) {
+        return yield* new CliError.UserError({
+          cause: `A Zerops Mate server is already running for ${baseDir} (pid ${runtime.value.pid}, ${runtime.value.origin}). Connect to that server, stop it before starting another, or use a different --base-dir.`,
+        });
+      }
+    }
+    yield* fs.makeDirectory(cwd, { recursive: true });
+    yield* ServerConfig.ensureServerDirectories(derivedPaths);
+    const persistedObservabilitySettings = yield* loadPersistedObservabilitySettings(
+      derivedPaths.settingsPath,
+    );
+    const serverTracePath = env.traceFile ?? derivedPaths.serverTracePath;
+    yield* fs.makeDirectory(path.dirname(serverTracePath), { recursive: true });
+    const startupPresentation = options?.startupPresentation ?? "browser";
+    const isHeadlessStartup = startupPresentation === "headless";
+    const noBrowser = Option.getOrElse(
+      resolveOptionPrecedence(
+        isHeadlessStartup ? Option.some(true) : Option.none(),
+        normalizedFlags.noBrowser,
+        Option.fromUndefinedOr(env.noBrowser),
+        Option.fromUndefinedOr(bootstrap?.noBrowser),
+      ),
+      () => mode === "desktop",
+    );
+    const desktopBootstrapToken = bootstrap?.desktopBootstrapToken;
+    const desktopTelemetryFd = bootstrap?.desktopTelemetryFd;
+    const desktopTelemetryControlFd = bootstrap?.desktopTelemetryControlFd;
+    const resourceMonitorPath = bootstrap?.resourceMonitorPath;
+    // An explicit `--auto-bootstrap-project-from-cwd` is a decision taken for this
+    // one invocation, so it outranks the command's own default (`serve` opts out)
+    // and the headless presentation rule. Ambient env stays below both, which is
+    // what keeps a headless start from bootstrapping just because the variable is
+    // set somewhere in the environment.
+    const autoBootstrapProjectFromCwd = Option.getOrElse(
+      resolveOptionPrecedence(
+        normalizedFlags.autoBootstrapProjectFromCwd,
+        Option.fromUndefinedOr(options?.forceAutoBootstrapProjectFromCwd),
+        isHeadlessStartup ? Option.some(false) : Option.none(),
+        Option.fromUndefinedOr(env.autoBootstrapProjectFromCwd),
+      ),
+      () => mode === "web",
+    );
+    const logWebSocketEvents = Option.getOrElse(
+      resolveOptionPrecedence(
+        normalizedFlags.logWebSocketEvents,
+        Option.fromUndefinedOr(env.logWebSocketEvents),
+      ),
+      () => Boolean(devUrl),
+    );
+    const staticDir = devUrl ? undefined : yield* ServerConfig.resolveStaticDir();
+    const host = Option.getOrElse(
+      resolveOptionPrecedence(
+        normalizedFlags.host,
+        Option.fromUndefinedOr(env.host),
+        Option.fromUndefinedOr(bootstrap?.host),
+      ),
+      () => (mode === "desktop" ? "127.0.0.1" : undefined),
+    );
+    const basePath = normalizeBasePath(
+      Option.getOrUndefined(
+        resolveOptionPrecedence(normalizedFlags.basePath, Option.fromUndefinedOr(env.basePath)),
+      ),
+    );
+    const zeropsFixtures = Option.getOrUndefined(
+      resolveOptionPrecedence(
+        normalizedFlags.zeropsFixtures,
+        Option.fromUndefinedOr(env.zeropsFixtures),
+      ),
+    );
+    if (zeropsFixtures !== undefined) {
+      yield* Effect.logInfo("Zerops identity door is off because fixture mode is on.", {
+        zeropsFixtures,
+      });
+    }
+    const hqGitCredentialPath = resolveHqGitCredentialPath(
+      env.zeropsHqGitCredential,
+      derivedPaths.secretsDir,
+    );
+    const zerops =
+      zeropsFixtures === undefined
+        ? resolveZeropsEnvironment({
+            projectId: env.zeropsProjectId,
+            allowedOrigins: env.zeropsAllowedOrigins,
+            apiHost: env.zeropsApiHost,
+            publicOrigin: env.zeropsPublicOrigin,
+            apiToken: env.zeropsApiToken,
+            hqOrigin: env.zeropsHqOrigin,
+            hqGitCredentialPath,
+            serviceId: env.zeropsServiceId,
+            hostname: env.zeropsHostname,
+            statusFile: env.zcpStatusFile,
+            mateUpdateStateFile: env.zcpMateUpdateStateFile,
+          })
+        : undefined;
+    // Every process the server starts (provider CLIs, and through them zcp) inherits this
+    // environment, so they all reach the HQ this Mate links to.
+    if (zerops !== undefined) {
+      publishHqOrigin(process.env, zerops.hqOrigin);
+      publishHqGitCredential(process.env, hqGitCredentialPath);
+    }
+    const logLevel = Option.getOrElse(cliLogLevel, () => env.logLevel);
+
+    const otel = yield* OtelEnvironment.load;
+
+    // T3 Code's own OTLP variables name no signal, so the one answer they give
+    // is the answer for all three.
+    const signalExport: SignalExport = {
+      protocol: env.otlpProtocol,
+      headers: env.otlpHeaders,
+      exportIntervalMs: env.otlpExportIntervalMs,
+    };
+
+    const config: ServerConfig.ServerConfig["Service"] = {
+      logLevel,
+      traceMinLevel: env.traceMinLevel,
+      traceTimingEnabled: env.traceTimingEnabled,
+      traceBatchWindowMs: env.traceBatchWindowMs,
+      traceMaxBytes: env.traceMaxBytes,
+      traceMaxFiles: env.traceMaxFiles,
+      otlpTracesUrl: otel.disabled
+        ? undefined
+        : (env.otlpTracesUrl ??
+          bootstrap?.otlpTracesUrl ??
+          persistedObservabilitySettings.otlpTracesUrl),
+      otlpMetricsUrl: otel.disabled
+        ? undefined
+        : (env.otlpMetricsUrl ??
+          bootstrap?.otlpMetricsUrl ??
+          persistedObservabilitySettings.otlpMetricsUrl),
+      otlpLogsUrl: otel.disabled
+        ? undefined
+        : (env.otlpLogsUrl ?? bootstrap?.otlpLogsUrl ?? persistedObservabilitySettings.otlpLogsUrl),
+      otlpTracesExport: signalExport,
+      otlpMetricsExport: signalExport,
+      otlpLogsExport: signalExport,
+      otlpServiceName: env.otlpServiceName,
+      otelEnvironment: otel,
+      mode,
+      port,
+      basePath,
+      cwd,
+      baseDir,
+      homeDir: hostHomeDir(),
+      ...derivedPaths,
+      serverTracePath,
+      host,
+      staticDir,
+      devUrl,
+      devAllowedOrigins: env.devAllowedOrigins,
+      zeropsFixtures,
+      zerops,
+      zeropsCrew: env.zeropsCrew,
+      noBrowser,
+      startupPresentation,
+      desktopBootstrapToken,
+      desktopTelemetryFd,
+      desktopTelemetryControlFd,
+      resourceMonitorPath,
+      autoBootstrapProjectFromCwd,
+      logWebSocketEvents,
+    };
+
+    return config;
+  });
+
+export const resolveCliAuthConfig = (
+  flags: CliAuthLocationFlags,
+  cliLogLevel: Option.Option<LogLevel.LogLevel>,
+) =>
+  resolveServerConfig(
+    {
+      mode: Option.none(),
+      port: Option.none(),
+      host: Option.none(),
+      basePath: Option.none(),
+      baseDir: flags.baseDir,
+      cwd: Option.none(),
+      devUrl: flags.devUrl ?? Option.none(),
+      zeropsFixtures: Option.none(),
+      noBrowser: Option.none(),
+      bootstrapFd: Option.none(),
+      autoBootstrapProjectFromCwd: Option.none(),
+      logWebSocketEvents: Option.none(),
+    },
+    cliLogLevel,
+  );
+
+const DurationShorthandPattern = /^(?<value>\d+)(?<unit>ms|s|m|h|d|w)$/i;
+
+const parseDurationInput = (value: string): Duration.Duration | null => {
+  const trimmed = value.trim();
+  if (trimmed.length === 0) return null;
+
+  const shorthand = DurationShorthandPattern.exec(trimmed);
+  const normalizedInput = shorthand?.groups
+    ? (() => {
+        const amountText = shorthand.groups.value;
+        const unitText = shorthand.groups.unit;
+        if (typeof amountText !== "string" || typeof unitText !== "string") {
+          return null;
+        }
+
+        const amount = Number.parseInt(amountText, 10);
+        if (!Number.isFinite(amount)) return null;
+
+        switch (unitText.toLowerCase()) {
+          case "ms":
+            return `${amount} millis`;
+          case "s":
+            return `${amount} seconds`;
+          case "m":
+            return `${amount} minutes`;
+          case "h":
+            return `${amount} hours`;
+          case "d":
+            return `${amount} days`;
+          case "w":
+            return `${amount} weeks`;
+          default:
+            return null;
+        }
+      })()
+    : (trimmed as Duration.Input);
+
+  if (normalizedInput === null) return null;
+
+  const decoded = Duration.fromInput(normalizedInput as Duration.Input);
+  return Option.isSome(decoded) ? decoded.value : null;
+};
+
+export const DurationFromString = Schema.String.pipe(
+  Schema.decodeTo(
+    Schema.Duration,
+    SchemaTransformation.transformEffect({
+      decode: (value) => {
+        const duration = parseDurationInput(value);
+        if (duration !== null) {
+          return Effect.succeed(duration);
+        }
+        return Effect.fail(
+          new SchemaIssue.InvalidValue({
+            message: "Invalid duration. Use values like 5m, 1h, 30d, or 15 minutes.",
+          }),
+        );
+      },
+      encode: (duration) => Effect.succeed(Duration.format(duration)),
+    }),
+  ),
+);

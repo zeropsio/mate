@@ -1,0 +1,199 @@
+/**
+ * What a project needs a person for, in the order it needs them.
+ *
+ * A project's page listed its environments, its open changes, what was merged
+ * and not live, and its history — four sections of equal weight, none of which
+ * answers the question anybody opens the page with. The reader had to hold all
+ * four in their head and work out whether anything was waiting on them. That
+ * is the page doing none of the work.
+ *
+ * So the page leads with the answer, and the answer is derived here. Each item
+ * names one thing and where it is dealt with; the page turns each into a way
+ * there. Nothing waiting is itself an answer worth saying out loud — a
+ * dashboard that goes blank when all is well teaches nobody to trust it.
+ *
+ * ## The order
+ *
+ * A Mate that has stopped and is waiting for an answer is first: it is the
+ * only item where work is *not happening* until somebody acts, and it is the
+ * one this product exists to surface. Then a Mate whose run stopped on an
+ * error, halted as the first is and broken as the next is. Then a deploy that
+ * failed, which is something broken rather than something pending. Then a change that cannot
+ * land. Then work merged and not live, which is the mildest — it is waiting
+ * on a decision, not on a fix.
+ *
+ * Pure: no network, no clock, no platform globals (rule R1).
+ *
+ * @module projectAttention
+ */
+
+import { pullRequestBlocked } from "./gitTab.ts";
+import type { FlowPullRequest } from "./projectFlow.ts";
+import { REVIEW_LABEL } from "./reviewVerdict.ts";
+
+export type ProjectAttentionKind =
+  | "mate-waiting"
+  | "mate-failed"
+  | "deploy-failed"
+  | "change-blocked"
+  | "not-live";
+
+/** One thing a project needs somebody for. */
+export interface ProjectAttentionItem {
+  readonly kind: ProjectAttentionKind;
+  /** What is waiting, in one line. */
+  readonly text: string;
+  /** The verb that deals with it, where the page has one. */
+  readonly verb: string | undefined;
+  /**
+   * What the verb acts on: a Mate's project for a Mate, a change for a change,
+   * a stop's project for a deploy. `undefined` where the verb is the project's
+   * own (a release).
+   */
+  readonly target:
+    | { readonly kind: "mate"; readonly projectId: string }
+    | { readonly kind: "change"; readonly repository: string; readonly number: number }
+    | { readonly kind: "stop"; readonly projectId: string }
+    | undefined;
+}
+
+export interface ProjectAttentionInput {
+  /** Mates that have stopped and are waiting on an answer. */
+  readonly waitingMates: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /**
+   * Mates whose last run stopped on an error: their face waits as a
+   * question's does, but they ask nothing.
+   */
+  readonly failedMates?: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  /** Stops whose last deploy failed. */
+  readonly failedStops: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
+  readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+  /** How many commits are merged and not in front of people yet. */
+  readonly notLive: number;
+  readonly changeCount?: number | undefined;
+  /** Whether that is only how many at least: HQ stopped counting (`movedCount`). */
+  readonly notLiveAtLeast: boolean;
+  /** Whether *Release* is offered at all; it is not always the account's to press. */
+  readonly canRelease: boolean;
+  /** What a Mate is called, for a change that names one. */
+  readonly mateNames: ReadonlyMap<string, string>;
+}
+
+/** Everything waiting, worst first. Empty means nothing is. */
+export function projectAttention(
+  input: ProjectAttentionInput,
+): ReadonlyArray<ProjectAttentionItem> {
+  const items: Array<ProjectAttentionItem> = [];
+
+  for (const mate of input.waitingMates) {
+    items.push({
+      kind: "mate-waiting",
+      text: `${mate.name} is waiting on an answer`,
+      verb: "Open",
+      target: { kind: "mate", projectId: mate.projectId },
+    });
+  }
+
+  // Stopped as a question stops the Mate, and broken as a failed deploy is:
+  // between the two.
+  for (const mate of input.failedMates ?? []) {
+    items.push({
+      kind: "mate-failed",
+      text: `${mate.name} stopped on an error`,
+      verb: "Open",
+      target: { kind: "mate", projectId: mate.projectId },
+    });
+  }
+
+  for (const stop of input.failedStops) {
+    items.push({
+      kind: "deploy-failed",
+      text: `The last deploy to ${stop.name} failed`,
+      verb: "See the build",
+      target: { kind: "stop", projectId: stop.projectId },
+    });
+  }
+
+  for (const pull of input.pullRequests) {
+    // Its Mate gone, nobody can be asked: its review closes it or hands it to another Mate.
+    if (pull.mateGone === true) {
+      items.push({
+        kind: "change-blocked",
+        text: `#${String(pull.number)}'s Mate is gone`,
+        verb: REVIEW_LABEL,
+        target: { kind: "change", repository: pull.repository, number: pull.number },
+      });
+      continue;
+    }
+    const blocked = pullRequestBlocked(pull);
+    // Checks merely running are not waiting on anybody: waiting is correct.
+    if (blocked === null || blocked.ask === undefined) continue;
+    const mate = input.mateNames.get(pull.mateProjectId);
+    items.push({
+      kind: "change-blocked",
+      text: `#${String(pull.number)} ${blocked.word.toLocaleLowerCase()}`,
+      verb: mate === undefined ? "Ask the Mate" : `Ask ${mate}`,
+      target: { kind: "change", repository: pull.repository, number: pull.number },
+    });
+  }
+
+  if (input.notLive > 0 && input.canRelease) {
+    items.push({
+      kind: "not-live",
+      text: changesNotLive(input.notLive, input.notLiveAtLeast, input.changeCount),
+      verb: "Release",
+      target: undefined,
+    });
+  }
+
+  return items;
+}
+
+/**
+ * How many changes are merged and not live — the one way it is said, on the stop's verdict, the
+ * projects page, the project page and the left menu's next step — with `+` where it is only how
+ * many at least, as the release's summary says it.
+ */
+export function changesNotLive(count: number, atLeast: boolean, changeCount?: number): string {
+  return `${changesCountWords(count, atLeast, changeCount)} waiting for production`;
+}
+
+/** How many changes: `1 change`, `12 changes`, `10000+ changes` where HQ stopped counting. */
+export function changesCountWords(count: number, atLeast: boolean, changeCount?: number): string {
+  if (changeCount !== undefined) {
+    const changes = `${changeCount} ${changeCount === 1 ? "change" : "changes"}`;
+    const commits = `${count}${atLeast ? "+" : ""} ${count === 1 && !atLeast ? "commit" : "commits"}`;
+    return `${changes} · ${commits}`;
+  }
+  return count === 1 && !atLeast ? "1 change" : `${String(count)}${atLeast ? "+" : ""} changes`;
+}
+
+/**
+ * What production runs on services no comparison could start from (`productionRuns`' `untold`):
+ * a version named by hand, or a service the account does not list. Said, never read as nothing
+ * waiting.
+ */
+export function cannotTellWhatRuns(services: ReadonlyArray<string>): string {
+  return `Can't tell what ${serviceNames(services)} ${services.length === 1 ? "runs" : "run"}`;
+}
+
+/** Services a release redeploys while it releases: what they ran is going, and they deploy. */
+export function servicesDeploying(services: ReadonlyArray<string>): string {
+  return `${serviceNames(services)} ${services.length === 1 ? "is" : "are"} deploying`;
+}
+
+/** `app`, `app and api`, `app, api and web`. */
+export function serviceNames(services: ReadonlyArray<string>): string {
+  return services.length < 2
+    ? services.join("")
+    : `${services.slice(0, -1).join(", ")} and ${services.at(-1) ?? ""}`;
+}
+
+/**
+ * The line a project wears when nothing is waiting.
+ *
+ * Said rather than left blank: a panel that disappears when all is well is a
+ * panel nobody learns to trust, because its absence and its failure to render
+ * look identical.
+ */
+export const PROJECT_ALL_CLEAR = "Nothing needs you here.";

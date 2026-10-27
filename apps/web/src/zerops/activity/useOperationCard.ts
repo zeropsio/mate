@@ -1,0 +1,529 @@
+import { RegistryContext } from "@effect/atom-react";
+import { randomUUID } from "~/lib/utils";
+/**
+ * Maps source observations onto the operation card's presentational `ObservedRegion` prop.
+ *
+ * `observationTargetFor` and `deriveObservedStepsRegion` are pure and tested
+ * directly; the hook itself is thin glue, mirroring
+ * `useOperationObservation.ts`'s own split — it reads the observation
+ * through the hook, owns the build-log disclosure's open/closed state (the
+ * one piece of state this layer needs that isn't derivable from props), and
+ * attaches the `ZeropsBuildLog` node when there is a build to show one for.
+ */
+import { createElement, useContext, useEffect, useState, type ReactElement } from "react";
+
+import type { ObservedKind } from "@t3tools/client-runtime/zerops/activity/attribution";
+import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buildLog";
+import type {
+  Observation,
+  ObservationState,
+} from "@t3tools/client-runtime/zerops/activity/observe";
+import {
+  type ObservedStep,
+  observedProcessStep,
+  observedSteps,
+} from "@t3tools/client-runtime/zerops/activity/observedSteps";
+import {
+  type PipelineReadout,
+  readPipeline,
+} from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
+import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
+import type { EnvironmentId } from "@t3tools/contracts";
+import type {
+  ZeropsOperation,
+  ZeropsOperationKind,
+  ZeropsOperationPhase,
+  ZeropsOperationStep,
+} from "@t3tools/client-runtime/zerops/model";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+
+import { projectRestarts, readRestart, restartWay } from "@t3tools/client-runtime/data";
+import { AccountOperationsContext } from "../accountOperations";
+import { useAccountDataOptional } from "../ZeropsAccountData";
+import { toastManager } from "~/components/ui/toast";
+import { ZeropsBuildLog } from "../../components/zerops/ZeropsBuildLog";
+import { browserPageUrl } from "../../components/zerops/operation/subject";
+import type {
+  BrowserScreenshot,
+  LiveBrowserFrame,
+  ObservedRegion,
+} from "../../components/zerops/ZeropsOperationCard";
+import { useMateBrowserCallFrame } from "../browserStreamLinks.tsx";
+import { useSecondsNowMs } from "../useNowMs.ts";
+import { useZeropsTopology } from "../useZeropsFeeds.ts";
+import { useOperationObservation, type ObservationTarget } from "./useOperationObservation.ts";
+
+const OBSERVED_KINDS: ReadonlySet<ZeropsOperationKind> = new Set<ZeropsOperationKind>([
+  "deploy",
+  "import",
+  "subdomain",
+  "delete",
+  "scale",
+  "manage",
+]);
+
+function isObservedKind(kind: ZeropsOperationKind): kind is ObservedKind {
+  return OBSERVED_KINDS.has(kind);
+}
+
+/** Import may create several services at once; every other observed kind names exactly one. */
+function hostnamesFor(operation: ZeropsOperation): ReadonlyArray<string> {
+  if (operation.kind === "import") {
+    return operation.subject.split(", ");
+  }
+  return operation.target === undefined ? [] : [operation.target.hostname];
+}
+
+/**
+ * What a card reads of its operation in the account store. `null` for a kind
+ * the Observation layer has no attribution rules for (bootstrap, mount,
+ * verify, env, error). A running one is read by its services and its start —
+ * a batch deploy by all of its services, its card following the one the
+ * platform says is building; a settled one only when it is a deploy whose
+ * result named its app versions or processes, and then only by those — never
+ * guessed by time and service, which is how a failed deploy that named
+ * nothing took on a later deploy's pipeline and log. Without them its card
+ * shows what its call returned.
+ */
+export function observationTargetFor(operation: ZeropsOperation): ObservationTarget | null {
+  if (!isObservedKind(operation.kind)) {
+    return null;
+  }
+  const batch = operation.batch === true;
+  const appVersionIds = batch
+    ? (operation.appVersionIds ?? [])
+    : operation.version?.id === undefined
+      ? []
+      : [operation.version.id];
+  const processIds = operation.processIds ?? [];
+  const named = appVersionIds.length > 0 || processIds.length > 0;
+  const running = operation.phase === "running";
+  if (
+    !running &&
+    ((operation.kind !== "deploy" && operation.restartReading === undefined) || !named)
+  ) {
+    return null;
+  }
+  return {
+    key: operation.key,
+    kind: operation.kind,
+    hostnames: batch ? operation.steps.map((step) => step.label) : hostnamesFor(operation),
+    startedAtMs: Date.parse(operation.anchorAt),
+    running,
+    ...(batch ? { batch } : {}),
+    ...(!named
+      ? {}
+      : {
+          exact: {
+            ...(appVersionIds.length === 0
+              ? {}
+              : batch
+                ? { appVersionIds }
+                : { appVersionId: appVersionIds[0]! }),
+            ...(processIds.length === 0 ? {} : { processIds }),
+          },
+        }),
+  };
+}
+
+/**
+ * The dev-server card's "Open" link, resolved from the client's own topology
+ * view by hostname — never from the tool result, whose `operation.links` hold
+ * only the port addresses of several named servers, or the Open link of a
+ * lease, which no topology view holds (`buildDevServerFields`).
+ * `undefined` before the topology view has loaded, for any
+ * other operation kind, when no service in the view matches the operation's
+ * hostname, or when the matching service has no subdomain of its own.
+ */
+export function devServerUrlFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  if (operation.kind !== "devServer" || topology === undefined) {
+    return undefined;
+  }
+  const hostname = operation.target?.hostname;
+  if (hostname === undefined) {
+    return undefined;
+  }
+  return topology.services.find((service) => service.hostname === hostname)?.subdomainUrl;
+}
+
+/**
+ * A browser check's subject chip: the hostname of the service one of whose
+ * public routes answers the page's host — `undefined` before the URL or the
+ * topology view arrives, for a host no service answers (the card then names
+ * the URL's own host), and for any other kind.
+ */
+export function browserSubjectHostFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  const url = browserPageUrl(operation);
+  if (url === undefined || topology === undefined) {
+    return undefined;
+  }
+  return topology.services.find((service) =>
+    service.routes.some((route) => URL.canParse(route.url) && new URL(route.url).host === url.host),
+  )?.hostname;
+}
+
+type CardStep = ZeropsOperationStep & { readonly durationMs?: number };
+
+function toCardStep(step: ObservedStep): CardStep {
+  return {
+    id: step.id,
+    label: step.label,
+    state: step.state,
+    stateLabel: step.stateLabel,
+    ...(step.durationMs === undefined ? {} : { durationMs: step.durationMs }),
+  };
+}
+
+export interface ObservedStepsRegion {
+  /** Empty for a deploy, whose body is its `pipeline`. */
+  readonly steps: ReadonlyArray<CardStep>;
+  /** `deploy` only: its pipeline as the Zerops GUI reads it, against the render clock. */
+  readonly pipeline?: PipelineReadout;
+  /** The observation's secondary processes, one compact row each. */
+  readonly chips: ReadonlyArray<CardStep>;
+  /** Empty while the feed observes; one quiet line once it is not answering. */
+  readonly provenance: string;
+  /** Present iff the observation names a build to show a log for. */
+  readonly buildLogQuery?: BuildLogQuery;
+}
+
+/**
+ * The feed catches up, or failed — as its stream says, never a timer; not a card that stopped
+ * looking (the ceiling, a settled result).
+ */
+function feedNotObserving(state: ObservationState): boolean {
+  return state.kind === "stale" || (state.kind === "off" && state.reason === "feed-error");
+}
+
+/** Nothing while the feed observes: a live card needs no word that it is live. */
+function provenanceFor(state: ObservationState): string {
+  return feedNotObserving(state) ? "Zerops isn't answering" : "";
+}
+
+/** The deployed service as a deploy step's sentence names it; any of it may not be known yet. */
+export interface PipelineService {
+  readonly name: string | undefined;
+  /** The platform's name for the type, e.g. `Node.js`. */
+  readonly type: string | undefined;
+  /** Known only once the service states the deploy it runs: then it ran containers before this one. */
+  readonly hadContainers: boolean | undefined;
+}
+
+const UNKNOWN_SERVICE: PipelineService = {
+  name: undefined,
+  type: undefined,
+  hadContainers: undefined,
+};
+
+/** The operation's service, looked up by hostname in the client's own topology view. */
+export function pipelineServiceFor(
+  operation: ZeropsOperation,
+  topology: ZeropsTopologyView | undefined,
+): PipelineService {
+  const name = operation.target?.hostname;
+  const service =
+    name === undefined ? undefined : topology?.services.find((entry) => entry.hostname === name);
+  return {
+    name,
+    type: service?.typeName,
+    hadContainers: service?.deploy === undefined ? undefined : true,
+  };
+}
+
+function readoutOf(
+  pipeline: NonNullable<Observation["pipeline"]>,
+  service: PipelineService,
+  nowMs: number,
+): PipelineReadout {
+  return readPipeline(pipeline.appVersion, {
+    nowMs,
+    ...(service.name === undefined ? {} : { serviceName: service.name }),
+    ...(service.type === undefined ? {} : { serviceType: service.type }),
+    ...(service.hadContainers === undefined ? {} : { hadContainers: service.hadContainers }),
+    ...(pipeline.startedAt === undefined ? {} : { actionStartedAt: pipeline.startedAt }),
+  });
+}
+
+/**
+ * Pure: `(operation kind, phase, state, now) → region`. A settled operation
+ * (`phase !== "running"`) draws what the store holds of it while the feed is
+ * current or its outcome is read; one only held from mid-run while the feed
+ * catches up keeps its build log and its secondary processes but never its
+ * steps, which would run on under the result's verdict (§3, "the result is
+ * the verdict"). While running, the state drives the region once the store
+ * holds a pipeline or secondary processes; while the feed catches up it says
+ * so over what it holds, and over nothing when it holds nothing. The steps are
+ * read off the pipeline against `nowMs`, the render clock, so a running step
+ * counts on between pushes. A deploy reads its pipeline the way the Zerops GUI
+ * does (`readPipeline`), naming `service`; every other kind lists the steps.
+ */
+export function deriveObservedStepsRegion(
+  kind: ZeropsOperationKind,
+  phase: ZeropsOperationPhase,
+  state: ObservationState,
+  nowMs: number,
+  service: PipelineService = UNKNOWN_SERVICE,
+): ObservedStepsRegion | undefined {
+  const regionOf = (observation: Observation, provenance: string): ObservedStepsRegion => {
+    const pipeline = observation.pipeline;
+    const common = {
+      chips: observation.chips.map(observedProcessStep),
+      provenance,
+      ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
+    };
+    if (kind === "deploy") {
+      return {
+        steps: [],
+        ...(pipeline === undefined ? {} : { pipeline: readoutOf(pipeline, service, nowMs) }),
+        ...common,
+      };
+    }
+    return {
+      steps:
+        pipeline === undefined ? [] : observedSteps(pipeline.appVersion, nowMs).map(toCardStep),
+      ...common,
+    };
+  };
+
+  const held = state.kind === "off" ? undefined : state.observation;
+  if (phase !== "running") {
+    if (held === undefined || (held.pipeline === undefined && held.chips.length === 0))
+      return undefined;
+    if (state.kind === "observing" || held.outcome !== undefined) return regionOf(held, "");
+    const { pipeline: _midRun, ...kept } = held;
+    return kept.chips.length === 0 && kept.buildLog === undefined ? undefined : regionOf(kept, "");
+  }
+
+  if (held === undefined || (held.pipeline === undefined && held.chips.length === 0)) {
+    // Nothing held, and the feed catching up: it says so, never blank.
+    return feedNotObserving(state)
+      ? { steps: [], chips: [], provenance: "Zerops isn't answering" }
+      : undefined;
+  }
+  return regionOf(held, provenanceFor(state));
+}
+
+/** A settled operation whose one read failed: it says so, over what its call returned. */
+const UNREAD_REGION: ObservedStepsRegion = {
+  steps: [],
+  chips: [],
+  provenance: "Couldn't read its build from Zerops",
+};
+
+/** `operation.kind === "browser"` only, resolved from the operation's own `screenshot` field — see `reduce.ts`'s `buildBrowserOperation`. */
+export function browserScreenshotFor(operation: ZeropsOperation): BrowserScreenshot | undefined {
+  return operation.kind === "browser" ? operation.screenshot : undefined;
+}
+
+/**
+ * True exactly while THIS operation's own `zerops_browser` call is still
+ * running. Its own phase holds demand on the shared browser adapter; source call identity
+ * selects its frame independently of other running calls.
+ */
+export function isBrowserOperationLive(operation: ZeropsOperation): boolean {
+  return operation.kind === "browser" && operation.phase === "running";
+}
+
+/** Each card reads its source-proven call slot; releasing demand keeps that result in the account. */
+function useLiveBrowserFrame(
+  operation: ZeropsOperation,
+  environmentId: EnvironmentId | null,
+  threadId: string | null,
+): { readonly live: boolean; readonly liveFrame?: LiveBrowserFrame } {
+  const live = isBrowserOperationLive(operation);
+  const callId =
+    operation.kind === "browser" && operation.callIds.length === 1 ? operation.callIds[0]! : null;
+  const read = useMateBrowserCallFrame(environmentId, callId, live, threadId, operation.turnId);
+  const frame = read.frame;
+  return {
+    live,
+    ...(frame === null || (live && read.freshness !== "live")
+      ? {}
+      : { liveFrame: { src: frameImageSrc(frame), width: frame.width, height: frame.height } }),
+  };
+}
+
+export interface OperationCardRegions {
+  readonly observed?: ObservedRegion;
+  readonly onRestartRetry?: () => Promise<void>;
+  readonly restartRetryLabel?: string;
+  readonly restartRetryDisabled?: boolean;
+  readonly devServerUrl?: string;
+  readonly browserScreenshot?: BrowserScreenshot;
+  /** `browser` only: the hostname of the service whose route answers the page — `browserSubjectHostFor`. */
+  readonly subjectHost?: string;
+  /** `browser` only: the call is currently in progress. */
+  readonly live?: boolean;
+  /** `browser` only: the latest live frame, kept across the running→done transition. */
+  readonly liveFrame?: LiveBrowserFrame;
+  /** A batch deploy only: the service its card shows — the one building, else one that failed, else the last that ended. */
+  readonly service?: string;
+}
+
+/** A batch's service the observation's step source names, by the client's topology view. */
+export function batchServiceFor(
+  operation: ZeropsOperation,
+  observation: Observation | undefined,
+  topology: ZeropsTopologyView | undefined,
+): string | undefined {
+  if (operation.batch !== true || observation?.serviceIds === undefined) return undefined;
+  const ids = new Set(observation.serviceIds);
+  const hostnames = new Set(operation.steps.map((step) => step.label));
+  return topology?.services.find(
+    (service) => ids.has(service.serviceId) && hostnames.has(service.hostname),
+  )?.hostname;
+}
+
+/** Whether a build log's dialog is open, and how to open or close it. */
+export type LogDialogState = readonly [open: boolean, set: (open: boolean) => void];
+
+/**
+ * `logDialog`: where the whole log's dialog keeps whether it is open — its
+ * line, so a dialog the person opened stays open as the line plops from the
+ * live slot into the history; the card's own state otherwise. `readsLog`:
+ * whether its build's log is read — not for a line in the live slot that
+ * stands closed.
+ */
+export function useOperationCard(
+  operation: ZeropsOperation,
+  environmentId: EnvironmentId | null,
+  logDialog?: LogDialogState,
+  readsLog = true,
+  threadId: string | null = null,
+): OperationCardRegions {
+  const operations = useContext(AccountOperationsContext);
+  const account = useAccountDataOptional();
+  const registry = useContext(RegistryContext);
+  const orgId = account?.orgId ?? null;
+  const target = observationTargetFor(operation);
+  const running = operation.phase === "running";
+  // A settled one whose pipeline still runs moves on the clock too: its steps count on.
+  const [settledRunning, setSettledRunning] = useState(false);
+  const nowMs = useSecondsNowMs(running || settledRunning);
+  const { state, buildLog, settledRead } = useOperationObservation(
+    target,
+    environmentId,
+    nowMs,
+    readsLog,
+  );
+  const unsettled =
+    !running &&
+    state.kind !== "off" &&
+    state.observation.pipeline !== undefined &&
+    state.observation.outcome === undefined;
+  useEffect(() => setSettledRunning(unsettled), [unsettled]);
+  const topology = useZeropsTopology(environmentId);
+  // The whole log opens in a dialog, only when asked for.
+  const ownLogDialog = useState(false);
+  const [logOpen, setLogOpen] = logDialog ?? ownLogDialog;
+  const { live, liveFrame } = useLiveBrowserFrame(operation, environmentId, threadId);
+
+  const devServerUrl = devServerUrlFor(operation, topology);
+  const browserScreenshot = browserScreenshotFor(operation);
+  const subjectHost = browserSubjectHostFor(operation, topology);
+  const seen = state.kind === "off" ? undefined : state.observation;
+  const service = batchServiceFor(operation, seen, topology);
+  const reading = operation.restartReading;
+  const restartService =
+    reading === undefined
+      ? undefined
+      : topology?.services.find((service) => service.hostname === operation.target?.hostname);
+  const fields = {
+    ...(reading === undefined ||
+    restartService === undefined ||
+    operations === null ||
+    orgId === null ||
+    topology === undefined ||
+    reading.retry === undefined
+      ? {}
+      : {
+          restartRetryLabel: reading.retry.label,
+          restartRetryDisabled: reading.retry.action === null,
+          onRestartRetry: async () => {
+            const current = readRestart(
+              registry.get(
+                account!.data.project(projectRestarts, {
+                  orgId,
+                  projectId: topology.project.id,
+                }),
+              ),
+              { ...reading.process, id: reading.sourceProcessId },
+            );
+            try {
+              const action = current.retry?.action;
+              if (action?.kind === "retry") await operations.askAgain(action.requestId);
+              else if (action?.kind === "submit")
+                await operations.submit(
+                  {
+                    kind: "mate-restart",
+                    orgId,
+                    projectId: topology.project.id,
+                    serviceId: restartService.serviceId,
+                    way: restartWay(restartService.status),
+                    sourceProcessId: reading.sourceProcessId,
+                  },
+                  randomUUID(),
+                );
+            } catch {
+              toastManager.add({
+                type: "error",
+                title:
+                  "Zerops could not confirm the restart request. Check it before trying again.",
+              });
+            }
+          },
+        }),
+
+    ...(service === undefined ? {} : { service }),
+    ...(devServerUrl === undefined ? {} : { devServerUrl }),
+    ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
+    ...(subjectHost === undefined ? {} : { subjectHost }),
+    ...(operation.kind === "browser"
+      ? { live, ...(liveFrame === undefined ? {} : { liveFrame }) }
+      : {}),
+  };
+
+  const region =
+    deriveObservedStepsRegion(
+      operation.kind,
+      operation.phase,
+      state,
+      nowMs,
+      pipelineServiceFor(
+        service === undefined ? operation : { ...operation, target: { hostname: service } },
+        topology,
+      ),
+    ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
+  if (region === undefined) {
+    return fields;
+  }
+  const observed = {
+    steps: region.steps,
+    chips: region.chips,
+    provenance: region.provenance,
+    ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
+  };
+  // The log is drawn as soon as the card knows the build: a running one's
+  // newest lines' room and a settled one's way to it stand before its lines
+  // are read, so the card's height is final as it opens and as it lands.
+  const stands = operation.phase !== "running";
+  if (region.buildLogQuery === undefined) {
+    return { observed, ...fields };
+  }
+
+  const log: ReactElement = createElement(ZeropsBuildLog, {
+    lines: buildLog.lines,
+    onToggle: () => setLogOpen(!logOpen),
+    open: logOpen,
+    stands,
+    status: buildLog.status,
+    subject: service ?? operation.subject,
+  });
+  return { observed: { ...observed, log }, ...fields };
+}

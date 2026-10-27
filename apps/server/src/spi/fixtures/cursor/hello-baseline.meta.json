@@ -1,0 +1,5 @@
+{
+  "driver": "cursor",
+  "notes": "No static wire capture: Cursor speaks ACP over a real child process. This 'fixture' is recorded live each run by spawning apps/server/scripts/acp-mock-agent.ts (undriven by any T3_ACP_EMIT_* env var) through the real makeCursorAdapter — the same mock CursorAdapter.test.ts's own base scenario uses. Fixed scenario: startSession(model:'default') -> sendTurn('hello mock') -> collect until turn.completed plus a short quiescence window (a trailing item.completed can arrive after turn.completed). See apps/server/src/spi/replay/acpReplay.ts (recordCursorBaseline).",
+  "synthetic": true
+}

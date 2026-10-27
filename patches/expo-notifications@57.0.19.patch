@@ -1,0 +1,64 @@
+diff --git a/ios/ExpoNotifications/Notifications/NotificationCenterManager.swift b/ios/ExpoNotifications/Notifications/NotificationCenterManager.swift
+--- a/ios/ExpoNotifications/Notifications/NotificationCenterManager.swift
++++ b/ios/ExpoNotifications/Notifications/NotificationCenterManager.swift
+@@ -76,12 +76,25 @@
+     state.withLock { $0.delegates.removeAll { $0 === delegate } }
+   }
+ 
+-  func appendPendingResponse(_ response: UNNotificationResponse) {
+-    state.withLock { $0.pendingResponses.append(response) }
++  /**
++   Records the response as pending and returns the delegates to offer it to, in one step: a
++   delegate that registers while the response is being delivered is offered it as pending.
++   */
++  func deliver(_ response: UNNotificationResponse) -> [NotificationDelegate] {
++    state.withLock { state in
++      state.pendingResponses.append(response)
++      return state.delegates
++    }
+   }
+ 
+-  func removeAllPendingResponses() {
+-    state.withLock { $0.pendingResponses.removeAll() }
++  /**
++   Removes only the given responses: a response that arrived while these were being offered stays
++   pending.
++   */
++  func removePendingResponses(_ responses: [UNNotificationResponse]) {
++    state.withLock { state in
++      state.pendingResponses.removeAll { pending in responses.contains { $0 === pending } }
++    }
+   }
+ }
+ 
+@@ -123,12 +136,13 @@
+   }
+ 
+   public func addDelegate(_ delegate: NotificationDelegate) {
++    let responses = registry.add(delegate)
+     var handled = false
+-    for pendingResponse in registry.add(delegate) {
++    for pendingResponse in responses {
+       handled = delegate.didReceive(pendingResponse, completionHandler: {}) || handled
+     }
+     if handled {
+-      registry.removeAllPendingResponses()
++      registry.removePendingResponses(responses)
+     }
+   }
+ 
+@@ -172,11 +186,11 @@
+     withCompletionHandler completionHandler: @escaping () -> Void
+   ) {
+     var handled = false
+-    for delegate in delegates {
++    for delegate in registry.deliver(response) {
+       handled = delegate.didReceive(response, completionHandler: completionHandler) || handled
+     }
+-    if !handled {
+-      registry.appendPendingResponse(response)
++    if handled {
++      registry.removePendingResponses([response])
+     }
+     completionHandler()
+   }

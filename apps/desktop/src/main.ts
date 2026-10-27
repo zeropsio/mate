@@ -1,0 +1,125 @@
+for (const stream of [process.stdout, process.stderr]) {
+  stream.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code !== "EPIPE") throw err;
+  });
+}
+
+import * as NodeHttpClient from "@effect/platform-node/NodeHttpClient";
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+// @effect-diagnostics-next-line nodeBuiltinImport:off - Version output must flush before Electron exits, without acquiring the runtime.
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+
+import * as Electron from "electron";
+
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
+
+import * as DesktopIpc from "./ipc/DesktopIpc.ts";
+import * as ElectronApp from "./electron/ElectronApp.ts";
+import * as ElectronDialog from "./electron/ElectronDialog.ts";
+import * as ElectronMenu from "./electron/ElectronMenu.ts";
+import * as ElectronPowerMonitor from "./electron/ElectronPowerMonitor.ts";
+import * as ElectronProtocol from "./electron/ElectronProtocol.ts";
+import * as ElectronSafeStorage from "./electron/ElectronSafeStorage.ts";
+import * as ElectronShell from "./electron/ElectronShell.ts";
+import * as ElectronTheme from "./electron/ElectronTheme.ts";
+import * as ElectronUpdater from "./electron/ElectronUpdater.ts";
+import * as ElectronWindow from "./electron/ElectronWindow.ts";
+import * as DesktopApp from "./app/DesktopApp.ts";
+import * as DesktopAppIdentity from "./app/DesktopAppIdentity.ts";
+import * as DesktopConnectionCatalogStore from "./app/DesktopConnectionCatalogStore.ts";
+import * as DesktopApplicationMenu from "./window/DesktopApplicationMenu.ts";
+import * as DesktopAssets from "./app/DesktopAssets.ts";
+import * as DesktopEnvironment from "./app/DesktopEnvironment.ts";
+import * as DesktopLifecycle from "./app/DesktopLifecycle.ts";
+import * as DesktopLinuxUrlHandler from "./app/DesktopLinuxUrlHandler.ts";
+import * as DesktopShutdown from "./app/DesktopShutdown.ts";
+import * as DesktopObservability from "./app/DesktopObservability.ts";
+import * as DesktopClientSettings from "./settings/DesktopClientSettings.ts";
+import * as DesktopSavedEnvironments from "./settings/DesktopSavedEnvironments.ts";
+import * as DesktopAppSettings from "./settings/DesktopAppSettings.ts";
+import * as DesktopPreReadyPlatform from "./app/DesktopPreReadyPlatform.ts";
+import * as DesktopShellEnvironment from "./shell/DesktopShellEnvironment.ts";
+import * as DesktopState from "./app/DesktopState.ts";
+import * as DesktopUpdates from "./updates/DesktopUpdates.ts";
+import * as DesktopWindow from "./window/DesktopWindow.ts";
+import * as DesktopZeropsSignIn from "./zerops/DesktopZeropsSignIn.ts";
+
+if (process.argv.includes("--version")) {
+  try {
+    NodeFS.writeSync(process.stdout.fd, `${Electron.app.getVersion()}\n`);
+  } catch (error) {
+    if (!(error instanceof Error) || !("code" in error) || error.code !== "EPIPE") throw error;
+  }
+  Electron.app.exit(0);
+}
+
+const desktopEnvironmentLayer = Layer.unwrap(
+  Effect.gen(function* () {
+    const metadata = yield* Effect.service(ElectronApp.ElectronApp).pipe(
+      Effect.flatMap((app) => app.metadata),
+    );
+    const platform = yield* HostProcessPlatform;
+    const processArch = yield* HostProcessArchitecture;
+    return DesktopEnvironment.layer({
+      dirname: __dirname,
+      homeDirectory: NodeOS.homedir(),
+      platform,
+      processArch,
+      ...metadata,
+    });
+  }),
+);
+
+const electronLayer = Layer.mergeAll(
+  ElectronApp.layer,
+  ElectronDialog.layer,
+  ElectronMenu.layer,
+  ElectronPowerMonitor.layer,
+  ElectronProtocol.layer.pipe(Layer.provideMerge(NodeServices.layer)),
+  ElectronSafeStorage.layer,
+  ElectronShell.layer,
+  ElectronTheme.layer,
+  ElectronUpdater.layer,
+  ElectronWindow.layer,
+  DesktopIpc.layer(Electron.ipcMain),
+);
+
+const desktopFoundationLayer = Layer.mergeAll(
+  DesktopState.layer,
+  DesktopShutdown.layer,
+  DesktopAppSettings.layer,
+  DesktopClientSettings.layer,
+  DesktopConnectionCatalogStore.layer.pipe(Layer.provideMerge(DesktopSavedEnvironments.layer)),
+  DesktopAssets.layer,
+  DesktopObservability.layer,
+).pipe(Layer.provideMerge(desktopEnvironmentLayer));
+
+const desktopWindowLayer = DesktopWindow.layer.pipe(Layer.provideMerge(desktopFoundationLayer));
+
+const desktopApplicationLayer = Layer.mergeAll(
+  DesktopLifecycle.layer,
+  DesktopApplicationMenu.layer,
+  DesktopLinuxUrlHandler.layer,
+  DesktopShellEnvironment.layer,
+  DesktopAppIdentity.layer,
+).pipe(
+  Layer.provideMerge(DesktopUpdates.layer),
+  Layer.provideMerge(DesktopZeropsSignIn.layer()),
+  Layer.provideMerge(desktopWindowLayer),
+);
+
+const desktopApplicationRuntimeLayer = desktopApplicationLayer.pipe(
+  Layer.provideMerge(NodeServices.layer),
+  Layer.provideMerge(NodeHttpClient.layerUndici),
+  Layer.provideMerge(electronLayer),
+);
+
+const desktopRuntimeLayer = desktopApplicationRuntimeLayer.pipe(
+  Layer.provideMerge(DesktopPreReadyPlatform.layer),
+);
+
+DesktopApp.program.pipe(Effect.provide(desktopRuntimeLayer), NodeRuntime.runMain);

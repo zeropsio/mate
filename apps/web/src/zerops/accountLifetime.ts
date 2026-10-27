@@ -1,0 +1,101 @@
+import { writeBrowserStorage } from "../lib/storage";
+
+/** One verified account owns one renderer lifetime. Network results from a closed
+ * lifetime must never publish into a later account's stores. */
+let accountId: string | null = null;
+let generation = 0;
+const onClose = new Set<() => void | Promise<void>>();
+
+export function currentAccountId(): string | null {
+  return accountId;
+}
+
+/** Monotonic renderer-local fence for account-scoped async work. */
+export function currentAccountEpoch(): number {
+  return generation;
+}
+
+export function accountStorageKey(key: string): string | null {
+  return accountId === null ? null : accountStorageKeyOf(accountId, key);
+}
+
+/** Where `owner`'s account keeps `key`, whichever account is open now. */
+export function accountStorageKeyOf(owner: string, key: string): string {
+  return `mate:account:${encodeURIComponent(owner)}:${key}`;
+}
+
+export function openAccountLifetime(userId: string): void {
+  if (accountId === userId) return;
+  closeAccountLifetime();
+  accountId = userId;
+  // Every opener must run even if one account-scoped store fails to start.
+  for (const open of onOpen) {
+    try {
+      open();
+    } catch (cause) {
+      console.error("Account open failed", cause);
+    }
+  }
+}
+
+export function closeAccountLifetime(): Promise<void> {
+  generation += 1;
+  // Writers flush while their original account still owns the keys. Every
+  // cleanup must run even if a storage policy rejects one writer.
+  const completing: Promise<void>[] = [];
+  for (const close of [...onClose].toReversed()) {
+    try {
+      const completed = close();
+      if (completed !== undefined) completing.push(completed);
+    } catch (cause) {
+      console.error("Account cleanup failed", cause);
+    }
+  }
+  accountId = null;
+  return Promise.all(completing).then(() => undefined);
+}
+
+export function onAccountLifetimeClose(close: () => void | Promise<void>): () => void {
+  onClose.add(close);
+  return () => onClose.delete(close);
+}
+
+export function captureAccountLifetime(): () => boolean {
+  const captured = generation;
+  const owner = accountId;
+  return () => owner !== null && owner === accountId && captured === generation;
+}
+
+const onOpen = new Set<() => void>();
+export function onAccountLifetimeOpen(open: () => void): () => void {
+  onOpen.add(open);
+  return () => onOpen.delete(open);
+}
+
+/** No historical unowned value can be read into an account. */
+export const accountLocalStorage = {
+  getItem(key: string): string | null {
+    const scoped = accountStorageKey(key);
+    return scoped === null ? null : window.localStorage.getItem(scoped);
+  },
+  /** Whether the value landed: a full origin skips it. */
+  setItem(key: string, value: string): boolean {
+    const scoped = accountStorageKey(key);
+    return scoped !== null && writeBrowserStorage(window.localStorage, scoped, value);
+  },
+  removeItem(key: string): void {
+    const scoped = accountStorageKey(key);
+    if (scoped !== null) window.localStorage.removeItem(scoped);
+  },
+  /** The open account's keys, unscoped. */
+  keys(): string[] {
+    const prefix = accountStorageKey("");
+    if (prefix === null) return [];
+    const keys: string[] = [];
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+      if (key?.startsWith(prefix)) keys.push(key.slice(prefix.length));
+    }
+    return keys;
+  },
+};

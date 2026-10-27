@@ -1,0 +1,402 @@
+[
+  {
+    "path": "apps/mobile/src/features/archive/useArchivedThreadSnapshots.ts",
+    "kind": "retired-token",
+    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native archive snapshots retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/archive/useArchivedThreadSnapshots.ts",
+    "kind": "retired-token",
+    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native archive snapshots retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/usage/UsageRouteScreen.tsx",
+    "kind": "retired-token",
+    "fingerprint": "useUsage(",
+    "owner": "data-layer rewrite: Mate attention/overview",
+    "reason": "Mobile later: native usage presentation remains on its existing provider usage reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/account-ports.ts",
+    "kind": "retired-token",
+    "fingerprint": "hqAbsent()",
+    "owner": "data-layer rewrite: HQ structure/apps",
+    "reason": "Mobile later: native HQ absence bridge has not migrated to account inventory coverage. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/environment-ports.ts",
+    "kind": "retired-token",
+    "fingerprint": "hqAbsent()",
+    "owner": "data-layer rewrite: HQ structure/apps",
+    "reason": "Mobile later: native HQ absence bridge has not migrated to account inventory coverage. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/useZeropsCandidates.ts",
+    "kind": "retired-token",
+    "fingerprint": "selectCandidates(",
+    "owner": "data-layer rewrite: HQ structure/apps",
+    "reason": "Mobile later: native candidate selection has not migrated to account projections. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/assets.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAssetEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native asset reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/assets.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAssetEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native asset reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/attachments.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAttachmentEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native attachment reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/attachments.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAttachmentEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native attachment reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/filesystem.ts",
+    "kind": "retired-token",
+    "fingerprint": "createFilesystemEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/filesystem.ts",
+    "kind": "retired-token",
+    "fingerprint": "createFilesystemEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/queries.ts",
+    "kind": "retired-token",
+    "fingerprint": "createThreadSearchResultsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native thread-search aggregation retains its existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/queries.ts",
+    "kind": "retired-token",
+    "fingerprint": "createThreadSearchResultsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native thread-search aggregation retains its existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/review.ts",
+    "kind": "retired-token",
+    "fingerprint": "createReviewEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native review reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/review.ts",
+    "kind": "retired-token",
+    "fingerprint": "createReviewEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native review reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/server.ts",
+    "kind": "retired-token",
+    "fingerprint": "createServerEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native configuration, provider settings and telemetry keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/server.ts",
+    "kind": "retired-token",
+    "fingerprint": "createServerEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native configuration, provider settings and telemetry keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/sourceControl.ts",
+    "kind": "retired-token",
+    "fingerprint": "createSourceControlEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native source-control discovery and clone feeds keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/sourceControl.ts",
+    "kind": "retired-token",
+    "fingerprint": "createSourceControlEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native source-control discovery and clone feeds keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createTerminalEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createTerminalEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/usage.ts",
+    "kind": "retired-token",
+    "fingerprint": "useUsage(",
+    "owner": "data-layer rewrite: Mate attention/overview",
+    "reason": "Mobile later: native usage reader remains on its existing provider usage path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/vcs.ts",
+    "kind": "retired-token",
+    "fingerprint": "createVcsEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native VCS refs and summary subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/vcs.ts",
+    "kind": "retired-token",
+    "fingerprint": "createVcsEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native VCS refs and summary subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/archivedThreads.ts",
+    "kind": "retired-token",
+    "fingerprint": "createArchivedThreadSnapshotsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native archive snapshots retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/assets.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAssetEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native asset reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/attachments.ts",
+    "kind": "retired-token",
+    "fingerprint": "createAttachmentEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native attachment reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/filesystem.ts",
+    "kind": "retired-token",
+    "fingerprint": "createFilesystemEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native filesystem reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/review.ts",
+    "kind": "retired-token",
+    "fingerprint": "createReviewEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native review reads retain their existing query reader. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/runtime.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentQueryAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: generic query/subscription factories serve only the deferred native readers. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/runtime.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentQueryAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: generic query/subscription factories serve only the deferred native readers. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/runtime.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: generic query/subscription factories serve only the deferred native readers. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/runtime.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: generic query/subscription factories serve only the deferred native readers. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/server.ts",
+    "kind": "retired-token",
+    "fingerprint": "createServerEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native configuration, provider settings and telemetry keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/session.ts",
+    "kind": "retired-token",
+    "fingerprint": "initialConfigAtom",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native bootstrap and client-access atoms retain their existing session path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/session.ts",
+    "kind": "retired-token",
+    "fingerprint": "initialConfigAtom",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native bootstrap and client-access atoms retain their existing session path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/session.ts",
+    "kind": "retired-token",
+    "fingerprint": "initialConfigAtom",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native bootstrap and client-access atoms retain their existing session path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/shell.ts",
+    "kind": "retired-token",
+    "fingerprint": "makeEnvironmentShellState",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native shell compatibility facade preserves snapshot/replay and persistence. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/shell.ts",
+    "kind": "retired-token",
+    "fingerprint": "makeEnvironmentShellState",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native shell compatibility facade preserves snapshot/replay and persistence. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/sourceControl.ts",
+    "kind": "retired-token",
+    "fingerprint": "createSourceControlEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native source-control discovery and clone feeds keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/terminal.ts",
+    "kind": "retired-token",
+    "fingerprint": "createTerminalEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native terminal metadata and session subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/threadSearch.ts",
+    "kind": "retired-token",
+    "fingerprint": "createThreadSearchResultsAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native thread-search reader retains its existing query factory. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/vcs.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native VCS refs and summary subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/vcs.ts",
+    "kind": "retired-token",
+    "fingerprint": "createEnvironmentSubscriptionAtomFamily",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native VCS refs and summary subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/state/vcs.ts",
+    "kind": "retired-token",
+    "fingerprint": "createVcsEnvironmentAtoms",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native VCS refs and summary subscriptions keep the existing native path. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "packages/client-runtime/src/zerops/projections/candidates.ts",
+    "kind": "retired-token",
+    "fingerprint": "selectCandidates(",
+    "owner": "data-layer rewrite: HQ structure/apps",
+    "reason": "Mobile later: native candidate selection has not migrated to account projections. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  }
+]

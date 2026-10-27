@@ -1,0 +1,188 @@
+import { expect } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import { HqNavigationApp } from "@t3tools/shared/hqStream";
+import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { openAccountMenu } from "../../harness/browser.ts";
+import { openScenarioNavigation } from "../../harness/hqCore.ts";
+import type { createScenario } from "../../harness/scenario.ts";
+import { percentile, observeTabConnections } from "../../fakes/h-budget/traffic.ts";
+import type { Page } from "puppeteer-core";
+import { budgetObservations } from "./fake.ts";
+
+type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
+
+export function budgets(s: Scenario) {
+  const observation = budgetObservations(s.drivers);
+  return {
+    given: {
+      mates: Effect.fn("budgets.given.mates")(function* (names: string[]) {
+        for (const name of names) yield* s.given.project(name, { mate: true, app: "Shop" });
+      }),
+      /** Finish the initial git-derived navigation read before measuring unchanged facts. */
+      releaseRead: (name: string) =>
+        Effect.gen(function* () {
+          const appId = s.appIds.get(name);
+          if (appId === undefined) throw new Error(`No application fixture ${name}`);
+          const ticket = yield* ticketFor(s.drivers.core.call, s.owner);
+          yield* openScenarioNavigation(s.drivers.core.origin, ticket, (message) => {
+            if (message.type !== "scope-reset" && message.type !== "scope-values") return false;
+            return message.values.some((row) => {
+              if (row.key !== `app:${appId}`) return false;
+              const app = Schema.decodeUnknownOption(HqNavigationApp)(row.value);
+              if (Option.isNone(app)) return false;
+              const offer = app.value.releaseOffer;
+              return offer !== null && "head" in offer && offer.head !== null;
+            });
+          });
+        }).pipe(Effect.scoped),
+      /** The Mates' containers ACTIVE with their address not turned on. */
+      addressesOff: Effect.sync(() => {
+        for (const row of s.drivers.zerops.rows("service-stack"))
+          if (row.name === "zcp")
+            s.drivers.zerops.put("service-stack", { ...row, subdomainAccess: false });
+      }),
+      /** The app's stage and production, each a project of its own, as the menu's chips stand for. */
+      stops: Effect.fn("budgets.given.stops")(function* (app: string) {
+        yield* s.given.project("Staging", { kind: "stage", app });
+        yield* s.given.project("Production", { kind: "production", app });
+      }),
+      plainProjects: Effect.fn("budgets.given.plainProjects")(function* (names: string[]) {
+        for (const name of names) yield* s.given.project(name);
+      }),
+      fiveTabs: Effect.fn("budgets.given.fiveTabs")(function* () {
+        const tabs = [s];
+        for (let index = 1; index < 5; index++) {
+          const tab = yield* s.given.browserActor({ context: s.page.browserContext() });
+          // Only the primary actor needs the new-actor factory; the UI controls are identical.
+          tabs.push({ ...s, ...tab, given: { ...s.given, ...tab.given } });
+        }
+        return tabs;
+      }),
+    },
+    when: {
+      observeTabConnections: (pages: Page[]) =>
+        Effect.acquireRelease(
+          Effect.promise(() => observeTabConnections(pages, observation.hq.origin)),
+          (connections) => Effect.promise(() => connections.close()),
+        ),
+      opensMate: (name: string) =>
+        Effect.promise(async () => {
+          await s.page.locator(`[data-zerops-surface="sidebar-mate"] ::-p-text(${name})`).click();
+          await s.page.waitForFunction(
+            (threadId) => location.href.includes(threadId),
+            { polling: "raf" },
+            s.drivers.mates.get(name)!.thread.id,
+          );
+          await observation.mateReady(name);
+        }),
+      /** Opens a project's addresses, which draws each stop's public addresses. */
+      opensAddresses: Effect.promise(async () => {
+        await s.page.locator('[data-zerops-surface="sidebar-project-sites"]').click();
+        await s.page.locator('[data-zerops-surface="sidebar-project-sites-popover"]').wait();
+      }),
+      // The overview's projects: its cards, and the lines of the projects without a Mate.
+      projectsReady: Effect.promise(async () => {
+        await s.page.locator('[data-zerops-surface="projects-flow"] [data-zerops-group]').wait();
+      }),
+      /** The overview lists `count` projects: cards, painted or standing in, and lines. */
+      projectsAre: (count: number) =>
+        Effect.promise(() =>
+          s.page.waitForFunction(
+            (expected) =>
+              document.querySelectorAll(
+                '[data-zerops-surface="projects-flow"] :is([data-zerops-group], [role="listitem"][aria-busy="true"])',
+              ).length === expected,
+            { polling: "mutation" },
+            count,
+          ),
+        ),
+      appDetailsAre: (names: ReadonlyArray<string>) =>
+        Effect.promise(() =>
+          observation.hq.appDetailsAre(
+            names.map((name) => {
+              const id = s.appIds.get(name);
+              if (id === undefined) throw new Error(`No application fixture ${name}`);
+              return id;
+            }),
+          ),
+        ),
+      opensUsage: Effect.promise(async () => {
+        await openAccountMenu(s.page);
+        await s.page.locator('[data-zerops-account-destination="usage"]').click();
+        await s.page.waitForFunction(() => location.pathname === "/usage");
+      }),
+      hqFirstData: (count: number) => Effect.promise(() => observation.hq.firstData(count)),
+      browserSettled: Effect.promise(() => observation.browser.settled()),
+      hqStateSettled: Effect.promise(() => observation.hq.stateSettled()),
+      menuReady: Effect.fn("budgets.menuReady")(function* (names: string[]) {
+        yield* s.then.menu.row("Shop").appears();
+        for (const name of names) yield* s.then.menu.row(name).appears();
+        yield* Effect.promise(() => observation.hq.firstData(1));
+      }),
+      nextHqSegment: Effect.promise(async () => {
+        const next = observation.hq.segments.length + 1;
+        observation.hq.endSegment();
+        await observation.hq.opened(next);
+      }),
+    },
+    measure: {
+      browser: observation.browser.sample,
+      /** One project's process history read, `GET /project/{id}/process`, and its preflight. */
+      projectHistoryReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/process(\?|$)/u),
+      /** One project's own routings read, `GET /project/{id}/public-http-routing`, and its preflight. */
+      projectRoutingReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/public-http-routing(\?|$)/u),
+      /** One project's own services read, `GET /project/{id}/service-stack`, and its preflight. */
+      projectServiceReads: () =>
+        observation.browser.matching(/^(GET|OPTIONS) \/project\/[^/]+\/service-stack(\?|$)/u),
+      /** Projects' own rows, `GET /project/{id}`, and their preflights; never the search's. */
+      projectReads: (ids?: ReadonlyArray<string>) =>
+        observation.browser.matching(
+          ids === undefined
+            ? /^(GET|OPTIONS) \/project\/(?!search(\?|$))[^/?]+(\?|$)/u
+            : new RegExp(`^(GET|OPTIONS) /project/(${ids.join("|")})(\\?|$)`, "u"),
+        ),
+      /** The organization's Mate variables read by key, `POST /user-data/search`. */
+      variableReads: () => observation.browser.matching(/^POST \/user-data\/search(\?|$)/u),
+      appDetails: observation.hq.appDetails,
+      hqSegments: () => observation.hq.segments,
+      hqRequests: observation.hq.requests,
+      firstData: (after = 0) => {
+        const samples = observation.hq.segments.slice(after).map((segment) => {
+          if (segment.firstDataMs === null) throw new Error("HQ segment has not served data");
+          return segment.firstDataMs;
+        });
+        return { samples, p50: percentile(samples, 0.5), p95: percentile(samples, 0.95) };
+      },
+      /** A Mate opens through HQ alone: one visit is one ticket HQ issues for it. */
+      doorVisits: (name: string) =>
+        observation.hq.requests().byPath[`POST /api/mates/${name}/ticket`] ?? 0,
+      mateRpcs: (name: string) => s.drivers.mates.get(name)!.requests.length,
+    },
+    // oxlint-disable-next-line unicorn/no-thenable -- `then` is the DSL's assertion step, never awaited.
+    then: {
+      unopenedMates: (names: string[]) =>
+        Effect.sync(() => {
+          for (const name of names)
+            expect(s.drivers.mates.get(name)!.requests, `Unopened ${name} received RPCs`).toEqual(
+              [],
+            );
+        }),
+      composerEnabled: Effect.promise(async () => {
+        await s.page.waitForFunction(
+          () =>
+            [...document.querySelectorAll<HTMLElement>('[role="textbox"]')].some(
+              (editor) =>
+                editor.getBoundingClientRect().height > 0 &&
+                editor.isContentEditable &&
+                editor.getAttribute("aria-disabled") !== "true",
+            ),
+          { polling: "raf" },
+        );
+      }),
+    },
+  };
+}

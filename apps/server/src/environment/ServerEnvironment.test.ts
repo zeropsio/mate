@@ -1,0 +1,471 @@
+import { HostProcessEnvironment } from "@t3tools/shared/hostProcess";
+import packageJson from "../../package.json" with { type: "json" };
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import { expect, it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as PlatformError from "effect/PlatformError";
+import * as Schema from "effect/Schema";
+
+import { DEFAULT_SIGNAL_EXPORT } from "@t3tools/shared/observability";
+import * as OtelEnvironment from "@t3tools/shared/otelEnvironment";
+
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import {
+  PUBLISH_AGENT_ACTIVITY_SECRET,
+  RELAY_ENVIRONMENT_CREDENTIAL_SECRET,
+  RELAY_URL_SECRET,
+} from "../cloud/config.ts";
+import * as ServerConfig from "../config.ts";
+import * as ZeropsMateUpdate from "../zerops/ZeropsMateUpdate.ts";
+import * as ServerEnvironment from "./ServerEnvironment.ts";
+
+const isServerEnvironmentIdPersistenceError = Schema.is(
+  ServerEnvironment.ServerEnvironmentIdPersistenceError,
+);
+
+const makeServerEnvironmentLayer = (baseDir: string) =>
+  ServerEnvironment.layer.pipe(
+    Layer.provide(ServerSecretStore.layer),
+    Layer.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
+  );
+
+const emptySecretStoreLayer = Layer.succeed(
+  ServerSecretStore.ServerSecretStore,
+  ServerSecretStore.ServerSecretStore.of({
+    get: () => Effect.succeedNone,
+    set: () => Effect.void,
+    create: () => Effect.void,
+    getOrCreateRandom: () => Effect.succeed(new Uint8Array()),
+    remove: () => Effect.void,
+  }),
+);
+
+const makeServerConfig = Effect.fn(function* (baseDir: string) {
+  const derivedPaths = yield* ServerConfig.deriveServerPaths(baseDir, undefined);
+
+  return {
+    ...derivedPaths,
+    logLevel: "Error",
+    traceMinLevel: "Info",
+    traceTimingEnabled: true,
+    traceBatchWindowMs: 200,
+    traceMaxBytes: 10 * 1024 * 1024,
+    traceMaxFiles: 10,
+    otlpTracesUrl: undefined,
+    otlpMetricsUrl: undefined,
+    otlpLogsUrl: undefined,
+    otlpTracesExport: DEFAULT_SIGNAL_EXPORT,
+    otlpMetricsExport: DEFAULT_SIGNAL_EXPORT,
+    otlpLogsExport: DEFAULT_SIGNAL_EXPORT,
+    otlpServiceName: "t3-server",
+    otelEnvironment: OtelEnvironment.none,
+    cwd: process.cwd(),
+    baseDir,
+    homeDir: `${baseDir}/home`,
+    mode: "web",
+    autoBootstrapProjectFromCwd: false,
+    logWebSocketEvents: false,
+    port: 0,
+    host: undefined,
+    desktopBootstrapToken: undefined,
+    staticDir: undefined,
+    devUrl: undefined,
+    devAllowedOrigins: [],
+    zeropsFixtures: undefined,
+    zerops: undefined,
+    zeropsCrew: false,
+    noBrowser: false,
+    startupPresentation: "browser",
+    basePath: "",
+  } satisfies ServerConfig.ServerConfig["Service"];
+});
+
+it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
+  it.effect(
+    "the advertised Mate version reads its launch environment and otherwise the package",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        for (const [environment, expected] of [
+          [{}, packageJson.version],
+          [{ T3CODE_SERVER_VERSION: "0.14.11" }, "0.14.11"],
+          [{ T3CODE_SERVER_VERSION: "999.0.0" }, "999.0.0"],
+        ] as const) {
+          const baseDir = yield* fs.makeTempDirectoryScoped({ prefix: "version-source-" });
+          const descriptor = yield* Effect.gen(function* () {
+            const environment = yield* ServerEnvironment.ServerEnvironment;
+            return yield* environment.getDescriptor;
+          }).pipe(
+            Effect.provide(makeServerEnvironmentLayer(baseDir)),
+            Effect.provideService(HostProcessEnvironment, environment),
+          );
+          expect(
+            descriptor.serverVersion,
+            "ASSERTION: the descriptor carries the launched version",
+          ).toBe(expected);
+        }
+      }),
+  );
+
+  it.effect("persists the environment id across service restarts", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-test-",
+      });
+
+      const first = yield* Effect.gen(function* () {
+        const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+        return yield* serverEnvironment.getDescriptor;
+      }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+      const second = yield* Effect.gen(function* () {
+        const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+        return yield* serverEnvironment.getDescriptor;
+      }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+
+      expect(first.environmentId).toBe(second.environmentId);
+      expect(second.capabilities.repositoryIdentity).toBe(true);
+      expect(second.capabilities.connectionProbe).toBe(true);
+      expect(second.capabilities.attachmentUploads).toBe(true);
+      expect(second.capabilities.fileAttachments).toEqual({ maxUploadBytes: 50 * 1024 * 1024 });
+      expect(second.capabilities.worktreesAllowed).toBe(true);
+      expect(second.capabilities.usagePriceOverrides).toBe(true);
+      expect(second.capabilities.threadTitleRegeneration).toBe(true);
+      expect(second.capabilities.threadPullRequestLinking).toBe(true);
+      expect(second.capabilities.agentActivityPublishing).toBe(false);
+    }),
+  );
+
+  // What an update came to is the server a client reconnects to: the same version on another boot
+  // is an update that did not take, the same boot a server not restarted yet.
+  it.effect(
+    "names its boot: the same for every descriptor of one process, another after a restart",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-server-environment-test-",
+        });
+
+        const { first, again } = yield* Effect.gen(function* () {
+          const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+          const first = yield* serverEnvironment.getDescriptor;
+          return { first, again: yield* serverEnvironment.getDescriptor };
+        }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+        const restarted = yield* Effect.gen(function* () {
+          const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+          return yield* serverEnvironment.getDescriptor;
+        }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+
+        expect(first.bootId).toEqual(expect.any(String));
+        expect(again.bootId).toBe(first.bootId);
+        expect(restarted.bootId).not.toBe(first.bootId);
+      }),
+  );
+
+  // A client that loaded the app from the wrong prefix reaches a server that
+  // answers, so the descriptor has to say which prefix it is actually published
+  // under; the SPA catch-all makes the failure silent otherwise.
+  it.effect("advertises the base path the server is published under", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-base-path-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+
+      const rooted = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+      );
+      expect(rooted.basePath).toBeUndefined();
+
+      const prefixed = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer({ ...config, basePath: "/mate" })),
+          ),
+        ),
+      );
+      expect(prefixed.basePath).toBe("/mate");
+    }),
+  );
+
+  it.effect("advertises the Mate engine's protocol on every server", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-engine-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+      );
+
+      expect(descriptor.capabilities.mateEngine).toEqual({ protocol: 1 });
+    }),
+  );
+
+  // Additive, contract C-5: a Zerops container states which project it
+  // belongs to (a fact it already owns through the env contract, non-secret)
+  // — absent everywhere else, including a plain `t3 serve`.
+  it.effect("carries the Zerops project id only inside a Zerops container", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-zerops-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+
+      const outsideZerops = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(config)),
+          ),
+        ),
+      );
+      expect(outsideZerops.zerops).toBeUndefined();
+
+      const insideZerops = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(
+              ServerConfig.layer({
+                ...config,
+                zerops: {
+                  projectId: "TEST000000000000000023",
+                  apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
+                  publicOrigin: undefined,
+                  apiToken: undefined,
+                  hqOrigin: "https://hq.zerops.io",
+                  serviceId: undefined,
+                  hostname: undefined,
+                  statusFile: undefined,
+                  mateUpdateStateFile: undefined,
+                  envStorePath: "/etc/zerops-zembed/env.json",
+                },
+              }),
+            ),
+          ),
+        ),
+      );
+      expect(insideZerops.zerops).toEqual({ projectId: "TEST000000000000000023" });
+    }),
+  );
+
+  // spec-mate.md §2.9 MU-3: absent, never fabricated, when ZeropsMateUpdate
+  // has nothing to report — no layer provided at all (a standalone server),
+  // or a layer that has not run a successful check yet (zcp not on PATH).
+  it.effect("update is absent when ZeropsMateUpdate has nothing to report", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-mate-update-absent-test-",
+      });
+
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(Effect.provide(makeServerEnvironmentLayer(baseDir)));
+
+      expect(descriptor.update).toBeUndefined();
+      expect(descriptor.capabilities.mateUpdate).toBe(false);
+      expect(descriptor.capabilities.mateUpdateCheck).toBe(false);
+      expect(descriptor.capabilities.dataConsole).toBe(false);
+      expect(descriptor.capabilities.agentSignOut).toBe(false);
+      expect(descriptor.capabilities.mateLogins).toBe(false);
+    }),
+  );
+
+  it.effect("update carries the last good ZeropsMateUpdate answer when one is held", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-mate-update-present-test-",
+      });
+      const config = yield* makeServerConfig(baseDir);
+      const zeropsConfig = {
+        ...config,
+        zerops: {
+          projectId: "TEST000000000000000023",
+          apiBaseUrl: "https://api.app-prg1.zerops.io/api/rest/public",
+          publicOrigin: undefined,
+          apiToken: undefined,
+          hqOrigin: "https://hq.zerops.io",
+          serviceId: undefined,
+          hostname: undefined,
+          statusFile: undefined,
+          mateUpdateStateFile: undefined,
+          envStorePath: "/etc/zerops-zembed/env.json",
+        },
+      };
+
+      const descriptor = yield* Effect.gen(function* () {
+        return yield* (yield* ServerEnvironment.ServerEnvironment).getDescriptor;
+      }).pipe(
+        Effect.provide(
+          ServerEnvironment.layer.pipe(
+            Layer.provide(ServerSecretStore.layer),
+            Layer.provide(ServerConfig.layer(zeropsConfig)),
+          ),
+        ),
+        Effect.provideService(
+          ZeropsMateUpdate.ZeropsMateUpdate,
+          ZeropsMateUpdate.ZeropsMateUpdate.of({
+            current: Effect.succeed({
+              installed: "0.8.0",
+              latest: "0.8.1",
+              available: true,
+              checkedAt: "2026-09-09T00:00:00Z",
+            }),
+            changes: Stream.empty,
+            refresh: Effect.void,
+            check: Effect.die("not used"),
+          }),
+        ),
+      );
+      expect(descriptor.update).toEqual({
+        installed: "0.8.0",
+        latest: "0.8.1",
+        available: true,
+        checkedAt: "2026-09-09T00:00:00Z",
+      });
+      expect(descriptor.capabilities.mateUpdate).toBe(true);
+      expect(descriptor.capabilities.mateUpdateCheck).toBe(true);
+      expect(descriptor.capabilities.dataConsole).toBe(true);
+      expect(descriptor.capabilities.agentSignOut).toBe(true);
+      expect(descriptor.capabilities.mateLogins).toBe(true);
+    }),
+  );
+
+  it.effect("reports agent activity publishing from the current secret state", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-publish-test-",
+      });
+      const testLayer = Layer.mergeAll(
+        ServerEnvironment.layer.pipe(Layer.provide(ServerSecretStore.layer)),
+        ServerSecretStore.layer,
+      ).pipe(Layer.provide(ServerConfig.layerTest(process.cwd(), baseDir)));
+
+      yield* Effect.gen(function* () {
+        const secrets = yield* ServerSecretStore.ServerSecretStore;
+        const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+        const encode = (value: string) => new TextEncoder().encode(value);
+
+        const unlinked = yield* serverEnvironment.getDescriptor;
+        expect(unlinked.capabilities.agentActivityPublishing).toBe(false);
+
+        // The opt-in alone is not enough: without relay link credentials no
+        // publish would leave this environment.
+        yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, encode("true"));
+        const withoutLink = yield* serverEnvironment.getDescriptor;
+        expect(withoutLink.capabilities.agentActivityPublishing).toBe(false);
+
+        // Empty credentials are as unconfigured as missing ones: the
+        // publisher's truthiness gate skips them, so the capability must not
+        // advertise publishing.
+        yield* secrets.set(RELAY_URL_SECRET, encode(""));
+        yield* secrets.set(RELAY_ENVIRONMENT_CREDENTIAL_SECRET, encode("credential"));
+        const emptyUrl = yield* serverEnvironment.getDescriptor;
+        expect(emptyUrl.capabilities.agentActivityPublishing).toBe(false);
+
+        yield* secrets.set(RELAY_URL_SECRET, encode("https://relay.example"));
+        const linked = yield* serverEnvironment.getDescriptor;
+        expect(linked.capabilities.agentActivityPublishing).toBe(true);
+
+        // The toggle changes at runtime, so the same service instance must
+        // reflect a flip without a restart.
+        yield* secrets.set(PUBLISH_AGENT_ACTIVITY_SECRET, encode("false"));
+        const disabled = yield* serverEnvironment.getDescriptor;
+        expect(disabled.capabilities.agentActivityPublishing).toBe(false);
+      }).pipe(Effect.provide(testLayer));
+    }),
+  );
+
+  it.effect("structures persisted environment id filesystem failures", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+        prefix: "t3-server-environment-error-test-",
+      });
+      const serverConfig = yield* makeServerConfig(baseDir);
+      const environmentIdPath = serverConfig.environmentIdPath;
+      const methodByOperation = {
+        check: "exists",
+        read: "readFileString",
+        write: "writeFileString",
+      } as const;
+
+      for (const operation of ["check", "read", "write"] as const) {
+        const writeAttempts: string[] = [];
+        const cause = PlatformError.systemError({
+          _tag: "PermissionDenied",
+          module: "FileSystem",
+          method: methodByOperation[operation],
+          description: "permission denied",
+          pathOrDescriptor: environmentIdPath,
+        });
+        const failingFileSystemLayer = FileSystem.layerNoop({
+          exists: () =>
+            operation === "check" ? Effect.fail(cause) : Effect.succeed(operation === "read"),
+          readFileString: () => Effect.fail(cause),
+          writeFileString: (path) => {
+            writeAttempts.push(path);
+            return Effect.fail(cause);
+          },
+        });
+
+        const error = yield* Effect.gen(function* () {
+          const serverEnvironment = yield* ServerEnvironment.ServerEnvironment;
+          return yield* serverEnvironment.getDescriptor;
+        }).pipe(
+          Effect.provide(
+            ServerEnvironment.layer.pipe(
+              Layer.provide(emptySecretStoreLayer),
+              Layer.provide(Layer.merge(ServerConfig.layer(serverConfig), failingFileSystemLayer)),
+            ),
+          ),
+          Effect.flip,
+        );
+
+        expect(isServerEnvironmentIdPersistenceError(error)).toBe(true);
+        if (!isServerEnvironmentIdPersistenceError(error)) {
+          throw error;
+        }
+        expect(error.operation).toBe(operation);
+        expect(error.environmentIdPath).toBe(environmentIdPath);
+        expect(error.cause).toBe(cause);
+        expect(error.message).toBe(
+          `Server environment ID ${operation} failed at '${environmentIdPath}'.`,
+        );
+        expect(writeAttempts).toEqual(operation === "write" ? [environmentIdPath] : []);
+      }
+    }),
+  );
+});

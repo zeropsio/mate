@@ -1,0 +1,1207 @@
+import {
+  flowChanges,
+  type EnvironmentCreationStep,
+  type EnvironmentCreationStepProgress,
+  type FlowPullRequest,
+  type ZeropsGroupPendingMember,
+  type ZeropsOrganizationMember,
+} from "@t3tools/client-runtime/zerops";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { HqChange } from "@t3tools/shared/hqChanges";
+import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  creationRecipe,
+  environmentSheetSubmit,
+  faceName,
+  hasCreationErrors,
+  newMateDoor,
+  newMateDoorTitle,
+  type NewMateDoorAction,
+  newMateDoorMates,
+  newMateFace,
+  newMateGate,
+  newMateRecipe,
+  newMateRecipeChange,
+  newMateSubmit,
+  newMateWords,
+  PEOPLE_UNREADABLE,
+  proposedEnvironmentName,
+  READING_PEOPLE,
+  recipeChangeView,
+  recipeOptions,
+  validateBotName,
+  validateCreationForm,
+  type NewMateDoor,
+  type RecipeOption,
+  pressSteps,
+  pressThrough,
+} from "./ZeropsEnvironmentCreationDialog.logic";
+import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
+
+/** A tier as the group repo's `main` hands it over, already import-ready. */
+const TIER = {
+  kind: "tier" as const,
+  tier: "stage" as const,
+  yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
+};
+
+describe("recipeOptions", () => {
+  it("offers the project's recipe first, then nothing yet", () => {
+    const options = recipeOptions({
+      roleLabel: "stage",
+      tier: TIER,
+      services: ["app", "db"],
+      recipe: "present",
+    });
+    expect(options.map((option) => option.id)).toEqual(["tier", "none"]);
+    expect(options[0]?.label).toBe("Same services as the project");
+  });
+
+  /**
+   * Every service arrives empty whatever the tier said: the platform cannot
+   * clone a private repository, so the plan takes each build out
+   * (`recipeTier.ts`) and the first deploy is what fills them. Measured on the
+   * demo where a stage came up `READY_TO_DEPLOY` and nothing said so.
+   */
+  it("says the services arrive without code", () => {
+    const options = recipeOptions({
+      roleLabel: "stage",
+      tier: TIER,
+      services: ["app", "db"],
+      recipe: "present",
+    });
+    expect(options[0]?.detail).toBe("app, db · your code arrives with the first deploy");
+  });
+
+  it("explains a project with no recipe rather than showing a lone option", () => {
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: undefined,
+      services: [],
+      recipe: "absent",
+    });
+    expect(options.map((option) => option.id)).toEqual(["none"]);
+    expect(options[0]?.detail).toBe("This project has no setup files yet. Set it up later.");
+  });
+
+  // F9 (e2e, 2026-10-03): a recipe not read yet read as a missing one for a minute.
+  it.each(["reading", "unreadable"] as const)(
+    "never says there is no recipe while it is %s",
+    (recipe) => {
+      const options = recipeOptions({
+        roleLabel: "production",
+        tier: undefined,
+        services: [],
+        recipe,
+      });
+      expect(options[0]?.detail).toBe("Set it up later.");
+    },
+  );
+
+  it("still names the recipe when the tier declares no services", () => {
+    const options = recipeOptions({
+      roleLabel: "Mate",
+      tier: TIER,
+      services: [],
+      recipe: "present",
+    });
+    expect(options[0]?.detail).toBe("As the project's setup files describe them.");
+  });
+});
+
+describe("validateBotName — under an application", () => {
+  const taken = { names: ["Fen"], complete: true };
+
+  it.each([
+    { value: "SPN - Fen", verdict: "Fen is already an agent on this account." },
+    { value: "Fen", verdict: "Fen is already an agent on this account." },
+    // Another application's prefix is part of the name: its own name, whole.
+    { value: "Shop - Fen", verdict: undefined },
+    { value: "SPN - Ada", verdict: undefined },
+  ])("judges $value by its own name under SPN", ({ value, verdict }) => {
+    expect(validateBotName(value, taken, { appName: "SPN" })).toBe(verdict);
+  });
+
+  it("refuses a typed prefix of a Mate that exists when a Mate is added", () => {
+    expect(
+      newMateSubmit({
+        botName: "SPN - Fen",
+        appName: "SPN",
+        takenBotNames: taken,
+        tier: undefined,
+        tierLoading: false,
+      }),
+    ).toEqual({ kind: "refuse", error: "Another Mate already has that name." });
+  });
+
+  it("keeps a Mate's current name whole when it is stale-prefixed and long", () => {
+    const current = "Old - A Mate With A Very Long Name";
+    expect(validateBotName(current, taken, { appName: "SPN", current })).toBeUndefined();
+  });
+});
+
+describe("validateBotName", () => {
+  it.each<{
+    readonly name: string;
+    readonly value: string;
+    readonly taken: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+    readonly current?: string;
+    readonly verdict: string | undefined;
+  }>([
+    {
+      name: "an unread listing never reads as no names taken",
+      value: "Ada",
+      taken: { names: [], complete: false },
+      verdict: "Checking which names are taken…",
+    },
+    {
+      name: "a name read as taken is refused while the rest are read",
+      value: "fen",
+      taken: { names: ["Fen"], complete: false },
+      verdict: "fen is already an agent on this account.",
+    },
+    {
+      name: "a name missing from a partial listing may still be taken",
+      value: "Ada",
+      taken: { names: ["Fen"], complete: false },
+      verdict: "Checking which names are taken…",
+    },
+    {
+      name: "a name missing from a complete listing is free",
+      value: "Ada",
+      taken: { names: ["Fen"], complete: true },
+      verdict: undefined,
+    },
+    {
+      name: "the Mate's own name stays its own while the rest are read",
+      value: "Fen",
+      taken: { names: ["Fen"], complete: false },
+      current: "Fen",
+      verdict: undefined,
+    },
+    {
+      name: "the name a Mate already has stays its own, however long",
+      value: "Old - A Mate With A Very Long Name",
+      taken: { names: [], complete: true },
+      current: "Old - A Mate With A Very Long Name",
+      verdict: undefined,
+    },
+    {
+      name: "an empty name is refused before anything is read",
+      value: " ",
+      taken: { names: [], complete: false },
+      verdict: "Give the agent a name.",
+    },
+  ])("$name", ({ value, taken, current, verdict }) => {
+    expect(validateBotName(value, taken, current === undefined ? {} : { current })).toBe(verdict);
+  });
+});
+
+describe("validateCreationForm", () => {
+  const options: ReadonlyArray<RecipeOption> = recipeOptions({
+    roleLabel: "stage",
+    tier: TIER,
+    services: ["app"],
+    recipe: "present",
+  });
+  const valid = { name: "Acme Docs - stage", withAgent: true, recipeId: "tier" };
+
+  it("accepts a complete form", () => {
+    expect(hasCreationErrors(validateCreationForm(valid, { options, recipe: "present" }))).toBe(
+      false,
+    );
+  });
+
+  // D3: one name, the project's, whether an agent runs in it or not.
+  it.each([true, false])("wants a name for the environment, the agent %s", (withAgent) => {
+    expect(
+      validateCreationForm({ ...valid, withAgent, name: " " }, { options, recipe: "present" }).name,
+    ).toBe("Give the environment a name.");
+  });
+
+  it("refuses nothing yet without an agent, and names a way out", () => {
+    const errors = validateCreationForm(
+      { ...valid, withAgent: false, recipeId: "none" },
+      { options, recipe: "present" },
+    );
+    expect(errors.recipe).toContain("give it its own Mate");
+  });
+
+  it("refuses an option that is not on offer", () => {
+    expect(
+      validateCreationForm({ ...valid, recipeId: "store" }, { options, recipe: "present" }).recipe,
+    ).toBe("Choose what goes in the environment.");
+  });
+});
+
+describe("validateCreationForm, on an environment with no agent", () => {
+  /**
+   * With no recipe on `main` the fix is not in this dialog at all — it is a
+   * pull request on the group repo. The old message stated the rule and left
+   * the reader to deduce the order.
+   */
+  // F9: only HQ answering "none" says there is no recipe; a read not back yet, or one that failed,
+  // says so, and holds the form whatever is chosen.
+  it.each([
+    {
+      recipe: "absent",
+      withAgent: false,
+      says: "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
+    },
+    { recipe: "reading", withAgent: false, says: "Reading the project's setup files…" },
+    { recipe: "reading", withAgent: true, says: "Reading the project's setup files…" },
+    {
+      recipe: "unreadable",
+      withAgent: false,
+      says: "The project's setup files can't be read right now.",
+    },
+    {
+      recipe: "unreadable",
+      withAgent: true,
+      says: "The project's setup files can't be read right now.",
+    },
+  ] as const)(
+    "with the recipe $recipe, the agent $withAgent: $says",
+    ({ recipe, withAgent, says }) => {
+      const options = recipeOptions({ roleLabel: "Prod", tier: undefined, services: [], recipe });
+      expect(
+        validateCreationForm(
+          { name: "Acme - production", withAgent, recipeId: "none" },
+          { options, recipe },
+        ).recipe,
+      ).toBe(says);
+    },
+  );
+
+  it("says to take the recipe when there is one", () => {
+    const options = recipeOptions({
+      roleLabel: "Prod",
+      tier: TIER,
+      services: ["app"],
+      recipe: "present",
+    });
+    expect(
+      validateCreationForm(
+        { name: "Acme - production", withAgent: false, recipeId: "none" },
+        { options, recipe: "present" },
+      ).recipe,
+    ).toBe("Start with the project's services, or give it its own Mate to set them up.");
+  });
+});
+
+describe("creationRecipe — where the project's recipe stands for the creation forms", () => {
+  it.each([
+    { state: "loading", loading: true, recipe: "reading" },
+    // A dialog opened again says what the last read said, and waits for this one.
+    { state: "present", loading: true, recipe: "reading" },
+    { state: "absent", loading: true, recipe: "reading" },
+    { state: "present", loading: false, recipe: "present" },
+    { state: "absent", loading: false, recipe: "absent" },
+    { state: "unreadable", loading: false, recipe: "unreadable" },
+  ] as const)("$state, loading $loading: $recipe", ({ state, loading, recipe }) => {
+    expect(creationRecipe({ state, loading })).toBe(recipe);
+  });
+});
+
+describe("proposedEnvironmentName", () => {
+  it("names the environment after its role while that name is free", () => {
+    expect(proposedEnvironmentName({ groupName: "Shortlink", roleLabel: "stage", taken: [] })).toBe(
+      "Shortlink - stage",
+    );
+  });
+
+  it("numbers the second stage rather than proposing the first one's name", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["Shortlink - stage"],
+      }),
+    ).toBe("Shortlink - stage 2");
+  });
+
+  it("keeps counting past a run of them", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 2", "Shortlink - stage 3"],
+      }),
+    ).toBe("Shortlink - stage 4");
+  });
+
+  it("fills a gap left by a deleted environment", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["Shortlink - stage", "Shortlink - stage 3"],
+      }),
+    ).toBe("Shortlink - stage 2");
+  });
+
+  it("reads a taken name regardless of case or padding", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["  SHORTLINK - STAGE  "],
+      }),
+    ).toBe("Shortlink - stage 2");
+  });
+
+  it("counts only the role it is naming", () => {
+    expect(
+      proposedEnvironmentName({
+        groupName: "Shortlink",
+        roleLabel: "stage",
+        taken: ["Shortlink - production", "Shortlink - production 2"],
+      }),
+    ).toBe("Shortlink - stage");
+  });
+});
+
+/** A name's own tint as the account would give it: fixed per name here, so each case reads. */
+const TINTS: Readonly<Record<string, MateTintId>> = { Quinn: "olive", Ada: "sky", Otto: "violet" };
+const defaultTint = (name: string): MateTintId => TINTS[name] ?? "slate";
+
+describe("newMateFace — the face follows the name until its person picks", () => {
+  it.each<{
+    readonly case: string;
+    readonly name: string;
+    readonly picked: { readonly tint?: MateTintId; readonly shape?: MateShapeId };
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId };
+  }>([
+    {
+      case: "nothing picked: the name's tint and that tint's shape",
+      name: "Quinn",
+      picked: {},
+      face: { tint: "olive", shape: "clover" },
+    },
+    {
+      case: "nothing picked, another name: its own face",
+      name: "Ada",
+      picked: {},
+      face: { tint: "sky", shape: "pick" },
+    },
+    {
+      case: "a colour picked: that colour, and its shape until one is picked",
+      name: "Quinn",
+      picked: { tint: "rose" },
+      face: { tint: "rose", shape: "flower" },
+    },
+    {
+      case: "a shape picked: the name's colour still follows the name",
+      name: "Ada",
+      picked: { shape: "seal" },
+      face: { tint: "sky", shape: "seal" },
+    },
+    {
+      case: "both picked: the name moves neither",
+      name: "Otto",
+      picked: { tint: "amber", shape: "gem" },
+      face: { tint: "amber", shape: "gem" },
+    },
+  ])("$case", ({ name, picked, face }) => {
+    expect(newMateFace({ name, picked, defaultTint })).toEqual(face);
+  });
+
+  // Run 6's second review: Start over brought the colour back, never the shape.
+  it.each<{
+    readonly case: string;
+    readonly name: string;
+    readonly picked: { readonly tint?: MateTintId; readonly shape?: MateShapeId };
+    readonly face: { readonly tint: MateTintId; readonly shape: MateShapeId };
+  }>([
+    {
+      case: "started over, the name as asked: the face as asked",
+      name: "Quinn",
+      picked: {},
+      face: { tint: "olive", shape: "gem" },
+    },
+    {
+      case: "started over, another name: that name's own face",
+      name: "Ada",
+      picked: {},
+      face: { tint: "sky", shape: "pick" },
+    },
+    {
+      case: "started over, a colour picked: that colour's shape",
+      name: "Quinn",
+      picked: { tint: "rose" },
+      face: { tint: "rose", shape: "flower" },
+    },
+  ])("$case", ({ name, picked, face }) => {
+    const defaultShape = (asked: string) => (asked === "Quinn" ? ("gem" as const) : undefined);
+    expect(newMateFace({ name, picked, defaultTint, defaultShape })).toEqual(face);
+  });
+
+  it.each([
+    { case: "the name as typed", typed: "  Ada  ", held: "Quinn", name: "Ada" },
+    { case: "the last name while the field is blank", typed: "   ", held: "Quinn", name: "Quinn" },
+    { case: "one space between words", typed: "Big   Otto", held: "Quinn", name: "Big Otto" },
+  ])("follows $case", ({ typed, held, name }) => {
+    expect(faceName(typed, held)).toBe(name);
+  });
+});
+
+describe("newMateSubmit — what pressing Add does now", () => {
+  const TAKEN = { names: ["Fen"], complete: true };
+  it.each<{
+    readonly case: string;
+    readonly botName: string;
+    readonly takenBotNames: { readonly names: ReadonlyArray<string>; readonly complete: boolean };
+    readonly tier: typeof TIER | undefined;
+    readonly tierLoading: boolean;
+    readonly submit: ReturnType<typeof newMateSubmit>;
+  }>([
+    {
+      case: "creates it with the project's recipe",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "create", recipe: TIER },
+    },
+    {
+      case: "creates it with nothing where the project has no recipe on main",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: undefined,
+      tierLoading: false,
+      submit: { kind: "create", recipe: { kind: "none" } },
+    },
+    {
+      case: "waits while the recipe is read",
+      botName: "Quinn",
+      takenBotNames: TAKEN,
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "wait", on: "recipe" },
+    },
+    {
+      case: "waits while the names are read, the name not among them yet",
+      botName: "Quinn",
+      takenBotNames: { names: ["Fen"], complete: false },
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "wait", on: "names" },
+    },
+    {
+      case: "refuses a blank name before waiting on anything",
+      botName: "  ",
+      takenBotNames: { names: [], complete: false },
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "refuse", error: "Give the Mate a name." },
+    },
+    {
+      case: "refuses a name already taken, even while the rest are read",
+      botName: "fen",
+      takenBotNames: { names: ["Fen"], complete: false },
+      tier: undefined,
+      tierLoading: true,
+      submit: { kind: "refuse", error: "Another Mate already has that name." },
+    },
+    {
+      case: "refuses a name too long",
+      botName: "x".repeat(25),
+      takenBotNames: TAKEN,
+      tier: TIER,
+      tierLoading: false,
+      submit: { kind: "refuse", error: "Keep it under 24 characters." },
+    },
+  ])("$case", ({ botName, takenBotNames, tier, tierLoading, submit }) => {
+    expect(newMateSubmit({ botName, takenBotNames, tier, tierLoading })).toEqual(submit);
+  });
+});
+
+describe("newMateWords — what the Mate's dialog says", () => {
+  it.each<{
+    readonly case: string;
+    readonly input: Parameters<typeof newMateWords>[0];
+    readonly words: ReturnType<typeof newMateWords>;
+  }>([
+    {
+      case: "a project with a recipe",
+      input: { groupName: "Acme Docs", botName: " Quinn ", recipe: "recipe", waitingOn: null },
+      words: {
+        button: "Add Quinn to Acme Docs",
+        line: undefined,
+      },
+    },
+    {
+      case: "the recipe still being read",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "reading", waitingOn: null },
+      words: {
+        button: "Add Quinn to Acme Docs",
+        line: "Reading the project's setup files…",
+      },
+    },
+    {
+      case: "a project with no recipe on main",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "none", waitingOn: null },
+      words: {
+        button: "Add Quinn to Acme Docs",
+        line: undefined,
+      },
+    },
+    {
+      case: "Add pressed while the names are read",
+      input: { groupName: "Acme Docs", botName: "Quinn", recipe: "recipe", waitingOn: "names" },
+      words: {
+        button: "Add Quinn to Acme Docs",
+        line: "Checking which names are taken…",
+      },
+    },
+    {
+      case: "a blank name",
+      input: { groupName: "Acme Docs", botName: "  ", recipe: "recipe", waitingOn: null },
+      words: {
+        button: "Add a project Mate to Acme Docs",
+        line: undefined,
+      },
+    },
+  ])("says so for $case", ({ input, words }) => {
+    expect(newMateWords(input)).toEqual(words);
+  });
+
+  it.each([
+    { tier: TIER, tierLoading: false, recipe: "recipe" },
+    { tier: undefined, tierLoading: true, recipe: "reading" },
+    { tier: undefined, tierLoading: false, recipe: "none" },
+  ] as const)("reads the recipe as $recipe", ({ tier, tierLoading, recipe }) => {
+    expect(newMateRecipe({ tier, tierLoading })).toBe(recipe);
+  });
+});
+
+describe("newMateDoor — whether the project takes another Mate, and why not", () => {
+  const CLEO = { projectId: "cleo-project", name: "Cleo" };
+  const JUNO = { projectId: "juno-project", name: "Juno" };
+  const UNREADABLE = "Beviro's setup files can't be read right now.";
+  it.each<{
+    readonly case: string;
+    readonly input: Partial<Parameters<typeof newMateDoor>[0]>;
+    readonly door: NewMateDoor;
+  }>([
+    {
+      case: "a recipe on main: the form",
+      input: { recipe: "present" },
+      door: { kind: "open", recipe: "recipe" },
+    },
+    {
+      case: "a recipe on main and a change to it open: the form",
+      input: { recipe: "present", change: { number: 11, mate: "Cleo" } },
+      door: { kind: "open", recipe: "recipe" },
+    },
+    {
+      case: "the recipe being read: the form, reading",
+      input: { recipe: "loading" },
+      door: { kind: "open", recipe: "reading" },
+    },
+    {
+      case: "no recipe and no Mate yet: the form, the first Mate setting the project up",
+      input: { recipe: "absent", mates: [] },
+      door: { kind: "open", recipe: "none" },
+    },
+    {
+      case: "no recipe and no Mate, a change left open: the form still",
+      input: { recipe: "absent", mates: [], change: { number: 11, mate: undefined } },
+      door: { kind: "open", recipe: "none" },
+    },
+    {
+      case: "no recipe, Cleo's change open: the change",
+      input: { recipe: "absent", change: { number: 11, mate: "Cleo" } },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's setup for new Mates is waiting in Cleo's change. New Mates can join once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 11 },
+      },
+    },
+    {
+      case: "no recipe, a change open by a Mate no longer there: the change",
+      input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's setup for new Mates is waiting in a change. New Mates can join once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 12 },
+      },
+    },
+    {
+      case: "no recipe, nothing open, one Mate: that Mate",
+      input: { recipe: "absent" },
+      door: {
+        kind: "closed",
+        reason: "Cleo is still setting Beviro up. New Mates can join once it's done.",
+        action: { kind: "mate", label: "Open Cleo", projectId: "cleo-project" },
+      },
+    },
+    {
+      case: "no recipe, nothing open, several Mates: no action",
+      input: { recipe: "absent", mates: [CLEO, JUNO] },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's Mates are still setting it up. New Mates can join once one of them is done.",
+        action: undefined,
+      },
+    },
+    {
+      case: "a recipe that cannot be read: try again",
+      input: { recipe: "unreadable" },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: false },
+      },
+    },
+    {
+      case: "a recipe that cannot be read, being read again: try again, busy",
+      input: { recipe: "unreadable", rereading: true },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: true },
+      },
+    },
+    {
+      case: "a recipe that cannot be read, no Mate yet: adding stays off",
+      input: { recipe: "unreadable", mates: [] },
+      door: {
+        kind: "closed",
+        reason: UNREADABLE,
+        action: { kind: "retry", label: "Try again", busy: false },
+      },
+    },
+    {
+      case: "a project and a Mate whose names end in s",
+      input: { groupName: "Acme Docs", recipe: "absent", change: { number: 11, mate: "Otis" } },
+      door: {
+        kind: "closed",
+        reason:
+          "Acme Docs' setup for new Mates is waiting in Otis' change. New Mates can join once it's merged.",
+        action: { kind: "change", label: "Review the change", number: 11 },
+      },
+    },
+  ])("$case", ({ input, door }) => {
+    expect(
+      newMateDoor({
+        groupName: "Beviro",
+        recipe: "absent",
+        mates: [CLEO],
+        change: undefined,
+        rereading: false,
+        ...input,
+      }),
+    ).toEqual(door);
+  });
+});
+
+/** An open change on the project's repositories, as HQ streams it. */
+function change(overrides: Partial<FlowPullRequest> = {}): FlowPullRequest {
+  return {
+    repository: "group",
+    number: 11,
+    title: "Mate: the group's import files",
+    kind: "recipe",
+    mateProjectId: "cleo-project",
+    url: "https://hq.example.test/changes/beviro/group/11",
+    mergeability: "mergeable",
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
+    headSha: "abc1234",
+    baseBranch: "main",
+    line: "#11",
+    updatedAt: "2026-09-30T10:00:00Z",
+    ...overrides,
+  };
+}
+
+// Run 2: a refused dialog was titled "Add a project Mate to …" over "Works on this project only.",
+// and only then said it could not add one.
+describe("newMateDoorTitle — what the Mate's dialog is titled", () => {
+  const closed = (action: NewMateDoorAction | undefined) =>
+    ({ kind: "closed", reason: "Why.", action }) as const;
+  it.each([
+    {
+      name: "the form, while the project takes a Mate",
+      door: undefined,
+      title: "Add a project Mate to Shop Front",
+    },
+    {
+      name: "the state, while its setup is still being written",
+      door: closed({ kind: "mate", label: "Open Nova", projectId: "p-nova" }),
+      title: "Shop Front isn't ready for new Mates yet",
+    },
+    {
+      name: "the state, while its setup waits in a change",
+      door: closed({ kind: "change", label: "Review the change", number: 4 }),
+      title: "Shop Front isn't ready for new Mates yet",
+    },
+    {
+      name: "the state, while its setup files can't be read",
+      door: closed({ kind: "retry", label: "Try again", busy: false }),
+      title: "Can't add a Mate to Shop Front right now",
+    },
+  ])("$name", ({ door, title }) => {
+    expect(newMateDoorTitle("Shop Front", door)).toBe(title);
+  });
+});
+
+describe("newMateGate — why Add a Mate is off before it is pressed", () => {
+  const NOVA = { projectId: "nova-project", name: "Nova" };
+  const TEA = { projectId: "tea-project", name: "Tea" };
+  it.each<{
+    readonly sentence: string;
+    readonly input: Partial<Parameters<typeof newMateGate>[0]>;
+    readonly reason: string | null;
+  }>([
+    {
+      sentence:
+        "A project whose only Mate is still setting it up offers no Add, and says why before the press",
+      input: {},
+      reason: "Nova is still setting Shop Front up. New Mates can join once it's done.",
+    },
+    {
+      sentence: "A project whose setup waits in a change offers no Add, and says where",
+      input: { changes: [change({ mateProjectId: "nova-project" })] },
+      reason:
+        "Shop Front's setup for new Mates is waiting in Nova's change. New Mates can join once it's merged.",
+    },
+    {
+      sentence: "A project whose Mates are all setting it up says so of them all",
+      input: { mates: [NOVA, TEA] },
+      reason:
+        "Shop Front's Mates are still setting it up. New Mates can join once one of them is done.",
+    },
+    {
+      sentence: "A project with setup files on main offers Add",
+      input: { recipe: "present" },
+      reason: null,
+    },
+    {
+      sentence: "A project with no Mate yet offers Add for its first",
+      input: { mates: [] },
+      reason: null,
+    },
+    {
+      sentence: "While the project's setup files are not read, Add stands as before",
+      input: { recipe: "loading" },
+      reason: null,
+    },
+    {
+      sentence: "While the project's changes are not read, Add stands as before",
+      input: { changes: undefined },
+      reason: null,
+    },
+    {
+      sentence: "Setup files that can't be read leave Add on: its Try again is behind the press",
+      input: { recipe: "unreadable" },
+      reason: null,
+    },
+  ])("$sentence", ({ input, reason }) => {
+    expect(
+      newMateGate({
+        groupName: "Shop Front",
+        recipe: "absent",
+        mates: [NOVA],
+        changes: [],
+        mateName: () => undefined,
+        ...input,
+      }),
+    ).toBe(reason);
+  });
+});
+
+describe("newMateRecipeChange — the change the recipe waits in", () => {
+  const names: Readonly<Record<string, string>> = { "cleo-project": "Cleo" };
+  it.each<{
+    readonly case: string;
+    readonly flow: Parameters<typeof newMateRecipeChange>[0]["flow"];
+    readonly found: ReturnType<typeof newMateRecipeChange>;
+  }>([
+    { case: "nothing open", flow: { changesKnown: true, pullRequests: [] }, found: undefined },
+    {
+      case: "Cleo's proposal, among code changes",
+      flow: {
+        changesKnown: true,
+        pullRequests: [
+          change({ repository: "appdev", kind: "code", number: 4, title: "Add a due date" }),
+          change(),
+        ],
+      },
+      found: { number: 11, mate: "Cleo" },
+    },
+    {
+      case: "a proposal by a Mate the project no longer has",
+      flow: { changesKnown: true, pullRequests: [change({ mateProjectId: "gone-project" })] },
+      found: { number: 11, mate: undefined },
+    },
+    {
+      case: "no proposal in another change to the recipe",
+      flow: { changesKnown: true, pullRequests: [change({ title: "Add a stage tier" })] },
+      found: undefined,
+    },
+    {
+      case: "the first of two proposals opened",
+      flow: { changesKnown: true, pullRequests: [change({ number: 14 }), change({ number: 12 })] },
+      found: { number: 12, mate: "Cleo" },
+    },
+    {
+      case: "none while the forge has not answered for the project",
+      flow: { changesKnown: false, pullRequests: [change()] },
+      found: undefined,
+    },
+    { case: "none before the forge read anything", flow: undefined, found: undefined },
+  ])("finds $case", ({ flow, found }) => {
+    expect(newMateRecipeChange({ flow, mateName: (id) => names[id] })).toEqual(found);
+  });
+});
+
+// SPEC §3.2c with main's D24/D25: Cleo's proposal as HQ's stream says it — a change in the
+// application's recipe repository under zcp's exact title — shuts the door on Review the change
+// while it is open, and reads the recipe again once it lands.
+describe("the recipe's proposal, as HQ holds it", () => {
+  const proposal = (over: Partial<HqChange>): HqChange => ({
+    appId: "beviro",
+    repo: RECIPE_REPO,
+    number: 11,
+    mateProjectId: "cleo-project",
+    title: RECIPE_PROPOSAL_TITLE,
+    body: "",
+    state: "open",
+    head: "c0ffee",
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+    ...over,
+  });
+  const flow = (changes: ReadonlyArray<HqChange>) =>
+    flowChanges({ changes, hqAddress: "https://hq.example.test" });
+
+  it("is the change the recipe waits in while it is open", () => {
+    const { pullRequests } = flow([proposal({})]);
+    expect(
+      newMateRecipeChange({
+        flow: { changesKnown: true, pullRequests },
+        mateName: (id) => (id === "cleo-project" ? "Cleo" : undefined),
+      }),
+    ).toEqual({ number: 11, mate: "Cleo" });
+  });
+});
+
+describe("newMateDoorMates — the project's Mates, listed and coming", () => {
+  /** A project of Beviro, placed by HQ as `kind`; a Mate under the name HQ records, if any. */
+  function listed(
+    id: string,
+    kind: HqPlacement["kind"],
+    name = `Beviro - ${id}`,
+  ): { readonly item: ZeropsCandidate } {
+    const hq: HqPlacement = {
+      appId: "beviro",
+      appName: "Beviro",
+      kind,
+      mate: kind === "mate" ? { face: "" } : null,
+    };
+    return {
+      item: {
+        key: `${id}:zcp`,
+        project: {
+          id,
+          name,
+          status: "ACTIVE",
+          tagList: kind === "mate" ? ["mate"] : [],
+          hq,
+        },
+        group: "ready",
+        service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+      },
+    };
+  }
+  function coming(
+    projectId: string,
+    kind: ZeropsGroupPendingMember["kind"],
+    name: string,
+  ): ZeropsGroupPendingMember {
+    return { projectId, kind, name, startedAt: 0 };
+  }
+  it("names each Mate by its project, then those still coming, and leaves the stops out", () => {
+    const mates = newMateDoorMates({
+      environments: [
+        listed("cleo-project", "mate", "Cleo"),
+        listed("stage-project", "stage"),
+        listed("beviro-project", "mate"),
+      ],
+      pending: [
+        coming("wren-project", "mate", "Wren"),
+        coming("cleo-project", "mate", "Cleo"),
+        coming("prod-project", "production", "Beviro - production"),
+      ],
+    });
+    expect(mates).toEqual([
+      { projectId: "cleo-project", name: "Cleo" },
+      { projectId: "beviro-project", name: "beviro-project" },
+      { projectId: "wren-project", name: "Wren" },
+    ]);
+  });
+});
+
+describe("recipeChangeView — where Review the change goes", () => {
+  it("opens the change on the group repo, on its own page", () => {
+    expect(recipeChangeView("beviro-group", 11)).toEqual({
+      to: "/change/$groupId/$repository/$number",
+      params: { groupId: "beviro-group", repository: "group", number: "11" },
+    });
+  });
+});
+
+// The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
+// closed 2 s after the dialog left a Mate with no container).
+describe("pressSteps — the press as the Add dialog draws it", () => {
+  // As a Mate's press runs (F6b): its record in its application before its container.
+  const plan: ReadonlyArray<EnvironmentCreationStep> = [
+    { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
+    { kind: "register" },
+    { kind: "import-container", agents: [] },
+    { kind: "close-off" },
+    { kind: "await-ready", withAgent: true },
+  ];
+  const at = (states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>, error?: string) =>
+    plan.map((step, index) => ({
+      step,
+      state: states[index]!,
+      ...(error !== undefined && states[index] === "failed" ? { error } : {}),
+    }));
+  const drawn = (progress: ReadonlyArray<EnvironmentCreationStepProgress>) =>
+    pressSteps(progress).map((step) => `${step.label}:${step.state}`);
+
+  it.each([
+    {
+      case: "creating the project",
+      states: ["running", "queued", "queued", "queued", "queued"],
+      want: [
+        "Project:active",
+        "Registered:waiting",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
+    },
+    {
+      case: "registering it, before its container",
+      states: ["done", "running", "queued", "queued", "queued"],
+      want: [
+        "Project:done",
+        "Registered:active",
+        "Its computer:waiting",
+        "Private network ready:waiting",
+      ],
+    },
+    {
+      case: "a container that would not come",
+      states: ["done", "done", "failed", "queued", "queued"],
+      want: [
+        "Project:done",
+        "Registered:done",
+        "Its computer:failed",
+        "Private network ready:waiting",
+      ],
+    },
+  ] as const)("draws $case", ({ states, want }) => {
+    expect(drawn(at(states))).toEqual(want);
+  });
+
+  // The dialog stays through the registration — a call or two — and goes before the wait for it,
+  // which the container covers.
+  it("says nothing of what comes after the registration", () => {
+    expect(pressSteps(at(["done", "done", "done", "done", "running"]))).toHaveLength(4);
+  });
+
+  it("leaves Registered out of a press that writes no registration", () => {
+    const progress = at(["done", "done", "done", "done", "running"]).filter(
+      (entry) => entry.step.kind !== "register",
+    );
+    expect(drawn(progress)).toEqual([
+      "Project:done",
+      "Its computer:done",
+      "Private network ready:done",
+    ]);
+  });
+
+  it.each([
+    {
+      case: "registering",
+      states: ["done", "running", "queued", "queued", "queued"],
+      want: false,
+    },
+    {
+      case: "closing off",
+      states: ["done", "done", "done", "running", "queued"],
+      want: false,
+    },
+    {
+      case: "registered and closed off",
+      states: ["done", "done", "done", "done", "running"],
+      want: true,
+    },
+    {
+      case: "its registration refused, closed off",
+      states: ["done", "failed", "done", "done", "running"],
+      want: true,
+    },
+  ] as const)(
+    "is through once closed off and registered, or refused: $case",
+    ({ states, want }) => {
+      expect(pressThrough(at(states))).toBe(want);
+    },
+  );
+});
+
+describe("environmentSheetSubmit — what a stage's or a production's one sheet sends", () => {
+  const member = (id: string, roleCode: string): ZeropsOrganizationMember => ({
+    id: `cu-${id}`,
+    status: "ACTIVE",
+    roleCode,
+    user: { id: `u-${id}`, fullName: id },
+  });
+  const MEMBERS = [
+    member("me", "BASIC_USER"),
+    member("dev", "NO_ACCESS"),
+    member("guest", "NO_ACCESS"),
+    member("tok", "NO_ACCESS"),
+  ].map((entry) =>
+    entry.id === "cu-tok"
+      ? { ...entry, user: { id: "u-tok", email: "token-AbCdEfGhIjKl@zerops.io" } }
+      : entry,
+  );
+  const people = (
+    grants: DraftInput["app"]["grants"],
+    members: Partial<DraftInput["members"]> = {},
+  ) =>
+    draftPeople({
+      members: { known: true, status: "ready", refused: false, list: MEMBERS, ...members },
+      kind: "stage",
+      app: {
+        projects: [
+          { projectId: "prod", kind: "production" },
+          { projectId: "m-me", kind: "mate" },
+        ],
+        grants,
+        owners: { "m-me": "u-me" },
+      },
+      pictures: {},
+      creator: { membershipId: "cu-me", userId: "u-me" },
+      list: [],
+    });
+  const PROD_READ = {
+    prod: {
+      status: "ready" as const,
+      grants: [
+        { clientUserId: "cu-dev", roleCode: "ADMIN" },
+        { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        { clientUserId: "cu-tok", roleCode: "ADMIN" },
+      ],
+    },
+  };
+  const options = recipeOptions({
+    roleLabel: "stage",
+    tier: TIER,
+    services: [],
+    recipe: "present",
+  });
+  const submit = (read: ReturnType<typeof people> | undefined) =>
+    environmentSheetSubmit({
+      name: "Tea Shop - stage",
+      withAgent: false,
+      options,
+      recipe: "present",
+      people: read,
+    });
+
+  it("a new stage keeps the people who could see the project", () => {
+    expect(submit(people(PROD_READ))).toEqual({
+      kind: "create",
+      choice: {
+        name: "Tea Shop - stage",
+        withAgent: false,
+        recipe: TIER,
+        userRoles: [
+          { clientUserId: "cu-dev", roleCode: "ADMIN" },
+          { clientUserId: "cu-guest", roleCode: "READ_ONLY" },
+        ],
+      },
+    });
+  });
+
+  it.each([
+    [
+      "with no setup merged and no Mate of its own, it waits for the setup change, saying so",
+      false,
+      {
+        kind: "held",
+        reason:
+          "This project has no setup files yet. Merge its setup change first, or give it its own Mate.",
+        action: "setup-change",
+      },
+    ],
+    [
+      "with no setup merged and a Mate of its own, it is made empty for the Mate to set up",
+      true,
+      {
+        kind: "create",
+        choice: { name: "Tea Shop - stage", withAgent: true, recipe: { kind: "none" } },
+      },
+    ],
+  ] as const)("runs the form's own checks: %s", (_case, withAgent, outcome) => {
+    expect(
+      environmentSheetSubmit({
+        name: "Tea Shop - stage",
+        withAgent,
+        options: recipeOptions({
+          roleLabel: "stage",
+          tier: undefined,
+          services: [],
+          recipe: "absent",
+        }),
+        recipe: "absent",
+        people: people(PROD_READ),
+      }),
+    ).toMatchObject(outcome);
+  });
+
+  it.each([
+    [
+      "the project's people are read",
+      { prod: { status: "loading" as const, grants: undefined } },
+      {},
+      READING_PEOPLE,
+    ],
+    [
+      "the organization's members are read",
+      PROD_READ,
+      { known: false, status: "loading" as const, list: [] },
+      READING_PEOPLE,
+    ],
+    [
+      "who can see the project could not be read",
+      { prod: { status: "failed" as const, grants: undefined } },
+      {},
+      PEOPLE_UNREADABLE,
+    ],
+  ])("holds its button while %s, saying why", (_case, grants, members, reason) => {
+    expect(submit(people(grants, members))).toEqual({ kind: "held", reason });
+  });
+});

@@ -1,0 +1,321 @@
+import {
+  ORCHESTRATION_WS_METHODS,
+  type OrchestrationShellSnapshot,
+  type OrchestrationShellStreamItem,
+} from "@t3tools/contracts";
+import * as Cause from "effect/Cause";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import { connectionProjectionPhase } from "../../connection/model.ts";
+import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
+import * as ConnectionWakeups from "../../connection/wakeups.ts";
+import { safeErrorLogAttributes } from "../../errors/safeLog.ts";
+import { EnvironmentCacheStore } from "../../platform/persistence.ts";
+import { subscribeDynamic } from "../../rpc/client.ts";
+import type { RpcSession } from "../../rpc/session.ts";
+import { ShellSnapshotLoader } from "../../state/shellSnapshotHttp.ts";
+import { applyShellStreamEvent } from "../../state/shellReducer.ts";
+
+export type EnvironmentShellStatus = "empty" | "cached" | "synchronizing" | "live";
+
+export interface EnvironmentShellState {
+  readonly snapshot: Option.Option<OrchestrationShellSnapshot>;
+  readonly status: EnvironmentShellStatus;
+  readonly error: Option.Option<string>;
+}
+
+export const EMPTY_SHELL_STATE: EnvironmentShellState = {
+  snapshot: Option.none(),
+  status: "empty",
+  error: Option.none(),
+};
+
+export function shellStatusForSnapshot(
+  snapshot: Option.Option<OrchestrationShellSnapshot>,
+): EnvironmentShellStatus {
+  return Option.isSome(snapshot) ? "cached" : "empty";
+}
+
+const SHELL_SYNCHRONIZATION_ERROR_MESSAGE = "Could not synchronize environment data.";
+
+export const openShellReplay = Effect.fn("EnvironmentShellState.make")(function* (
+  memory?: import("../store.ts").AccountStore,
+) {
+  const supervisor = yield* EnvironmentSupervisor;
+  const cache = memory === undefined ? yield* EnvironmentCacheStore : shellReplayMemory(memory);
+  const snapshotLoader = yield* ShellSnapshotLoader;
+  const wakeups = yield* Effect.serviceOption(ConnectionWakeups.ConnectionWakeups);
+  const environmentId = supervisor.target.environmentId;
+  const cachedSnapshot = yield* cache.loadShell(environmentId).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not load cached environment shell.").pipe(
+        Effect.annotateLogs({
+          environmentId,
+          ...safeErrorLogAttributes(error),
+        }),
+        Effect.as(Option.none<OrchestrationShellSnapshot>()),
+      ),
+    ),
+  );
+  const state = yield* SubscriptionRef.make<EnvironmentShellState>({
+    snapshot: cachedSnapshot,
+    status: shellStatusForSnapshot(cachedSnapshot),
+    error: Option.none(),
+  });
+  const awaitingCompletion = yield* Ref.make(false);
+  const lastAuthoritativeSession = yield* Ref.make<RpcSession | null>(null);
+  const activeSubscriptionSession = yield* Ref.make<RpcSession | null>(null);
+  const persistence = yield* Queue.sliding<OrchestrationShellSnapshot>(1);
+
+  const persist = Effect.fn("EnvironmentShellState.persist")(function* (
+    snapshot: OrchestrationShellSnapshot,
+  ) {
+    yield* cache.saveShell(environmentId, snapshot).pipe(
+      Effect.catch((error) =>
+        Effect.logWarning("Could not persist environment shell cache.").pipe(
+          Effect.annotateLogs({
+            environmentId,
+            ...safeErrorLogAttributes(error),
+          }),
+        ),
+      ),
+    );
+  });
+
+  yield* Stream.fromQueue(persistence).pipe(
+    Stream.debounce("500 millis"),
+    Stream.runForEach(persist),
+    Effect.forkScoped,
+  );
+
+  const setDisconnected = Ref.set(awaitingCompletion, false).pipe(
+    Effect.andThen(
+      SubscriptionRef.update(state, (current) => ({
+        ...current,
+        status: shellStatusForSnapshot(current.snapshot),
+      })),
+    ),
+  );
+  const setSynchronizing = SubscriptionRef.update(state, (current) => ({
+    ...current,
+    status: "synchronizing" as const,
+    error: Option.none(),
+  }));
+  const setReady = SubscriptionRef.update(state, (current) =>
+    current.status === "live"
+      ? current
+      : {
+          ...current,
+          status: "synchronizing" as const,
+          error: Option.none(),
+        },
+  );
+  const setStreamError = (error: unknown) =>
+    Ref.set(awaitingCompletion, false).pipe(
+      Effect.andThen(Effect.logWarning("Could not synchronize the environment shell.")),
+      Effect.annotateLogs({
+        environmentId,
+        ...safeErrorLogAttributes(error),
+      }),
+      Effect.andThen(
+        SubscriptionRef.update(state, (current) => ({
+          ...current,
+          status: shellStatusForSnapshot(current.snapshot),
+          error: Option.some(SHELL_SYNCHRONIZATION_ERROR_MESSAGE),
+        })),
+      ),
+    );
+
+  // Apply each received batch with one state write. The RPC client's bounded
+  // buffer can split a server chunk, so a bulk action can still need several
+  // writes, but each write includes every event in that batch.
+  const applyItems = Effect.fn("EnvironmentShellState.applyItems")(function* (
+    items: ReadonlyArray<OrchestrationShellStreamItem>,
+  ) {
+    const initial = yield* SubscriptionRef.get(state);
+    let waiting = yield* Ref.get(awaitingCompletion);
+    let next = initial;
+    let receivedSnapshot = false;
+    for (const item of items) {
+      if (item.kind === "synchronized") {
+        waiting = false;
+        if (Option.isSome(next.snapshot)) {
+          next = { ...next, status: "live", error: Option.none() };
+        }
+        continue;
+      }
+      if (item.kind === "unknown-event") {
+        // A newer Mate's item this build cannot apply: skipped, the cursor moves past it.
+        const sequence = item.sequence;
+        if (sequence !== undefined && Option.isSome(next.snapshot)) {
+          const snapshot = next.snapshot.value;
+          if (sequence > snapshot.snapshotSequence) {
+            next = {
+              ...next,
+              snapshot: Option.some({ ...snapshot, snapshotSequence: sequence }),
+            };
+          }
+        }
+        continue;
+      }
+      const nextSnapshot =
+        item.kind === "snapshot"
+          ? item.snapshot
+          : Option.match(next.snapshot, {
+              onNone: () => null,
+              onSome: (snapshot) =>
+                item.sequence > snapshot.snapshotSequence
+                  ? applyShellStreamEvent(snapshot, item)
+                  : snapshot,
+            });
+      if (nextSnapshot === null) continue;
+      receivedSnapshot ||= item.kind === "snapshot";
+      next = {
+        snapshot: Option.some(nextSnapshot),
+        status: waiting ? "synchronizing" : "live",
+        error: Option.none(),
+      };
+    }
+    yield* Ref.set(awaitingCompletion, waiting);
+    if (next === initial) return;
+    yield* SubscriptionRef.set(state, next);
+    if (receivedSnapshot) {
+      const session = yield* Ref.get(activeSubscriptionSession);
+      if (session !== null) {
+        yield* Ref.set(lastAuthoritativeSession, session);
+      }
+    }
+    if (next.snapshot !== initial.snapshot && Option.isSome(next.snapshot)) {
+      yield* Queue.offer(persistence, next.snapshot.value);
+    }
+  });
+
+  const foregroundResubscriptions = Option.match(wakeups, {
+    onNone: () => Stream.never,
+    onSome: (service) =>
+      service.changes.pipe(Stream.filter(ConnectionWakeups.shouldResubscribeAfterWakeup)),
+  });
+
+  yield* setSynchronizing;
+  yield* Effect.forkScoped(
+    subscribeDynamic(
+      ORCHESTRATION_WS_METHODS.subscribeShell,
+      Effect.fn("EnvironmentShellState.makeSubscribeInput")(function* (session) {
+        yield* Ref.set(activeSubscriptionSession, session);
+        const supportsCompletionMarker = yield* session.initialConfig.pipe(
+          Effect.map((config) => config.shellResumeCompletionMarker === true),
+          Effect.orElseSucceed(() => false),
+        );
+        yield* Ref.set(awaitingCompletion, supportsCompletionMarker);
+        yield* setSynchronizing;
+
+        // Foreground resubscriptions on the same live session can resume from
+        // the in-memory cursor. A new session reloads the authoritative HTTP
+        // snapshot so a valid cursor cannot preserve incomplete cached data.
+        const hasAuthoritativeSnapshot = (yield* Ref.get(lastAuthoritativeSession)) === session;
+        let canResume = hasAuthoritativeSnapshot;
+        let current = yield* SubscriptionRef.get(state);
+        if (!hasAuthoritativeSnapshot || Option.isNone(current.snapshot)) {
+          const prepared = yield* SubscriptionRef.get(supervisor.prepared).pipe(
+            Effect.flatMap(
+              Option.match({
+                onSome: Effect.succeed,
+                onNone: () =>
+                  SubscriptionRef.changes(supervisor.prepared).pipe(
+                    Stream.filter(Option.isSome),
+                    Stream.map((value) => value.value),
+                    Stream.runHead,
+                    Effect.map(Option.getOrThrow),
+                  ),
+              }),
+            ),
+          );
+          const httpSnapshot = yield* snapshotLoader.load(prepared);
+          if (Option.isSome(httpSnapshot)) {
+            yield* applyItems([{ kind: "snapshot", snapshot: httpSnapshot.value }]);
+            canResume = true;
+            current = yield* SubscriptionRef.get(state);
+          }
+        }
+
+        // If the authoritative refresh failed, omit the cached cursor so the
+        // socket fallback sends a complete snapshot for this new session.
+        if (!canResume || Option.isNone(current.snapshot)) {
+          return supportsCompletionMarker ? { requestCompletionMarker: true as const } : {};
+        }
+        if (!supportsCompletionMarker) {
+          // Without a completion marker there is no synchronized signal for a
+          // resumed subscription, so report live immediately, like threads.
+          yield* SubscriptionRef.update(state, (value) => ({
+            ...value,
+            status: "live" as const,
+            error: Option.none(),
+          }));
+        }
+        return {
+          afterSequence: current.snapshot.value.snapshotSequence,
+          ...(supportsCompletionMarker ? { requestCompletionMarker: true as const } : {}),
+        };
+      }),
+      {
+        onExpectedFailure: (cause) => setStreamError(Cause.squash(cause)),
+        retryExpectedFailureAfter: "250 millis",
+        resubscribe: foregroundResubscriptions,
+        // A defect leaves the shell live no longer: the connection reconnects and the shell
+        // resumes on its next session.
+        reconnectOnDefect: true,
+      },
+    ).pipe(Stream.runForEachArray(applyItems)),
+  );
+  yield* SubscriptionRef.changes(supervisor.state).pipe(
+    Stream.runForEach((connectionState) => {
+      switch (connectionProjectionPhase(connectionState)) {
+        case "synchronizing":
+          return setSynchronizing;
+        case "disconnected":
+          return setDisconnected;
+        case "ready":
+          return setReady;
+      }
+    }),
+    Effect.forkScoped,
+  );
+
+  return state;
+});
+
+function shellReplayMemory(
+  store: import("../store.ts").AccountStore,
+): EnvironmentCacheStore["Service"] {
+  return {
+    ...EMPTY_REPLAY_CACHE,
+    loadShell: (environmentId) =>
+      Effect.sync(() => {
+        const fact = store.state().facts.get(`mateShell:${environmentId}`);
+        return fact?.content.kind === "value"
+          ? (fact.content.value as import("../families/mateConversation.ts").MateShellValue).state
+              .snapshot
+          : Option.none();
+      }),
+  };
+}
+
+const EMPTY_REPLAY_CACHE: EnvironmentCacheStore["Service"] = {
+  loadShell: () => Effect.succeed(Option.none()),
+  saveShell: () => Effect.void,
+  loadThread: () => Effect.succeed(Option.none()),
+  saveThread: () => Effect.void,
+  removeThread: () => Effect.void,
+  loadServerConfig: () => Effect.succeed(Option.none()),
+  saveServerConfig: () => Effect.void,
+  loadVcsRefs: () => Effect.succeed(Option.none()),
+  saveVcsRefs: () => Effect.void,
+  removeVcsRefs: () => Effect.void,
+  clearVcsRefs: () => Effect.void,
+  clear: () => Effect.void,
+};

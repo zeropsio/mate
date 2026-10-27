@@ -1,0 +1,70 @@
+import { OtlpHeadersFromString, OtlpProtocol } from "@t3tools/shared/observability";
+import * as Config from "effect/Config";
+import * as ConfigProvider from "effect/ConfigProvider";
+import * as Option from "effect/Option";
+
+const trimNonEmptyOption = (value: string): Option.Option<string> => {
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? Option.some(trimmed) : Option.none();
+};
+
+const trimmedString = (name: string) =>
+  Config.String(name).pipe(Config.option, Config.map(Option.flatMap(trimNonEmptyOption)));
+
+const optionalBoolean = (name: string) =>
+  Config.Boolean(name).pipe(Config.option, Config.map(Option.getOrElse(() => false)));
+
+const compactEnv = (env: Readonly<Record<string, string | undefined>>): Record<string, string> =>
+  Object.fromEntries(
+    Object.entries(env).filter((entry): entry is [string, string] => entry[1] !== undefined),
+  );
+
+export const DesktopConfig = Config.all({
+  appDataDirectory: trimmedString("APPDATA"),
+  xdgConfigHome: trimmedString("XDG_CONFIG_HOME"),
+  xdgDataHome: trimmedString("XDG_DATA_HOME"),
+  t3Home: trimmedString("T3CODE_HOME"),
+  devServerUrl: Config.URL("VITE_DEV_SERVER_URL").pipe(Config.option),
+  applicationUrlOverride: trimmedString("T3CODE_DESKTOP_APP_URL"),
+  appUserModelIdOverride: trimmedString("T3CODE_DESKTOP_APP_USER_MODEL_ID"),
+  commitHashOverride: trimmedString("T3CODE_COMMIT_HASH"),
+  otlpTracesUrl: trimmedString("T3CODE_OTLP_TRACES_URL"),
+  otlpMetricsUrl: trimmedString("T3CODE_OTLP_METRICS_URL"),
+  otlpLogsUrl: trimmedString("T3CODE_OTLP_LOGS_URL"),
+  otlpExportIntervalMs: Config.Int("T3CODE_OTLP_EXPORT_INTERVAL_MS").pipe(
+    Config.withDefault(10_000),
+  ),
+  otlpHeaders: Config.schema(OtlpHeadersFromString, "T3CODE_OTLP_HEADERS").pipe(Config.option),
+  otlpProtocol: Config.schema(OtlpProtocol, "T3CODE_OTLP_PROTOCOL").pipe(
+    Config.withDefault("http/json"),
+  ),
+  appImagePath: trimmedString("APPIMAGE"),
+  disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
+  mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
+  mockUpdateServerPort: Config.Port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
+    Config.withDefault(3000),
+  ),
+});
+
+export const layerTest = (env: Readonly<Record<string, string | undefined>>) =>
+  ConfigProvider.layer(ConfigProvider.fromEnv({ env: compactEnv(env) }));
+
+/** How the desktop signs in to Zerops: the hand-over (the default) or device login. */
+export type DesktopZeropsSignInMode = "handover" | "device-login";
+
+/**
+ * The Zerops sign-in's launch settings, under the web bundle's names and with its defaults: the
+ * mode, the consent page's origin when it is not the API's own (a local HQ), and the app code a
+ * device login names. Anything but `device-login` keeps the hand-over.
+ */
+export const DesktopZeropsSignInConfig = Config.all({
+  mode: trimmedString("VITE_ZEROPS_SIGN_IN").pipe(
+    Config.map((mode): DesktopZeropsSignInMode =>
+      Option.getOrUndefined(mode) === "device-login" ? "device-login" : "handover",
+    ),
+  ),
+  consentOrigin: trimmedString("VITE_ZEROPS_CONSENT_ORIGIN"),
+  loginAppCode: trimmedString("VITE_ZEROPS_LOGIN_APP_CODE").pipe(
+    Config.map(Option.getOrElse(() => "mate")),
+  ),
+});

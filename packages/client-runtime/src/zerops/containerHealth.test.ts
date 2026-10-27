@@ -1,0 +1,373 @@
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  probeZeropsContainerHealth,
+  readMatePath,
+  readZeropsContainer,
+} from "./containerHealth.ts";
+
+const ORIGIN = "https://zcp-26a7-8080.prg1.zerops.app";
+const HEALTHZ = `${ORIGIN}/mate/healthz`;
+const DESCRIPTOR = `${ORIGIN}/mate/.well-known/t3/environment`;
+
+function json(body: unknown, status = 200): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function html(status = 200): Response {
+  return new Response("<!doctype html><title>hi</title>", {
+    status,
+    headers: { "content-type": "text/html" },
+  });
+}
+
+/** What a browser hands back for a redirect it was told not to follow. */
+function opaqueRedirect(): Response {
+  return { type: "opaqueredirect", status: 0, ok: false } as unknown as Response;
+}
+
+/** What a cross-origin read of a response with no CORS header does. */
+function corsBlocked(): never {
+  throw new TypeError("Failed to fetch");
+}
+
+/** The live payloads, 2026-08-28. */
+const LIVE_HEALTHZ = { initComplete: true, initAt: "2026-08-28T15:21:25Z" };
+const LIVE_DESCRIPTOR = {
+  environmentId: "5779c9c3-4eb9-4872-a37e-c29b287209f6",
+  label: "node-id-1.runtime.zcp.zerops",
+  platform: { os: "linux", arch: "x64" },
+  serverVersion: "0.0.35",
+};
+
+function stub(routes: Record<string, () => Response>) {
+  const calls: Array<{ url: string; init: RequestInit | undefined }> = [];
+  return {
+    calls,
+    fetch: (url: string, init?: RequestInit) => {
+      calls.push({ url, init });
+      const route = routes[url];
+      if (!route) throw new TypeError(`unexpected request: ${url}`);
+      return Promise.resolve(route());
+    },
+  };
+}
+
+describe("probeZeropsContainerHealth", () => {
+  it("does not read healthz once the descriptor already says ready", async () => {
+    const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch)).toBe("ready");
+    expect(read.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+  });
+
+  it("reports the actual server version from the existing descriptor read, and no update field absent", async () => {
+    const read = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35", undefined);
+    expect(read.calls).toHaveLength(1);
+  });
+
+  it("relays the descriptor's update field to the caller (spec-mate.md §2.9)", async () => {
+    const update = {
+      installed: "0.8.0",
+      latest: "0.8.1",
+      available: true,
+      checkedAt: "2026-09-09T00:00:00Z",
+    };
+    const read = stub({
+      [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, update }),
+    });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35", update);
+  });
+
+  it("never fabricates an update field the descriptor did not send (MU-3)", async () => {
+    const read = stub({
+      [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, update: { installed: "0.8.0" } }),
+    });
+    const report = vi.fn();
+    expect(await probeZeropsContainerHealth(ORIGIN, read.fetch, report)).toBe("ready");
+    expect(report).toHaveBeenCalledWith("0.0.35", undefined);
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("accepts fetch explicitly", async () => {
+    const globalFetch = vi.fn(() => {
+      throw new Error("the global fetch must not be used");
+    });
+    vi.stubGlobal("fetch", globalFetch);
+    const explicit = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+
+    await expect(probeZeropsContainerHealth(ORIGIN, explicit.fetch)).resolves.toBe("ready");
+    expect(globalFetch).not.toHaveBeenCalled();
+  });
+
+  it("treats the mate descriptor as the authority, and asks nothing else once it answers", async () => {
+    const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+
+    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
+    expect(spy.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+  });
+
+  it("reads readiness under the /mate/ prefix, which is the only place zcp publishes it", () => {
+    // The route moved out of the container root when mate became opt-in: zcp
+    // renders it only with ZCP_MATE_ENABLED set, and the root /healthz is
+    // code-server's own again. Probing the root would read a booting container
+    // as one that cannot run Zerops Mate at all, and offer a restart that
+    // changes nothing. Pinned as an exact URL because the coupling is to a
+    // path in another repository's nginx template, which no type can check.
+    const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+
+    void probeZeropsContainerHealth(ORIGIN, spy.fetch);
+
+    expect(HEALTHZ).toBe(`${ORIGIN}/mate/healthz`);
+  });
+
+  it("is ready even when /healthz cannot be read cross-origin", async () => {
+    // Measured 2026-08-28: nginx serves /healthz without an
+    // Access-Control-Allow-Origin header, so a browser cannot read it at all,
+    // while the mate descriptor answers `*`. Connecting must not depend on the
+    // one the browser is refused.
+    const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR), [HEALTHZ]: corsBlocked });
+
+    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("ready");
+  });
+
+  it("asks with nothing that would trigger a CORS preflight the container cannot answer", async () => {
+    const spy = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+
+    await probeZeropsContainerHealth(ORIGIN, spy.fetch);
+
+    expect(spy.calls).toHaveLength(2);
+    for (const call of spy.calls) {
+      expect(call.init?.headers).toBeUndefined();
+      expect(call.init?.redirect).toBe("manual");
+      expect(call.init?.method ?? "GET").toBe("GET");
+    }
+  });
+
+  it("reads the cookie gate's redirect as a container that predates Zerops Mate", async () => {
+    // Measured on two live pre-mate containers: every path answers 302 to
+    // /zcp-login, because neither location exists yet.
+    const opaque = stub({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect });
+    await expect(probeZeropsContainerHealth(ORIGIN, opaque.fetch)).resolves.toBe("predates-mate");
+
+    const seen = () => new Response(null, { status: 302, headers: { location: "/zcp-login" } });
+    const node = stub({ [DESCRIPTOR]: seen, [HEALTHZ]: seen });
+    await expect(probeZeropsContainerHealth(ORIGIN, node.fetch)).resolves.toBe("predates-mate");
+  });
+
+  it("never trusts a 200 without parsing it", async () => {
+    // A mis-prefixed proxy turns any path into the SPA's index.html, which is
+    // a perfectly good 200 and a completely wrong answer.
+    const spy = stub({ [DESCRIPTOR]: () => html(200), [HEALTHZ]: () => html(200) });
+    await expect(probeZeropsContainerHealth(ORIGIN, spy.fetch)).resolves.toBe("predates-mate");
+  });
+
+  it("keeps waiting when zcp answers but Zerops Mate has not come up yet", async () => {
+    const notYet = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+    await expect(probeZeropsContainerHealth(ORIGIN, notYet.fetch)).resolves.toBe("initializing");
+
+    const early = stub({
+      [DESCRIPTOR]: () => html(404),
+      [HEALTHZ]: () => json({ initComplete: false }),
+    });
+    await expect(probeZeropsContainerHealth(ORIGIN, early.fetch)).resolves.toBe("initializing");
+  });
+
+  it("refuses a server that answers from the wrong base path", async () => {
+    const wrong = stub({
+      [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, basePath: "/" }),
+      [HEALTHZ]: () => json(LIVE_HEALTHZ),
+    });
+    await expect(probeZeropsContainerHealth(ORIGIN, wrong.fetch)).resolves.toBe("initializing");
+
+    const right = stub({ [DESCRIPTOR]: () => json({ ...LIVE_DESCRIPTOR, basePath: "/mate" }) });
+    await expect(probeZeropsContainerHealth(ORIGIN, right.fetch)).resolves.toBe("ready");
+  });
+
+  it("reads a restarting container as unreachable, not as broken", async () => {
+    // The platform balancer answers 502 for about fourteen seconds after a
+    // restart; that is the container coming back, not a failure.
+    const balancer = stub({ [DESCRIPTOR]: () => html(502), [HEALTHZ]: () => html(502) });
+    await expect(probeZeropsContainerHealth(ORIGIN, balancer.fetch)).resolves.toBe("unreachable");
+
+    const offline = { fetch: () => Promise.reject(new TypeError("Failed to fetch")) };
+    await expect(probeZeropsContainerHealth(ORIGIN, offline.fetch)).resolves.toBe("unreachable");
+  });
+
+  it("tolerates a trailing slash on the origin", async () => {
+    const spy = stub({ [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR) });
+
+    await expect(probeZeropsContainerHealth(`${ORIGIN}/`, spy.fetch)).resolves.toBe("ready");
+  });
+
+  it("never reads a 5xx as a container that predates Zerops Mate", async () => {
+    // The platform runs every initCommands entry to completion before any
+    // startCommands process starts, so nginx answering at all proves that
+    // boot's `zcp init` finished. A container mid-boot is the L7's 502, and
+    // offering a restart there would restart a container that is already
+    // coming up.
+    for (const status of [500, 502, 503, 504]) {
+      const both = stub({ [DESCRIPTOR]: () => html(status), [HEALTHZ]: () => html(status) });
+      await expect(probeZeropsContainerHealth(ORIGIN, both.fetch)).resolves.toBe("unreachable");
+
+      // Even mixed with a signal that would otherwise mean "old container".
+      const mixed = stub({ [DESCRIPTOR]: () => html(status), [HEALTHZ]: opaqueRedirect });
+      await expect(probeZeropsContainerHealth(ORIGIN, mixed.fetch)).resolves.toBe("unreachable");
+
+      const other = stub({ [DESCRIPTOR]: () => html(404), [HEALTHZ]: () => html(status) });
+      await expect(probeZeropsContainerHealth(ORIGIN, other.fetch)).resolves.toBe("unreachable");
+    }
+  });
+});
+
+describe("readZeropsContainer", () => {
+  const signal = new AbortController().signal;
+  /** When the descriptor read was sent: the reading is as old as that read. */
+  const SENT_AT = { wall: 1_800_000_000_000, mono: 42 };
+  /** The probe's ports over one stubbed fetch, the descriptor read straight through. */
+  const ports = (read: ReturnType<typeof stub>) => ({
+    fetch: read.fetch,
+    descriptor: async (base: string, options: { readonly signal: AbortSignal }) => ({
+      reading: await readMatePath(`${base}/.well-known/t3/environment`, read.fetch, options.signal),
+      sentAt: SENT_AT,
+    }),
+  });
+
+  const FACTS = {
+    environmentId: LIVE_DESCRIPTOR.environmentId,
+    serverVersion: "0.0.35",
+    update: null,
+    identity: "unknown",
+    identityCheckedAt: null,
+  };
+
+  it.each([
+    {
+      name: "on demand, a Mate that answers costs its descriptor alone",
+      ask: { fresh: false, initAt: false },
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: null },
+      asked: [DESCRIPTOR],
+    },
+    {
+      name: "fresh after a status move, still its descriptor alone",
+      ask: { fresh: true, initAt: false },
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: null },
+      asked: [DESCRIPTOR],
+    },
+    {
+      name: "for a container coming up, /healthz beside it, so a re-init shows a new initAt",
+      ask: { fresh: true, initAt: true },
+      reading: { kind: "ready", descriptor: FACTS, projectId: null, initAt: LIVE_HEALTHZ.initAt },
+      asked: [DESCRIPTOR, HEALTHZ],
+    },
+  ])("$name", async ({ ask, reading, asked }) => {
+    const read = stub({
+      [DESCRIPTOR]: () => json(LIVE_DESCRIPTOR),
+      [HEALTHZ]: () => json(LIVE_HEALTHZ),
+    });
+    // A descriptor outside Zerops mode states no project.
+    expect(await readZeropsContainer(ORIGIN, ports(read), signal, ask)).toEqual({
+      reading,
+      sentAt: SENT_AT,
+    });
+    expect(read.calls.map((call) => call.url)).toEqual(asked);
+    expect(read.calls.every((call) => call.init?.signal === signal)).toBe(true);
+  });
+
+  it("keeps a Mate that could not check who you are apart from one never asked", async () => {
+    const read = stub({
+      [DESCRIPTOR]: () =>
+        json({
+          ...LIVE_DESCRIPTOR,
+          zerops: {
+            projectId: "project-1",
+            identity: "failed",
+            identityCheckedAt: "2026-09-23T10:00:00Z",
+          },
+        }),
+      [HEALTHZ]: corsBlocked,
+    });
+    const { reading } = await readZeropsContainer(ORIGIN, ports(read), signal, {
+      fresh: true,
+      initAt: true,
+    });
+    expect(reading).toMatchObject({
+      kind: "ready",
+      descriptor: { identity: "failed", identityCheckedAt: "2026-09-23T10:00:00Z" },
+      projectId: "project-1",
+      initAt: null,
+    });
+  });
+
+  // Live, 2026-10-05: with `zerops@mate` stopped, nginx kept serving zcp's init marker at
+  // `/mate/healthz` (200, initComplete true) while the descriptor's preflight got a 502 with no CORS
+  // header — a network error to the browser. The container is up; its Mate is not answering.
+  it.each([
+    { name: "a descriptor the browser could not read (a CORS-less 502)", descriptor: corsBlocked },
+    { name: "a descriptor answering 502", descriptor: () => html(502) },
+    { name: "a descriptor answering a page", descriptor: () => html(404) },
+  ])(
+    "reads a container whose init is complete and whose Mate does not answer as not answering: $name",
+    async ({ descriptor }) => {
+      const read = stub({ [DESCRIPTOR]: descriptor, [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+      const { reading } = await readZeropsContainer(ORIGIN, ports(read), signal, {
+        fresh: true,
+        initAt: true,
+      });
+      expect(reading).toEqual({ kind: "not-answering", initAt: LIVE_HEALTHZ.initAt });
+    },
+  );
+
+  // The owner's load, 2026-10-06: a `/healthz` read beside every descriptor that did not answer
+  // put a second CORS error in the console for every stopped or unready Mate. Readiness is the
+  // descriptor's word; `/healthz` is read only for a container coming up, whose restart it judges.
+  it.each([
+    { name: "a CORS-less failure", descriptor: corsBlocked, reading: { kind: "unreachable" } },
+    { name: "a 502", descriptor: () => html(502), reading: { kind: "unreachable" } },
+    { name: "a page", descriptor: () => html(404), reading: { kind: "predates-mate" } },
+    { name: "a redirect", descriptor: opaqueRedirect, reading: { kind: "predates-mate" } },
+  ])(
+    "reads a descriptor that does not answer on its own word, never /healthz beside it: $name",
+    async ({ descriptor, reading }) => {
+      const read = stub({ [DESCRIPTOR]: descriptor, [HEALTHZ]: () => json(LIVE_HEALTHZ) });
+      expect(
+        (await readZeropsContainer(ORIGIN, ports(read), signal, { fresh: true, initAt: false }))
+          .reading,
+      ).toEqual(reading);
+      expect(read.calls.map((call) => call.url)).toEqual([DESCRIPTOR]);
+    },
+  );
+
+  it.each([false, true])(
+    "reads what the health probe concludes for a container coming up (fresh: %s)",
+    async (fresh) => {
+      const read = async (routes: Record<string, () => Response>) =>
+        (await readZeropsContainer(ORIGIN, ports(stub(routes)), signal, { fresh, initAt: true }))
+          .reading;
+      expect(
+        await read({
+          [DESCRIPTOR]: () => html(404),
+          [HEALTHZ]: () => json({ initComplete: false, initAt: LIVE_HEALTHZ.initAt }),
+        }),
+      ).toEqual({ kind: "initializing", initAt: LIVE_HEALTHZ.initAt });
+      expect(await read({ [DESCRIPTOR]: opaqueRedirect, [HEALTHZ]: opaqueRedirect })).toEqual({
+        kind: "predates-mate",
+      });
+      expect(await read({ [DESCRIPTOR]: () => html(502), [HEALTHZ]: () => html(502) })).toEqual({
+        kind: "unreachable",
+      });
+      expect(await read({ [DESCRIPTOR]: corsBlocked, [HEALTHZ]: corsBlocked })).toEqual({
+        kind: "unreachable",
+      });
+    },
+  );
+});

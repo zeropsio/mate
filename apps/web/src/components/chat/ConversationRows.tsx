@@ -1,0 +1,824 @@
+import { mateNoticeVoice } from "~/zerops/mateNoticeVoice";
+import { MateConnectionState } from "../zerops/ZeropsMateEmptyState";
+import { NO_MATE_LIMIT, type MateLimit } from "@t3tools/client-runtime/data";
+/**
+ * The conversation's own rows — the line for each stretch of the Mate's work,
+ * the receipt on a message it has not read yet, the quiet seams between days,
+ * events, errors, a usage-limit pause and an incident.
+ *
+ * One grammar: a row stands on the text edge the answer starts on, its mark
+ * (an event's icon, a failure, a pause) first and its words after it, so
+ * every row's words share one edge. Routine is grey and small; only a pause
+ * is amber and only a failure is red.
+ *
+ * Presentational: every word comes from the row. Every row here has its final
+ * height from its first frame; only words and fixed-size marks change in place.
+ */
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import type { TimestampFormat } from "@t3tools/contracts/settings";
+import {
+  CircleAlertIcon,
+  ClockIcon,
+  GitMergeIcon,
+  Minimize2Icon,
+  PauseIcon,
+  SendIcon,
+  TerminalIcon,
+  XIcon,
+} from "lucide-react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
+
+import { subscribeSecond } from "~/lib/secondTicker";
+import { cn } from "~/lib/utils";
+import {
+  formatChatTimestampTooltip,
+  formatDayAwareTimestamp,
+  formatUpcomingTimestamp,
+  spokenUpcomingTimestamp,
+} from "../../timestampFormat";
+import { usageLimitWords, usageLimitHistoryWords } from "../../zerops/noticeWords";
+import { Button, InlineButton } from "../ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { formatWorkDuration } from "./conversation.logic";
+import type { ConversationEvent, MessagesTimelineRow } from "./MessagesTimeline.logic";
+import { waitedWords } from "./runCard.logic";
+
+/** Who the conversation is with: a Mate's colour, or the neutral one for a thread without a Mate. */
+export interface ConversationSpeaker {
+  readonly name: string;
+  readonly tint: MateTintId;
+  /** The shape its person picked for the Mate; a crewmate, or nobody, wears its tint's own. */
+  readonly shape?: MateShapeId | undefined;
+  /** A helper's own run (`HelperCard`): it works under the Mate, and wears no face of its own. */
+  readonly helper?: boolean | undefined;
+}
+
+/**
+ * A row's mark, leading its words on the text edge: 20 px, the column an
+ * answer's list bullets hang in, so the words after it start where a list
+ * item's and a callout's do. It used to hang in a gutter left of that edge,
+ * which put it outside the column the composer draws — and, inside a card,
+ * past the card's own border.
+ */
+export function LineMark({
+  children,
+  className,
+}: {
+  readonly children: ReactNode;
+  readonly className?: string;
+}) {
+  return (
+    <span aria-hidden="true" className={cn("flex w-5 shrink-0", className)} data-line-mark>
+      {children}
+    </span>
+  );
+}
+
+function elapsedSince(since: string, leftOutMs: number, standingSince: string | null): string {
+  const startedMs = Date.parse(since);
+  const nowMs = standingSince === null ? Date.now() : Date.parse(standingSince);
+  return formatWorkDuration(
+    Number.isFinite(startedMs) && Number.isFinite(nowMs)
+      ? Math.max(0, nowMs - startedMs - leftOutMs)
+      : 0,
+  );
+}
+
+/**
+ * A duration that counts up by itself: its text node updates, the row never
+ * re-renders. It leaves out `leftOutMs`, and stands still from
+ * `standingSince` — the Mate's clock while it waits on the person.
+ */
+export function ElapsedSince({
+  since,
+  leftOutMs = 0,
+  standingSince = null,
+}: {
+  readonly since: string;
+  readonly leftOutMs?: number;
+  readonly standingSince?: string | null;
+}) {
+  const ref = useRef<HTMLSpanElement>(null);
+  useEffect(() => {
+    const update = () => {
+      if (ref.current) ref.current.textContent = elapsedSince(since, leftOutMs, standingSince);
+    };
+    update();
+    // The one second clock (`subscribeSecond`): every counting duration writes in the same pass.
+    return subscribeSecond(update);
+  }, [since, leftOutMs, standingSince]);
+  return (
+    <span ref={ref} className="tabular-nums">
+      {elapsedSince(since, leftOutMs, standingSince)}
+    </span>
+  );
+}
+
+/**
+ * A message the Mate has not read yet: a small clock beside it, gone once the
+ * Mate reads it. A read message carries nothing — reading is the normal case.
+ */
+export function MessageReceipt({
+  receipt,
+  speaker,
+  resetsAt = null,
+  timestampFormat = "locale",
+}: {
+  readonly receipt: "sent" | "seen" | "held";
+  readonly speaker: ConversationSpeaker;
+  /** A held message's reset, when the limit names one. */
+  readonly resetsAt?: string | null;
+  readonly timestampFormat?: TimestampFormat;
+}) {
+  if (receipt === "seen") return null;
+  const label =
+    receipt === "held"
+      ? resetsAt === null
+        ? "Sends when the limit resets"
+        : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`
+      : `Not read yet — ${speaker.name} reads it at its next step`;
+  const Icon = receipt === "held" ? PauseIcon : ClockIcon;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          <span
+            aria-label={label}
+            className="inline-flex size-4 items-center justify-center"
+            data-message-receipt={receipt}
+            role="img"
+          />
+        }
+      >
+        <Icon aria-hidden="true" className="size-3 text-muted-foreground" />
+      </TooltipTrigger>
+      <TooltipPopup side="left">{label}</TooltipPopup>
+    </Tooltip>
+  );
+}
+
+/**
+ * Under a message a usage limit holds: when it goes, and Don't send — said where the message stands,
+ * not only in a hover (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
+ */
+export function HeldMessageLine({
+  resetsAt,
+  timestampFormat,
+  onWithdraw,
+}: {
+  /** The limit's reset, when it names one. */
+  readonly resetsAt: string | null;
+  readonly timestampFormat: TimestampFormat;
+  /** Takes the message back before it goes; null where it cannot be. */
+  readonly onWithdraw: (() => void) | null;
+}) {
+  return (
+    <p
+      className="mt-1 flex items-center justify-end gap-3 pe-1.5 text-muted-foreground text-xs"
+      data-held-message-line=""
+    >
+      <span>
+        {resetsAt === null
+          ? "Sends when the limit resets"
+          : `Sends when the limit resets ${spokenUpcoming(resetsAt, timestampFormat)}`}
+      </span>
+      {onWithdraw === null ? null : <InlineButton onClick={onWithdraw}>Don't send</InlineButton>}
+    </p>
+  );
+}
+
+const spokenUpcoming = (iso: string, timestampFormat: TimestampFormat) =>
+  spokenUpcomingTimestamp(iso, timestampFormat);
+
+const WEEKDAY = new Intl.DateTimeFormat(undefined, {
+  weekday: "long",
+  month: "short",
+  day: "numeric",
+});
+const DATE_WITH_YEAR = new Intl.DateTimeFormat(undefined, {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+/** "Today", "Yesterday", "Wednesday, Sep 24", "Sep 24, 2025". */
+export function dayLabel(iso: string, nowMs: number = Date.now()): string {
+  const date = new Date(iso);
+  if (Number.isNaN(date.getTime())) return "";
+  const now = new Date(nowMs);
+  const startOf = (value: Date) =>
+    new Date(value.getFullYear(), value.getMonth(), value.getDate()).getTime();
+  const days = Math.round((startOf(now) - startOf(date)) / 86_400_000);
+  if (days <= 0) return "Today";
+  if (days === 1) return "Yesterday";
+  if (days < 7) return WEEKDAY.format(date);
+  return date.getFullYear() === now.getFullYear()
+    ? new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(date)
+    : DATE_WITH_YEAR.format(date);
+}
+
+/** Where a day begins, or where the conversation went quiet for a while. */
+export function Seam({
+  row,
+  timestampFormat,
+}: {
+  readonly row: Extract<MessagesTimelineRow, { kind: "seam" }>;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const label =
+    row.seam === "cut"
+      ? (row.words ?? "Earlier turns stayed with the previous engine.")
+      : row.seam === "day"
+        ? dayLabel(row.createdAt)
+        : row.seam === "new"
+          ? `New since ${formatDayAwareTimestamp(row.createdAt, timestampFormat)}`
+          : formatDayAwareTimestamp(row.createdAt, timestampFormat);
+  const fresh = row.seam === "new";
+  return (
+    <div
+      aria-label={label}
+      className={cn(
+        "flex items-center gap-3 text-xs",
+        fresh ? "font-medium text-info-foreground" : "text-muted-foreground",
+      )}
+      data-seam={row.seam}
+      role="separator"
+    >
+      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
+      <span className="shrink-0 tabular-nums">{label}</span>
+      <span className={cn("h-px flex-1", fresh ? "bg-info/40" : "bg-border")} />
+    </div>
+  );
+}
+
+/** An event's line: its icon on the text edge, its words after it, its time on hover. */
+function EventShell({
+  icon,
+  children,
+  at,
+  timestampFormat,
+}: {
+  readonly icon: ReactNode;
+  readonly children: ReactNode;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  return (
+    <div
+      className="flex min-h-7 min-w-0 items-center text-line text-muted-foreground"
+      data-conversation-event
+    >
+      <LineMark>{icon}</LineMark>
+      <Tooltip>
+        <TooltipTrigger render={<span className="min-w-0 truncate" />}>{children}</TooltipTrigger>
+        <TooltipPopup side="top">{formatChatTimestampTooltip(at, timestampFormat)}</TooltipPopup>
+      </Tooltip>
+    </div>
+  );
+}
+
+/** Something that happened in the conversation, not something the Mate wrote. */
+export function EventLine({
+  event,
+  at,
+  speaker,
+  timestampFormat,
+}: {
+  readonly event: ConversationEvent;
+  readonly at: string;
+  readonly speaker: ConversationSpeaker;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  switch (event.type) {
+    case "landed":
+      return (
+        <EventShell
+          at={at}
+          icon={<GitMergeIcon className="size-3.5 text-status-ok" />}
+          timestampFormat={timestampFormat}
+        >
+          <span className="font-medium text-foreground">{event.event.title}</span> merged
+        </EventShell>
+      );
+    case "compaction":
+      return (
+        <EventShell
+          at={at}
+          icon={<Minimize2Icon className="size-3.5" />}
+          timestampFormat={timestampFormat}
+        >
+          Context condensed — {speaker.name} kept a summary of the conversation so far
+        </EventShell>
+      );
+    case "resumed":
+      return (
+        <EventShell
+          at={at}
+          icon={<PauseIcon className="size-3.5 text-status-attention" />}
+          timestampFormat={timestampFormat}
+        >
+          The usage limit reset — {speaker.name} picked up where the work stopped
+        </EventShell>
+      );
+    case "command": {
+      const { command } = event;
+      const condensing = command.name === "compact" && !event.done;
+      const words =
+        command.name === "compact"
+          ? event.done
+            ? `Context condensed — ${speaker.name} kept a summary of the conversation so far`
+            : "Condensing the context"
+          : `You ran /${command.name}${command.args ? ` ${command.args}` : ""}`;
+      return (
+        <EventShell
+          at={at}
+          icon={
+            command.name === "compact" ? (
+              <Minimize2Icon className="size-3.5" />
+            ) : (
+              <TerminalIcon className="size-3.5" />
+            )
+          }
+          timestampFormat={timestampFormat}
+        >
+          {words}
+          {condensing ? (
+            // It runs for minutes: its clock, the work line's, is its sign of
+            // life. Done, the line says what it came to and nothing more.
+            <>
+              {" · "}
+              <ElapsedSince since={at} />
+            </>
+          ) : null}
+        </EventShell>
+      );
+    }
+    case "waited":
+      return (
+        <EventShell
+          at={at}
+          icon={<PauseIcon className="size-3.5" />}
+          timestampFormat={timestampFormat}
+        >
+          {waitedWords(event.from, event.to, timestampFormat)}
+        </EventShell>
+      );
+  }
+}
+
+/**
+ * Something that happened which the person may still act on — a command's answer, a compaction to
+ * offer, a branch that changed: a quiet row at the conversation's end while it holds, where the
+ * composer's strips once stacked (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12).
+ */
+export interface ConversationNotice {
+  readonly id: string;
+  readonly icon: ReactNode;
+  /** What happened, on one line; its key words in `<strong>`. */
+  readonly words: ReactNode;
+  /** What more it says, under its line: a command's whole answer. */
+  readonly detail?: ReactNode;
+  /** Its one action, a text button at the row's end. */
+  readonly action?: {
+    readonly label: string;
+    readonly onAction: () => void;
+    /** Why it cannot run now: it stays, disabled, and says why on hover. */
+    readonly unavailable?: string | null;
+  };
+  readonly dismissLabel?: string;
+  readonly onDismiss?: () => void;
+  /**
+   * It says that something failed: its words whole, wrapped, four lines and the rest scrolled in
+   * the row — a failure's words are never cut.
+   */
+  readonly failed?: boolean;
+  /**
+   * What a screen reader is told once when it comes (`NoticeAnnouncer`), outside the list: a row
+   * the list remounts as it scrolls would say it again.
+   */
+  readonly announce?: string;
+  /** The person's own action brought it: it brings the conversation to its end (`personNoticeArrived`). */
+  readonly byPerson?: boolean;
+}
+
+/** A notice's row: an event's grammar — its mark on the text edge, its words — and its action. */
+export function NoticeLine({ notice }: { readonly notice: ConversationNotice }) {
+  const { action } = notice;
+  const unavailable = action?.unavailable ?? null;
+  const button =
+    action === undefined ? null : (
+      <InlineButton
+        className="ms-3 shrink-0"
+        disabled={unavailable !== null}
+        onClick={action.onAction}
+      >
+        {action.label}
+      </InlineButton>
+    );
+  return (
+    <div
+      className="min-w-0 text-line text-muted-foreground [&_strong]:font-medium [&_strong]:text-foreground"
+      data-conversation-notice={notice.id}
+    >
+      <div
+        className={cn(
+          "flex min-h-8 min-w-0",
+          notice.failed ? "items-start py-1.5" : "items-center",
+        )}
+      >
+        <LineMark
+          className={cn(
+            "items-center [&_svg]:size-4",
+            notice.failed && "h-5 text-status-failed-text",
+          )}
+        >
+          {notice.icon}
+        </LineMark>
+        {notice.failed ? (
+          <span className="max-h-20 min-w-0 flex-1 overflow-y-auto whitespace-pre-wrap wrap-break-word">
+            {notice.words}
+          </span>
+        ) : (
+          <span className="min-w-0 flex-1 truncate">{notice.words}</span>
+        )}
+        {button !== null && unavailable !== null ? (
+          <Tooltip>
+            <TooltipTrigger render={<span className="inline-flex shrink-0" />}>
+              {button}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{unavailable}</TooltipPopup>
+          </Tooltip>
+        ) : (
+          button
+        )}
+        {notice.onDismiss === undefined ? null : (
+          <Button
+            aria-label={notice.dismissLabel ?? "Dismiss"}
+            className="ms-2 shrink-0"
+            onClick={notice.onDismiss}
+            size="icon-sm"
+            variant="ghost"
+          >
+            <XIcon className="size-3.5" />
+          </Button>
+        )}
+      </div>
+      {notice.detail === undefined ? null : <div className="ps-5 pb-1">{notice.detail}</div>}
+    </div>
+  );
+}
+
+/**
+ * Says each failed notice to a screen reader once, as it comes: one live region outside the list,
+ * whose words change only when another notice asks to be said (`ConversationNotice.announce`).
+ */
+export function NoticeAnnouncer({
+  notices,
+}: {
+  readonly notices: ReadonlyArray<ConversationNotice>;
+}) {
+  const said = notices.flatMap((notice) => (notice.announce ? [notice.announce] : [])).at(-1);
+  return (
+    <div aria-live="assertive" className="sr-only" data-notice-announcer="">
+      {said ?? ""}
+    </div>
+  );
+}
+
+/**
+ * The ask a Mate's first sign-in sends for its person — "You asked Wren to stand up development
+ * of Beviro" — as a quiet line on the text edge, never a bubble in the person's words: the words
+ * are the product's, sent for them. Its time on hover, as every event's.
+ */
+export function StandUpAskLine({
+  words,
+  at,
+  timestampFormat,
+}: {
+  readonly words: string;
+  readonly at: string;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  return (
+    <div className="px-4.25" data-mate-standup-ask>
+      <EventShell
+        at={at}
+        icon={<SendIcon className="size-3.5" />}
+        timestampFormat={timestampFormat}
+      >
+        {words}
+      </EventShell>
+    </div>
+  );
+}
+
+/**
+ * What stopped the turn, in the failure tone: its icon on the text edge, its
+ * words after it. Only a turn-ending error, or a failure no run shows at the
+ * conversation's end, reaches here — a step that failed on the way stays in
+ * the log it belongs to.
+ */
+export function ErrorLine({
+  label,
+  detail,
+  calm = false,
+  onDismiss,
+}: {
+  readonly label: string;
+  readonly detail?: string | undefined;
+  /** An expected refusal — a usage limit, a sign-in — told, never alerted. */
+  readonly calm?: boolean | undefined;
+  /** The conversation's end row goes at a quiet ×. */
+  readonly onDismiss?: (() => void) | undefined;
+}) {
+  const extra = detail !== undefined && detail.trim() !== label.trim() ? detail : null;
+  const line = (
+    <div
+      className="flex min-h-7 min-w-0 flex-1 items-start py-1 text-line text-foreground"
+      data-conversation-error
+      role={calm ? "status" : "alert"}
+    >
+      <LineMark className="h-5 items-center">
+        <CircleAlertIcon
+          className={cn(
+            "size-3.5",
+            calm ? "text-status-attention-text" : "text-status-failed-text",
+          )}
+        />
+      </LineMark>
+      <div className="min-w-0">
+        <p className="min-w-0">{label}</p>
+        {extra ? <p className="min-w-0 text-muted-foreground">{extra}</p> : null}
+      </div>
+    </div>
+  );
+  if (onDismiss === undefined) return line;
+  return (
+    <div className="flex min-w-0 items-start gap-2">
+      {line}
+      <Button
+        aria-label="Dismiss"
+        className="mt-1"
+        onClick={onDismiss}
+        size="icon-sm"
+        variant="ghost"
+      >
+        <XIcon />
+      </Button>
+    </div>
+  );
+}
+
+/** A moment as a sentence says it: "at 10:25 PM", "yesterday at 10:25 PM", "on Sep 24 at 9:14 PM". */
+function spokenMoment(iso: string, timestampFormat: TimestampFormat): string {
+  const stamp = formatDayAwareTimestamp(iso, timestampFormat);
+  if (stamp.startsWith("Yesterday ")) return `yesterday at ${stamp.slice("Yesterday ".length)}`;
+  const dated = stamp.match(/^([A-Z][a-z]{2} \d{1,2}(?:, \d{4})?) (.+)$/);
+  return dated ? `on ${dated[1]} at ${dated[2]}` : `at ${stamp}`;
+}
+
+/** The server's own reading of a pause, when it keeps one: the reset and the thread's switch. */
+export interface ServerUsagePause {
+  readonly resetsAt: string;
+  readonly autoResume: boolean;
+  /** The window that refused ("7-day"); a stand-in ("usage") names none. */
+  readonly window?: string;
+}
+
+/**
+ * What Continue does at a usage limit, wherever it stands: before a known reset it says why it
+ * waits instead of trying (`waits`), unless the Mate's engine tries the provider itself; a limit
+ * recovered early, or one whose reset passed or is unknown, is tried at once.
+ */
+function useLimitContinue({
+  refused,
+  resetsAt,
+  onContinue,
+  triesBeforeReset,
+}: {
+  /** The source still refuses (`MateLimit` "limited"). */
+  readonly refused: boolean;
+  readonly resetsAt: string | null;
+  readonly onContinue: (() => void) | null;
+  readonly triesBeforeReset: boolean;
+}): { readonly waits: boolean; readonly press: () => void } {
+  const [waitingAt, setWaitingAt] = useState<string | null>(null);
+  return {
+    waits: refused && resetsAt !== null && waitingAt === resetsAt,
+    press: () => {
+      if (refused && resetsAt !== null && !triesBeforeReset) setWaitingAt(resetsAt);
+      else onContinue?.();
+    },
+  };
+}
+
+/**
+ * Continue on the head of a card the usage limit cut, at its right edge, as a restart's Continue
+ * stands there (the owner's B5, 2026-10-12): while the card waits for the reset — `pause` null
+ * once it no longer does. A pending question comes first; before a known reset it says why it
+ * waits rather than trying again.
+ */
+export function LimitContinue({
+  pause,
+  speaker,
+  limit = NO_MATE_LIMIT,
+  onContinue = null,
+  triesBeforeReset = false,
+  blockedByAnswer = false,
+  nowMs,
+  timestampFormat,
+}: {
+  readonly pause: { readonly resetsAt: string | null; readonly provider?: string } | null;
+  readonly speaker: ConversationSpeaker;
+  /** Current source refusal; a recorded deadline alone cannot block another attempt. */
+  readonly limit?: MateLimit | undefined;
+  readonly onContinue?: (() => void) | null;
+  readonly triesBeforeReset?: boolean;
+  readonly blockedByAnswer?: boolean;
+  readonly nowMs?: number;
+  readonly timestampFormat: TimestampFormat;
+}) {
+  const resetsAt = limit.kind === "none" ? (pause?.resetsAt ?? null) : limit.resetsAt;
+  const provider = pause?.provider ?? (limit.kind === "none" ? undefined : limit.provider);
+  const { waits, press } = useLimitContinue({
+    refused: limit.kind === "limited",
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
+  if (pause === null) return null;
+  if (blockedByAnswer) return <span>Answer the pending question to continue.</span>;
+  if (waits && resetsAt !== null) {
+    return (
+      <span data-limit-wait="">
+        {speaker.name} can't continue with {provider ?? "the coding agent"} before{" "}
+        {formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.
+      </span>
+    );
+  }
+  if (onContinue === null) return null;
+  return (
+    <Button className="relative z-1" variant="ghost" size="sm" onClick={press}>
+      Continue
+    </Button>
+  );
+}
+
+/**
+ * A usage limit as one calm pause, quiet once the Mate
+ * picked up again — however many attempts the limit refused. Both are one
+ * block: a centred headline, what it says under its words, and its controls.
+ */
+export function PauseBlock({
+  mate = null,
+  row,
+  speaker,
+  nowMs,
+  timestampFormat,
+  serverPause,
+  limit = NO_MATE_LIMIT,
+  onContinue = null,
+  triesBeforeReset = false,
+  blockedByAnswer = false,
+  stage = true,
+}: {
+  readonly mate?: Parameters<typeof MateConnectionState>[0]["mate"] | undefined;
+  readonly row: Extract<MessagesTimelineRow, { kind: "pause" }>;
+  readonly speaker: ConversationSpeaker;
+  readonly nowMs: number;
+  readonly timestampFormat: TimestampFormat;
+  /** Present only on the pause that holds the thread now, on a server that keeps one. */
+  readonly serverPause: ServerUsagePause | null;
+  /** Current source refusal; a historical deadline alone cannot block another attempt. */
+  readonly limit?: MateLimit;
+  readonly onContinue?: (() => void) | null;
+  /**
+   * The Mate's engine tries the provider itself and pauses again if it still refuses: Continue
+   * asks it before a known reset too (the limit may be gone early: another account signed in).
+   */
+  readonly triesBeforeReset?: boolean;
+  readonly blockedByAnswer?: boolean;
+  /**
+   * Whether the server's live pause fills its room with the Mate's face; in a conversation only
+   * the pause with nothing after it does (`livePauseStageId`), else it is the notice card.
+   */
+  readonly stage?: boolean;
+}) {
+  const resumed = row.resumedAt !== null;
+  const resetsAt = limit.kind === "none" ? row.resetsAt : limit.resetsAt;
+  const refused = limit.kind === "limited";
+  const passed = limit.kind === "expired";
+  // The refusal's own record names whose limit it was from the first paint; the live limit only
+  // when the record does not (a later read of the session would rename it under the reader).
+  const provider = row.provider ?? (limit.kind === "none" ? undefined : limit.provider);
+  const window = row.window ?? serverPause?.window;
+  const autoResume = serverPause?.autoResume ?? false;
+  const history = resumed || passed || !refused;
+  const { waits, press } = useLimitContinue({
+    refused,
+    resetsAt,
+    onContinue,
+    triesBeforeReset,
+  });
+  const detail =
+    !history && waits && resetsAt !== null
+      ? `${speaker.name} can't continue with ${provider ?? "the coding agent"} before ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}: the provider's limit still holds this work.`
+      : resumed
+        ? `${speaker.name} picked up again ${spokenMoment(row.resumedAt!, timestampFormat)}.`
+        : passed
+          ? "Reset time passed. Continue to try again."
+          : !refused
+            ? "Continue to try again."
+            : resetsAt === null
+              ? "The coding agent hasn't given a reset time yet."
+              : serverPause === null
+                ? `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
+                : autoResume
+                  ? `${speaker.name} will try again automatically at ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}.`
+                  : `Reset time: ${formatUpcomingTimestamp(resetsAt, timestampFormat, nowMs)}. Automatic continuation is off.`;
+  const actions = !resumed ? (
+    <div className="flex flex-col items-center gap-4">
+      {blockedByAnswer ? (
+        <p className="text-line text-muted-foreground">
+          Respond to {speaker.name}'s pending request before continuing.
+        </p>
+      ) : null}
+      {onContinue === null && !blockedByAnswer ? null : (
+        <Button size="sm" variant="ghost" disabled={blockedByAnswer} onClick={press}>
+          Continue
+        </Button>
+      )}
+    </div>
+  ) : null;
+  if (stage && !history && serverPause !== null) {
+    const voice = mateNoticeVoice({
+      reachability: null,
+      conversationShown: false,
+      nowMs,
+      mateName: speaker.name,
+      limit: { provider: provider ?? "coding agent", detail, window },
+    });
+    if (voice.surface === "none") return null;
+    return (
+      <div className="h-full" data-conversation-pause="paused">
+        <MateConnectionState
+          mate={mate}
+          face="sleep"
+          headline={voice.headline ?? ""}
+          secondary={voice.secondary ?? ""}
+          severity={voice.severity}
+          actions={actions}
+        />
+      </div>
+    );
+  }
+  return (
+    <div
+      className={cn(
+        // Resumed, the same block goes quiet — history, not a state to act
+        // on: a line like an event's — and keeps
+        // its height: newer rows may already sit under it.
+        "relative grid gap-3 rounded-xl border py-3 text-center",
+        history
+          ? "border-x-0 border-transparent text-muted-foreground"
+          : "border-border bg-muted/35 px-3.5",
+      )}
+      data-conversation-pause={
+        resumed ? "resumed" : passed ? "expired" : history ? "historical" : "paused"
+      }
+      role="status"
+    >
+      <div className="flex min-w-0 flex-col items-center gap-1 text-line" data-pause-head>
+        <span className="font-medium">
+          {history
+            ? usageLimitHistoryWords(
+                provider ?? "coding agent",
+                row.createdAt,
+                resetsAt,
+                speaker.name,
+                timestampFormat,
+                window,
+              )
+            : usageLimitWords(provider ?? "coding agent", undefined, speaker.name, window)}
+        </span>
+        {row.held > 0 ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={<span className="shrink-0 text-muted-foreground text-xs tabular-nums" />}
+            >
+              {row.held === 1 ? "1 more attempt" : `${row.held} more attempts`}
+            </TooltipTrigger>
+            <TooltipPopup>
+              The limit refused {row.held === 1 ? "one more attempt" : `${row.held} more attempts`}{" "}
+              during this pause.
+            </TooltipPopup>
+          </Tooltip>
+        ) : null}
+      </div>
+      <p className="text-line text-muted-foreground" data-pause-detail>
+        {detail}
+      </p>
+      {actions}
+    </div>
+  );
+}

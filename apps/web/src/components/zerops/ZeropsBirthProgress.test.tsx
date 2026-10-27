@@ -1,0 +1,130 @@
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+
+import type { BirthProgress, BirthStep } from "@t3tools/client-runtime/zerops/birthProgress";
+
+import { ZeropsBirthChecklist, ZeropsBirthLine } from "./ZeropsBirthProgress";
+
+function step(partial: Partial<BirthStep> & Pick<BirthStep, "id" | "state">): BirthStep {
+  return { label: "Container", ...partial };
+}
+
+const FIVE_STEPS: ReadonlyArray<BirthStep> = [
+  step({ id: "project", label: "Project", state: "done" }),
+  step({ id: "container", label: "Container", state: "active", detail: "Building the container" }),
+  step({ id: "public-access", label: "Public access", state: "waiting" }),
+  step({ id: "mate", label: "Zerops Mate", state: "waiting" }),
+  step({ id: "connect", label: "Opening", state: "waiting" }),
+];
+
+function progress(partial: Partial<BirthProgress> = {}): BirthProgress {
+  return {
+    steps: FIVE_STEPS,
+    active: FIVE_STEPS[1]!,
+    failed: null,
+    doneCount: 1,
+    total: 5,
+    complete: false,
+    startedAt: "2026-09-22T10:00:00Z",
+    ...partial,
+  };
+}
+
+const NOW = Date.parse("2026-09-22T10:01:05Z");
+
+describe("ZeropsBirthLine", () => {
+  it("is the active step's detail and the elapsed time, then the meter under them", () => {
+    // The card's line is ~190 px on a narrow group column: a meter beside
+    // the words left them "Building the …", so it runs full width below.
+    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
+    expect(html).toContain('data-zerops-surface="birth-line"');
+    const detail = html.indexOf(">Building the container<");
+    expect(detail).toBeGreaterThan(-1);
+    expect(detail).toBeLessThan(html.indexOf("1:05"));
+    expect(html.indexOf("1:05")).toBeLessThan(html.indexOf('role="progressbar"'));
+  });
+
+  it("draws one segment per step, five for the five-step birth", () => {
+    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
+    expect(html.match(/data-zerops-birth-step-state=/g)?.length).toBe(5);
+  });
+
+  it("the meter is an accessible progressbar naming the active step's detail", () => {
+    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={progress()} />);
+    expect(html).toContain('role="progressbar"');
+    expect(html).toContain('aria-valuenow="1"');
+    expect(html).toContain('aria-valuemax="5"');
+    expect(html).toContain('aria-valuetext="Building the container"');
+  });
+
+  it("shows the failed step's detail in the failed tone once one step has failed", () => {
+    const failedStep = step({
+      id: "container",
+      label: "Container",
+      state: "failed",
+      detail: "Could not be created.",
+    });
+    const html = renderToStaticMarkup(
+      <ZeropsBirthLine
+        nowMs={NOW}
+        progress={progress({
+          active: null,
+          failed: failedStep,
+          steps: [failedStep, ...FIVE_STEPS.slice(1)],
+        })}
+      />,
+    );
+    expect(html).toContain("Could not be created.");
+  });
+
+  it("says nothing where there is no active or failed step and the birth is still running", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsBirthLine nowMs={NOW} progress={progress({ active: null, failed: null })} />,
+    );
+    expect(html).not.toContain("aria-valuetext=");
+  });
+
+  it("reads the elapsed time from the birth's own start, not the active step's", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsBirthLine nowMs={Date.parse("2026-09-22T10:02:30Z")} progress={progress()} />,
+    );
+    expect(html).toContain("2:30");
+  });
+
+  it("shows no elapsed time when the birth's start is unknown", () => {
+    const { startedAt: _startedAt, ...withoutStart } = progress();
+    const html = renderToStaticMarkup(<ZeropsBirthLine nowMs={NOW} progress={withoutStart} />);
+    expect(html).not.toContain("1:05");
+  });
+});
+
+describe("ZeropsBirthChecklist", () => {
+  it("lists every step by its own label", () => {
+    const html = renderToStaticMarkup(<ZeropsBirthChecklist nowMs={NOW} progress={progress()} />);
+    for (const label of ["Project", "Container", "Public access", "Zerops Mate", "Opening"]) {
+      expect(html).toContain(label);
+    }
+  });
+
+  it("nests the container step's build substeps, indented under it", () => {
+    const withSubsteps: BirthStep = {
+      ...FIVE_STEPS[1]!,
+      substeps: [
+        { id: "RUN_BUILD_COMMANDS", label: "Build", state: "running", stateLabel: "Running" },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsBirthChecklist
+        nowMs={NOW}
+        progress={progress({ steps: [FIVE_STEPS[0]!, withSubsteps, ...FIVE_STEPS.slice(2)] })}
+      />,
+    );
+    expect(html).toContain('data-zerops-surface="birth-build-substeps"');
+    expect(html.indexOf("Container")).toBeLessThan(html.indexOf("Build"));
+  });
+
+  it("carries no substeps block for a step with none", () => {
+    const html = renderToStaticMarkup(<ZeropsBirthChecklist nowMs={NOW} progress={progress()} />);
+    expect(html).not.toContain('data-zerops-surface="birth-build-substeps"');
+  });
+});

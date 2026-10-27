@@ -1,0 +1,374 @@
+import { useAtomValue } from "@effect/atom-react";
+import * as Schema from "effect/Schema";
+import {
+  useEffect,
+  useState,
+  useSyncExternalStore,
+  type CSSProperties,
+  type ReactNode,
+} from "react";
+import { PanelLeftIcon } from "lucide-react";
+import { useLocation, useNavigate, useParams } from "@tanstack/react-router";
+
+import { isElectron } from "../env";
+import { getLocalStorageItem, removeLocalStorageItem } from "../hooks/useLocalStorage";
+import { resolveShortcutCommand, shortcutLabelForCommand } from "../keybindings";
+import { isEditableFocused } from "../lib/editableFocus";
+import { isTerminalFocused } from "../lib/terminalFocus";
+import { isModelPickerOpen } from "../modelPickerVisibility";
+import { selectThreadTerminalUiState, useTerminalUiStateStore } from "../terminalUiStateStore";
+import { resolveThreadRouteRef } from "../threadRoutes";
+import { isMacPlatform } from "../lib/utils";
+import { primaryServerKeybindingsAtom } from "../state/server";
+import ThreadSidebar from "./Sidebar";
+import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
+import {
+  SidebarChromeFooter,
+  SidebarChromeHeader,
+  SidebarCornerMark,
+} from "./sidebar/SidebarChrome";
+import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
+import { useProjects } from "../state/entities";
+import {
+  resolveInitialThreadSidebarWidth,
+  resolveThreadSidebarMaximumWidth,
+  THREAD_MAIN_CONTENT_MIN_WIDTH,
+  THREAD_SIDEBAR_MIN_WIDTH,
+  THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+} from "./threadSidebarWidth";
+import {
+  readSidebarOpen,
+  Sidebar,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+  useSidebar,
+} from "./ui/sidebar";
+import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
+import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
+import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
+import { useHqGate } from "../zerops/hqGate";
+import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
+import { MenuSkeleton } from "./zerops/SidebarZeropsTree";
+
+const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
+
+function subscribeToViewportWidth(onChange: () => void): () => void {
+  window.addEventListener("resize", onChange);
+  return () => window.removeEventListener("resize", onChange);
+}
+
+function readViewportWidth(): number {
+  return window.innerWidth;
+}
+
+function readInitialThreadSidebarWidth(): number {
+  try {
+    return resolveInitialThreadSidebarWidth(
+      getLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY, Schema.Finite),
+      window.innerWidth,
+    );
+  } catch (error) {
+    console.error("Could not read persisted thread sidebar width.", error);
+    return resolveInitialThreadSidebarWidth(null, window.innerWidth);
+  }
+}
+
+function SidebarControl({ rail }: { readonly rail: boolean }) {
+  const usagePageOpen = useLocation({ select: (location) => location.pathname === "/usage" });
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const { isMobile, state, toggleSidebar } = useSidebar();
+  const shortcutLabel = shortcutLabelForCommand(keybindings, "sidebar.toggle", {
+    context: { usagePageOpen },
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
+      if (
+        resolveShortcutCommand(event, keybindings, { context: { usagePageOpen } }) !==
+        "sidebar.toggle"
+      )
+        return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      toggleSidebar();
+    };
+
+    // Capture before focused editors consume commands such as Mod+B for rich-text formatting.
+    window.addEventListener("keydown", onKeyDown, true);
+    return () => window.removeEventListener("keydown", onKeyDown, true);
+  }, [keybindings, toggleSidebar, usagePageOpen]);
+
+  const placement = resolveSidebarOpenerPlacement({ isMobile, state });
+  if (placement === "none") return null;
+  // Closed to the rail, the rail carries the mark and the open button itself.
+  if (rail && placement === "foot") return null;
+
+  // On a phone the composer is the screen's last thing: the opener is the
+  // sheet's own toggle, in the corner where the open sheet's header holds it
+  // and in the box every page header leaves for it
+  // (`--workspace-titlebar-content-left`), as the right panel's toggle stands
+  // at the other edge. The kit's 44 px touch target reaches toward the
+  // screen's edge rather than over the header's first control. Fixed to the
+  // screen, it steps below the status bar as `#root` does, so it stays on the
+  // header's line in a home-screen install.
+  if (placement === "top") {
+    return (
+      <div
+        className="fixed left-[var(--workspace-controls-left)] top-[calc(var(--workspace-controls-top)+env(safe-area-inset-top,0px))] z-50 flex h-[var(--workspace-topbar-height)] items-center"
+        data-sidebar-open-control=""
+      >
+        <SidebarTrigger
+          aria-label="Open main sidebar"
+          className="pointer-coarse:after:top-1/2 pointer-coarse:after:-left-2 pointer-coarse:after:-translate-y-1/2"
+        />
+      </div>
+    );
+  }
+
+  // Closed on a wider window, both keep a corner of the screen — the mark
+  // where the open panel's lockup was, the control at the foot of the column
+  // the panel had.
+  return (
+    <>
+      <SidebarCornerMark />
+      <div
+        className="fixed bottom-[var(--sidebar-content-inset)] left-[var(--sidebar-content-inset)] z-50"
+        data-sidebar-open-control=""
+      >
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <button
+                aria-label="Open main sidebar"
+                className="flex size-8 cursor-pointer items-center justify-center rounded-[var(--control-radius)] text-[var(--sidebar-icon-color)] outline-hidden ring-ring transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 [-webkit-app-region:no-drag]"
+                onClick={toggleSidebar}
+                type="button"
+              >
+                <PanelLeftIcon className="size-4" />
+              </button>
+            }
+          />
+          <TooltipPopup side="right">
+            Open main sidebar{shortcutLabel ? ` (${shortcutLabel})` : ""}
+          </TooltipPopup>
+        </Tooltip>
+      </div>
+    </>
+  );
+}
+
+// Moves through the app's route history like a browser's back/forward buttons.
+function NavigationHistoryShortcuts() {
+  const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+  const routeThreadRef = useParams({
+    strict: false,
+    select: (params) => resolveThreadRouteRef(params),
+  });
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.defaultPrevented) return;
+      if (
+        event.target instanceof HTMLElement &&
+        event.target.closest("[data-keybinding-capture]")
+      ) {
+        return;
+      }
+      const command = resolveShortcutCommand(event, keybindings, {
+        context: {
+          terminalFocus: isTerminalFocused(),
+          terminalOpen: routeThreadRef
+            ? selectThreadTerminalUiState(
+                useTerminalUiStateStore.getState().terminalUiStateByThreadKey,
+                routeThreadRef,
+              ).terminalOpen
+            : false,
+          editableFocus: isEditableFocused(event.target),
+          modelPickerOpen: isModelPickerOpen(),
+        },
+      });
+      if (command !== "navigation.back" && command !== "navigation.forward") return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      if (command === "navigation.back") window.history.back();
+      else window.history.forward();
+    };
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [keybindings, routeThreadRef]);
+
+  return null;
+}
+
+// Settings swaps the thread sidebar out of the tree. Keep the lightweight
+// project projection subscribed so returning to a draft never renders the
+// zero-project state while the environment snapshot reconnects.
+function ProjectProjectionRetention() {
+  useProjects();
+  return null;
+}
+
+export function AppSidebarLayout({
+  children,
+  status,
+}: {
+  children: ReactNode;
+  status?: ReactNode;
+}) {
+  const navigate = useNavigate();
+  // Settings routes show the settings nav in place of the thread sidebar.
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const isOnSettings = pathname === "/settings" || pathname.startsWith("/settings/");
+  // Behind the organization's gate (ADR 0001) the menu holds the account alone: no Mate, no
+  // project, nothing to start.
+  const gate = useHqGate(pathname).gate;
+  const gated = gate.kind !== "open";
+  const isMacosDesktop = isElectron && isMacPlatform(navigator.platform);
+  const [sidebarWidth, setSidebarWidth] = useState(readInitialThreadSidebarWidth);
+  // Subscribed rather than read once: the clamp must track live window size,
+  // and a clamped drag ends with an unchanged width, which skips the re-render
+  // that would otherwise refresh a render-time snapshot.
+  const viewportWidth = useSyncExternalStore(subscribeToViewportWidth, readViewportWidth);
+  const sidebarMaximumWidth = resolveThreadSidebarMaximumWidth(viewportWidth);
+  const resetSidebarWidth = () => {
+    try {
+      removeLocalStorageItem(THREAD_SIDEBAR_WIDTH_STORAGE_KEY);
+    } catch (error) {
+      console.error("Could not clear persisted thread sidebar width.", error);
+    }
+    setSidebarWidth(resolveInitialThreadSidebarWidth(null, viewportWidth));
+  };
+  const [isWindowFullscreen, setIsWindowFullscreen] = useState(() => {
+    const getWindowFullscreenState = window.desktopBridge?.getWindowFullscreenState;
+    return isMacosDesktop && typeof getWindowFullscreenState === "function"
+      ? getWindowFullscreenState()
+      : false;
+  });
+  // Closed on a desktop, the menu is an 88 px rail of tiles (`SidebarRail`) the open menu docks
+  // from (`SidebarStage`); settings and the gate close away.
+  const rail = !isOnSettings && !gated;
+  // A menu its person left closed comes back closed: the rail, as the first frame drew it.
+  const [leftOpen] = useState(readSidebarOpen);
+  const sidebarProviderStyle = {
+    "--sidebar-width": `${sidebarWidth}px`,
+    "--sidebar-width-icon": "88px",
+    ...(isMacosDesktop && !isWindowFullscreen
+      ? { "--workspace-controls-left": MACOS_TRAFFIC_LIGHTS_LEFT_INSET }
+      : {}),
+  } as CSSProperties;
+
+  useEffect(() => {
+    if (!isMacosDesktop) return;
+    const bridge = window.desktopBridge;
+    if (!bridge) return;
+    const { getWindowFullscreenState, onWindowFullscreenStateChange } = bridge;
+    if (
+      typeof getWindowFullscreenState !== "function" ||
+      typeof onWindowFullscreenStateChange !== "function"
+    ) {
+      return;
+    }
+
+    const unsubscribe = onWindowFullscreenStateChange(setIsWindowFullscreen);
+    setIsWindowFullscreen(getWindowFullscreenState());
+    return unsubscribe;
+  }, [isMacosDesktop]);
+
+  useEffect(() => {
+    const onMenuAction = window.desktopBridge?.onMenuAction;
+    if (typeof onMenuAction !== "function") {
+      return;
+    }
+
+    const unsubscribe = onMenuAction((action) => {
+      if (action === "open-settings") {
+        const isSettingsRoute = /^\/settings(\/|$)/.test(pathname);
+        if (!isSettingsRoute) {
+          void navigate({ to: "/settings" });
+        }
+      }
+    });
+
+    return () => {
+      unsubscribe?.();
+    };
+  }, [navigate, pathname]);
+
+  return (
+    <SidebarProvider
+      className="h-dvh! min-h-0!"
+      data-sidebar-rail={rail ? "" : undefined}
+      defaultOpen={!rail || leftOpen}
+      style={sidebarProviderStyle}
+    >
+      <ProjectProjectionRetention />
+      <SidebarAccountMenuProvider>
+        <Sidebar
+          side="left"
+          collapsible={rail ? "icon" : "offcanvas"}
+          layered={rail}
+          data-app-sidebar=""
+          role="navigation"
+          aria-label={isOnSettings ? "Settings" : "Mates"}
+          className={rail ? undefined : "border-r border-sidebar-border"}
+          resizable={{
+            maxWidth: sidebarMaximumWidth,
+            minWidth: THREAD_SIDEBAR_MIN_WIDTH,
+            shouldAcceptWidth: ({ currentWidth, nextWidth, wrapper }) =>
+              nextWidth <= currentWidth ||
+              wrapper.clientWidth - nextWidth >= THREAD_MAIN_CONTENT_MIN_WIDTH,
+            storageKey: THREAD_SIDEBAR_WIDTH_STORAGE_KEY,
+            onResize: setSidebarWidth,
+          }}
+        >
+          {isOnSettings ? (
+            <>
+              <SidebarChromeHeader isElectron={isElectron} />
+              <SettingsSidebarNav pathname={pathname} />
+            </>
+          ) : gated ? (
+            // The open menu's own top, its mark where the menu and the first frame stand it (the
+            // Chief's place); while the members are read, its loading rows where the boot frame
+            // and the menu draw them: the gate opening into the menu moves nothing.
+            <>
+              <SidebarChromeHeader
+                brand={<SidebarChiefPlace waiting={undefined} />}
+                isElectron={isElectron}
+              />
+              <div className="relative min-h-0 flex-1">
+                {gate.kind === "reading" && !gate.failed ? (
+                  <MenuSkeleton className="absolute inset-x-0 top-0 ms-[calc(var(--sidebar-content-inset)+1px)] me-(--sidebar-content-inset)" />
+                ) : null}
+              </div>
+              <SidebarChromeFooter />
+            </>
+          ) : (
+            <ThreadSidebar />
+          )}
+          <SidebarRail onDoubleClick={resetSidebarWidth} />
+        </Sidebar>
+      </SidebarAccountMenuProvider>
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1">{children}</div>
+        {status}
+      </div>
+      <SidebarControl rail={rail} />
+      {/* A reveal asked from outside the menu — the jump box's — brings it out. */}
+      <SidebarRevealBridge showable={!isOnSettings} />
+      <NavigationHistoryShortcuts />
+      <MainAppLocationTracker />
+    </SidebarProvider>
+  );
+}

@@ -1,0 +1,24 @@
+{
+  "name": "@t3tools/oxlint-plugin-t3code",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./exceptions": "./exceptions.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@oxlint/plugins": "^1.63.0",
+    "@shadcn/lint": "0.1.5",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "oxc-parser": "0.148.0",
+    "vite-plus": "catalog:"
+  }
+}

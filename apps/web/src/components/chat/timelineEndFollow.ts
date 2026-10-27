@@ -1,0 +1,275 @@
+/**
+ * The conversation following its end (pass 39, run 9: a settled turn's answer
+ * moved the page 992 px in one frame, a card's growth 155). While it follows,
+ * growth that comes a few pixels a frame — a card easing taller — is followed
+ * in the frame it comes, and a longer step — a row arriving whole, an answer
+ * landing — glides there on the run card's curve, retargeted each frame as
+ * the end moves on, however far the end runs ahead of the view.
+ *
+ * Whether it follows is one judgement, ChatView's (`nextTimelineFollow`, read
+ * through `follows()`): the follower keeps none of its own, so follow coming
+ * back on — the person's return to the end band, the way back to the end, a
+ * send — always finds it armed, and follow turning off — the person leaving,
+ * a jump far up — always stops it where it stands.
+ */
+import { FOLLOW_TAU_MS, approach } from "./runMotion.logic";
+
+/** Said on the conversation's scroll while it glides to its end: a run's fold waits for it. */
+export const GLIDING_ATTRIBUTE = "data-timeline-gliding";
+
+/** A step of the end this long or longer glides; a shorter one is already a glide's step. */
+export const GLIDE_FROM_PX = 40;
+
+/** Who of the page made a scroll: the page's own code (`scrollOwn`), or the list (`ownListScrolls`). */
+export type OwnScroll = "page" | "list";
+
+/** Where the page itself last put each scroll, and who put it there: a scroll heard there is the page's. */
+const ownTops = new WeakMap<object, { readonly top: number; readonly by: OwnScroll }>();
+
+/** The page puts `element`'s top at `top`: a scroll heard there is not the person's. */
+export function scrollOwn(element: HTMLElement, top: number): void {
+  element.scrollTop = top;
+  ownTops.set(element, { top: element.scrollTop, by: "page" });
+}
+
+/**
+ * Who of the page made `element`'s scroll heard now (`scrollOwn`, `ownListScrolls`), or
+ * `undefined` for someone else's: once only — a later scroll to the same top is someone else's.
+ */
+export function takeOwnScroll(element: HTMLElement): OwnScroll | undefined {
+  const own = ownTops.get(element);
+  ownTops.delete(element);
+  return own !== undefined && Math.abs(element.scrollTop - own.top) <= 1 ? own.by : undefined;
+}
+
+/**
+ * The scrolls `element`'s list makes itself — its initial scroll to the end, re-applied as rows
+ * measure, a correction while content is remeasured, keeping a row in place — are the page's own
+ * moves too, never the person's: each is told as `scrollOwn`'s. Returns the undo.
+ */
+export function ownListScrolls(element: HTMLElement): () => void {
+  const scrollTo = element.scrollTo;
+  const scrollBy = element.scrollBy;
+  element.scrollTo = function (...args: Parameters<HTMLElement["scrollTo"]>) {
+    scrollTo.apply(element, args as never);
+    ownTops.set(element, { top: element.scrollTop, by: "list" });
+  } as HTMLElement["scrollTo"];
+  element.scrollBy = function (...args: Parameters<HTMLElement["scrollBy"]>) {
+    scrollBy.apply(element, args as never);
+    ownTops.set(element, { top: element.scrollTop, by: "list" });
+  } as HTMLElement["scrollBy"];
+  return () => {
+    element.scrollTo = scrollTo;
+    element.scrollBy = scrollBy;
+  };
+}
+
+export interface EndFollow {
+  /** Follow the end, carrying measured live-row growth before easing any arriving row. */
+  readonly follow: (grew?: number) => void;
+  /** A measurement may have clamped the native viewport before the next layout. */
+  readonly observe: () => void;
+  /**
+   * The composer's inset changed by `grew` px: its line keeps its place at once; the end moving
+   * further — a message arriving with it — glides there.
+   */
+  readonly place: (grew?: number) => void;
+  /**
+   * Where the list stands now is its end, until the end grows: an answer held where its words
+   * were read never glides on to the few pixels of its foot under it.
+   */
+  readonly keep: () => void;
+  /**
+   * The list moved the view itself — its initial scroll re-applied as rows measure: it stands at
+   * the end again at once, before the frame paints. Glided back, a long history showed the
+   * conversation mid-way for a second (1,471 px, still 5 px off the end after 60 frames).
+   * Mid-glide the glide goes on from where the list put it.
+   */
+  readonly undo: () => void;
+  readonly stop: () => void;
+}
+
+export function createEndFollow({
+  viewport,
+  follows,
+  room = () => 0,
+  unseen = () => false,
+  placeEnd,
+}: {
+  readonly viewport: () => HTMLElement | null;
+  /** Whether the conversation follows its end: ChatView's one judgement of it. */
+  readonly follows: () => boolean;
+  /**
+   * Room under the end the person may scroll into and the follower never goes into, nor out of:
+   * what an answered ask over the composer covered, while the view eases out of it.
+   */
+  readonly room?: () => number;
+  /**
+   * Its conversation is not shown yet (placed out of sight): nobody watches it glide, so it stands
+   * at the end at once, and the conversation is shown standing still.
+   */
+  readonly unseen?: () => boolean;
+  /** The list commits this measured alignment after pending virtualizer layout. */
+  readonly placeEnd: () => void;
+}): EndFollow {
+  const unwatched = () => outOfSight() || unseen();
+  const page = typeof document === "undefined" ? undefined : document;
+  let frame = 0;
+  let last = 0;
+  // Where the glide stands: the browser rounds what it is given.
+  let at = 0;
+  // The viewport whose position `at` describes, including after a glide stops.
+  let observedViewport: HTMLElement | null = null;
+  // The list it glides, and said so on: a kept list swapped in since is not it.
+  let gliding: HTMLElement | null = null;
+  // What `keep` holds back from the end, and the height it holds while the end has not grown.
+  let kept: {
+    readonly element: HTMLElement;
+    readonly short: number;
+    readonly height: number;
+  } | null = null;
+  const endOf = (element: HTMLElement) => {
+    const end = Math.max(0, element.scrollHeight - element.clientHeight - room());
+    if (kept !== null && (kept.element !== element || element.scrollHeight > kept.height + 0.5)) {
+      kept = null;
+    }
+    return kept === null ? end : Math.max(0, end - kept.short);
+  };
+  const stopGlide = () => {
+    cancelAnimationFrame(frame);
+    page?.removeEventListener?.("visibilitychange", visibilityChanged);
+    frame = 0;
+    last = 0;
+    if (gliding !== null) said(gliding, false);
+    gliding = null;
+  };
+  const step = (now: number) => {
+    frame = 0;
+    const element = viewport();
+    if (element === null || element !== gliding || !follows()) {
+      stopGlide();
+      return;
+    }
+    // Moved since by something else: it glides on from there.
+    if (Math.abs(element.scrollTop - at) > 2) at = element.scrollTop;
+    const end = endOf(element);
+    // The person went on into the room under the end: theirs to stand in.
+    if (at > end && room() > 0) {
+      stopGlide();
+      return;
+    }
+    at = approach(at, end, last === 0 ? 1000 / 60 : now - last, FOLLOW_TAU_MS, unwatched());
+    last = now;
+    scrollOwn(element, at);
+    if (at !== end) frame = requestAnimationFrame(step);
+    else stopGlide();
+  };
+  // Finish while unseen, before a returning tab can paint its paused glide.
+  const visibilityChanged = () => {
+    if (!outOfSight()) return;
+    cancelAnimationFrame(frame);
+    step(last);
+  };
+  const observe = (element: HTMLElement) => {
+    const end = endOf(element);
+    // A measured range below our last position clamps the browser at its
+    // new end. Attribute that observed correction before later measurements
+    // grow the range and before its coalesced scroll event arrives. Dimensions
+    // round to integers while scrollTop stays fractional, so allow 1 px.
+    if (element === observedViewport && at > end && Math.abs(end - element.scrollTop) <= 1) {
+      ownTops.set(element, { top: element.scrollTop, by: "page" });
+    }
+    observedViewport = element;
+    at = element.scrollTop;
+  };
+  const follower: EndFollow = {
+    place: (grew = 0) => {
+      const element = viewport();
+      // The composer's inset moved the end: what was kept short of it was kept for the old one.
+      kept = null;
+      if (element === null || !follows()) return;
+      // Mid-glide the glide goes on to the moved end: standing there at once was a step of all
+      // that was left (Milo's stress run 4: 77 px in one frame as the composer shrank on a send).
+      if (gliding === element) return;
+      // The end moved further than the composer did: a message arrived with it, and standing at
+      // the end at once moved the conversation by all of it (Milo's stress run 6: a six-line
+      // draft's send, 223 px in one frame). The composer's own growth keeps its line in place at
+      // once; the rest glides.
+      if (endOf(element) - element.scrollTop - Math.max(0, grew) >= GLIDE_FROM_PX) {
+        if (grew > 0) {
+          scrollOwn(element, element.scrollTop + grew);
+          at = element.scrollTop;
+        }
+        follower.follow();
+        return;
+      }
+      stopGlide();
+      placeEnd();
+    },
+    observe: () => {
+      const element = viewport();
+      if (element !== null && follows()) observe(element);
+    },
+    keep: () => {
+      const element = viewport();
+      kept = null;
+      if (element === null) return;
+      const short = endOf(element) - element.scrollTop;
+      // Only the few pixels of an answer's foot. Farther from the end, something else moved it
+      // while the answer was held — the composer's inset growing as the usage limit held a
+      // message — and keeping that held the end 202 px away for good.
+      if (short > 0.5 && short < GLIDE_FROM_PX) {
+        kept = { element, short, height: element.scrollHeight };
+      }
+    },
+    follow: (grew = 0) => {
+      const element = viewport();
+      if (element === null || !follows()) return;
+      const end = endOf(element);
+      observe(element);
+      // A live row's new lines are already laid out. Carry their measured growth even when a
+      // slow frame brought several at once; only the remaining way belongs to a row's arrival.
+      if (grew > 0 && end > element.scrollTop) {
+        scrollOwn(element, element.scrollTop + Math.min(grew, end - element.scrollTop));
+        at = element.scrollTop;
+      }
+      const gap = end - element.scrollTop;
+      // Standing in the room under the end is the person's: it is not taken back.
+      if (frame !== 0 || Math.abs(gap) < 0.5 || (gap < 0 && room() > 0)) return;
+      // Out of sight, nobody watches it glide: it stands there at once.
+      if (gap < GLIDE_FROM_PX || reducedMotion() || unwatched()) {
+        scrollOwn(element, end);
+        at = element.scrollTop;
+        return;
+      }
+      gliding = element;
+      // Said on it while it glides: a run's fold waits for it (`foldWork`).
+      said(element, true);
+      page?.addEventListener?.("visibilitychange", visibilityChanged);
+      frame = requestAnimationFrame(step);
+    },
+    undo: () => {
+      const element = viewport();
+      if (element === null || !follows() || frame !== 0) return;
+      scrollOwn(element, endOf(element));
+      at = element.scrollTop;
+    },
+    stop: stopGlide,
+  };
+  return follower;
+}
+
+/** Says on the list's scroll whether it glides; a stand-in for one (a test's) says nothing. */
+function said(element: HTMLElement, gliding: boolean): void {
+  if (typeof element.toggleAttribute === "function") {
+    element.toggleAttribute(GLIDING_ATTRIBUTE, gliding);
+  }
+}
+
+function outOfSight(): boolean {
+  return typeof document !== "undefined" && document.visibilityState === "hidden";
+}
+
+function reducedMotion(): boolean {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}

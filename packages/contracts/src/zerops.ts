@@ -1,0 +1,1351 @@
+/**
+ * Zerops feeds — the additive contract slice the Zerops-aware client renders from.
+ *
+ * **lifecycle** (`ZeropsLifecycle`) — where the agent is, reduced per thread
+ * from the `workflow.StateEnvelope` that zcp's workflow-aware tool results
+ * carry. One per thread. What exists in the Zerops project is no longer a
+ * server feed: the client reads it directly with its own Zerops token and
+ * projects it client-side (`packages/client-runtime/src/zerops/topology.ts`).
+ *
+ * Nothing here mutates: the client renders state, the agent mutates through MCP.
+ *
+ * ## Why the enum-shaped fields are plain strings
+ *
+ * `ZeropsStateEnvelope` mirrors a Go type owned by another repo (`zcp`,
+ * `internal/workflow/envelope.go`) that gains values independently of this
+ * build — `phase` gained `launch-production-active` that way. A
+ * `Schema.Literals` union would make the *whole* envelope undecodable the first
+ * time zcp ships a new value, taking the strip down over a field the client
+ * could have ignored. So every open vocabulary decodes as a string and the
+ * known values ship beside it as a `KNOWN_*` const array for the client to
+ * switch on with a default branch. Same reasoning for the timestamps zcp
+ * produces: they stay strings (`IsoDateTime`), while timestamps this server
+ * mints are `Schema.DateTimeUtc`.
+ */
+import * as Schema from "effect/Schema";
+
+import {
+  ForwardCompatibleArray,
+  ForwardCompatibleOptional,
+  IsoDateTime,
+  ThreadId,
+  TrimmedNonEmptyString,
+} from "./baseSchemas.ts";
+import { LeaseAlias } from "./orchestration.ts";
+import { ServerProviderAuthStatus } from "./server.ts";
+
+// ---------------------------------------------------------------------------
+// StateEnvelope mirror — zcp `internal/workflow/envelope.go`
+// ---------------------------------------------------------------------------
+
+export const KNOWN_ZEROPS_PHASES = [
+  "idle",
+  "bootstrap-active",
+  "develop-active",
+  "develop-closed-auto",
+  "strategy-setup",
+  "export-active",
+  "launch-production-active",
+] as const;
+
+export const KNOWN_ZEROPS_IDLE_SCENARIOS = [
+  "empty",
+  "bootstrapped",
+  "adopt",
+  "incomplete",
+] as const;
+
+export const KNOWN_ZEROPS_BOOTSTRAP_ROUTES = ["recipe", "classic", "adopt", "resume"] as const;
+
+export const ZeropsEnvelopeProject = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+});
+export type ZeropsEnvelopeProject = typeof ZeropsEnvelopeProject.Type;
+
+export const ZeropsEnvelopeSelfService = Schema.Struct({
+  hostname: Schema.String,
+});
+export type ZeropsEnvelopeSelfService = typeof ZeropsEnvelopeSelfService.Type;
+
+/** One stage of a dev service's pair — zcp `docs/spec-mate.md` §2.8a.3. */
+export const ZeropsStageRef = Schema.Struct({
+  hostname: Schema.String,
+  /** Absent while zcp has not resolved the stage's setup. */
+  setup: Schema.optional(Schema.String),
+});
+export type ZeropsStageRef = typeof ZeropsStageRef.Type;
+
+/** The supervisor's own `status`, which zcp passes through verbatim. */
+export const KNOWN_ZEROPS_DEV_SERVER_STATUSES = [
+  "running",
+  "stopped",
+  "crashed",
+  "starting",
+] as const;
+
+/**
+ * One dev server as zcp read it from the dev service's supervisor —
+ * zcp `docs/spec-mate.md` §2.8a.3.
+ */
+export const ZeropsDevServer = Schema.Struct({
+  name: Schema.String,
+  /** Absent for a server without a listener (a worker). */
+  port: Schema.optional(Schema.Number),
+  /** Only when the dev setup's port has HTTP support and the subdomain is enabled. */
+  url: Schema.optional(Schema.String),
+  status: Schema.String,
+  readAt: IsoDateTime,
+  /** zcp's HTTP probe of this port, only when the call that read it probed it. */
+  verify: Schema.optional(
+    Schema.Struct({
+      ok: Schema.Boolean,
+      httpStatus: Schema.optional(Schema.Number),
+      at: IsoDateTime,
+    }),
+  ),
+  /** The supervisor's last process end, when set. */
+  lastExit: Schema.optional(
+    Schema.Struct({
+      code: Schema.optional(Schema.Number),
+      signal: Schema.optional(Schema.String),
+      at: IsoDateTime,
+    }),
+  ),
+});
+export type ZeropsDevServer = typeof ZeropsDevServer.Type;
+
+/** One service's point-in-time lifecycle state — `workflow.ServiceSnapshot`. */
+export const ZeropsServiceSnapshot = Schema.Struct({
+  hostname: Schema.String,
+  typeVersion: Schema.String,
+  runtimeClass: Schema.String,
+  status: Schema.String,
+  bootstrapped: Schema.Boolean,
+  deployed: Schema.optional(Schema.Boolean),
+  resumable: Schema.optional(Schema.Boolean),
+  mode: Schema.optional(Schema.String),
+  closeDeployMode: Schema.optional(Schema.String),
+  gitPushState: Schema.optional(Schema.String),
+  buildIntegration: Schema.optional(Schema.String),
+  remoteUrl: Schema.optional(Schema.String),
+  feedsProduction: Schema.optional(Schema.Array(Schema.String)),
+  stageHostname: Schema.optional(Schema.String),
+  setupName: Schema.optional(Schema.String),
+  stageSetupName: Schema.optional(Schema.String),
+  /**
+   * The pair's stages, which replace `stageHostname`/`stageSetupName` once zcp
+   * emits them. Mate pairs from them only on a pool's snapshot, a part migrated
+   * to a dev pool; a dev service's pair comes from the tier (§2.8a.3).
+   */
+  stages: Schema.optional(Schema.Array(ZeropsStageRef)),
+  /**
+   * The dev servers zcp read in this call. Absent means not read, never none
+   * running; a server this build cannot read is dropped, not the snapshot.
+   */
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+});
+export type ZeropsServiceSnapshot = typeof ZeropsServiceSnapshot.Type;
+
+/** One deploy or verify attempt — `workflow.AttemptInfo`. */
+export const ZeropsAttemptInfo = Schema.Struct({
+  at: IsoDateTime,
+  success: Schema.Boolean,
+  iteration: Schema.Number,
+  setup: Schema.optional(Schema.String),
+  strategy: Schema.optional(Schema.String),
+  reason: Schema.optional(Schema.String),
+  failureClass: Schema.optional(Schema.String),
+  summary: Schema.optional(Schema.String),
+});
+export type ZeropsAttemptInfo = typeof ZeropsAttemptInfo.Type;
+
+export const ZeropsWorkSession = Schema.Struct({
+  intent: Schema.String,
+  services: Schema.Array(Schema.String),
+  /** hostname → `required | deferred | out-of-scope`. Absent entry means required. */
+  roles: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+  createdAt: IsoDateTime,
+  closedAt: Schema.optional(IsoDateTime),
+  closeReason: Schema.optional(Schema.String),
+  deploys: Schema.optional(Schema.Record(Schema.String, Schema.Array(ZeropsAttemptInfo))),
+  verifies: Schema.optional(Schema.Record(Schema.String, Schema.Array(ZeropsAttemptInfo))),
+});
+export type ZeropsWorkSession = typeof ZeropsWorkSession.Type;
+
+export const ZeropsRecipeMatch = Schema.Struct({
+  slug: Schema.String,
+  title: Schema.optional(Schema.String),
+  description: Schema.optional(Schema.String),
+  confidence: Schema.Number,
+  importYaml: Schema.optional(Schema.String),
+  mode: Schema.optional(Schema.String),
+  repo: Schema.optional(Schema.String),
+  guiSlug: Schema.optional(Schema.String),
+});
+export type ZeropsRecipeMatch = typeof ZeropsRecipeMatch.Type;
+
+export const ZeropsBootstrapSession = Schema.Struct({
+  route: Schema.String,
+  step: Schema.optional(Schema.String),
+  intent: Schema.optional(Schema.String),
+  recipeMatch: Schema.optional(ZeropsRecipeMatch),
+  closed: Schema.optional(Schema.Boolean),
+});
+export type ZeropsBootstrapSession = typeof ZeropsBootstrapSession.Type;
+
+/**
+ * A lease's reconciled state as zcp reports it, verbatim: switch with a default branch. A parked
+ * lease's container is stopped and still zcp's.
+ */
+export const KNOWN_ZEROPS_LEASE_STATES = [
+  "held",
+  "unmounted",
+  "parked",
+  "lost",
+  "unknown-holder",
+  "released",
+] as const;
+
+/** The states of a lease zcp no longer holds: released, lost, or reserved with no record of zcp's. */
+const ENDED_ZEROPS_LEASE_STATES: ReadonlySet<string> = new Set([
+  "released",
+  "lost",
+  "unknown-holder",
+]);
+
+/** Whether zcp still holds a lease in this state: any state but an ended one, a new one included. */
+export const isZeropsLeaseHeld = (state: string): boolean => !ENDED_ZEROPS_LEASE_STATES.has(state);
+
+/**
+ * The branch whose group a lease is of: the leases zcp holds of one repository and branch are one
+ * group, one per part's pool (zcp `docs/spec-workflows.md` §8 DP-17), and a lease of no branch is
+ * of `main`'s.
+ */
+export const zeropsLeaseGroupBranch = (branch: string | null | undefined): string =>
+  branch === null || branch === undefined || branch === "" ? "main" : branch;
+
+/** A repository's address as zcp keys it (`topology.CanonicalRepoURL`): no `.git`, no trailing slash. */
+const canonicalZeropsRepo = (address: string): string =>
+  address
+    .trim()
+    .replace(/\/$/u, "")
+    .replace(/\.git$/u, "")
+    .replace(/\/$/u, "");
+
+/**
+ * Whether two addresses name one repository, as zcp compares them (`topology.SameRepoURL`): equal in
+ * canonical form but for case, which hosts like GitHub ignore in the host, owner and name.
+ */
+export const sameZeropsRepo = (left: string, right: string): boolean => {
+  const canonical = canonicalZeropsRepo(left);
+  return canonical !== "" && canonical.toLowerCase() === canonicalZeropsRepo(right).toLowerCase();
+};
+
+/** What a lease's group is keyed by: its branch, and the repository zcp names (`repo`) when it does. */
+export interface ZeropsLeaseGroupKey {
+  readonly branch?: string | null | undefined;
+  readonly repo?: string | undefined;
+}
+
+const namedRepo = (repo: string | undefined): string | undefined =>
+  repo === undefined || repo.trim() === "" ? undefined : repo;
+
+/**
+ * Whether two leases, or a binding and a lease, are of one group — the leases zcp holds of one
+ * repository and branch (zcp `docs/spec-workflows.md` §8 DP-17): two apps of one Mate both on
+ * `main` hold two groups. One that names no repository (a zcp, a record or a binding older than
+ * `repo`) is grouped by its branch alone.
+ */
+export const sameZeropsLeaseGroup = (
+  left: ZeropsLeaseGroupKey,
+  right: ZeropsLeaseGroupKey,
+): boolean => {
+  if (zeropsLeaseGroupBranch(left.branch) !== zeropsLeaseGroupBranch(right.branch)) return false;
+  const leftRepo = namedRepo(left.repo);
+  const rightRepo = namedRepo(right.repo);
+  return leftRepo === undefined || rightRepo === undefined || sameZeropsRepo(leftRepo, rightRepo);
+};
+
+/**
+ * What zcp read of a lease's checkout and preview — zcp `topology.LeaseActivity` (zcp
+ * `docs/spec-workflows.md` §8 DP-21). Times are RFC 3339 UTC. A fact zcp did not read is absent,
+ * never a zero, and `note` says why; one with no `readAt` is a lease zcp did not read at all.
+ */
+export const ZeropsLeaseActivity = Schema.Struct({
+  /** The checkout's last change: a commit, a checkout, or a modified or untracked file. */
+  lastChangeAt: Schema.optional(IsoDateTime),
+  /** When the preview took its last connection; absent until one came. */
+  previewLastConnAt: Schema.optional(IsoDateTime),
+  /** The preview's open connections at `readAt`; above 0, someone may be looking at it. */
+  previewOpenConns: Schema.optional(Schema.Number),
+  acquiredAt: Schema.optional(IsoDateTime),
+  /** When zcp read these facts. */
+  readAt: Schema.optional(IsoDateTime),
+  /** What could not be read, and why. */
+  note: Schema.optional(Schema.String),
+});
+export type ZeropsLeaseActivity = typeof ZeropsLeaseActivity.Type;
+
+/**
+ * What releasing a lease would lose, as zcp's release guard reads it — zcp `topology.LeaseUnsaved`:
+ * uncommitted and untracked files git does not ignore, and commits on no remote branch. Files git
+ * ignores and stashes are never in it.
+ */
+export const ZeropsLeaseUnsaved = Schema.Struct({
+  /** The first `git status --porcelain` lines; absent for a clean checkout. */
+  files: Schema.optional(ForwardCompatibleArray(Schema.String)),
+  /** Every `git status --porcelain` line, `files` included. */
+  fileCount: Schema.Number,
+  unpushedCommits: Schema.Number,
+});
+export type ZeropsLeaseUnsaved = typeof ZeropsLeaseUnsaved.Type;
+
+/**
+ * One pool container this project's zcp holds a lease on (`zerops_lease`) — zcp
+ * `workflow.LeaseSnapshot`. zcp mounts it at `/var/www/<alias>` and checks `branch` out there.
+ */
+export const ZeropsLease = Schema.Struct({
+  alias: LeaseAlias,
+  pool: Schema.String,
+  /** Absent for a lease acquired for no branch. */
+  branch: Schema.optional(Schema.String),
+  containerHostname: Schema.optional(Schema.String),
+  state: Schema.String,
+  /** The state is zcp's own record's: the pool's orchestrator did not answer. */
+  unverified: Schema.optional(Schema.Boolean),
+  /**
+   * When zcp acquired the lease (RFC 3339), from its record; absent for one it has no record of.
+   * Of the leases of one repository and branch, the earliest acquired is the one a conversation is
+   * bound to next when the lease it was bound to ends.
+   */
+  acquiredAt: Schema.optional(Schema.String),
+  /**
+   * The repository the lease's group is keyed by beside `branch`, canonical and credential-free;
+   * absent for one zcp has no record of, or a record older than it. Two apps of one Mate both on
+   * `main` hold leases of one branch: their repositories tell the groups apart.
+   */
+  repo: Schema.optional(Schema.String),
+  /**
+   * The dev servers zcp read on the lease's supervisor, only on a `zerops_dev_server` call for its
+   * alias (the preview server's `url` is the pool's per-port subdomain). Absent means not read in
+   * this call, never none running; a server this build cannot read is dropped, not the lease.
+   */
+  devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  /**
+   * What zcp read of the lease's checkout and preview, and what a release would lose there — only
+   * on a `zerops_lease` call that read them (`action=status`). Absent means not read in this call,
+   * never no activity or nothing unsaved; one this build cannot read is dropped, not the lease.
+   */
+  activity: ForwardCompatibleOptional(ZeropsLeaseActivity),
+  unsaved: ForwardCompatibleOptional(ZeropsLeaseUnsaved),
+  /**
+   * Why the lease's container did not answer a call's read over ssh — its process limit, or ssh
+   * not reaching it — as zcp says it (zcp `docs/spec-workflows.md` §8 DP-21). Absent when it
+   * answered or was not read; it is still zcp's lease.
+   */
+  notAnswering: Schema.optional(Schema.String),
+});
+export type ZeropsLease = typeof ZeropsLease.Type;
+
+/**
+ * `workflow.StateEnvelope` — the state zcp computes once per workflow-aware
+ * tool result and ships inside the result text as a fenced `json zcp-envelope`
+ * block. Contract: zcp `docs/spec-mate.md` §1.
+ *
+ * `services` decodes through {@link ForwardCompatibleArray}: a snapshot this
+ * build cannot decode is dropped rather than failing the envelope, so one
+ * unfamiliar service never blanks the whole strip.
+ */
+export const ZeropsStateEnvelope = Schema.Struct({
+  phase: Schema.String,
+  environment: Schema.String,
+  idleScenario: Schema.optional(Schema.String),
+  exportStatus: Schema.optional(Schema.String),
+  selfService: Schema.optional(ZeropsEnvelopeSelfService),
+  project: ZeropsEnvelopeProject,
+  services: ForwardCompatibleArray(ZeropsServiceSnapshot),
+  /**
+   * The pool containers zcp holds leases on. Absent means not read (a zcp that predates leases),
+   * never none; `[]` is none. A lease this build cannot read is dropped, not the envelope.
+   */
+  leases: Schema.optional(ForwardCompatibleArray(ZeropsLease)),
+  workSession: Schema.optional(ZeropsWorkSession),
+  bootstrap: Schema.optional(ZeropsBootstrapSession),
+  generated: IsoDateTime,
+});
+export type ZeropsStateEnvelope = typeof ZeropsStateEnvelope.Type;
+
+// ---------------------------------------------------------------------------
+// Lifecycle
+// ---------------------------------------------------------------------------
+
+export const ZeropsToolStatus = Schema.Literals(["inProgress", "completed", "failed"]);
+export type ZeropsToolStatus = typeof ZeropsToolStatus.Type;
+
+/**
+ * One `zerops_*` tool call, for the strip's "last action".
+ *
+ * Recorded for EVERY Zerops tool, whether or not it carries an envelope. The
+ * envelope says where the agent IS; it cannot say what is happening right now —
+ * a tool still running has no result yet, and a failed one carries no envelope
+ * by design — and the strip still has to be able to read "deploying".
+ * This is a log, not a state machine: the envelope stays the state.
+ */
+export const ZeropsRecentTool = Schema.Struct({
+  toolName: TrimmedNonEmptyString,
+  status: ZeropsToolStatus,
+  at: Schema.DateTimeUtc,
+  /**
+   * The runtime item this call belongs to. Lets a client link a strip entry to
+   * its row in the thread timeline, and is what turns a started-then-completed
+   * tool into one entry that changes status rather than two rows.
+   */
+  itemId: Schema.optional(Schema.String),
+});
+export type ZeropsRecentTool = typeof ZeropsRecentTool.Type;
+
+/** How many `recentTools` entries a thread keeps. */
+export const ZEROPS_RECENT_TOOLS_LIMIT = 8;
+
+export const ZeropsLifecycle = Schema.Struct({
+  threadId: ThreadId,
+  /** Absent until this thread's agent has run a tool that carries an envelope. */
+  envelope: Schema.optional(ZeropsStateEnvelope),
+  recentTools: Schema.Array(ZeropsRecentTool),
+  /** Absent when nothing has been recorded for this thread yet. */
+  updatedAt: Schema.optional(Schema.DateTimeUtc),
+});
+export type ZeropsLifecycle = typeof ZeropsLifecycle.Type;
+
+// ---------------------------------------------------------------------------
+// RPC payloads
+// ---------------------------------------------------------------------------
+
+export const ZeropsLifecycleGetInput = Schema.Struct({
+  threadId: ThreadId,
+});
+export type ZeropsLifecycleGetInput = typeof ZeropsLifecycleGetInput.Type;
+
+// ---------------------------------------------------------------------------
+// Agent authorization
+// ---------------------------------------------------------------------------
+
+/**
+ * Agents with a live-verified local credential probe
+ * (docs/spec-welcome-mode.md §3 W-STATE) — the only two this feed reports on.
+ * An agent without a verified probe would render every row "not-authorized"
+ * regardless of platform truth, which is worse than not offering it. A
+ * closed union, unlike {@link ZeropsAdoptionState}: this is a fixed pair, not
+ * an open vocabulary zcp grows independently.
+ */
+export const ZeropsAgentId = Schema.Literals(["claude-code", "codex"]);
+export type ZeropsAgentId = typeof ZeropsAgentId.Type;
+
+/**
+ * Which agent a provider instance is, when it is one of the two Mate signs
+ * people in to.
+ *
+ * Two vocabularies meet here: a thread routes by `ProviderInstanceId`, whose
+ * default for a built-in driver is the driver kind (`claudeAgent`, `codex`),
+ * while the welcome flow and the agent-auth feed name the same agents
+ * `claude-code` and `codex`. Both spellings arrive on real threads, so both
+ * resolve.
+ *
+ * `undefined` for every other driver, and that is the answer: an agent this
+ * product never signs anybody in to has no recorded signer, so there is
+ * nothing to compare a caller against and nothing to refuse (D6).
+ */
+export const agentIdForProviderInstance = (
+  instanceId: string | undefined,
+): ZeropsAgentId | undefined => {
+  switch (instanceId) {
+    case "claudeAgent":
+    case "claude-code":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * Which agent a provider instance is, by the driver that runs it
+ * (`ServerProvider.driver`). A second instance of a driver — `claudeAgent_work`
+ * beside `claudeAgent` — runs the same agent CLI, so it is the same agent to
+ * D6: {@link agentIdForProviderInstance} knows only the default ids and would
+ * let it through unchecked.
+ */
+export const agentIdForDriverKind = (driver: string | undefined): ZeropsAgentId | undefined => {
+  switch (driver) {
+    case "claudeAgent":
+      return "claude-code";
+    case "codex":
+      return "codex";
+    default:
+      return undefined;
+  }
+};
+
+/**
+ * The §3 W-STATE matrix, five values, mirrored verbatim from
+ * `vscode-bootstrap-welcome.js`'s `computeAgentState` (docs/spec-welcome-mode.md
+ * §3): the platform flag and the local credential artifact are two
+ * INDEPENDENT inputs that compose a matrix, never a boolean union. Unlike
+ * {@link ZeropsAdoptionState}/the envelope's `phase`, this value is computed
+ * by mate itself (never received verbatim from zcp on the wire), so a closed
+ * union is safe here.
+ */
+export const ZeropsAgentAuthState = Schema.Literals([
+  "authorized-token",
+  "authorized",
+  "reconnect",
+  "local-only",
+  "not-authorized",
+]);
+export type ZeropsAgentAuthState = typeof ZeropsAgentAuthState.Type;
+
+/**
+ * Where a server-driven login attempt currently stands, reduced from the
+ * agent CLI's own terminal output (S7 follow-up F8 — `ZeropsAgentLogin`,
+ * ported from the Zerops GUI's `zcp-agent-auth-dialog` walker):
+ *
+ * - `starting` — the terminal is being opened; the login command has not
+ *   been written yet.
+ * - `menu` — the command is running; the server is auto-navigating whatever
+ *   the CLI prints (a Y/N confirmation, a login-method picker, or any other
+ *   unrecognized screen) the same way a user pressing Enter through it
+ *   would, until a URL, a "paste code" prompt, success, or failure appears.
+ * - `awaiting-browser` — an auth URL (and, for Codex, its device code) was
+ *   found; the user needs to open it (or copy the code) in their own
+ *   browser.
+ * - `awaiting-code` — the CLI is showing a "paste code here" prompt and no
+ *   URL was recognized (Claude only). Claude prints its prompt right under
+ *   the URL, so `awaiting-browser` takes a code too.
+ * - `verifying-code` — a code was submitted (`zerops.agentLogin.submitCode`)
+ *   and the CLI is exchanging it with the provider.
+ * - `succeeded` / `failed` / `cancelled` — terminal states.
+ */
+export const ZeropsAgentLoginPhase = Schema.Literals([
+  "starting",
+  "menu",
+  "awaiting-browser",
+  "awaiting-code",
+  "verifying-code",
+  "succeeded",
+  "failed",
+  "cancelled",
+]);
+export type ZeropsAgentLoginPhase = typeof ZeropsAgentLoginPhase.Type;
+
+export const ZeropsAgentLoginState = Schema.Struct({
+  phase: ZeropsAgentLoginPhase,
+  /** The auth URL, once the terminal has printed a complete one. */
+  url: Schema.optional(Schema.String),
+  /** The device code (Codex's device-auth flow only). */
+  code: Schema.optional(Schema.String),
+  /** A human-readable detail for `failed` — never a credential value. */
+  message: Schema.optional(Schema.String),
+  /** The dedicated terminal this login session runs in (`terminal.attach`/`terminal.write` target). */
+  terminalId: Schema.String,
+  startedAt: Schema.DateTimeUtc,
+  /**
+   * The Zerops user id of the person who started this login, from their
+   * authenticated session. The client that is that person records the signer
+   * (`authorizedBy`) from it once the login succeeds, whichever screen it
+   * started on and whether or not that screen is still open. Absent on older
+   * servers — a Mate keeps its own version while the hosted client moves on —
+   * where the client records on a success it watched happen instead.
+   */
+  startedBy: Schema.optional(Schema.String),
+  /**
+   * The latest attempt before this one that succeeded, where this one has not: an attempt
+   * started, cancelled or failed after a sign-in leaves who signed in known, to the turn gate
+   * and to the client that records the signer. Absent on older servers.
+   */
+  lastSucceeded: Schema.optional(
+    Schema.Struct({
+      startedAt: Schema.DateTimeUtc,
+      startedBy: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type ZeropsAgentLoginState = typeof ZeropsAgentLoginState.Type;
+
+/** One login check, including an inconclusive ending; timestamps describe the source read. */
+export const ZeropsAuthVerification = Schema.Struct({
+  status: Schema.Literals(["checking", "authenticated", "unauthenticated", "unknown"]),
+  reason: Schema.optional(Schema.String),
+  checkedAt: Schema.optional(Schema.Number),
+  generation: Schema.optional(Schema.Number),
+});
+export type ZeropsAuthVerification = typeof ZeropsAuthVerification.Type;
+
+/** Local sign-in and platform registration are separate outcomes. Accepted writes retain their handle. */
+export const ZeropsAuthRegistration = Schema.Struct({
+  status: Schema.Literals(["pending", "accepted", "registered", "failed"]),
+  reason: Schema.optional(Schema.String),
+  process: Schema.optional(
+    Schema.Struct({
+      id: Schema.String,
+      status: Schema.optional(Schema.String),
+      reason: Schema.optional(Schema.String),
+    }),
+  ),
+});
+export type ZeropsAuthRegistration = typeof ZeropsAuthRegistration.Type;
+
+export const ZeropsAgentAuth = Schema.Struct({
+  agentId: ZeropsAgentId,
+  /** Whether the local credential artifact exists. Presence only — its contents are never read. */
+  credPresent: Schema.Boolean,
+  /** `ZCP_AGENT_OAUTH_<SUFFIX>=true` in the zembed env store. */
+  flagOAuth: Schema.Boolean,
+  /** `ZCP_AGENT_TOKEN_<SUFFIX>` present (any value) in the zembed env store. */
+  flagToken: Schema.Boolean,
+  /**
+   * The provider's own authentication probe for this agent's default
+   * instance ({@link ServerProviderAuth.status}), refreshed (coalesced,
+   * targeted to this one provider) whenever the credential artifact appears
+   * or is replaced. `"unknown"` before the first check has run. Presence of
+   * the credential FILE is not proof of a working login — a stale or
+   * unusable credential can exist on disk — so this is the field that
+   * actually gates the flag write, never `credPresent` alone.
+   */
+  providerAuth: ServerProviderAuthStatus,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
+  state: ZeropsAgentAuthState,
+  /** A server-driven login attempt in progress (or just finished) for this agent — see {@link ZeropsAgentLoginState}. Absent when none has ever run this process's lifetime. */
+  login: Schema.optional(ZeropsAgentLoginState),
+  /**
+   * Which Zerops user signed this agent in (D6): the person whose door session
+   * started the sign-in the Mate's server saw succeed, kept by the server
+   * across restarts. The subject is the Zerops user id — the same value the
+   * door puts on the session grant.
+   *
+   * This exists because an agent CLI's credential is a *personal* one. Under
+   * Anthropic's consumer terms a subscription login is yours to use on your
+   * own machines and nobody else's, so a project member who did not authorize
+   * this container must be told whose identity they are about to spend, not
+   * silently handed it.
+   *
+   * **Absent means unknown, never "someone else's".** A credential can predate
+   * this field, or have been placed in the container by other means; the
+   * client must say "not recorded", not accuse. Nothing here reads the
+   * credential itself — presence and provenance only.
+   */
+  authorizedBy: Schema.optional(
+    Schema.Struct({
+      subject: Schema.String,
+      /** When the sign-in happened, if anything recorded it: the fact the product needs is whose login it is. */
+      at: Schema.optional(Schema.DateTimeUtc),
+    }),
+  ),
+});
+export type ZeropsAgentAuth = typeof ZeropsAgentAuth.Type;
+
+// ---------------------------------------------------------------------------
+// Logins — crew mode's *Runs on* (PRD §2.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * A login's id: the provider instance it is. The two defaults keep the
+ * driver's default instance ids (`claudeAgent`, `codex`); another login is a
+ * further instance of the same driver with its own home. The slug rules of
+ * `ProviderInstanceId`, unbranded: the id is also the key its signer is kept
+ * under.
+ */
+export const ZeropsLoginId = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(64),
+  Schema.isPattern(/^[a-zA-Z][a-zA-Z0-9_-]*$/),
+);
+export type ZeropsLoginId = typeof ZeropsLoginId.Type;
+
+/** How a login signs in: an account, through the CLI's own login, or an API key stored for that login alone. */
+export const ZeropsLoginKind = Schema.Literals(["subscription", "apiKey"]);
+export type ZeropsLoginKind = typeof ZeropsLoginKind.Type;
+
+/**
+ * Whether a login can run a turn — the answers of `classifyZeropsAgentAuth`
+ * (`@t3tools/shared/zeropsAgentAuth`). A default login is classified from its
+ * agent row; another login has no platform flag, so its own CLI check decides
+ * (`registering`: the check has not answered yet).
+ */
+export const ZeropsLoginState = Schema.Literals([
+  "authorized",
+  "registering",
+  "reconnect",
+  "needs-reauth",
+  "not-authorized",
+]);
+export type ZeropsLoginState = typeof ZeropsLoginState.Type;
+
+/**
+ * One coding agent signed in to one account in this project. The defaults
+ * mirror {@link ZeropsAgentAuth}'s rows; every other login is a provider
+ * instance whose home is `~/.mate/logins/<id>` and whose signer is its own
+ * (D6 per login: a second Claude login never inherits the default's signer).
+ */
+export const ZeropsLogin = Schema.Struct({
+  id: ZeropsLoginId,
+  agent: ZeropsAgentId,
+  /** What the person named it ("work"); empty for the defaults. */
+  label: Schema.String,
+  kind: ZeropsLoginKind,
+  /** One of the two default instances, whose sign-in is the agent row's. */
+  default: Schema.Boolean,
+  state: ZeropsLoginState,
+  verification: Schema.optional(ZeropsAuthVerification),
+  registration: Schema.optional(ZeropsAuthRegistration),
+  /** A project token authorizes it (a default only): it is nobody's login, and D6 does not apply. */
+  token: Schema.Boolean,
+  /** The Zerops user id of whoever signed it in (or stored its key), as the Mate's server saw them. */
+  signedInBy: Schema.optional(Schema.String),
+  /** Its server-driven login, while one runs or just finished. */
+  login: Schema.optional(ZeropsAgentLoginState),
+});
+export type ZeropsLogin = typeof ZeropsLogin.Type;
+
+/**
+ * `available: false` means this is not a Zerops environment — the feed is off
+ * and that is not an error.
+ */
+export const ZeropsAgentAuthSnapshot = Schema.Struct({
+  available: Schema.Boolean,
+  /** Why the feed is unavailable. Absent when it is available. */
+  reason: Schema.optional(Schema.String),
+  agents: Schema.Array(ZeropsAgentAuth),
+  /**
+   * Every login, the two defaults first. Optional on the wire: a Mate keeps
+   * its installed version while the hosted client moves on, and a required
+   * field an older server does not send would fail the whole snapshot.
+   */
+  logins: Schema.optional(Schema.Array(ZeropsLogin)),
+});
+export type ZeropsAgentAuthSnapshot = typeof ZeropsAgentAuthSnapshot.Type;
+
+// ---------------------------------------------------------------------------
+// Agent login — S7 follow-up F8
+// ---------------------------------------------------------------------------
+
+/**
+ * The command each agent CLI runs to start an interactive login, typed into
+ * its dedicated terminal by the SERVER (`ZeropsAgentLogin`, ported from the
+ * Zerops GUI's `zcp-agent-auth-dialog` walker) — never by the client. Moved
+ * here (off the web-only `agentLogin.ts` this replaces) because the value
+ * now belongs to whichever side actually runs the command.
+ */
+export const ZEROPS_AGENT_LOGIN_COMMANDS: Readonly<Record<ZeropsAgentId, string>> = {
+  "claude-code": "claude /login",
+  codex: "codex login --device-auth",
+};
+
+/**
+ * Which login an agent-login RPC acts on: absent, the agent's default login;
+ * present, another login of that agent ({@link ZeropsLogin}). A server that
+ * predates logins does not decode the field, so a client sends it only where
+ * the environment advertises `capabilities.mateLogins`.
+ */
+const loginTarget = { loginId: Schema.optional(ZeropsLoginId) } as const;
+
+export const ZeropsAgentLoginStartInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+  threadId: ThreadId,
+  ...loginTarget,
+});
+export type ZeropsAgentLoginStartInput = typeof ZeropsAgentLoginStartInput.Type;
+
+export const ZeropsAgentLoginStartResult = Schema.Struct({
+  terminalId: Schema.String,
+});
+export type ZeropsAgentLoginStartResult = typeof ZeropsAgentLoginStartResult.Type;
+
+export const ZeropsAgentLoginCancelInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+  ...loginTarget,
+});
+export type ZeropsAgentLoginCancelInput = typeof ZeropsAgentLoginCancelInput.Type;
+
+/**
+ * An authorization code as the provider's page shows it: one run of printable
+ * ASCII, no whitespace. It is typed into the login terminal, so a control
+ * character or a line break could run something else there — the shape
+ * refuses both before the server sees it.
+ */
+export const ZeropsAgentLoginCode = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(4096),
+  Schema.isPattern(/^[\x21-\x7e]+$/),
+);
+
+export const ZeropsAgentLoginSubmitCodeInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+  code: ZeropsAgentLoginCode,
+  ...loginTarget,
+});
+export type ZeropsAgentLoginSubmitCodeInput = typeof ZeropsAgentLoginSubmitCodeInput.Type;
+
+/** `zerops.agentLogin.signOut` — any client (web, later mobile) can sign an agent out. */
+export const ZeropsAgentSignOutInput = Schema.Struct({
+  agentId: ZeropsAgentId,
+  ...loginTarget,
+});
+export type ZeropsAgentSignOutInput = typeof ZeropsAgentSignOutInput.Type;
+
+/**
+ * `zerops.login.add` — *Add another login*: a second account of an agent
+ * (signed in afterwards through `zerops.agentLogin.start` with the new id), or
+ * a Claude API key. The key crosses the wire here once and is stored for that
+ * login alone; no feed, span or log carries it.
+ */
+export const ZeropsLoginAddInput = Schema.Struct({
+  agent: ZeropsAgentId,
+  kind: ZeropsLoginKind,
+  /** What the rows show beside the agent ("work"); may be empty for an API key. */
+  label: Schema.String.check(Schema.isMaxLength(32)),
+  apiKey: Schema.optional(TrimmedNonEmptyString.check(Schema.isMaxLength(4096))),
+});
+export type ZeropsLoginAddInput = typeof ZeropsLoginAddInput.Type;
+
+export const ZeropsLoginAddResult = Schema.Struct({ id: ZeropsLoginId });
+export type ZeropsLoginAddResult = typeof ZeropsLoginAddResult.Type;
+
+/** `zerops.login.remove` — signs the login out, then forgets it: its instance, its key and its home. */
+export const ZeropsLoginRemoveInput = Schema.Struct({ id: ZeropsLoginId });
+export type ZeropsLoginRemoveInput = typeof ZeropsLoginRemoveInput.Type;
+
+export const ZeropsAgentLoginErrorReason = Schema.Literals([
+  /** This environment does not offer a server-driven login (not a Zerops environment). */
+  "unavailable",
+  /** No login of this agent is waiting for a code right now. */
+  "not-awaiting-code",
+  /** The server could not persist who signed this login in. */
+  "signer-write-failed",
+  /**
+   * `zerops.agentLogin.signOut` refused a token-authorized agent: a project
+   * API key belongs to the project, not to a person, so there is nobody's
+   * sign-in to end.
+   */
+  "token-authorized",
+  /** No login of this agent carries that id. */
+  "unknown-login",
+  /** A default login cannot be removed: it is the agent's own. */
+  "default-login",
+  /** A login this build does not make: an API key for anything but Claude, or an API key without one. */
+  "invalid-login",
+  /** An automated Mate runs on its organization's API key: nobody signs in to it. */
+  "automated",
+]);
+export type ZeropsAgentLoginErrorReason = typeof ZeropsAgentLoginErrorReason.Type;
+
+/** Mirrors `ExecError` (`exec.ts`) — this RPC performs a real action, so "not a Zerops environment" is a failure, not a feed value. */
+export class ZeropsAgentLoginError extends Schema.TaggedError<ZeropsAgentLoginError>()(
+  "ZeropsAgentLoginError",
+  {
+    reason: ZeropsAgentLoginErrorReason,
+    detail: Schema.String,
+  },
+) {
+  override get message(): string {
+    return this.detail;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Browser surface (S8b) — the live view of the agent-browser daemon
+// ---------------------------------------------------------------------------
+
+/**
+ * `no-browser` — the daemon's published port file is absent or unparsable
+ * (no session, or the container restarted). `connecting` — a port was read
+ * and a socket to the daemon is being opened/re-opened. `live` — frames are
+ * flowing. Never a fourth "error" value: a socket failure re-reads the port
+ * and retries with backoff, landing back on one of these three (spec-mate.md
+ * §0 rule 3 — zcp sets nothing here; the port file is the only signal).
+ */
+export const ZeropsBrowserStreamStatus = Schema.Literals(["no-browser", "connecting", "live"]);
+export type ZeropsBrowserStreamStatus = typeof ZeropsBrowserStreamStatus.Type;
+
+/**
+ * One relayed frame, verbatim — the server never re-encodes the daemon's own
+ * JPEG. `width`/`height` are the captured image's own pixel dimensions (for
+ * the panel's canvas); `pageScaleFactor` is the page's current zoom level —
+ * dividing a click's image-pixel position by it gives the CSS-viewport
+ * coordinates CDP's `Input.dispatchMouseEvent` expects (defaults to `1` when
+ * absent, i.e. no zoom). `scrollX`/`scrollY` are the page's current scroll
+ * offset, carried for display/telemetry only — CDP's own input dispatch is
+ * viewport-relative and never needs them added to a click's coordinates.
+ */
+export const ZeropsBrowserFrame = Schema.Struct({
+  type: Schema.Literal("frame"),
+  /** Identity supplied with the daemon frame or the SPI call's own result image. */
+  callId: Schema.optional(Schema.String),
+  threadId: Schema.optional(Schema.String),
+  turnId: Schema.optional(Schema.String),
+  /** Monotonically increasing within this call, retained across relay reconnects. */
+  revision: Schema.optional(Schema.Int),
+  completeness: Schema.optional(Schema.Literals(["complete", "partial"])),
+  /** The daemon uses JPEG; an identified tool result can carry another image format. */
+  mimeType: Schema.optional(Schema.String),
+  /** Base64 image, relayed as received. */
+  data: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
+  pageScaleFactor: Schema.optional(Schema.Number),
+  scrollX: Schema.optional(Schema.Number),
+  scrollY: Schema.optional(Schema.Number),
+});
+export type ZeropsBrowserFrame = typeof ZeropsBrowserFrame.Type;
+
+/**
+ * A state transition, published on first subscribe and whenever the relay's
+ * connection to the daemon, or the daemon's own reported tab, changes. `url`/
+ * `title` ride along once known (the daemon's own `tabs`/`url` messages) so
+ * the panel can say what page the agent is looking at without a second read.
+ */
+export const ZeropsBrowserStateEvent = Schema.Struct({
+  type: Schema.Literal("state"),
+  status: ZeropsBrowserStreamStatus,
+  url: Schema.optional(Schema.String),
+  title: Schema.optional(Schema.String),
+});
+export type ZeropsBrowserStateEvent = typeof ZeropsBrowserStateEvent.Type;
+
+/** A call's final image slot. Only complete evidence replaces it; null proves that slot empty. */
+export const ZeropsBrowserCallResult = Schema.Struct({
+  type: Schema.Literal("call-result"),
+  callId: Schema.String,
+  threadId: Schema.String,
+  turnId: Schema.String,
+  revision: Schema.Int,
+  completeness: Schema.Literals(["complete", "partial"]),
+  frame: Schema.optional(Schema.NullOr(ZeropsBrowserFrame)),
+});
+export type ZeropsBrowserCallResult = typeof ZeropsBrowserCallResult.Type;
+
+/** State transitions, live frames and source-proven call results share one subscription. */
+export const ZeropsBrowserStreamEvent = Schema.Union([
+  ZeropsBrowserFrame,
+  ZeropsBrowserStateEvent,
+  ZeropsBrowserCallResult,
+]);
+export type ZeropsBrowserStreamEvent = typeof ZeropsBrowserStreamEvent.Type;
+
+/**
+ * The live view of the app an agent opened on the paired Mac (the Mac tab).
+ * `not-paired`: no Mac is paired with this Mate. `unreachable`: the paired
+ * Mac does not answer over the VPN. `no-app`: no app opened yet, or it is not
+ * running or has no window. `no-helper`: the Mac has no view helper (a
+ * pairing older than the view, or macOS not letting it record).
+ * `connecting`: reaching the Mac. `live`: frames are flowing.
+ */
+export const ZeropsMacStreamStatus = Schema.Literals([
+  "not-paired",
+  "unreachable",
+  "no-app",
+  "no-helper",
+  "connecting",
+  "live",
+]);
+export type ZeropsMacStreamStatus = typeof ZeropsMacStreamStatus.Type;
+
+/** The window's rect on the Mac's screen, in points: where a click on the image lands. */
+export const ZeropsMacWindowBounds = Schema.Struct({
+  x: Schema.Number,
+  y: Schema.Number,
+  width: Schema.Number,
+  height: Schema.Number,
+});
+export type ZeropsMacWindowBounds = typeof ZeropsMacWindowBounds.Type;
+
+/** One captured window, as {@link ZeropsBrowserFrame}: base64 image and its pixel size. */
+export const ZeropsMacFrame = Schema.Struct({
+  type: Schema.Literal("frame"),
+  mimeType: Schema.String,
+  data: Schema.String,
+  width: Schema.Number,
+  height: Schema.Number,
+  bounds: ZeropsMacWindowBounds,
+});
+export type ZeropsMacFrame = typeof ZeropsMacFrame.Type;
+
+/**
+ * The view's state, sent first and on every change. `inUse`: someone is
+ * working on the Mac, so a click or typing from the view would take over
+ * their screen and is refused (the `mac device` guard).
+ */
+export const ZeropsMacStateEvent = Schema.Struct({
+  type: Schema.Literal("state"),
+  status: ZeropsMacStreamStatus,
+  macName: Schema.optional(Schema.String),
+  app: Schema.optional(Schema.String),
+  inUse: Schema.Boolean,
+  /**
+   * The commands the person runs on their Mac, while a step of theirs is what the view waits on
+   * (`not-paired`, `unreachable`, `no-helper`): the VPN first, then the pairing.
+   */
+  pairCommands: Schema.optional(Schema.Array(Schema.String)),
+  /**
+   * The commands that disconnect a paired Mac, in every state but `not-paired` and `connecting`:
+   * its setup removed from the Mac (which also makes the Mate forget it), then the VPN.
+   */
+  removeCommands: Schema.optional(Schema.Array(Schema.String)),
+});
+export type ZeropsMacStateEvent = typeof ZeropsMacStateEvent.Type;
+
+export const ZeropsMacStreamEvent = Schema.Union([ZeropsMacFrame, ZeropsMacStateEvent]);
+export type ZeropsMacStreamEvent = typeof ZeropsMacStreamEvent.Type;
+
+const MacImagePixel = Schema.Number.check(Schema.isGreaterThanOrEqualTo(0));
+
+/** `zerops.mac.input`: a click at a pixel of the last frame, or text typed into the app. */
+export const ZeropsMacInput = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("click"), x: MacImagePixel, y: MacImagePixel }),
+  Schema.Struct({
+    kind: Schema.Literal("text"),
+    text: Schema.String.check(Schema.isMinLength(1), Schema.isMaxLength(1000)),
+  }),
+]);
+export type ZeropsMacInput = typeof ZeropsMacInput.Type;
+
+/**
+ * `zerops.mate.update`'s success result (spec-mate.md §2.9 MU-2): the
+ * decoded `zcp mate update --json` answer, plus the server's own version
+ * before the update ran — the version the client's container machine
+ * waits to see change once the Mate answers again.
+ */
+export const ZeropsMateUpdateAction = Schema.Literals(["none", "installed", "updated"]);
+export type ZeropsMateUpdateAction = typeof ZeropsMateUpdateAction.Type;
+
+export const ZeropsMateUpdateResult = Schema.Struct({
+  action: ZeropsMateUpdateAction,
+  // Absent on a refusal that read no versions; its `error` says why.
+  from: Schema.optional(Schema.String),
+  to: Schema.optional(Schema.String),
+  restarted: Schema.Boolean,
+  started: Schema.optional(Schema.Boolean),
+  error: Schema.optional(Schema.String),
+  serverVersion: Schema.String,
+});
+export type ZeropsMateUpdateResult = typeof ZeropsMateUpdateResult.Type;
+
+/**
+ * `zerops.mate.update`'s domain error: `zcp` itself could not be run or did
+ * not answer, as distinct from {@link EnvironmentAuthorizationError} (the RPC
+ * is not offered here, or the caller lacks `exec:operate`). A `zcp mate
+ * update` that ran and reported its own failure is neither of these — it is
+ * a normal {@link ZeropsMateUpdateResult} carrying that failure's detail.
+ */
+export const ZeropsMateUpdateErrorReason = Schema.Literals([
+  "zcp-not-found",
+  "zcp-failed",
+  "timed-out",
+]);
+export type ZeropsMateUpdateErrorReason = typeof ZeropsMateUpdateErrorReason.Type;
+
+export class ZeropsMateUpdateError extends Schema.TaggedError<ZeropsMateUpdateError>()(
+  "ZeropsMateUpdateError",
+  {
+    reason: ZeropsMateUpdateErrorReason,
+    message: Schema.String,
+  },
+) {}
+
+// ---------------------------------------------------------------------------
+// Data Console surface — read-only slice 1 (spec-dataconsole.md §4.3)
+// ---------------------------------------------------------------------------
+
+/**
+ * `idle` — no console process spawned yet. `starting` — spawned, waiting on
+ * its stdout ready-line. `ready` — ready-line read, requests can be brokered.
+ * `unavailable` — the child did not start: it exited or failed before
+ * printing a ready-line (sanitized one-line `reason` rides along, never the
+ * raw stderr). The next call starts it again from `starting`.
+ */
+export const ZeropsDataConsoleStatus = Schema.Literals([
+  "idle",
+  "starting",
+  "ready",
+  "unavailable",
+]);
+export type ZeropsDataConsoleStatus = typeof ZeropsDataConsoleStatus.Type;
+
+/** One session-status transition, published by `subscribeZeropsDataConsole`. */
+export const ZeropsDataConsoleSessionEvent = Schema.Struct({
+  status: ZeropsDataConsoleStatus,
+  reason: Schema.optional(Schema.String),
+  allowWrites: Schema.optional(Schema.Boolean),
+});
+export type ZeropsDataConsoleSessionEvent = typeof ZeropsDataConsoleSessionEvent.Type;
+
+/** Addresses one node in a service's tree — schema/table, kv key, or object-storage prefix, family-specific. */
+export const ZeropsDataConsolePath = Schema.Struct({
+  service: Schema.String,
+  segments: Schema.Array(Schema.String),
+});
+export type ZeropsDataConsolePath = typeof ZeropsDataConsolePath.Type;
+
+/** Cursor-based paging, shared by every listing request (console `dataconsole-api.md` §3). */
+export const ZeropsDataConsolePage = Schema.Struct({
+  cursor: Schema.optional(Schema.String),
+  limit: Schema.optional(Schema.Number),
+  sort: Schema.optional(Schema.String),
+  direction: Schema.optional(Schema.Literals(["asc", "desc"])),
+});
+export type ZeropsDataConsolePage = typeof ZeropsDataConsolePage.Type;
+
+/** One entry of a service's `actions[]` — the sole source of truth for which affordance to render/enable (never infer from `family`/`support`). */
+export const ZeropsDataConsoleServiceAction = Schema.Struct({
+  id: Schema.String,
+  enabled: Schema.Boolean,
+  readOnly: Schema.Boolean,
+  reason: Schema.String,
+});
+export type ZeropsDataConsoleServiceAction = typeof ZeropsDataConsoleServiceAction.Type;
+
+export const ZeropsDataConsoleSummary = Schema.Struct({
+  maskedConnection: Schema.String,
+  bucket: Schema.optional(Schema.String),
+  size: Schema.optional(Schema.Number),
+});
+export type ZeropsDataConsoleSummary = typeof ZeropsDataConsoleSummary.Type;
+
+export const ZeropsDataConsoleService = Schema.Struct({
+  hostname: Schema.String,
+  type: Schema.String,
+  family: Schema.String,
+  support: Schema.String,
+  actions: Schema.Array(ZeropsDataConsoleServiceAction),
+  status: Schema.String,
+});
+export type ZeropsDataConsoleService = typeof ZeropsDataConsoleService.Type;
+
+/** Optional per-node metadata (console `NodeMeta`) — every field is family-specific and may be absent. */
+export const ZeropsDataConsoleNodeMeta = Schema.Struct({
+  size: Schema.optional(Schema.Number),
+  modified: Schema.optional(Schema.String),
+  contentType: Schema.optional(Schema.String),
+  etag: Schema.optional(Schema.String),
+  entryType: Schema.optional(Schema.String),
+  count: Schema.optional(Schema.Number),
+  ttlSeconds: Schema.optional(Schema.Number),
+  ttlState: Schema.optional(Schema.Literals(["expires", "persistent", "unknown"])),
+});
+export type ZeropsDataConsoleNodeMeta = typeof ZeropsDataConsoleNodeMeta.Type;
+
+export const ZeropsDataConsoleNode = Schema.Struct({
+  name: Schema.String,
+  kind: Schema.Literals(["container", "tabular", "blob"]),
+  path: ZeropsDataConsolePath,
+  hasChildren: Schema.Boolean,
+  // The console's Go `Node.Meta` is a `*NodeMeta` with `omitempty` — absent
+  // entirely from the wire (not `null`) whenever a provider set no metadata.
+  meta: Schema.optional(ZeropsDataConsoleNodeMeta),
+});
+export type ZeropsDataConsoleNode = typeof ZeropsDataConsoleNode.Type;
+
+export const ZeropsDataConsoleColumn = Schema.Struct({
+  name: Schema.String,
+  dataType: Schema.String,
+  pk: Schema.Boolean,
+  editable: Schema.Boolean,
+  reason: Schema.String,
+  sortable: Schema.Boolean,
+  sortReason: Schema.String,
+});
+export type ZeropsDataConsoleColumn = typeof ZeropsDataConsoleColumn.Type;
+
+/**
+ * `rows` are positional, parallel to `columns`. A cell value is left
+ * `Schema.Unknown` — the console sends exact-decimal JSON numbers (big ints
+ * included) that would round through `number`, so the client-runtime formats
+ * cells from the raw JSON value rather than this schema coercing it.
+ * `rowKeyCols` empty ⇒ not row-addressable (view-only, e.g. a query result).
+ */
+export const ZeropsDataConsoleTablePage = Schema.Struct({
+  columns: Schema.Array(ZeropsDataConsoleColumn),
+  rows: Schema.Array(Schema.Array(Schema.Unknown)),
+  nextCursor: Schema.String,
+  rowKeyCols: Schema.Array(Schema.String),
+  bestEffort: Schema.Boolean,
+  numbered: Schema.Boolean,
+});
+export type ZeropsDataConsoleTablePage = typeof ZeropsDataConsoleTablePage.Type;
+
+/**
+ * A `blob` request's response — always a bounded preview, server-capped at
+ * 256 KiB regardless of the value's real size (`size` carries the true
+ * pre-truncation byte count). `vector`/`streamMetadata` tell the panel to
+ * collapse an embedding array or label the body as generated stream
+ * metadata rather than real message content (console §3 headers).
+ */
+export const ZeropsDataConsoleBlob = Schema.Struct({
+  /** Base64, already capped server-side. */
+  data: Schema.String,
+  contentType: Schema.String,
+  truncated: Schema.Boolean,
+  size: Schema.Number,
+  vector: Schema.Boolean,
+  streamMetadata: Schema.Boolean,
+  ttlSeconds: Schema.optional(Schema.Number),
+});
+export type ZeropsDataConsoleBlob = typeof ZeropsDataConsoleBlob.Type;
+
+/**
+ * `zeropsDataConsoleCall`'s payload — one typed request per allowlisted
+ * console route (read-only slice 1, `dataconsole-api.md` §3):
+ * services/refresh/tree/stat/blob/table/tableCount/query/search. `refresh`
+ * re-runs discovery and answers with the same shape as `services`.
+ */
+export const ZeropsDataConsoleRequest = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("services") }),
+  Schema.Struct({ kind: Schema.Literal("refresh") }),
+  Schema.Struct({ kind: Schema.Literal("summary"), service: Schema.String }),
+  Schema.Struct({
+    kind: Schema.Literal("tree"),
+    path: ZeropsDataConsolePath,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+  Schema.Struct({ kind: Schema.Literal("stat"), path: ZeropsDataConsolePath }),
+  Schema.Struct({ kind: Schema.Literal("blob"), path: ZeropsDataConsolePath }),
+  Schema.Struct({
+    kind: Schema.Literal("table"),
+    path: ZeropsDataConsolePath,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+  Schema.Struct({ kind: Schema.Literal("tableCount"), path: ZeropsDataConsolePath }),
+  Schema.Struct({
+    kind: Schema.Literal("query"),
+    service: Schema.String,
+    stmt: Schema.String,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("search"),
+    path: ZeropsDataConsolePath,
+    q: Schema.String,
+    page: Schema.optional(ZeropsDataConsolePage),
+  }),
+]);
+export type ZeropsDataConsoleRequest = typeof ZeropsDataConsoleRequest.Type;
+
+/**
+ * `zeropsDataConsoleCall`'s success payload, one variant per request `kind`
+ * (`refresh` answers as `services`). `search` gets its own tag rather than
+ * reusing `tree`'s — every other kind here answers under its own tag even
+ * when the shape is shared (e.g. `count`), so `search` follows the same rule:
+ * `nodes`/`nextCursor`, identical to the `tree` variant's fields.
+ */
+export const ZeropsDataConsoleResponse = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("summary"), ...ZeropsDataConsoleSummary.fields }),
+  Schema.Struct({
+    kind: Schema.Literal("services"),
+    project: Schema.Struct({ id: Schema.String, name: Schema.String }),
+    services: Schema.Array(ZeropsDataConsoleService),
+    allowWrites: Schema.Boolean,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("tree"),
+    nodes: Schema.Array(ZeropsDataConsoleNode),
+    nextCursor: Schema.String,
+  }),
+  Schema.Struct({ kind: Schema.Literal("node"), node: ZeropsDataConsoleNode }),
+  Schema.Struct({ kind: Schema.Literal("blob"), ...ZeropsDataConsoleBlob.fields }),
+  Schema.Struct({ kind: Schema.Literal("table"), page: ZeropsDataConsoleTablePage }),
+  Schema.Struct({ kind: Schema.Literal("count"), count: Schema.Number }),
+  Schema.Struct({
+    kind: Schema.Literal("search"),
+    nodes: Schema.Array(ZeropsDataConsoleNode),
+    nextCursor: Schema.String,
+  }),
+]);
+export type ZeropsDataConsoleResponse = typeof ZeropsDataConsoleResponse.Type;
+
+/**
+ * Mirrors the console's error envelope (`dataconsole-api.md` §3 sentinel
+ * table) verbatim, plus `session_unavailable` for a broker-side failure
+ * before any HTTP request reached the console (no session started).
+ */
+export const ZeropsDataConsoleErrorCode = Schema.Literals([
+  "not_found",
+  "read_only",
+  "needs_confirm",
+  "conflict",
+  "wrong_type",
+  "too_large",
+  "unsupported",
+  "unreachable",
+  "upstream",
+  "invalid",
+  "timeout",
+  "internal",
+  "session_unavailable",
+  "denied",
+]);
+export type ZeropsDataConsoleErrorCode = typeof ZeropsDataConsoleErrorCode.Type;
+
+export class ZeropsDataConsoleError extends Schema.TaggedError<ZeropsDataConsoleError>()(
+  "ZeropsDataConsoleError",
+  {
+    code: ZeropsDataConsoleErrorCode,
+    message: Schema.String,
+    service: Schema.optional(Schema.String),
+    family: Schema.optional(Schema.String),
+    action: Schema.optional(Schema.String),
+    requestId: Schema.optional(Schema.String),
+  },
+) {}
+
+/**
+ * Whether a repository's remote actually answers — `git ls-remote` run now,
+ * in the service that owns the checkout (guide 4.5).
+ *
+ * The Git tab may not infer this from the last push, from the presence of a
+ * token or from a remote being configured at all: every one of those is true
+ * of a checkout whose remote refuses its credential, or that holds none, and
+ * a tab that mixes them shows "configured" for a setup that cannot push.
+ */
+export const ZeropsGitRemoteProbeInput = Schema.Struct({
+  /** The checkout, as every other `vcs.*` call names it. */
+  cwd: TrimmedNonEmptyString,
+  /** Which remote to ask; `origin` when the caller does not say. */
+  remote: Schema.optional(TrimmedNonEmptyString),
+});
+export type ZeropsGitRemoteProbeInput = typeof ZeropsGitRemoteProbeInput.Type;
+
+/**
+ * How much of git's diagnostic leaves the container.
+ *
+ * A block's trouble line is one line in a panel, and `ls-remote`'s stderr can
+ * run to a paragraph; the server cuts it here and the tab shows what arrives.
+ */
+export const ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS = 200;
+
+/**
+ * What the probe found. `reachable: false` carries the first line of git's own
+ * diagnostic, sanitized to one line and capped at
+ * {@link ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS} — never a URL with credentials in
+ * it, because the remote this runs against carries none (the token is an
+ * askpass helper's, not part of the URL).
+ */
+export const ZeropsGitRemoteProbeResult = Schema.Struct({
+  reachable: Schema.Boolean,
+  /** The remote's name as asked for. */
+  remote: Schema.String,
+  /** How many refs it advertised; `0` for a remote that answered empty. */
+  refCount: Schema.Number,
+  /** Git's first diagnostic line when it refused; `null` when it answered. */
+  detail: Schema.NullOr(Schema.String),
+});
+export type ZeropsGitRemoteProbeResult = typeof ZeropsGitRemoteProbeResult.Type;
+
+/** The probe could not be run at all — no git, no checkout, or it timed out. */
+export class ZeropsGitRemoteProbeError extends Schema.TaggedError<ZeropsGitRemoteProbeError>()(
+  "ZeropsGitRemoteProbeError",
+  { reason: Schema.String },
+) {
+  override get message(): string {
+    return `The remote could not be probed: ${this.reason}`;
+  }
+}

@@ -1,0 +1,353 @@
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SqlSchema from "effect/sql/SqlSchema";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as Struct from "effect/Struct";
+import { ChatAttachment } from "@t3tools/contracts";
+
+import { toPersistenceSqlError } from "../Errors.ts";
+import {
+  AppendStreamingProjectionThreadMessage,
+  GetProjectionThreadMessageInput,
+  HasProjectionThreadAssistantMessageInput,
+  ProjectionThreadMessageRepository,
+  type ProjectionThreadMessageRepositoryShape,
+  DeleteProjectionThreadMessagesInput,
+  LatestProjectionThreadMessagePreviewSourceInput,
+  ListProjectionThreadMessagesInput,
+  ProjectionThreadMessage,
+  ProjectionThreadMessagePreviewSource,
+} from "../Services/ProjectionThreadMessages.ts";
+
+const ProjectionThreadMessageDbRowSchema = ProjectionThreadMessage.mapFields(
+  Struct.assign({
+    isStreaming: Schema.Number,
+    attachments: Schema.NullOr(Schema.fromJsonString(Schema.Array(ChatAttachment))),
+  }),
+);
+const ProjectionThreadMessageExistsDbRowSchema = Schema.Struct({ exists: Schema.Number });
+const ProjectionThreadMessagePreviewSourceDbRowSchema =
+  ProjectionThreadMessagePreviewSource.mapFields(
+    Struct.assign({
+      attachments: Schema.fromJsonString(ProjectionThreadMessagePreviewSource.fields.attachments),
+    }),
+  );
+
+function toProjectionThreadMessage(
+  row: Schema.Schema.Type<typeof ProjectionThreadMessageDbRowSchema>,
+): ProjectionThreadMessage {
+  return {
+    messageId: row.messageId,
+    threadId: row.threadId,
+    turnId: row.turnId,
+    role: row.role,
+    text: row.text,
+    isStreaming: row.isStreaming === 1,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    ...(row.attachments !== null ? { attachments: row.attachments } : {}),
+  };
+}
+
+const makeProjectionThreadMessageRepository = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+
+  const upsertProjectionThreadMessageRow = SqlSchema.void({
+    Request: ProjectionThreadMessage,
+    execute: (row) => {
+      const nextAttachmentsJson =
+        row.attachments !== undefined ? JSON.stringify(row.attachments) : null;
+      return sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          attachments_json,
+          is_streaming,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${row.messageId},
+          ${row.threadId},
+          ${row.turnId},
+          ${row.role},
+          ${row.text},
+          COALESCE(
+            ${nextAttachmentsJson},
+            (
+              SELECT attachments_json
+              FROM projection_thread_messages
+              WHERE message_id = ${row.messageId}
+            )
+          ),
+          ${row.isStreaming ? 1 : 0},
+          ${row.createdAt},
+          ${row.updatedAt}
+        )
+        ON CONFLICT (message_id)
+        DO UPDATE SET
+          thread_id = excluded.thread_id,
+          turn_id = excluded.turn_id,
+          role = excluded.role,
+          text = excluded.text,
+          attachments_json = COALESCE(
+            excluded.attachments_json,
+            projection_thread_messages.attachments_json
+          ),
+          is_streaming = excluded.is_streaming,
+          created_at = excluded.created_at,
+          updated_at = excluded.updated_at
+      `;
+    },
+  });
+
+  const appendStreamingProjectionThreadMessageRow = SqlSchema.void({
+    Request: AppendStreamingProjectionThreadMessage,
+    execute: (row) => {
+      const nextAttachmentsJson =
+        row.attachments !== undefined ? JSON.stringify(row.attachments) : null;
+      return sql`
+        INSERT INTO projection_thread_messages (
+          message_id,
+          thread_id,
+          turn_id,
+          role,
+          text,
+          attachments_json,
+          is_streaming,
+          created_at,
+          updated_at
+        )
+        VALUES (
+          ${row.messageId},
+          ${row.threadId},
+          ${row.turnId},
+          ${row.role},
+          ${row.text},
+          ${nextAttachmentsJson},
+          1,
+          ${row.createdAt},
+          ${row.updatedAt}
+        )
+        ON CONFLICT (message_id)
+        DO UPDATE SET
+          thread_id = excluded.thread_id,
+          turn_id = excluded.turn_id,
+          role = excluded.role,
+          text = projection_thread_messages.text || excluded.text,
+          attachments_json = COALESCE(
+            excluded.attachments_json,
+            projection_thread_messages.attachments_json
+          ),
+          is_streaming = 1,
+          updated_at = excluded.updated_at
+      `;
+    },
+  });
+
+  const getProjectionThreadMessageRow = SqlSchema.findOneOption({
+    Request: GetProjectionThreadMessageInput,
+    Result: ProjectionThreadMessageDbRowSchema,
+    execute: ({ messageId }) =>
+      sql`
+        SELECT
+          message_id AS "messageId",
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          role,
+          text,
+          attachments_json AS "attachments",
+          is_streaming AS "isStreaming",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM projection_thread_messages
+        WHERE message_id = ${messageId}
+        LIMIT 1
+      `,
+  });
+
+  const hasProjectionThreadAssistantMessageRow = SqlSchema.findOne({
+    Request: HasProjectionThreadAssistantMessageInput,
+    Result: ProjectionThreadMessageExistsDbRowSchema,
+    execute: ({ threadId, turnId, streamingOnly }) =>
+      sql`
+        SELECT EXISTS (
+          SELECT 1
+          FROM projection_thread_messages
+          WHERE thread_id = ${threadId}
+            AND turn_id = ${turnId}
+            AND role = 'assistant'
+            AND (${streamingOnly ? 1 : 0} = 0 OR is_streaming = 1)
+          LIMIT 1
+        ) AS "exists"
+      `,
+  });
+
+  const listProjectionThreadMessageRows = SqlSchema.findAll({
+    Request: ListProjectionThreadMessagesInput,
+    Result: ProjectionThreadMessageDbRowSchema,
+    execute: ({ threadId }) =>
+      sql`
+        SELECT
+          message_id AS "messageId",
+          thread_id AS "threadId",
+          turn_id AS "turnId",
+          role,
+          text,
+          attachments_json AS "attachments",
+          is_streaming AS "isStreaming",
+          created_at AS "createdAt",
+          updated_at AS "updatedAt"
+        FROM projection_thread_messages
+        WHERE thread_id = ${threadId}
+        ORDER BY created_at ASC, message_id ASC
+      `,
+  });
+
+  const getLatestUserMessageAtRow = SqlSchema.findOne({
+    Request: ListProjectionThreadMessagesInput,
+    Result: Schema.Struct({
+      latestUserMessageAt: Schema.NullOr(ProjectionThreadMessage.fields.createdAt),
+    }),
+    execute: ({ threadId }) => sql`
+      SELECT MAX(created_at) AS "latestUserMessageAt"
+      FROM projection_thread_messages
+      WHERE thread_id = ${threadId} AND role = 'user'
+    `,
+  });
+
+  // Attachment kinds and types only, and only from well-formed JSON: a preview
+  // never decodes attachment metadata, and one bad row must not blank the
+  // shell. The type tells a picture's kept original from a file.
+  const listLatestPreviewSourceRows = SqlSchema.findAll({
+    Request: LatestProjectionThreadMessagePreviewSourceInput,
+    Result: ProjectionThreadMessagePreviewSourceDbRowSchema,
+    execute: ({ threadId, role, limit }) => sql`
+      SELECT
+        role,
+        substr(text, 1, 1000) AS text,
+        CASE
+          WHEN json_valid(attachments_json) AND json_type(attachments_json) = 'array'
+          THEN (
+            SELECT json_group_array(
+              json_object(
+                'type', COALESCE(json_extract(attachment.value, '$.type'), 'file'),
+                'mimeType', COALESCE(json_extract(attachment.value, '$.mimeType'), '')
+              )
+            )
+            FROM json_each(attachments_json) AS attachment
+          )
+          ELSE '[]'
+        END AS attachments,
+        created_at AS "createdAt"
+      FROM projection_thread_messages
+      WHERE thread_id = ${threadId}
+        AND role IN ('user', 'assistant')
+        AND (${role ?? null} IS NULL OR role = ${role ?? null})
+        AND (
+          length(trim(text)) > 0
+          OR (
+            json_valid(attachments_json)
+            AND json_type(attachments_json) = 'array'
+            AND json_array_length(attachments_json) > 0
+          )
+        )
+      ORDER BY created_at DESC, message_id DESC
+      LIMIT ${limit}
+    `,
+  });
+
+  const deleteProjectionThreadMessageRows = SqlSchema.void({
+    Request: DeleteProjectionThreadMessagesInput,
+    execute: ({ threadId }) =>
+      sql`
+        DELETE FROM projection_thread_messages
+        WHERE thread_id = ${threadId}
+      `,
+  });
+
+  const upsert: ProjectionThreadMessageRepositoryShape["upsert"] = (row) =>
+    upsertProjectionThreadMessageRow(row).pipe(
+      Effect.mapError(toPersistenceSqlError("ProjectionThreadMessageRepository.upsert:query")),
+    );
+
+  const appendStreaming: ProjectionThreadMessageRepositoryShape["appendStreaming"] = (row) =>
+    appendStreamingProjectionThreadMessageRow(row).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.appendStreaming:query"),
+      ),
+    );
+
+  const getByMessageId: ProjectionThreadMessageRepositoryShape["getByMessageId"] = (input) =>
+    getProjectionThreadMessageRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.getByMessageId:query"),
+      ),
+      Effect.map(Option.map(toProjectionThreadMessage)),
+    );
+
+  const hasAssistantMessageForTurn: ProjectionThreadMessageRepositoryShape["hasAssistantMessageForTurn"] =
+    (input) =>
+      hasProjectionThreadAssistantMessageRow(input).pipe(
+        Effect.mapError(
+          toPersistenceSqlError(
+            "ProjectionThreadMessageRepository.hasAssistantMessageForTurn:query",
+          ),
+        ),
+        Effect.map((row) => row.exists === 1),
+      );
+
+  const listByThreadId: ProjectionThreadMessageRepositoryShape["listByThreadId"] = (input) =>
+    listProjectionThreadMessageRows(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.listByThreadId:query"),
+      ),
+      Effect.map((rows) => rows.map(toProjectionThreadMessage)),
+    );
+
+  const getLatestUserMessageAt: ProjectionThreadMessageRepositoryShape["getLatestUserMessageAt"] = (
+    input,
+  ) =>
+    getLatestUserMessageAtRow(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.getLatestUserMessageAt:query"),
+      ),
+      Effect.map((row) => row.latestUserMessageAt),
+    );
+
+  const listLatestPreviewSources: ProjectionThreadMessageRepositoryShape["listLatestPreviewSources"] =
+    (input) =>
+      listLatestPreviewSourceRows(input).pipe(
+        Effect.mapError(
+          toPersistenceSqlError("ProjectionThreadMessageRepository.listLatestPreviewSources:query"),
+        ),
+      );
+
+  const deleteByThreadId: ProjectionThreadMessageRepositoryShape["deleteByThreadId"] = (input) =>
+    deleteProjectionThreadMessageRows(input).pipe(
+      Effect.mapError(
+        toPersistenceSqlError("ProjectionThreadMessageRepository.deleteByThreadId:query"),
+      ),
+    );
+
+  return {
+    upsert,
+    appendStreaming,
+    getByMessageId,
+    hasAssistantMessageForTurn,
+    listByThreadId,
+    getLatestUserMessageAt,
+    listLatestPreviewSources,
+    deleteByThreadId,
+  } satisfies ProjectionThreadMessageRepositoryShape;
+});
+
+export const ProjectionThreadMessageRepositoryLive = Layer.effect(
+  ProjectionThreadMessageRepository,
+  makeProjectionThreadMessageRepository,
+);

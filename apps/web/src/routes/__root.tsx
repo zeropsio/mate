@@ -1,0 +1,730 @@
+import { RecoveryOutcomeStatus } from "../zerops/recoveryOutcomes";
+import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
+import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
+import { useThreadDetail } from "~/state/entities";
+import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
+import { useMateRecovery } from "../zerops/useMateRecovery";
+import { useMateHeld } from "../zerops/accountEnvironments";
+import { recoveryNotice, mateProjectUnavailable } from "@t3tools/client-runtime/data";
+import { EnvironmentId, type ServerLifecycleWelcomePayload } from "@t3tools/contracts";
+import {
+  scopedProjectKey,
+  scopeProjectRef,
+  scopedThreadKey,
+} from "@t3tools/client-runtime/environment";
+import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
+import {
+  type Reachability,
+  reachabilityCountsDown,
+  routeGatePhrase,
+  selectRouteGate,
+  type MateVoice,
+} from "@t3tools/client-runtime/zerops/environments";
+import { squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
+import {
+  Link,
+  Outlet,
+  createRootRoute,
+  type ErrorComponentProps,
+  useLocation,
+  useNavigate,
+  useRouter,
+} from "@tanstack/react-router";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
+
+import { APP_BASE_NAME, APP_DISPLAY_NAME, APP_STAGE_LABEL } from "../branding";
+import { resolveServerBackedAppDisplayName } from "../branding.logic";
+import { AppSidebarLayout } from "../components/AppSidebarLayout";
+import { CommandPalette } from "../components/CommandPalette";
+import { ConfirmDialogHost } from "../components/ConfirmDialogHost";
+import { ProviderUpdatePrimaryNotification } from "../components/ProviderUpdatePrimaryNotification";
+import { ThreadNotificationCoordinator } from "../components/ThreadNotificationCoordinator";
+import { QueuedMessageSender } from "../components/QueuedMessageSender";
+import { ReopenClosedViewShortcut } from "../components/ReopenClosedViewShortcut";
+import { ProjectCloneToastCoordinator } from "../components/ProjectCloneToastCoordinator";
+import { SlowRpcRequestToastCoordinator } from "../components/SlowRpcRequestToastCoordinator";
+import { ThemeEditorHost } from "../components/settings/ThemeEditorHost";
+import { ZeropsHostedLanding } from "../components/zerops/landing/ZeropsHostedLanding";
+import { ZeropsNewMateHost } from "../components/zerops/ZeropsNewMateHost";
+import { PutLiveHost } from "../components/zerops/PutLiveHost";
+import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost";
+import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
+import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
+import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
+import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
+import { Button } from "../components/ui/button";
+import {
+  AnchoredToastProvider,
+  stackedThreadToast,
+  ToastProvider,
+  toastManager,
+} from "../components/ui/toast";
+import { resolveAndPersistPreferredEditor } from "../editorPreferences";
+import { applyAppearanceFontVariables } from "~/appearanceFonts";
+import { applyAppearanceContrast } from "~/appearanceContrast";
+import { useClientSettings } from "../hooks/useSettings";
+import {
+  deriveLogicalProjectKeyFromSettings,
+  derivePhysicalProjectKeyFromPath,
+  selectProjectGroupingSettings,
+} from "../logicalProject";
+import { DraftId, useComposerDraftStore } from "../composerDraftStore";
+import { useUiStateStore } from "../uiStateStore";
+import { syncBrowserChromeTheme } from "../hooks/useTheme";
+import { configureClientTracing } from "../observability/clientTracing";
+import type { AuthGateState } from "../environments/primary/auth";
+import { shellEnvironment } from "../state/shell";
+import { useAtomValue } from "@effect/atom-react";
+import { useAtomCommand } from "../state/use-atom-command";
+import { useEnvironments, usePrimaryEnvironment } from "../state/environments";
+import {
+  primaryServerConfigAtom,
+  primaryServerConfigEventAtom,
+  primaryServerWelcomeAtom,
+} from "../state/server";
+import { readProject, setActiveEnvironmentId, useActiveEnvironmentId } from "../state/entities";
+import {
+  createKeybindingsUpdateToastController,
+  type KeybindingsUpdateToastController,
+} from "../components/KeybindingsUpdateToast.logic";
+import { countDoorEnvironments, resolveDoor } from "./-door";
+import { resolveZeropsAccountGate } from "./-accountGate";
+import { draftIdFromPathname, environmentIdFromPathname } from "./-environmentRoute";
+import {
+  useEnvironmentReachability,
+  useRouteConversation,
+  useRouteGateInputs,
+} from "./-environmentTargets";
+import { mateNoticeVoice } from "../zerops/mateNoticeVoice";
+import { MateLinkStage } from "../components/zerops/MateLinkStage";
+import { RouteStandIn } from "../components/zerops/RouteStandIn";
+import { resolveThreadRouteRef } from "../threadRoutes";
+import { RouteGateView } from "./-routeGate";
+import { useHqGate } from "../zerops/hqGate";
+import { HQ_BORN_HERE, useHqBornHere } from "../zerops/useHqBornHere";
+import { staleChunkRecovery } from "../lib/staleChunk";
+import { installMateDiagnostics } from "~/zerops/diagnostics";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { ZeropsReviewProvider } from "~/zerops/ZeropsReviewProvider";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+
+const NO_ENVIRONMENT = EnvironmentId.make("none");
+const SILENT_VOICE: MateVoice = { surface: "none" };
+const READY: Reachability = { kind: "ready", notice: null };
+const SILENT_STAGE = { surface: "stage", text: null, actions: [], processes: false } as const;
+
+// At boot, before the first route renders: every emit point writes from then on.
+installMateDiagnostics();
+
+export const Route = createRootRoute({
+  beforeLoad: () => ({ authGateState: { status: "hosted-static" } as AuthGateState }),
+  component: RootRouteView,
+  // The whole page's wait (a route's guard holds every route above it): nothing drawn into #root,
+  // so index.html's frame stands (`bootFrame.ts`) — never a "Loading…" in place of the app.
+  pendingComponent: RootRoutePending,
+  errorComponent: RootRouteErrorView,
+  notFoundComponent: RootRouteNotFoundView,
+  head: () => ({
+    meta: [{ name: "title", content: APP_DISPLAY_NAME }],
+  }),
+});
+
+function RootRoutePending() {
+  return null;
+}
+
+function RootRouteNotFoundView() {
+  return (
+    <main className="flex min-h-0 min-w-0 flex-1 items-center justify-center p-6">
+      <div className="flex max-w-sm flex-col items-center gap-4 text-center">
+        <h1 className="text-lg font-medium text-foreground">Page not found</h1>
+        <p className="text-sm text-muted-foreground">
+          This link doesn't point to a page in {APP_DISPLAY_NAME}. Go home to choose a project or
+          start a conversation.
+        </p>
+        <Button render={<Link to="/" replace />}>Go home</Button>
+      </div>
+    </main>
+  );
+}
+
+function RootRouteView() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { status: zeropsSessionStatus } = useZeropsSession();
+  const accountGate = resolveZeropsAccountGate({ pathname, status: zeropsSessionStatus });
+  if (accountGate === "pre-account") return <Outlet />;
+  if (accountGate === "auth-only") return <ZeropsHostedLanding />;
+  return <SignedInRootRouteView />;
+}
+
+function SignedInRootRouteView() {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { authGateState } = Route.useRouteContext();
+  const { environments } = useEnvironments();
+  const door = resolveDoor(authGateState, {
+    pathname,
+    environmentCount: countDoorEnvironments(environments),
+  });
+  const primaryEnvironmentAuthenticated = door.session === "authenticated";
+  const routeEnvironmentId = environmentIdFromPathname(pathname);
+  const gateInputs = useRouteGateInputs(
+    door.shell === "bare" || routeEnvironmentId === null
+      ? null
+      : EnvironmentId.make(routeEnvironmentId),
+  );
+  // A draft is its environment's conversation too, and C1b suppresses it with the thread's.
+  const draftId = draftIdFromPathname(pathname);
+  const draftEnvironmentId = useComposerDraftStore((store) =>
+    draftId === null ? null : (store.getDraftSession(DraftId.make(draftId))?.environmentId ?? null),
+  );
+  // A draft names no environment in its address, so no route lease holds its Mate: the draft holds
+  // it instead, or a Mate left for a while is parked under it and never comes back — its sign-in
+  // inert, its models never read, after a reload too.
+  useMateHeld(door.shell === "bare" ? null : draftEnvironmentId);
+  const conversation = useRouteConversation(
+    door.shell === "bare"
+      ? null
+      : routeEnvironmentId === null
+        ? draftEnvironmentId
+        : EnvironmentId.make(routeEnvironmentId),
+  );
+  const gate = selectRouteGate(gateInputs.target);
+  const { gate: hqGate } = useHqGate(pathname);
+  // HQ's setup this page watched finish stays on screen until the menu has read the new HQ: the
+  // product takes over in one piece, never through a blank page while the new HQ starts answering.
+  const hqBornHere = useHqBornHere();
+  // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
+  // none can show yet; the Mate by its own name, never its container's host.
+  const routeEnvironment =
+    routeEnvironmentId === null ? null : EnvironmentId.make(routeEnvironmentId);
+  const routeMate = useZeropsMate(routeEnvironment ?? NO_ENVIRONMENT);
+  // The Mate's own name once the directory names it; until then the voice says "This Mate".
+  const routeMateName = routeMate.kind === "mate" ? routeMate.mate.name : undefined;
+  // A draft's route names no environment; its voice is its environment's all the same.
+  const draftReachability = useEnvironmentReachability(
+    routeEnvironment === null && draftEnvironmentId !== null ? draftEnvironmentId : null,
+  );
+  const draftMate = useZeropsMate(draftEnvironmentId ?? NO_ENVIRONMENT);
+  const linkReachability =
+    routeEnvironment === null
+      ? draftReachability
+      : gate.kind === "outlet"
+        ? (gate.banner ?? READY)
+        : gate.kind === "wait" || gate.kind === "unavailable"
+          ? gate.reachability
+          : null;
+  const recovery = useMateRecovery(
+    gateInputs.projectId,
+    gateInputs.serviceId,
+    linkReachability?.kind !== "ready",
+  );
+  const nowMs = useSecondsNowMs(reachabilityCountsDown(linkReachability));
+  const recoveryPhrase = recoveryNotice(recovery, routeMateName ?? gateInputs.mateName);
+  const projectUnavailable = mateProjectUnavailable(recovery.standing);
+  const gatePhrase =
+    recoveryPhrase ?? routeGatePhrase(gate, { nowMs, mateName: gateInputs.mateName });
+  const speakingMate = routeEnvironment === null ? draftMate : routeMate;
+  const speakingName = speakingMate.kind === "mate" ? speakingMate.mate.name : "The Mate";
+  const lastKnown = useLastKnownMateWords(
+    gateInputs.projectId ??
+      (speakingMate.kind === "mate" ? speakingMate.mate.projectId : undefined),
+    speakingName,
+  );
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const offlineSince = useMateOfflineSince(
+    gateInputs.projectId,
+    gateInputs.serviceId === undefined
+      ? undefined
+      : `${gateInputs.projectId}:${gateInputs.serviceId}`,
+  );
+  const speaksFor = routeEnvironment ?? draftEnvironmentId;
+  const voice =
+    speaksFor !== null &&
+    (gate.kind === "outlet" ||
+      gate.kind === "wait" ||
+      (gate.kind === "unavailable" && gate.reachability !== null))
+      ? mateNoticeVoice({
+          reachability: linkReachability,
+          recovery,
+          lastKnown,
+          offlineSince,
+          timestampFormat,
+          conversationShown: gate.kind === "outlet" && conversation.kind === "shown",
+          nowMs,
+          mateName: speakingName,
+        })
+      : SILENT_VOICE;
+  // The conversation the route names, for the stand-in its stage draws.
+  const routeThreadRef = resolveThreadRouteRef({
+    environmentId: routeEnvironmentId ?? undefined,
+    threadId: pathname.split("/").filter((part) => part.length > 0)[1],
+  });
+  const routeDetailHeld = useThreadDetail(routeThreadRef, (detail) => detail !== null);
+  useEffect(() => {
+    mateDiagnostics.record({
+      kind: "route-gate",
+      verdict: gate.kind,
+      environmentId: routeEnvironmentId,
+    });
+  }, [gate.kind, routeEnvironmentId]);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      syncBrowserChromeTheme();
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+    };
+  }, [pathname]);
+
+  if (door.shell === "bare") {
+    return (
+      <>
+        <DocumentTitleSync />
+        <Outlet />
+      </>
+    );
+  }
+
+  const appShell = (
+    <AgentAdmissionComposition>
+      <ZeropsReviewProvider>
+        <CommandPalette>
+          <AppSidebarLayout status={<RecoveryOutcomeStatus />}>
+            <ConversationOpeningProvider>
+              {/* The organization's gate (ADR 0001): no product without its HQ. */}
+              {hqGate.kind !== "open" ? (
+                <ZeropsHqGate gate={hqGate} />
+              ) : hqBornHere ? (
+                <ZeropsHqGate gate={HQ_BORN_HERE} />
+              ) : (
+                <RouteGateView
+                  gate={gate}
+                  phrase={gatePhrase}
+                  projectId={projectUnavailable ? null : gateInputs.projectId}
+                  recoveryPhrase={recoveryPhrase}
+                  projectUnavailable={projectUnavailable}
+                  conversation={
+                    projectUnavailable
+                      ? { kind: "suppressed", reason: "access-denied" }
+                      : conversation
+                  }
+                  voice={voice}
+                  stage={
+                    gate.kind === "wait" ||
+                    (gate.kind === "unavailable" && gate.reachability !== null) ? (
+                      <MateLinkStage
+                        readPending={!routeDetailHeld}
+                        threadKey={
+                          routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
+                        }
+                        composer={
+                          routeThreadRef === null ? null : (
+                            <RouteStandIn threadRef={routeThreadRef} />
+                          )
+                        }
+                        environmentId={routeEnvironment}
+                        projectId={gateInputs.projectId}
+                        voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                      />
+                    ) : null
+                  }
+                >
+                  <Outlet />
+                </RouteGateView>
+              )}
+            </ConversationOpeningProvider>
+          </AppSidebarLayout>
+          {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
+            new Mate's hand-over to its conversation; the New project dialog, of its family, the
+            same way for every "New project"; a place's addresses, wherever a door opens them; a
+            project's Delete; Put it live, its sheet and its runs.
+            None behind the organization's gate. */}
+          {hqGate.kind === "open" ? (
+            <>
+              <ZeropsNewMateHost />
+              <ZeropsNewProjectHost />
+              <ChiefSetupHost />
+              <AddressesSheetHost />
+              <ZeropsDeleteApplicationHost />
+              <PutLiveHost />
+            </>
+          ) : null}
+        </CommandPalette>
+      </ZeropsReviewProvider>
+    </AgentAdmissionComposition>
+  );
+
+  return (
+    <ToastProvider>
+      <AnchoredToastProvider>
+        <DocumentTitleSync />
+        <ContrastAppearanceSync />
+        <GlassAppearanceSync />
+        <FontAppearanceSync />
+        {primaryEnvironmentAuthenticated ? <AuthenticatedTracingBootstrap /> : null}
+        <ThreadNotificationCoordinator />
+        <QueuedMessageSender />
+        <ReopenClosedViewShortcut />
+        <ConfirmDialogHost />
+        <SlowRpcRequestToastCoordinator />
+        <ProjectCloneToastCoordinator />
+        <HostedStaticEnvironmentBootstrap />
+        {primaryEnvironmentAuthenticated ? <EventRouter /> : null}
+        {primaryEnvironmentAuthenticated ? <ProviderUpdatePrimaryNotification /> : null}
+        {appShell}
+        {/* Above the router: a theme draft is judged by walking the app, so the
+            editor has to survive navigation away from settings. */}
+        <ThemeEditorHost />
+      </AnchoredToastProvider>
+    </ToastProvider>
+  );
+}
+
+function ContrastAppearanceSync() {
+  const appearanceContrast = useClientSettings((settings) => settings.appearanceContrast);
+  const diffColorScheme = useClientSettings((settings) => settings.diffColorScheme);
+
+  useEffect(() => {
+    document.documentElement.dataset.diffColorScheme = diffColorScheme;
+  }, [diffColorScheme]);
+
+  useEffect(() => {
+    applyAppearanceContrast(document.documentElement, appearanceContrast);
+  }, [appearanceContrast]);
+
+  return null;
+}
+
+function GlassAppearanceSync() {
+  const glassOpacity = useClientSettings((settings) => settings.glassOpacity);
+
+  useEffect(() => {
+    const style = document.documentElement.style;
+    style.setProperty("--glass-opacity", `${glassOpacity}%`);
+    // Opaque glass shows nothing of what is behind it: no backdrop pass at all.
+    if (glassOpacity === 100) {
+      style.setProperty("--glass-backdrop", "none");
+    } else {
+      style.removeProperty("--glass-backdrop");
+    }
+  }, [glassOpacity]);
+
+  return null;
+}
+
+function FontAppearanceSync() {
+  const fontFamilySans = useClientSettings((settings) => settings.fontFamilySans);
+  const fontFamilyCode = useClientSettings((settings) => settings.fontFamilyCode);
+  const fontFamilyComposer = useClientSettings((settings) => settings.fontFamilyComposer);
+  const fontSizeInterface = useClientSettings((settings) => settings.fontSizeInterface);
+  const fontSizePrompt = useClientSettings((settings) => settings.fontSizePrompt);
+  const fontSizeCode = useClientSettings((settings) => settings.fontSizeCode);
+  const fontSmoothing = useClientSettings((settings) => settings.fontSmoothing);
+
+  useEffect(() => {
+    applyAppearanceFontVariables(document.documentElement, {
+      sans: fontFamilySans,
+      code: fontFamilyCode,
+      composer: fontFamilyComposer,
+      sizeInterface: fontSizeInterface,
+      sizePrompt: fontSizePrompt,
+      sizeCode: fontSizeCode,
+      smoothing: fontSmoothing,
+    });
+  }, [
+    fontFamilyCode,
+    fontFamilyComposer,
+    fontFamilySans,
+    fontSizeCode,
+    fontSizeInterface,
+    fontSizePrompt,
+    fontSmoothing,
+  ]);
+
+  return null;
+}
+
+function DocumentTitleSync() {
+  const primaryServerVersion =
+    useAtomValue(primaryServerConfigAtom)?.environment.serverVersion ?? null;
+  const title = resolveServerBackedAppDisplayName({
+    baseName: APP_BASE_NAME,
+    fallbackDisplayName: APP_DISPLAY_NAME,
+    fallbackStageLabel: APP_STAGE_LABEL,
+    primaryServerVersion,
+  });
+
+  useEffect(() => {
+    document.title = title;
+  }, [title]);
+
+  return null;
+}
+
+function HostedStaticEnvironmentBootstrap() {
+  const { environments } = useEnvironments();
+  const activeEnvironmentId = useActiveEnvironmentId();
+
+  useEffect(() => {
+    if (
+      environments.some(
+        (environment) => environment.entry.target._tag === "PrimaryConnectionTarget",
+      )
+    ) {
+      return;
+    }
+
+    if (activeEnvironmentId) {
+      return;
+    }
+
+    const firstSavedEnvironment = environments[0];
+    if (!firstSavedEnvironment) {
+      return;
+    }
+
+    setActiveEnvironmentId(firstSavedEnvironment.environmentId);
+  }, [activeEnvironmentId, environments]);
+
+  return null;
+}
+
+/** A new build came while a Mate's setup runs in this tab: the reload waits for the setup. */
+function ReloadAfterSetup() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background px-4 text-center text-foreground">
+      <div className="max-w-sm">
+        <h1 className="text-lg font-semibold">Mate was updated.</h1>
+        <p className="mt-1 text-sm text-muted-foreground">
+          This tab reloads to the new version once the setup it is running is done.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function RootRouteErrorView({ error }: ErrorComponentProps) {
+  const router = useRouter();
+  // A lazy surface whose code a deploy replaced reloads to the new build instead.
+  const [reloading] = useState(() => staleChunkRecovery.recover(error));
+  if (reloading) return staleChunkRecovery.waiting() ? <ReloadAfterSetup /> : null;
+  const message = errorMessage(error);
+  const details = errorDetails(error);
+
+  return (
+    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-background px-4 py-10 text-foreground sm:px-6">
+      <div className="pointer-events-none absolute inset-0 opacity-80">
+        <div className="absolute inset-x-0 top-0 h-44 bg-[radial-gradient(44rem_16rem_at_top,color-mix(in_srgb,var(--color-red-500)_16%,transparent),transparent)]" />
+        <div className="absolute inset-0 bg-[linear-gradient(145deg,color-mix(in_srgb,var(--background)_90%,var(--color-black))_0%,var(--background)_55%)]" />
+      </div>
+
+      <section className="relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8">
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-muted-foreground uppercase">
+          {APP_DISPLAY_NAME}
+        </p>
+        <h1 className="mt-3 text-2xl font-semibold tracking-tight sm:text-3xl">
+          Something went wrong.
+        </h1>
+        <p className="mt-2 text-sm leading-relaxed text-muted-foreground">{message}</p>
+
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Button size="sm" onClick={() => void router.invalidate()}>
+            Try again
+          </Button>
+          <Button size="sm" variant="secondary" onClick={() => window.location.reload()}>
+            Reload app
+          </Button>
+        </div>
+
+        <details className="group mt-5 overflow-hidden rounded-lg border border-border/70 bg-background/55">
+          <summary className="cursor-pointer list-none px-3 py-2 text-xs font-medium text-muted-foreground">
+            <span className="group-open:hidden">Show error details</span>
+            <span className="hidden group-open:inline">Hide error details</span>
+          </summary>
+          <pre className="max-h-56 overflow-auto border-t border-border/70 bg-background/80 px-3 py-2 text-xs text-foreground/85">
+            {details}
+          </pre>
+        </details>
+      </section>
+    </div>
+  );
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error && error.message.trim().length > 0) {
+    return error.message;
+  }
+
+  if (typeof error === "string" && error.trim().length > 0) {
+    return error;
+  }
+
+  return "An unexpected router error occurred.";
+}
+
+function errorDetails(error: unknown): string {
+  if (error instanceof Error) {
+    return error.stack ?? error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  try {
+    return JSON.stringify(error, null, 2);
+  } catch {
+    return "No additional error details are available.";
+  }
+}
+
+function AuthenticatedTracingBootstrap() {
+  useEffect(() => {
+    void configureClientTracing();
+  }, []);
+
+  return null;
+}
+
+function EventRouter() {
+  const navigate = useNavigate();
+  const pathname = useLocation({ select: (loc) => loc.pathname });
+  const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
+  const primaryEnvironment = usePrimaryEnvironment();
+  const openInEditor = useAtomCommand(shellEnvironment.openInEditor, {
+    reportFailure: false,
+  });
+  const serverConfig = useAtomValue(primaryServerConfigAtom);
+  const serverConfigEvent = useAtomValue(primaryServerConfigEventAtom);
+  const serverWelcome = useAtomValue(primaryServerWelcomeAtom);
+  const readPathname = useEffectEvent(() => pathname);
+  const handledBootstrapThreadIdRef = useRef<string | null>(null);
+  const handledConfigEventRef = useRef(serverConfigEvent);
+  const [keybindingsToastController] = useState<KeybindingsUpdateToastController>(() =>
+    createKeybindingsUpdateToastController({}),
+  );
+
+  const handleWelcome = useEffectEvent((payload: ServerLifecycleWelcomePayload | null) => {
+    if (!payload) return;
+
+    setActiveEnvironmentId(payload.environment.environmentId);
+    void (async () => {
+      if (!payload.bootstrapProjectId || !payload.bootstrapThreadId) {
+        return;
+      }
+      const bootstrapProject = readProject(
+        scopeProjectRef(payload.environment.environmentId, payload.bootstrapProjectId),
+      );
+      const bootstrapProjectKey =
+        (bootstrapProject
+          ? deriveLogicalProjectKeyFromSettings(bootstrapProject, projectGroupingSettings)
+          : null) ??
+        (serverConfig?.cwd
+          ? derivePhysicalProjectKeyFromPath(payload.environment.environmentId, serverConfig.cwd)
+          : null) ??
+        scopedProjectKey(
+          scopeProjectRef(payload.environment.environmentId, payload.bootstrapProjectId),
+        );
+      useUiStateStore.getState().setProjectExpanded(bootstrapProjectKey, true);
+
+      if (readPathname() !== "/") {
+        return;
+      }
+      if (handledBootstrapThreadIdRef.current === payload.bootstrapThreadId) {
+        return;
+      }
+      await navigate({
+        to: "/$environmentId/$threadId",
+        params: {
+          environmentId: payload.environment.environmentId,
+          threadId: payload.bootstrapThreadId,
+        },
+        replace: true,
+      });
+      handledBootstrapThreadIdRef.current = payload.bootstrapThreadId;
+    })().catch(() => undefined);
+  });
+
+  const handleServerConfigUpdated = useEffectEvent(() => {
+    const decision = keybindingsToastController.handle(serverConfigEvent);
+    if (!decision) {
+      return;
+    }
+
+    if (decision._tag === "Success") {
+      toastManager.add({
+        type: "success",
+        title: "Keybindings updated",
+        description: "Keybindings configuration reloaded successfully.",
+      });
+      return;
+    }
+
+    toastManager.add(
+      stackedThreadToast({
+        type: "warning",
+        title: "Invalid keybindings configuration",
+        description: decision.message,
+        actionVariant: "secondary",
+        actionProps: {
+          children: "Open keybindings.json",
+          onClick: () => {
+            if (!serverConfig || !primaryEnvironment) {
+              return;
+            }
+
+            const editor = resolveAndPersistPreferredEditor(serverConfig.availableEditors);
+            if (!editor) {
+              return;
+            }
+            void (async () => {
+              const result = await openInEditor({
+                environmentId: primaryEnvironment.environmentId,
+                input: {
+                  cwd: serverConfig.keybindingsConfigPath,
+                  editor,
+                },
+              });
+              if (result._tag === "Success") {
+                return;
+              }
+              const error = squashAtomCommandFailure(result);
+              toastManager.add(
+                stackedThreadToast({
+                  type: "error",
+                  title: "Unable to open keybindings file",
+                  description:
+                    error instanceof Error ? error.message : "Unknown error opening file.",
+                }),
+              );
+            })();
+          },
+        },
+      }),
+    );
+  });
+
+  useEffect(() => {
+    if (!serverConfig) {
+      return;
+    }
+
+    setActiveEnvironmentId(serverConfig.environment.environmentId);
+  }, [serverConfig]);
+
+  useEffect(() => {
+    handleWelcome(serverWelcome);
+  }, [serverWelcome]);
+
+  useEffect(() => {
+    if (serverConfigEvent === null || handledConfigEventRef.current === serverConfigEvent) {
+      return;
+    }
+    handledConfigEventRef.current = serverConfigEvent;
+    handleServerConfigUpdated();
+  }, [serverConfigEvent]);
+
+  return null;
+}

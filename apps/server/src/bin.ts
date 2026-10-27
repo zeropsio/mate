@@ -1,0 +1,54 @@
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import { Command } from "effect/cli";
+import * as CliError from "effect/cli/CliError";
+
+import * as NetService from "@t3tools/shared/Net";
+import packageJson from "../package.json" with { type: "json" };
+import { sharedServerCommandFlags } from "./cli/config.ts";
+import { isEntrypoint } from "./entrypoint.ts";
+import { macCommand } from "./cli/mac.ts";
+import { runDefaultServerCommand, serveCommand, startCommand } from "./cli/server.ts";
+import { serviceCommand } from "./cli/service.ts";
+import { traceCommand } from "./cli/trace.ts";
+import { triageCommand } from "./cli/triage.ts";
+
+const CliRuntimeLayer = Layer.mergeAll(NodeServices.layer, NetService.layer);
+
+const makeCli = () =>
+  Command.make("mate", { ...sharedServerCommandFlags }).pipe(
+    Command.withDescription("Run the Zerops Mate server."),
+    Command.withHandler(runDefaultServerCommand),
+    Command.withSubcommands([
+      Command.make("help").pipe(
+        Command.withDescription("Show command help."),
+        Command.withHandler(() =>
+          Effect.fail(new CliError.ShowHelp({ commandPath: ["mate"], errors: [] })),
+        ),
+      ),
+      startCommand,
+      serveCommand,
+      serviceCommand,
+      traceCommand,
+      triageCommand,
+      macCommand,
+    ]),
+  );
+
+export const cli = makeCli();
+
+if (
+  isEntrypoint({
+    moduleUrl: import.meta.url,
+    entryPath: process.argv[1],
+    runtimeMain: import.meta.main,
+  })
+) {
+  Command.run(cli, { version: packageJson.version }).pipe(
+    Effect.scoped,
+    Effect.provide(CliRuntimeLayer),
+    NodeRuntime.runMain,
+  );
+}

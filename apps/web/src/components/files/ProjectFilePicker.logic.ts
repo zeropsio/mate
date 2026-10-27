@@ -1,0 +1,81 @@
+import type { ProjectEntry } from "@t3tools/contracts";
+import { normalizeSearchQuery } from "@t3tools/shared/searchRanking";
+
+export const PROJECT_FILE_PICKER_RESULT_LIMIT = 200;
+
+export interface ProjectFilePickerMatch {
+  readonly name: string;
+  readonly nameMatchIndices: ReadonlyArray<number>;
+  readonly path: string;
+  readonly pathMatchIndices: ReadonlyArray<number>;
+}
+
+function fileName(path: string): string {
+  return path.slice(path.lastIndexOf("/") + 1);
+}
+
+/**
+ * First ordered subsequence of `query` inside `value`, as highlight indices.
+ * Returns null when `value` does not contain the subsequence at all — the
+ * entry still renders (the server matched it), just without highlights.
+ */
+function findMatchIndices(value: string, query: string): number[] | null {
+  if (!query) return [];
+
+  const normalizedValue = value.toLowerCase();
+  const indices: number[] = [];
+  let queryIndex = 0;
+
+  for (let valueIndex = 0; valueIndex < normalizedValue.length; valueIndex += 1) {
+    if (normalizedValue[valueIndex] !== query[queryIndex]) continue;
+    indices.push(valueIndex);
+    queryIndex += 1;
+    if (queryIndex === query.length) return indices;
+  }
+
+  return null;
+}
+
+/** A typed file query as the server normalizes it: lowercased, no leading `@./`, no spaces. */
+export function normalizeFileQuery(rawQuery: string): string {
+  return normalizeSearchQuery(rawQuery, {
+    trimLeadingPattern: /^[@./]+/,
+  }).replaceAll(/\s/g, "");
+}
+
+/** A path as a picker row, with where a normalized query falls in its name and path. */
+export function filePickerMatch(path: string, query: string): ProjectFilePickerMatch {
+  const name = fileName(path);
+  return {
+    name,
+    nameMatchIndices: findMatchIndices(name, query) ?? [],
+    path,
+    pathMatchIndices: findMatchIndices(path, query) ?? [],
+  };
+}
+
+/**
+ * Maps server search results to picker rows. Server ordering is preserved —
+ * ranking already happened there; this pass only filters to files and
+ * computes highlight positions with the same query normalization the server
+ * applied.
+ */
+export function getProjectFilePickerMatches(
+  entries: ReadonlyArray<ProjectEntry>,
+  rawQuery: string,
+  limit = PROJECT_FILE_PICKER_RESULT_LIMIT,
+): ProjectFilePickerMatch[] {
+  if (limit <= 0) return [];
+
+  const query = normalizeFileQuery(rawQuery);
+  const matches: ProjectFilePickerMatch[] = [];
+
+  for (const entry of entries) {
+    if (entry.kind !== "file") continue;
+
+    matches.push(filePickerMatch(entry.path, query));
+    if (matches.length >= limit) break;
+  }
+
+  return matches;
+}

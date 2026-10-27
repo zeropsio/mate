@@ -1,0 +1,170 @@
+import { lazy, Suspense, useCallback, useEffect, useSyncExternalStore } from "react";
+
+import { useTheme } from "../../hooks/useTheme";
+import {
+  getThemeDefinition,
+  subscribeToCustomThemes,
+  type ThemeAppearance,
+  type ThemeDefinition,
+} from "../../themePalette";
+import { stackedThreadToast, toastManager } from "../ui/toast";
+import { XIcon } from "lucide-react";
+import { Button } from "../ui/button";
+import { Loading } from "../ui/loading";
+import { useThemeEditorStore } from "./themeEditorStore";
+import { appChunk } from "~/lib/appChunks";
+
+const ThemeEditorPanel = lazy(
+  appChunk(() =>
+    import("./ThemeEditorPanel").then((module) => ({ default: module.ThemeEditorPanel })),
+  ),
+);
+
+function useThemeDefinition(id: string | null | undefined) {
+  return useSyncExternalStore(
+    subscribeToCustomThemes,
+    () => (id ? (getThemeDefinition(id) ?? null) : null),
+    () => null,
+  );
+}
+
+/**
+ * Renders the theme editor above the router. The editor paints its draft on
+ * the live app, so it has to outlive the settings route: the point is to walk
+ * through threads, panels, and pages while the colors are being tuned.
+ */
+export function ThemeEditorHost() {
+  const session = useThemeEditorStore((store) => store.session);
+  const closeThemeEditor = useThemeEditorStore((store) => store.closeThemeEditor);
+  const { theme, setTheme, themeHalves, refreshTheme } = useTheme();
+  useEffect(() => {
+    if (session === null) return;
+    const dismiss = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      // A nested popup or another modal owns Escape first. The editor itself is nonmodal.
+      const target = event.target instanceof Element ? event.target : null;
+      const popup = target?.closest('[role="dialog"], [role="alertdialog"], [data-slot$="popup"]');
+      if (popup && !popup.closest("[data-theme-editor-panel], [data-theme-editor-loading]")) return;
+      event.preventDefault();
+      closeThemeEditor();
+    };
+    window.addEventListener("keydown", dismiss);
+    return () => window.removeEventListener("keydown", dismiss);
+  }, [closeThemeEditor, session]);
+  // A saved definition can change without its id changing between sessions.
+  const editingTheme = useThemeDefinition(session?.editingThemeId);
+  const seedTheme = useThemeDefinition(session?.seedThemeId);
+
+  // The panel reports which path it actually took: a theme removed while its
+  // editor is open resolves to null there, so the save becomes a create even
+  // though the session still names it.
+  const handleSaved = useCallback(
+    (
+      savedTheme: ThemeDefinition,
+      { created, mergedAppearance }: { created: boolean; mergedAppearance?: ThemeAppearance },
+    ) => {
+      // A merge completed an existing theme's light/dark pair; activating the
+      // whole theme shows the new palette right away.
+      if (mergedAppearance) {
+        if (!setTheme(savedTheme.id)) {
+          toastManager.add(
+            stackedThreadToast({
+              type: "error",
+              title: "Could not save your theme",
+              description: "Browser storage is unavailable, so the change was not kept.",
+            }),
+          );
+          return false;
+        }
+        toastManager.add(
+          stackedThreadToast({
+            type: "success",
+            title: `${savedTheme.label} updated`,
+            description: `Its ${mergedAppearance} palette was added.`,
+          }),
+        );
+        return true;
+      }
+      if (!created) {
+        // The edited theme may be showing through the base preference or either
+        // half of the mix; the preference itself is untouched (a setTheme here
+        // would clear the mix), the palette just needs re-applying.
+        const wasActive =
+          getThemeDefinition(theme)?.id === savedTheme.id ||
+          themeHalves?.light === savedTheme.id ||
+          themeHalves?.dark === savedTheme.id;
+        if (wasActive) refreshTheme();
+        toastManager.add(
+          stackedThreadToast({
+            type: "success",
+            title: `${savedTheme.label} saved`,
+            description: wasActive ? "Your changes are now active." : "Your changes are saved.",
+          }),
+        );
+        return true;
+      }
+
+      if (!setTheme(savedTheme.id)) {
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: "Could not save your theme",
+            description: "Browser storage is unavailable, so the change was not kept.",
+          }),
+        );
+        return false;
+      }
+      toastManager.add(
+        stackedThreadToast({
+          type: "success",
+          title: `${savedTheme.label} created`,
+          description: "It’s now active.",
+        }),
+      );
+      return true;
+    },
+    [refreshTheme, setTheme, theme, themeHalves],
+  );
+
+  if (!session) return null;
+
+  return (
+    <Suspense
+      fallback={
+        <div
+          className="fixed bottom-4 right-4 h-96 w-104 max-w-full"
+          data-theme-editor-loading
+          role="dialog"
+          aria-label="Loading theme editor"
+          style={{ zIndex: 110 }}
+        >
+          <div className="absolute end-2 top-2">
+            <Button
+              aria-label="Close the theme editor"
+              size="icon-md"
+              variant="ghost"
+              onClick={closeThemeEditor}
+            >
+              <XIcon />
+            </Button>
+          </div>
+          <Loading label="The theme editor" shape="room" />
+        </div>
+      }
+    >
+      <ThemeEditorPanel
+        editingTheme={editingTheme}
+        initialAppearance={session.initialAppearance}
+        key={session.id}
+        onOpenChange={(open) => {
+          if (!open) closeThemeEditor();
+        }}
+        onSaved={handleSaved}
+        open
+        restoreTheme={refreshTheme}
+        seedName={session.seedName ?? undefined}
+        seedTheme={seedTheme}
+      />
+    </Suspense>
+  );
+}

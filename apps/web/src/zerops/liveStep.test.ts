@@ -1,0 +1,481 @@
+import { EventId, TurnId, type ThreadLiveCall, type ThreadLiveStep } from "@t3tools/contracts";
+import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
+import { describe, expect, it } from "vite-plus/test";
+
+import { operationLineWords } from "../components/chat/conversation.logic";
+import { NOW_LINE_DWELL_MS } from "../components/chat/nowLineCalm.logic";
+
+import {
+  LIVE_STEP_HOLD_MS,
+  liveStepWords,
+  paceLiveStep,
+  type LiveStepWords,
+  type ShownLiveStep,
+} from "./liveStep";
+
+const since = "2026-09-29T08:00:05.000Z";
+
+const call = (fields: Omit<ThreadLiveCall, "startedAt">): ThreadLiveCall => ({
+  ...fields,
+  startedAt: since,
+});
+
+const calls = (...running: ReadonlyArray<ThreadLiveCall>): ThreadLiveStep => ({
+  kind: "calls",
+  since,
+  calls: running,
+});
+
+// Claude's command once its input is in, as the server relays it.
+const build = call({
+  id: "call-build",
+  activityKind: "tool.updated",
+  itemType: "command_execution",
+  title: "Command run",
+  detail: "Bash: pnpm build",
+  toolName: "Bash",
+  command: "pnpm build",
+  input: { description: "Build the app" },
+});
+
+describe("liveStepWords", () => {
+  it.each<{ readonly name: string; readonly step: ThreadLiveStep; readonly words: LiveStepWords }>([
+    { name: "thinking", step: { kind: "thinking", since }, words: { words: "Thinking" } },
+    { name: "its words streaming", step: { kind: "writing", since }, words: { words: "Writing" } },
+    {
+      name: "a command that says what it is for: its words alone, never its code",
+      step: calls(build),
+      words: { words: "Build the app" },
+    },
+    {
+      name: "a command that says nothing of itself is its own title, its shell wrapper dropped",
+      step: calls(
+        call({
+          id: "call-codex",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Ran command",
+          command: "/bin/zsh -lc 'cd /var/www && pnpm build'",
+        }),
+      ),
+      words: { words: "pnpm build" },
+    },
+    {
+      name: "a call whose input is not in yet is no step on its card: still thinking",
+      step: calls(
+        call({
+          id: "call-build",
+          activityKind: "tool.started",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: {}",
+          toolName: "Bash",
+        }),
+      ),
+      words: { words: "Thinking" },
+    },
+    {
+      // A run 2 follow-up: the now line read "Bash: ssh appdev '…'".
+      name: "a command that says nothing of itself is its code, never its tool's name before it",
+      step: calls(
+        call({
+          id: "call-ssh",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: ssh shopdev 'cd /var/www && ls'",
+          toolName: "Bash",
+        }),
+      ),
+      words: { words: "ssh shopdev 'cd /var/www && ls'" },
+    },
+    {
+      name: "a read names its file",
+      step: calls(
+        call({
+          id: "call-read",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'Read: {"file_path":"/var/www/src/index.ts"}',
+          toolName: "Read",
+          input: { file_path: "/var/www/src/index.ts" },
+        }),
+      ),
+      words: { words: "Reading index.ts" },
+    },
+    // Every driver's call as the server relays it (`liveCallOf`, from the
+    // projected payload): its tool by name, what it names in Claude's keys.
+    {
+      name: "an ACP agent's read names its file",
+      step: calls(
+        call({
+          id: "call-acp-read",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Read file",
+          detail: "/var/www/src/index.ts",
+          toolName: "read",
+          input: { file_path: "/var/www/src/index.ts" },
+          files: ["/var/www/src/index.ts"],
+        }),
+      ),
+      words: { words: "Reading index.ts" },
+    },
+    {
+      name: "an ACP agent's grep searches the code, never the web",
+      step: calls(
+        call({
+          id: "call-acp-grep",
+          activityKind: "tool.updated",
+          itemType: "web_search",
+          title: "Searched files",
+          detail: "TODO",
+          toolName: "search",
+          input: { pattern: "TODO" },
+        }),
+      ),
+      words: { words: "Searching the code for TODO" },
+    },
+    {
+      name: "an OpenCode read names its file",
+      step: calls(
+        call({
+          id: "call-oc-read",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "src/index.ts",
+          detail: "src/index.ts",
+          toolName: "read",
+          input: { file_path: "/var/www/src/index.ts" },
+        }),
+      ),
+      words: { words: "Reading index.ts" },
+    },
+    {
+      name: "an edit names its file",
+      step: calls(
+        call({
+          id: "call-edit",
+          activityKind: "tool.updated",
+          itemType: "file_change",
+          title: "File change",
+          detail: 'Edit: {"file_path":"/var/www/src/index.ts"}',
+          toolName: "Edit",
+          input: { file_path: "/var/www/src/index.ts" },
+        }),
+      ),
+      words: { words: "Editing index.ts" },
+    },
+    {
+      name: "a new file is written",
+      step: calls(
+        call({
+          id: "call-write",
+          activityKind: "tool.updated",
+          itemType: "file_change",
+          title: "File change",
+          detail: 'Write: {"file_path":"/var/www/src/status.ts"}',
+          toolName: "Write",
+          input: { file_path: "/var/www/src/status.ts" },
+        }),
+      ),
+      words: { words: "Writing status.ts" },
+    },
+    {
+      name: "a search of the code names what it looks for",
+      step: calls(
+        call({
+          id: "call-grep",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'Grep: {"pattern":"liveStep"}',
+          toolName: "Grep",
+          input: { pattern: "liveStep" },
+        }),
+      ),
+      words: { words: "Searching the code for liveStep" },
+    },
+    {
+      name: "a page read on the web names the page",
+      step: calls(
+        call({
+          id: "call-fetch",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'WebFetch: {"url":"https://example.com/docs/routes"}',
+          toolName: "WebFetch",
+          input: { url: "https://example.com/docs/routes" },
+        }),
+      ),
+      words: { words: "Reading example.com/docs/routes" },
+    },
+    {
+      name: "a web search names what it asks",
+      step: calls(
+        call({
+          id: "call-search",
+          activityKind: "tool.updated",
+          itemType: "web_search",
+          title: "Web search",
+          toolName: "WebSearch",
+          input: { query: "node status page" },
+        }),
+      ),
+      words: { words: "Searching the web for node status page" },
+    },
+    {
+      name: "a look at a picture names it",
+      step: calls(
+        call({
+          id: "call-look",
+          activityKind: "tool.updated",
+          itemType: "image_view",
+          title: "Image view",
+          toolName: "Read",
+          input: { file_path: "/var/www/shots/home.png" },
+          imagePath: "/var/www/shots/home.png",
+        }),
+      ),
+      words: { words: "Looking at home.png" },
+    },
+    {
+      name: "the question tool running: waiting for the answer",
+      step: calls(
+        call({
+          id: "call-ask",
+          activityKind: "tool.updated",
+          itemType: "dynamic_tool_call",
+          title: "Tool call",
+          detail: 'AskUserQuestion: {"questions":[{"question":"Merge now?"}]}',
+          toolName: "AskUserQuestion",
+        }),
+      ),
+      words: { words: "Waiting for your answer" },
+    },
+    {
+      name: "a check in the browser names the page",
+      step: calls(
+        call({
+          id: "call-browser",
+          activityKind: "tool.updated",
+          itemType: "mcp_tool_call",
+          title: "MCP tool call",
+          toolName: "mcp__zerops__zerops_browser",
+          input: { url: "https://appdev-3000.example.app/status" },
+        }),
+      ),
+      words: { words: "Checking /status in the browser" },
+    },
+    {
+      name: "a deploy names the service, from its start",
+      step: calls(
+        call({
+          id: "call-deploy",
+          activityKind: "tool.started",
+          itemType: "mcp_tool_call",
+          title: "MCP tool call",
+          toolName: "mcp__zerops__zerops_deploy",
+          input: { targetService: "appdev" },
+        }),
+      ),
+      words: { words: "Deploying appdev" },
+    },
+    {
+      name: "a Zerops call its card keeps out of the chat is no step",
+      step: calls(
+        call({
+          id: "call-status",
+          activityKind: "tool.updated",
+          itemType: "mcp_tool_call",
+          title: "MCP tool call",
+          toolName: "mcp__zerops__zerops_workflow",
+          input: { action: "status" },
+        }),
+      ),
+      words: { words: "Thinking" },
+    },
+    {
+      name: "calls at once: the newest its card draws",
+      step: calls(
+        build,
+        call({
+          id: "call-next",
+          activityKind: "tool.started",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: {}",
+          toolName: "Bash",
+        }),
+      ),
+      words: { words: "Build the app" },
+    },
+    {
+      // Codex starts a command with the whole command and says nothing more
+      // until it ends: it is the step from its start.
+      name: "a Codex command from its start",
+      step: calls(
+        call({
+          id: "call-codex",
+          activityKind: "tool.started",
+          itemType: "command_execution",
+          title: "Ran command",
+          command: "/usr/bin/zsh -lc 'pnpm build'",
+        }),
+      ),
+      words: { words: "pnpm build" },
+    },
+    {
+      // Several at once, as the card's now line says them (K10).
+      name: "commands at once: how many",
+      step: calls(
+        build,
+        call({
+          id: "call-test",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Command run",
+          detail: "Bash: pnpm test",
+          toolName: "Bash",
+          command: "pnpm test",
+        }),
+      ),
+      words: { words: "Running 2 commands" },
+    },
+    {
+      name: "a credential in the command is masked",
+      step: calls(
+        call({
+          id: "call-push",
+          activityKind: "tool.updated",
+          itemType: "command_execution",
+          title: "Ran command",
+          command: `git push https://mate:${["ghp", "abcdefghijklmnopqrstuvwxyz0123"].join("_")}@git.example.app/shop.git`,
+        }),
+      ),
+      words: { words: "git push https://mate:••••••@git.example.app/shop.git" },
+    },
+    { name: "no call relayed it can read", step: calls(), words: { words: "Thinking" } },
+  ])("$name", ({ step, words }) => {
+    expect(liveStepWords(step)).toEqual(words);
+  });
+});
+
+// One calm rule wherever the live line shows (the owner, 2026-10-01): a menu
+// row's line stands as long as the card's now line.
+it("holds a row's step as long as the card's now line stands", () => {
+  expect(LIVE_STEP_HOLD_MS).toBe(NOW_LINE_DWELL_MS);
+});
+
+describe("paceLiveStep", () => {
+  const building = { words: "Build the app" };
+  const reading = { words: "Reading index.ts" };
+  const shownAt = (step: LiveStepWords, since: number): ShownLiveStep => ({ step, since });
+
+  it.each<{
+    readonly name: string;
+    readonly shown: ShownLiveStep | undefined;
+    readonly next: LiveStepWords | undefined;
+    readonly nowMs: number;
+    readonly paced: ReturnType<typeof paceLiveStep>;
+  }>([
+    {
+      name: "the first step shows at once",
+      shown: undefined,
+      next: building,
+      nowMs: 1_000,
+      paced: { shown: shownAt(building, 1_000), recheckAt: null },
+    },
+    {
+      name: "the same step again changes nothing",
+      shown: shownAt(building, 1_000),
+      next: { ...building },
+      nowMs: 1_100,
+      paced: { shown: shownAt(building, 1_000), recheckAt: null },
+    },
+    {
+      name: "a new step once the shown one has stood its hold takes its place at once",
+      shown: shownAt(building, 1_000),
+      next: reading,
+      nowMs: 1_000 + LIVE_STEP_HOLD_MS,
+      paced: { shown: shownAt(reading, 1_000 + LIVE_STEP_HOLD_MS), recheckAt: null },
+    },
+    {
+      name: "a new step before then waits for the hold's end",
+      shown: shownAt(building, 1_000),
+      next: reading,
+      nowMs: 1_120,
+      paced: { shown: shownAt(building, 1_000), recheckAt: 1_000 + LIVE_STEP_HOLD_MS },
+    },
+    {
+      name: "a row that stops working holds nothing",
+      shown: shownAt(building, 1_000),
+      next: undefined,
+      nowMs: 1_050,
+      paced: { shown: undefined, recheckAt: null },
+    },
+  ])("$name", ({ shown, next, nowMs, paced }) => {
+    expect(paceLiveStep(shown, next, nowMs)).toEqual(paced);
+  });
+});
+
+// The rows say an env call as its card does (pass 43): the server relays its
+// flag as words and its variables as a count, and the card reads the call's
+// whole input.
+describe("liveStepWords — an env call says what its card says", () => {
+  const relayed = (input: Record<string, string>) =>
+    calls(
+      call({
+        id: "call-env",
+        activityKind: "tool.updated",
+        itemType: "mcp_tool_call",
+        title: "MCP tool call",
+        toolName: "mcp__zerops__zerops_env",
+        input,
+      }),
+    );
+  const cardWords = (input: Record<string, unknown>) => {
+    const model = deriveZeropsThreadModel({
+      activities: [
+        {
+          id: EventId.make("card-env"),
+          createdAt: since,
+          tone: "tool",
+          kind: "tool.updated",
+          summary: "MCP tool call",
+          turnId: TurnId.make("turn-1"),
+          payload: {
+            itemType: "mcp_tool_call",
+            toolCallId: "call-env",
+            status: "inProgress",
+            data: { toolCallId: "call-env", toolName: "mcp__zerops__zerops_env", input },
+          },
+        },
+      ],
+      runningTurnId: TurnId.make("turn-1"),
+    });
+    const entry = model.entries[0];
+    if (entry?.kind !== "operation") throw new Error("an operation");
+    return operationLineWords(entry.operation);
+  };
+  const values = ["A=1", "B=2", "C=3", "D=4", "E=5", "F=6"];
+  it.each([
+    {
+      name: "the project's variables",
+      card: { action: "set", project: true, variables: values },
+      relay: { action: "set", project: "true", variablesCount: "6" },
+      words: "Setting 6 of the project's variables",
+    },
+    {
+      name: "a service's variables",
+      card: { action: "set", serviceHostname: "apidev", variables: values.slice(0, 2) },
+      relay: { action: "set", serviceHostname: "apidev", variablesCount: "2" },
+      words: "Setting 2 of apidev's variables",
+    },
+  ])("$name", ({ card, relay, words }) => {
+    expect(cardWords(card)).toBe(words);
+    expect(liveStepWords(relayed(relay))).toEqual({ words });
+  });
+});

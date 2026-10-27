@@ -1,0 +1,458 @@
+/**
+ * The thread commands a conversation's view already sends — start a turn, interrupt it, answer an
+ * approval or a question, dismiss a question, set the model, effort, agent, runtime or plan
+ * mode — through the account's engine operations, once the Mate's door named an engine protocol
+ * this build speaks. The view keeps its calls.
+ *
+ * @module data/engineCommands
+ */
+import {
+  ChatFileAttachment,
+  ChatImageAttachment,
+  ENGINE_SEND_CONTEXT_LIMITS,
+  OrchestrationDispatchCommandError,
+  type ConversationHeader,
+  type ClientOrchestrationCommand,
+  type DispatchResult,
+  type ModelCapabilities,
+  type ModelSelection,
+  type ProviderOptionDescriptor,
+  type ProviderOptionSelection,
+  type ServerProvider,
+} from "@t3tools/contracts";
+import { resolveSelectableModel } from "@t3tools/shared/model";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import type { AtomRegistry } from "effect/reactivity";
+
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import { EnvironmentRpcUnavailableError } from "../rpc/client.ts";
+import {
+  MateEngineUnsupported,
+  engineRouteOf,
+  mateEngineHostAtom,
+  type MateEngineHost,
+} from "./engineHost.ts";
+import { engineConversationId } from "./families/mateEngine.ts";
+import { EngineOperationFailed } from "./operations/executors/mateEngine.ts";
+import type { EngineAcceptance } from "./operations/mateEngine.ts";
+import {
+  ENGINE_UPDATE_WORDS,
+  MATE_OLDER_WORDS,
+  engineResendId,
+  engineSteerTarget,
+  engineStopTarget,
+} from "./projections/mateEngine.ts";
+import { fitContextLine } from "./projections/agentContext.ts";
+import { readsOfState } from "./store.ts";
+
+type Command<T extends ClientOrchestrationCommand["type"]> = Omit<
+  Extract<ClientOrchestrationCommand, { readonly type: T }>,
+  "type" | "commandId" | "createdAt"
+>;
+
+/**
+ * The engine's operation, its acceptance answered as the dispatch the view awaits; refused at once
+ * when the Mate and this build speak no common protocol, and unavailable until its door answers.
+ */
+export function viaEngine(
+  registry: AtomRegistry.AtomRegistry,
+  environmentId: string,
+  engine: (host: MateEngineHost) => Effect.Effect<EngineAcceptance, EngineOperationFailed>,
+): Effect.Effect<
+  DispatchResult,
+  OrchestrationDispatchCommandError | EnvironmentRpcUnavailableError | MateEngineUnsupported,
+  EnvironmentSupervisor
+> {
+  return Effect.gen(function* () {
+    const supervisor = yield* EnvironmentSupervisor;
+    const prepared = yield* SubscriptionRef.get(supervisor.prepared);
+    if (Option.isNone(prepared))
+      return yield* Effect.fail(
+        new EnvironmentRpcUnavailableError({
+          environmentId: environmentId as never,
+          message: "This Mate is not connected yet.",
+        }),
+      );
+    const route = engineRouteOf(prepared.value);
+    if (route.kind === "update" || route.kind === "older")
+      return yield* Effect.fail(
+        new MateEngineUnsupported({
+          message: route.kind === "update" ? ENGINE_UPDATE_WORDS : MATE_OLDER_WORDS,
+        }),
+      );
+    const host = registry.get(mateEngineHostAtom);
+    if (host === null)
+      return yield* Effect.fail(
+        new EnvironmentRpcUnavailableError({
+          environmentId: environmentId as never,
+          message: "This account is not ready to talk to the Mate yet.",
+        }),
+      );
+    const accepted = yield* engine(host).pipe(
+      Effect.mapError((failure) =>
+        failure.outcome === "unsent"
+          ? new EnvironmentRpcUnavailableError({
+              environmentId: environmentId as never,
+              message: failure.message,
+            })
+          : new OrchestrationDispatchCommandError({ message: failure.message }),
+      ),
+    );
+    return { sequence: accepted.seq } as DispatchResult;
+  });
+}
+
+/**
+ * A picture already in the Mate's asset store, or a file already uploaded: the engine takes
+ * pictures by reference and files by their upload id only.
+ */
+const isReferenced = Schema.is(Schema.Union([ChatImageAttachment, ChatFileAttachment]));
+
+const PICTURES_BY_REFERENCE =
+  "Pictures reach this Mate once they are uploaded; send the words, then the pictures again.";
+
+/** Creation on the engine assigns the selected agent before any run can be admitted. */
+export const engineCreateThread =
+  (environmentId: string, input: Command<"thread.create">) => (host: MateEngineHost) =>
+    host.operations
+      .assignAgent({
+        environmentId,
+        conversationId: input.threadId,
+        ...input.modelSelection,
+      })
+      .pipe(Effect.flatMap(() => engineSetRuntimeMode(environmentId, input)(host)));
+
+/**
+ * A turn's start as the engine's send or steer: the message's own id is the command id. A send
+ * carries its files and pictures, and its interaction mode with it (the engine keeps no
+ * thread-wide mode).
+ */
+export const engineStartTurn =
+  (environmentId: string, input: Command<"thread.turn.start">) => (host: MateEngineHost) =>
+    Effect.gen(function* () {
+      const attachments = input.message.attachments.filter(isReferenced);
+      if (attachments.length !== input.message.attachments.length)
+        return yield* Effect.fail(
+          new EngineOperationFailed({ outcome: "refused", message: PICTURES_BY_REFERENCE }),
+        );
+      if (input.bootstrap?.createThread !== undefined) {
+        yield* engineCreateThread(environmentId, {
+          ...input.bootstrap.createThread,
+          threadId: input.threadId,
+        })(host);
+      }
+      const target = { environmentId, conversationId: input.threadId };
+      // What the agent hears with the words that the person did not type (what merged, the vault's
+      // key names): the engine tells it in front of them, and the record keeps the words alone.
+      // Fitted to the engine's bound, so context never makes the send fail.
+      const lines = (input.agentNotes ?? [])
+        .map(fitContextLine)
+        .filter((line) => line.length > 0)
+        .slice(0, ENGINE_SEND_CONTEXT_LIMITS.lines);
+      const context = lines.length === 0 ? {} : { context: lines };
+      const send = (commandId: string) =>
+        host.operations.send({
+          ...target,
+          text: input.message.text,
+          ...context,
+          attachments,
+          ...(input.interactionMode === "plan" ? { interactionMode: "plan" as const } : {}),
+          ...(input.fromPanel === true ? { fromPanel: true as const } : {}),
+          commandId,
+        });
+      // Into the run that works, as V1 sends a message into its running turn, its pictures and files
+      // with it where the session's steer carries them; else, and for a plan, as the next run (the
+      // run keeps the mode it began in).
+      const steered =
+        input.interactionMode !== "plan"
+          ? engineSteerTarget(readsOfState(host.store.state()), target, attachments.length > 0)
+          : null;
+      if (steered === null) return yield* send(input.message.messageId);
+      return yield* host.operations
+        .steer({
+          ...target,
+          runId: steered,
+          text: input.message.text,
+          ...context,
+          ...(attachments.length === 0 ? {} : { attachments }),
+          commandId: input.message.messageId,
+        })
+        .pipe(
+          // The run ended (or its session changed) before the steer arrived: as V1 starts a new turn,
+          // the message goes as the next run — never refused as if it were a Stop.
+          Effect.catchIf(
+            (failure) => failure.outcome === "refused" && STEER_MISSED.has(failure.code ?? ""),
+            () => send(engineResendId(input.message.messageId)),
+          ),
+        );
+    });
+
+/** The engine's refusals of a steer that mean the run it aimed at no longer takes one. */
+const STEER_MISSED: ReadonlySet<string> = new Set(["run-not-running", "steer-unsupported"]);
+
+/** Stop names the turn the view draws (a card); the engine stops the run that works on it. */
+export const engineInterruptTurn =
+  (environmentId: string, input: Command<"thread.turn.interrupt">) => (host: MateEngineHost) =>
+    host.operations.stop({
+      environmentId,
+      conversationId: input.threadId,
+      ...(input.turnId === undefined
+        ? {}
+        : {
+            runId: engineStopTarget(
+              readsOfState(host.store.state()),
+              { environmentId, conversationId: input.threadId },
+              input.turnId,
+            ),
+          }),
+    });
+
+/** The notice's Continue: the work a usage limit holds tries the provider now. */
+export const engineContinueAfterLimit =
+  (environmentId: string, input: { readonly threadId: string }) => (host: MateEngineHost) =>
+    host.operations.continue({ environmentId, conversationId: input.threadId });
+
+export const engineSetArchived =
+  (
+    environmentId: string,
+    input: Command<"thread.archive"> | Command<"thread.unarchive">,
+    archived: boolean,
+  ) =>
+  (host: MateEngineHost) =>
+    host.operations.setArchived({ environmentId, conversationId: input.threadId, archived });
+
+const DECISION_WORDS: Readonly<Record<string, string>> = {
+  accept: "Approved",
+  acceptForSession: "Approved for this session",
+  decline: "Declined",
+  cancel: "Cancelled",
+};
+
+export const engineRespondToApproval =
+  (environmentId: string, input: Command<"thread.approval.respond">) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: { kind: "approval", decision: input.decision },
+      summary: DECISION_WORDS[input.decision] ?? input.decision,
+    });
+
+/** A question's answer: its words and the pictures attached to each question, by reference. */
+export const engineRespondToUserInput =
+  (environmentId: string, input: Command<"thread.user-input.respond">) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: {
+        kind: "input",
+        answers: input.answers,
+        ...(input.attachmentsByQuestionId === undefined
+          ? {}
+          : { attachmentsByQuestionId: input.attachmentsByQuestionId }),
+      },
+      summary: "Answered",
+    });
+
+/** How a value the Mate asked the person for ended, on its card: never the value. */
+export interface VaultAskAnswerInput {
+  readonly threadId: string;
+  readonly requestId: string;
+  readonly outcome: "saved" | "declined";
+}
+
+/**
+ * A value asked of the person, answered: the outcome alone. The engine words the record itself,
+ * so the summary sent is only the outcome's name.
+ */
+export const engineAnswerVaultAsk =
+  (environmentId: string, input: VaultAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: { kind: "secret", outcome: input.outcome },
+      summary: input.outcome,
+    });
+
+/**
+ * Where the person keeps the code of an origin the Mate asked about, picked on its card: never a
+ * token. `connected`: on GitHub, mounted through the organization's GitHub app; `declined`: in
+ * Mate, GitHub only followed — the words every Mate server takes.
+ */
+export interface OriginAskAnswerInput {
+  readonly threadId: string;
+  readonly requestId: string;
+  readonly outcome: "connected" | "declined";
+}
+
+/**
+ * An origin asked of the person, answered: the pick alone — the person's client mounted it in HQ
+ * itself. The engine words the record, so the summary sent is only the outcome's name.
+ */
+export const engineAnswerOriginAsk =
+  (environmentId: string, input: OriginAskAnswerInput) => (host: MateEngineHost) =>
+    host.operations.answer({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+      answer: { kind: "origin", outcome: input.outcome },
+      summary: input.outcome,
+    });
+
+/** A question closed unanswered: the engine takes it only when its agent does not wait on it. */
+export const engineDismissUserInput =
+  (environmentId: string, input: Command<"thread.user-input.dismiss">) => (host: MateEngineHost) =>
+    host.operations.dismiss({
+      environmentId,
+      conversationId: input.threadId,
+      requestId: input.requestId,
+    });
+
+const refused = (message: string) =>
+  Effect.fail(new EngineOperationFailed({ outcome: "refused", message }));
+
+/** An option left out is the driver's default: a select's default choice, a switch off. */
+const defaultOf = (descriptor: ProviderOptionDescriptor): string | boolean | undefined =>
+  descriptor.type === "boolean"
+    ? (descriptor.currentValue ?? false)
+    : (descriptor.currentValue ?? descriptor.options.find((choice) => choice.isDefault)?.id);
+
+type OptionValue = ProviderOptionSelection["value"];
+
+/** Each option's value as the agent runs it: one left out is the driver's default for the model. */
+const optionValuesOf = (
+  capabilities: ModelCapabilities | null | undefined,
+  options: ReadonlyArray<ProviderOptionSelection> | undefined,
+) => {
+  const values = new Map<string, OptionValue | undefined>(
+    (capabilities?.optionDescriptors ?? []).map((descriptor) => [
+      descriptor.id,
+      defaultOf(descriptor),
+    ]),
+  );
+  for (const option of options ?? []) values.set(option.id, option.value);
+  return values;
+};
+
+/**
+ * The option ids a selection really changes on the agent a conversation runs: an option either
+ * side leaves out is the driver's default for the model, and their order means nothing. Without
+ * the model's capabilities only what both sides spell out can be judged the same.
+ */
+export function changedModelOptionIds(
+  capabilities: ModelCapabilities | null | undefined,
+  current: ReadonlyArray<ProviderOptionSelection> | undefined,
+  next: ReadonlyArray<ProviderOptionSelection> | undefined,
+): ReadonlyArray<string> {
+  const before = optionValuesOf(capabilities, current);
+  const after = optionValuesOf(capabilities, next);
+  return [...new Set([...before.keys(), ...after.keys()])].filter(
+    (id) => before.get(id) !== after.get(id),
+  );
+}
+
+/** The current options with the changed ones set to the values the next selection runs. */
+const withChanges = (
+  capabilities: ModelCapabilities | null | undefined,
+  current: ReadonlyArray<ProviderOptionSelection> | undefined,
+  next: ReadonlyArray<ProviderOptionSelection> | undefined,
+  changed: ReadonlyArray<string>,
+): ReadonlyArray<ProviderOptionSelection> => {
+  const after = optionValuesOf(capabilities, next);
+  return [
+    ...(current ?? []).filter((option) => !changed.includes(option.id)),
+    ...changed.flatMap((id) => {
+      const value = after.get(id);
+      return value === undefined ? [] : [{ id, value }];
+    }),
+  ];
+};
+
+/** What a selection's model takes, as the Mate's providers report it; null until they are read. */
+export function modelCapabilitiesIn(
+  providers: ReadonlyArray<ServerProvider> | null,
+  selection: ModelSelection,
+): ModelCapabilities | null {
+  const provider = providers?.find((candidate) => candidate.instanceId === selection.instanceId);
+  if (provider === undefined) return null;
+  const slug = resolveSelectableModel(provider.driver, selection.model, provider.models);
+  return provider.models.find((model) => model.slug === slug)?.capabilities ?? null;
+}
+
+/**
+ * A thread's metadata on an engine conversation: its title is never sent (the engine generates
+ * none; the menu's subject is the person's latest message), another agent goes as the engine's
+ * agent pick (the engine refuses one it cannot run the conversation on, in V1's words), a model or
+ * an option really changed on the agent it runs as the engine's model switch, and a branch or
+ * worktree — which the engine does not take — is refused in words. An option either side leaves
+ * out is the driver's default: an unchanged selection sends nothing.
+ */
+export const engineUpdateMetadata =
+  (
+    environmentId: string,
+    input: Command<"thread.meta.update">,
+    capabilitiesOf: (selection: ModelSelection) => ModelCapabilities | null = () => null,
+  ) =>
+  (host: MateEngineHost): Effect.Effect<EngineAcceptance, EngineOperationFailed> => {
+    if (
+      input.branch !== undefined ||
+      input.worktreePath !== undefined ||
+      input.expectedBranch !== undefined ||
+      input.expectedWorktreePath !== undefined ||
+      input.linkedPullRequest !== undefined
+    )
+      return refused("A branch or worktree is not something this Mate's engine takes yet.");
+    const selection = input.modelSelection;
+    if (selection === undefined) return Effect.succeed({ seq: 0 });
+    const conversation = host.store
+      .state()
+      .facts.get(
+        `mateEngineConversation:${engineConversationId({ environmentId, conversationId: input.threadId })}`,
+      )?.content;
+    if (conversation?.kind !== "value")
+      return refused("Open this conversation before changing its model.");
+    const { header } = conversation.value as { readonly header: ConversationHeader };
+    const agent = header.agent;
+    if (agent === null || selection.instanceId !== agent.instanceId)
+      return host.operations.assignAgent({
+        environmentId,
+        conversationId: input.threadId,
+        instanceId: selection.instanceId,
+        model: selection.model,
+        ...(selection.options === undefined ? {} : { options: selection.options }),
+      });
+    const capabilities = capabilitiesOf(selection);
+    const changed = changedModelOptionIds(capabilities, agent.options, selection.options);
+    if (selection.model === (header.model ?? agent.model ?? null) && changed.length === 0)
+      return Effect.succeed({ seq: 0 });
+    return host.operations.switchModel({
+      environmentId,
+      conversationId: input.threadId,
+      model: selection.model,
+      // The conversation's options with only what really changed: the engine's session never
+      // reopens for an option the person left as it was.
+      ...(changed.length === 0
+        ? {}
+        : { options: withChanges(capabilities, agent.options, selection.options, changed) }),
+    });
+  };
+
+/** How freely the agent works, set on the engine conversation: it applies from the next run on. */
+export const engineSetRuntimeMode =
+  (environmentId: string, input: Command<"thread.runtime-mode.set">) => (host: MateEngineHost) =>
+    host.operations.setRuntimeMode({
+      environmentId,
+      conversationId: input.threadId,
+      runtimeMode: input.runtimeMode,
+    });
+
+/**
+ * Plan mode on an engine conversation goes with each message (`engineStartTurn`): there is no
+ * thread-wide mode to set, so nothing is sent and nothing is lost.
+ */
+export const engineSetInteractionMode = () => Effect.succeed<EngineAcceptance>({ seq: 0 });

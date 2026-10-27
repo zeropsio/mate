@@ -1,0 +1,862 @@
+/**
+ * What each Mate is up to, one answer per environment.
+ *
+ * The environment's answer is its main chat's (`resolvePrimaryConversation`),
+ * and that chat's status is the agent's: run through `resolveThreadStatus`,
+ * the one status resolver, and `threadStatusPill`, the one phrase producer
+ * (R5), so a Mate's row, a Mate's card and a thread's row can never disagree
+ * about what "working" looks like. The face comes from the same status
+ * (`mateMarkStateForThreadStatus`), and the subject — what it is on, or was
+ * last on — is the running plan step while a turn runs and the server
+ * reports one, else the last task as the person put it (the shell's
+ * server-kept preview of the ask that started the latest run — a follow-up
+ * sent into a running turn is not the task; a server from before it told the
+ * two apart keeps their last ask), which stays up while the Mate is idle: a
+ * row that only ever said "Idle" told nobody which Mate this is.
+ * The chat's title is the fallback for a server that keeps no preview — it
+ * names the chat's first task, forever. The snippet is the Mate's last words,
+ * off the same shell. `threadAgentActivity` gives the same answer for any one
+ * chat, so the header of a second chat speaks for that chat.
+ * Nothing is decided here; it is all read off the one resolver.
+ *
+ * Read off a chat's shell where this page holds one, or off HQ's overview of a Mate's main chat
+ * (`@t3tools/shared/mateLink`), which carries the fields a row reads and no more
+ * (`AgentActivityThread`). A Mate with neither has no entry, and the caller draws it asleep.
+ */
+import { isMateStandUpAsk } from "./mateStandUp";
+import {
+  IMAGE_ONLY_BOOTSTRAP_PROMPT,
+  isSlashCommand,
+  isUsageLimitResumePrompt,
+} from "@t3tools/shared/userAsk";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  candidateContainerRuns,
+  type ZeropsCandidate,
+} from "@t3tools/client-runtime/zerops/candidates";
+import {
+  mateNextStep,
+  matePose,
+  resolvePrimaryConversation,
+  type FlowPullRequest,
+  type MatePoseFacts,
+  type MateRunFacts,
+} from "@t3tools/client-runtime/zerops";
+import {
+  ThreadId,
+  type BackgroundWork,
+  type ConversationRow,
+  type EnvironmentId,
+  type OrchestrationLatestTurn,
+  type OrchestrationSession,
+  type ThreadLiveStep,
+  type ThreadMessagePreview,
+} from "@t3tools/contracts";
+import type { MateMarkState } from "@t3tools/shared/brand";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { maskSecrets, messagePreviewText, messageWords } from "@t3tools/shared/messagePreview";
+import {
+  hasUnseenCompletion,
+  mateMarkStateForThread,
+  resolveThreadStatus,
+  toneIdForKind,
+  type ThreadStatusKind,
+} from "@t3tools/shared/threadStatus";
+
+import { threadStatusPill, type ThreadStatusPill } from "../components/Sidebar.logic";
+import {
+  projectMateLimit,
+  type MateLimit,
+  type MateLimitSource,
+} from "@t3tools/client-runtime/data";
+import { liveStepWords, type LiveStepWords } from "./liveStep";
+
+/**
+ * What a row reads of a chat: its shell's fields, of which HQ's overview of a Mate's main chat
+ * carries exactly these — its turn's and session's bare facts, its previews' words.
+ */
+export type AgentActivityThread = Pick<
+  EnvironmentThreadShell,
+  | "id"
+  | "environmentId"
+  | "title"
+  | "hasPendingApprovals"
+  | "hasPendingUserInput"
+  | "hasActionableProposedPlan"
+  | "interactionMode"
+  | "backgroundLiveness"
+  | "backgroundWork"
+  | "stopping"
+  | "latestUserMessageAt"
+  | "updatedAt"
+> & {
+  readonly session: {
+    readonly status: OrchestrationSession["status"];
+    readonly interruption?: OrchestrationSession["interruption"];
+    readonly lastError: string | null;
+    readonly usageLimitResetAt?: string | null | undefined;
+    readonly providerName?: string | null;
+    readonly updatedAt?: string | undefined;
+  } | null;
+  readonly latestTurn: Pick<
+    OrchestrationLatestTurn,
+    "turnId" | "state" | "requestedAt" | "startedAt" | "completedAt"
+  > | null;
+  readonly latestUserMessagePreview?: { readonly text: string } | null | undefined;
+  readonly latestMessagePreview?: Pick<ThreadMessagePreview, "role" | "text"> | null | undefined;
+  readonly planProgress?: { readonly step: string } | null | undefined;
+  readonly pendingQuestion?: string | null | undefined;
+  /** It waits on a value its agent asked for (`key`), not a question. */
+  readonly pendingAsk?: "key" | null | undefined;
+  readonly usagePause?:
+    | { readonly resetsAt: string; readonly pausedAt?: string | undefined }
+    | null
+    | undefined;
+  readonly liveStep?: ThreadLiveStep | null | undefined;
+  readonly refusal?: MateLimitSource["refusal"];
+};
+
+export interface ZeropsAgentActivity {
+  readonly interruption?: OrchestrationSession["interruption"];
+  readonly threadId: ThreadId;
+  readonly kind: ThreadStatusKind;
+  /**
+   * The status word and its tone, as the thread rows phrase it. Null when
+   * idle: the phrase producer has no word for a thread with nothing going on,
+   * and a Mate's row says "Idle" in its own voice.
+   */
+  readonly status: ThreadStatusPill | null;
+  readonly face: MateMarkState;
+  /**
+   * What the Mate is on, or was last on: the running plan step while it
+   * works, else the last task as the person asked it — idle included, so the
+   * line under the name keeps saying what this Mate is about. The
+   * conversation's title only on a server that keeps no preview. Absent for
+   * a conversation nobody has spoken into yet.
+   */
+  readonly subject: string | undefined;
+  /**
+   * When the Mate last did something (`agentActivityAt`): its run's start while it works, else
+   * the later of its last run's end and the person's last message — never a restart's or a
+   * rename's bump of the chat. What a row writes at its right edge, the way a messenger dates
+   * its rows.
+   */
+  readonly at: string;
+  /**
+   * When the run it is on started, as its clock counts (`runClockSince`): held from the first
+   * reading of the run, so the clock only moves forward. Absent while no run is on.
+   */
+  readonly runSince?: string;
+  /** Its date records conversation work, rather than an untouched chat's update. */
+  readonly hasWork?: true | undefined;
+  /**
+   * The Mate's last words, quoted under the task — the reply to what the
+   * subject asks. Absent while the person's message is the last thing said
+   * (the subject already says it), and on a server that keeps no preview.
+   */
+  readonly snippet: string | undefined;
+  /**
+   * The person's words are the last thing said and the run answering them
+   * has not ended (`agentActivityAwaitsWords`): where the last words will
+   * stand, the row holds its line for them.
+   */
+  readonly awaitingWords?: true;
+  /**
+   * The step the Mate is on right now, in the words its run's now line uses:
+   * what the menu's third line says while it works. The server relays it;
+   * absent where it relays none, and the row holds its dots.
+   */
+  readonly liveStep?: LiveStepWords;
+  /**
+   * Its turn is over and the helpers it launched work on (`agentActivityWaitsOnHelpers`): its run
+   * card waits on them, and its row says so in the card's words, its clock stopped with its turn.
+   */
+  readonly waitsOnHelpers?: true;
+  /**
+   * What that work is, by name, where its engine row names it (`backgroundWorkWords`): its own
+   * jobs apart from its helpers. Absent where nothing names it.
+   */
+  readonly backgroundWork?: BackgroundWork;
+  /** Its latest turn: a Stop pressed under it speaks for that turn alone (`conversationStop`). */
+  readonly turnId?: string;
+  /**
+   * A person's Stop is in force while it works — the Mate's row says so, or this tab's press
+   * (`withStopPress`): its row says it is stopping, never what still runs.
+   */
+  readonly stopping?: true;
+  /**
+   * The question the Mate waits on the person to answer, in its words: what a
+   * needs-you row's third line says. The server relays it; absent while
+   * nothing waits, or where it relays none (the row keeps its last words).
+   */
+  readonly question?: string | undefined;
+  /** It waits on a value its agent asked the person for, not on a question: "Needs a key". */
+  readonly asksFor?: "key";
+  /** The first line of the error the Mate stopped on: a failed row's third line. */
+  readonly errorLine?: string | undefined;
+  /**
+   * Its latest result — finished or failed — is newer than what the person has seen: this
+   * device's visit (`hasUnseenCompletion`), under HQ's count where a Mate publishes its attention
+   * (`mateUnread`). Its row's name is at 600 and a blue dot stands before its age until its
+   * conversation is opened.
+   */
+  readonly unread: boolean;
+  /** When the usage limit pausing it resets; absent while it is not paused. */
+  readonly pausedUntil: string | undefined;
+  /** A provider refusal can prove a limit without knowing its reset. */
+  readonly limit?: MateLimit;
+  readonly usageLimited?: boolean;
+  readonly limitProvider?: string | undefined;
+  /** A retained refusal record, independent of whether its deadline still applies. */
+  readonly limitHistory?: { readonly provider: string; readonly resetsAt: string | null };
+  /** Held source state is distinct from the current activity; it grants no actions. */
+  readonly lastKnown?: Pick<
+    ZeropsAgentActivity,
+    | "kind"
+    | "at"
+    | "usageLimited"
+    | "pausedUntil"
+    | "limitProvider"
+    | "errorLine"
+    | "waitsOnHelpers"
+  >;
+  /** The conversation's scoped key — what its unsent draft is kept under. */
+  readonly threadKey: string;
+  /**
+   * Its latest ask is the stand-up its person's sign-in sent (`MATE_STAND_UP_MESSAGE`): never their
+   * words, so no subject or task, but its run is the Mate setting up, and its end no reply unseen.
+   */
+  readonly standUp?: true;
+  /**
+   * The last task as the person asked it, whatever the subject says
+   * meanwhile — the menu row's second line while the subject names the step
+   * the Mate is on.
+   */
+  readonly task: string | undefined;
+  /**
+   * When the person last wrote into it: the time their own browser stamped
+   * on the message, so a browser holding what it sent (`sentAsk.ts`) knows
+   * the echo by its own clock.
+   */
+  readonly askedAt?: string;
+  /**
+   * Not a word of now (`restingActivity`): HQ's last word of a Mate it holds no live link of, or a
+   * reading whose socket does not stand — its words and its time, at rest, with nothing only true
+   * then.
+   */
+  readonly remembered?: true;
+}
+
+/**
+ * The face a Mate wears wherever it is named — a row, a card, a conversation's
+ * header, its home on the map. Asleep until its container is connected: a Mate
+ * is known from its project's tags and its container's origin, seconds before
+ * there is any conversation to resolve.
+ * Connected with nothing resolved yet is idle, the floor of the same rule.
+ *
+ * Its pose for where it is in its life (`matePose`) is read here and nowhere else: waking while
+ * it comes up and arrives (`mateArriving`), asleep where it did not come or while it goes. A
+ * surface that draws a Mate passes what it knows of that (`pose`); without it, it is settled.
+ */
+export function mateFaceFor(
+  connected: boolean,
+  activity: Pick<ZeropsAgentActivity, "face"> | undefined,
+  pose?: MatePoseFacts,
+): MateMarkState {
+  return matePose(connected ? (activity?.face ?? "idle") : "sleep", pose);
+}
+
+/**
+ * The face of a Mate being created that the listing does not hold yet (`GroupFlowComing`), on
+ * every surface that draws one: waking while it comes up, asleep once its birth stopped.
+ */
+export function mateBirthFace(failed: boolean): MateMarkState {
+  return mateFaceFor(false, undefined, { life: failed ? "failed" : "coming" });
+}
+
+/**
+ * The face a Mate wears for the viewer — the one rule of "waits on you", on every surface that
+ * draws it (a row's face and amber dot, a folded heading, the waiting stack, the projects pages):
+ *
+ * | whose Mate            | its question waits | its change waits (`mateReviewWaits`) |
+ * | --------------------- | ------------------ | ------------------------------------ |
+ * | the viewer's own      | needs you          | needs you, unless at work            |
+ * | another's, or nobody's | at rest            | at rest                              |
+ *
+ * Own is HQ saying it waits on the viewer, who signed its agent in (`waitsOnViewer`). Another's Mate waits on its
+ * owner, not on the viewer: it claims nothing of them here, though its change stays on its row
+ * with its Review, for anybody with write on the group to review and merge. At work, the work
+ * shows; the review still waits under it.
+ */
+export function mateFaceAwaitingReview(
+  face: MateMarkState,
+  reviewWaits: boolean,
+  /**
+   * Paused at its usage limit (`pausedUntil`): asleep, whatever its last turn said — its row
+   * reads paused, and the review stays on its change's row under it.
+   */
+  paused: boolean,
+  /** The viewer's own Mate (HQ's `waitsOnViewer`): only then does anything it waits on wait on them. */
+  mine: boolean,
+): MateMarkState {
+  if (paused && face === "sleep") return face;
+  if (!mine) return face === "needs" ? "idle" : face;
+  return reviewWaits && face !== "working" ? "needs" : face;
+}
+
+/**
+ * Whether a Mate's own change waits on the person's review: the composer's top's rule
+ * (`mateNextStep`), on a project flow HQ answered — the one reading of it for every surface
+ * that draws the Mate's face.
+ */
+export function mateReviewWaits(
+  flow:
+    | {
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+        /** Absent reads as answered. */
+        readonly changesKnown?: boolean | undefined;
+      }
+    | undefined,
+  mateProjectId: string,
+): boolean {
+  return mateReviewCount(flow, mateProjectId) > 0;
+}
+
+/**
+ * How many of a Mate's own changes wait on the person's review, by the same rule
+ * (`mateNextStep`'s `waiting`): an automated Mate holds one per task, several at once; 0 before HQ
+ * answered. A change the strip lists that does not merge waits on the Mate or HQ: it counts none.
+ */
+export function mateReviewCount(
+  flow:
+    | {
+        readonly pullRequests: ReadonlyArray<FlowPullRequest>;
+        /** Absent reads as answered. */
+        readonly changesKnown?: boolean | undefined;
+      }
+    | undefined,
+  mateProjectId: string,
+): number {
+  if (flow === undefined || flow.changesKnown === false) return 0;
+  const step = mateNextStep({
+    pullRequests: flow.pullRequests,
+    mateProjectId,
+    mateName: undefined,
+  });
+  return step.kind === "review" ? step.waiting : 0;
+}
+
+/**
+ * Whether a Mate's face is awake before any word of what it does: its container runs
+ * (`candidateContainerRuns` — this tab's socket to it, or ready while that socket is not open yet),
+ * or HQ holds one of its links open. The one rule of the menu's rows and headings and the project
+ * page's Mates, so a reload or an HQ outage never draws a running Mate asleep on one and awake on
+ * the other.
+ */
+export function mateAwake(
+  item: Pick<ZeropsCandidate, "group"> & {
+    readonly project: Pick<ZeropsCandidate["project"], "id">;
+  },
+  mates: ReadonlyMap<string, Pick<MateLiveView, "presence">> | null | undefined,
+): boolean {
+  return candidateContainerRuns(item) || mates?.get(item.project.id)?.presence.online === true;
+}
+
+/**
+ * The face a Mate wears wherever it is drawn (`mateFaceFor`), from what is known of it: awake while
+ * its container is connected or a word of now says what it does — HQ's live word, a standing
+ * socket's reading; a word at rest says nothing of now — and needing the person while its own
+ * change waits for their review (`mateFaceAwaitingReview`). Stopped on an error it stands still:
+ * its failure is no question — its row's red line and its face's double take say it.
+ */
+export function mateFaceOf(input: {
+  readonly connected: boolean;
+  readonly activity:
+    | (Pick<ZeropsAgentActivity, "face" | "remembered"> & {
+        readonly kind?: ThreadStatusKind;
+        readonly pausedUntil?: string | undefined;
+        readonly usageLimited?: boolean;
+      })
+    | undefined;
+  readonly reviewWaits: boolean;
+  /** The viewer's own Mate (HQ's `waitsOnViewer`). */
+  readonly mine: boolean;
+  /** Where it is in its life (`mateFaceFor`). */
+  readonly pose?: MatePoseFacts | undefined;
+  /**
+   * An automated Mate free for its next task (`mateAutomation`'s `task: null`): at rest it wears
+   * the quiet face, never its last task's end or a result nobody waits for — its line says the
+   * task.
+   */
+  readonly free?: boolean | undefined;
+}): MateMarkState {
+  const live = input.activity?.remembered === true ? undefined : input.activity;
+  const face = mateFaceAwaitingReview(
+    mateFaceFor(input.connected || live !== undefined, live, input.pose),
+    input.reviewWaits,
+    live?.usageLimited === true || live?.pausedUntil !== undefined,
+    input.mine,
+  );
+  if (input.free === true) return restingWhenFree(face);
+  return input.activity?.kind === "failed" && face === "needs" ? "idle" : face;
+}
+
+/**
+ * The face of an automated Mate free for its next task: at rest, the quiet one — never its last
+ * task's end, nor a result nobody waits for; at work, asleep or arriving, its own.
+ */
+export function restingWhenFree(face: MateMarkState): MateMarkState {
+  return face === "done" || face === "needs" ? "idle" : face;
+}
+
+/**
+ * The face of a Mate a surface lists, from the facts its menu row reads: awake as `mateAwake` says
+ * (its container runs, or HQ holds its link open), then `mateFaceOf` — so a change's row, a card
+ * and the menu never draw one Mate with two faces, whether or not this tab holds a socket to it.
+ */
+export function listedMateFace(
+  input: Omit<Parameters<typeof mateFaceOf>[0], "connected"> & {
+    readonly candidate: Parameters<typeof mateAwake>[0];
+    readonly hqMates: Parameters<typeof mateAwake>[1];
+  },
+): MateMarkState {
+  const { candidate, hqMates, ...facts } = input;
+  return mateFaceOf({ ...facts, connected: mateAwake(candidate, hqMates) });
+}
+
+export function agentActivitySnippet(
+  thread: Pick<AgentActivityThread, "latestMessagePreview">,
+): string | undefined {
+  const preview = thread.latestMessagePreview;
+  if (preview === undefined || preview === null || preview.role !== "assistant") return undefined;
+  // A server from before previews were masked still hands over what was pasted, and one from
+  // before they were plain words hands over markdown: a row is one line of words.
+  return maskSecrets(messageWords(preview.text));
+}
+
+/**
+ * The person's words are the last thing said and no run has ended since they
+ * were sent: the Mate is on them, or about to be — its last run over and the
+ * next not running yet, the second after a message is sent.
+ */
+export function agentActivityAwaitsWords(
+  thread: Pick<AgentActivityThread, "latestMessagePreview" | "latestUserMessageAt" | "latestTurn">,
+): boolean {
+  const said = thread.latestMessagePreview;
+  if (said === undefined || said === null || said.role === "assistant") return false;
+  const asked = thread.latestUserMessageAt;
+  if (asked === null) return false;
+  const ended = thread.latestTurn?.completedAt ?? null;
+  return ended === null || Date.parse(ended) < Date.parse(asked);
+}
+
+/**
+ * When the Mate last did something a person would call activity: its run's start while it works,
+ * else the later of its last run's end — finished, failed or cut — and the person's last message.
+ * Never the chat's own record of a change (a rename, a restart, a version roll, a helper's word
+ * bumps it), but for a chat nobody has spoken in, which has nothing else to date it by.
+ */
+export function agentActivityAt(
+  thread: Pick<AgentActivityThread, "latestTurn" | "latestUserMessageAt" | "updatedAt">,
+): string {
+  const turn = thread.latestTurn;
+  const asked = thread.latestUserMessageAt;
+  if (turn === null) return asked ?? thread.updatedAt;
+  // A running turn's end can only be a mid-turn placeholder (the projector's word).
+  if (turn.state === "running") return turn.startedAt ?? turn.requestedAt;
+  const ranAt = turn.completedAt ?? turn.startedAt ?? turn.requestedAt;
+  if (asked === null) return ranAt;
+  return Date.parse(asked) > Date.parse(ranAt) ? asked : ranAt;
+}
+
+export function agentActivitySubject(
+  thread: Pick<
+    AgentActivityThread,
+    "title" | "planProgress" | "latestUserMessageAt" | "latestUserMessagePreview"
+  >,
+  kind: ThreadStatusKind,
+): string | undefined {
+  if (kind !== "idle") {
+    const step = thread.planProgress?.step.trim();
+    if (step !== undefined && step.length > 0) return maskSecrets(step);
+  }
+  // The last task, as the person put it — never a command to the harness or
+  // the client's own placeholder for an image-only message, which a server
+  // from before it knew better may still hand over as the latest words.
+  const asked = thread.latestUserMessagePreview;
+  if (asked !== undefined && asked !== null && isPersonsWords(asked.text)) {
+    return maskSecrets(asked.text);
+  }
+  // A conversation nobody has spoken into has a placeholder for a title, not
+  // a subject: a Mate that was never asked anything has nothing it is about.
+  if (thread.latestUserMessageAt === null) return undefined;
+  // A title is the person's words as they wrote them: said as plain words, as a preview is.
+  const title = thread.title.trim();
+  return title.length > 0 && isPersonsWords(title)
+    ? (messagePreviewText(title) ?? undefined)
+    : undefined;
+}
+
+function isPersonsWords(text: string): boolean {
+  const trimmed = text.trim();
+  return (
+    !isSlashCommand(trimmed) &&
+    !isUsageLimitResumePrompt(trimmed) &&
+    // The stand-up its person's sign-in sent on their behalf, never words they wrote.
+    !isMateStandUpAsk(trimmed) &&
+    trimmed !== IMAGE_ONLY_BOOTSTRAP_PROMPT
+  );
+}
+
+/**
+ * What the Mate is up to in one chat: the same answer the environment's
+ * entry gives for its main chat, for any chat — a conversation's header
+ * speaks for the chat it heads.
+ */
+export function threadAgentActivity(
+  thread: AgentActivityThread,
+  lastVisitedAt: string | undefined,
+  nowMs = Date.now(),
+  limit = projectMateLimit(thread, nowMs),
+): ZeropsAgentActivity {
+  const standUp = isMateStandUpAsk(thread.latestUserMessagePreview?.text.trim() ?? "");
+  // The stand-up's end is no reply the person has not seen: its turn is drawn out of their sight.
+  const visitedAt = standUp ? (thread.latestTurn?.completedAt ?? lastVisitedAt) : lastVisitedAt;
+  const visited = visitedAt == null ? {} : { lastVisitedAt: visitedAt };
+  const usageLimited = limit.kind === "limited";
+  const resolved = resolveThreadStatus({ ...thread, ...visited }, limit.kind);
+  return {
+    threadId: thread.id,
+    interruption: thread.session?.interruption ?? null,
+    kind: resolved.kind,
+    status: threadStatusPill(resolved),
+    face: mateMarkStateForThread(resolved.kind, usageLimited),
+    subject: agentActivitySubject(thread, resolved.kind),
+    at: agentActivityAt(thread),
+    ...(thread.latestTurn !== null || thread.latestUserMessageAt !== null
+      ? { hasWork: true as const }
+      : {}),
+    ...(thread.latestTurn === null ? {} : { turnId: thread.latestTurn.turnId }),
+    ...(resolved.kind === "working" && thread.stopping === true ? { stopping: true as const } : {}),
+    snippet: agentActivitySnippet(thread),
+    ...(agentActivityAwaitsWords(thread) ? { awaitingWords: true as const } : {}),
+    unread: hasUnseenCompletion({ latestTurn: thread.latestTurn, ...visited }),
+    limit,
+    pausedUntil: usageLimited ? (limit.resetsAt ?? undefined) : undefined,
+    usageLimited,
+    limitProvider: usageLimited ? limit.provider : undefined,
+    ...(limit.kind !== "none"
+      ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
+      : {}),
+    threadKey: scopedThreadKey(scopeThreadRef(thread.environmentId, thread.id)),
+    ...(standUp ? { standUp: true as const } : {}),
+    task: agentActivitySubject(thread, "idle"),
+    ...(thread.latestUserMessageAt === null ? {} : { askedAt: thread.latestUserMessageAt }),
+    ...agentActivityLiveStep(thread, resolved.kind),
+    ...(agentActivityWaitsOnHelpers(thread, resolved.kind)
+      ? {
+          waitsOnHelpers: true as const,
+          ...(thread.backgroundWork === undefined ? {} : { backgroundWork: thread.backgroundWork }),
+        }
+      : {}),
+    ...agentActivityQuestion(thread, resolved.kind),
+    ...(resolved.kind === "input" && thread.pendingAsk === "key"
+      ? { asksFor: "key" as const }
+      : {}),
+    ...(limit.kind === "expired" ? {} : agentActivityErrorLine(thread, resolved.kind)),
+  };
+}
+
+/**
+ * Whether it works only on its helpers: no turn runs, and the server holds
+ * helpers live (run 11, D8: the menu read "Working on a reply" while the
+ * card said "Waiting for its helpers").
+ */
+export function agentActivityWaitsOnHelpers(
+  thread: Pick<AgentActivityThread, "backgroundLiveness" | "session" | "latestTurn">,
+  kind: ThreadStatusKind,
+): boolean {
+  return (
+    kind === "working" &&
+    thread.backgroundLiveness === "working" &&
+    thread.session?.status !== "running" &&
+    thread.latestTurn?.state !== "running"
+  );
+}
+
+/**
+ * The step it is on, in its run card's words (`liveStep.ts`), while it
+ * works and its server relays one. A server from before it relays none: the
+ * row holds its dots.
+ */
+export function agentActivityLiveStep(
+  thread: Pick<AgentActivityThread, "liveStep">,
+  kind: ThreadStatusKind,
+): { readonly liveStep?: LiveStepWords } {
+  const step = thread.liveStep ?? undefined;
+  if (kind !== "working" || step === undefined) return {};
+  return { liveStep: liveStepWords(step) };
+}
+
+/**
+ * The question it waits on the person to answer, while that is what it
+ * waits on — an approval waiting first is no question. Quoted by the server
+ * the way a preview is; a server from before it relays none.
+ */
+export function agentActivityQuestion(
+  thread: Pick<AgentActivityThread, "pendingQuestion">,
+  kind: ThreadStatusKind,
+): { readonly question?: string } {
+  if (kind !== "input") return {};
+  const question = thread.pendingQuestion?.trim();
+  return question === undefined || question.length === 0 ? {} : { question };
+}
+
+/**
+ * The error's first line, while the Mate stands stopped on it; a sign-in failure in the row's
+ * words — under the Mate's name, what the person signs in to (`mateErrorWords`).
+ */
+export function agentActivityErrorLine(
+  thread: Pick<AgentActivityThread, "session">,
+  kind: ThreadStatusKind,
+): { readonly errorLine?: string } {
+  if (kind !== "failed") return {};
+  const first = thread.session?.lastError
+    ?.split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+  if (first === undefined) return {};
+  return { errorLine: maskSecrets(first) };
+}
+
+export function deriveZeropsAgentActivity(
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+  lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit>,
+): ReadonlyMap<EnvironmentId, ZeropsAgentActivity> {
+  const shellsByEnvironment = new Map<EnvironmentId, Array<EnvironmentThreadShell>>();
+  for (const thread of threads) {
+    const shells = shellsByEnvironment.get(thread.environmentId);
+    if (shells) shells.push(thread);
+    else shellsByEnvironment.set(thread.environmentId, [thread]);
+  }
+
+  const activity = new Map<EnvironmentId, ZeropsAgentActivity>();
+  for (const [environmentId, shells] of shellsByEnvironment) {
+    const { primary } = resolvePrimaryConversation(shells);
+    if (primary === undefined) continue;
+    activity.set(
+      environmentId,
+      threadAgentActivity(
+        primary,
+        lastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, primary.id))],
+        undefined,
+        limits?.get(scopedThreadKey(scopeThreadRef(environmentId, primary.id))),
+      ),
+    );
+  }
+  return activity;
+}
+
+/**
+ * An activity as last told, with nothing only true now — at rest, no status, no step, no
+ * error, no pause — so no clock ticks and no *Stop* is offered from it. Its last-known question
+ * stays readable beside the source's stale indication until a newer answer replaces it.
+ */
+export function restingActivity(
+  activity: ZeropsAgentActivity,
+  at = activity.at,
+): ZeropsAgentActivity {
+  if (activity.remembered === true) return activity;
+  const {
+    liveStep: _step,
+    waitsOnHelpers: _helpers,
+    backgroundWork: _work,
+    errorLine: _error,
+    ...words
+  } = activity;
+  return {
+    ...words,
+    kind: "idle",
+    status: null,
+    face: "idle",
+    pausedUntil: undefined,
+    usageLimited: false,
+    remembered: true,
+    limitProvider: undefined,
+    lastKnown: {
+      kind: activity.kind,
+      at,
+      usageLimited: activity.usageLimited === true,
+      pausedUntil: activity.pausedUntil,
+      limitProvider: activity.limitProvider,
+      errorLine: activity.errorLine,
+      ...(activity.waitsOnHelpers === true ? { waitsOnHelpers: true as const } : {}),
+    },
+  };
+}
+
+/** A Mate as a change's *Review* reads it (`changeShowsReview`), from its activity of now. */
+export function mateRunOf(activity: ZeropsAgentActivity | undefined): MateRunFacts | undefined {
+  return activity?.face === "working" ? { working: true } : undefined;
+}
+
+/**
+ * The activity, where it is a word of now — HQ's live word, a standing socket's reading — and not
+ * one at rest (`restingActivity`), which says nothing of what the Mate does now.
+ */
+export function activityOfNow(
+  activity: ZeropsAgentActivity | undefined,
+): ZeropsAgentActivity | undefined {
+  return activity?.remembered === true ? undefined : activity;
+}
+
+/**
+ * An engine Mate's activity off its own conversation row (`ConversationRow`, which HQ relays in
+ * the overview's `conversations`): the engine already says what the conversation is on, so the
+ * row's state is the kind — nothing is resolved again from turn and session literals.
+ */
+const isoOf = (millis: number) => new Date(millis).toISOString();
+
+/** The kind a row's state is, before the person's visit: what the engine says it is on. */
+function kindOf(state: ConversationRow["state"]): ThreadStatusKind {
+  switch (state.kind) {
+    case "queued":
+    case "working":
+      return "working";
+    case "waiting":
+      return state.on === "approval" ? "approval" : state.on === "plan" ? "planReady" : "input";
+    case "failed":
+      return "failed";
+    default:
+      return "idle";
+  }
+}
+
+const firstLine = (text: string): string | undefined =>
+  text
+    .split("\n")
+    .map((line) => line.trim())
+    .find((line) => line.length > 0);
+
+/**
+ * What an engine Mate is up to in one conversation, from its row and this device's visit; its
+ * usage limit is the row's own pause (`projectMateLimit`), or the one `limit` holds of it.
+ */
+export function rowAgentActivity(
+  row: ConversationRow,
+  environmentId: EnvironmentId,
+  lastVisitedAt: string | undefined,
+  nowMs = Date.now(),
+  limit = projectMateLimit({ engineRow: row, latestTurn: null, session: null }, nowMs),
+  main?: MateLiveView["main"],
+): ZeropsAgentActivity {
+  const { state } = row;
+  const threadId = ThreadId.make(row.conversationId);
+  const endedAt = row.latestRun?.endedAt ?? null;
+  const standUp = row.subject !== null && isMateStandUpAsk(row.subject.trim());
+  // The stand-up's end is no reply the person has not seen: its run is drawn out of their sight.
+  const unread =
+    !standUp &&
+    hasUnseenCompletion({
+      latestTurn: endedAt === null ? null : { completedAt: isoOf(endedAt) },
+      lastVisitedAt,
+    });
+  const told = kindOf(state);
+  const kind: ThreadStatusKind = told === "idle" && unread ? "done" : told;
+  const usageLimited = limit.kind === "limited";
+  const asked = row.subject === null ? null : { text: row.subject };
+  const words = {
+    title: "",
+    planProgress: null,
+    latestUserMessageAt: asked === null ? null : isoOf(row.at),
+    latestUserMessagePreview: asked,
+  };
+  const question = state.kind === "waiting" && kind === "input" ? state.words?.trim() : undefined;
+  const errorLine = state.kind === "failed" ? firstLine(state.errorLine) : undefined;
+  return {
+    threadId,
+    kind,
+    status: threadStatusPill({ kind, toneId: toneIdForKind(kind) }),
+    face: mateMarkStateForThread(kind, usageLimited),
+    subject: agentActivitySubject(words, kind),
+    // Its run's start while on it, the question's while one waits, else its last run's end: the
+    // row's own `at` moves with anything the engine records — a restart included — so it dates
+    // only a conversation that never ran.
+    at: isoOf(
+      state.kind === "working" || state.kind === "queued"
+        ? state.since
+        : state.kind === "waiting"
+          ? (row.askedAt ?? endedAt ?? row.at)
+          : (endedAt ?? row.at),
+    ),
+    ...(row.latestRun !== null || row.subject !== null ? { hasWork: true as const } : {}),
+    // Queued: the person's words are the last thing said, and the reply stands where they will.
+    snippet:
+      state.kind === "queued" || row.snippet === null
+        ? undefined
+        : maskSecrets(messageWords(row.snippet)),
+    ...(state.kind === "queued" ? { awaitingWords: true as const } : {}),
+    unread,
+    limit,
+    pausedUntil: usageLimited ? (limit.resetsAt ?? undefined) : undefined,
+    usageLimited,
+    limitProvider: usageLimited ? limit.provider : undefined,
+    ...(limit.kind !== "none"
+      ? { limitHistory: { provider: limit.provider, resetsAt: limit.resetsAt } }
+      : {}),
+    threadKey: scopedThreadKey(scopeThreadRef(environmentId, threadId)),
+    ...(standUp ? { standUp: true as const } : {}),
+    task: agentActivitySubject(words, "idle"),
+    // Engine rows own state and words; their matching overview still owns the live step.
+    ...agentActivityLiveStep(main?.id === threadId ? main : {}, kind),
+    ...(state.kind === "working" && state.waitsOnHelpers
+      ? {
+          waitsOnHelpers: true as const,
+          ...(state.work === undefined ? {} : { backgroundWork: state.work }),
+        }
+      : {}),
+    ...(question === undefined || question.length === 0 ? {} : { question }),
+    ...(errorLine === undefined ? {} : { errorLine: maskSecrets(errorLine) }),
+    ...(state.kind === "waiting" && state.on === "vault" ? { asksFor: "key" as const } : {}),
+  };
+}
+
+/**
+ * A Mate's activity from HQ's overview of it: its main chat read as its shell is — an engine Mate's
+ * off its own row (`rowAgentActivity`) — with this device's visit, at rest unless HQ's word is
+ * live (`restingActivity`). Undefined where HQ holds no overview of it, or it has no main chat yet.
+ */
+export function overviewAgentActivity(
+  mate: MateLiveView,
+  live: boolean,
+  lastVisitedAtById: Readonly<Record<string, string>>,
+  limits?: ReadonlyMap<string, MateLimit> | undefined,
+): ZeropsAgentActivity | undefined {
+  if (mate.identity === undefined || !mate.main) return undefined;
+  const { environmentId } = mate.identity;
+  const main = mate.main;
+  const key = scopedThreadKey(scopeThreadRef(environmentId, main.id));
+  // An engine Mate's own row of its main conversation, where it sends rows; its shell fields else.
+  const row = mate.conversations?.find((each) => (each.conversationId as string) === main.id);
+  const activity =
+    row === undefined
+      ? threadAgentActivity(
+          { ...main, environmentId },
+          lastVisitedAtById[key],
+          undefined,
+          limits?.get(key),
+        )
+      : rowAgentActivity(
+          row,
+          environmentId,
+          lastVisitedAtById[key],
+          undefined,
+          limits?.get(key),
+          main,
+        );
+  return live
+    ? activity
+    : restingActivity(activity, row === undefined ? main.updatedAt : isoOf(row.at));
+}

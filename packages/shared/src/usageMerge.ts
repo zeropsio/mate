@@ -1,0 +1,749 @@
+/**
+ * Merges per-environment usage summaries into the single view the page renders.
+ *
+ * Pure, so the de-duplication and derivation rules can be tested without a
+ * connected environment.
+ *
+ * @module usageMerge
+ */
+import {
+  USAGE_MERGE_COMPATIBLE_SINCE,
+  type EnvironmentId,
+  type UsageBucket,
+  type UsageProviderKind,
+  type UsageSource,
+  type UsageSourceFingerprint,
+  type UsageSummary,
+  type UsageTokenTotals,
+} from "@t3tools/contracts";
+
+export interface EnvironmentUsage {
+  readonly environmentId: EnvironmentId;
+  readonly label: string;
+  readonly summary: UsageSummary;
+}
+
+export interface ProviderTotals {
+  readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
+  readonly provider: UsageProviderKind;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly records: number;
+  readonly sessions: number;
+  readonly costShare: number;
+  readonly tokenShare: number;
+}
+
+export interface ModelTotals {
+  readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
+  readonly model: string;
+  readonly provider: UsageProviderKind;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly tokens: UsageTokenTotals;
+  readonly records: number;
+  /**
+   * Records whose tokens are counted here but which contributed nothing to
+   * `costUsd`. When it equals `records` the cost is unknown, not zero.
+   */
+  readonly unpricedRecords: number;
+  /**
+   * Tokens with no known rates, which a custom price would cover. A cell that
+   * mixes these with reported costs counts its tokens by record share.
+   */
+  readonly unpricedTokens: number;
+  readonly costShare: number;
+  readonly tokenShare: number;
+}
+
+/**
+ * A model whose every record lacked rates has an unknown cost, not a zero one.
+ * Clients must not present its `costUsd` as a real dollar figure.
+ */
+export function isModelCostUnknown(model: ModelTotals): boolean {
+  return model.costKnown === false || (model.records > 0 && model.unpricedRecords >= model.records);
+}
+
+export interface DailyTotals {
+  readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
+  readonly day: string;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
+  >;
+}
+
+export interface HourlyTotals {
+  readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
+  readonly day: string;
+  readonly hourStart: string;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly byProvider: ReadonlyMap<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
+  >;
+}
+
+export interface CostQuality {
+  readonly providerReportedShare: number;
+  readonly modelPricedShare: number;
+  readonly unpricedShare: number;
+  readonly cacheSavingsUsd: number;
+}
+
+/**
+ * `costUsd` by token category. `unsplit` is cost no rates could split,
+ * including all cost from servers that predate the split.
+ */
+export interface CategoryCost {
+  readonly input: number;
+  readonly cacheRead: number;
+  readonly cacheWrite: number;
+  readonly output: number;
+  readonly unsplit: number;
+}
+
+/** `costUsd` by request speed. Servers that predate speeds count as standard. */
+export interface SpeedCost {
+  readonly standard: number;
+  readonly fast: number;
+  readonly ultrafast: number;
+  /** What fast and ultrafast requests cost above the standard rate. */
+  readonly premium: number;
+}
+
+/** One environment's own share of the merge, after de-duplication. */
+export interface EnvironmentTotals {
+  readonly costKnown?: boolean;
+  readonly costPartial?: boolean;
+  readonly environmentId: EnvironmentId;
+  readonly costUsd: number;
+  readonly totalTokens: number;
+  readonly records: number;
+  readonly unpricedRecords: number;
+  readonly sessions: number;
+  /** Of the merged `costUsd`; 0 when that total is 0. */
+  readonly costShare: number;
+  /** Of the merged `totalTokens`; 0 when that total is 0. */
+  readonly tokenShare: number;
+  /** Providers with buckets in this environment, costliest first. */
+  readonly providers: readonly UsageProviderKind[];
+}
+
+export interface UsageContractMismatch {
+  readonly environmentId: EnvironmentId;
+  readonly direction: "serverBehind" | "clientBehind";
+  readonly contractVersion: number;
+}
+
+export interface MergedUsage {
+  readonly costUsd: number;
+  readonly uncachedInputTokens: number;
+  readonly cachedInputTokens: number;
+  readonly cacheCreationTokens: number;
+  readonly outputTokens: number;
+  readonly reasoningTokens: number;
+  readonly totalTokens: number;
+  readonly records: number;
+  readonly sessions: number;
+  readonly providers: readonly ProviderTotals[];
+  readonly models: readonly ModelTotals[];
+  readonly daily: readonly DailyTotals[];
+  readonly hourly: readonly HourlyTotals[];
+  readonly costQuality: CostQuality;
+  readonly categoryCost: CategoryCost;
+  readonly speedCost: SpeedCost;
+  /** Environments whose data was dropped as a duplicate of another's. */
+  readonly duplicateSources: readonly string[];
+  readonly contributingEnvironments: readonly EnvironmentId[];
+  /**
+   * Each contributing environment's own share, after de-duplication; incompatible and
+   * fully-duplicate environments are absent. Sorted by cost desc, then tokens desc.
+   */
+  readonly byEnvironment: readonly EnvironmentTotals[];
+  readonly contractMismatches: readonly UsageContractMismatch[];
+}
+
+/**
+ * Two sources are the same physical transcript directory only when host,
+ * provider, path and filesystem identity all agree.
+ *
+ * `volumeId` is what stops two machines that happen to share a hostname and a
+ * home path, which is every Mac in a fleet, from collapsing into one source and
+ * having one of them silently dropped.
+ */
+function fingerprintKey(fingerprint: UsageSourceFingerprint): string {
+  return [
+    fingerprint.hostId,
+    fingerprint.provider,
+    fingerprint.resolvedHomePath,
+    fingerprint.volumeId,
+  ].join(" ");
+}
+
+function bucketsForSource(summary: UsageSummary, source: UsageSource): readonly UsageBucket[] {
+  const providerSources = summary.sources.filter(
+    (entry) => entry.fingerprint.provider === source.fingerprint.provider,
+  );
+  return summary.buckets.filter(
+    (bucket) =>
+      bucket.provider === source.fingerprint.provider &&
+      (bucket.sourcePath === source.fingerprint.resolvedHomePath ||
+        (bucket.sourcePath === undefined && providerSources.length === 1)),
+  );
+}
+
+function bucketKey(bucket: UsageBucket): string {
+  return JSON.stringify([bucket.day, bucket.hourStart ?? null, bucket.provider, bucket.model]);
+}
+
+/**
+ * Decides which environment owns each physical transcript directory.
+ *
+ * Several environments on one machine (worktree servers, for instance) resolve
+ * the same provider home and would otherwise double count every token. The
+ * Complete scans claim a fingerprint ahead of partial scans, then the most
+ * recently read scan wins within each status. A newer partial scan can still
+ * contribute cells absent from an older complete scan. Environment ids break
+ * ties so the result is stable when summaries have the same read time.
+ */
+function claimSources(environments: readonly EnvironmentUsage[]): {
+  readonly ownerByFingerprint: ReadonlyMap<string, EnvironmentId>;
+  readonly supplementalBucketsByEnvironment: ReadonlyMap<EnvironmentId, ReadonlySet<UsageBucket>>;
+  readonly sessionsByFingerprint: ReadonlyMap<string, number>;
+  readonly duplicates: readonly string[];
+} {
+  const ownerByFingerprint = new Map<string, EnvironmentId>();
+  const ownerScanByFingerprint = new Map<
+    string,
+    { environment: EnvironmentUsage; source: UsageSource }
+  >();
+  const seenBucketKeysByFingerprint = new Map<string, Set<string>>();
+  const supplementalBucketsByEnvironment = new Map<EnvironmentId, Set<UsageBucket>>();
+  const sessionsByFingerprint = new Map<string, number>();
+  const duplicates: string[] = [];
+
+  const ordered = [...environments].sort(
+    (a, b) =>
+      (Date.parse(b.summary.readAt) || 0) - (Date.parse(a.summary.readAt) || 0) ||
+      a.environmentId.localeCompare(b.environmentId),
+  );
+
+  // A complete scan takes precedence over a newer partial scan of the same
+  // directory. Partial history still contributes when no complete copy exists.
+  for (const status of ["ok", "partial", "failed"] as const) {
+    for (const environment of ordered) {
+      for (const source of environment.summary.sources) {
+        if (source.status !== status) continue;
+        const key = fingerprintKey(source.fingerprint);
+        if (ownerByFingerprint.has(key)) {
+          duplicates.push(`${environment.label}: ${source.fingerprint.resolvedHomePath}`);
+          continue;
+        }
+        ownerByFingerprint.set(key, environment.environmentId);
+        ownerScanByFingerprint.set(key, { environment, source });
+        sessionsByFingerprint.set(key, source.distinctSessions);
+      }
+    }
+  }
+
+  // A newer partial scan may contain usage recorded after an older complete
+  // scan. Keep cells absent from the complete scan. Aggregated cells do not
+  // reveal enough to reconcile overlapping records without double counting.
+  for (const environment of ordered) {
+    for (const source of environment.summary.sources) {
+      if (source.status !== "partial") continue;
+      const key = fingerprintKey(source.fingerprint);
+      const owner = ownerScanByFingerprint.get(key);
+      if (
+        owner?.source.status !== "ok" ||
+        Date.parse(environment.summary.readAt) <= Date.parse(owner.environment.summary.readAt)
+      ) {
+        continue;
+      }
+      let seen = seenBucketKeysByFingerprint.get(key);
+      if (seen === undefined) {
+        seen = new Set(bucketsForSource(owner.environment.summary, owner.source).map(bucketKey));
+        seenBucketKeysByFingerprint.set(key, seen);
+      }
+      const supplemental =
+        supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set<UsageBucket>();
+      let added = false;
+      for (const bucket of bucketsForSource(environment.summary, source)) {
+        const cell = bucketKey(bucket);
+        if (seen.has(cell)) continue;
+        seen.add(cell);
+        supplemental.add(bucket);
+        added = true;
+      }
+      if (!added) continue;
+      supplementalBucketsByEnvironment.set(environment.environmentId, supplemental);
+      sessionsByFingerprint.set(
+        key,
+        Math.max(sessionsByFingerprint.get(key) ?? 0, source.distinctSessions),
+      );
+    }
+  }
+
+  return {
+    ownerByFingerprint,
+    supplementalBucketsByEnvironment,
+    sessionsByFingerprint,
+    duplicates,
+  };
+}
+
+/** Sources this environment owns after fingerprint claims, plus their buckets. */
+function ownedContribution(
+  environment: EnvironmentUsage,
+  ownerByFingerprint: ReadonlyMap<string, EnvironmentId>,
+  supplementalBuckets: ReadonlySet<UsageBucket>,
+  sessionsByFingerprint: ReadonlyMap<string, number>,
+): {
+  readonly buckets: readonly UsageBucket[];
+  readonly sessionsByProvider: ReadonlyMap<UsageProviderKind, number>;
+} {
+  const ownedProviders = new Set<UsageProviderKind>();
+  const ownedSources = new Set<string>();
+  const sessionsByProvider = new Map<UsageProviderKind, number>();
+  for (const source of environment.summary.sources) {
+    if (source.status === "missing") continue;
+    const key = fingerprintKey(source.fingerprint);
+    if (ownerByFingerprint.get(key) === environment.environmentId) {
+      const provider = source.fingerprint.provider;
+      ownedProviders.add(provider);
+      ownedSources.add(`${provider}\u0000${source.fingerprint.resolvedHomePath}`);
+      // Distinct within a directory. Summing per-bucket session counts instead
+      // would count a session once per day and model it spans.
+      sessionsByProvider.set(
+        provider,
+        (sessionsByProvider.get(provider) ?? 0) +
+          (sessionsByFingerprint.get(key) ?? source.distinctSessions),
+      );
+    }
+  }
+  return {
+    buckets: environment.summary.buckets.filter(
+      (bucket) =>
+        supplementalBuckets.has(bucket) ||
+        (bucket.sourcePath === undefined
+          ? ownedProviders.has(bucket.provider)
+          : ownedSources.has(`${bucket.provider}\u0000${bucket.sourcePath}`)),
+    ),
+    sessionsByProvider,
+  };
+}
+
+function bucketTokens(bucket: UsageBucket): number {
+  // reasoningTokens is a subset of outputTokens and must not be added again.
+  return (
+    bucket.totals.uncachedInputTokens +
+    bucket.totals.cachedInputTokens +
+    bucket.totals.cacheCreationTokens +
+    bucket.totals.outputTokens
+  );
+}
+
+function isCompatibleContractVersion(version: number, expected: number): boolean {
+  return version >= USAGE_MERGE_COMPATIBLE_SINCE && version <= expected;
+}
+
+const EMPTY_MERGED: MergedUsage = {
+  costUsd: 0,
+  uncachedInputTokens: 0,
+  cachedInputTokens: 0,
+  cacheCreationTokens: 0,
+  outputTokens: 0,
+  reasoningTokens: 0,
+  totalTokens: 0,
+  records: 0,
+  sessions: 0,
+  providers: [],
+  models: [],
+  daily: [],
+  hourly: [],
+  costQuality: {
+    providerReportedShare: 0,
+    modelPricedShare: 0,
+    unpricedShare: 0,
+    cacheSavingsUsd: 0,
+  },
+  categoryCost: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, unsplit: 0 },
+  speedCost: { standard: 0, fast: 0, ultrafast: 0, premium: 0 },
+  duplicateSources: [],
+  contributingEnvironments: [],
+  byEnvironment: [],
+  contractMismatches: [],
+};
+
+/**
+ * Merges every connected environment's summary.
+ *
+ * `expectedContractVersion` guards against incompatible server code: rather
+ * than blocking the page, its data is excluded and the mismatch direction is
+ * reported so the UI can identify which side needs updating. Versions in
+ * [{@link USAGE_MERGE_COMPATIBLE_SINCE}, expected] still merge, so an additive
+ * provider expansion does not drop Claude/Codex totals from older servers.
+ *
+ * `include` narrows the result to a scope. Sources are claimed across every
+ * environment first, so a scoped environment never re-claims a directory it
+ * lost to one outside the scope, and every duplicate is still reported.
+ */
+export function mergeUsage(
+  environments: readonly EnvironmentUsage[],
+  expectedContractVersion: number,
+  include: (environmentId: EnvironmentId) => boolean = () => true,
+): MergedUsage {
+  if (environments.length === 0) return EMPTY_MERGED;
+
+  const current: EnvironmentUsage[] = [];
+  const contractMismatches: UsageContractMismatch[] = [];
+  for (const environment of environments) {
+    if (isCompatibleContractVersion(environment.summary.contractVersion, expectedContractVersion)) {
+      current.push(environment);
+    } else if (include(environment.environmentId)) {
+      contractMismatches.push({
+        environmentId: environment.environmentId,
+        direction:
+          environment.summary.contractVersion < expectedContractVersion
+            ? "serverBehind"
+            : "clientBehind",
+        contractVersion: environment.summary.contractVersion,
+      });
+    }
+  }
+
+  const {
+    ownerByFingerprint,
+    supplementalBucketsByEnvironment,
+    sessionsByFingerprint,
+    duplicates,
+  } = claimSources(current);
+
+  let costUsd = 0;
+  let uncachedInputTokens = 0;
+  let cachedInputTokens = 0;
+  let cacheCreationTokens = 0;
+  let outputTokens = 0;
+  let reasoningTokens = 0;
+  let records = 0;
+  let sessions = 0;
+  let cacheSavingsUsd = 0;
+  let providerReportedRecords = 0;
+  let unpricedRecords = 0;
+  const categoryCost = { input: 0, cacheRead: 0, cacheWrite: 0, output: 0 };
+  const speedCost = { fast: 0, ultrafast: 0, premium: 0 };
+
+  const providerAccumulator = new Map<
+    UsageProviderKind,
+    { costUsd: number; totalTokens: number; records: number; sessions: number }
+  >();
+  const modelAccumulator = new Map<
+    string,
+    {
+      provider: UsageProviderKind;
+      costUsd: number;
+      totalTokens: number;
+      tokens: UsageTokenTotals;
+      records: number;
+      unpricedRecords: number;
+      unpricedTokens: number;
+    }
+  >();
+  const dailyAccumulator = new Map<
+    string,
+    {
+      costUsd: number;
+      totalTokens: number;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
+      >;
+    }
+  >();
+  const hourlyAccumulator = new Map<
+    string,
+    {
+      day: string;
+      hourStart: string;
+      costUsd: number;
+      totalTokens: number;
+      byProvider: Map<
+        UsageProviderKind,
+        { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
+      >;
+    }
+  >();
+  const contributingEnvironments: EnvironmentId[] = [];
+  const environmentAccumulator: {
+    environmentId: EnvironmentId;
+    costUsd: number;
+    totalTokens: number;
+    records: number;
+    unpricedRecords: number;
+    sessions: number;
+    providers: Map<
+      UsageProviderKind,
+      { costUsd: number; totalTokens: number; costKnown?: boolean; costPartial?: boolean }
+    >;
+  }[] = [];
+
+  for (const environment of current) {
+    if (!include(environment.environmentId)) continue;
+    const { buckets, sessionsByProvider } = ownedContribution(
+      environment,
+      ownerByFingerprint,
+      supplementalBucketsByEnvironment.get(environment.environmentId) ?? new Set(),
+      sessionsByFingerprint,
+    );
+    const own = {
+      environmentId: environment.environmentId,
+      costUsd: 0,
+      totalTokens: 0,
+      records: 0,
+      unpricedRecords: 0,
+      sessions: 0,
+      providers: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+    };
+    if (buckets.length > 0) {
+      contributingEnvironments.push(environment.environmentId);
+      environmentAccumulator.push(own);
+    }
+
+    for (const [providerKind, providerSessions] of sessionsByProvider) {
+      sessions += providerSessions;
+      own.sessions += providerSessions;
+      if (providerSessions === 0) continue;
+      const provider = providerAccumulator.get(providerKind) ?? {
+        costUsd: 0,
+        totalTokens: 0,
+        records: 0,
+        sessions: 0,
+      };
+      provider.sessions += providerSessions;
+      providerAccumulator.set(providerKind, provider);
+    }
+
+    for (const bucket of buckets) {
+      const tokens = bucketTokens(bucket);
+
+      costUsd += bucket.costUsd;
+      cacheSavingsUsd += bucket.cacheSavingsUsd;
+      uncachedInputTokens += bucket.totals.uncachedInputTokens;
+      cachedInputTokens += bucket.totals.cachedInputTokens;
+      cacheCreationTokens += bucket.totals.cacheCreationTokens;
+      outputTokens += bucket.totals.outputTokens;
+      reasoningTokens += bucket.totals.reasoningTokens;
+      records += bucket.records;
+      unpricedRecords += bucket.unpricedRecords;
+      if (bucket.costSource === "providerReported") providerReportedRecords += bucket.records;
+      if (bucket.categoryCostUsd !== undefined) {
+        categoryCost.input += bucket.categoryCostUsd.input;
+        categoryCost.cacheRead += bucket.categoryCostUsd.cacheRead;
+        categoryCost.cacheWrite += bucket.categoryCostUsd.cacheWrite;
+        categoryCost.output += bucket.categoryCostUsd.output;
+      }
+      speedCost.fast += bucket.fastCostUsd ?? 0;
+      speedCost.ultrafast += bucket.ultrafastCostUsd ?? 0;
+      speedCost.premium += bucket.speedPremiumUsd ?? 0;
+
+      own.costUsd += bucket.costUsd;
+      own.totalTokens += tokens;
+      own.records += bucket.records;
+      own.unpricedRecords += bucket.unpricedRecords;
+      const ownProvider = own.providers.get(bucket.provider) ?? { costUsd: 0, totalTokens: 0 };
+      ownProvider.costUsd += bucket.costUsd;
+      ownProvider.totalTokens += tokens;
+      own.providers.set(bucket.provider, ownProvider);
+
+      const provider = providerAccumulator.get(bucket.provider) ?? {
+        costUsd: 0,
+        totalTokens: 0,
+        records: 0,
+        sessions: 0,
+      };
+      provider.costUsd += bucket.costUsd;
+      provider.totalTokens += tokens;
+      provider.records += bucket.records;
+      providerAccumulator.set(bucket.provider, provider);
+
+      const modelKey = `${bucket.provider} ${bucket.model}`;
+      const model = modelAccumulator.get(modelKey) ?? {
+        provider: bucket.provider,
+        costUsd: 0,
+        totalTokens: 0,
+        tokens: {
+          uncachedInputTokens: 0,
+          cachedInputTokens: 0,
+          cacheCreationTokens: 0,
+          outputTokens: 0,
+          reasoningTokens: 0,
+        },
+        records: 0,
+        unpricedRecords: 0,
+        unpricedTokens: 0,
+      };
+      model.costUsd += bucket.costUsd;
+      model.totalTokens += tokens;
+      model.tokens = {
+        uncachedInputTokens: model.tokens.uncachedInputTokens + bucket.totals.uncachedInputTokens,
+        cachedInputTokens: model.tokens.cachedInputTokens + bucket.totals.cachedInputTokens,
+        cacheCreationTokens: model.tokens.cacheCreationTokens + bucket.totals.cacheCreationTokens,
+        outputTokens: model.tokens.outputTokens + bucket.totals.outputTokens,
+        reasoningTokens: model.tokens.reasoningTokens + bucket.totals.reasoningTokens,
+      };
+      model.records += bucket.records;
+      model.unpricedRecords += bucket.unpricedRecords;
+      if (bucket.records > 0) {
+        model.unpricedTokens += (tokens * bucket.unpricedRecords) / bucket.records;
+      }
+      modelAccumulator.set(modelKey, model);
+
+      const day = dailyAccumulator.get(bucket.day) ?? {
+        costUsd: 0,
+        totalTokens: 0,
+        byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+      };
+      day.costUsd += bucket.costUsd;
+      day.totalTokens += tokens;
+      const dayProvider = day.byProvider.get(bucket.provider) ?? { costUsd: 0, totalTokens: 0 };
+      dayProvider.costUsd += bucket.costUsd;
+      dayProvider.totalTokens += tokens;
+      day.byProvider.set(bucket.provider, dayProvider);
+      dailyAccumulator.set(bucket.day, day);
+
+      if (bucket.hourStart !== undefined) {
+        const hour = hourlyAccumulator.get(bucket.hourStart) ?? {
+          day: bucket.day,
+          hourStart: bucket.hourStart,
+          costUsd: 0,
+          totalTokens: 0,
+          byProvider: new Map<UsageProviderKind, { costUsd: number; totalTokens: number }>(),
+        };
+        hour.costUsd += bucket.costUsd;
+        hour.totalTokens += tokens;
+        const hourProvider = hour.byProvider.get(bucket.provider) ?? {
+          costUsd: 0,
+          totalTokens: 0,
+        };
+        hourProvider.costUsd += bucket.costUsd;
+        hourProvider.totalTokens += tokens;
+        hour.byProvider.set(bucket.provider, hourProvider);
+        hourlyAccumulator.set(bucket.hourStart, hour);
+      }
+    }
+  }
+
+  const totalTokens = uncachedInputTokens + cachedInputTokens + cacheCreationTokens + outputTokens;
+
+  const providers: ProviderTotals[] = [...providerAccumulator.entries()]
+    .map(([provider, totals]) => ({
+      provider,
+      costUsd: totals.costUsd,
+      totalTokens: totals.totalTokens,
+      records: totals.records,
+      sessions: totals.sessions,
+      costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
+      tokenShare: totalTokens === 0 ? 0 : totals.totalTokens / totalTokens,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd);
+
+  const models: ModelTotals[] = [...modelAccumulator.entries()]
+    .map(([key, totals]) => ({
+      model: key.slice(key.indexOf(" ") + 1),
+      provider: totals.provider,
+      costUsd: totals.costUsd,
+      totalTokens: totals.totalTokens,
+      tokens: totals.tokens,
+      records: totals.records,
+      unpricedRecords: totals.unpricedRecords,
+      unpricedTokens: totals.unpricedTokens,
+      costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
+      tokenShare: totalTokens === 0 ? 0 : totals.totalTokens / totalTokens,
+    }))
+    .sort((a, b) => b.costUsd - a.costUsd || b.totalTokens - a.totalTokens);
+
+  const daily: DailyTotals[] = [...dailyAccumulator.entries()]
+    .map(([day, totals]) => ({
+      day,
+      costUsd: totals.costUsd,
+      totalTokens: totals.totalTokens,
+      byProvider: totals.byProvider,
+    }))
+    .sort((a, b) => a.day.localeCompare(b.day));
+
+  const hourly: HourlyTotals[] = [...hourlyAccumulator.values()].sort((a, b) =>
+    a.hourStart.localeCompare(b.hourStart),
+  );
+
+  const byEnvironment: EnvironmentTotals[] = environmentAccumulator
+    .map((totals) => ({
+      environmentId: totals.environmentId,
+      costUsd: totals.costUsd,
+      totalTokens: totals.totalTokens,
+      records: totals.records,
+      unpricedRecords: totals.unpricedRecords,
+      sessions: totals.sessions,
+      costShare: costUsd === 0 ? 0 : totals.costUsd / costUsd,
+      tokenShare: totalTokens === 0 ? 0 : totals.totalTokens / totalTokens,
+      providers: [...totals.providers.entries()]
+        .sort(([, a], [, b]) => b.costUsd - a.costUsd || b.totalTokens - a.totalTokens)
+        .map(([provider]) => provider),
+    }))
+    .sort(
+      (a, b) =>
+        b.costUsd - a.costUsd ||
+        b.totalTokens - a.totalTokens ||
+        a.environmentId.localeCompare(b.environmentId),
+    );
+
+  return {
+    costUsd,
+    uncachedInputTokens,
+    cachedInputTokens,
+    cacheCreationTokens,
+    outputTokens,
+    reasoningTokens,
+    totalTokens,
+    records,
+    sessions,
+    providers,
+    models,
+    daily,
+    hourly,
+    costQuality: {
+      providerReportedShare: records === 0 ? 0 : providerReportedRecords / records,
+      unpricedShare: records === 0 ? 0 : unpricedRecords / records,
+      modelPricedShare:
+        records === 0 ? 0 : (records - providerReportedRecords - unpricedRecords) / records,
+      cacheSavingsUsd,
+    },
+    // Clamped so float error never shows as a negative remainder.
+    categoryCost: {
+      ...categoryCost,
+      unsplit: Math.max(
+        0,
+        costUsd -
+          categoryCost.input -
+          categoryCost.cacheRead -
+          categoryCost.cacheWrite -
+          categoryCost.output,
+      ),
+    },
+    speedCost: {
+      ...speedCost,
+      standard: Math.max(0, costUsd - speedCost.fast - speedCost.ultrafast),
+    },
+    duplicateSources: duplicates,
+    contributingEnvironments,
+    byEnvironment,
+    contractMismatches,
+  };
+}

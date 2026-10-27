@@ -1,0 +1,284 @@
+/**
+ * Where an application's automated Mates take tasks from, and the organization's API keys they run
+ * on: HQ's HTTP shapes for both, shared by HQ and the clients.
+ *
+ * - `PUT /api/apps/:appId/intake` (`HqIntakeRequest` → `HqIntakeView`) points the application's
+ *   automated Mates at a GitHub repository's issues carrying a label; `DELETE` stops it. HQ answers
+ *   GitHub's webhooks at `webhookUrl`: it makes the hook itself where the repository's token may,
+ *   else the person pastes the URL and the secret, shown once, into the repository's settings.
+ * - `PUT /api/org/ai-keys/:provider` (`HqAiKeyRequest` → `HqAiKeyView`) keeps the organization's
+ *   key for a provider (`OPENCODE_KEY_PROVIDERS`), sealed; `DELETE` forgets it. HQ never shows it.
+ * - `POST /api/mate/ai-key` (Mate-authenticated, `HqMateAiKey`) hands the calling Mate the key, for
+ *   zcp to put in its project's vault without the conversation ever holding it.
+ *
+ * @module hqIntake
+ */
+import * as Schema from "effect/Schema";
+
+import { TrimmedNonEmptyString } from "@t3tools/contracts";
+
+/** The label HQ takes issues by when none is chosen. */
+export const DEFAULT_INTAKE_LABEL = "mate";
+
+/**
+ * The first Mate that puts its working copies on each task's base (`ZeropsWorkingCopy`): HQ hands
+ * it tasks while its earlier tasks' changes wait for review. An older one, its one working copy
+ * holding that work, takes none until they are merged or closed — and its board says so.
+ */
+export const TASK_CHANGES_SINCE = "0.15.178";
+
+export const HqIntakeRequest = Schema.Struct({
+  /** `owner/name`, one of the application's repositories with a GitHub remote. */
+  repo: TrimmedNonEmptyString,
+  label: TrimmedNonEmptyString,
+  /** A public repository takes issues only when this says so: anyone can open one. */
+  public: Schema.optionalKey(Schema.Boolean),
+});
+export type HqIntakeRequest = typeof HqIntakeRequest.Type;
+
+export const HqIntakeView = Schema.Struct({
+  appId: Schema.String,
+  repo: Schema.String,
+  label: Schema.String,
+  /** It takes a public repository's issues (`HqIntakeRequest.public`); absent from an older HQ. */
+  public: Schema.optionalKey(Schema.Boolean),
+  webhookUrl: Schema.String,
+  hook: Schema.Union([
+    /** HQ made the webhook on the repository with its token. */
+    Schema.Struct({ kind: Schema.Literal("made") }),
+    /**
+     * The organization's GitHub app reaches the repository: its own webhook delivers the issues,
+     * and the repository has none of HQ's. Absent from an older HQ.
+     */
+    Schema.Struct({ kind: Schema.Literal("app") }),
+    /** The person makes it: the secret is shown this once. */
+    Schema.Struct({ kind: Schema.Literal("paste"), secret: Schema.String, why: Schema.String }),
+  ]),
+});
+export type HqIntakeView = typeof HqIntakeView.Type;
+
+export const HqAiKeyRequest = Schema.Struct({ value: TrimmedNonEmptyString });
+export type HqAiKeyRequest = typeof HqAiKeyRequest.Type;
+
+export const HqAiKeyView = Schema.Struct({
+  provider: Schema.String,
+  set: Schema.Boolean,
+  setAt: Schema.NullOr(Schema.String),
+});
+export type HqAiKeyView = typeof HqAiKeyView.Type;
+
+export const HqMateAiKey = Schema.Struct({
+  provider: Schema.String,
+  /** The variable apps read it from (`NEBIUS_API_KEY`). */
+  env: Schema.String,
+  value: Schema.String,
+  /** The provider's OpenAI-compatible base URL. */
+  baseUrl: Schema.String,
+});
+export type HqMateAiKey = typeof HqMateAiKey.Type;
+
+/**
+ * Slack (`/api/org/slack`, Owner/Admin): the organization connects a Slack app made from the
+ * manifest HQ gives (`GET /api/org/slack/manifest`, its events URL HQ's own), pasting the app's bot
+ * token and signing secret, both sealed and never shown back. An application takes tasks from one
+ * channel (`PUT /api/apps/:appId/slack`): `@Mate <ask>` there starts a task whose thread is its
+ * conversation.
+ */
+export const HqSlackConnectRequest = Schema.Struct({
+  /** Both to connect; once connected, either alone replaces the one HQ holds. */
+  botToken: Schema.optionalKey(TrimmedNonEmptyString),
+  signingSecret: Schema.optionalKey(TrimmedNonEmptyString),
+});
+export type HqSlackConnectRequest = typeof HqSlackConnectRequest.Type;
+
+export const HqSlackView = Schema.Struct({
+  connected: Schema.Boolean,
+  /** The workspace the bot token belongs to, once connected. */
+  workspace: Schema.NullOr(Schema.String),
+  /** Where Slack sends events: the manifest names it. */
+  eventsUrl: Schema.String,
+  /**
+   * The last time an event's signature did not hold (`401` at `eventsUrl`), and the last time one
+   * did; `null` for never. While the refusal is the later, the signing secret is not the app's.
+   * Absent from an HQ that predates them.
+   */
+  eventsRefusedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  eventsAcceptedAt: Schema.optionalKey(Schema.NullOr(Schema.String)),
+});
+export type HqSlackView = typeof HqSlackView.Type;
+
+/**
+ * The channels the bot is in (`GET /api/org/slack/channels`, a structure writer's), by name, for
+ * an application's channel to be picked from; `bot` is its name in the workspace, which people
+ * invite to a channel (`null` where HQ does not know it yet).
+ */
+export const HqSlackChannels = Schema.Struct({
+  bot: Schema.NullOr(Schema.String),
+  channels: Schema.Array(Schema.Struct({ id: Schema.String, name: Schema.String })),
+});
+export type HqSlackChannels = typeof HqSlackChannels.Type;
+
+export const HqChannelRequest = Schema.Struct({ channelId: TrimmedNonEmptyString });
+export type HqChannelRequest = typeof HqChannelRequest.Type;
+
+export const HqChannelView = Schema.Struct({
+  appId: Schema.String,
+  channelId: Schema.String,
+  /** The channel's name, without `#`. */
+  channel: Schema.String,
+});
+export type HqChannelView = typeof HqChannelView.Type;
+
+/**
+ * Discord (`/api/org/discord`, Owner/Admin): the organization connects a Discord application by its
+ * id, public key and bot token (sealed). HQ registers `/mate` and answers Discord's interactions at
+ * `interactionsUrl`; `inviteUrl` adds the bot to a server. Only Discord users on the allowlist
+ * (`PUT /api/org/discord/allow`) may start or steer a task. An application takes tasks from one
+ * channel (`PUT /api/apps/:appId/discord`).
+ */
+export const HqDiscordConnectRequest = Schema.Struct({
+  applicationId: TrimmedNonEmptyString,
+  publicKey: TrimmedNonEmptyString,
+  botToken: TrimmedNonEmptyString,
+});
+export type HqDiscordConnectRequest = typeof HqDiscordConnectRequest.Type;
+
+export const HqDiscordView = Schema.Struct({
+  connected: Schema.Boolean,
+  interactionsUrl: Schema.String,
+  inviteUrl: Schema.NullOr(Schema.String),
+  /** Discord user ids allowed to start and steer tasks. */
+  allowed: Schema.Array(Schema.String),
+});
+export type HqDiscordView = typeof HqDiscordView.Type;
+
+export const HqDiscordAllowRequest = Schema.Struct({
+  userIds: Schema.Array(TrimmedNonEmptyString),
+});
+export type HqDiscordAllowRequest = typeof HqDiscordAllowRequest.Type;
+
+/**
+ * An application's signed webhooks (`/api/apps/:appId/webhooks`): `POST {name}` makes one and
+ * answers its URL and secret, the secret this once. A call is `POST <url>` with JSON
+ * `{title, body?, url?, author?, dedupeKey?}` and header `X-Mate-Signature: sha256=<hex HMAC of the
+ * raw body>`; it becomes a task.
+ */
+export const HqWebhookRequest = Schema.Struct({ name: TrimmedNonEmptyString });
+export type HqWebhookRequest = typeof HqWebhookRequest.Type;
+
+export const HqWebhookView = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  url: Schema.String,
+  /** Only in the answer that made it. */
+  secret: Schema.optionalKey(Schema.String),
+  createdAt: Schema.String,
+});
+export type HqWebhookView = typeof HqWebhookView.Type;
+
+/**
+ * An application's schedules (`/api/apps/:appId/schedules`): a brief its automated Mates get as a
+ * task each time it is due.
+ */
+export const HqScheduleRule = Schema.Struct({
+  every: Schema.Literals(["day", "weekday", "week"]),
+  /** For `week`: 0 Sunday … 6 Saturday. */
+  day: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 0, maximum: 6 }))),
+  /** `HH:MM`, 24-hour, in `timeZone`. */
+  at: Schema.String.check(Schema.isPattern(/^([01]\d|2[0-3]):[0-5]\d$/)),
+  /** IANA time zone, e.g. `Europe/Prague`. */
+  timeZone: TrimmedNonEmptyString,
+});
+export type HqScheduleRule = typeof HqScheduleRule.Type;
+
+export const HqScheduleRequest = Schema.Struct({
+  name: TrimmedNonEmptyString,
+  brief: TrimmedNonEmptyString,
+  rule: HqScheduleRule,
+});
+export type HqScheduleRequest = typeof HqScheduleRequest.Type;
+
+export const HqScheduleView = Schema.Struct({
+  id: Schema.String,
+  name: Schema.String,
+  brief: Schema.String,
+  rule: HqScheduleRule,
+  /** When it is next due, ISO; null while paused. */
+  nextAt: Schema.NullOr(Schema.String),
+});
+export type HqScheduleView = typeof HqScheduleView.Type;
+
+/** The organization's limits on each task (`/api/org/task-limits`, Owner/Admin). */
+export const HqTaskLimitsView = Schema.Struct({
+  minutes: Schema.Int,
+  costUsd: Schema.NullOr(Schema.Number),
+  /**
+   * What the organization's automated Mates may spend in a calendar month (UTC), all tasks
+   * together; `null`: no budget. Reached, HQ hands out no more tasks until the next month or a
+   * higher budget. Absent from an older HQ.
+   */
+  monthlyBudgetUsd: Schema.optionalKey(Schema.NullOr(Schema.Number)),
+  /** What they spent this month so far, as their Mates reported it. Read only. */
+  spentThisMonthUsd: Schema.optionalKey(Schema.Number),
+  /**
+   * The model the organization's automated Mates run each new task on, as an OpenCode slug (one
+   * of `automatedModels`): the default until one is picked. Left out of a write, kept as it is.
+   * Absent from an older HQ, which picks none.
+   */
+  model: Schema.optionalKey(Schema.String),
+});
+export type HqTaskLimitsView = typeof HqTaskLimitsView.Type;
+
+/** One task of an application, as its Automation board lists it. */
+export const HqAppTask = Schema.Struct({
+  id: Schema.String,
+  /** Where it came from, linked (`MateTaskSource`'s words and address). */
+  title: Schema.String,
+  label: Schema.String,
+  url: Schema.NullOr(Schema.String),
+  /**
+   * Where it stands: `stopping` is live with a person's stop taken, until its Mate stops; `merged`
+   * and `closed` are done with its change merged or closed unmerged.
+   */
+  state: Schema.Literals([
+    "queued",
+    "assigned",
+    "working",
+    "waiting",
+    "stopping",
+    "done",
+    "merged",
+    "closed",
+    "failed",
+    "stopped",
+    "declined",
+  ]),
+  /** The automated Mate on it or that had it: its project id and name. */
+  mate: Schema.NullOr(Schema.Struct({ projectId: Schema.String, name: Schema.String })),
+  /** Its place in the queue while queued (1 = next). */
+  position: Schema.optionalKey(Schema.Int),
+  /** Who asked, in the source's words (a GitHub login, a Slack name). */
+  requestedBy: Schema.NullOr(Schema.String),
+  createdAt: Schema.String,
+  startedAt: Schema.NullOr(Schema.String),
+  endedAt: Schema.NullOr(Schema.String),
+  spentUsd: Schema.NullOr(Schema.Number),
+  workedMs: Schema.NullOr(Schema.Number),
+  /**
+   * Why it failed, stopped or was declined; the question while waiting; done, where its Mate left
+   * its work undelivered.
+   */
+  detail: Schema.NullOr(Schema.String),
+  /** Its change in Mate and its pull request on GitHub, once it has them. */
+  change: Schema.NullOr(Schema.Struct({ repo: Schema.String, number: Schema.Int })),
+  pullRequest: Schema.NullOr(Schema.Struct({ number: Schema.Int, url: Schema.String })),
+  /** Where to follow it in Mate (its own conversation, or its Mate's page). */
+  link: Schema.NullOr(Schema.String),
+});
+export type HqAppTask = typeof HqAppTask.Type;
+
+/** `GET /api/apps/:appId/tasks`: what is queued, at work, and the latest that ended. */
+export const HqAppTasksView = Schema.Struct({
+  tasks: Schema.Array(HqAppTask),
+});
+export type HqAppTasksView = typeof HqAppTasksView.Type;

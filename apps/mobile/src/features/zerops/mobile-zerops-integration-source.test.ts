@@ -1,0 +1,149 @@
+// @effect-diagnostics nodeBuiltinImport:off -- This architecture test verifies native route wiring.
+import * as NodeFS from "node:fs";
+import * as NodePath from "node:path";
+
+import { describe, expect, it } from "vite-plus/test";
+
+const mobileRoot = new URL("../../../", import.meta.url);
+const repositoryRoot = NodePath.resolve(new URL("../../", mobileRoot).pathname);
+const readSource = (relativePath: string) =>
+  NodeFS.readFileSync(new URL(relativePath, mobileRoot), "utf8");
+
+describe("mobile Zerops integration", () => {
+  it("directs users to hosted Mate with an inactive data boundary", () => {
+    const app = readSource("src/App.tsx");
+    expect(app).toContain('Linking.openURL("https://mate.zerops.io")');
+    expect(app).toContain("<ZeropsAccountEnvironmentProvider account={null}>");
+    expect(app.match(/<ZeropsAccountEnvironmentProvider/g)).toHaveLength(1);
+    expect(app).not.toContain("ZeropsSessionProvider");
+    expect(app).not.toContain("CloudAuthProvider");
+    expect(app).not.toContain('from "./Stack"');
+  });
+
+  it("wraps whatever mounts the Stack in the global voice input provider and pill", () => {
+    // Every thread screen's composer reads the global voice input session, which
+    // throws without its provider; upstream wraps Navigation in both in App.tsx.
+    const self = NodePath.resolve(new URL(import.meta.url).pathname);
+    const sourceRoot = NodePath.join(repositoryRoot, "apps/mobile/src");
+    const stackMounters = (
+      NodeFS.readdirSync(sourceRoot, { recursive: true }) as ReadonlyArray<string>
+    )
+      .map((file) => NodePath.join(sourceRoot, file))
+      .filter((file) => /\.tsx?$/u.test(file) && file !== self)
+      .map((file) => ({ file, source: NodeFS.readFileSync(file, "utf8") }))
+      .filter(({ source }) => /from "(?:\.\/|(?:\.\.\/)+)Stack"/u.test(source));
+
+    for (const { file, source } of stackMounters) {
+      const order = [
+        "<VoiceInputProvider>",
+        "<GlobalVoiceInputControl>",
+        "<Navigation",
+        "</GlobalVoiceInputControl>",
+        "</VoiceInputProvider>",
+      ].map((tag) => source.indexOf(tag));
+      expect(order, NodePath.relative(repositoryRoot, file)).not.toContain(-1);
+      expect(order, NodePath.relative(repositoryRoot, file)).toEqual(
+        order.toSorted((a, b) => a - b),
+      );
+    }
+  });
+
+  it("reads the shared candidate selector over the store's roster and services", () => {
+    const candidates = readSource("src/features/zerops/useZeropsCandidates.ts");
+
+    expect(candidates).toContain("selectCandidates");
+    expect(candidates).toContain("shownProjectsAtom");
+    expect(candidates).toContain("projectServicesAtom");
+    expect(candidates).not.toContain("organization-inventory");
+    expect(candidates).not.toContain("runtime.stateAtom");
+  });
+
+  it("hosts the account runtime, and connects a Mate through its exchange driver", () => {
+    const provider = readSource("src/features/zerops/ZeropsAccountEnvironmentProvider.tsx");
+    const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
+
+    expect(provider).toContain("makeAccountRuntime(");
+    expect(connectRoute).toContain("connectMate(environments, candidate.key, closeOff)");
+    expect(connectRoute).toContain("hqMateSetupAtom(candidate.project.id)");
+    expect(connectRoute).not.toContain("readMateMarker");
+    expect(connectRoute).not.toContain("readProjectEnv");
+    expect(connectRoute).not.toContain("exchangeZeropsContainerIdentity");
+    expect(connectRoute).not.toContain("connectZeropsIdentity");
+  });
+
+  it("leaves the deleted raw candidate path with no importer anywhere", () => {
+    const self = NodePath.resolve(new URL(import.meta.url).pathname);
+    const roots = ["apps/mobile/src", "apps/web/src", "packages/client-runtime/src"].map((root) =>
+      NodePath.join(repositoryRoot, root),
+    );
+    const importers = roots.flatMap((root) =>
+      (NodeFS.readdirSync(root, { recursive: true }) as ReadonlyArray<string>)
+        .map((file) => NodePath.join(root, file))
+        .filter((file) => /\.tsx?$/u.test(file) && file !== self)
+        .filter((file) =>
+          /zerops\/candidateLoading|\.\/candidate-loading|projectZeropsCandidates/u.test(
+            NodeFS.readFileSync(file, "utf8"),
+          ),
+        )
+        .map((file) => NodePath.relative(repositoryRoot, file)),
+    );
+    const clientRuntime = JSON.parse(
+      NodeFS.readFileSync(
+        NodePath.join(repositoryRoot, "packages/client-runtime/package.json"),
+        "utf8",
+      ),
+    ) as { readonly exports: Record<string, unknown> };
+
+    expect(importers).toEqual([]);
+    expect(clientRuntime.exports["./zerops/candidateLoading"]).toBeUndefined();
+    expect(
+      NodeFS.existsSync(
+        NodePath.join(repositoryRoot, "packages/client-runtime/src/zerops/candidateLoading.ts"),
+      ),
+    ).toBe(false);
+    expect(
+      NodeFS.existsSync(
+        NodePath.join(repositoryRoot, "apps/mobile/src/features/zerops/candidate-loading.ts"),
+      ),
+    ).toBe(false);
+  });
+
+  it("retains the dormant native connection source for a future account lifecycle implementation", () => {
+    const stack = readSource("src/Stack.tsx");
+    const onboarding = readSource("src/connection/onboarding.ts");
+
+    expect(stack).toContain("screen: ZeropsConnectRouteScreen");
+    expect(stack).toContain("ConnectionsPairing: createNativeStackScreen");
+    expect(onboarding).toContain("onboarding.registerPairing({ pairingUrl })");
+  });
+
+  it("selects the connected environment before leaving either Zerops connect route", () => {
+    const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
+
+    expect(connectRoute).toContain("props.onDone(candidate.environmentId)");
+    expect(connectRoute).toContain("props.onDone(result.environmentId)");
+    expect(connectRoute).toContain("useSetHomeEnvironmentId");
+    expect(connectRoute.indexOf("setHomeEnvironmentId(environmentId)")).toBeLessThan(
+      connectRoute.indexOf('StackActions.replace("Home")'),
+    );
+  });
+
+  it("globally locks picker mutations and preserves long project identities", () => {
+    const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
+
+    expect(connectRoute).toContain("disabled={isConnecting}");
+    expect(connectRoute).toContain("numberOfLines={2}");
+    expect(connectRoute).toContain("visibleError ? null");
+  });
+
+  it("surfaces retryable session restore and one-time recovery states", () => {
+    const connectRoute = readSource("src/features/zerops/ZeropsConnectRouteScreen.tsx");
+
+    expect(connectRoute).toContain("restoreError");
+    expect(connectRoute).toContain("retryRestore");
+    expect(connectRoute).toContain("newRecoveryToken");
+    expect(connectRoute).toContain("clearNewRecoveryToken");
+    expect(connectRoute).toContain("Save your new recovery code");
+    expect(connectRoute).toContain("selectable");
+  });
+});

@@ -1,0 +1,137 @@
+import { ApprovalRequestId, EnvironmentId } from "@t3tools/contracts";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+
+import type { PendingApproval, PendingUserInput } from "../../session-logic";
+import { ZeropsReadOnlyConversationFooter } from "./ZeropsReadOnlyConversationFooter";
+
+const readOnly = {
+  notice: "Signed in by another project member — only they can run this agent.",
+  waitingLabel: "Waiting for the owner",
+};
+
+const approval: PendingApproval = {
+  requestId: ApprovalRequestId.make("approval-1"),
+  requestKind: "command",
+  createdAt: "2026-09-24T00:00:00.000Z",
+  detail: "rm -rf dist",
+};
+
+const question: PendingUserInput = {
+  requestId: ApprovalRequestId.make("request-1"),
+  createdAt: "2026-09-24T00:00:00.000Z",
+  questions: [
+    {
+      id: "question-1",
+      header: "Approach",
+      question: "Which approach should the migration take?",
+      options: [
+        { label: "Incremental", description: "Move one module at a time" },
+        { label: "Big bang", description: "Move everything in one release" },
+      ],
+      multiSelect: false,
+    },
+  ],
+  dismissible: true,
+};
+
+function render(input: {
+  readonly pendingApprovals?: ReadonlyArray<PendingApproval>;
+  readonly pendingUserInputs?: ReadonlyArray<PendingUserInput>;
+  readonly change?: string;
+}) {
+  return renderToStaticMarkup(
+    <ZeropsReadOnlyConversationFooter
+      change={input.change === undefined ? null : <section>{input.change}</section>}
+      environmentId={EnvironmentId.make("environment-1")}
+      readOnly={readOnly}
+      pendingApprovals={input.pendingApprovals ?? []}
+      pendingUserInputs={[...(input.pendingUserInputs ?? [])]}
+      onSignIn={() => {}}
+    />,
+  );
+}
+
+function buttons(html: string): string[] {
+  return html.match(/<button\b[^>]*>[\s\S]*?<\/button>/g) ?? [];
+}
+
+describe("ZeropsReadOnlyConversationFooter", () => {
+  it.each([
+    ["nothing pending", {}, 1],
+    ["a pending approval", { pendingApprovals: [approval] }, 1],
+    // The question keeps its disclosure toggle: reading is not answering.
+    ["a pending question", { pendingUserInputs: [question] }, 2],
+  ] as const)("with %s offers no way to act on the agent", (_label, input, buttonCount) => {
+    const html = render(input);
+
+    expect(html).not.toContain("data-zerops-primary-action");
+    expect(html).not.toContain("<textarea");
+    expect(html).not.toContain("contenteditable");
+    expect(html).not.toContain("<form");
+    expect(html).not.toContain("Waiting for you");
+    expect(buttons(html)).toHaveLength(buttonCount);
+    expect(buttons(html).at(-1)).toContain("Use my own account instead…");
+    expect(html).toContain(readOnly.notice);
+  });
+
+  // A banner attached above hides the shell's own glass and outline and hands
+  // them to the composer's main surface; the footer body is that surface, or
+  // the banner hangs open over nothing.
+  it("paints its body as the composer's main surface, so an attached banner closes on it", () => {
+    const html = render({});
+
+    expect(html).toMatch(
+      /<div[^>]*data-chat-composer-main-surface="true"[^>]*>[\s\S]*Use my own account instead…/,
+    );
+  });
+
+  it("shows a pending approval and whom it waits on, without its decisions", () => {
+    const html = render({ pendingApprovals: [approval] });
+
+    expect(html).toContain("rm -rf dist");
+    expect(html).toContain(">Waiting for the owner</span>");
+
+    expect(html).not.toContain("Approve");
+    expect(html).not.toContain("Decline");
+  });
+
+  it("shows a pending question and its options, read-only", () => {
+    const html = render({ pendingUserInputs: [question] });
+
+    expect(html).toContain("Which approach should the migration take?");
+    expect(html).toContain("Incremental");
+    expect(html).toContain(">Waiting for the owner</span>");
+
+    expect(html).not.toContain("data-pending-user-input-other");
+  });
+
+  // A colleague's Mate is read along: the strip says whose it is and offers nothing.
+  // The owner's pick on the "Composer Strips" board (S6, 2026-10-12): "A colleague's Mate shows its
+  // change like yours. The same section over the read-along line".
+  it.each([
+    { pending: "nothing", input: {}, shows: true },
+    { pending: "an approval", input: { pendingApprovals: [approval] }, shows: false },
+    { pending: "a question", input: { pendingUserInputs: [question] }, shows: false },
+  ] as const)(
+    "shows its change waiting for a review over the read-along line, after what it asks: $pending",
+    ({ input, shows }) => {
+      const html = render({ ...input, change: "Rosa is waiting for a review of #2" });
+      expect(html.includes("Rosa is waiting for a review of #2")).toBe(shows);
+      expect(html).toContain(readOnly.notice);
+    },
+  );
+
+  it("offers no action where it is given none", () => {
+    const html = renderToStaticMarkup(
+      <ZeropsReadOnlyConversationFooter
+        environmentId={EnvironmentId.make("environment-1")}
+        readOnly={readOnly}
+        pendingApprovals={[]}
+        pendingUserInputs={[]}
+      />,
+    );
+    expect(html).toContain("only they can run this agent");
+    expect(buttons(html)).toEqual([]);
+  });
+});

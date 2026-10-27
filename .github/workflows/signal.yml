@@ -1,0 +1,314 @@
+name: Signal
+run-name: Signal · ${{ github.ref_name }}
+
+on:
+  pull_request:
+  push:
+    branches:
+      - kh-next
+      - "kh-bisect/signal-**"
+
+permissions:
+  contents: read
+  # The classifier reads the previous kh-next run's classification.
+  actions: read
+
+env:
+  # Scenarios run against the test HQ of zeropsio/mate-hq (private), read with a deploy key, as
+  # CI's State Smoke does. The bundle build reads it too: an external HQ changes the bundle's HQ origin.
+  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
+  PNPM_CONFIG_FETCH_RETRIES: "2"
+  PNPM_CONFIG_FETCH_TIMEOUT: "60000"
+  PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
+  PNPM_CONFIG_FETCH_RETRY_MAXTIMEOUT: "30000"
+
+concurrency:
+  group: signal-${{ github.ref }}
+  # Integration verdicts must finish; diagnostics and PRs keep only their newest run.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
+
+jobs:
+  chat_bundle:
+    name: Chat Contract bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+
+      - name: Install dependencies
+        env:
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "false"
+        run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
+
+      - name: Build the shared scenario bundle
+        run: vp exec node apps/web/test/scenarios/harness/build.ts
+
+      - name: Upload the content-addressed scenario bundle
+        uses: actions/upload-artifact@v4
+        with:
+          name: chat-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
+
+  chat_scenarios:
+    name: Test Web Scenarios (${{ matrix.name }})
+    needs: chat_bundle
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: C shard 1
+            report: c-1
+            command: node scripts/signal.ts shard c 1/4
+          - name: C shard 2
+            report: c-2
+            command: node scripts/signal.ts shard c 2/4
+          - name: C shard 3
+            report: c-3
+            command: node scripts/signal.ts shard c 3/4
+          - name: C shard 4
+            report: c-4
+            command: node scripts/signal.ts shard c 4/4
+          - name: non-C shard 1
+            report: non-c-1
+            command: node scripts/signal.ts shard non-c 1/3
+          - name: non-C shard 2
+            report: non-c-2
+            command: node scripts/signal.ts shard non-c 2/3
+          - name: non-C shard 3
+            report: non-c-3
+            command: node scripts/signal.ts shard non-c 3/3
+    steps:
+      - &require_hq_key
+        name: Require the mate-hq deploy key
+        env:
+          MATE_HQ_DEPLOY_KEY: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MATE_HQ_DEPLOY_KEY" ]; then
+            echo "::error::Secret MATE_HQ_DEPLOY_KEY is absent (fork pull requests get no secrets). The scenarios need the test HQ from zeropsio/mate-hq and fail without it."
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      # Every z3 branch tests the maintained multitenant HQ.
+      - &checkout_hq
+        name: Checkout mate-hq
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: main
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+          submodules: true
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+
+      - name: Install dependencies
+        env: &verified_lockfile
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: *hosted_dependencies
+
+      - &install_hq
+        name: Install mate-hq and its services
+        working-directory: mate-hq
+        env: *verified_lockfile
+        run: |
+          vp install --frozen-lockfile
+          scripts/ci-install-object-store.sh
+          scripts/ci-install-postgres.sh
+
+      - name: Cache the scenarios' Chrome for Testing
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+
+      - name: Download the shared scenario bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: chat-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+
+      - name: Provision Chrome for Testing
+        run: vp run test:browser
+
+      - name: Record this shard's test evidence
+        env:
+          MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+        run: ${{ matrix.command }}
+
+      - name: Upload shard evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-shard-${{ matrix.report }}
+          path: |
+            signal-reports/${{ matrix.report }}.json
+            signal-reports/${{ matrix.report }}.json.progress.jsonl
+          if-no-files-found: error
+          retention-days: 7
+
+  classify:
+    name: Classify original failures
+    needs: [chat_bundle, chat_scenarios]
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - *require_hq_key
+
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - *checkout_hq
+
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        id: paths
+        shell: bash
+        run: |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+
+      - name: Install dependencies
+        env: *verified_lockfile
+        run: *hosted_dependencies
+
+      - *install_hq
+
+      - name: Cache the scenarios' Chrome for Testing
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cache/mate-test-browser
+          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+
+      - name: Download the shared scenario bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: chat-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+
+      - name: Provision Chrome for Testing
+        run: vp run test:browser
+
+      - name: Download all shard evidence
+        uses: actions/download-artifact@v4
+        with:
+          pattern: signal-shard-*
+          path: signal-reports
+          merge-multiple: true
+
+      - name: Download the previous kh-next run's classification
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/kh-next' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          # A listing that fails compares nothing this run; it never fails Classify on its own.
+          previous=$(gh run list -R "$GITHUB_REPOSITORY" --workflow signal.yml --branch kh-next \
+            --event push --status completed -L 30 --json databaseId,conclusion \
+            --jq "[.[] | select(.databaseId < $GITHUB_RUN_ID and (.conclusion == \"success\" or .conclusion == \"failure\"))][0].databaseId // empty" || true)
+          if [ -z "$previous" ] || ! gh run download "$previous" -R "$GITHUB_REPOSITORY" -n signal-failures -D signal-previous; then
+            echo "::notice title=Signal::No previous kh-next classification to compare"
+          fi
+
+      - name: Rerun only failed tests once on this commit and classify
+        env:
+          MATE_SCENARIO_REQUIRE_BUNDLE: "1"
+          MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json
+        run: node scripts/signal.ts classify
+
+      - name: Require the workflow infrastructure to succeed
+        # After classification, so a shard the job guard killed still has its running case named.
+        run: test "${{ needs.chat_bundle.result }}" = success && test "${{ needs.chat_scenarios.result }}" = success
+
+      - name: Upload failure classifications
+        # A standing red fails the classify step after it wrote its classification: the next run
+        # compares against it.
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-failures
+          path: signal-failures.json
+          if-no-files-found: error
+          retention-days: 14

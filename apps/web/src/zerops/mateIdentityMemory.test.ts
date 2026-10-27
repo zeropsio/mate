@@ -1,0 +1,171 @@
+import type { HqMateIdentity } from "@t3tools/client-runtime/data";
+import type { EnvironmentId } from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  readChiefMemory,
+  readMateMemory,
+  writeChiefMemory,
+  rememberMates,
+  seededIdentities,
+  writeMateMemory,
+  type MateMemory,
+} from "./mateIdentityMemory";
+
+const identity = (environmentId: string, name: string): HqMateIdentity => ({
+  projectId: `project-${environmentId}`,
+  environmentId: environmentId as EnvironmentId,
+  fullName: name,
+  name,
+  tint: "sky",
+  shape: "hexagon",
+  project: undefined,
+  projectUrl: `https://app.zerops.io/project/project-${environmentId}`,
+});
+
+/** A browser's storage: one key per value, as localStorage keeps them. */
+function storage() {
+  const held = new Map<string, string>();
+  return {
+    getItem: (key: string) => held.get(key) ?? null,
+    setItem: (key: string, value: string) => void held.set(key, value),
+  };
+}
+
+const namesOf = (identities: ReadonlyArray<HqMateIdentity>) =>
+  identities.map((one) => `${one.environmentId}:${one.name}`);
+
+describe("the Mates' names a reload remembers", () => {
+  it("a reload paints the Mate's name from the last visit before HQ answers", () => {
+    const browser = storage();
+    // The last visit: HQ named Milo.
+    writeMateMemory(rememberMates({}, [identity("env-milo", "Milo")], true), browser);
+    // The reload: HQ has not answered yet.
+    const remembered = readMateMemory(browser);
+    expect(namesOf(seededIdentities([], remembered, false))).toEqual(["env-milo:Milo"]);
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly memory: MateMemory;
+    readonly hq: ReadonlyArray<HqMateIdentity>;
+    readonly read: boolean;
+    readonly shows: ReadonlyArray<string>;
+    readonly remembers: ReadonlyArray<string>;
+  }>([
+    {
+      name: "HQ's answer replaces a remembered name that changed",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [identity("env-milo", "Mila")],
+      read: true,
+      shows: ["env-milo:Mila"],
+      remembers: ["env-milo:Mila"],
+    },
+    {
+      name: "a Mate HQ names before its list is whole stands beside the remembered others",
+      memory: {
+        "env-milo": identity("env-milo", "Milo"),
+        "env-rhea": identity("env-rhea", "Rhea"),
+      },
+      hq: [identity("env-milo", "Mila")],
+      read: false,
+      shows: ["env-milo:Mila", "env-rhea:Rhea"],
+      remembers: ["env-milo:Mila", "env-rhea:Rhea"],
+    },
+    {
+      name: "a listed Mate keeps its remembered environment until its overview arrives",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [{ ...identity("env-milo", "Milo"), environmentId: undefined }],
+      read: true,
+      shows: ["env-milo:Milo"],
+      remembers: ["env-milo:Milo"],
+    },
+    {
+      name: "navigation renames and redraws a remembered Mate before its overview arrives",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [
+        { ...identity("env-milo", "Mila"), environmentId: undefined, tint: "rose", shape: "seal" },
+      ],
+      read: true,
+      shows: ["env-milo:Mila"],
+      remembers: ["env-milo:Mila"],
+    },
+    {
+      name: "an overview's replacement environment retires the same project's remembered environment",
+      memory: { "env-milo": identity("env-milo", "Milo") },
+      hq: [{ ...identity("env-milo", "Milo"), environmentId: "env-new" as EnvironmentId }],
+      read: false,
+      shows: ["env-new:Milo"],
+      remembers: ["env-new:Milo"],
+    },
+    {
+      name: "a Mate HQ no longer lists is forgotten once its list is read",
+      memory: {
+        "env-milo": identity("env-milo", "Milo"),
+        "env-gone": identity("env-gone", "Gone"),
+      },
+      hq: [identity("env-milo", "Milo")],
+      read: true,
+      shows: ["env-milo:Milo"],
+      remembers: ["env-milo:Milo"],
+    },
+  ])("$name", ({ memory, hq, read, shows, remembers }) => {
+    expect(namesOf(seededIdentities(hq, memory, read))).toEqual(shows);
+    expect(namesOf(Object.values(rememberMates(memory, hq, read)))).toEqual(remembers);
+  });
+
+  it.each([
+    { name: "missing", browser: undefined },
+    {
+      name: "blocked",
+      browser: {
+        getItem: () => {
+          throw new Error("SecurityError");
+        },
+      },
+    },
+    { name: "unreadable", browser: { getItem: () => "{not json" } },
+    { name: "empty", browser: { getItem: () => null } },
+  ])("remembers nothing when storage is $name", ({ browser }) => {
+    expect(seededIdentities([], readMateMemory(browser), false)).toEqual([]);
+  });
+
+  it("keeps the same memory when HQ says nothing new, so it is not written again", () => {
+    const memory = rememberMates({}, [identity("env-milo", "Milo")], true);
+    expect(rememberMates(memory, [identity("env-milo", "Milo")], true)).toBe(memory);
+  });
+});
+
+describe("whose Chief a reload remembers", () => {
+  it.each<[string, string | null]>([
+    ["the viewer's own Chief", "p-chief"],
+    ["that the viewer has none", null],
+  ])("a reload knows %s from the last visit before HQ answers", (_title, chief) => {
+    const held = storage();
+    writeChiefMemory("org-1", chief, held);
+    expect(readChiefMemory("org-1", held)).toBe(chief);
+  });
+
+  it("knows nothing of another organization's Chief", () => {
+    const held = storage();
+    writeChiefMemory("org-1", "p-chief", held);
+    expect(readChiefMemory("org-2", held)).toBeUndefined();
+  });
+
+  it("keeps each organization's Chief beside the others", () => {
+    const held = storage();
+    writeChiefMemory("org-1", "p-one", held);
+    writeChiefMemory("org-2", null, held);
+    expect([readChiefMemory("org-1", held), readChiefMemory("org-2", held)]).toEqual([
+      "p-one",
+      null,
+    ]);
+  });
+
+  it("remembers nothing from storage it cannot read", () => {
+    const held = storage();
+    held.setItem("mate:chief:v1", "{not json");
+    expect(readChiefMemory("org-1", held)).toBeUndefined();
+    expect(readChiefMemory("org-1", undefined)).toBeUndefined();
+  });
+});

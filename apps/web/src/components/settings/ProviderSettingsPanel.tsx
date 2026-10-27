@@ -1,0 +1,1197 @@
+import { usePlatformCapabilities } from "../../zerops/usePlatformCapabilities";
+import { useEnvironmentProjectRef } from "../../zerops/useZeropsFeeds";
+import { zeropsMateAt } from "../../zerops/mateIdentities";
+import { useOpenMate } from "../../zerops/useOpenMate";
+import { useZeropsMateDirectory } from "../../zerops/useZeropsMates";
+import { useAtomValue } from "@effect/atom-react";
+import { connectionStatusText } from "@t3tools/client-runtime/connection";
+import { safeErrorLogAttributes } from "@t3tools/client-runtime/errors";
+import {
+  isAtomCommandInterrupted,
+  squashAtomCommandFailure,
+} from "@t3tools/client-runtime/state/runtime";
+import {
+  defaultInstanceIdForDriver,
+  type EnvironmentId,
+  PROVIDER_DISPLAY_NAMES,
+  ProviderDriverKind,
+  type ProviderInstanceConfig,
+  type ProviderInstanceId,
+  resolveProviderInstanceEnabled,
+} from "@t3tools/contracts";
+import { DEFAULT_UNIFIED_SETTINGS } from "@t3tools/contracts/settings";
+import {
+  getBackgroundActivityPresetSettings,
+  resolveServerBackgroundActivitySettings,
+} from "@t3tools/shared/backgroundActivitySettings";
+import * as Arr from "effect/Array";
+import * as Duration from "effect/Duration";
+import * as Equal from "effect/Equal";
+import * as Result from "effect/Result";
+import {
+  ChevronDownIcon,
+  CloudIcon,
+  LoaderIcon,
+  MonitorIcon,
+  PlusIcon,
+  RefreshCwIcon,
+  TerminalIcon,
+} from "lucide-react";
+import { useCallback, useMemo, useRef, useState, type ReactNode } from "react";
+
+import { isElectron } from "../../env";
+import { usePrimarySessionState } from "../../environments/primary";
+import { useEnvironmentSettings, useUpdateEnvironmentSettings } from "../../hooks/useSettings";
+import { cn } from "../../lib/utils";
+import { resolveAppModelSelectionState } from "../../modelSelection";
+import {
+  useEnvironments,
+  usePrimaryEnvironmentId,
+  type EnvironmentPresentation,
+} from "../../state/environments";
+import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
+import { useEnvironmentSessionState } from "../../state/session";
+import { useAtomCommand } from "../../state/use-atom-command";
+import { getRelativeTimeState } from "../../timestampFormat";
+import {
+  ConnectionStatusDot,
+  connectionPhaseDotClassName,
+  connectionPhasePingClassName,
+} from "../ConnectionStatusDot";
+import {
+  isProviderSettingsUpdateCandidate,
+  isProviderUpdateActive,
+  type ProviderSettingsUpdateCandidate,
+} from "../ProviderUpdateLaunchNotification.logic";
+import { Button } from "../ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "../ui/collapsible";
+import {
+  NumberField,
+  NumberFieldDecrement,
+  NumberFieldGroup,
+  NumberFieldIncrement,
+  NumberFieldInput,
+} from "../ui/number-field";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { stackedThreadToast, toastManager } from "../ui/toast";
+import { AddProviderInstanceDialog } from "./AddProviderInstanceDialog";
+import { ProviderInstanceCard } from "./ProviderInstanceCard";
+import { UsageProviderSettings } from "./UsageProviderSettings";
+import { ProviderSetupSection, readAntigravityAuthMethod } from "./ProviderSetupSection";
+import { OpenCodeProviderKeys } from "./OpenCodeProviderKeys";
+import { DRIVER_OPTIONS, getDriverOption } from "./providerDriverMeta";
+import { Tab, TabStrip } from "../ui/tab-strip";
+import { searchableSetting } from "./settingsSearch";
+import {
+  backgroundActivityOverrideSettings,
+  buildProviderInstanceUpdatePatch,
+  defaultProviderInstanceConfig,
+  durationToSeconds,
+  normalizeIntervalSeconds,
+  PROVIDER_HEALTH_INTERVAL_STEP_SECONDS,
+} from "./SettingsPanels.logic";
+import {
+  PolicyTooltip,
+  SettingResetButton,
+  SettingsPageContainer,
+  SettingsRow,
+  SettingsSection,
+  useRelativeTimeTick,
+} from "./settingsLayout";
+import {
+  buildProviderEnvironmentOptions,
+  classifyProviderEnvironmentAccess,
+  namedProviderEnvironment,
+  providerEditorEmpty,
+  providersWithoutOpenMate,
+  type ProviderEnvironmentAccess,
+  type ProvidersWithoutOpenMate,
+  type ProviderOperateAccess,
+  resolvePrimaryOperateAccess,
+  resolveRemoteOperateAccess,
+  resolveSelectedProviderEnvironmentId,
+} from "./ProviderSettingsPanel.logic";
+
+function withoutProviderInstanceKey<V>(
+  record: Readonly<Record<ProviderInstanceId, V>> | undefined,
+  key: ProviderInstanceId,
+): Record<ProviderInstanceId, V> {
+  const next = { ...record } as Record<ProviderInstanceId, V>;
+  delete next[key];
+  return next;
+}
+
+function withoutProviderInstanceFavorites(
+  favorites: ReadonlyArray<{ readonly provider: ProviderInstanceId; readonly model: string }>,
+  instanceId: ProviderInstanceId,
+) {
+  return favorites.filter((favorite) => favorite.provider !== instanceId);
+}
+
+const PROVIDER_SETTINGS = DRIVER_OPTIONS.map((definition) => ({
+  provider: definition.value,
+}));
+
+function configuredBinaryPath(config: unknown): string {
+  if (config === null || typeof config !== "object" || !("binaryPath" in config)) return "";
+  return typeof config.binaryPath === "string" ? config.binaryPath.trim() : "";
+}
+
+function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }) {
+  useRelativeTimeTick();
+  const lastCheckedRelative = getRelativeTimeState(lastCheckedAt);
+
+  if (lastCheckedRelative.status === "missing") {
+    return null;
+  }
+
+  if (lastCheckedRelative.status === "invalid") {
+    return <span className="text-[11px] text-muted-foreground/50">Checked unavailable</span>;
+  }
+
+  return (
+    <span className="text-[11px] text-muted-foreground/60">
+      {lastCheckedRelative.suffix ? (
+        <>
+          Checked <span className="font-mono tabular-nums">{lastCheckedRelative.value}</span>{" "}
+          {lastCheckedRelative.suffix}
+        </>
+      ) : (
+        <>Checked {lastCheckedRelative.value}</>
+      )}
+    </span>
+  );
+}
+
+function providerEnvironmentIcon(environment: EnvironmentPresentation) {
+  if (environment.entry.target._tag === "PrimaryConnectionTarget") return MonitorIcon;
+  if (environment.entry.target._tag === "RelayConnectionTarget") return CloudIcon;
+  if (environment.entry.target._tag === "SshConnectionTarget") return TerminalIcon;
+  return CloudIcon;
+}
+
+function providerEnvironmentDetail(environment: EnvironmentPresentation): string {
+  if (environment.entry.target._tag === "PrimaryConnectionTarget") return "Primary device";
+  if (environment.relayManaged) return "Legacy relay";
+  if (environment.entry.target._tag === "SshConnectionTarget") return "SSH";
+  return environment.displayUrl ?? "Remote device";
+}
+
+function EnvironmentUnavailableRow({
+  environment,
+  access,
+  deviceTabs,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly access: Exclude<ProviderEnvironmentAccess, { kind: "editable" | "read-only" }>;
+  readonly deviceTabs?: ReactNode;
+}) {
+  const isLoading = access.kind === "loading";
+  const title = isLoading
+    ? "Loading provider settings"
+    : access.kind === "error"
+      ? "Could not connect to this device"
+      : "Provider settings are unavailable";
+  const description = isLoading
+    ? access.reason === "permissions"
+      ? "Checking what this session is allowed to change."
+      : `Waiting for ${environment.label}'s configuration.`
+    : connectionStatusText(environment.connection);
+  // No spinner: this state can persist indefinitely for a wedged device, and a
+  // continuously repainting animation would run the whole time.
+  return (
+    <SettingsSection title="Providers">
+      {deviceTabs}
+      <SettingsRow title={title} description={description} />
+    </SettingsSection>
+  );
+}
+
+interface ProviderSettingsTarget {
+  readonly environmentId?: EnvironmentId;
+  readonly instanceId?: ProviderInstanceId;
+}
+
+export function ProviderSettingsPanel(target: ProviderSettingsTarget) {
+  return (
+    <SettingsPageContainer className="gap-8">
+      <ProviderSettingsPanelContent
+        key={`${target.environmentId ?? ""}:${target.instanceId ?? ""}`}
+        {...target}
+      />
+    </SettingsPageContainer>
+  );
+}
+
+function ProviderSettingsPanelContent(target: ProviderSettingsTarget) {
+  const { environments, isReady } = useEnvironments();
+  const primaryEnvironmentId = usePrimaryEnvironmentId();
+  const mates = useZeropsMateDirectory();
+  const openMate = useOpenMate();
+  // Only the Mates the app is connected to: a tab never wakes one to read
+  // its agents. Each is called by its Mate's name, never its server's address.
+  const options = useMemo(
+    () =>
+      buildProviderEnvironmentOptions(
+        environments
+          .filter((environment) => environment.connection.phase === "connected")
+          .map((environment) =>
+            namedProviderEnvironment(environment, zeropsMateAt(mates, environment.environmentId)),
+          ),
+        primaryEnvironmentId,
+      ),
+    [environments, mates, primaryEnvironmentId],
+  );
+  // Raw user intent; the effective selection is re-derived every render so a
+  // device that drops out of the list (it leaves the catalog, or its socket
+  // closes) falls back without erasing the pick — if it reappears the
+  // selection is restored.
+  const [selectedEnvironmentId, setSelectedEnvironmentId] = useState<EnvironmentId | null>(
+    target.environmentId ?? primaryEnvironmentId,
+  );
+  const targetEnvironmentMissing =
+    target.environmentId !== undefined &&
+    selectedEnvironmentId === target.environmentId &&
+    !options.some((environment) => environment.environmentId === target.environmentId);
+  const effectiveEnvironmentId = targetEnvironmentMissing
+    ? target.environmentId
+    : resolveSelectedProviderEnvironmentId(options, selectedEnvironmentId, primaryEnvironmentId);
+  const selectedEnvironment =
+    options.find((environment) => environment.environmentId === effectiveEnvironmentId) ?? null;
+  const onlyPrimaryDevice =
+    options.length === 1 && options[0]?.entry.target._tag === "PrimaryConnectionTarget";
+  const deviceTabs =
+    !onlyPrimaryDevice && options.length > 0 ? (
+      <>
+        <div
+          aria-label="Devices"
+          className="flex h-11 min-w-0 items-center border-b border-border/70 px-3 sm:px-4"
+          role="group"
+        >
+          <TabStrip
+            activeId={effectiveEnvironmentId}
+            items={options.map((environment) => ({
+              id: environment.environmentId,
+              label: environment.label,
+            }))}
+            onSelect={(id) => {
+              const found = options.find((environment) => environment.environmentId === id);
+              if (found !== undefined) setSelectedEnvironmentId(found.environmentId);
+            }}
+          >
+            {options.map((environment) => {
+              const Icon = providerEnvironmentIcon(environment);
+              const selected = environment.environmentId === effectiveEnvironmentId;
+              const detail = environment.project ?? providerEnvironmentDetail(environment);
+              const statusText = connectionStatusText(environment.connection);
+              return (
+                <Tooltip key={environment.environmentId}>
+                  <TooltipTrigger
+                    render={
+                      <Tab
+                        active={selected}
+                        aria-pressed={selected}
+                        onClick={() => setSelectedEnvironmentId(environment.environmentId)}
+                        render={<button type="button" />}
+                        size="md"
+                        tabId={environment.environmentId}
+                      />
+                    }
+                  >
+                    <Icon className="size-3.5 shrink-0" aria-hidden />
+                    <span className="max-w-40 truncate">{environment.label}</span>
+                    <ConnectionStatusDot
+                      dotClassName={connectionPhaseDotClassName(environment.connection.phase)}
+                      pingClassName={connectionPhasePingClassName(environment.connection.phase)}
+                    />
+                    <span className="sr-only">
+                      {detail}, {statusText}
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipPopup side="top">
+                    {detail} · {statusText}
+                  </TooltipPopup>
+                </Tooltip>
+              );
+            })}
+          </TabStrip>
+        </div>
+        <p className="px-3 pt-2 text-xs text-muted-foreground sm:px-4">
+          Only Mates the app is connected to.
+        </p>
+      </>
+    ) : null;
+
+  return (
+    <>
+      {targetEnvironmentMissing ? (
+        <SettingsSection {...searchableSetting("providers")}>
+          {deviceTabs}
+          <SettingsRow
+            title="Device unavailable"
+            description="Reconnect this device to set up its provider, or select another device."
+          />
+        </SettingsSection>
+      ) : null}
+      {options.length === 0 && !targetEnvironmentMissing ? (
+        <NoOpenMateSection
+          state={providersWithoutOpenMate({
+            isReady,
+            phases: environments.map((environment) => environment.connection.phase),
+            directory: mates,
+          })}
+          onOpen={(projectId) => openMate({ projectId })}
+        />
+      ) : null}
+
+      {selectedEnvironment ? (
+        <SelectedEnvironmentProviderSettings
+          key={selectedEnvironment.environmentId}
+          environment={selectedEnvironment}
+          deviceTabs={deviceTabs}
+          targetInstanceId={
+            target.environmentId === undefined ||
+            selectedEnvironment.environmentId === target.environmentId
+              ? target.instanceId
+              : undefined
+          }
+        />
+      ) : null}
+    </>
+  );
+}
+
+/** Each Mate has its own coding agents: with none open, the way on is to open one. */
+function NoOpenMateSection({
+  state,
+  onOpen,
+}: {
+  readonly state: ProvidersWithoutOpenMate;
+  readonly onOpen: (projectId: string) => void;
+}) {
+  // No spinner while finding or connecting: either can last, and a repainting
+  // animation would run the whole time.
+  if (state.kind !== "open") {
+    return (
+      <SettingsSection {...searchableSetting("providers")}>
+        <SettingsRow
+          title={state.kind === "finding" ? "Finding your Mates" : "Connecting to your Mates"}
+          description={
+            state.kind === "finding"
+              ? "Each Mate has its own coding agents."
+              : "Their coding agents show here once connected."
+          }
+        />
+      </SettingsSection>
+    );
+  }
+  return (
+    <SettingsSection {...searchableSetting("providers")}>
+      <SettingsRow
+        title={state.mates.length === 0 ? "No Mates yet" : "No Mate open"}
+        description={
+          state.mates.length === 0
+            ? "Each Mate has its own coding agents. Make a Mate from the menu first."
+            : "Each Mate has its own coding agents. Open one to set them up."
+        }
+      />
+      {state.mates.map((mate) => (
+        <SettingsRow
+          key={mate.projectId}
+          title={mate.name}
+          description={mate.project}
+          control={
+            <Button
+              aria-label={`Open ${mate.name}`}
+              size="sm"
+              variant="secondary"
+              onClick={() => onOpen(mate.projectId)}
+            >
+              Open
+            </Button>
+          }
+        />
+      ))}
+    </SettingsSection>
+  );
+}
+
+function SelectedEnvironmentProviderSettings({
+  environment,
+  deviceTabs,
+  targetInstanceId,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly deviceTabs?: ReactNode;
+  readonly targetInstanceId?: ProviderInstanceId | undefined;
+}) {
+  const isPrimary = environment.entry.target._tag === "PrimaryConnectionTarget";
+  if (isPrimary) {
+    // The desktop app owns its primary server outright; a browser session
+    // checks the scopes its cookie session was granted.
+    if (isElectron) {
+      return (
+        <AccessGatedProviderSettings
+          environment={environment}
+          operateAccess="granted"
+          deviceTabs={deviceTabs}
+          targetInstanceId={targetInstanceId}
+        />
+      );
+    }
+    return (
+      <PrimarySessionGatedProviderSettings
+        environment={environment}
+        deviceTabs={deviceTabs}
+        targetInstanceId={targetInstanceId}
+      />
+    );
+  }
+  return (
+    <RemoteSessionGatedProviderSettings
+      environment={environment}
+      deviceTabs={deviceTabs}
+      targetInstanceId={targetInstanceId}
+    />
+  );
+}
+
+function PrimarySessionGatedProviderSettings({
+  environment,
+  deviceTabs,
+  targetInstanceId,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly deviceTabs?: ReactNode;
+  readonly targetInstanceId?: ProviderInstanceId | undefined;
+}) {
+  const primarySessionState = usePrimarySessionState();
+  const operateAccess = resolvePrimaryOperateAccess({
+    isPrimary: true,
+    hasDesktopBridge: false,
+    session: primarySessionState.data,
+    isPending: primarySessionState.isPending,
+    hasError: primarySessionState.error !== null,
+  });
+  return (
+    <AccessGatedProviderSettings
+      environment={environment}
+      operateAccess={operateAccess}
+      deviceTabs={deviceTabs}
+      targetInstanceId={targetInstanceId}
+    />
+  );
+}
+
+function RemoteSessionGatedProviderSettings({
+  environment,
+  deviceTabs,
+  targetInstanceId,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly deviceTabs?: ReactNode;
+  readonly targetInstanceId?: ProviderInstanceId | undefined;
+}) {
+  const sessionState = useEnvironmentSessionState(environment.environmentId);
+  const operateAccess = resolveRemoteOperateAccess({
+    session: sessionState.data,
+    isPending: sessionState.isPending,
+    hasError: sessionState.hasError,
+  });
+  return (
+    <AccessGatedProviderSettings
+      environment={environment}
+      operateAccess={operateAccess}
+      deviceTabs={deviceTabs}
+      targetInstanceId={targetInstanceId}
+    />
+  );
+}
+
+function AccessGatedProviderSettings({
+  environment,
+  operateAccess,
+  deviceTabs,
+  targetInstanceId,
+}: {
+  readonly environment: EnvironmentPresentation;
+  readonly operateAccess: ProviderOperateAccess;
+  readonly deviceTabs?: ReactNode;
+  readonly targetInstanceId?: ProviderInstanceId | undefined;
+}) {
+  const nativeProject = useEnvironmentProjectRef(environment.environmentId);
+  const capabilities = usePlatformCapabilities(environment.environmentId);
+  const access = classifyProviderEnvironmentAccess({
+    connectionPhase: environment.connection.phase,
+    hasServerConfig: environment.serverConfig !== null,
+    operateAccess: nativeProject !== null && !capabilities.operate ? "denied" : operateAccess,
+  });
+  if (access.kind !== "editable" && access.kind !== "read-only") {
+    return (
+      <EnvironmentUnavailableRow
+        environment={environment}
+        access={access}
+        deviceTabs={deviceTabs}
+      />
+    );
+  }
+  return (
+    <EnvironmentProviderSettings
+      environmentId={environment.environmentId}
+      environmentLabel={environment.label}
+      readOnly={access.kind === "read-only"}
+      deviceTabs={deviceTabs}
+      targetInstanceId={targetInstanceId}
+    />
+  );
+}
+
+export function EnvironmentProviderSettings({
+  environmentId,
+  environmentLabel,
+  readOnly = false,
+  deviceTabs,
+  targetInstanceId,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly environmentLabel: string;
+  readonly deviceTabs?: ReactNode;
+  readonly targetInstanceId?: ProviderInstanceId | undefined;
+  /**
+   * Render the full provider layout, greyed out and inert, when this session's
+   * credential lacks `orchestration:operate` on the environment. Showing the
+   * real configuration keeps the view honest; disabling interaction keeps
+   * every one of its writes from being offered and then rejected.
+   */
+  readonly readOnly?: boolean;
+}) {
+  const settings = useEnvironmentSettings(environmentId);
+  const updateSettings = useUpdateEnvironmentSettings(environmentId);
+  const readProviders = useAtomValue(serverEnvironment.providersValueAtom(environmentId));
+  const serverProviders = readProviders ?? EMPTY_SERVER_PROVIDERS;
+  const refreshServerProviders = useAtomCommand(serverEnvironment.refreshProviders, {
+    reportFailure: false,
+  });
+  const updateProvider = useAtomCommand(serverEnvironment.updateProvider, {
+    reportFailure: false,
+  });
+  const [isRefreshingProviders, setIsRefreshingProviders] = useState(false);
+  const [isAddInstanceDialogOpen, setIsAddInstanceDialogOpen] = useState(false);
+  const [selectedInstanceId, setSelectedInstanceId] = useState<ProviderInstanceId | null>(
+    targetInstanceId ?? null,
+  );
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const advancedVisible = readOnly || advancedOpen;
+  const [updatingProviderInstanceIds, setUpdatingProviderInstanceIds] = useState<
+    ReadonlySet<ProviderInstanceId>
+  >(() => new Set());
+  const refreshingRef = useRef(false);
+  const updatingInstanceIdsRef = useRef<Set<ProviderInstanceId>>(new Set());
+
+  const providerUpdateCandidateByInstanceId = useMemo(
+    () =>
+      new Map(
+        serverProviders
+          .filter(isProviderSettingsUpdateCandidate)
+          .map((candidate) => [candidate.instanceId, candidate]),
+      ),
+    [serverProviders],
+  );
+  const visibleProviderSettings = PROVIDER_SETTINGS.filter(
+    (providerSettings) =>
+      providerSettings.provider !== "cursor" ||
+      serverProviders.some(
+        (provider) =>
+          provider.instanceId === defaultInstanceIdForDriver(ProviderDriverKind.make("cursor")),
+      ),
+  );
+  const textGenerationModelSelection = resolveAppModelSelectionState(settings, serverProviders);
+  const textGenInstanceId = textGenerationModelSelection.instanceId;
+  const resolvedBackgroundActivity = resolveServerBackgroundActivitySettings(settings);
+  const providerHealthPreset = getBackgroundActivityPresetSettings(
+    resolvedBackgroundActivity.profile,
+  ).providerHealthRefreshInterval;
+  const providerHealthRefreshIntervalSeconds = durationToSeconds(
+    resolvedBackgroundActivity.providerHealthRefreshInterval,
+  );
+  const defaultProviderHealthRefreshIntervalSeconds = durationToSeconds(providerHealthPreset);
+  const lastCheckedAt =
+    serverProviders.length > 0
+      ? serverProviders.reduce(
+          (latest, provider) => (provider.checkedAt > latest ? provider.checkedAt : latest),
+          serverProviders[0]!.checkedAt,
+        )
+      : null;
+
+  const refreshProviders = useCallback(() => {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
+    setIsRefreshingProviders(true);
+    void (async () => {
+      const result = await refreshServerProviders({
+        environmentId,
+        input: { refreshModels: true },
+      });
+      refreshingRef.current = false;
+      setIsRefreshingProviders(false);
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        console.warn("Failed to refresh providers", {
+          operation: "refresh-providers",
+          environmentId,
+          ...safeErrorLogAttributes(squashAtomCommandFailure(result)),
+        });
+      }
+    })();
+  }, [environmentId, refreshServerProviders]);
+
+  const runProviderUpdate = useCallback(
+    async (candidate: ProviderSettingsUpdateCandidate) => {
+      // Ref-based re-entry guard, mirroring refreshProviders: a state updater
+      // may run after this function returns, so it cannot gate the dispatch.
+      if (updatingInstanceIdsRef.current.has(candidate.instanceId)) {
+        return;
+      }
+      updatingInstanceIdsRef.current.add(candidate.instanceId);
+      setUpdatingProviderInstanceIds((previous) => new Set(previous).add(candidate.instanceId));
+
+      const result = await updateProvider({
+        environmentId,
+        input: {
+          provider: candidate.driver,
+          instanceId: candidate.instanceId,
+        },
+      });
+      if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+        const error = squashAtomCommandFailure(result);
+        toastManager.add(
+          stackedThreadToast({
+            type: "error",
+            title: `Could not update ${PROVIDER_DISPLAY_NAMES[candidate.driver] ?? candidate.driver}`,
+            description:
+              error instanceof Error
+                ? error.message
+                : "The provider update command could not be started.",
+          }),
+        );
+      }
+      updatingInstanceIdsRef.current.delete(candidate.instanceId);
+      setUpdatingProviderInstanceIds((previous) => {
+        if (!previous.has(candidate.instanceId)) {
+          return previous;
+        }
+        const next = new Set(previous);
+        next.delete(candidate.instanceId);
+        return next;
+      });
+    },
+    [environmentId, updateProvider],
+  );
+
+  interface InstanceRow {
+    readonly instanceId: ProviderInstanceId;
+    readonly instance: ProviderInstanceConfig;
+    readonly driver: ProviderDriverKind;
+    readonly isDefault: boolean;
+    readonly isDirty?: boolean;
+  }
+
+  const instancesByDriver = new Map<
+    ProviderDriverKind,
+    Array<[ProviderInstanceId, ProviderInstanceConfig]>
+  >();
+  for (const [rawId, instance] of Object.entries(settings.providerInstances ?? {})) {
+    const driver = instance.driver;
+    const list = instancesByDriver.get(driver) ?? [];
+    list.push([rawId as ProviderInstanceId, instance]);
+    instancesByDriver.set(driver, list);
+  }
+
+  const defaultSlotIdsBySource = new Set<string>(
+    visibleProviderSettings.map((providerSettings) =>
+      String(defaultInstanceIdForDriver(providerSettings.provider)),
+    ),
+  );
+
+  const rows: InstanceRow[] = [];
+  const visibleDriverKinds = new Set<ProviderDriverKind>(
+    visibleProviderSettings.map((providerSettings) => providerSettings.provider),
+  );
+
+  for (const providerSettings of visibleProviderSettings) {
+    type LegacyProviderSettings = (typeof settings.providers)[keyof typeof settings.providers];
+    const legacyProviders = settings.providers as Record<string, LegacyProviderSettings>;
+    const defaultLegacyProviders = DEFAULT_UNIFIED_SETTINGS.providers as Record<
+      string,
+      LegacyProviderSettings
+    >;
+    const driver = providerSettings.provider;
+    const defaultInstanceId = defaultInstanceIdForDriver(driver);
+    const explicitInstance = settings.providerInstances?.[defaultInstanceId];
+    // A remote device may run a server version whose settings predate this
+    // driver, so the legacy mirror can be absent. Without either an explicit
+    // instance or a legacy blob there is nothing to render for the slot.
+    const legacyConfig = legacyProviders[providerSettings.provider];
+    const defaultLegacyConfig = defaultLegacyProviders[providerSettings.provider];
+    const effectiveInstance: ProviderInstanceConfig | undefined =
+      explicitInstance ?? defaultProviderInstanceConfig(settings, driver);
+    // Only the default slot depends on the legacy blob; custom instances for
+    // the driver must still render even when the slot has nothing to show.
+    if (effectiveInstance !== undefined) {
+      const isDirty =
+        explicitInstance !== undefined || !Equal.equals(legacyConfig, defaultLegacyConfig);
+      rows.push({
+        instanceId: defaultInstanceId,
+        instance: effectiveInstance,
+        driver,
+        isDefault: true,
+        isDirty,
+      });
+    }
+    for (const [id, instance] of instancesByDriver.get(providerSettings.provider) ?? []) {
+      if (id === defaultInstanceId) continue;
+      rows.push({ instanceId: id, instance, driver: instance.driver, isDefault: false });
+    }
+  }
+  for (const [driver, list] of instancesByDriver) {
+    if (visibleDriverKinds.has(driver)) continue;
+    for (const [id, instance] of list) {
+      rows.push({
+        instanceId: id,
+        instance,
+        driver: instance.driver,
+        isDefault: defaultSlotIdsBySource.has(String(id)),
+      });
+    }
+  }
+
+  const targetInstanceMissing =
+    targetInstanceId !== undefined &&
+    selectedInstanceId === targetInstanceId &&
+    !rows.some((row) => row.instanceId === targetInstanceId);
+  const selectedRow =
+    rows.find((row) => row.instanceId === selectedInstanceId) ??
+    (targetInstanceMissing ? null : (rows[0] ?? null));
+  const editorEmpty = providerEditorEmpty({
+    providersRead: readProviders !== null,
+    targetInstanceMissing,
+  });
+
+  const updateProviderInstance = (
+    row: InstanceRow,
+    next: ProviderInstanceConfig,
+    options?: {
+      readonly textGenerationModelSelection?: Parameters<
+        typeof buildProviderInstanceUpdatePatch
+      >[0]["textGenerationModelSelection"];
+    },
+  ) => {
+    updateSettings(
+      buildProviderInstanceUpdatePatch({
+        settings,
+        instanceId: row.instanceId,
+        instance: next,
+        driver: row.driver,
+        isDefault: row.isDefault,
+        textGenerationModelSelection: options?.textGenerationModelSelection,
+      }),
+    );
+  };
+
+  const deleteProviderInstance = (id: ProviderInstanceId) => {
+    updateSettings({
+      providerInstances: withoutProviderInstanceKey(settings.providerInstances, id),
+    });
+  };
+
+  const updateProviderModelPreferences = (
+    instanceId: ProviderInstanceId,
+    next: {
+      readonly hiddenModels: ReadonlyArray<string>;
+      readonly modelOrder: ReadonlyArray<string>;
+    },
+  ) => {
+    const hiddenModels = [...new Set(next.hiddenModels.filter((slug) => slug.trim().length > 0))];
+    const modelOrder = [...new Set(next.modelOrder.filter((slug) => slug.trim().length > 0))];
+    const rest = withoutProviderInstanceKey(settings.providerModelPreferences, instanceId);
+    updateSettings({
+      providerModelPreferences:
+        hiddenModels.length === 0 && modelOrder.length === 0
+          ? rest
+          : {
+              ...rest,
+              [instanceId]: {
+                hiddenModels,
+                modelOrder,
+              },
+            },
+    });
+  };
+
+  const updateProviderFavoriteModels = (
+    instanceId: ProviderInstanceId,
+    nextFavoriteModels: ReadonlyArray<string>,
+  ) => {
+    const favoriteModels = [
+      ...new Set(
+        Arr.filterMap(nextFavoriteModels, (slug) => {
+          const trimmedSlug = slug.trim();
+          return trimmedSlug.length > 0 ? Result.succeed(trimmedSlug) : Result.failVoid;
+        }),
+      ),
+    ];
+    updateSettings({
+      favorites: [
+        ...withoutProviderInstanceFavorites(settings.favorites ?? [], instanceId),
+        ...favoriteModels.map((model) => ({ provider: instanceId, model })),
+      ],
+    });
+  };
+
+  const resetDefaultInstance = (driverKind: ProviderDriverKind) => {
+    type LegacyProviderSettings = (typeof settings.providers)[keyof typeof settings.providers];
+    const defaultLegacyProviders = DEFAULT_UNIFIED_SETTINGS.providers as Record<
+      string,
+      LegacyProviderSettings | undefined
+    >;
+    const defaultInstanceId = defaultInstanceIdForDriver(driverKind);
+    const defaultLegacyProvider = defaultLegacyProviders[driverKind];
+    if (defaultLegacyProvider === undefined) return;
+    updateSettings({
+      providers: {
+        ...settings.providers,
+        [driverKind]: defaultLegacyProvider,
+      } as typeof settings.providers,
+      providerInstances: withoutProviderInstanceKey(settings.providerInstances, defaultInstanceId),
+    });
+  };
+
+  const renderProviderInstance = (row: InstanceRow, mode: "list" | "editor") => {
+    const driverOption = getDriverOption(row.driver);
+    const liveProvider = serverProviders.find(
+      (candidate) => candidate.instanceId === row.instanceId,
+    );
+    const updateCandidate = providerUpdateCandidateByInstanceId.get(row.instanceId);
+    const isInstanceUpdateRunning =
+      updateCandidate !== undefined &&
+      (updatingProviderInstanceIds.has(updateCandidate.instanceId) ||
+        isProviderUpdateActive(updateCandidate));
+    const showInlineUpdateButton = updateCandidate !== undefined;
+    const canRunInlineUpdate = updateCandidate !== undefined && !isInstanceUpdateRunning;
+    const modelPreferences = settings.providerModelPreferences?.[row.instanceId] ?? {
+      hiddenModels: [],
+      modelOrder: [],
+    };
+    const favoriteModels = Arr.filterMap(settings.favorites ?? [], (favorite) =>
+      favorite.provider === row.instanceId ? Result.succeed(favorite.model) : Result.failVoid,
+    );
+    const resetLabel = driverOption?.label ?? String(row.driver);
+
+    return (
+      <ProviderInstanceCard
+        key={row.instanceId}
+        instanceId={row.instanceId}
+        instance={row.instance}
+        driverOption={driverOption}
+        liveProvider={liveProvider}
+        mode={mode}
+        selected={mode === "list" && selectedRow?.instanceId === row.instanceId}
+        onSelect={mode === "list" ? () => setSelectedInstanceId(row.instanceId) : undefined}
+        readOnly={readOnly}
+        setup={
+          mode === "editor" && row.driver === "antigravity" ? (
+            <ProviderSetupSection
+              environmentId={environmentId}
+              environmentLabel={environmentLabel}
+              instanceId={row.instanceId}
+              provider={liveProvider}
+              binaryPath={configuredBinaryPath(row.instance.config)}
+              authMethod={readAntigravityAuthMethod(row.instance.config)}
+              enabled={resolveProviderInstanceEnabled(row.instance)}
+              readOnly={readOnly}
+              onEnable={() => updateProviderInstance(row, { ...row.instance, enabled: true })}
+            />
+          ) : mode === "editor" && row.driver === "opencode" && row.isDefault ? (
+            <OpenCodeProviderKeys environmentId={environmentId} readOnly={readOnly} />
+          ) : null
+        }
+        onUpdate={(next) => {
+          const wasEnabled = resolveProviderInstanceEnabled(row.instance);
+          const isDisabling = next.enabled === false && wasEnabled;
+          const shouldClearTextGen = isDisabling && textGenInstanceId === row.instanceId;
+          updateProviderInstance(
+            row,
+            next,
+            shouldClearTextGen
+              ? {
+                  textGenerationModelSelection:
+                    DEFAULT_UNIFIED_SETTINGS.textGenerationModelSelection,
+                }
+              : undefined,
+          );
+        }}
+        onDelete={
+          mode === "editor" && !row.isDefault
+            ? () => deleteProviderInstance(row.instanceId)
+            : undefined
+        }
+        headerAction={
+          mode === "editor" && row.isDefault && row.isDirty ? (
+            <SettingResetButton
+              label={`${resetLabel} provider settings`}
+              onClick={() => resetDefaultInstance(row.driver)}
+            />
+          ) : null
+        }
+        hiddenModels={modelPreferences.hiddenModels}
+        favoriteModels={favoriteModels}
+        modelOrder={modelPreferences.modelOrder}
+        onHiddenModelsChange={(hiddenModels) =>
+          updateProviderModelPreferences(row.instanceId, {
+            ...modelPreferences,
+            hiddenModels,
+          })
+        }
+        onFavoriteModelsChange={(next) => updateProviderFavoriteModels(row.instanceId, next)}
+        onModelOrderChange={(modelOrder) =>
+          updateProviderModelPreferences(row.instanceId, {
+            ...modelPreferences,
+            modelOrder,
+          })
+        }
+        onRunUpdate={
+          mode === "editor" && showInlineUpdateButton && updateCandidate
+            ? () => {
+                if (canRunInlineUpdate) void runProviderUpdate(updateCandidate);
+              }
+            : undefined
+        }
+        isUpdating={
+          mode === "editor" && showInlineUpdateButton ? isInstanceUpdateRunning : undefined
+        }
+      />
+    );
+  };
+
+  return (
+    <>
+      <SettingsSection
+        {...searchableSetting("providers")}
+        headerAction={
+          <div className="flex min-w-0 items-center gap-2">
+            {readOnly ? (
+              <span className="min-w-0 truncate text-xs text-muted-foreground">
+                <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
+              </span>
+            ) : (
+              <>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        disabled={isRefreshingProviders}
+                        aria-busy={isRefreshingProviders}
+                        onClick={() => void refreshProviders()}
+                      >
+                        <RefreshCwIcon />
+                        <span className="sr-only">Refresh provider status</span>
+                        <span className="hidden min-w-0 truncate sm:inline">
+                          {isRefreshingProviders ? (
+                            "Refreshing providers"
+                          ) : (
+                            <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
+                          )}
+                        </span>
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="top">Refresh provider status</TooltipPopup>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger
+                    render={
+                      <Button
+                        size="icon-sm"
+                        variant="ghost"
+                        onClick={() => setIsAddInstanceDialogOpen(true)}
+                        aria-label="Add provider"
+                      >
+                        <PlusIcon />
+                      </Button>
+                    }
+                  />
+                  <TooltipPopup side="top">Add provider</TooltipPopup>
+                </Tooltip>
+              </>
+            )}
+          </div>
+        }
+      >
+        {deviceTabs}
+        {readOnly ? (
+          <SettingsRow
+            title="Limited permissions"
+            description={`This session can view ${environmentLabel}'s providers, but its credential does not allow changing their configuration.`}
+          />
+        ) : null}
+        <div className="space-y-1">
+          <div className="overflow-hidden rounded-lg border border-border/70 lg:grid lg:h-[min(38rem,calc(100dvh-16rem))] lg:min-h-[30rem] lg:grid-cols-[20rem_minmax(0,1fr)]">
+            <div className="border-b border-border/70 lg:flex lg:min-h-0 lg:flex-col lg:border-r lg:border-b-0">
+              <div className="flex min-h-9 shrink-0 items-center justify-between border-b border-border/70 px-3 text-[11px] font-medium text-muted-foreground">
+                <span>Provider</span>
+                <span>On</span>
+              </div>
+              <div className="lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
+                {rows.map((row) => renderProviderInstance(row, "list"))}
+              </div>
+              <div
+                className={cn(
+                  "flex min-h-10 shrink-0 items-center justify-between px-3",
+                  rows.length > 0 && "border-t border-border/60",
+                )}
+              >
+                <ProviderLastChecked lastCheckedAt={lastCheckedAt} />
+                {!readOnly ? (
+                  <Tooltip>
+                    <TooltipTrigger
+                      render={
+                        <Button
+                          size="icon-sm"
+                          variant="ghost"
+                          disabled={isRefreshingProviders}
+                          onClick={() => void refreshProviders()}
+                          aria-label="Refresh provider status"
+                        >
+                          {isRefreshingProviders ? (
+                            <LoaderIcon className="size-3 animate-spin" />
+                          ) : (
+                            <RefreshCwIcon className="size-3" />
+                          )}
+                        </Button>
+                      }
+                    />
+                    <TooltipPopup side="top">Refresh provider status</TooltipPopup>
+                  </Tooltip>
+                ) : null}
+              </div>
+            </div>
+
+            <div className="min-w-0 lg:min-h-0">
+              {selectedRow ? (
+                renderProviderInstance(selectedRow, "editor")
+              ) : (
+                <div className="p-6 text-sm text-muted-foreground">
+                  {editorEmpty === "missing"
+                    ? "This provider instance is no longer available on this device."
+                    : editorEmpty === "none"
+                      ? "No providers configured."
+                      : null}
+                </div>
+              )}
+            </div>
+          </div>
+
+          <UsageProviderSettings
+            key={environmentId}
+            environmentId={environmentId}
+            environmentLabel={environmentLabel}
+            sources={settings.usageLimitSources}
+            readOnly={readOnly}
+          />
+
+          <div
+            inert={readOnly}
+            aria-disabled={readOnly || undefined}
+            className={readOnly ? "opacity-50 select-none" : undefined}
+          >
+            <Collapsible
+              open={advancedVisible}
+              onOpenChange={setAdvancedOpen}
+              className="mt-2 border-t border-border/70"
+            >
+              <CollapsibleTrigger className="flex h-10 w-full items-center gap-2 px-3 text-xs text-muted-foreground hover:text-foreground sm:px-4">
+                <ChevronDownIcon
+                  className={cn("size-3 transition-transform", advancedVisible && "rotate-180")}
+                />
+                Advanced
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <SettingsRow
+                  title={
+                    <span className="inline-flex items-center gap-1.5">
+                      Health check interval
+                      <PolicyTooltip>
+                        This interval is configured here, then the shared Background activity policy
+                        decides whether provider probes may run when the timer fires. Custom
+                        intervals appear as Advanced in General settings.
+                      </PolicyTooltip>
+                    </span>
+                  }
+                  description="Set this to 0 seconds to use manual refresh only."
+                  resetAction={
+                    providerHealthRefreshIntervalSeconds !==
+                    defaultProviderHealthRefreshIntervalSeconds ? (
+                      <SettingResetButton
+                        label="provider health check interval"
+                        onClick={() =>
+                          updateSettings(
+                            backgroundActivityOverrideSettings(
+                              settings.backgroundActivity,
+                              resolvedBackgroundActivity,
+                              { providerHealthRefreshInterval: undefined },
+                            ),
+                          )
+                        }
+                      />
+                    ) : null
+                  }
+                  control={
+                    <div className="flex shrink-0 items-center gap-2">
+                      <NumberField
+                        value={providerHealthRefreshIntervalSeconds}
+                        min={0}
+                        step={PROVIDER_HEALTH_INTERVAL_STEP_SECONDS}
+                        size="sm"
+                        className="w-32"
+                        onValueChange={(value) =>
+                          updateSettings(
+                            backgroundActivityOverrideSettings(
+                              settings.backgroundActivity,
+                              resolvedBackgroundActivity,
+                              {
+                                providerHealthRefreshInterval: Duration.seconds(
+                                  normalizeIntervalSeconds(value),
+                                ),
+                              },
+                            ),
+                          )
+                        }
+                      >
+                        <NumberFieldGroup>
+                          <NumberFieldDecrement aria-label="Decrease provider health check interval" />
+                          <NumberFieldInput aria-label="Provider health check interval in seconds" />
+                          <NumberFieldIncrement aria-label="Increase provider health check interval" />
+                        </NumberFieldGroup>
+                      </NumberField>
+                      <span className="text-xs text-muted-foreground">seconds</span>
+                    </div>
+                  }
+                />
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+        </div>
+      </SettingsSection>
+
+      {isAddInstanceDialogOpen ? (
+        <AddProviderInstanceDialog
+          open
+          environmentId={environmentId}
+          environmentLabel={environmentLabel}
+          onOpenChange={setIsAddInstanceDialogOpen}
+        />
+      ) : null}
+    </>
+  );
+}

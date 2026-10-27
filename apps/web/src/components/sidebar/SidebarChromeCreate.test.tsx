@@ -1,0 +1,184 @@
+// @vitest-environment happy-dom
+import type * as React from "react";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+// The menu and the tooltip stand in portals: here every part renders in place, so a test reads
+// and presses what the open menu holds.
+vi.mock("../ui/menu", async () => {
+  const { createElement, Fragment } = await import("react");
+  const inPlace = ({ children }: { children?: React.ReactNode }) =>
+    createElement(Fragment, null, children);
+  return {
+    Menu: inPlace,
+    MenuPopup: inPlace,
+    MenuSub: inPlace,
+    MenuSubPopup: inPlace,
+    MenuSubTrigger: ({ children }: { children?: React.ReactNode }) =>
+      createElement("div", { "data-sub": "" }, children),
+    MenuTrigger: ({ render }: { render: React.ReactElement }) => render,
+    MenuItem: ({ children, ...props }: React.ComponentProps<"button">) =>
+      createElement("button", { ...props, type: "button" }, children),
+  };
+});
+vi.mock("../ui/tooltip", async () => {
+  const { createElement, Fragment } = await import("react");
+  return {
+    Tooltip: ({ children }: { children?: React.ReactNode }) =>
+      createElement(Fragment, null, children),
+    TooltipTrigger: ({
+      render,
+      children,
+    }: {
+      render: React.ReactElement;
+      children?: React.ReactNode;
+    }) => createElement(render.type, render.props as object, children),
+    TooltipPopup: ({ children }: { children?: React.ReactNode }) =>
+      createElement("span", { role: "tooltip" }, children),
+  };
+});
+vi.mock("../ui/sidebar", () => ({}));
+vi.mock("@tanstack/react-router", () => ({ Link: () => null, useLocation: () => false }));
+
+import { SidebarCreateButton } from "./SidebarChrome";
+
+const roots: Array<() => void> = [];
+afterEach(() => {
+  for (const unmount of roots.splice(0)) unmount();
+});
+
+async function mount(
+  projects: ReadonlyArray<{ readonly id: string; readonly name: string }>,
+  {
+    newProject = true,
+    automated = false,
+  }: { readonly newProject?: boolean; readonly automated?: boolean } = {},
+) {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onNewMate = vi.fn();
+  const onNewProject = vi.fn();
+  const onNewAutomatedMates = vi.fn();
+  await act(async () => {
+    root.render(
+      <SidebarCreateButton
+        onNewAutomatedMates={automated ? onNewAutomatedMates : undefined}
+        onNewMate={onNewMate}
+        onNewProject={newProject ? onNewProject : undefined}
+        projects={projects}
+      />,
+    );
+  });
+  roots.push(() => {
+    root.unmount();
+    container.remove();
+  });
+  return { container, onNewMate, onNewProject, onNewAutomatedMates };
+}
+
+describe("SidebarCreateButton — the top row's +", () => {
+  it("is named for what it makes, in its tooltip too", async () => {
+    const { container } = await mount([{ id: "tea", name: "Tea Shop" }]);
+    const plus = container.querySelector('[data-zerops-surface="sidebar-create"]');
+    expect(plus?.getAttribute("aria-label")).toBe("New Mate or project");
+    expect(container.querySelector('[role="tooltip"]')?.textContent).toBe("New Mate or project");
+  });
+
+  it("asks for a New project in the menu's own flow", async () => {
+    const { container, onNewProject } = await mount([{ id: "tea", name: "Tea Shop" }]);
+    await act(async () => {
+      container.querySelector<HTMLElement>('[data-zerops-create="project"]')?.click();
+    });
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("asks for a New Mate in the one project there is, at once", async () => {
+    const { container, onNewMate } = await mount([{ id: "tea", name: "Tea Shop" }]);
+    await act(async () => {
+      container.querySelector<HTMLElement>('[data-zerops-create="mate"]')?.click();
+    });
+    expect(onNewMate).toHaveBeenCalledWith("tea");
+  });
+
+  it("lists the projects a New Mate may be asked in, where there are several", async () => {
+    const { container, onNewMate } = await mount([
+      { id: "ledger", name: "Ledger API" },
+      { id: "tea", name: "Tea Shop" },
+    ]);
+    const choices = [...container.querySelectorAll<HTMLElement>("[data-zerops-create-in]")];
+    expect(choices.map((choice) => choice.textContent)).toEqual(["Ledger API", "Tea Shop"]);
+    await act(async () => {
+      choices[1]?.click();
+    });
+    expect(onNewMate).toHaveBeenCalledWith("tea");
+  });
+
+  it("asks for automated Mates in a project from Add, apart from a person's New Mate", async () => {
+    const one = await mount([{ id: "tea", name: "Tea Shop" }], { automated: true });
+    const item = one.container.querySelector<HTMLElement>('[data-zerops-create="automated"]');
+    expect(item?.textContent).toBe("Automated Mates…");
+    await act(async () => {
+      item?.click();
+    });
+    expect(one.onNewAutomatedMates).toHaveBeenCalledWith("tea");
+    expect(one.onNewMate).not.toHaveBeenCalled();
+    const several = await mount(
+      [
+        { id: "ledger", name: "Ledger API" },
+        { id: "tea", name: "Tea Shop" },
+      ],
+      { automated: true },
+    );
+    await act(async () => {
+      several.container.querySelector<HTMLElement>('[data-zerops-automated-in="ledger"]')?.click();
+    });
+    expect(several.onNewAutomatedMates).toHaveBeenCalledWith("ledger");
+  });
+
+  it("offers no automated Mates where this HQ makes none", async () => {
+    const { container } = await mount([{ id: "tea", name: "Tea Shop" }]);
+    expect(container.querySelector('[data-zerops-create="automated"]')).toBeNull();
+  });
+
+  it("offers only New project while there is no project to put a Mate in", async () => {
+    const { container } = await mount([]);
+    expect(container.querySelector('[data-zerops-create="mate"]')).toBeNull();
+    expect(container.querySelector('[data-zerops-create="project"]')).not.toBeNull();
+  });
+
+  it.each([
+    { mates: true, project: true, label: "New Mate or project" },
+    { mates: true, project: false, label: "New Mate" },
+    { mates: false, project: true, label: "New project" },
+  ])(
+    "says in its name and tooltip only what its menu holds (Mate: $mates, project: $project)",
+    async ({ mates, project, label }) => {
+      const { container } = await mount(mates ? [{ id: "tea", name: "Tea Shop" }] : [], {
+        newProject: project,
+      });
+      const plus = container.querySelector('[data-zerops-surface="sidebar-create"]');
+      expect(plus?.getAttribute("aria-label")).toBe(label);
+      expect(container.querySelector('[role="tooltip"]')?.textContent).toBe(label);
+      expect(container.querySelector('[data-zerops-create="mate"]') !== null).toBe(mates);
+      expect(container.querySelector('[data-zerops-create="project"]') !== null).toBe(project);
+    },
+  );
+
+  it("asks for a New project at once, with no menu, where that is all it makes", async () => {
+    const { container, onNewProject } = await mount([]);
+    const plus = container.querySelector<HTMLElement>('[data-zerops-surface="sidebar-create"]');
+    expect(plus?.getAttribute("aria-haspopup")).toBeNull();
+    await act(async () => {
+      plus?.click();
+    });
+    expect(onNewProject).toHaveBeenCalledTimes(1);
+  });
+
+  it("is not drawn when the role may make nothing here", async () => {
+    const { container } = await mount([], { newProject: false });
+    expect(container.querySelector('[data-zerops-surface="sidebar-create"]')).toBeNull();
+  });
+});

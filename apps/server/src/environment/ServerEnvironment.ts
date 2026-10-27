@@ -1,0 +1,239 @@
+import {
+  EnvironmentId,
+  MATE_ENGINE_PROTOCOL,
+  PROVIDER_SEND_TURN_MAX_FILE_BYTES,
+  type ExecutionEnvironmentDescriptor,
+} from "@t3tools/contracts";
+import {
+  HostProcessArchitecture,
+  HostProcessEnvironment,
+  HostProcessPlatform,
+} from "@t3tools/shared/hostProcess";
+import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+
+import packageJson from "../../package.json" with { type: "json" };
+import * as ServerSecretStore from "../auth/ServerSecretStore.ts";
+import { readAgentActivityPublishingActive } from "../cloud/config.ts";
+import * as ServerConfig from "../config.ts";
+import * as ProcessRunner from "../processRunner.ts";
+import { resolveServerEnvironmentLabel } from "./ServerEnvironmentLabel.ts";
+import { type ZeropsPolicy, zeropsPolicy } from "../zerops/ZeropsPolicy.ts";
+import { isZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
+import { ZeropsMateUpdate } from "../zerops/ZeropsMateUpdate.ts";
+
+export class ServerEnvironmentIdPersistenceError extends Schema.TaggedError<ServerEnvironmentIdPersistenceError>()(
+  "ServerEnvironmentIdPersistenceError",
+  {
+    operation: Schema.Literals(["check", "read", "write"]),
+    environmentIdPath: Schema.String,
+    cause: Schema.Defect(),
+  },
+) {
+  override get message(): string {
+    return `Server environment ID ${this.operation} failed at '${this.environmentIdPath}'.`;
+  }
+}
+
+export class ServerEnvironment extends Context.Service<
+  ServerEnvironment,
+  {
+    readonly getEnvironmentId: Effect.Effect<EnvironmentId>;
+    readonly getDescriptor: Effect.Effect<ExecutionEnvironmentDescriptor>;
+  }
+>()("t3/environment/ServerEnvironment") {}
+
+function platformOs(platform: NodeJS.Platform): ExecutionEnvironmentDescriptor["platform"]["os"] {
+  switch (platform) {
+    case "darwin":
+      return "darwin";
+    case "linux":
+      return "linux";
+    case "win32":
+      return "windows";
+    default:
+      return "unknown";
+  }
+}
+
+function platformArch(
+  architecture: NodeJS.Architecture,
+): ExecutionEnvironmentDescriptor["platform"]["arch"] {
+  switch (architecture) {
+    case "arm64":
+      return "arm64";
+    case "x64":
+      return "x64";
+    default:
+      return "other";
+  }
+}
+
+/**
+ * The capability set this server advertises.
+ *
+ * On Zerops zcp owns commit, push and the remote, so the client hides its
+ * stacked action control rather than offering a button that the server-side
+ * refusal would answer.
+ */
+export const makeServerEnvironmentCapabilities = (
+  policy: ZeropsPolicy,
+  options?: {
+    readonly mateUpdate?: boolean;
+    readonly mateUpdateCheck?: boolean;
+    readonly dataConsole?: boolean;
+    readonly agentLoginCode?: boolean;
+    readonly agentSignOut?: boolean;
+    readonly mateLogins?: boolean;
+  },
+): ExecutionEnvironmentDescriptor["capabilities"] => {
+  return {
+    accountLifecycleVersion: 1,
+    repositoryIdentity: true,
+    connectionProbe: true,
+    attachmentUploads: true,
+    contentAddressedImages: true,
+    questionAttachments: true,
+    fileAttachments: { maxUploadBytes: PROVIDER_SEND_TURN_MAX_FILE_BYTES },
+    vcsStackedActions: policy.stackedVcsActionsAllowed,
+    worktreesAllowed: policy.worktreesAllowed,
+    usageLimitSources: true,
+    usagePriceOverrides: true,
+    usageModelAliases: true,
+    threadTitleRegeneration: true,
+    threadPullRequestLinking: true,
+    projectCloneTracking: true,
+    crewProposals: true,
+    ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
+    ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
+    ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),
+    ...(options?.agentLoginCode === undefined ? {} : { agentLoginCode: options.agentLoginCode }),
+    ...(options?.agentSignOut === undefined ? {} : { agentSignOut: options.agentSignOut }),
+    ...(options?.mateLogins === undefined ? {} : { mateLogins: options.mateLogins }),
+    mateEngine: { protocol: MATE_ENGINE_PROTOCOL },
+  };
+};
+
+export const make = Effect.gen(function* () {
+  const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const serverConfig = yield* ServerConfig.ServerConfig;
+  const secrets = yield* ServerSecretStore.ServerSecretStore;
+  const crypto = yield* Crypto.Crypto;
+  const hostPlatform = yield* HostProcessPlatform;
+  const hostArchitecture = yield* HostProcessArchitecture;
+
+  const readPersistedEnvironmentId = Effect.gen(function* () {
+    const exists = yield* fileSystem.exists(serverConfig.environmentIdPath).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ServerEnvironmentIdPersistenceError({
+            operation: "check",
+            environmentIdPath: serverConfig.environmentIdPath,
+            cause,
+          }),
+      ),
+    );
+    if (!exists) {
+      return null;
+    }
+
+    const raw = yield* fileSystem.readFileString(serverConfig.environmentIdPath).pipe(
+      Effect.map((value) => value.trim()),
+      Effect.mapError(
+        (cause) =>
+          new ServerEnvironmentIdPersistenceError({
+            operation: "read",
+            environmentIdPath: serverConfig.environmentIdPath,
+            cause,
+          }),
+      ),
+    );
+
+    return raw.length > 0 ? raw : null;
+  });
+
+  const persistEnvironmentId = (value: string) =>
+    fileSystem.writeFileString(serverConfig.environmentIdPath, `${value}\n`).pipe(
+      Effect.mapError(
+        (cause) =>
+          new ServerEnvironmentIdPersistenceError({
+            operation: "write",
+            environmentIdPath: serverConfig.environmentIdPath,
+            cause,
+          }),
+      ),
+    );
+
+  const environmentIdRaw = yield* Effect.gen(function* () {
+    const persisted = yield* readPersistedEnvironmentId;
+    if (persisted) {
+      return persisted;
+    }
+
+    const generated = yield* crypto.randomUUIDv4;
+    yield* persistEnvironmentId(generated);
+    return generated;
+  });
+
+  const environmentId = EnvironmentId.make(environmentIdRaw);
+  const cwdBaseName = path.basename(serverConfig.cwd).trim();
+  const label = yield* resolveServerEnvironmentLabel({ cwdBaseName });
+  // This process: never persisted, so every start names a boot of its own.
+  const bootId = yield* crypto.randomUUIDv4;
+  const descriptor: ExecutionEnvironmentDescriptor = {
+    environmentId,
+    label,
+    platform: {
+      os: platformOs(hostPlatform),
+      arch: platformArch(hostArchitecture),
+    },
+    serverVersion:
+      (yield* HostProcessEnvironment).T3CODE_SERVER_VERSION?.trim() || packageJson.version,
+    bootId,
+    ...(serverConfig.basePath === "" ? {} : { basePath: serverConfig.basePath }),
+    ...(serverConfig.zerops === undefined
+      ? {}
+      : { zerops: { projectId: serverConfig.zerops.projectId } }),
+    capabilities: makeServerEnvironmentCapabilities(yield* zeropsPolicy, {
+      mateUpdate: isZeropsEnvironment(serverConfig),
+      mateUpdateCheck: isZeropsEnvironment(serverConfig),
+      dataConsole: isZeropsEnvironment(serverConfig),
+      agentLoginCode: isZeropsEnvironment(serverConfig),
+      agentSignOut: isZeropsEnvironment(serverConfig),
+      mateLogins: isZeropsEnvironment(serverConfig),
+    }),
+  };
+
+  return ServerEnvironment.of({
+    getEnvironmentId: Effect.succeed(environmentId),
+    // The publish opt-in and relay link, and mate's update line
+    // (spec-mate.md §2.9), change at runtime, so both are read per
+    // descriptor request rather than baked in at startup.
+    getDescriptor: Effect.all([
+      readAgentActivityPublishingActive(secrets),
+      Effect.serviceOption(ZeropsMateUpdate).pipe(
+        Effect.flatMap((update) => (update._tag === "None" ? Effect.void : update.value.current)),
+      ),
+    ]).pipe(
+      Effect.map(([agentActivityPublishing, update]) => ({
+        ...descriptor,
+        capabilities: { ...descriptor.capabilities, agentActivityPublishing },
+        ...(update === undefined ? {} : { update }),
+      })),
+    ),
+  });
+});
+
+/**
+ * ServerEnvironment is acquired from persisted filesystem and host-process
+ * state. It intentionally has no fallback Layer.succeed value: callers must
+ * provide the external platform services, a ServerConfig, and the
+ * ServerSecretStore backing the descriptor's publishing capability.
+ */
+export const layer = Layer.effect(ServerEnvironment, make).pipe(Layer.provide(ProcessRunner.layer));

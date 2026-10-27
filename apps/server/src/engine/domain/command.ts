@@ -1,0 +1,409 @@
+/**
+ * What enters a conversation's actor, and what `decide` makes of it.
+ *
+ * People send `Send`, `Stop`, `Answer`, `Dismiss`, `Steer`, `SwitchModel`, `SetRuntimeMode`,
+ * `ChooseAgent`, `Archive`, `Unarchive`; the Zerops side tells `BindLease` and `UnbindLease`
+ * from its agent's `zerops_lease` results; the engine's own fibers tell `WakeFired` (scheduler), `EffectSettled` (worker), `ProviderSignals`
+ * (the pump, boundaries only) and `Recovered` (boot). Every input carries a command id: a client's,
+ * or one derived from its cause (`ids.ts`).
+ *
+ * @module engine/domain/command
+ */
+import type {
+  BootId,
+  ChatFileAttachment,
+  MateRestart,
+  ChatImageAttachment,
+  ConversationAgent,
+  CommandId,
+  CrewCard,
+  CommandResult,
+  ConversationId,
+  EffectId,
+  EffectOutcome,
+  HistorySource,
+  ItemActor,
+  ItemBody,
+  KnownEngineEvent,
+  MateTaskMessage,
+  MateTaskSource,
+  Principal,
+  RecordedCrewSeam,
+  ProviderInteractionMode,
+  ProviderOptionSelection,
+  Rejection,
+  RequestAsk,
+  RequestId,
+  RequestState,
+  RotateSession,
+  RunId,
+  RuntimeMode,
+  SessionId,
+  ThreadLease,
+  TurnEndSource,
+  TurnHandle,
+  WakeId,
+} from "@t3tools/contracts";
+
+import type { TurnOutcome } from "../bridge/spi3.ts";
+
+/**
+ * What a driver reported at a boundary. Deltas never come here; they stay on the live plane. Every
+ * turn-scoped signal names its turn, so a late signal lands on the run that turn belongs to and
+ * never on whatever run is active; a signal for a turn the engine does not know is dropped.
+ */
+export type ProviderSignal =
+  | {
+      readonly kind: "turn-started";
+      readonly turn: TurnHandle;
+      /** `self`: the agent opened it with no message from the engine (Claude's background results). */
+      readonly origin: "engine" | "self";
+      readonly providerTurnId: string | null;
+      /** For a turn the agent started itself: the run whose work it reports, when the bridge knows. */
+      readonly reportsOn?: RunId | null;
+    }
+  | {
+      readonly kind: "item-opened";
+      readonly turn: TurnHandle;
+      readonly key: string;
+      readonly by: ItemActor;
+      readonly body: ItemBody;
+      readonly detail?: string;
+      /** Arrived after its turn ended; filed under that turn's run, never reopening it. */
+      readonly afterEnd?: true;
+    }
+  | {
+      readonly kind: "item-updated";
+      readonly turn: TurnHandle;
+      readonly key: string;
+      readonly body: ItemBody;
+      /** A streaming item's words so far, when longer than its body holds. */
+      readonly detail?: string;
+      readonly afterEnd?: true;
+    }
+  | {
+      readonly kind: "item-closed";
+      readonly turn: TurnHandle;
+      readonly key: string;
+      readonly by?: ItemActor;
+      readonly body: ItemBody;
+      readonly detail?: string;
+      /** A call's own record as its driver gave it (what it was asked, what it wrote). */
+      readonly data?: unknown;
+      readonly afterEnd?: true;
+    }
+  | {
+      readonly kind: "request-opened";
+      /** Absent when the driver could not tie the request to a turn: the active run's. */
+      readonly turn?: TurnHandle;
+      /** Asked by a helper (or work after its turn): it outlives its run while its session lives. */
+      readonly byHelper?: true;
+      readonly key: string;
+      readonly ask: RequestAsk;
+      readonly answerable?: boolean;
+      /** The agent's item that asked it: the request takes its place in the record. */
+      readonly item?: string;
+    }
+  | {
+      readonly kind: "request-closed";
+      readonly key: string;
+      readonly state: Exclude<RequestState, "open">;
+    }
+  | {
+      /** The agent stored values in a vault itself: an ask for one of them is answered. */
+      readonly kind: "vault-stored";
+      readonly keys: ReadonlyArray<string>;
+      readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
+    }
+  | {
+      readonly kind: "turn-ended";
+      readonly turn: TurnHandle;
+      readonly outcome: TurnOutcome;
+      readonly source: TurnEndSource;
+      /** What the turn cost, as its driver reported it. */
+      readonly costUsd?: number;
+      /**
+       * The context the session held at the turn's end: the last gauge reading before it. A gauge
+       * is never an outcome; the run's end only keeps where it stood.
+       */
+      readonly contextTokens?: number;
+    }
+  | {
+      readonly kind: "usage-limit";
+      /** The turn the limit parked or ended; absent between turns. */
+      readonly turn?: TurnHandle;
+      readonly resetsAt: number | null;
+      /** The window that refused, as a person reads it ("7-day"), when the driver named one. */
+      readonly window?: string;
+      /** The driver parked the turn (Claude): its session is closed, the resume reopens it. */
+      readonly parks?: boolean;
+    }
+  /**
+   * Background work the agent started (a helper, a shell, a monitor): an item under the run whose
+   * turn started it, open until it ends — it may outlive that turn.
+   */
+  | {
+      readonly kind: "work-upserted";
+      readonly work: string;
+      /** The turn that started it; `"unknown"` when the driver could not say. */
+      readonly origin: TurnHandle | "unknown";
+      readonly workKind: Extract<ItemBody, { readonly kind: "work" }>["workKind"];
+      readonly status: Extract<ItemBody, { readonly kind: "work" }>["status"];
+      readonly title?: string;
+      /** The helper (its work's key) whose own tool started it; absent: the Mate's. */
+      readonly helper?: string;
+      /** The key of the call that started it. */
+      readonly call?: string;
+      /** What it said as it ended, in a line. */
+      readonly report?: string;
+    }
+  /** A limit whose reset was unknown learned its reset time (the driver's rate-limit report). */
+  | { readonly kind: "usage-reset-known"; readonly resetsAt: number }
+  | { readonly kind: "session-exited"; readonly reason: string }
+  /**
+   * The agent is between turns with nothing waiting for it: every result of its finished work has
+   * reached it, however many one turn took (Claude's idle, after it drained what it held).
+   */
+  | { readonly kind: "agent-caught-up" }
+  /** Deltas flowed: the turn is alive. Throttled by `decide`, so the pump may send it per batch. */
+  | { readonly kind: "activity"; readonly turn: TurnHandle };
+
+/**
+ * A provider's word on the signed-in account's usage: when it was asked, and each window it
+ * keeps, how full and when it resets. An account that keeps no windows (an API key) reports none.
+ */
+export interface ProviderUsageReport {
+  readonly checkedAt: number;
+  readonly windows: ReadonlyArray<{
+    readonly usedPercent: number;
+    readonly resetsAt: number | null;
+  }>;
+}
+
+export type Command =
+  | {
+      readonly _tag: "Send";
+      readonly text: string;
+      /**
+       * Pictures by reference, captured into the asset store before the command is told; files by
+       * the id they were uploaded under.
+       */
+      readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+      /** A maintenance command (`/compact`, `/logout`): never continued after a restart. */
+      readonly maintenance?: boolean;
+      /**
+       * The crew's card this turn carries: the record opens the run on it, a `note` of the crew's,
+       * never a person's message; the agent gets `text`.
+       */
+      readonly card?: CrewCard;
+      /** `plan`: the agent plans the turn and changes nothing. Absent: default. */
+      readonly interactionMode?: ProviderInteractionMode;
+      /** What the agent hears with `text` that the person did not type (`toldWith`). */
+      readonly context?: ReadonlyArray<string>;
+      /** A press on a page sent it for the person: never the conversation's subject. */
+      readonly fromPanel?: true;
+      /** A task's brief: the issue it brings, drawn as its card (the person item's `task`). */
+      readonly task?: MateTaskSource;
+      /** With `task`: the asker's own words (the person item's `taskAsk`); never the brief. */
+      readonly taskAsk?: string;
+      /** A follow-up told to a task's Mate: drawn as its author's (the person item's `taskMessage`). */
+      readonly taskMessage?: MateTaskMessage;
+      /** HQ's id of the task its brief or follow-up is for (the person item's `taskId`). */
+      readonly taskId?: string;
+    }
+  | { readonly _tag: "Stop"; readonly runId?: RunId }
+  /** The person asks the work a usage limit holds to try the provider now. */
+  | { readonly _tag: "Continue" }
+  /** What the provider reports now of the usage of the account the agent is signed in to. */
+  | { readonly _tag: "ProviderUsage"; readonly usage: ProviderUsageReport }
+  | {
+      readonly _tag: "Answer";
+      readonly requestId: RequestId;
+      readonly answer: unknown;
+      /** What the record shows of the answer: never a vault value. */
+      readonly summary: string;
+    }
+  /** Close a request unanswered: only one its agent does not wait on. The agent is not told. */
+  | { readonly _tag: "Dismiss"; readonly requestId: RequestId }
+  | {
+      readonly _tag: "Steer";
+      readonly runId: RunId;
+      readonly text: string;
+      /** What the agent hears with `text` that the person did not type (`toldWith`). */
+      readonly context?: ReadonlyArray<string>;
+      /** As `Send`'s: only where the session's steer takes them (`steerAttachments`). */
+      readonly attachments?: ReadonlyArray<ChatImageAttachment | ChatFileAttachment>;
+    }
+  /** The next model and, when given, its options: they apply from the next run on. */
+  | {
+      readonly _tag: "SwitchModel";
+      readonly model: string;
+      readonly options?: ReadonlyArray<ProviderOptionSelection>;
+    }
+  /** How freely the agent works: from the next run on. */
+  | { readonly _tag: "SetRuntimeMode"; readonly runtimeMode: RuntimeMode }
+  /**
+   * A person's pick of the conversation's agent: another provider instance. `resumes`: the
+   * instance runs the current one's driver and its sessions resume the current one's.
+   */
+  | {
+      readonly _tag: "ChooseAgent";
+      readonly instanceId: string;
+      readonly driver: string;
+      readonly model: string;
+      readonly options?: ReadonlyArray<ProviderOptionSelection>;
+      readonly resumes: boolean;
+    }
+  /** The conversation is given the agent it belongs to: instance, driver, model and profile. */
+  | { readonly _tag: "AssignAgent"; readonly agent: ConversationAgent }
+  /** Close the conversation's session from outside: the person signed out. */
+  | { readonly _tag: "CloseSession"; readonly reason: "signed-out" }
+  /**
+   * The crew's: close the session between turns and open the next one fresh (or resuming), told
+   * the seed as it starts.
+   */
+  | RotateSession
+  /** The crew's line between turns (a landing, a close, a save): a `crew.seam` marker. */
+  | {
+      readonly _tag: "MarkSeam";
+      readonly seam: RecordedCrewSeam;
+      /** The line's words; `null` leaves them to the reader. */
+      readonly words: string | null;
+    }
+  | { readonly _tag: "Archive" }
+  | { readonly _tag: "Unarchive" }
+  /** The agent leased a pool container: the conversation is bound to it, unless it has a lease. */
+  | { readonly _tag: "BindLease"; readonly lease: ThreadLease }
+  /**
+   * A lease ended — released, lost, no longer held, or acquired again by another conversation: the
+   * conversation's is unbound when it is `ended`.
+   */
+  | { readonly _tag: "UnbindLease"; readonly ended: string }
+  | {
+      readonly _tag: "ArmWake";
+      readonly kind: string;
+      readonly key: string;
+      /** Absent with a cron: the cron's next time. */
+      readonly dueAt?: number;
+      readonly cron?: string | null;
+      readonly text?: string | null;
+      readonly joins?: RunId | null;
+    }
+  | { readonly _tag: "CancelWake"; readonly wakeId: WakeId }
+  | {
+      readonly _tag: "WakeFired";
+      readonly wakeId: WakeId;
+      /** The arming the scheduler read; a fire of an older arming is refused. */
+      readonly armedSeq?: number;
+    }
+  | { readonly _tag: "EffectSettled"; readonly effectId: EffectId; readonly outcome: EffectOutcome }
+  | {
+      readonly _tag: "ProviderSignals";
+      readonly sessionId: SessionId;
+      readonly signals: ReadonlyArray<ProviderSignal>;
+    }
+  /**
+   * Copy the conversation's earlier record in, once, before it runs anything of its own: its
+   * first `runs` ordinals are the imported turns'. The `history.import` effect reads it in batches.
+   */
+  | {
+      readonly _tag: "ImportHistory";
+      readonly source: HistorySource;
+      readonly runs: number;
+      /** The earlier record could not be read, for good: why. The gap is said, nothing copied. */
+      readonly unread?: string;
+    }
+  /** One batch of the earlier record, as the import read it: its plan's records `from`..`to`. */
+  | {
+      readonly _tag: "HistoryBatch";
+      readonly effectId: EffectId;
+      readonly from: number;
+      readonly to: number;
+      readonly records: ReadonlyArray<ImportedRecord>;
+      readonly details: ReadonlyArray<ItemDetailDraft>;
+      readonly data: ReadonlyArray<ItemDataDraft>;
+    }
+  | {
+      readonly _tag: "Recovered";
+      readonly bootId: BootId;
+      /** Process-bound effects the restart cut while they were being tried. */
+      readonly cutEffects: ReadonlyArray<EffectId>;
+      /** Process-bound effects the restart found never tried: nothing of them happened. */
+      readonly unstartedEffects?: ReadonlyArray<EffectId>;
+      /** The platform's evidence of the restart, worded for the person. */
+      readonly words?: string;
+      readonly restart?: MateRestart;
+      /**
+       * The end of the latest answer the agent was writing, read whole from the record at boot: a
+       * long answer's body holds only its first 16 KiB, so `lastSaid` cannot say how it ended.
+       */
+      readonly lastWords?: { readonly runId: RunId; readonly tail: string };
+    };
+
+export type CommandTag = Command["_tag"];
+
+export interface Envelope {
+  readonly commandId: CommandId;
+  readonly conversationId: ConversationId;
+  readonly principal: Principal;
+  readonly command: Command;
+}
+
+type HeaderKey = "v" | "conversationId" | "seq" | "at" | "commandId";
+type DistributiveOmit<T, K extends PropertyKey> = T extends unknown ? Omit<T, K> : never;
+
+/** An event before the store stamps its header (version, conversation, seq, time, command). */
+export type EventDraft = DistributiveOmit<KnownEngineEvent, HeaderKey>;
+
+/** A record of the earlier conversation, as a batch carries it. */
+export type ImportedRecord = Extract<
+  EventDraft,
+  { readonly _tag: "RunImported" | "ItemImported" | "RequestImported" }
+>;
+
+/**
+ * Where an effect queues; each owner's lane is FIFO, lanes run side by side. A conversation's:
+ * `turn`: the session and what goes into it (open, send, steer) — a send settles once the driver
+ * accepted it, so the lane frees while the turn runs. `control`: what must never wait behind a
+ * send (interrupt, answer). `close`: a session's close, which never waits behind an interrupt the
+ * driver does not answer (a second Stop closes the session). `side`: work beside the agent (the
+ * run's admission, a history import). Another owner kind names its own (the crew's `git/<handle>`,
+ * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
+ */
+export type ConversationLane = "turn" | "control" | "close" | "side";
+export type EffectLane = ConversationLane | (string & {});
+/** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
+export type EffectClass = "process-bound" | "replay-safe";
+
+export interface EffectDraft {
+  readonly effectId: EffectId;
+  readonly kind: string;
+  readonly lane: EffectLane;
+  readonly class: EffectClass;
+  readonly runId: RunId | null;
+  readonly payload: unknown;
+}
+
+/** An item's full body, kept lazily beside its summary. */
+export interface ItemDetailDraft {
+  readonly itemId: string;
+  readonly body: string;
+}
+
+/** A call's own record, kept beside its item: never read by the rules, only by its readers. */
+export interface ItemDataDraft {
+  readonly itemId: string;
+  readonly data: unknown;
+}
+
+export interface Step {
+  readonly events: ReadonlyArray<EventDraft>;
+  readonly effects: ReadonlyArray<EffectDraft>;
+  readonly details: ReadonlyArray<ItemDetailDraft>;
+  readonly data?: ReadonlyArray<ItemDataDraft>;
+  readonly result: Extract<CommandResult, { _tag: "Accepted" }>;
+}
+
+export type Decision =
+  | { readonly _tag: "Accept"; readonly step: Step }
+  | { readonly _tag: "Reject"; readonly rejection: Rejection };

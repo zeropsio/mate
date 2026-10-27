@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
+    <link
+      rel="preload"
+      href="%BASE_URL%fonts/roboto/KFO7CnqEu92Fr1ME7kSn66aGLdTylUAMa3yUBHMdazQ.woff2"
+      as="font"
+      type="font/woff2"
+      crossorigin
+    />
+    <link rel="stylesheet" href="/src/sidebarGeometry.css" />
+    <!-- generated:theme-tokens start -->
+    <meta name="theme-color" content="#0c0f0e" />
+    <link rel="icon" type="image/svg+xml" href="%BASE_URL%favicon.svg" />
+    <link rel="manifest" href="%BASE_URL%manifest.webmanifest" />
+    <script>
+      (() => {
+        const LIGHT_BACKGROUND = "#ffffff";
+        const DARK_BACKGROUND = "#0a0a0a";
+        const CUSTOM_THEMES_STORAGE_KEY = "t3code:themes:v1";
+        const THEME_FOLLOW_SYSTEM_STORAGE_KEY = "t3code:theme-follow-system";
+        const THEME_APPEARANCE_MODE_STORAGE_KEY = "t3code:theme-appearance-mode";
+        const THEME_HALVES_STORAGE_KEY = "t3code:theme-halves:v1";
+        const SPLASH_COLORS = {
+          light: {
+            background: "#f9fafb",
+            foreground: "#1a1a1a",
+            accent: "#0077cc",
+            sidebar: "#f1f3f5",
+          },
+          dark: {
+            background: "#0c0f0e",
+            foreground: "#e9eeec",
+            accent: "#58a6ff",
+            sidebar: "#141918",
+          },
+        };
+        // These are the runtime defaults used to complete a custom palette
+        // when a stored theme omits a role. Keep them separate from the
+        // unselected splash so a partial custom theme does not flash generic
+        // app colors before React mounts.
+        const DEFAULT_THEME_PALETTES = {
+          light: {
+            background: "oklch(0.985 0.002 255)",
+            foreground: "oklch(0.217787 0 0)",
+            accent: "oklch(0.560114 0.15773 249.804)",
+            chrome: "oklch(0.985 0.002 255)",
+            sidebar: "oklch(0.962 0.004 255)",
+          },
+          dark: {
+            background: "oklch(0.164609 0.005276 173.621)",
+            foreground: "oklch(0.944756 0.005952 170.443)",
+            accent: "oklch(0.715252 0.15181 253.306)",
+            chrome: "oklch(0.164609 0.005276 173.621)",
+            sidebar: "oklch(0.207783 0.007827 182.122)",
+          },
+        };
+        // This generated boot-time copy makes the selected theme visible before
+        // the app has mounted.
+        const BUILT_IN_THEME_PALETTES = {
+          zerops: {
+            light: {
+              background: "oklch(0.985 0.002 255)",
+              foreground: "oklch(0.217787 0 0)",
+              accent: "oklch(0.560114 0.15773 249.804)",
+              chrome: "oklch(0.985 0.002 255)",
+              sidebar: "oklch(0.962 0.004 255)",
+            },
+            dark: {
+              background: "oklch(0.164609 0.005276 173.621)",
+              foreground: "oklch(0.944756 0.005952 170.443)",
+              accent: "oklch(0.715252 0.15181 253.306)",
+              chrome: "oklch(0.164609 0.005276 173.621)",
+              sidebar: "oklch(0.207783 0.007827 182.122)",
+            },
+          },
+          "t3-chat": {
+            light: {
+              background: "oklch(0.982446 0.010114 325.653)",
+              foreground: "oklch(0.325698 0.116116 325.037)",
+              accent: "oklch(0.591646 0.217985 0.584)",
+              chrome: "oklch(0.982446 0.010114 325.653)",
+              sidebar: "oklch(0.928886 0.031178 322.592)",
+            },
+            dark: {
+              background: "oklch(0.22813 0.020366 307.469)",
+              foreground: "oklch(0.980735 0.004092 301.426)",
+              accent: "oklch(0.460685 0.185347 4.099)",
+              chrome: "oklch(0.22813 0.020366 307.469)",
+              sidebar: "oklch(0.185778 0.019368 322.159)",
+            },
+          },
+          grove: {
+            light: {
+              background: "oklch(0.972369 0.005497 157.15)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.523295 0.112292 158.089)",
+              chrome: "oklch(0.972369 0.005497 157.15)",
+              sidebar: "oklch(0.936464 0.014601 163.554)",
+            },
+            dark: {
+              background: "oklch(0.260865 0.02152 162.75)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.796228 0.133058 157.319)",
+              chrome: "oklch(0.260865 0.02152 162.75)",
+              sidebar: "oklch(0.309925 0.032827 160.944)",
+            },
+          },
+          ocean: {
+            light: {
+              background: "oklch(0.974199 0.002856 241.597)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.536684 0.120219 247.01)",
+              chrome: "oklch(0.974199 0.002856 241.597)",
+              sidebar: "oklch(0.939254 0.01193 241.729)",
+            },
+            dark: {
+              background: "oklch(0.242641 0.024125 250.573)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.758933 0.105833 241.548)",
+              chrome: "oklch(0.242641 0.024125 250.573)",
+              sidebar: "oklch(0.290387 0.032043 247.274)",
+            },
+          },
+          ember: {
+            light: {
+              background: "oklch(0.976527 0.002685 60.725)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.552831 0.129438 44.656)",
+              chrome: "oklch(0.976527 0.002685 60.725)",
+              sidebar: "oklch(0.942267 0.01151 50.785)",
+            },
+            dark: {
+              background: "oklch(0.245899 0.019144 42.044)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.762174 0.124117 52.082)",
+              chrome: "oklch(0.245899 0.019144 42.044)",
+              sidebar: "oklch(0.293349 0.029554 46.882)",
+            },
+          },
+          iris: {
+            light: {
+              background: "oklch(0.976531 0.003855 303.226)",
+              foreground: "oklch(0.222003 0.03479 328.979)",
+              accent: "oklch(0.525348 0.15373 294.176)",
+              chrome: "oklch(0.976531 0.003855 303.226)",
+              sidebar: "oklch(0.941387 0.014687 300.474)",
+            },
+            dark: {
+              background: "oklch(0.225975 0.031062 293.741)",
+              foreground: "oklch(0.990339 0.008411 325.64)",
+              accent: "oklch(0.671712 0.169136 293.929)",
+              chrome: "oklch(0.225975 0.031062 293.741)",
+              sidebar: "oklch(0.266743 0.044689 294.138)",
+            },
+          },
+        };
+        // generated:theme-tokens end
+        // The generated palettes define the modes available before React mounts.
+        const BUILT_IN_THEME_MODES = Object.fromEntries(
+          Object.entries(BUILT_IN_THEME_PALETTES).map(([id, palettes]) => [
+            id,
+            Object.keys(palettes),
+          ]),
+        );
+        const RESERVED_THEME_IDS = [
+          "system",
+          "light",
+          "dark",
+          "zerops",
+          "t3-chat",
+          "grove",
+          "ocean",
+          "ember",
+          "iris",
+          "t3-chat-dark",
+          "t3-grove",
+          "t3-ocean",
+          "t3-ember",
+          "t3-iris",
+        ];
+        // Update every theme-color meta so any element another layer added
+        // carries the resolved color too.
+        const setThemeColor = (color) => {
+          for (const meta of document.querySelectorAll('meta[name="theme-color"]')) {
+            meta.setAttribute("content", color);
+          }
+        };
+
+        // The runtime decodes the same literal CSS formats into OKLCH. Keep
+        // contextual colors out: they cannot be resolved from stored data.
+        const SYSTEM_COLOR_KEYWORD =
+          /^(?:accentcolor(?:text)?|active(?:border|caption|text)|appworkspace|background|button(?:border|face|highlight|shadow|text)|canvas(?:text)?|captiontext|field(?:text)?|graytext|highlight(?:text)?|inactive(?:border|caption(?:text)?)|info(?:background|text)|linktext|mark(?:text)?|menu(?:text)?|scrollbar|selecteditem(?:text)?|threed(?:darkshadow|face|highlight|lightshadow|shadow)|visitedtext|window(?:frame|text)?)$/i;
+        const isThemeColor = (value) => {
+          if (typeof value !== "string" || typeof CSS === "undefined") return false;
+          const color = value.trim();
+          if (
+            /^(?:currentcolor|inherit|initial|revert|revert-layer|unset)$/i.test(color) ||
+            SYSTEM_COLOR_KEYWORD.test(color) ||
+            /\bfrom\b|(?:var|env|attr|calc|min|max|clamp)\(/i.test(color)
+          ) {
+            return false;
+          }
+          const isLiteralColor =
+            /^#(?:[0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(color) ||
+            /^[a-z]+$/i.test(color) ||
+            /^(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/i.test(color);
+          return isLiteralColor && CSS.supports("color", color);
+        };
+        const isRecord = (value) =>
+          typeof value === "object" && value !== null && !Array.isArray(value);
+        const isThemeId = (value) =>
+          typeof value === "string" && /^[a-z0-9](?:[a-z0-9-]{0,47})$/.test(value);
+        const isThemeLabel = (value) =>
+          typeof value === "string" && value.trim().length > 0 && value.trim().length <= 48;
+        const isThemePreferenceMode = (value) =>
+          value === "light" || value === "dark" || value === "system";
+        const isThemeAppearance = (value) => value === "light" || value === "dark";
+        const isStoredCustomTheme = (value) => {
+          if (
+            !isRecord(value) ||
+            !isThemeId(value.id) ||
+            RESERVED_THEME_IDS.includes(value.id) ||
+            !isThemeLabel(value.label) ||
+            !isThemeAppearance(value.appearance) ||
+            !isRecord(value.colors)
+          ) {
+            return false;
+          }
+          if (value.variants === undefined) return true;
+          if (!isRecord(value.variants)) return false;
+          return Object.entries(value.variants).every(
+            ([appearance, colors]) =>
+              isThemeAppearance(appearance) &&
+              (appearance === value.appearance || isRecord(colors)),
+          );
+        };
+        const findCustomTheme = (themeId) => {
+          if (RESERVED_THEME_IDS.includes(themeId)) return null;
+          try {
+            const parsed = JSON.parse(
+              window.localStorage.getItem(CUSTOM_THEMES_STORAGE_KEY) ?? "null",
+            );
+            if (!Array.isArray(parsed)) return null;
+            return (
+              parsed.find((value) => isStoredCustomTheme(value) && value.id === themeId) ?? null
+            );
+          } catch {
+            return null;
+          }
+        };
+
+        try {
+          const storedTheme = window.localStorage.getItem("t3code:theme");
+          const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          // Older builds stored the dark T3 Chat palette as its own theme id
+          // and every maintainer theme under a t3- prefix; keep those
+          // preferences readable. Mirrors the runtime's legacy alias table.
+          const LEGACY_THEME_IDS = {
+            "t3-chat-dark": "t3-chat",
+            "t3-grove": "grove",
+            "t3-ocean": "ocean",
+            "t3-ember": "ember",
+            "t3-iris": "iris",
+          };
+          const isLegacyT3ChatDark = storedTheme === "t3-chat-dark";
+          const storedThemeId =
+            storedTheme === null ? "" : (LEGACY_THEME_IDS[storedTheme] ?? storedTheme);
+          // No preference, or one this build does not know, is the runtime's
+          // default — the Zerops palette following the OS (`readThemePreference`)
+          // — so the first frame is painted in what React then paints.
+          const themeId =
+            storedTheme === "light" ||
+            storedTheme === "dark" ||
+            storedTheme === "system" ||
+            BUILT_IN_THEME_MODES[storedThemeId] !== undefined ||
+            findCustomTheme(storedThemeId) !== null
+              ? storedThemeId
+              : "zerops";
+          const legacyMode = isLegacyT3ChatDark ? "dark" : null;
+          const builtInModes = BUILT_IN_THEME_MODES[themeId] ?? null;
+          const customTheme = builtInModes ? null : findCustomTheme(themeId);
+          const themeModes =
+            builtInModes ??
+            (customTheme
+              ? ["light", "dark"].filter(
+                  (mode) => mode === customTheme.appearance || customTheme.variants?.[mode],
+                )
+              : null);
+          // Mirrors the runtime's isKnownThemePreference.
+          const isKnownTheme =
+            storedTheme === "light" ||
+            storedTheme === "dark" ||
+            storedTheme === "system" ||
+            themeModes !== null;
+          const theme = isKnownTheme && storedTheme ? storedTheme : "system";
+          const isThemed = isKnownTheme && themeModes !== null;
+          const baseAppearance = customTheme ? customTheme.appearance : "light";
+          const systemMode = prefersDark ? "dark" : "light";
+          const storedAppearanceMode = window.localStorage.getItem(
+            THEME_APPEARANCE_MODE_STORAGE_KEY,
+          );
+          const storedFollowSystem = window.localStorage.getItem(THEME_FOLLOW_SYSTEM_STORAGE_KEY);
+          // Mirrors the runtime's getThemePreferenceMode fallback: a bare
+          // "light"/"dark" preference names its own mode.
+          const preferenceMode =
+            theme === "light" || theme === "dark" ? theme : (legacyMode ?? baseAppearance);
+          const appearanceMode = isThemePreferenceMode(storedAppearanceMode)
+            ? storedAppearanceMode
+            : storedFollowSystem === "true"
+              ? "system"
+              : storedFollowSystem === "false"
+                ? preferenceMode
+                : theme === "system" || themeId === "zerops"
+                  ? "system"
+                  : preferenceMode;
+          // A valid mix half for the wanted appearance takes over: it decides
+          // light vs dark even when the base theme cannot render that mode.
+          // Mirrors the runtime's halves-aware resolveThemeAppearance.
+          const wantedMode = appearanceMode === "system" ? systemMode : appearanceMode;
+          let halfThemeId = null;
+          let halfCustomTheme = null;
+          try {
+            const halvesRaw = JSON.parse(
+              window.localStorage.getItem(THEME_HALVES_STORAGE_KEY) ?? "null",
+            );
+            const candidate = isRecord(halvesRaw) ? halvesRaw[wantedMode] : null;
+            if (typeof candidate === "string") {
+              const halfId = LEGACY_THEME_IDS[candidate] ?? candidate;
+              const halfBuiltIn = BUILT_IN_THEME_MODES[halfId] ?? null;
+              const halfCustom = halfBuiltIn ? null : findCustomTheme(halfId);
+              const halfModes =
+                halfBuiltIn ??
+                (halfCustom
+                  ? ["light", "dark"].filter(
+                      (mode) => mode === halfCustom.appearance || halfCustom.variants?.[mode],
+                    )
+                  : null);
+              if (halfModes && halfModes.includes(wantedMode)) {
+                halfThemeId = halfId;
+                halfCustomTheme = halfCustom;
+              }
+            }
+          } catch {
+            // A malformed mix degrades to the base preference.
+          }
+          const themeMode = !isThemed
+            ? null
+            : appearanceMode === "system"
+              ? themeModes.includes(systemMode)
+                ? systemMode
+                : baseAppearance
+              : themeModes.includes(appearanceMode)
+                ? appearanceMode
+                : baseAppearance;
+          const isDark =
+            halfThemeId !== null
+              ? wantedMode === "dark"
+              : isThemed
+                ? themeMode === "dark"
+                : appearanceMode === "system"
+                  ? prefersDark
+                  : appearanceMode === "dark";
+          const effectiveIsThemed = halfThemeId !== null || isThemed;
+          const effectiveThemeId = halfThemeId ?? themeId;
+          const effectiveCustomTheme = halfThemeId !== null ? halfCustomTheme : customTheme;
+          const effectiveThemeMode = halfThemeId !== null ? wantedMode : themeMode;
+          const customColors =
+            effectiveIsThemed && effectiveCustomTheme
+              ? effectiveThemeMode === effectiveCustomTheme.appearance
+                ? effectiveCustomTheme.colors
+                : (effectiveCustomTheme.variants?.[effectiveThemeMode] ??
+                  effectiveCustomTheme.colors)
+              : null;
+          const customDefaults =
+            effectiveCustomTheme && effectiveThemeMode
+              ? DEFAULT_THEME_PALETTES[effectiveThemeMode]
+              : null;
+          // The runtime tolerates individual malformed colors, so fall back
+          // per role rather than dropping the theme.
+          const builtInSplash =
+            effectiveIsThemed && !effectiveCustomTheme && effectiveThemeMode
+              ? (BUILT_IN_THEME_PALETTES[effectiveThemeId]?.[effectiveThemeMode] ?? null)
+              : null;
+          const fallbackSplash = isDark ? SPLASH_COLORS.dark : SPLASH_COLORS.light;
+          const customSplash = customColors
+            ? {
+                background: isThemeColor(customColors.canvas)
+                  ? customColors.canvas
+                  : (customDefaults?.background ?? fallbackSplash.background),
+                foreground: isThemeColor(customColors.text)
+                  ? customColors.text
+                  : (customDefaults?.foreground ?? fallbackSplash.foreground),
+                accent: isThemeColor(customColors.accent)
+                  ? customColors.accent
+                  : (customDefaults?.accent ?? fallbackSplash.accent),
+                sidebar: isThemeColor(customColors.sidebar)
+                  ? customColors.sidebar
+                  : (customDefaults?.sidebar ?? fallbackSplash.sidebar),
+              }
+            : null;
+          if (effectiveIsThemed) {
+            document.documentElement.dataset.themeId = effectiveCustomTheme
+              ? effectiveCustomTheme.id
+              : effectiveThemeId;
+          } else {
+            delete document.documentElement.dataset.themeId;
+          }
+          // A resolved half is a selection even when the base theme is gone
+          // (deleting the base leaves the mix pointing at a real theme).
+          const hasSelection = halfThemeId !== null || (isKnownTheme && storedTheme !== null);
+          if (hasSelection || effectiveIsThemed) {
+            document.documentElement.dataset.themeSelected = "true";
+          } else {
+            delete document.documentElement.dataset.themeSelected;
+          }
+          document.documentElement.classList.toggle("dark", isDark);
+          const chromeColor = customColors
+            ? isThemeColor(customColors.chrome)
+              ? customColors.chrome
+              : (customDefaults?.chrome ?? fallbackSplash.background)
+            : builtInSplash
+              ? builtInSplash.chrome
+              : isDark
+                ? DARK_BACKGROUND
+                : LIGHT_BACKGROUND;
+          document.documentElement.style.backgroundColor = chromeColor;
+          // The splash takes the palette React will paint: a chosen theme's, or
+          // the default one's.
+          if (hasSelection || effectiveIsThemed) {
+            const splashColors = customSplash ?? builtInSplash ?? fallbackSplash;
+            for (const [name, value] of Object.entries(splashColors)) {
+              document.documentElement.style.setProperty(`--boot-${name}`, value);
+            }
+          }
+          setThemeColor(chromeColor);
+        } catch {
+          // Mirror the runtime's storage-failure fallback: follow the OS.
+          let prefersDark = true;
+          try {
+            prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+          } catch {
+            // Keep the dark default when even matchMedia is unavailable.
+          }
+          delete document.documentElement.dataset.themeId;
+          delete document.documentElement.dataset.themeSelected;
+          document.documentElement.classList.toggle("dark", prefersDark);
+          const fallbackColor = prefersDark ? DARK_BACKGROUND : LIGHT_BACKGROUND;
+          document.documentElement.style.backgroundColor = fallbackColor;
+          setThemeColor(fallbackColor);
+        }
+      })();
+    </script>
+    <style>
+      html,
+      body,
+      #root {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+      }
+
+      body {
+        background: #ffffff;
+        color: #262626;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+      }
+
+      html.dark body {
+        background: #0a0a0a;
+        color: #f5f5f5;
+      }
+
+      /* The first frame, kept until the app draws into #root: the sign-in's
+         centred mark, or — for a browser signed in last time — the app's own
+         frame, the menu column as wide as the menu will stand, with its mark
+         where the menu draws it (the Chief's place, `.menu-chief-place`: its
+         30 x 36 mark centred in a 36 px face column 10 px into the row, the row
+         its menu's inset in and as tall as a Mate's card, sidebarGeometry.css)
+         and a quiet page: nothing moves when the app takes over. The app's waits draw their one line into #boot-shell-page
+         (bootFrame.ts). */
+      #boot-shell {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: inherit;
+        color: inherit;
+      }
+
+      #boot-shell[hidden] {
+        display: none;
+      }
+
+      html[data-theme-selected="true"] #boot-shell {
+        background: var(--boot-background);
+        color: var(--boot-foreground);
+      }
+
+      #boot-shell-card {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 96px;
+        height: 96px;
+      }
+
+      #boot-shell-logo {
+        width: 64px;
+        height: 64px;
+        object-fit: contain;
+      }
+
+      /* The sign-in's splash: its mark where the sign-in page's mark lands (ZeropsHostedFrame,
+         22vh from the top, 80 px tall), so the page takes over without the mark moving. */
+      html:not([data-boot-frame="app"]) #boot-shell {
+        align-items: flex-start;
+      }
+
+      html:not([data-boot-frame="app"]) #boot-shell-card {
+        width: auto;
+        height: 80px;
+        margin-top: 22vh;
+      }
+
+      html:not([data-boot-frame="app"]) #boot-shell-logo {
+        width: auto;
+        height: 80px;
+      }
+
+      #boot-shell-menu,
+      #boot-shell-page {
+        display: none;
+      }
+
+      html[data-boot-frame="app"] #boot-shell-card {
+        display: none;
+      }
+
+      html[data-boot-frame="app"] #boot-shell-page {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      @media (min-width: 768px) {
+        html[data-boot-frame="app"] #boot-shell-menu {
+          position: absolute;
+          inset: 0 auto 0 0;
+          display: block;
+          box-sizing: border-box;
+          width: var(--boot-menu-width, 304px);
+          /* The menu's edge: its text at 10 % (8 % dark), as [data-app-sidebar] draws it. */
+          border-right: 1px solid
+            color-mix(in srgb, var(--boot-foreground, currentColor) 10%, transparent);
+          background-color: var(--boot-sidebar, transparent);
+          background-clip: padding-box;
+          background-image: var(--surface-grain, none);
+          background-size: var(--surface-grain-size, auto);
+        }
+
+        html.dark[data-boot-frame="app"] #boot-shell-menu {
+          border-right-color: color-mix(
+            in srgb,
+            var(--boot-foreground, currentColor) 8%,
+            transparent
+          );
+        }
+
+        #boot-shell-menu:has(> :not(#boot-shell-menu-loading)) > #boot-shell-menu-loading {
+          display: none;
+        }
+
+        /* The boot frame and the menu share their loading geometry (sidebarGeometry.css). */
+        html[data-boot-frame="app"] #boot-shell-menu-loading {
+          position: absolute;
+          top: var(--sidebar-menu-header-height);
+          right: var(--sidebar-content-inset);
+          left: calc(var(--sidebar-content-inset) + 1px);
+        }
+
+        #boot-shell-menu-loading span {
+          background: color-mix(in srgb, var(--boot-sidebar, #fafafa) 50%, #fff);
+        }
+
+        html.dark #boot-shell-menu-loading span {
+          background: color-mix(in srgb, var(--boot-foreground, #f5f5f5) 8%, transparent);
+        }
+
+        html[data-boot-frame="app"] #boot-shell-page {
+          left: var(--boot-menu-width, 304px);
+        }
+
+        html[data-boot-frame="app"] #boot-shell-card {
+          position: absolute;
+          top: calc(
+            var(--sidebar-content-inset) + 1px + (var(--sidebar-chief-row-height) - 36px) / 2
+          );
+          left: calc(var(--sidebar-content-inset) + 1px + 10px + 3px);
+          display: block;
+          width: 30px;
+          height: 36px;
+        }
+
+        html[data-boot-frame="app"] #boot-shell-logo {
+          display: block;
+          width: 30px;
+          height: 36px;
+        }
+
+        /* The rail (SidebarRail), where its person left the menu closed: its 88 px column and
+           the Chief's mark, 28 x 33 at 30, 16; the open menu's rows are not its. */
+        html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-menu-loading {
+          display: none;
+        }
+
+        html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-card {
+          top: 16px;
+          left: 30px;
+          width: 28px;
+          height: 33px;
+        }
+
+        html[data-boot-frame="app"][data-boot-menu="rail"] #boot-shell-logo {
+          width: 28px;
+          height: 33px;
+        }
+      }
+    </style>
+    <script>
+      // Which first frame: the app's, for a browser whose last session was
+      // signed in (`mate:boot-frame`, written by the session, cleared on sign
+      // out) and still holds it, or one coming back from the Zerops sign-in;
+      // else, and in a desktop window, the sign-in's centred mark. The menu
+      // column takes the width the menu will (`resolveInitialThreadSidebarWidth`).
+      // Mirrored by bootFrame.logic.ts.
+      (() => {
+        const root = document.documentElement;
+        if (window.desktopBridge !== undefined) return;
+        let signedIn = false;
+        try {
+          signedIn =
+            window.localStorage.getItem("mate:boot-frame") === "app" &&
+            window.localStorage.getItem("zerops-mate.zerops-session.v1") !== null;
+        } catch {
+          // Storage refused: the sign-in's frame, unless this is its return.
+        }
+        const returning = /\/zerops\/authorized\/?$/i.test(window.location.pathname);
+        if (!signedIn && !returning) return;
+        root.dataset.bootFrame = "app";
+        // The width the person left the menu at, under their account's own key
+        // (`accountStorageKeyOf`), as the app reads it: the column never jumps.
+        let stored = null;
+        try {
+          const owner = JSON.parse(
+            window.localStorage.getItem("zerops-mate.zerops-session-owner.v1") ?? "null",
+          );
+          const key =
+            owner !== null && typeof owner.userId === "string"
+              ? `mate:account:${encodeURIComponent(owner.userId)}:chat_thread_sidebar_width`
+              : "chat_thread_sidebar_width";
+          const raw = JSON.parse(window.localStorage.getItem(key) ?? "null");
+          stored = typeof raw === "number" && Number.isFinite(raw) ? raw : null;
+        } catch {
+          stored = null;
+        }
+        const minimum = 13 * 16;
+        const maximum = Math.max(minimum, Math.floor(window.innerWidth) - 40 * 16);
+        const preferred = stored === null ? 23 * 16 : Math.max(minimum, stored);
+        root.style.setProperty("--boot-menu-width", `${Math.min(preferred, maximum)}px`);
+        // A menu its person left closed is the rail (`sidebar_state`, the cookie its toggle
+        // writes), as the app opens it: its 88 px column and its mark, nothing else.
+        if (/(?:^|;\s*)sidebar_state=false(?:;|$)/.test(document.cookie ?? "")) {
+          root.dataset.bootMenu = "rail";
+          root.style.setProperty("--boot-menu-width", "88px");
+        }
+      })();
+    </script>
+    <title>Zerops Mate (Alpha)</title>
+  </head>
+  <body>
+    <div id="boot-shell">
+      <div id="boot-shell-menu">
+        <div
+          id="boot-shell-menu-loading"
+          data-zerops-surface="sidebar-environments-skeleton"
+          aria-hidden="true"
+        >
+          <div><span></span><span></span></div>
+        </div>
+      </div>
+      <div id="boot-shell-page" role="status" aria-live="polite"></div>
+      <div id="boot-shell-card" aria-label="Zerops Mate splash screen">
+        <!-- generated:boot-mark start -->
+        <svg id="boot-shell-logo" viewBox="0 0 44 52" role="img" aria-label="Zerops Mate">
+          <path
+            d="M0.46,27.54 V11 A4,4 0 0 1 3,7.27 L20.19,0.7 A4,4 0 0 1 23,0.7 L40.2,7.27 A4,4 0 0 1 42.74,11 V17.99 L34.84,22.54 V13.71 L21.6,8.62 L8.36,13.7 V23 Z"
+            fill="#45a29a"
+          />
+          <path
+            d="M42.74,23.7 V40.41 A4,4 0 0 1 40.2,44.1 L23,50.67 A4,4 0 0 1 20.19,50.67 L3,44.1 A4,4 0 0 1 0.46,40.41 V33.26 L8.5,28.62 V37.74 L21.6,42.75 L34.84,37.69 V28.26 Z"
+            fill="#45a29a"
+          />
+          <rect x="12.332" y="19.06" width="5.296" height="10.592" rx="2.648" fill="currentColor" />
+          <rect x="25.572" y="19.06" width="5.296" height="10.592" rx="2.648" fill="currentColor" />
+        </svg>
+        <!-- generated:boot-mark end -->
+      </div>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

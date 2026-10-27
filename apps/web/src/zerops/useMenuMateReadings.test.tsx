@@ -1,0 +1,305 @@
+import { type AccountStore } from "@t3tools/client-runtime/data";
+import { initialEnvironment, initialContainer } from "@t3tools/client-runtime/zerops/environments";
+import { RegistryContext } from "@effect/atom-react";
+import { MateAttention } from "@t3tools/contracts";
+import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import * as Schema from "effect/Schema";
+import { AtomRegistry } from "effect/reactivity";
+import { act } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { mateRowReading } from "~/components/zerops/SidebarMateRow.logic";
+
+import { zeropsSessionAtom } from "../state/zerops";
+import { COMING_UP_LINE } from "~/components/zerops/ZeropsProjectRow.logic";
+
+import { mateComing } from "@t3tools/client-runtime/data";
+import {
+  useComingClock,
+  useMateConversationsRead,
+  useMateRowActivity,
+  useLastKnownMateWords,
+  useMateOfflineSince,
+  mateSocketLostAtAtom,
+} from "./useMenuMateReadings";
+import { useMatesActivity } from "./useZeropsAgentActivity";
+import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
+
+const AT = "2026-10-03T09:00:00.000Z";
+
+/** Vera, online, at work on her main chat. */
+const VERA = Schema.decodeUnknownSync(MateLiveView)({
+  presence: { online: true, since: AT, overview: "live" },
+  identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+  main: {
+    id: "t1",
+    title: "Add a login page",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    interactionMode: "default",
+    backgroundLiveness: null,
+    session: { status: "running", lastError: null },
+    latestTurn: {
+      turnId: "turn-1",
+      state: "running",
+      requestedAt: AT,
+      startedAt: AT,
+      completedAt: null,
+    },
+    latestUserMessageAt: AT,
+    updatedAt: AT,
+    latestUserMessagePreview: { text: "Add a login page" },
+    latestMessagePreview: null,
+    planProgress: null,
+    pendingQuestion: null,
+    usagePause: null,
+    liveStep: null,
+  },
+  threads: { list: [], omitted: 0 },
+  logins: {},
+  crew: { status: "off" },
+});
+
+/** Vera's project, listed and not connected: this page holds no socket to her. */
+const UNOPENED = {
+  key: "p-vera:zcp",
+  project: { id: "p-vera", name: "Acme - Vera", status: "ACTIVE", tagList: ["mate"] },
+  group: "ready",
+  service: { id: "zcp", name: "zcp", status: "ACTIVE" },
+} as unknown as ZeropsCandidate;
+
+const mounted: Array<ReactTestRenderer> = [];
+
+afterEach(() => {
+  act(() => {
+    for (const renderer of mounted.splice(0)) renderer.unmount();
+  });
+});
+
+/** `hook`'s answer, mounted over `registry`. */
+function mountedOver<T>(registry: AtomRegistry.AtomRegistry, hook: () => T): T {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  let answer: { readonly value: T } | undefined;
+  function Probe() {
+    answer = { value: hook() };
+    return null;
+  }
+  act(() => {
+    mounted.push(
+      create(
+        <RegistryContext.Provider value={registry}>
+          <Probe />
+        </RegistryContext.Provider>,
+      ),
+    );
+  });
+  return answer!.value;
+}
+
+/** A registry with the session's organization and HQ's word of Vera, `view`. */
+function told(view: MateLiveView): AtomRegistry.AtomRegistry {
+  const registry = AtomRegistry.make();
+  registry.set(zeropsSessionAtom, {
+    status: "signed-in",
+    organizationStatus: "selected",
+    activeOrganization: { organizationId: "org-acme" },
+  } as never);
+  mountHqNavigation(registry, "org-acme", { mates: Object.fromEntries([["p-vera", view]]) });
+  return registry;
+}
+
+describe("useMenuMateReadings — a Mate HQ tells of, no socket to it", () => {
+  it("a Mate HQ holds online is not asleep without a socket", () => {
+    const read = mountedOver(told(VERA), () => useMateRowActivity(useMatesActivity()))(UNOPENED);
+    expect(read).toMatchObject({ threadId: "t1", kind: "working" });
+    expect(mateRowReading({ connected: false, activity: read, mine: false }).face).toBe("working");
+  });
+
+  it("an unreachable Mate keeps HQ's attention alongside the dated overview", () => {
+    const registry = AtomRegistry.make();
+    const { store } = mountHqNavigation(registry, "org-acme", { mates: { "p-vera": VERA } });
+    const attention = Schema.decodeUnknownSync(MateAttention)({
+      source: { environmentId: "env-vera", incarnation: "run-1", revision: 1 },
+      mainThreadId: "t1",
+      lastThreadId: "t1",
+      working: 0,
+      waiting: 1,
+      results: [],
+      questions: [{ threadId: "t1", turnId: "turn-1", kind: "approval" }],
+      truncated: false,
+    });
+    const scope = "hq:org-acme:mate-attention:p-vera";
+    store.dispatch({
+      kind: "stream",
+      key: scope,
+      now: 0,
+      event: { kind: "demand", demanded: true },
+    });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+    store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: 1 }],
+      reset: true,
+      rows: [
+        {
+          family: "mateAttention",
+          id: "p-vera",
+          value: attention,
+          revision: { kind: "mate-attention", ...attention.source, live: false },
+        },
+      ],
+      removals: [],
+    });
+    const words = mountedOver(registry, () => useLastKnownMateWords("p-vera", "Vera"));
+    expect(words).toContain("Last known");
+    expect(words).toContain("Vera was waiting for approval.");
+    expect(words).not.toContain("Vera was working.");
+  });
+
+  it("a Mate HQ told of has its conversations read without a socket", () => {
+    const read = mountedOver(told({ ...VERA, main: null }), useMateConversationsRead);
+    expect(read(UNOPENED)).toBe(true);
+  });
+});
+
+/** What the menu's getter asks of an arriving Mate, as it asks it: now, at the call. */
+function lineAt(candidate: ZeropsCandidate, wokeAt: number): string | undefined {
+  const nowMs = Math.max(Date.now(), wokeAt);
+  return mateComing({ press: undefined, candidate, answerAwaited: true, nowMs })?.line;
+}
+
+describe("useComingClock — a coming-up line moves on at its deadline", () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("redraws a Mate whose arrival window ends at T, at T, with nothing else changing", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    vi.useFakeTimers();
+    vi.setSystemTime(Date.parse("2026-10-07T09:00:00.000Z"));
+    const until = Date.now() + 90_000;
+    const arriving = { ...UNOPENED, arriving: { until } } as ZeropsCandidate;
+    const candidates = [arriving];
+    const lines: Array<string | undefined> = [];
+    function Row() {
+      lines.push(lineAt(arriving, useComingClock(candidates)));
+      return null;
+    }
+    act(() => {
+      mounted.push(create(<Row />));
+    });
+    expect(lines.at(-1)).toBe(COMING_UP_LINE);
+    act(() => {
+      vi.advanceTimersByTime(89_999);
+    });
+    expect(lines.at(-1)).toBe(COMING_UP_LINE);
+    act(() => {
+      vi.advanceTimersByTime(1);
+    });
+    expect(lines.at(-1)).toBeUndefined();
+  });
+});
+
+it.each([
+  [true, false, AT],
+  [true, true, undefined],
+  [false, false, undefined],
+  [false, true, undefined],
+] as const)(
+  "Mate outage time follows offline evidence, not HQ transport loss (HQ live %s, Mate online %s)",
+  (live, online, since) => {
+    const registry = told(VERA);
+    mountHqNavigation(registry, "org-acme", {
+      live,
+      mates: { "p-vera": { ...VERA, presence: { ...VERA.presence, online } } },
+    });
+    expect(mountedOver(registry, () => useMateOfflineSince("p-vera"))).toBe(since);
+  },
+);
+
+function socketLoss(store: AccountStore, key: string, wall: number, sequence: number) {
+  const projectId = key.split(":")[0]!;
+  store.dispatch({
+    kind: "rows",
+    scope: `mate:${projectId}:link`,
+    generation: 0,
+    method: "read",
+    via: "mate-direct",
+    rows: [
+      {
+        family: "mateLink",
+        id: key,
+        value: {
+          key,
+          projectId,
+          orgId: "org-acme",
+          origin: null,
+          shown: true,
+          watched: false,
+          environment: {
+            ...initialEnvironment({ record: null }),
+            linkLostAt: { wall, mono: wall },
+          },
+          container: initialContainer(),
+        },
+        revision: { kind: "mate-link", sequence },
+      },
+    ],
+  });
+}
+it("a lost browser socket supplies the since-time while HQ still sees the Mate online", () => {
+  const registry = told(VERA);
+  const { store } = mountHqNavigation(registry, "org-acme", {
+    live: true,
+    mates: { "p-vera": VERA },
+  });
+  socketLoss(store, "p-vera:s", Date.parse("2026-10-08T10:36:00Z"), 1);
+  expect(mountedOver(registry, () => useMateOfflineSince("p-vera", "p-vera:s"))).toBe(
+    "2026-10-08T10:36:00.000Z",
+  );
+  let changes = 0;
+  const stop = registry.subscribe(mateSocketLostAtAtom("p-vera:s"), () => changes++);
+  socketLoss(store, "p-other:s", Date.parse("2026-10-08T10:37:00Z"), 2);
+  expect(changes).toBe(0);
+  socketLoss(store, "p-vera:s", Date.parse("2026-10-08T10:38:00Z"), 3);
+  expect(changes).toBe(1);
+  stop();
+});
+
+it("an unreachable Mate keeps the provider and reset as HQ last-known evidence", () => {
+  const main = {
+    ...VERA.main!,
+    session: { status: "error" as const, lastError: "Claude usage limit reached." },
+    refusal: { turnId: null, provider: "Claude", resetsAt: "2099-10-10T00:00:00.000Z" },
+    usagePause: { resetsAt: "2099-10-10T00:00:00.000Z" },
+  };
+  const live = { ...VERA, main };
+  const offline = { ...live, presence: { online: false, since: AT, overview: "stored" as const } };
+  const warm = AtomRegistry.make();
+  const cold = AtomRegistry.make();
+  const first = mountHqNavigation(warm, "org-acme", { mates: { "p-vera": live } });
+  const second = mountHqNavigation(cold, "org-acme", { mates: { "p-vera": offline } });
+  try {
+    act(() => first.seed({ mates: { "p-vera": offline } }));
+    for (const registry of [warm, cold]) {
+      const words = mountedOver(registry, () => useLastKnownMateWords("p-vera", "Ada"));
+      expect(words).toContain("Last known");
+      expect(words).toContain("Ada hit the Claude limit");
+      expect(words).toContain("Oct 10, 2099");
+      expect(words).not.toContain("coding agent's limit");
+    }
+  } finally {
+    act(() => {
+      for (const renderer of mounted.splice(0)) renderer.unmount();
+    });
+    first.store.close();
+    second.store.close();
+    warm.dispose();
+    cold.dispose();
+  }
+});

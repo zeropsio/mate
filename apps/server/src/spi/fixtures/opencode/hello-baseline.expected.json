@@ -1,0 +1,114 @@
+[
+  {
+    "eventId": "evt-0",
+    "provider": "opencode",
+    "threadId": "spi-replay-opencode-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "session.started",
+    "payload": {
+      "message": "OpenCode session started"
+    }
+  },
+  {
+    "eventId": "evt-1",
+    "provider": "opencode",
+    "threadId": "spi-replay-opencode-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "type": "thread.started",
+    "payload": {
+      "providerThreadId": "http://127.0.0.1:9999/session"
+    }
+  },
+  {
+    "eventId": "evt-2",
+    "provider": "opencode",
+    "threadId": "spi-replay-opencode-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "itemId": "item-0",
+    "raw": {
+      "source": "opencode.sdk.event",
+      "payload": {
+        "type": "message.part.updated",
+        "properties": {
+          "sessionID": "http://127.0.0.1:9999/session",
+          "part": {
+            "id": "item-0",
+            "sessionID": "http://127.0.0.1:9999/session",
+            "messageID": "msg-spi-replay",
+            "type": "text",
+            "text": "Hello from",
+            "time": {
+              "start": 1
+            }
+          },
+          "time": 1
+        }
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": "Hello from"
+    }
+  },
+  {
+    "eventId": "evt-3",
+    "provider": "opencode",
+    "threadId": "spi-replay-opencode-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "itemId": "item-0",
+    "raw": {
+      "source": "opencode.sdk.event",
+      "payload": {
+        "type": "message.part.delta",
+        "properties": {
+          "sessionID": "http://127.0.0.1:9999/session",
+          "messageID": "msg-spi-replay",
+          "partID": "item-0",
+          "field": "text",
+          "delta": " OpenCode"
+        }
+      }
+    },
+    "type": "content.delta",
+    "payload": {
+      "streamKind": "assistant_text",
+      "delta": " OpenCode"
+    }
+  },
+  {
+    "eventId": "evt-4",
+    "provider": "opencode",
+    "threadId": "spi-replay-opencode-thread",
+    "createdAt": "1970-01-01T00:00:00.000Z",
+    "itemId": "item-0",
+    "raw": {
+      "source": "opencode.sdk.event",
+      "payload": {
+        "type": "message.part.updated",
+        "properties": {
+          "sessionID": "http://127.0.0.1:9999/session",
+          "part": {
+            "id": "item-0",
+            "sessionID": "http://127.0.0.1:9999/session",
+            "messageID": "msg-spi-replay",
+            "type": "text",
+            "text": "Hello from OpenCode",
+            "time": {
+              "start": 1,
+              "end": 2
+            }
+          },
+          "time": 2
+        }
+      }
+    },
+    "type": "item.completed",
+    "payload": {
+      "itemType": "assistant_message",
+      "status": "completed",
+      "title": "Assistant message",
+      "detail": "Hello from OpenCode"
+    }
+  }
+]

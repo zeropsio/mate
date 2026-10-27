@@ -1,0 +1,34 @@
+[
+  {
+    "path": "apps/mobile/src/features/cloud/linkEnvironment.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/http",
+    "owner": "data-layer rewrite: Mate transport",
+    "reason": "Mobile later: native account connection uses its current HTTP transport. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/zerops/mate-descriptors.ts",
+    "kind": "CallExpression",
+    "fingerprint": "globalThis.fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native pre-session identity discovery still uses its existing descriptor transport. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/lib/runtime.ts",
+    "kind": "Identifier",
+    "fingerprint": "fetch",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native HTTP and socket hosts retain their current transports. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/lib/runtime.ts",
+    "kind": "ImportDeclaration",
+    "fingerprint": "effect/socket/Socket",
+    "owner": "data-layer rewrite: Mate identity/connection",
+    "reason": "Mobile later: native HTTP and socket hosts retain their current transports. Mobile is explicitly outside this migration.",
+    "expires": "never"
+  }
+]

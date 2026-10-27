@@ -1,0 +1,157 @@
+/**
+ * The organization's projects as the roster lists them: every project it admits now, whether the
+ * list is whole, and how current it is. A project that left the roster stays listed until its
+ * owner proves it deleted or withholds it; an outage keeps what was read and says it is catching
+ * up. Where HQ places a project is HQ's: a project nobody placed yet is listed all the same.
+ * A project HQ places that the roster does not name yet — Zerops' search trails a project just
+ * made and its grants — is listed once its own row, read by its id (`data/placedRows.ts`), says
+ * it is the organization's: Zerops answering that read is its word that the viewer reads it.
+ *
+ * @module data/projections/projects
+ */
+import { placementsScope } from "../families/hqNavigation.ts";
+import { projectsScope, type ProjectValue } from "../families/project.ts";
+import { acceptedProjectOf } from "../operations/receipts.ts";
+import type { Projection } from "../store.ts";
+import { sameValue } from "./equal.ts";
+import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
+
+/** Where the roster's read stands: not asked for, its first baseline under way, or read. */
+export type RosterRead = "unread" | "reading" | "read";
+
+export interface OrganizationProjects extends Omit<ScopeFreshness, "complete"> {
+  /**
+   * The listed projects whose row is read, by name: one leaving or joining moves no other.
+   */
+  readonly projects: ReadonlyArray<ProjectValue>;
+  readonly read: RosterRead;
+  /**
+   * The roster is read and nothing of it is still open: every member's row is read and no
+   * departure waits for its owner's word. Only a complete roster may say "no such project".
+   */
+  readonly complete: boolean;
+}
+
+const byName = (left: ProjectValue, right: ProjectValue) =>
+  left.name.localeCompare(right.name) || left.id.localeCompare(right.id);
+
+export const organizationProjects: Projection<string, OrganizationProjects> = {
+  name: "organizationProjects",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const scope = projectsScope(orgId);
+    const { complete: baselined, ...freshness } = scopeFreshness(read, scope);
+    const { ids, unverified, excluded } = read.members(scope);
+    const projects: ProjectValue[] = [];
+    let unreadRows = false;
+    for (const id of [...ids, ...unverified]) {
+      const fact = read.fact("project", id);
+      if (fact.kind === "known") projects.push(fact.value);
+      else if (fact.kind === "unknown") unreadRows = true;
+    }
+    const named = new Set([...ids, ...unverified, ...excluded]);
+    for (const id of read.members(placementsScope(orgId)).ids) {
+      if (named.has(id)) continue;
+      const fact = read.fact("project", id);
+      if (fact.kind === "known" && fact.value.clientId === orgId) projects.push(fact.value);
+    }
+    const phase = read.stream(scope).phase;
+    return {
+      projects: projects.sort(byName),
+      read: baselined ? "read" : phase === "idle" || phase === "paused" ? "unread" : "reading",
+      complete: baselined && !unreadRows && unverified.length === 0,
+      ...freshness,
+    };
+  },
+  equals: sameValue,
+};
+
+/**
+ * Whether the roster's latest read has answered: its scope is live, not waiting on a read asked
+ * again (`AccountObservation.rereadListing`). Unlike `live`, a reconnect's grace does not hold it.
+ */
+export const rosterAnswered: Projection<string, boolean> = {
+  name: "rosterAnswered",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => read.stream(projectsScope(orgId)).phase === "live",
+  equals: Object.is,
+};
+
+/** One project as the account's store holds it; `null` while it holds no value of it. */
+export const listedProject: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  ProjectValue | null
+> = {
+  name: "listedProject",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => {
+    const fact = read.fact("project", projectId);
+    return fact.kind === "known" ? fact.value : null;
+  },
+  equals: sameValue,
+};
+
+/** Whether the owner proved a project deleted: what HQ still places of it is drawn no more. */
+export const projectGone: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  boolean
+> = {
+  name: "projectGone",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { projectId }) => read.fact("project", projectId).kind === "deleted",
+  equals: sameValue,
+};
+
+/**
+ * Where one project stands with the viewer, as the account's store holds it: its row while the
+ * roster lists it — Zerops filters the organization's listing by the viewer's token, so a listed
+ * project is the viewer's — accepted while creation awaits its first row, denied once its owner
+ * refused it, deleted once proven, otherwise not known.
+ */
+export type ProjectStanding =
+  | { readonly kind: "listed"; readonly project: ProjectValue }
+  | { readonly kind: "accepted"; readonly name: string }
+  | { readonly kind: "denied"; readonly name?: string }
+  | { readonly kind: "deleted"; readonly name?: string }
+  | { readonly kind: "unknown" };
+
+export const projectStanding: Projection<
+  { readonly orgId: string; readonly projectId: string },
+  ProjectStanding
+> = {
+  name: "projectStanding",
+  keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
+  derive: (read, { orgId, projectId }) => {
+    const fact = read.fact("project", projectId);
+    switch (fact.kind) {
+      case "known":
+        return { kind: "listed", project: fact.value };
+      case "deleted":
+        return { kind: "deleted", ...(fact.label === undefined ? {} : { name: fact.label }) };
+      case "withheld":
+        return fact.reason === "denied"
+          ? { kind: "denied", ...(fact.label === undefined ? {} : { name: fact.label }) }
+          : { kind: "unknown" };
+      case "unknown":
+        for (const requestId of read.index("accepted-project", projectId)) {
+          const accepted = acceptedProjectOf(read.operation(requestId));
+          if (accepted?.orgId === orgId) return { kind: "accepted", name: accepted.name };
+        }
+        return { kind: "unknown" };
+    }
+  },
+  equals: sameValue,
+};
+
+/**
+ * Whether a project's own row is read, by its id, while its Mate is drawn: only where it decides
+ * the viewer's access — a NO_ACCESS member's project whose listing row names no grant of theirs
+ * (or that the roster does not list yet). An organization member is judged on their membership,
+ * and whose a Mate is comes from HQ's person facts; neither asks Zerops per project.
+ * Held `userRoles` came from the own row and never release this demand: only the listing
+ * naming the viewer's grant makes the own read unnecessary.
+ */
+export const ownRowWanted = (
+  viewerRole: string | undefined,
+  listed: Pick<ProjectValue, "listingNamesGrants"> | null,
+): boolean => viewerRole === "NO_ACCESS" && listed?.listingNamesGrants !== true;

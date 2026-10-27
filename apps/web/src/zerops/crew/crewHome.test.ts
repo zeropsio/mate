@@ -1,0 +1,180 @@
+import { CREW_HANDLE_PATTERN } from "@t3tools/contracts";
+import { parseBrief, type CrewDefinition, type CrewMemberSpec } from "@t3tools/shared/crewHome";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  crewHandleFor,
+  crewmateDraftOf,
+  crewmateSpecOf,
+  emptyCrewmateDraft,
+  withBrief,
+  withMember,
+} from "./crewHome";
+
+const member = (
+  fields: Partial<CrewMemberSpec> & Pick<CrewMemberSpec, "handle">,
+): CrewMemberSpec => ({
+  displayName: fields.handle,
+  kind: "writer",
+  readOnly: false,
+  restartAfterMerge: false,
+  afterLandRestart: false,
+  env: {},
+  migrations: [],
+  job: "Builds things.\n",
+  ...fields,
+});
+
+const backend = member({
+  handle: "backend",
+  displayName: "Backend",
+  tint: "sky",
+  host: "appdev",
+  setup: "npm ci",
+  check: "npm test",
+  run: "npm run dev -- --port $CREW_PORT",
+  restartAfterMerge: true,
+  login: "claudeAgent",
+  model: "claude-opus-5-5",
+  effort: "high",
+  env: { DATABASE_URL: "postgres://crew" },
+  migrations: ["db/migrations/**"],
+  context: 300_000,
+  rotateAfter: 2,
+});
+
+const definition: CrewDefinition = {
+  crew: "crew",
+  name: "Game team",
+  brief: parseBrief("Space shooter", "Build it.\n"),
+  members: [backend, member({ handle: "erik", tint: "amber" })],
+};
+
+describe("the crewmate draft", () => {
+  it("round-trips a crewmate through the editor unchanged", () => {
+    expect(crewmateSpecOf(crewmateDraftOf(backend), false, backend)).toEqual(backend);
+  });
+
+  // Run 2: the roster said a crewmate's job in one sentence, its editor in two — the second its
+  // standing instruction.
+  it("holds the job as the roster says it, and what the crewmate is told past it as how it works", () => {
+    const told = member({
+      handle: "orders",
+      job: "Builds the order pages.\nBuild what your task asks. Report when the check passes.\n",
+    });
+    const draft = crewmateDraftOf(told);
+    expect(draft.job).toBe("Builds the order pages.");
+    expect(draft.howItWorks).toBe("Build what your task asks. Report when the check passes.\n");
+    expect(crewmateSpecOf(draft, false, told).job).toBe(told.job);
+    expect(
+      crewmateSpecOf({ ...draft, job: "Builds the order and invoice pages." }, false, told).job,
+    ).toBe(
+      "Builds the order and invoice pages.\nBuild what your task asks. Report when the check passes.\n",
+    );
+    expect(
+      crewmateSpecOf({ ...emptyCrewmateDraft(false), job: "Builds tea." }, false, undefined).job,
+    ).toBe("Builds tea.\n");
+  });
+
+  it("drops a read-only crewmate's copy: no service, commands, switches or env", () => {
+    const draft = { ...crewmateDraftOf(backend), readOnly: true };
+    expect(crewmateSpecOf(draft, false, backend)).toEqual({
+      handle: "backend",
+      displayName: "Backend",
+      kind: "reader",
+      readOnly: true,
+      tint: "sky",
+      restartAfterMerge: false,
+      afterLandRestart: false,
+      login: "claudeAgent",
+      model: "claude-opus-5-5",
+      effort: "high",
+      env: {},
+      migrations: [],
+      context: 300_000,
+      rotateAfter: 2,
+      job: "Builds things.\n",
+    });
+  });
+
+  it("keeps the lead a read-only lead", () => {
+    const spec = crewmateSpecOf({ ...emptyCrewmateDraft(true), job: "Plans." }, true, undefined);
+    expect([spec.handle, spec.kind, spec.readOnly]).toEqual(["lead", "lead", true]);
+  });
+
+  it("leaves blank commands and the login's defaults out", () => {
+    const spec = crewmateSpecOf(
+      {
+        ...emptyCrewmateDraft(false),
+        handle: "qa",
+        displayName: " QA ",
+        host: "appdev",
+        setup: "  ",
+      },
+      false,
+      undefined,
+    );
+    expect(spec).toEqual({
+      handle: "qa",
+      displayName: "QA",
+      kind: "writer",
+      readOnly: false,
+      host: "appdev",
+      restartAfterMerge: false,
+      afterLandRestart: false,
+      login: "claudeAgent",
+      env: {},
+      migrations: [],
+      job: "",
+    });
+  });
+});
+
+describe("withMember and withBrief", () => {
+  it("replaces a crewmate by handle, keeping the others in order", () => {
+    const next = withMember(
+      definition,
+      "backend",
+      member({ handle: "backend", displayName: "API" }),
+    );
+    expect(next.members.map((mate) => [mate.handle, mate.displayName])).toEqual([
+      ["backend", "API"],
+      ["erik", "erik"],
+    ]);
+  });
+
+  it("adds a crewmate at the end", () => {
+    const next = withMember(definition, null, member({ handle: "qa" }));
+    expect(next.members.map((mate) => mate.handle)).toEqual(["backend", "erik", "qa"]);
+  });
+
+  it("sets the brief's title and text, reading its sections again", () => {
+    const next = withBrief(definition, "Shop", "Sell things.\n\n## Done when\n- a guest pays\n");
+    expect(next.brief).toEqual({
+      title: "Shop",
+      text: "Sell things.\n\n## Done when\n- a guest pays\n",
+      doneWhen: ["a guest pays"],
+    });
+  });
+});
+
+describe("crewHandleFor: a crewmate's handle, from its name", () => {
+  it.each<[string, ReadonlyArray<string>, string]>([
+    ["Game systems", [], "game-systems"],
+    ["Server and world", [], "server-and-world"],
+    ["Clients & creation!", [], "clients-creation"],
+    ["Přemysl Ořáč", [], "premysl-orac"],
+    ["  Lead  ", [], "lead"],
+    ["An exceptionally long crewmate name", [], "an-exceptionally-lon"],
+    ["A name ending in a dash at twenty-", [], "a-name-ending-in-a-d"],
+    ["Game systems", ["game-systems"], "game-systems-2"],
+    ["Game systems", ["game-systems", "game-systems-2"], "game-systems-3"],
+    ["An exceptionally long crewmate name", ["an-exceptionally-lon"], "an-exceptionally-l-2"],
+    ["???", [], "crewmate"],
+    ["???", ["crewmate"], "crewmate-2"],
+  ])("%s (taken: %j) → %s", (name, taken, handle) => {
+    const made = crewHandleFor(name, new Set(taken));
+    expect(made).toBe(handle);
+    expect(made).toMatch(CREW_HANDLE_PATTERN);
+  });
+});

@@ -1,0 +1,313 @@
+import type { AuthClientPresentationMetadata } from "@t3tools/contracts";
+import { socketUrlFromWsBaseUrl } from "@t3tools/shared/basePath";
+import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+
+import { appendClientConnectionParams } from "../authorization/remote.ts";
+import * as RemoteEnvironmentAuthorization from "../authorization/service.ts";
+import * as ClientCapabilities from "../platform/capabilities.ts";
+import { zeropsMateBaseUrl } from "../zerops/candidates.ts";
+import {
+  BearerConnectionCredential,
+  BearerConnectionProfile,
+  type ConnectionCatalogEntry,
+  SshConnectionProfile,
+} from "./catalog.ts";
+import { credentialExpired } from "./credentialRenewal.ts";
+import * as ConnectionCredentialStore from "./credentialStore.ts";
+import {
+  credentialMissingError,
+  environmentMismatchError,
+  profileMissingError,
+  sessionExpiredError,
+} from "./errors.ts";
+import type {
+  BearerConnectionTarget,
+  ConnectionTarget,
+  PreparedConnection,
+  PrimaryConnectionTarget,
+  RelayConnectionTarget,
+  SshConnectionTarget,
+  ZeropsMateConnectionTarget,
+} from "./model.ts";
+import { ConnectionBlockedError, type ConnectionAttemptError } from "./model.ts";
+import * as ConnectionProfileStore from "./profileStore.ts";
+
+export class ConnectionResolver extends Context.Service<
+  ConnectionResolver,
+  {
+    readonly prepare: (
+      entry: ConnectionCatalogEntry,
+    ) => Effect.Effect<PreparedConnection, ConnectionAttemptError>;
+  }
+>()("@t3tools/client-runtime/connection/resolver/ConnectionResolver") {}
+
+const isBearerProfile = Schema.is(BearerConnectionProfile);
+const isSshProfile = Schema.is(SshConnectionProfile);
+const isBearerCredential = Schema.is(BearerConnectionCredential);
+
+function primarySocketUrl(
+  target: PrimaryConnectionTarget,
+  clientMetadata: AuthClientPresentationMetadata | undefined,
+): string {
+  const url = socketUrlFromWsBaseUrl(target.wsBaseUrl);
+  appendClientConnectionParams(url, clientMetadata, "direct");
+  return url.toString();
+}
+
+const makePrimaryBroker = Effect.fn("clientRuntime.connection.broker.makePrimary")(function* () {
+  const auth = yield* ClientCapabilities.PrimaryEnvironmentAuth;
+  const presentation = yield* ClientCapabilities.ClientPresentation;
+  const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+
+  return Effect.fn("clientRuntime.connection.broker.primary")(function* (
+    target: PrimaryConnectionTarget,
+  ) {
+    const bearerToken = yield* auth.bearerToken;
+    if (Option.isNone(bearerToken)) {
+      return {
+        environmentId: target.environmentId,
+        label: target.label,
+        httpBaseUrl: target.httpBaseUrl,
+        socketUrl: primarySocketUrl(target, presentation.metadata),
+        httpAuthorization: null,
+        target,
+      } satisfies PreparedConnection;
+    }
+
+    const authorized = yield* remote.authorizeBearer({
+      expectedEnvironmentId: target.environmentId,
+      httpBaseUrl: target.httpBaseUrl,
+      wsBaseUrl: target.wsBaseUrl,
+      bearerToken: bearerToken.value,
+      connectionMethod: "direct",
+    });
+    return {
+      ...authorized,
+      target,
+    } satisfies PreparedConnection;
+  });
+});
+
+const makeBearerBroker = Effect.fn("clientRuntime.connection.broker.makeBearer")(function* () {
+  const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
+  const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+  // The bearer each connection's server last refused, and its refusal. A refusal is final for
+  // that bearer — expired, revoked or unknown alike — so from then on it is answered here: a
+  // wake, a network change or a retry never sends it again. Keyed by connection, so the door's
+  // next bearer is presented as soon as it is stored.
+  const refused = yield* Ref.make<
+    ReadonlyMap<string, { readonly token: string; readonly error: ConnectionBlockedError }>
+  >(new Map());
+
+  return Effect.fn("clientRuntime.connection.broker.bearer")(function* (
+    entry: ConnectionCatalogEntry & { readonly target: BearerConnectionTarget },
+  ) {
+    const target = entry.target;
+    const profile = yield* Effect.fromOption(entry.profile, () =>
+      profileMissingError(target.connectionId),
+    );
+    if (!isBearerProfile(profile)) {
+      return yield* new ConnectionBlockedError({
+        reason: "configuration",
+        detail: `Connection profile ${target.connectionId} is not a bearer connection.`,
+      });
+    }
+    if (profile.environmentId !== target.environmentId) {
+      return yield* environmentMismatchError({
+        expected: target.environmentId,
+        actual: profile.environmentId,
+      });
+    }
+    const credential = yield* credentials.get(target.connectionId).pipe(
+      Effect.flatMap(
+        Option.match({
+          onNone: () => Effect.fail(credentialMissingError(target.connectionId)),
+          onSome: Effect.succeed,
+        }),
+      ),
+    );
+    if (!isBearerCredential(credential)) {
+      return yield* credentialMissingError(target.connectionId);
+    }
+    const refusal = (yield* Ref.get(refused)).get(target.connectionId);
+    if (refusal?.token === credential.token) {
+      return yield* refusal.error;
+    }
+    if (credentialExpired(credential, yield* Clock.currentTimeMillis)) {
+      return yield* sessionExpiredError();
+    }
+    const authorized = yield* remote
+      .authorizeBearer({
+        expectedEnvironmentId: target.environmentId,
+        httpBaseUrl: profile.httpBaseUrl,
+        wsBaseUrl: profile.wsBaseUrl,
+        bearerToken: credential.token,
+        connectionMethod: "direct",
+      })
+      .pipe(
+        Effect.tapError((error) =>
+          error._tag === "ConnectionBlockedError" && error.reason === "authentication"
+            ? Ref.update(refused, (current) =>
+                new Map(current).set(target.connectionId, { token: credential.token, error }),
+              )
+            : Effect.void,
+        ),
+      );
+    return {
+      environmentId: authorized.environmentId,
+      label: authorized.label,
+      httpBaseUrl: authorized.httpBaseUrl,
+      socketUrl: authorized.socketUrl,
+      httpAuthorization: authorized.httpAuthorization,
+      ...(authorized.contentAddressedImages === undefined
+        ? {}
+        : { contentAddressedImages: authorized.contentAddressedImages }),
+      ...(authorized.mateEngine === undefined ? {} : { mateEngine: authorized.mateEngine }),
+      target,
+    } satisfies PreparedConnection;
+  });
+});
+
+// The relay no longer provisions managed tunnels or exposes a connect/status
+// API (RelayDpopClientGroup is gone) — every environment is reached over its
+// own public origin now (direct URL, pairing, or the Zerops identity path).
+// RelayConnectionTarget survives in the shared catalog model for storage
+// compatibility with other clients (mobile, desktop), but resolving one here
+// always fails: there is no way left to obtain a bootstrap through the relay.
+const relayBroker = Effect.fn("clientRuntime.connection.broker.relay")(function* (
+  target: RelayConnectionTarget,
+) {
+  return yield* new ConnectionBlockedError({
+    reason: "unsupported",
+    detail: `Relay-managed connections are no longer supported. Reconnect ${target.label} directly.`,
+  });
+});
+
+const makeSshBroker = Effect.fn("clientRuntime.connection.broker.makeSsh")(function* () {
+  const profiles = yield* ConnectionProfileStore.ConnectionProfileStore;
+  const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
+  const remote = yield* RemoteEnvironmentAuthorization.RemoteEnvironmentAuthorization;
+
+  return Effect.fn("clientRuntime.connection.broker.ssh")(function* (
+    entry: ConnectionCatalogEntry & { readonly target: SshConnectionTarget },
+  ) {
+    const target = entry.target;
+    const profile = yield* Effect.fromOption(entry.profile, () =>
+      profileMissingError(target.connectionId),
+    );
+    if (!isSshProfile(profile)) {
+      return yield* new ConnectionBlockedError({
+        reason: "configuration",
+        detail: `Connection profile ${target.connectionId} is not an SSH connection.`,
+      });
+    }
+    if (profile.environmentId !== target.environmentId) {
+      return yield* environmentMismatchError({
+        expected: target.environmentId,
+        actual: profile.environmentId,
+      });
+    }
+    const prepared = yield* ssh.prepare({
+      connectionId: target.connectionId,
+      expectedEnvironmentId: target.environmentId,
+      target: profile.target,
+    });
+    yield* profiles.put(
+      new SshConnectionProfile({
+        connectionId: profile.connectionId,
+        environmentId: profile.environmentId,
+        label: profile.label,
+        target: prepared.bootstrap.target,
+      }),
+    );
+    const authorized = yield* remote.authorizeBearer({
+      expectedEnvironmentId: target.environmentId,
+      httpBaseUrl: prepared.bootstrap.httpBaseUrl,
+      wsBaseUrl: prepared.bootstrap.wsBaseUrl,
+      bearerToken: prepared.bearerToken,
+      connectionMethod: "ssh",
+    });
+    return {
+      environmentId: authorized.environmentId,
+      label: authorized.label,
+      httpBaseUrl: authorized.httpBaseUrl,
+      socketUrl: authorized.socketUrl,
+      httpAuthorization: authorized.httpAuthorization,
+      target,
+    } satisfies PreparedConnection;
+  });
+});
+
+/** A Mate connection's first frame (spec-mate §3.8). */
+const encodeTicketFrame = Schema.encodeSync(
+  Schema.fromJsonString(Schema.Struct({ ticket: Schema.String })),
+);
+
+/**
+ * A Mate through HQ (spec-mate §3.8): a new ticket on every attempt — a reconnect is a new ticket —
+ * and the socket at the origin HQ names, the ticket its first frame. Nothing is kept between
+ * attempts, so a used or expired ticket is never presented again.
+ */
+const makeZeropsMateBroker = Effect.fn("clientRuntime.connection.broker.makeZeropsMate")(
+  function* () {
+    const presentation = yield* ClientCapabilities.ClientPresentation;
+    const issuer = yield* ClientCapabilities.MateTicketIssuer;
+    return Effect.fn("clientRuntime.connection.broker.zeropsMate")(function* (
+      target: ZeropsMateConnectionTarget,
+    ) {
+      const issued = yield* issuer.issue({ orgId: target.orgId, projectId: target.projectId });
+      const httpBaseUrl = zeropsMateBaseUrl(issued.origin);
+      const url = socketUrlFromWsBaseUrl(httpBaseUrl.replace(/^http/u, "ws"));
+      appendClientConnectionParams(url, presentation.metadata, "direct");
+      return {
+        environmentId: target.environmentId,
+        label: target.label,
+        httpBaseUrl,
+        socketUrl: url.toString(),
+        firstFrame: encodeTicketFrame({ ticket: issued.ticket }),
+        httpAuthorization: { _tag: "Bearer", token: issued.ticket },
+        target,
+      } satisfies PreparedConnection;
+    });
+  },
+);
+
+/** @public Service construction is part of the canonical Effect module API. */
+export const make = Effect.gen(function* () {
+  const primary = yield* makePrimaryBroker();
+  const bearer = yield* makeBearerBroker();
+  const ssh = yield* makeSshBroker();
+  const zeropsMate = yield* makeZeropsMateBroker();
+
+  const prepare = Effect.fn("clientRuntime.connection.broker.prepare")(function* (
+    entry: ConnectionCatalogEntry,
+  ) {
+    const target: ConnectionTarget = entry.target;
+    yield* Effect.annotateCurrentSpan({
+      "connection.environment.id": target.environmentId,
+      "connection.target.kind": target._tag,
+    });
+    switch (target._tag) {
+      case "PrimaryConnectionTarget":
+        return yield* primary(target);
+      case "BearerConnectionTarget":
+        return yield* bearer({ ...entry, target });
+      case "RelayConnectionTarget":
+        return yield* relayBroker(target);
+      case "SshConnectionTarget":
+        return yield* ssh({ ...entry, target });
+      case "ZeropsMateConnectionTarget":
+        return yield* zeropsMate(target);
+    }
+  });
+
+  return ConnectionResolver.of({ prepare });
+});
+
+export const layer = Layer.effect(ConnectionResolver, make);

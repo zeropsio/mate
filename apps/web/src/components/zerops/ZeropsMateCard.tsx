@@ -1,0 +1,363 @@
+/**
+ * A Mate, as a card on the projects screen: who you talk to in this project.
+ *
+ * The face in its colour wearing the state the conversation is in — that is
+ * where the state is read, never from a word — the name with when it last did
+ * something at the card's right edge, then what it is on, then its own last
+ * words: the same three facts, in the same order, as its row in the left menu,
+ * because they are the same Mate. While it is not connected that second line
+ * says how long until it is ("Coming up. A few minutes.") or carries the one
+ * verb that is a real decision ("Set up Mate") — never a status verb, because
+ * the face is asleep for the whole boot and that is where the state is read.
+ * Nothing about the environment: which Zerops project the Mate lives in and
+ * what that project is tagged are the environment's facts, and a Mate is
+ * always in a dev box anyway — the card is about somebody, not somewhere.
+ * Clicking the Mate opens it: the name is the button and stretches over the
+ * card, opening a connected Mate's conversation or connecting to a ready one
+ * first; the menu sits above it.
+ *
+ * Structural: every word on the line and every verb is the caller's (R5).
+ */
+import type {
+  MateMarkState,
+  MateShapeId,
+  MateTintId,
+  ServiceStatusToneId,
+} from "@t3tools/shared/brand";
+import { ExternalLinkIcon } from "lucide-react";
+import type { MouseEvent, ReactNode } from "react";
+
+import { cn } from "~/lib/utils";
+import { MateFace } from "./primitives";
+
+/** Where a Mate's change runs before its pull request: its pair's stage, opened in a tab. */
+export function PreviewLink({ url }: { readonly url: string }) {
+  return (
+    <a
+      className="relative z-[1] inline-flex w-fit items-center gap-1 text-xs text-[var(--zerops-status-busy-text)] underline-offset-2 hover:underline"
+      data-zerops-surface="mate-preview"
+      href={url}
+      rel="noreferrer"
+      target="_blank"
+    >
+      <ExternalLinkIcon aria-hidden="true" className="size-3" />
+      Preview
+    </a>
+  );
+}
+
+/** A verb on a Mate's line or at an environment's end — "Set up Mate", "Try again". Blue acts. */
+/** A verb that is about something with a state wears that state. */
+const VERB_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "border-[var(--zerops-status-ok)]/40 bg-[var(--zerops-status-ok-surface)] text-[var(--zerops-status-ok-text)] hover:bg-[var(--zerops-status-ok-surface)]/70",
+  busy: "border-[var(--zerops-status-busy)]/40 bg-[var(--zerops-status-busy-surface)] text-[var(--zerops-status-busy-text)] hover:bg-[var(--zerops-status-busy-surface)]/70",
+  attention:
+    "border-[var(--zerops-status-attention)]/40 bg-[var(--zerops-status-attention-surface)] text-[var(--zerops-status-attention-text)] hover:bg-[var(--zerops-status-attention-surface)]/70",
+  failed:
+    "border-[var(--zerops-status-failed)]/40 bg-[var(--zerops-status-failed-surface)] text-[var(--zerops-status-failed-text)] hover:bg-[var(--zerops-status-failed-surface)]/70",
+  off: "border-input bg-popover text-muted-foreground hover:bg-accent/50",
+};
+
+/**
+ * A count, in the colour of what it counts.
+ *
+ * The verb's count used to take a separate `urgent` flag, which one call site
+ * set and never unset — so *Release* counted what it would ship in the same
+ * amber a change that cannot land wears. A verb says one thing, so its count
+ * says it too.
+ */
+const COUNT_TONE_CLASS: Record<ServiceStatusToneId, string> = {
+  ok: "bg-[var(--zerops-status-ok)]/20 text-[var(--zerops-status-ok-text)]",
+  busy: "bg-[var(--zerops-status-busy)]/20 text-[var(--zerops-status-busy-text)]",
+  attention: "bg-[var(--zerops-status-attention)]/20 text-[var(--zerops-status-attention-text)]",
+  failed: "bg-[var(--zerops-status-failed)]/20 text-[var(--zerops-status-failed-text)]",
+  off: "bg-muted text-muted-foreground",
+};
+
+export function ZeropsMateVerb({
+  label,
+  onClick,
+  disabled = false,
+  description,
+  count,
+  tone,
+  action,
+  ...rest
+}: {
+  readonly label: string;
+  /**
+   * What the press does, where the label says something else — a refusal
+   * whose words are the way to hand it over reads `needs a rebase` and acts
+   * as *Ask*. Defaults to the label.
+   */
+  readonly action?: string | undefined;
+  /** The press, with what was pressed: a review opens from it (pass 16, R7). */
+  readonly onClick: (event: MouseEvent<HTMLButtonElement>) => void;
+  readonly disabled?: boolean;
+  /**
+   * How much the verb would carry, worn on the verb itself.
+   *
+   * *Release* used to say `Release` on one line while a separate amber chip
+   * said `1 waiting` on the next, with a globe and a menu between the fact and
+   * its cure — two elements for one thing (the owner, 2026-09-19).
+   */
+  readonly count?: number | undefined;
+  /**
+   * What the verb is about, where that has a state: a change that cannot land
+   * and a release that is merely waiting are not the same news, and a row of
+   * identical grey pills says they are.
+   */
+  readonly tone?: ServiceStatusToneId | undefined;
+  /**
+   * What the verb would actually do, in words — for a verb whose name says
+   * the mechanism rather than the outcome. It becomes the button's accessible
+   * name, so the answer is not hover-only: a keyboard reaches it too.
+   */
+  readonly description?: string | undefined;
+}) {
+  return (
+    <button
+      {...rest}
+      aria-label={description === undefined ? undefined : `${label}: ${description}`}
+      // A verb, drawn as one. It was blue underlined text, which in this app
+      // meant "this leaves for Gitea" until nothing did any more — so every
+      // verb read as a link out, and the one that mattered (Release) was
+      // quieter than the amber chip counting what it would ship.
+      className={cn(
+        "relative z-[1] inline-flex h-5 shrink-0 cursor-pointer items-center rounded-md border px-1.5 text-xs leading-none font-medium transition-[transform,background-color] focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-hidden active:scale-95 disabled:pointer-events-none disabled:opacity-60",
+        tone === undefined
+          ? "border-input bg-popover text-foreground hover:bg-accent/50"
+          : VERB_TONE_CLASS[tone],
+      )}
+      data-zerops-primary-action={action ?? label}
+      disabled={disabled}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+      {count === undefined || count === 0 ? null : (
+        <span
+          className={cn(
+            "ms-1 inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] leading-none font-semibold tabular-nums",
+            tone === undefined ? "bg-muted text-muted-foreground" : COUNT_TONE_CLASS[tone],
+          )}
+          data-zerops-surface="verb-count"
+        >
+          {count}
+        </span>
+      )}
+    </button>
+  );
+}
+
+/**
+ * The card's surface: the one white card on the page. The height fits a
+ * name, a line and a snippet whether or not the socket has answered yet: a
+ * card that grows when the conversation lands would push every card below it
+ * down the page.
+ */
+const CARD_SURFACE_CLASS =
+  "relative flex min-h-[4.5rem] w-full min-w-0 items-center gap-3 rounded-[var(--zerops-card-radius)] border border-border/60 bg-card py-2.5 ps-3 pe-2";
+
+/**
+ * The row: the Mate as one entry of a list inside another surface (a project
+ * card's Mates step), so it has none of its own — no border, no card, no
+ * reserved height.
+ */
+const ROW_SURFACE_CLASS =
+  "relative -mx-1.5 flex min-w-0 items-center gap-2.5 rounded-md px-1.5 py-1";
+
+const LAYOUT = {
+  card: {
+    surface: CARD_SURFACE_CLASS,
+    opens:
+      "hover:border-border hover:bg-accent/40 has-[[data-zerops-surface=mate-open]:active]:scale-[0.99]",
+    hit: "after:rounded-[var(--zerops-card-radius)]",
+    lineOne: "",
+    name: "",
+    time: "",
+  },
+  row: {
+    surface: ROW_SURFACE_CLASS,
+    opens: "hover:bg-accent/60",
+    hit: "after:rounded-md",
+    // A row sits in a narrow step: the name never gives way, and its time and
+    // Preview follow it — wrapping under it rather than cutting it to an
+    // initial — with or without a Preview, at every width.
+    lineOne: "flex-wrap gap-y-0",
+    name: "max-w-full flex-none",
+    time: "",
+  },
+} as const;
+
+export interface ZeropsMateCardProps {
+  /**
+   * `card`, the default: the Mate's own surface. `row`: an entry in a list on
+   * another surface, its Preview on the name's line and no quoted last words.
+   */
+  readonly layout?: "card" | "row";
+  /** The Mate's running app, linked on the name's line — drawn in the row only. */
+  readonly preview?: string | undefined;
+  readonly name: string;
+  readonly tint: MateTintId;
+  /** The shape its person picked, else its tint's own (`mateShapeOf`). */
+  readonly shape?: MateShapeId | undefined;
+  readonly face: MateMarkState;
+  /**
+   * The line under the name: what the Mate is on or was last on, a
+   * `ZeropsMateVerb`, or a sentence about its container. Absent, the name
+   * sits alone — a Mate that has not been spoken to yet has nothing to say.
+   */
+  readonly line?: ReactNode;
+  /**
+   * When it last did something, at the name's right edge — the way a
+   * messenger dates its rows. Absent until there is something to date.
+   */
+  readonly time?: string | undefined;
+  /**
+   * The Mate's own last words, quoted under what it is on. Absent while the
+   * person's message is the last thing said: the line above already says it.
+   */
+  readonly snippet?: string | undefined;
+  /**
+   * The muted "Server x.y.z" / "Server x.y.z · x.y.z+1 available" line
+   * (`mateUpdateLine`), and the Update verb beside it when there is one —
+   * the descriptor's `update` field, quietly, never a banner (spec-mate.md
+   * §2.9).
+   */
+  readonly updateLine?: ReactNode;
+  /**
+   * What clicking the Mate does — opens its conversation, or connects to it.
+   * Absent, the card is still: the line then carries whatever verb there is.
+   */
+  readonly onSelect?: (() => void) | undefined;
+  /**
+   * A trailing action always visible at the card's edge — a real button, not
+   * a hover-only verb — for something the card wants said as more than a
+   * line ("Start" on a stopped Mate). The menu, when there is one, sits
+   * beside it.
+   */
+  readonly action?: ReactNode;
+  readonly menu?: ReactNode;
+  readonly busy?: boolean;
+  readonly className?: string;
+}
+
+export function ZeropsMateCard({
+  layout = "card",
+  preview,
+  name,
+  tint,
+  shape,
+  face,
+  line,
+  time,
+  snippet,
+  updateLine,
+  onSelect,
+  action,
+  menu,
+  busy = false,
+  className,
+}: ZeropsMateCardProps) {
+  return (
+    <div
+      aria-busy={busy || undefined}
+      className={cn(
+        LAYOUT[layout].surface,
+        "group/card transition-[border-color,background-color,transform] duration-150 motion-reduce:transition-none",
+        onSelect && LAYOUT[layout].opens,
+        className,
+      )}
+      data-zerops-mate-card={onSelect ? "opens" : "still"}
+    >
+      <MateFace shape={shape} size={24} state={face} tint={tint} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <div className={cn("flex min-w-0 items-center gap-2", LAYOUT[layout].lineOne)}>
+          {onSelect ? (
+            <button
+              className={cn(
+                "min-w-0 flex-1 truncate rounded-sm text-left text-sm leading-5 font-medium text-foreground outline-none after:absolute after:inset-0 after:content-[''] focus-visible:after:ring-2 focus-visible:after:ring-ring",
+                LAYOUT[layout].hit,
+                LAYOUT[layout].name,
+              )}
+              data-zerops-surface="mate-open"
+              onClick={onSelect}
+              type="button"
+            >
+              {name}
+            </button>
+          ) : (
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-sm leading-5 font-medium text-foreground",
+                LAYOUT[layout].name,
+              )}
+            >
+              {name}
+            </span>
+          )}
+          {time === undefined || time.length === 0 ? null : (
+            <span
+              className={cn(
+                "shrink-0 text-[11px] leading-5 text-muted-foreground tabular-nums",
+                LAYOUT[layout].time,
+              )}
+              data-zerops-surface="mate-time"
+            >
+              {time}
+            </span>
+          )}
+          {layout === "row" && preview !== undefined ? <PreviewLink url={preview} /> : null}
+          {/* A row's menu ends the name's line, so the line under it runs the row's width. */}
+          {layout === "row" ? <CardMenu className="-my-1 ms-auto" menu={menu} /> : null}
+        </div>
+        {line === undefined || line === null ? null : (
+          <div
+            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="mate-line"
+          >
+            {line}
+          </div>
+        )}
+        {layout === "row" || snippet === undefined || snippet.length === 0 ? null : (
+          <div
+            className="min-w-0 truncate text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="mate-snippet"
+          >
+            {snippet}
+          </div>
+        )}
+        {updateLine === undefined || updateLine === null ? null : (
+          <div
+            className="flex min-w-0 items-center gap-1.5 text-xs leading-4 text-muted-foreground"
+            data-zerops-surface="mate-update-line"
+          >
+            {updateLine}
+          </div>
+        )}
+      </div>
+      {action === undefined || action === null ? null : (
+        <span className="relative z-[1] flex shrink-0" data-zerops-surface="mate-action">
+          {action}
+        </span>
+      )}
+      {layout === "card" ? <CardMenu menu={menu} /> : null}
+    </div>
+  );
+}
+
+/** The menu, shown on hover or focus — always where there is no hover. */
+function CardMenu({ menu, className }: { readonly menu: ReactNode; readonly className?: string }) {
+  if (menu === undefined || menu === null) return null;
+  return (
+    <span
+      className={cn(
+        "relative z-[1] flex shrink-0 opacity-0 transition-opacity group-hover/card:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+        className,
+      )}
+    >
+      {menu}
+    </span>
+  );
+}

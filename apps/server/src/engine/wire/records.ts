@@ -1,0 +1,708 @@
+/**
+ * The wire's reads of the record: runs (with their summary), items and requests as the clients
+ * draw them, by window, by change since a cursor, by page, and an item's whole part. Read from the
+ * projections the store writes in each step's transaction; nothing here writes.
+ *
+ * @module engine/wire/records
+ */
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import * as SqlClient from "effect/sql/SqlClient";
+import {
+  ENGINE_WIRE_BUDGETS,
+  Item,
+  PAGE_HEIGHTS_KEPT,
+  PAGE_WIDTH_MAX,
+  PAGE_WIDTH_MIN,
+  queuedBehind,
+  ItemId,
+  Request,
+  RunRecord,
+  type ConversationId,
+  type EngineWindow,
+  type RequestId,
+  type RunId,
+} from "@t3tools/contracts";
+
+import { ITEM_TEXT_LIMIT } from "../pump/toCore.ts";
+import { turnStateOf } from "../read/runState.ts";
+
+const decodeRun = Schema.decodeUnknownEffect(RunRecord);
+const decodeItem = Schema.decodeUnknownEffect(Item);
+const decodeRequest = Schema.decodeUnknownEffect(Request);
+
+/** Ends that cut a run before it finished, to go on in its continuation: it has not answered. */
+const CUT_ENDS: ReadonlySet<string> = new Set(["usage-limit", "cut-by-restart"]);
+
+/** A run's end's kind from its stored record, read loosely: none for an unreadable one. */
+const endKindOf = (endJson: string | null): string => {
+  if (endJson === null) return "";
+  try {
+    const kind = (JSON.parse(endJson) as { readonly kind?: unknown } | null)?.kind;
+    return typeof kind === "string" ? kind : "";
+  } catch {
+    return "";
+  }
+};
+
+interface RunRow {
+  readonly run_id: string;
+  readonly conversation_id: string;
+  readonly ordinal: number;
+  readonly seq: number;
+  readonly rev: number;
+  readonly trigger_json: string;
+  readonly joins: string | null;
+  readonly principal_json: string;
+  readonly state: string;
+  readonly maintenance: number;
+  readonly waiting_on: string | null;
+  readonly stop_asked_json: string | null;
+  readonly end_json: string | null;
+  readonly end_source: string | null;
+  readonly session_id: string | null;
+  readonly provider_turn_id: string | null;
+  readonly queued_at: number;
+  readonly admitted_at: number | null;
+  readonly started_at: number | null;
+  readonly ended_at: number | null;
+  readonly unresponsive_since: number | null;
+}
+
+export interface ItemRow {
+  readonly item_id: string;
+  readonly conversation_id: string;
+  readonly run_id: string | null;
+  readonly kind: string;
+  readonly by_json: string;
+  readonly body_json: string;
+  readonly opened_seq: number;
+  readonly rev: number;
+  readonly at: number;
+}
+
+interface RequestRow {
+  readonly request_id: string;
+  readonly conversation_id: string;
+  readonly run_id: string;
+  readonly seq: number;
+  readonly rev: number;
+  readonly at: number;
+  readonly ask_json: string;
+  readonly answerable: number;
+  readonly state: string;
+  readonly principal_json: string;
+  readonly answer_json: string | null;
+}
+
+const parse = (text: string | null): unknown => (text === null ? null : JSON.parse(text));
+
+export const itemOfRow = (row: ItemRow) =>
+  decodeItem({
+    ...(parse(row.body_json) as object),
+    id: row.item_id,
+    conversationId: row.conversation_id,
+    runId: row.run_id,
+    seq: row.opened_seq,
+    rev: row.rev,
+    at: row.at,
+    by: parse(row.by_json),
+  });
+
+const requestOfRow = (row: RequestRow) =>
+  decodeRequest({
+    id: row.request_id,
+    conversationId: row.conversation_id,
+    runId: row.run_id,
+    seq: row.seq,
+    rev: row.rev,
+    at: row.at,
+    ask: parse(row.ask_json),
+    state: row.state,
+    answerable: row.answerable === 1,
+    ...(row.answer_json === null ? {} : { answer: parse(row.answer_json) }),
+    principal: parse(row.principal_json),
+  });
+
+/** A record this build cannot read is left out (and logged), never the whole read. */
+const readable = <Row, A, E>(rows: ReadonlyArray<Row>, read: (row: Row) => Effect.Effect<A, E>) =>
+  Effect.forEach(rows, (row) =>
+    read(row).pipe(
+      Effect.map((value) => [value]),
+      Effect.catchCause((cause) =>
+        Effect.logWarning("Mate engine wire: a record could not be read", cause).pipe(
+          Effect.as([] as Array<A>),
+        ),
+      ),
+    ),
+  ).pipe(Effect.map((all) => all.flat()));
+
+/**
+ * The files a run's edits changed, each once, and one for each edit naming none: what V1's card
+ * counts as "files edited" (`activityCounts`).
+ */
+const editedOf = (
+  rows: ReadonlyArray<{ readonly item_id: string; readonly path: string | null }>,
+): number => {
+  const files = new Set<string>();
+  const named = new Set<string>();
+  const edits = new Set<string>();
+  for (const row of rows) {
+    edits.add(row.item_id);
+    if (row.path === null || row.path.trim() === "") continue;
+    files.add(row.path.trim());
+    named.add(row.item_id);
+  }
+  return files.size + (edits.size - named.size);
+};
+
+export const makeRecords = Effect.gen(function* () {
+  const sql = yield* SqlClient.SqlClient;
+
+  /** The runs with what they hold counted: items, calls by step, the agent's answer. */
+  const withSummaries = (rows: ReadonlyArray<RunRow>) =>
+    Effect.gen(function* () {
+      if (rows.length === 0) return [];
+      const ids = rows.map((row) => row.run_id);
+      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
+      // Mate's (a reload read "15 commands" of a run whose Mate ran 7).
+      const ownCall = sql.literal("json_extract(by_json, '$.kind') IS NOT 'helper'");
+      const counts = yield* sql<{
+        readonly run_id: string;
+        readonly items: number;
+        readonly last_seq: number;
+      }>`
+        SELECT run_id, COUNT(*) AS items, MAX(opened_seq) AS last_seq FROM engine_item
+        WHERE ${sql.in("run_id", ids)} GROUP BY run_id
+      `;
+      const calls = yield* sql<{
+        readonly run_id: string;
+        readonly step: string | null;
+        readonly n: number;
+      }>`
+        SELECT run_id, json_extract(body_json, '$.step') AS step, COUNT(*) AS n FROM engine_item
+        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall} GROUP BY run_id, step
+      `;
+      const tools = yield* sql<{
+        readonly run_id: string;
+        readonly tool: string | null;
+        readonly n: number;
+      }>`
+        SELECT run_id, json_extract(body_json, '$.tool.name') AS tool, COUNT(*) AS n
+        FROM engine_item
+        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall}
+          AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
+        GROUP BY run_id, tool
+      `;
+      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys), and where
+      // Claude's Write and Edit name theirs (`file_path`, a notebook's `notebook_path`).
+      const edits = yield* sql<{
+        readonly run_id: string;
+        readonly item_id: string;
+        readonly path: string | null;
+      }>`
+        SELECT edit.run_id AS run_id, edit.item_id AS item_id, named.path AS path
+        FROM engine_item AS edit
+        LEFT JOIN (
+          SELECT item.item_id AS item_id, tree.value AS path
+          FROM engine_item AS item, json_tree(item.body_json, '$.shows') AS tree
+          WHERE ${sql.in("item.run_id", ids)} AND item.kind = 'call'
+            AND json_extract(item.body_json, '$.step') = 'edit' AND tree.type = 'text'
+            AND tree.key IN (
+              'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
+              'newPath', 'oldPath'
+            )
+        ) AS named ON named.item_id = edit.item_id
+        WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
+          AND json_extract(edit.by_json, '$.kind') IS NOT 'helper'
+          AND json_extract(edit.body_json, '$.step') = 'edit'
+      `;
+      const answers = yield* sql<{ readonly run_id: string; readonly item_id: string }>`
+        SELECT run_id, item_id FROM engine_item
+        WHERE ${sql.in("run_id", ids)} AND kind = 'note' AND state = 'closed'
+          AND json_extract(by_json, '$.kind') = 'mate'
+        ORDER BY opened_seq
+      `;
+      const summaryOf = (id: string, endJson: string | null) => {
+        const count = counts.find((row) => row.run_id === id);
+        // A run a usage limit or a restart cut has not answered: its last words are cut words, and
+        // the ask's answer is the one its continuation gives (the owner's B5, 2026-10-12).
+        const cut = CUT_ENDS.has(endKindOf(endJson));
+        const answer = cut ? undefined : answers.findLast((row) => row.run_id === id);
+        return {
+          items: count?.items ?? 0,
+          calls: Object.fromEntries(
+            calls
+              .filter((row) => row.run_id === id)
+              .map((row) => [row.step ?? "tool", row.n] as const),
+          ),
+          tools: Object.fromEntries(
+            tools
+              .filter((row) => row.run_id === id)
+              .map((row) => [row.tool ?? "tool", row.n] as const),
+          ),
+          edited: editedOf(edits.filter((row) => row.run_id === id)),
+          answerItemId: answer === undefined ? null : ItemId.make(answer.item_id),
+          lastItemSeq: count?.last_seq ?? null,
+        };
+      };
+      return yield* readable(rows, (row) =>
+        decodeRun({
+          id: row.run_id,
+          conversationId: row.conversation_id,
+          ordinal: row.ordinal,
+          seq: row.seq,
+          rev: row.rev,
+          trigger: parse(row.trigger_json),
+          joins: row.joins,
+          principal: parse(row.principal_json),
+          state: row.state,
+          maintenance: row.maintenance === 1,
+          waitingOn:
+            row.waiting_on === null ? null : { kind: "request", requestId: row.waiting_on },
+          stopAsked: parse(row.stop_asked_json),
+          end: parse(row.end_json),
+          endSource: row.end_source,
+          sessionId: row.session_id,
+          providerTurnId: row.provider_turn_id,
+          queuedAt: row.queued_at,
+          admittedAt: row.admitted_at,
+          startedAt: row.started_at,
+          endedAt: row.ended_at,
+          unresponsiveSince: row.unresponsive_since,
+          summary: summaryOf(row.run_id, row.end_json),
+        }),
+      ).pipe(Effect.map((runs) => runs.map((run) => ({ ...run, turnState: turnStateOf(run) }))));
+    });
+
+  const runsById = (conversation: ConversationId, ids: ReadonlyArray<string>) =>
+    ids.length === 0
+      ? Effect.succeed([])
+      : sql<RunRow>`
+          SELECT * FROM engine_run WHERE conversation_id = ${conversation} AND ${sql.in("run_id", ids)}
+          ORDER BY ordinal
+        `.pipe(Effect.flatMap(withSummaries));
+
+  /**
+   * Each published page with the heights clients laid it out at (`engine_page_height`), by
+   * width: kept beside its call, never in its record, so a later view paints at them.
+   */
+  const withPageHeights = (decoded: ReadonlyArray<Item>) =>
+    Effect.gen(function* () {
+      const pages = decoded.flatMap((item) =>
+        item.kind === "call" && item.result?.page !== undefined ? [item.id as string] : [],
+      );
+      if (pages.length === 0) return decoded;
+      const rows = yield* sql<{
+        readonly item_id: string;
+        readonly width: number;
+        readonly height: number;
+      }>`
+        SELECT item_id, width, height FROM engine_page_height
+        WHERE ${sql.in("item_id", pages)} ORDER BY width
+      `;
+      if (rows.length === 0) return decoded;
+      return decoded.map((item): Item => {
+        if (item.kind !== "call" || item.result?.page === undefined) return item;
+        const heights = rows
+          .filter((row) => row.item_id === item.id)
+          .map((row) => [row.width, row.height] as const);
+        return heights.length === 0
+          ? item
+          : { ...item, result: { ...item.result, page: { ...item.result.page, heights } } };
+      });
+    });
+
+  /**
+   * Each message whole: the record keeps a long one's first `ITEM_TEXT_LIMIT` characters in its
+   * body and the whole as its detail, and the wire cuts it to its budget saying so (`fitItem`), so
+   * a client reads the rest on demand. Read from the body alone, it came cut with no word of it.
+   */
+  const withWholeNotes = (decoded: ReadonlyArray<Item>) =>
+    Effect.gen(function* () {
+      const long = decoded.flatMap((item) =>
+        item.kind === "note" && item.text.length >= ITEM_TEXT_LIMIT ? [item.id as string] : [],
+      );
+      if (long.length === 0) return decoded;
+      const rows = yield* sql<{ readonly item_id: string; readonly body: string }>`
+        SELECT item_id, body FROM engine_item_detail WHERE ${sql.in("item_id", long)}
+      `;
+      if (rows.length === 0) return decoded;
+      const whole = new Map(rows.map((row) => [row.item_id, row.body]));
+      return decoded.map((item): Item => {
+        const text = whole.get(item.id);
+        return item.kind === "note" && text !== undefined ? { ...item, text } : item;
+      });
+    });
+
+  const items = (rows: ReadonlyArray<ItemRow>) =>
+    readable(rows, itemOfRow).pipe(Effect.flatMap(withPageHeights), Effect.flatMap(withWholeNotes));
+  const requests = (rows: ReadonlyArray<RequestRow>) => readable(rows, requestOfRow);
+
+  /** The sequence space the tables were made in. */
+  const origin = sql<{
+    readonly origin: string;
+  }>`SELECT origin FROM engine_origin WHERE id = 1`.pipe(
+    Effect.map((rows) => rows[0]?.origin ?? "none"),
+  );
+
+  const head = (conversation: ConversationId) =>
+    sql<{ readonly head_seq: number }>`
+      SELECT head_seq FROM engine_conversation WHERE conversation_id = ${conversation}
+    `.pipe(Effect.map((rows) => rows[0]?.head_seq ?? 0));
+
+  /**
+   * Run groups, the newest first: a run that joins none roots a group (a person's message, a
+   * wake of its own), and every run that joins into it belongs to it. A person's message queued
+   * while a run worked belongs to that run's group (`queuedBehind`), as the client draws it on that
+   * run's card: a reload's window holds the card whole.
+   */
+  const groups = (conversation: ConversationId) =>
+    Effect.gen(function* () {
+      const rows = yield* sql<{
+        readonly run_id: string;
+        readonly ordinal: number;
+        readonly joins: string | null;
+        readonly trigger_json: string;
+        readonly queued_at: number;
+        readonly started_at: number | null;
+        readonly ended_at: number | null;
+      }>`
+        SELECT run_id, ordinal, joins, trigger_json, queued_at, started_at, ended_at
+        FROM engine_run WHERE conversation_id = ${conversation}
+        ORDER BY ordinal
+      `;
+      const timed = rows.map((row) => ({
+        id: row.run_id,
+        ordinal: row.ordinal,
+        queuedAt: row.queued_at,
+        startedAt: row.started_at,
+        endedAt: row.ended_at,
+      }));
+      const parent = new Map<string, string>();
+      rows.forEach((row, index) => {
+        if (row.joins !== null) parent.set(row.run_id, row.joins);
+        else if ((parse(row.trigger_json) as { readonly kind?: string }).kind === "person") {
+          const behind = queuedBehind(timed, timed[index]!);
+          if (behind !== undefined) parent.set(row.run_id, behind.id);
+        }
+      });
+      const byId = new Map(rows.map((row) => [row.run_id, row]));
+      const rootOf = (id: string): { readonly run_id: string; readonly ordinal: number } => {
+        let row = byId.get(id)!;
+        for (let hops = 0; parent.has(row.run_id) && hops < 1_000; hops++) {
+          const next = byId.get(parent.get(row.run_id)!);
+          if (next === undefined) break;
+          row = next;
+        }
+        return row;
+      };
+      const members = new Map<string, { ordinal: number; runs: Array<string> }>();
+      for (const row of rows) {
+        const root = rootOf(row.run_id);
+        const group = members.get(root.run_id) ?? { ordinal: root.ordinal, runs: [] };
+        group.runs.push(row.run_id);
+        members.set(root.run_id, group);
+      }
+      return [...members.values()].sort((a, b) => b.ordinal - a.ordinal);
+    });
+
+  /** The groups a window or a page holds, and whether older ones exist before them. */
+  const pickGroups = (
+    all: ReadonlyArray<{ readonly ordinal: number; readonly runs: ReadonlyArray<string> }>,
+    count: number,
+    beforeOrdinal?: number,
+  ) => {
+    const older = beforeOrdinal === undefined ? all : all.filter((g) => g.ordinal < beforeOrdinal);
+    const picked = older.slice(0, Math.max(1, count));
+    const oldestOrdinal = picked.at(-1)?.ordinal ?? null;
+    const window: EngineWindow = {
+      oldestOrdinal,
+      earlier: oldestOrdinal !== null && all.some((group) => group.ordinal < oldestOrdinal),
+    };
+    return { runIds: picked.flatMap((group) => group.runs), window };
+  };
+
+  /**
+   * What a window shows of its runs: the runs, every person message, request and answer, every
+   * page published above an answer, every open request (wherever it was asked), and the newest
+   * items of each run not ended.
+   */
+  const windowOf = (
+    conversation: ConversationId,
+    runIds: ReadonlyArray<string>,
+    window: EngineWindow,
+  ) =>
+    Effect.gen(function* () {
+      const runs = yield* runsById(conversation, runIds);
+      const answers = runs.flatMap((run) =>
+        run.summary.answerItemId === null ? [] : [run.summary.answerItemId],
+      );
+      const openRequests = yield* sql<RequestRow>`
+        SELECT * FROM engine_request WHERE conversation_id = ${conversation} AND state = 'open'
+        ORDER BY seq
+      `;
+      const runRequests =
+        runIds.length === 0
+          ? []
+          : yield* sql<RequestRow>`
+              SELECT * FROM engine_request
+              WHERE conversation_id = ${conversation} AND ${sql.in("run_id", runIds)}
+                AND state != 'open'
+              ORDER BY seq
+            `;
+      const shown =
+        runIds.length === 0
+          ? []
+          : yield* sql<ItemRow>`
+              SELECT * FROM engine_item WHERE conversation_id = ${conversation}
+                AND ${sql.in("run_id", runIds)}
+                AND (kind IN ('person', 'request')
+                  OR (kind = 'call' AND json_extract(body_json, '$.result.page') IS NOT NULL)
+                  ${answers.length === 0 ? sql`` : sql`OR ${sql.in("item_id", answers)}`})
+            `;
+      const asked =
+        openRequests.length === 0
+          ? []
+          : yield* sql<ItemRow>`
+              SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND kind = 'request'
+                AND json_extract(body_json, '$.requestId') IN ${sql.in(
+                  openRequests.map((row) => row.request_id),
+                )}
+            `;
+      const tails: Array<ItemRow> = [];
+      for (const run of runs) {
+        if (run.state === "ended") continue;
+        tails.push(
+          ...(yield* sql<ItemRow>`
+            SELECT * FROM engine_item WHERE run_id = ${run.id}
+            ORDER BY opened_seq DESC LIMIT ${ENGINE_WIRE_BUDGETS.liveTailItems}
+          `),
+        );
+      }
+      const floor = runs[0]?.seq;
+      const loose =
+        floor === undefined
+          ? []
+          : yield* sql<ItemRow>`
+              SELECT * FROM engine_item WHERE conversation_id = ${conversation}
+                AND run_id IS NULL AND opened_seq >= ${floor}
+            `;
+      const unique = new Map<string, ItemRow>();
+      for (const row of [...shown, ...asked, ...tails, ...loose]) unique.set(row.item_id, row);
+      const requestRows = new Map<string, RequestRow>();
+      for (const row of [...runRequests, ...openRequests]) requestRows.set(row.request_id, row);
+      return {
+        runs,
+        items: yield* items([...unique.values()].sort((a, b) => a.opened_seq - b.opened_seq)),
+        requests: yield* requests([...requestRows.values()].sort((a, b) => a.seq - b.seq)),
+        window,
+      };
+    });
+
+  return {
+    origin,
+    head,
+    groups,
+    /**
+     * A height a client laid a page out at, kept for the page's call in this conversation: the
+     * page's own claim, clamped, the same width again replacing it, the newest widths kept. False
+     * when no page's call is there by that id.
+     */
+    recordPageHeight: (
+      conversation: ConversationId,
+      itemId: string,
+      width: number,
+      height: number,
+    ) =>
+      Effect.gen(function* () {
+        const found = yield* sql<ItemRow>`
+          SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+        `;
+        if (found[0] === undefined) return false;
+        const item = yield* itemOfRow(found[0]);
+        if (item.kind !== "call" || item.result?.page === undefined) return false;
+        const at = Math.min(PAGE_WIDTH_MAX, Math.max(PAGE_WIDTH_MIN, Math.round(width)));
+        const tall = Math.max(1, Math.round(height));
+        yield* sql`
+          INSERT INTO engine_page_height (conversation_id, item_id, width, height, at)
+          VALUES (${conversation}, ${itemId}, ${at}, ${tall}, (
+            SELECT COALESCE(MAX(at), 0) + 1 FROM engine_page_height
+            WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+          ))
+          ON CONFLICT (conversation_id, item_id, width)
+          DO UPDATE SET height = excluded.height, at = excluded.at
+        `;
+        yield* sql`
+          DELETE FROM engine_page_height
+          WHERE conversation_id = ${conversation} AND item_id = ${itemId} AND width NOT IN (
+            SELECT width FROM engine_page_height
+            WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            ORDER BY at DESC LIMIT ${PAGE_HEIGHTS_KEPT}
+          )
+        `;
+        return true;
+      }),
+    pickGroups,
+    windowOf,
+    runsById,
+    /** How many records changed past a cursor: a resume carries no more than its budget. */
+    changedCount: (conversation: ConversationId, after: number) =>
+      sql<{ readonly n: number }>`
+        SELECT
+          (SELECT COUNT(*) FROM engine_run WHERE conversation_id = ${conversation} AND rev > ${after})
+          + (SELECT COUNT(*) FROM engine_item WHERE conversation_id = ${conversation} AND rev > ${after})
+          + (SELECT COUNT(*) FROM engine_request
+             WHERE conversation_id = ${conversation} AND rev > ${after}) AS n
+      `.pipe(Effect.map((rows) => rows[0]?.n ?? 0)),
+    /**
+     * Every record that changed past a cursor, whole, and every run one of whose items did (its
+     * summary moved with them).
+     */
+    changedSince: (conversation: ConversationId, after: number) =>
+      Effect.gen(function* () {
+        const itemRows = yield* sql<ItemRow>`
+          SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND rev > ${after}
+          ORDER BY rev, opened_seq
+        `;
+        const requestRows = yield* sql<RequestRow>`
+          SELECT * FROM engine_request WHERE conversation_id = ${conversation} AND rev > ${after}
+          ORDER BY rev, seq
+        `;
+        const runIds = yield* sql<{ readonly run_id: string }>`
+          SELECT run_id FROM engine_run WHERE conversation_id = ${conversation} AND rev > ${after}
+        `;
+        const touched = new Set([
+          ...runIds.map((row) => row.run_id),
+          ...itemRows.flatMap((row) => (row.run_id === null ? [] : [row.run_id])),
+        ]);
+        return {
+          runs: yield* runsById(conversation, [...touched]),
+          items: yield* items(itemRows),
+          requests: yield* requests(requestRows),
+          to: Math.max(
+            after,
+            ...itemRows.map((row) => row.rev),
+            ...requestRows.map((row) => row.rev),
+          ),
+        };
+      }),
+    /**
+     * A run's items, the newest page; `more` when older ones exist before it. After `afterSeq`,
+     * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
+     * draws its result from — its background work with the calls that started it, which its line
+     * of jobs is drawn from.
+     */
+    runPage: (
+      conversation: ConversationId,
+      runId: RunId,
+      options: {
+        readonly beforeSeq?: number;
+        readonly afterSeq?: number;
+        readonly only?: "outcome";
+        readonly limit: number;
+      },
+    ) =>
+      Effect.gen(function* () {
+        const forward = options.afterSeq !== undefined;
+        const rows = yield* sql<ItemRow>`
+          SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
+            ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
+            ${options.afterSeq === undefined ? sql`` : sql`AND opened_seq > ${options.afterSeq}`}
+            ${
+              options.only === "outcome"
+                ? sql`AND (kind = 'work' OR (kind = 'call' AND (
+                    json_extract(body_json, '$.result') IS NOT NULL
+                    OR json_extract(body_json, '$.step') = 'look'
+                    OR item_id IN (
+                      SELECT json_extract(body_json, '$.call') FROM engine_item
+                      WHERE conversation_id = ${conversation} AND run_id = ${runId}
+                        AND kind = 'work'))))`
+                : sql``
+            }
+          ORDER BY opened_seq ${forward ? sql`ASC` : sql`DESC`} LIMIT ${options.limit + 1}
+        `;
+        const page = forward
+          ? rows.slice(0, options.limit)
+          : rows.slice(0, options.limit).toReversed();
+        const requestRows = yield* sql<RequestRow>`
+          SELECT * FROM engine_request WHERE conversation_id = ${conversation} AND run_id = ${runId}
+          ORDER BY seq
+        `;
+        return {
+          runs: yield* runsById(conversation, [runId]),
+          items: yield* items(page),
+          requests: yield* requests(requestRows),
+          more: rows.length > options.limit,
+        };
+      }),
+    /** An item's whole part, as stored; none when it has no such part. */
+    part: (conversation: ConversationId, itemId: ItemId, part: string) =>
+      Effect.gen(function* () {
+        switch (part) {
+          case "text": {
+            // A long message's whole is its detail (`withWholeNotes`).
+            const [row] = yield* sql<{
+              readonly kind: string;
+              readonly body_json: string;
+              readonly detail: string | null;
+            }>`
+              SELECT i.kind, i.body_json, d.body AS detail FROM engine_item i
+              LEFT JOIN engine_item_detail d ON d.item_id = i.item_id
+              WHERE i.conversation_id = ${conversation} AND i.item_id = ${itemId}
+            `;
+            if (row?.kind === "note" && row.detail !== null) return row.detail;
+            const body =
+              row === undefined ? undefined : (parse(row.body_json) as { text?: unknown });
+            return typeof body?.text === "string" ? body.text : undefined;
+          }
+          case "result": {
+            const [row] = yield* sql<{ readonly body_json: string }>`
+              SELECT body_json FROM engine_item
+              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            `;
+            const body =
+              row === undefined
+                ? undefined
+                : (parse(row.body_json) as { result?: { resultText?: unknown } });
+            return typeof body?.result?.resultText === "string"
+              ? body.result.resultText
+              : undefined;
+          }
+          case "detail": {
+            const [row] = yield* sql<{ readonly body: string }>`
+              SELECT d.body FROM engine_item_detail d JOIN engine_item i ON i.item_id = d.item_id
+              WHERE i.conversation_id = ${conversation} AND d.item_id = ${itemId}
+            `;
+            return row?.body;
+          }
+          case "data": {
+            const [row] = yield* sql<{ readonly data_json: string }>`
+              SELECT data_json FROM engine_item_data
+              WHERE conversation_id = ${conversation} AND item_id = ${itemId}
+            `;
+            return row?.data_json;
+          }
+          default:
+            return undefined;
+        }
+      }),
+    /** The keys the live plane names the conversation's open items by. */
+    openItemKeys: (conversation: ConversationId) =>
+      sql<{ readonly item_id: string; readonly live_key: string | null }>`
+        SELECT i.item_id, json_extract(e.payload_json, '$.key') AS live_key
+        FROM engine_item i
+        JOIN engine_event e ON e.conversation_id = i.conversation_id AND e.seq = i.opened_seq
+        WHERE i.conversation_id = ${conversation} AND i.state = 'open'
+      `,
+    /** The stored receipt of a command; none while it is unsettled or was never taken. */
+    receipt: (conversation: ConversationId, commandId: string) =>
+      sql<{ readonly result_json: string | null }>`
+        SELECT result_json FROM engine_receipt
+        WHERE conversation_id = ${conversation} AND command_id = ${commandId}
+      `.pipe(Effect.map((rows) => rows[0]?.result_json ?? null)),
+  };
+});
+
+export type Records = Effect.Success<typeof makeRecords>;
+export type { RequestId };

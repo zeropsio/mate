@@ -1,0 +1,313 @@
+#!/usr/bin/env node
+import * as NodeRuntime from "@effect/platform-node/NodeRuntime";
+import * as NodeServices from "@effect/platform-node/NodeServices";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Logger from "effect/Logger";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import { Command, Flag } from "effect/cli";
+import { ChildProcess, ChildProcessSpawner } from "effect/process";
+
+import { fromJsonStringPretty } from "@t3tools/shared/schemaJson";
+import { fromYaml } from "@t3tools/shared/schemaYaml";
+import { resolveSpawnCommand } from "@t3tools/shared/shell";
+import serverPackageJson from "../package.json" with { type: "json" };
+import {
+  ServerCliBuildAssetMissingError,
+  ServerCliCommandExitError,
+  ServerCliUndeclaredRuntimeImportError,
+} from "./cliErrors.ts";
+import { bundleNodePtyIntoTarball, NODE_PTY_PACKAGE } from "./bundleNodePty.ts";
+import {
+  buildReleaseManifest,
+  findUndeclaredStaticImports,
+  RELEASE_PACKAGE_NAME,
+} from "./releaseManifest.ts";
+
+const RELEASE_WORKSPACE_SELECTOR = "./apps/server";
+
+class ServerCliPackOutputError extends Schema.TaggedError<ServerCliPackOutputError>()(
+  "ServerCliPackOutputError",
+  {
+    outputDir: Schema.String,
+    selector: Schema.String,
+    tarballCount: Schema.Int,
+  },
+) {
+  override get message(): string {
+    return `Expected vp pm pack to produce exactly one tarball in ${this.outputDir} for selector ${this.selector}; found ${this.tarballCount}.`;
+  }
+}
+
+const PackageJsonPrettyJson = fromJsonStringPretty(Schema.Unknown);
+const encodePackageJson = Schema.encodeEffect(PackageJsonPrettyJson);
+
+const WorkspaceConfig = Schema.Struct({
+  catalog: Schema.optional(Schema.Record(Schema.String, Schema.String)),
+});
+type WorkspaceConfig = typeof WorkspaceConfig.Type;
+const decodeWorkspaceConfig = Schema.decodeEffect(fromYaml(WorkspaceConfig));
+
+const RepoRoot = Effect.service(Path.Path).pipe(
+  Effect.flatMap((path) => path.fromFileUrl(new URL("../../..", import.meta.url))),
+);
+
+const readWorkspaceConfig = Effect.fn("readWorkspaceConfig")(function* () {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+  const repoRoot = yield* RepoRoot;
+  const workspaceYaml = yield* fs.readFileString(path.join(repoRoot, "pnpm-workspace.yaml"));
+  return yield* decodeWorkspaceConfig(workspaceYaml);
+});
+
+const runCommand = Effect.fn("runCommand")(function* (command: ChildProcess.StandardCommand) {
+  const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
+  const child = yield* spawner.spawn(command);
+  const exitCode = yield* child.exitCode;
+
+  if (exitCode !== 0) {
+    return yield* new ServerCliCommandExitError({
+      command: command.command,
+      args: command.args,
+      cwd: command.options.cwd,
+      exitCode,
+    });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// build subcommand
+// ---------------------------------------------------------------------------
+
+const buildCmd = Command.make(
+  "build",
+  {
+    verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const repoRoot = yield* RepoRoot;
+      const serverDir = path.join(repoRoot, "apps/server");
+
+      yield* Effect.log("[cli] Running tsdown...");
+      yield* runCommand(
+        ChildProcess.make(process.execPath, ["--run", "build:bundle"], {
+          cwd: serverDir,
+          stdout: config.verbose ? "inherit" : "ignore",
+          stderr: "inherit",
+          shell: false,
+        }),
+      );
+    }),
+).pipe(Command.withDescription("Build the server package (tsdown)."));
+
+/**
+ * Fail the pack when the emitted bundle statically imports something the pruned
+ * manifest does not declare.
+ *
+ * Reads the chunks that were just built rather than the bundler's `neverBundle`
+ * list: configuring a bundler is not the same as checking what it produced, and
+ * this prune is what stands between the container and 342 MB of dependencies it
+ * would download and never load.
+ */
+const assertBundleResolvesAgainst = Effect.fn("assertBundleResolvesAgainst")(function* (
+  dependencies: Readonly<Record<string, string>>,
+  bundleDir: string,
+) {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+
+  const chunks = (yield* fs.readDirectory(bundleDir)).filter((entry) => entry.endsWith(".mjs"));
+  const sources = yield* Effect.forEach(chunks, (chunk) =>
+    fs.readFileString(path.join(bundleDir, chunk)),
+  );
+
+  const undeclared = findUndeclaredStaticImports(dependencies, sources);
+  if (undeclared.length > 0) {
+    return yield* new ServerCliUndeclaredRuntimeImportError({ packages: undeclared, bundleDir });
+  }
+  yield* Effect.log(
+    `[cli] Bundle resolves against ${Object.keys(dependencies).length} declared dependencies (${chunks.length} chunks scanned)`,
+  );
+});
+
+// While `vp pm` runs, apps/server must carry the release package.json (the
+// release name and version, catalog: → concrete versions, dependencies pruned
+// to what the bundle still loads from disk), and the original must come back
+// afterwards, whatever happened in between.
+const withReleaseAssets = <A, E, R>(
+  repoRoot: string,
+  appVersion: Option.Option<string>,
+  verbose: boolean,
+  use: Effect.Effect<A, E, R>,
+) =>
+  Effect.gen(function* () {
+    const path = yield* Path.Path;
+    const fs = yield* FileSystem.FileSystem;
+    const serverDir = path.join(repoRoot, "apps/server");
+    const packageJsonPath = path.join(serverDir, "package.json");
+
+    // Assert build assets exist
+    for (const relPath of ["dist/bin.mjs"]) {
+      const abs = path.join(serverDir, relPath);
+      if (!(yield* fs.exists(abs))) {
+        return yield* new ServerCliBuildAssetMissingError({ assetPath: abs });
+      }
+    }
+
+    return yield* Effect.acquireUseRelease(
+      // Acquire: resolve publish metadata and read every original before mutation.
+      Effect.gen(function* () {
+        const version = Option.getOrElse(appVersion, () => serverPackageJson.version);
+        const workspaceConfig = yield* readWorkspaceConfig();
+        const pkg = buildReleaseManifest({
+          serverPackageJson,
+          catalog: workspaceConfig.catalog ?? {},
+          version,
+        });
+        yield* assertBundleResolvesAgainst(pkg.dependencies, path.join(serverDir, "dist"));
+
+        return {
+          packageJsonString: yield* encodePackageJson(pkg),
+          originalPackageJson: yield* fs.readFile(packageJsonPath),
+        };
+      }),
+      // Use: apply the release package metadata, then run the caller's vp pm step.
+      (resource) =>
+        Effect.gen(function* () {
+          yield* fs.writeFileString(packageJsonPath, `${resource.packageJsonString}\n`);
+          yield* Effect.log("[cli] Applied package metadata");
+          return yield* use;
+        }),
+      // Release: restore package.json even if the step fails.
+      (resource) =>
+        Effect.gen(function* () {
+          yield* fs.writeFile(packageJsonPath, resource.originalPackageJson);
+          if (verbose) yield* Effect.log("[cli] Restored original package metadata");
+        }),
+    );
+  });
+
+// vp pm from the workspace root so pnpm-only workspace config, including
+// override selectors, is interpreted correctly.
+const runVpPm = Effect.fn("runVpPm")(function* (
+  repoRoot: string,
+  args: ReadonlyArray<string>,
+  verbose: boolean,
+) {
+  const spawnCommand = yield* resolveSpawnCommand("vp", ["pm", ...args]);
+  yield* Effect.log(`[cli] Running: vp pm ${args.join(" ")}`);
+  yield* runCommand(
+    ChildProcess.make(spawnCommand.command, spawnCommand.args, {
+      cwd: repoRoot,
+      stdout: verbose ? "inherit" : "ignore",
+      stderr: "inherit",
+      shell: spawnCommand.shell,
+    }),
+  );
+});
+
+const readTarballFingerprints = Effect.fn("readTarballFingerprints")(function* (outputDir: string) {
+  const path = yield* Path.Path;
+  const fs = yield* FileSystem.FileSystem;
+  const tarballs = new Map<string, string>();
+
+  for (const entry of yield* fs.readDirectory(outputDir)) {
+    if (path.extname(entry) !== ".tgz") continue;
+    const info = yield* fs.stat(path.join(outputDir, entry));
+    if (info.type !== "File") continue;
+    const mtime = Option.match(info.mtime, {
+      onNone: () => "unknown",
+      onSome: (value) => String(value.getTime()),
+    });
+    const inode = Option.match(info.ino, {
+      onNone: () => "unknown",
+      onSome: String,
+    });
+    tarballs.set(entry, `${info.size}:${mtime}:${inode}`);
+  }
+
+  return tarballs;
+});
+
+// ---------------------------------------------------------------------------
+// pack subcommand — build a local tarball for the GitHub release workflow.
+// ---------------------------------------------------------------------------
+
+const packCmd = Command.make(
+  "pack",
+  {
+    out: Flag.String("out").pipe(Flag.withDefault("apps/server/dist")),
+    appVersion: Flag.String("app-version").pipe(Flag.optional),
+    nodePtyPrebuild: Flag.String("node-pty-prebuild").pipe(Flag.optional),
+    verbose: Flag.Boolean("verbose").pipe(Flag.withDefault(false)),
+  },
+  (config) =>
+    Effect.gen(function* () {
+      const path = yield* Path.Path;
+      const fs = yield* FileSystem.FileSystem;
+      const repoRoot = yield* RepoRoot;
+      const outDir = path.resolve(config.out);
+      yield* fs.makeDirectory(outDir, { recursive: true });
+      const tarballsBefore = yield* readTarballFingerprints(outDir);
+      yield* withReleaseAssets(
+        repoRoot,
+        config.appVersion,
+        config.verbose,
+        runVpPm(
+          repoRoot,
+          ["pack", "--filter", RELEASE_WORKSPACE_SELECTOR, "--pack-destination", outDir],
+          config.verbose,
+        ),
+      );
+      const tarballsAfter = yield* readTarballFingerprints(outDir);
+      const produced = Array.from(tarballsAfter)
+        .filter(([entry, fingerprint]) => tarballsBefore.get(entry) !== fingerprint)
+        .map(([entry]) => entry);
+      if (produced.length !== 1) {
+        return yield* new ServerCliPackOutputError({
+          outputDir: outDir,
+          selector: RELEASE_WORKSPACE_SELECTOR,
+          tarballCount: produced.length,
+        });
+      }
+      // The container must never compile node-pty; see bundleNodePty.ts.
+      const nodePtyDir = yield* fs.realPath(
+        path.join(repoRoot, "apps/server/node_modules", NODE_PTY_PACKAGE),
+      );
+      const linuxPrebuildDir = Option.map(config.nodePtyPrebuild, (dir) => path.resolve(dir));
+      yield* Effect.sync(() =>
+        bundleNodePtyIntoTarball({
+          tarballPath: path.join(outDir, produced[0]!),
+          nodePtyDir,
+          linuxPrebuildDir: Option.getOrUndefined(linuxPrebuildDir),
+        }),
+      );
+      yield* Effect.log(
+        `[cli] Bundled ${NODE_PTY_PACKAGE} ${Option.match(linuxPrebuildDir, { onNone: () => "(sources only)", onSome: (dir) => `with the Linux x64 prebuild from ${dir}` })}`,
+      );
+      yield* Effect.log(`[cli] Packed ${RELEASE_PACKAGE_NAME} into ${outDir}`);
+    }),
+).pipe(
+  Command.withDescription(
+    "Pack the server package into a tarball (the publish rewrite, no upload).",
+  ),
+);
+
+// ---------------------------------------------------------------------------
+// root command
+// ---------------------------------------------------------------------------
+
+const cli = Command.make("cli").pipe(
+  Command.withDescription("Zerops Mate server build and pack CLI."),
+  Command.withSubcommands([buildCmd, packCmd]),
+);
+
+Command.run(cli, { version: "0.0.0" }).pipe(
+  Effect.scoped,
+  Effect.provide([Logger.layer([Logger.consolePretty()]), NodeServices.layer]),
+  NodeRuntime.runMain,
+);

@@ -1,0 +1,470 @@
+/**
+ * Where an app starts the data layer for its signed-in account: the organization's Zerops
+ * navigation, supervised for as long as the app shows that organization. The app owns the store
+ * (one per account) and stops the navigation when the organization or the account changes.
+ *
+ * @module data/account
+ */
+import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
+import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+
+import {
+  hqNavigationLink,
+  type HqHandoverCandidates,
+  type HqMoveOffers,
+  type HqWire,
+} from "./adapters/hq.ts";
+import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
+import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
+import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
+import { detailScopeOf, type DetailDemand } from "./demand.ts";
+import { hqVerdictScope, type HqVerdict } from "./families/hqVerdict.ts";
+import { familySpec } from "./families/index.ts";
+import type { RegisteredOperationKind } from "./operations/kind.ts";
+import { holdStandingDemands } from "./operations/standing.ts";
+import { holdPlacedProjectRows } from "./placedRows.ts";
+import { linkKeys } from "./model.ts";
+import { streamOf } from "./reducer.ts";
+import type { AccountStore } from "./store.ts";
+import type { StreamFault } from "./streamMachine.ts";
+import { superviseLink, type LinkSignal } from "./supervisor.ts";
+
+export interface RunningLink {
+  /** The person's "try now", or a changed input a refusal was decided over. */
+  readonly signal: (signal: LinkSignal) => void;
+  /** A screen's hold on a detail while it is drawn; the release lets it go. */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
+  /** Our own write changed a sampled detail: it is read again now, or on its next demand. */
+  readonly revalidate: (demand: DetailDemand) => void;
+  /** The person's "try again" on one detail. */
+  readonly retryDetail: (demand: DetailDemand) => void;
+  /** Renew a held own row without reviving a refusal. */
+  readonly renew: (demand: DetailDemand) => void;
+  /**
+   * The viewer's access may have changed: every scope is registered again now, on a new receiver,
+   * and a link refused or waiting to retry tries at once.
+   */
+  readonly reread: () => void;
+  /** Ends the demand: the link and its scopes pause, their facts stay. */
+  readonly stop: () => void;
+}
+
+export function startZeropsNavigation(options: {
+  readonly orgId: string;
+  readonly store: AccountStore;
+  readonly wire: ZeropsWire;
+  readonly repairSession: Effect.Effect<void, StreamFault>;
+}): RunningLink {
+  const { store } = options;
+  // Subscription names only need to differ within one receiver.
+  let subscriptions = 0;
+  const link = zeropsNavigationLink({
+    orgId: options.orgId,
+    wire: options.wire,
+    store,
+    makeId: () => `subscription-${(subscriptions += 1)}`,
+  });
+  const supervisor = Effect.runSync(
+    superviseLink({ ...link, store, repairSession: options.repairSession }),
+  );
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    demandDetail: link.demandDetail,
+    renew: link.renew,
+    revalidate: link.revalidate,
+    retryDetail: link.retryDetail,
+    reread: () => {
+      link.reread();
+      Effect.runFork(supervisor.signal("input-changed"));
+    },
+    stop: () => {
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+
+export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "reread"> {
+  /** The same organization's HQ reached over a new wire: the next socket opens over it. */
+  readonly rewire: (wire: HqWire) => void;
+  /** Asks HQ where a Mate may move, as the move opens. */
+  readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
+  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
+  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
+  /** Asks HQ what lies between two commits; rejects with HQ's words for why it did not answer. */
+  readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
+  /** Tells HQ the reader saw these results of a Mate. */
+  readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
+}
+
+/** A comparison asked of an application's repository, by its name: git's `base..head`. */
+export type CompareAsk = { readonly appId: string; readonly repo: string } & CompareQuery;
+
+/**
+ * The organization's HQ navigation over its wire: one socket, its scopes resumed from their
+ * cursors across segments and attempts. A session HQ ended (`4401`) is forgotten by the wire, so
+ * the next attempt's ticket enters HQ's door. Only an actual refusal stops recovery.
+ */
+export function startHqNavigation(options: {
+  readonly orgId: string;
+  readonly store: AccountStore;
+  readonly wire: HqWire;
+}): RunningHq {
+  const { store } = options;
+  const link = hqNavigationLink(options);
+  const supervisor = Effect.runSync(superviseLink({ ...link, store, repairSession: Effect.void }));
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    demandDetail: link.demandDetail,
+    retryDetail: link.retryDetail,
+    moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
+    handoverCandidates: (projectId) => Effect.runPromise(link.handoverCandidates(projectId)),
+    compare: (ask) =>
+      // HQ's words for why it did not answer, as what the promise rejects with.
+      Effect.runPromise(
+        Effect.catch(link.compare(ask), (fault) => Effect.die(new Error(fault.message))),
+      ),
+    seen: (projectId, resultIds) => void Effect.runFork(link.seen(projectId, resultIds)),
+    rewire: link.rewire,
+    stop: () => {
+      link.stop();
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+
+/**
+ * An open Mate's attention, straight from it, for as long as the app holds the Mate open: its own
+ * link, supervised like the others; stopping it pauses the link and keeps what it said.
+ */
+export function startMateAttention(options: {
+  readonly projectId: string;
+  readonly store: AccountStore;
+  readonly wire: MateAttentionWire;
+}): Pick<RunningLink, "signal" | "stop"> {
+  const { store } = options;
+  const link = mateAttentionLink(options);
+  const supervisor = Effect.runSync(superviseLink({ ...link, store, repairSession: Effect.void }));
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    stop: () => {
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+export function startMateHealth(options: {
+  readonly projectId: string;
+  readonly store: AccountStore;
+  readonly wire: MateHealthWire;
+}): Pick<RunningLink, "signal" | "stop"> {
+  const supervisor = Effect.runSync(
+    superviseLink({ ...mateHealthLink(options), store: options.store, repairSession: Effect.void }),
+  );
+  const fiber = Effect.runFork(supervisor.run);
+  return {
+    signal: (signal) => void Effect.runFork(supervisor.signal(signal)),
+    stop: () => {
+      Effect.runSync(supervisor.release);
+      Effect.runFork(Fiber.interrupt(fiber));
+    },
+  };
+}
+
+/** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet.
+ * ownerId identifies the accepting project and address; a new owner replaces its observation.
+ */
+export type ShownHq =
+  | { readonly orgId: string; readonly wire: HqWire; readonly ownerId?: string }
+  | { readonly orgId: string; readonly verdict: Exclude<HqVerdict, "official"> };
+
+/** The account's observation, as an app holds it: the organization shown, and the details held. */
+export interface AccountObservation {
+  /** The organization the app shows now; `null` stops observing. */
+  readonly show: (orgId: string | null) => void;
+  /**
+   * The organization's HQ: its official HQ once known, observed while its organization is the one
+   * shown — named before, from then on; else the account's verdict on it — none, the member list
+   * deciding it unreadable, or not decided yet. The verdict is held as a fact (`hqVerdict`).
+   * Letting it go returns the completion of the queued release decision.
+   */
+  readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
+  /** Asks the shown organization's HQ where a Mate may move; refused without one. */
+  readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
+  /** Asks the shown organization's HQ whom a Mate may be handed over to; refused without one. */
+  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
+  /** Asks the shown organization's HQ what lies between two commits; refused without one. */
+  readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
+  /** Tells the shown organization's HQ the reader saw these results of a Mate. */
+  readonly seen: (projectId: string, resultIds: ReadonlyArray<string>) => void;
+  /**
+   * A screen's hold on a detail while it is drawn, whichever organization is shown: held before
+   * one is, it is read once one is; a switch reads it again under the new one.
+   */
+  readonly demandDetail: (demand: DetailDemand) => () => void;
+  /**
+   * Holds a detail of the organization shown until its read settles, then lets it go: `true` once
+   * it is read (or held read by another screen already), `false` once it failed, was refused or
+   * let go — and at once with no organization shown, or with its link down or refused: a flow
+   * that awaits it never waits for a link.
+   */
+  readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
+  /** Our own write changed a sampled detail of the organization shown: read it again. */
+  readonly revalidate: (demand: DetailDemand) => void;
+  /** The person's "try again" on one detail of the organization shown. */
+  readonly retryDetail: (demand: DetailDemand) => void;
+  /**
+   * The person's view may have changed in this organization (`topic: "inventory"`): its Zerops
+   * listing is read again while it is the one shown; another organization's is read when shown.
+   */
+  readonly rereadListing: (orgId: string) => void;
+  /** The person's "try now". */
+  readonly retry: () => void;
+  /** Network or renderer returned: retry a recovering source without reviving refusals. */
+  readonly resume: () => void;
+  /**
+   * Renews each held member row no push keeps current (a project's own row, whose grants only it
+   * names): an access round's renewal of what the account knows of everybody's grants.
+   */
+  readonly renewHeld: () => void;
+  /** Ends the observation: no organization shown, and its operations' standing demands let go. */
+  readonly stop: () => void;
+  /**
+   * Ends it with its account: stopped, and its store closed, so the account's registry may be
+   * disposed right after — whatever still arrives publishes nothing.
+   */
+  readonly close: () => void;
+  /** Whether it was closed with its account: its registry may be gone. */
+  readonly closed: () => boolean;
+}
+
+export function observeAccount(options: {
+  readonly store: AccountStore;
+  readonly wire: ZeropsWire;
+  readonly repairSession: Effect.Effect<void, StreamFault>;
+  /** The operation kinds whose open operations hold their details; the account's registry. */
+  readonly kinds?: ReadonlyArray<RegisteredOperationKind>;
+}): AccountObservation {
+  let shown: { readonly orgId: string; readonly link: RunningLink } | null = null;
+  /** Lets go of the own rows of the Mates HQ places that the shown roster does not list yet. */
+  let stopPlaced: (() => void) | null = null;
+  /** The HQ the app named last, and the one observed: only while it is the shown organization's. */
+  let wantedHq: ShownHq | null = null;
+  let heldVerdict: { readonly orgId: string; readonly verdict: HqVerdict } | null = null;
+  let verdictRevision = 0;
+  /** The verdict on the shown organization's HQ, as a fact; written only when it changes. */
+  const holdVerdict = () => {
+    if (shown === null || wantedHq === null || wantedHq.orgId !== shown.orgId || closed) return;
+    const verdict = "wire" in wantedHq ? "official" : wantedHq.verdict;
+    if (heldVerdict?.orgId === shown.orgId && heldVerdict.verdict === verdict) return;
+    heldVerdict = { orgId: shown.orgId, verdict };
+    verdictRevision += 1;
+    options.store.dispatch({
+      kind: "baseline-commit",
+      scope: hqVerdictScope(shown.orgId),
+      generation: 0,
+      via: "zerops-read",
+      members: [shown.orgId],
+      rows: [
+        {
+          family: "hqVerdict",
+          id: shown.orgId,
+          value: { verdict },
+          revision: { kind: "zerops", version: verdictRevision },
+        },
+      ],
+    });
+  };
+  let hq: {
+    readonly orgId: string;
+    readonly wire: HqWire;
+    readonly ownerId?: string;
+    readonly link: RunningHq;
+  } | null = null;
+  // Every accepted operation holds the detail its handle is observed in until it settles: a
+  // standing demand at its owner, whichever organization is shown, from the first shown on until
+  // the observation stops — and again if it is shown after that.
+  let stopStanding: (() => void) | null = null;
+  let closed = false;
+  /** A screen's hold, carried by the link of its family's source while one runs. */
+  interface Hold {
+    readonly demand: DetailDemand;
+    readonly source: "zerops" | "hq";
+    release: (() => void) | null;
+  }
+  const holds = new Set<Hold>();
+  const linkOf = (source: Hold["source"]): Pick<RunningLink, "demandDetail"> | null =>
+    source === "hq" ? (hq?.link ?? null) : (shown?.link ?? null);
+  const attach = (source: Hold["source"]) => {
+    for (const hold of holds)
+      if (hold.source === source) hold.release = linkOf(source)?.demandDetail(hold.demand) ?? null;
+  };
+  const detach = (source: Hold["source"]) => {
+    for (const hold of holds) {
+      if (hold.source !== source) continue;
+      hold.release?.();
+      hold.release = null;
+    }
+  };
+  const stopHq = () => {
+    if (hq === null) return;
+    detach("hq");
+    hq.link.stop();
+    hq = null;
+  };
+  /** Observes the HQ named for the organization shown, and none other. */
+  const followHq = () => {
+    holdVerdict();
+    const next =
+      wantedHq !== null && "wire" in wantedHq && wantedHq.orgId === shown?.orgId && !closed
+        ? wantedHq
+        : null;
+    if (hq !== null && next !== null && hq.orgId === next.orgId && hq.ownerId === next.ownerId) {
+      // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
+      if (hq.wire !== next.wire) {
+        hq.link.rewire(next.wire);
+        hq = { ...hq, wire: next.wire };
+      }
+      return;
+    }
+    stopHq();
+    if (next === null) return;
+    hq = { ...next, link: startHqNavigation({ ...next, store: options.store }) };
+    attach("hq");
+  };
+  const observation: AccountObservation = {
+    show: (orgId) => {
+      if (shown?.orgId === orgId || (closed && orgId !== null)) return;
+      if (shown !== null) {
+        stopHq();
+        detach("zerops");
+        stopPlaced?.();
+        stopPlaced = null;
+        shown.link.stop();
+        shown = null;
+      }
+      if (orgId === null) return;
+      stopStanding ??= holdStandingDemands({
+        store: options.store,
+        demandDetail: observation.demandDetail,
+        revalidate: (demand) => shown?.link.revalidate(demand),
+        ...(options.kinds === undefined ? {} : { kinds: options.kinds }),
+      });
+      const link = startZeropsNavigation({ ...options, orgId });
+      shown = { orgId, link };
+      attach("zerops");
+      stopPlaced = holdPlacedProjectRows({
+        store: options.store,
+        orgId,
+        demandDetail: observation.demandDetail,
+      });
+      followHq();
+    },
+    showHq: (next) => {
+      wantedHq = next;
+      if (next !== null) return followHq();
+      // Let go at the end of this turn, not at once: what names the HQ remounting names it again
+      // in the same turn, and its link and socket go on.
+      return new Promise<void>((resolve) => {
+        queueMicrotask(() => {
+          if (wantedHq === null) followHq();
+          resolve();
+        });
+      });
+    },
+    moveOffers: (projectId) =>
+      hq === null
+        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
+        : hq.link.moveOffers(projectId),
+    handoverCandidates: (projectId) =>
+      hq === null
+        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
+        : hq.link.handoverCandidates(projectId),
+    compare: (ask) =>
+      hq === null
+        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
+        : hq.link.compare(ask),
+    seen: (projectId, resultIds) => hq?.link.seen(projectId, resultIds),
+    demandDetail: (demand) => {
+      const source = familySpec(demand.family).scope.source === "hq" ? "hq" : "zerops";
+      const hold: Hold = { demand, source, release: null };
+      hold.release = linkOf(source)?.demandDetail(demand) ?? null;
+      holds.add(hold);
+      return () => {
+        if (!holds.delete(hold)) return;
+        hold.release?.();
+      };
+    },
+    renewHeld: () => {
+      if (shown === null) return;
+      for (const { demand } of holds)
+        if (
+          familySpec(demand.family).details?.some(
+            ({ suffix, member }) => suffix === demand.listing && member === true,
+          ) === true
+        )
+          shown.link.renew(demand);
+    },
+    readDetail: (demand) =>
+      new Promise((resolve) => {
+        if (shown === null) return resolve(false);
+        const scope = detailScopeOf(shown.orgId, demand);
+        const link = linkKeys.zerops(shown.orgId);
+        const release = observation.demandDetail(demand);
+        // Waits only for a read the live link will make; a link down or refused is no answer.
+        const settled = () => {
+          const { phase } = streamOf(options.store.state(), scope);
+          if (phase === "live") return true;
+          if (phase === "connecting" || phase === "baselining") return null;
+          return phase === "stale" && streamOf(options.store.state(), link).phase === "live"
+            ? null
+            : false;
+        };
+        const answer = settled();
+        if (answer !== null) {
+          release();
+          return resolve(answer);
+        }
+        const stopHearing = options.store.subscribe(() => {
+          const heard = settled();
+          if (heard === null) return;
+          stopHearing();
+          release();
+          resolve(heard);
+        });
+      }),
+    revalidate: (demand) => shown?.link.revalidate(demand),
+    retryDetail: (demand) => {
+      if (familySpec(demand.family).scope.source === "hq") hq?.link.retryDetail(demand);
+      else shown?.link.retryDetail(demand);
+    },
+    rereadListing: (orgId) => {
+      if (shown?.orgId === orgId) shown.link.reread();
+    },
+    retry: () => {
+      shown?.link.signal("manual-retry");
+      hq?.link.signal("manual-retry");
+    },
+    resume: () => {
+      shown?.link.signal("resume");
+      hq?.link.signal("resume");
+    },
+    stop: () => {
+      stopStanding?.();
+      stopStanding = null;
+      observation.show(null);
+    },
+    close: () => {
+      closed = true;
+      observation.stop();
+      options.store.close();
+    },
+    closed: () => closed,
+  };
+  return observation;
+}

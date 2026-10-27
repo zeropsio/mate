@@ -1,0 +1,1236 @@
+import * as NodeAssert from "node:assert/strict";
+
+import { it } from "@effect/vitest";
+import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
+import { describe } from "vite-plus/test";
+import { DEFAULT_MODEL, ThreadId } from "@t3tools/contracts";
+import * as CodexErrors from "effect-codex-app-server/errors";
+import * as CodexRpc from "effect-codex-app-server/rpc";
+import * as EffectCodexSchema from "effect-codex-app-server/schema";
+
+import {
+  buildCodexAdditionalContext,
+  buildCodexDeveloperInstructions,
+} from "../CodexDeveloperInstructions.ts";
+import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
+import {
+  buildTurnStartParams,
+  describeMcpElicitation,
+  makeMemoryConsolidationNotificationFilter,
+  openCodexThread,
+  readCodexThread,
+  rollbackCodexThread,
+  toMcpElicitationResponse,
+} from "./CodexSessionRuntime.ts";
+const isCodexAppServerRequestError = Schema.is(CodexErrors.CodexAppServerRequestError);
+
+describe("Codex thread history", () => {
+  it.effect.each(
+    Array.from([1, 2, 3, 5], (numTurns) => ({
+      title: `reverts ${numTurns} paginated turns at the durable boundary`,
+      numTurns,
+    })),
+  )("$title", ({ numTurns }) =>
+    Effect.gen(function* () {
+      let retained = ["turn-1", "turn-2", "turn-3"];
+      const client: Parameters<typeof rollbackCodexThread>[0] = {
+        request: () => Effect.die("Legacy history API must not be used for paginated threads"),
+        raw: {
+          request: (method, params) =>
+            Effect.sync(() => {
+              if (method === "thread/read") return { thread: { historyMode: "paginated" } };
+              if (method === "thread/turns/list") {
+                const { cursor } = params as { cursor: string | null };
+                const start = cursor === null ? 0 : Number(cursor);
+                const ids = retained.slice(start, start + 2);
+                return {
+                  data: ids.map((id) => ({ id, items: [], status: "completed" })),
+                  nextCursor: start + 2 < retained.length ? String(start + 2) : null,
+                };
+              }
+              NodeAssert.equal(method, "thread/revert");
+              const { beforeTurnId } = params as { beforeTurnId: string };
+              retained = retained.slice(0, retained.indexOf(beforeTurnId));
+              return { thread: { id: "thread-1", turns: [] } };
+            }),
+        },
+      };
+      const result = yield* rollbackCodexThread(client, "thread-1", numTurns);
+      const expected = ["turn-1", "turn-2", "turn-3"].slice(0, Math.max(0, 3 - numTurns));
+      NodeAssert.deepEqual(
+        result.turns.map((turn) => turn.id),
+        expected,
+      );
+      NodeAssert.deepEqual(
+        (yield* readCodexThread(client, "thread-1")).turns.map((turn) => turn.id),
+        expected,
+      );
+    }),
+  );
+
+  it.effect.each(
+    Array.from(
+      [
+        ["next", "next"],
+        ["first", "second", "first"],
+      ],
+      (cursors) => ({ title: `rejects a pagination cursor cycle: ${cursors.join(", ")}`, cursors }),
+    ),
+  )("$title", ({ cursors }) =>
+    Effect.gen(function* () {
+      let pageCount = 0;
+      const client: Parameters<typeof readCodexThread>[0] = {
+        request: () => Effect.die("Unexpected legacy request"),
+        raw: {
+          request: (method) =>
+            Effect.sync(() => {
+              if (method === "thread/read") return { thread: { historyMode: "paginated" } };
+              NodeAssert.ok(pageCount < cursors.length, "Repeated cursor was requested");
+              return { data: [], nextCursor: cursors[pageCount++] };
+            }),
+        },
+      };
+      const error = yield* Effect.flip(readCodexThread(client, "thread-1"));
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.equal(pageCount, cursors.length);
+    }),
+  );
+
+  it.effect("surfaces Codex rejecting a revert of a legacy thread", () =>
+    Effect.gen(function* () {
+      const rejection = CodexErrors.CodexAppServerRequestError.invalidRequest(
+        "thread/revert only supports paginated threads",
+      );
+      const client: Parameters<typeof rollbackCodexThread>[0] = {
+        raw: {
+          request: (method) => {
+            if (method === "thread/read") return Effect.succeed({ thread: {} });
+            if (method === "thread/revert") return Effect.fail(rejection);
+            return Effect.die(`Unexpected raw request: ${method}`);
+          },
+        },
+        request: <M extends CodexRpc.ClientRequestMethod>(method: M) => {
+          NodeAssert.equal(method, "thread/read");
+          return Effect.succeed({
+            thread: { id: "legacy-thread", turns: [{ id: "turn-1", items: [] }] },
+          } as unknown as CodexRpc.ClientRequestResponsesByMethod[M]);
+        },
+      };
+      const error = yield* Effect.flip(rollbackCodexThread(client, "legacy-thread", 1));
+      NodeAssert.strictEqual(error, rejection);
+    }),
+  );
+});
+
+describe("CodexSessionRuntimeIdentifierGenerationError", () => {
+  it("retains identifier purpose and the random source failure", () => {
+    const cause = new Error("random source unavailable");
+    const error = new CodexErrors.CodexAppServerIdentifierGenerationError({
+      purpose: "provider-event",
+      cause,
+    });
+
+    NodeAssert.equal(error.purpose, "provider-event");
+    NodeAssert.strictEqual(error.cause, cause);
+    NodeAssert.equal(
+      error.message,
+      "Failed to generate Codex App Server identifier for provider-event.",
+    );
+  });
+});
+
+function makeThreadOpenResponse(
+  threadId: string,
+): CodexRpc.ClientRequestResponsesByMethod["thread/start"] {
+  return {
+    cwd: "/tmp/project",
+    model: "gpt-5.3-codex",
+    modelProvider: "openai",
+    approvalPolicy: "never",
+    approvalsReviewer: "user",
+    sandbox: { type: "danger-full-access" },
+    thread: {
+      id: threadId,
+      createdAt: "2026-04-18T00:00:00.000Z",
+      source: { session: "cli" },
+      turns: [],
+      status: {
+        state: "idle",
+        activeFlags: [],
+      },
+    },
+  } as unknown as CodexRpc.ClientRequestResponsesByMethod["thread/start"];
+}
+
+describe("buildTurnStartParams", () => {
+  it.effect("sends currency skill aliases in Codex's canonical dollar form", () =>
+    Effect.gen(function* () {
+      for (const symbol of ["€", "£", "¥", "₹", "₩", "₿", "𑿝"]) {
+        const prose = `${symbol}20 ${symbol}20k ${symbol}100M ${symbol}1e6 5${symbol}review`;
+        const params = yield* buildTurnStartParams({
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: `${symbol}review ${symbol}2spec $existing ${prose} ${symbol}last`,
+        });
+
+        NodeAssert.deepEqual(params.input, [
+          { type: "text", text: `$review $2spec $existing ${prose} $last` },
+        ]);
+      }
+    }),
+  );
+
+  it("keeps invalid turn values only in the schema cause", () => {
+    const secret = "codex-turn-input-secret-sentinel";
+    const error = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        attachments: [
+          {
+            type: "localImage",
+            path: { secret } as unknown as string,
+          },
+        ],
+      }).pipe(Effect.flip),
+    );
+    const { cause, ...directDiagnostics } = error;
+
+    NodeAssert.equal(error.operation, "decode-request-payload");
+    NodeAssert.equal(error.method, "turn/start");
+    NodeAssert.ok((error.issueCount ?? 0) > 0);
+    NodeAssert.ok(error.issueKinds?.includes("Pointer"));
+    NodeAssert.ok((error.maximumPathDepth ?? 0) > 0);
+    NodeAssert.ok(Schema.isSchemaError(cause));
+    NodeAssert.doesNotMatch(error.message, new RegExp(secret));
+    NodeAssert.doesNotMatch(JSON.stringify(directDiagnostics), new RegExp(secret));
+  });
+
+  it("includes plan collaboration mode when requested", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Make a plan",
+        model: "gpt-5.3-codex",
+        effort: "medium",
+        interactionMode: "plan",
+      }),
+    );
+
+    NodeAssert.deepStrictEqual(params, {
+      threadId: "provider-thread-1",
+      summary: "auto",
+      approvalPolicy: "never",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "dangerFullAccess",
+      },
+      input: [
+        {
+          type: "text",
+          text: "Make a plan",
+        },
+      ],
+      model: "gpt-5.3-codex",
+      effort: "medium",
+      collaborationMode: {
+        mode: "plan",
+        settings: {
+          model: "gpt-5.3-codex",
+          reasoning_effort: "medium",
+          developer_instructions: buildCodexDeveloperInstructions("plan"),
+        },
+      },
+      additionalContext: buildCodexAdditionalContext({
+        model: "gpt-5.3-codex",
+        reasoningEffort: "medium",
+      }),
+    });
+  });
+
+  it("includes default collaboration mode and image attachments", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "auto-accept-edits",
+        prompt: "Implement it",
+        model: "gpt-5.3-codex",
+        interactionMode: "default",
+        attachments: [
+          {
+            type: "localImage",
+            path: "/tmp/generated.png",
+          },
+        ],
+      }),
+    );
+
+    NodeAssert.deepStrictEqual(params, {
+      threadId: "provider-thread-1",
+      summary: "auto",
+      approvalPolicy: "on-request",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "workspaceWrite",
+      },
+      input: [
+        {
+          type: "text",
+          text: "Implement it",
+        },
+        {
+          type: "localImage",
+          path: "/tmp/generated.png",
+        },
+      ],
+      model: "gpt-5.3-codex",
+      collaborationMode: {
+        mode: "default",
+        settings: {
+          model: "gpt-5.3-codex",
+          reasoning_effort: "medium",
+          developer_instructions: buildCodexDeveloperInstructions("default"),
+        },
+      },
+      additionalContext: buildCodexAdditionalContext({
+        model: "gpt-5.3-codex",
+        reasoningEffort: "medium",
+      }),
+    });
+  });
+
+  it("reports the same fallback model and effort in settings and instructions", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        prompt: "Go",
+        interactionMode: "default",
+      }),
+    );
+
+    const settings = params.collaborationMode?.settings;
+    NodeAssert.equal(settings?.model, DEFAULT_MODEL);
+    NodeAssert.equal(settings?.reasoning_effort, "medium");
+    NodeAssert.ok(
+      params.additionalContext?.mate_runtime?.value.includes(`as ${DEFAULT_MODEL} with medium`),
+    );
+  });
+
+  it.effect("names the model by display name and slug in the runtime context", () =>
+    Effect.gen(function* () {
+      const params = yield* buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "full-access",
+        model: "gpt-5.3-codex",
+        modelName: "GPT-5.3-Codex",
+        effort: "high",
+        interactionMode: "plan",
+      });
+
+      NodeAssert.match(
+        params.additionalContext?.mate_runtime?.value ?? "",
+        /as GPT-5\.3-Codex \(model slug: gpt-5\.3-codex\) with high reasoning effort/,
+      );
+    }),
+  );
+
+  // Codex's models default to no reasoning summary, which left every Codex thought empty.
+  it.effect("every Codex turn asks for a readable summary of the model's thinking", () =>
+    Effect.gen(function* () {
+      for (const input of [
+        { model: "gpt-6.1-sol", effort: "high" as const, interactionMode: "plan" as const },
+        { model: "gpt-5.6-sol", interactionMode: "default" as const },
+        {},
+      ]) {
+        const params = yield* buildTurnStartParams({
+          threadId: "provider-thread-1",
+          runtimeMode: "full-access",
+          prompt: "Go",
+          ...input,
+          overrides: {
+            approvalPolicy: "on-request",
+            approvalsReviewer: "user",
+            sandboxPolicy: { type: "readOnly" },
+          },
+        });
+
+        NodeAssert.equal(params.summary, "auto");
+      }
+    }),
+  );
+
+  it.effect("routes approvals to the auto reviewer in auto mode", () =>
+    Effect.gen(function* () {
+      const params = yield* buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "auto",
+        prompt: "Ship it",
+      });
+
+      NodeAssert.deepStrictEqual(params, {
+        threadId: "provider-thread-1",
+        summary: "auto",
+        approvalPolicy: "on-request",
+        approvalsReviewer: "auto_review",
+        sandboxPolicy: {
+          type: "workspaceWrite",
+        },
+        input: [
+          {
+            type: "text",
+            text: "Ship it",
+          },
+        ],
+      });
+    }),
+  );
+
+  it("omits collaboration mode when interaction mode is absent", () => {
+    const params = Effect.runSync(
+      buildTurnStartParams({
+        threadId: "provider-thread-1",
+        runtimeMode: "approval-required",
+        prompt: "Review",
+      }),
+    );
+
+    NodeAssert.deepStrictEqual(params, {
+      threadId: "provider-thread-1",
+      summary: "auto",
+      approvalPolicy: "untrusted",
+      approvalsReviewer: "user",
+      sandboxPolicy: {
+        type: "readOnly",
+      },
+      input: [
+        {
+          type: "text",
+          text: "Review",
+        },
+      ],
+    });
+  });
+});
+
+describe("Codex MCP elicitation approvals", () => {
+  const request = {
+    mode: "form",
+    message: "Allow ChatGPT to use Safari?",
+    serverName: "computer-use",
+    threadId: "provider-thread-1",
+    turnId: "turn-1",
+    _meta: {
+      app_name: "Safari",
+      persist: ["session", "always"],
+    },
+    requestedSchema: {
+      type: "object",
+      properties: {
+        approval: {
+          type: "string",
+          oneOf: [
+            { const: "once", title: "Allow once" },
+            { const: "session", title: "Allow for this session" },
+            { const: "always", title: "Always allow Safari" },
+          ],
+        },
+      },
+      required: ["approval"],
+    },
+  } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+  it("preserves the app name and advertised persistence choices", () => {
+    NodeAssert.deepStrictEqual(describeMcpElicitation(request), {
+      appName: "Safari",
+      options: [
+        { decision: "cancel", label: "Cancel" },
+        { decision: "decline", label: "Decline" },
+        { decision: "acceptForSession", label: "Allow for this session" },
+        { decision: "acceptAlways", label: "Always allow Safari" },
+        { decision: "accept", label: "Approve" },
+      ],
+    });
+  });
+
+  it("extracts the app name from a Computer Use request without metadata", () => {
+    const { _meta, ...requestWithoutMetadata } = request;
+
+    NodeAssert.equal(describeMcpElicitation(requestWithoutMetadata).appName, "Safari");
+  });
+
+  it("returns the accepted form option to Codex", () => {
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(request, "accept"), {
+      action: "accept",
+      content: { approval: "once" },
+    });
+  });
+
+  it("returns session-scoped approval in the MCP response", () => {
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(request, "acceptForSession"), {
+      action: "accept",
+      _meta: { persist: "session" },
+      content: { approval: "session" },
+    });
+  });
+
+  it("returns persistent approval in the MCP response", () => {
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(request, "acceptAlways"), {
+      action: "accept",
+      _meta: { persist: "always" },
+      content: { approval: "always" },
+    });
+  });
+
+  it("returns rejection without form content", () => {
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(request, "decline"), {
+      action: "decline",
+    });
+  });
+
+  it("returns cancellation without form content", () => {
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(request, "cancel"), {
+      action: "cancel",
+    });
+  });
+
+  it("supports boolean permanent-approval fields", () => {
+    const booleanRequest = {
+      ...request,
+      _meta: { app_name: "Safari" },
+      requestedSchema: {
+        type: "object",
+        properties: {
+          always: { type: "boolean", title: "Always allow Safari" },
+        },
+      },
+    } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+    NodeAssert.ok(
+      describeMcpElicitation(booleanRequest).options.some(
+        (option) => option.decision === "acceptAlways",
+      ),
+    );
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(booleanRequest, "acceptAlways"), {
+      action: "accept",
+      _meta: { persist: "always" },
+      content: { always: true },
+    });
+  });
+
+  it("preserves valid nullable MCP form fields and persistence choices", () => {
+    const nullableRequest = {
+      ...request,
+      _meta: {
+        app_name: null,
+        appName: "Safari",
+        connector_name: null,
+        persist: null,
+        target: null,
+        tool_params: null,
+      },
+      requestedSchema: {
+        type: "object",
+        properties: {
+          approval: {
+            type: "string",
+            title: null,
+            description: null,
+            default: null,
+            enum: ["once", "always"],
+            enumNames: null,
+          },
+        },
+        required: ["approval"],
+      },
+    } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+    NodeAssert.equal(describeMcpElicitation(nullableRequest).appName, "Safari");
+    NodeAssert.ok(
+      describeMcpElicitation(nullableRequest).options.some(
+        (option) => option.decision === "acceptAlways",
+      ),
+    );
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(nullableRequest, "acceptAlways"), {
+      action: "accept",
+      _meta: { persist: "always" },
+      content: { approval: "always" },
+    });
+  });
+
+  it("declines required form fields that an approval prompt cannot collect", () => {
+    const inputRequest = {
+      ...request,
+      requestedSchema: {
+        type: "object",
+        properties: {
+          email: { type: "string", format: "email" },
+        },
+        required: ["email"],
+      },
+    } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(inputRequest, "accept"), {
+      action: "decline",
+    });
+  });
+
+  it("does not approve URL elicitations without opening their requested URL", () => {
+    const urlRequest = {
+      mode: "url",
+      message: "Finish signing in to continue.",
+      serverName: "computer-use",
+      threadId: "provider-thread-1",
+      turnId: "turn-1",
+      elicitationId: "sign-in-1",
+      url: "https://example.com/authorize",
+    } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+    NodeAssert.deepStrictEqual(toMcpElicitationResponse(urlRequest, "accept"), {
+      action: "decline",
+    });
+  });
+
+  it("omits persistence choices that cannot satisfy required form fields", () => {
+    const onceOnlyRequest = {
+      ...request,
+      _meta: { app_name: "Safari", persist: ["session", "always"] },
+      requestedSchema: {
+        type: "object",
+        properties: {
+          approval: {
+            type: "string",
+            enum: ["once"],
+          },
+        },
+        required: ["approval"],
+      },
+    } satisfies EffectCodexSchema.McpServerElicitationRequestParams;
+
+    NodeAssert.deepStrictEqual(describeMcpElicitation(onceOnlyRequest).options, [
+      { decision: "cancel", label: "Cancel" },
+      { decision: "decline", label: "Decline" },
+      { decision: "accept", label: "Approve" },
+    ]);
+  });
+});
+
+describe("buildCodexDeveloperInstructions", () => {
+  it("keeps T3 context out of the mode prompt, which the model catalog can replace", () => {
+    for (const mode of ["default", "plan"] as const) {
+      const instructions = buildCodexDeveloperInstructions(mode);
+      NodeAssert.match(instructions, /^<collaboration_mode>[\s\S]*<\/collaboration_mode>$/);
+      NodeAssert.doesNotMatch(instructions, /runtime_info|pull_request_linking|preview_|device_/);
+    }
+  });
+});
+
+describe("buildCodexAdditionalContext", () => {
+  const runtime = { model: "gpt-5.3-codex", reasoningEffort: "high" };
+  const runtimeValue = (context: ReturnType<typeof buildCodexAdditionalContext>) =>
+    context.mate_runtime?.value ?? "";
+
+  it("describes the harness, model, effort, and Markdown media support", () => {
+    const context = buildCodexAdditionalContext(runtime);
+
+    NodeAssert.equal(context.mate_runtime?.kind, "application");
+    NodeAssert.match(
+      runtimeValue(context),
+      /<runtime_info>.*Codex harness, as gpt-5\.3-codex with high reasoning effort.*embed images and videos.*Markdown.*<\/runtime_info>/,
+    );
+  });
+
+  it("varies with the model and effort of each turn", () => {
+    NodeAssert.notEqual(
+      runtimeValue(
+        buildCodexAdditionalContext({ model: "gpt-5.3-codex", reasoningEffort: "medium" }),
+      ),
+      runtimeValue(buildCodexAdditionalContext({ model: "gpt-5.4", reasoningEffort: "high" })),
+    );
+  });
+
+  it("flattens multiline metadata into single-line runtime info", () => {
+    const value = runtimeValue(
+      buildCodexAdditionalContext({ model: "gpt\n5.3\ncodex", reasoningEffort: " high\neffort " }),
+    );
+
+    NodeAssert.match(value, /as gpt 5\.3 codex with high effort reasoning effort/);
+    NodeAssert.doesNotMatch(value, /<runtime_info>[^<]*\n/);
+  });
+
+  it("keeps every entry under Codex's 1,000 token cap per entry", () => {
+    const context = buildCodexAdditionalContext(runtime);
+    for (const entry of Object.values(context)) {
+      // Codex estimates 4 bytes per token and truncates the middle of longer values.
+      NodeAssert.ok(Buffer.byteLength(entry.value) < 4_000);
+    }
+  });
+});
+
+describe("Codex developer instructions never mention preview tools", () => {
+  it("Codex developer instructions never mention preview tools", () => {
+    const runtime = { model: "gpt-5.3-codex", reasoningEffort: "medium" };
+    const context = buildCodexAdditionalContext(runtime);
+    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime"]);
+    for (const instructions of [
+      buildCodexDeveloperInstructions("default"),
+      buildCodexDeveloperInstructions("plan"),
+      ...Object.values(context).map((entry) => entry.value),
+    ]) {
+      NodeAssert.doesNotMatch(instructions, /preview_/);
+      NodeAssert.doesNotMatch(instructions, /t3-code/);
+      NodeAssert.doesNotMatch(instructions, /collaborative browser/);
+    }
+  });
+});
+
+function makeThreadStartedNotification(
+  threadId: string,
+  source: EffectCodexSchema.V2ThreadStartedNotification["thread"]["source"],
+  threadSource?: string,
+) {
+  return {
+    method: "thread/started" as const,
+    params: {
+      thread: {
+        cliVersion: "0.0.0",
+        createdAt: 0,
+        cwd: "/tmp/project",
+        ephemeral: true,
+        id: threadId,
+        modelProvider: "openai",
+        preview: "",
+        projectId: null,
+        sessionId: threadId,
+        source,
+        status: { type: "idle" as const },
+        ...(threadSource ? { threadSource } : {}),
+        turns: [],
+        updatedAt: 0,
+      },
+    },
+  };
+}
+
+describe("makeMemoryConsolidationNotificationFilter", () => {
+  it("suppresses memory consolidation without hiding other Codex subagents", () => {
+    const shouldSuppress = makeMemoryConsolidationNotificationFilter();
+
+    NodeAssert.equal(
+      shouldSuppress(
+        makeThreadStartedNotification("memory-thread", "unknown", "memory_consolidation"),
+      ),
+      true,
+    );
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "item/agentMessage/delta",
+        params: {
+          delta: "internal memory update",
+          itemId: "memory-message",
+          threadId: "memory-thread",
+          turnId: "memory-turn",
+        },
+      }),
+      true,
+    );
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "serverRequest/resolved",
+        params: {
+          requestId: "memory-approval",
+          threadId: "memory-thread",
+        },
+      }),
+      false,
+    );
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "warning",
+        params: {
+          message: "internal warning",
+          threadId: "memory-thread",
+        },
+      }),
+      true,
+    );
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "item/agentMessage/delta",
+        params: {
+          delta: "normal reply",
+          itemId: "root-message",
+          threadId: "root-thread",
+          turnId: "root-turn",
+        },
+      }),
+      false,
+    );
+
+    NodeAssert.equal(
+      shouldSuppress(
+        makeThreadStartedNotification("legacy-memory-thread", {
+          subAgent: "memory_consolidation",
+        }),
+      ),
+      true,
+    );
+
+    for (const source of [
+      { subAgent: "review" as const },
+      { subAgent: "compact" as const },
+      {
+        subAgent: {
+          thread_spawn: {
+            depth: 1,
+            parent_thread_id: "root-thread",
+          },
+        },
+      },
+    ]) {
+      NodeAssert.equal(
+        shouldSuppress(makeThreadStartedNotification("visible-subagent", source)),
+        false,
+      );
+    }
+  });
+
+  it("forgets memory consolidation threads after they close", () => {
+    const shouldSuppress = makeMemoryConsolidationNotificationFilter();
+    shouldSuppress(
+      makeThreadStartedNotification("memory-thread", "unknown", "memory_consolidation"),
+    );
+
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "thread/closed",
+        params: { threadId: "memory-thread" },
+      }),
+      true,
+    );
+    NodeAssert.equal(
+      shouldSuppress({
+        method: "item/agentMessage/delta",
+        params: {
+          delta: "later message",
+          itemId: "later-message",
+          threadId: "memory-thread",
+          turnId: "later-turn",
+        },
+      }),
+      false,
+    );
+  });
+});
+
+describe("codexSessionAppServerArgs", () => {
+  it("keeps the app-server subcommand when explicit args are provided", () => {
+    NodeAssert.deepStrictEqual(codexSessionAppServerArgs(["-c", "model=gpt-5"], undefined), [
+      "app-server",
+      "-c",
+      "model=gpt-5",
+    ]);
+  });
+
+  it("keeps launch args when explicit app-server args are provided", () => {
+    NodeAssert.deepStrictEqual(
+      codexSessionAppServerArgs(
+        ["-c", "mcp_servers.t3-code.url=http://127.0.0.1/mcp"],
+        "--strict-config --enable foo",
+      ),
+      [
+        "app-server",
+        "--strict-config",
+        "--enable",
+        "foo",
+        "-c",
+        "mcp_servers.t3-code.url=http://127.0.0.1/mcp",
+      ],
+    );
+  });
+});
+
+describe("openCodexThread", () => {
+  it.effect(
+    "opts fresh native threads into exact raw response usage without public-schema stripping",
+    () =>
+      Effect.gen(function* () {
+        const calls: unknown[] = [];
+        const opened = yield* openCodexThread({
+          client: {
+            request: () => Effect.die("Public start encoding would discard the native opt-in"),
+            raw: {
+              request: (method, payload) => {
+                calls.push({ method, payload });
+                return Effect.succeed(makeThreadOpenResponse("fresh"));
+              },
+            },
+          },
+          threadId: ThreadId.make("mate"),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "model",
+          serviceTier: undefined,
+          resumeThreadId: undefined,
+        });
+        NodeAssert.equal(opened.rawUsageEnabled, true);
+        NodeAssert.equal(calls.length, 1);
+        NodeAssert.deepStrictEqual(calls[0], {
+          method: "thread/start",
+          payload: {
+            cwd: "/tmp/project",
+            model: "model",
+            approvalPolicy: "never",
+            sandbox: "danger-full-access",
+            approvalsReviewer: "user",
+            experimentalRawEvents: true,
+          },
+        });
+      }),
+  );
+
+  it.effect("resumes metadata when historical turns contain unknown error values", () =>
+    Effect.gen(function* () {
+      const response = makeThreadOpenResponse("saved-thread");
+      const calls: unknown[] = [];
+      const opened = yield* openCodexThread({
+        client: {
+          request: () => Effect.die("A valid resumed thread must not start fresh"),
+          raw: {
+            request: (method, payload) => {
+              calls.push({ method, payload });
+              return Effect.succeed({
+                ...response,
+                thread: {
+                  ...response.thread,
+                  turns: [
+                    {
+                      id: "old-turn",
+                      status: "failed",
+                      items: [],
+                      error: {
+                        message: "Historical provider error",
+                        codexErrorInfo: "misalignment_policy_violation",
+                      },
+                    },
+                  ],
+                },
+              });
+            },
+          },
+        },
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "auto",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: "fast",
+        resumeThreadId: "saved-thread",
+      });
+
+      NodeAssert.deepStrictEqual(opened, {
+        cwd: response.cwd,
+        model: response.model,
+        thread: { id: "saved-thread" },
+        rawUsageEnabled: false,
+      });
+      NodeAssert.deepStrictEqual(calls, [
+        {
+          method: "thread/resume",
+          payload: {
+            threadId: "saved-thread",
+            cwd: "/tmp/project",
+            model: "gpt-5.3-codex",
+            serviceTier: "fast",
+            approvalPolicy: "on-request",
+            sandbox: "workspace-write",
+            approvalsReviewer: "auto_review",
+            excludeTurns: true,
+          },
+        },
+      ]);
+    }),
+  );
+
+  it.effect("rejects malformed required resume metadata without starting a fresh thread", () =>
+    Effect.gen(function* () {
+      for (const invalidMetadata of [
+        { cwd: null },
+        { model: 42 },
+        { thread: { id: null } },
+        { thread: {} },
+      ]) {
+        const error = yield* openCodexThread({
+          client: {
+            request: () => Effect.die("Invalid resume metadata must not start a fresh thread"),
+            raw: {
+              request: () =>
+                Effect.succeed({ ...makeThreadOpenResponse("saved-thread"), ...invalidMetadata }),
+            },
+          },
+          threadId: ThreadId.make("thread-1"),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "saved-thread",
+        }).pipe(Effect.flip);
+
+        NodeAssert.ok(isCodexAppServerRequestError(error));
+        NodeAssert.equal(error.operation, "decode-payload");
+        NodeAssert.equal(error.method, "thread/resume");
+      }
+    }),
+  );
+
+  it.effect.each(["conversation/s/1", "crew-standup/s/42"])(
+    "the engine session %s never silently starts fresh when native resume fails",
+    (threadId) =>
+      Effect.gen(function* () {
+        let started = false;
+        const error = yield* openCodexThread({
+          client: {
+            request: () =>
+              Effect.sync(() => {
+                started = true;
+                return makeThreadOpenResponse("fresh-thread");
+              }),
+            raw: {
+              request: () =>
+                Effect.fail(
+                  new CodexErrors.CodexAppServerRequestError({
+                    code: -32603,
+                    errorMessage: "thread not found",
+                  }),
+                ),
+            },
+          },
+          threadId: ThreadId.make(threadId),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "original-thread",
+        }).pipe(Effect.flip);
+        NodeAssert.ok(isCodexAppServerRequestError(error));
+        NodeAssert.equal(started, false);
+      }),
+  );
+
+  it.effect(
+    "a missing native thread fails visibly without replacing the original conversation",
+    () =>
+      Effect.gen(function* () {
+        const calls: Array<{ method: "thread/start" | "thread/resume"; payload: unknown }> = [];
+        const started = makeThreadOpenResponse("fresh-thread");
+        const client = {
+          raw: {
+            request: (
+              method: "thread/resume",
+              payload: CodexRpc.ClientRequestParamsByMethod["thread/resume"],
+            ) => {
+              calls.push({ method, payload });
+              return Effect.fail(
+                new CodexErrors.CodexAppServerRequestError({
+                  code: -32603,
+                  errorMessage: "thread not found",
+                }),
+              );
+            },
+          },
+          request: (
+            method: "thread/start",
+            payload: CodexRpc.ClientRequestParamsByMethod["thread/start"],
+          ) => {
+            calls.push({ method, payload });
+            return Effect.succeed(started);
+          },
+        };
+
+        const opened = yield* openCodexThread({
+          client,
+          threadId: ThreadId.make("thread-1"),
+          runtimeMode: "full-access",
+          cwd: "/tmp/project",
+          requestedModel: "gpt-5.3-codex",
+          serviceTier: undefined,
+          resumeThreadId: "stale-thread",
+        }).pipe(Effect.flip);
+
+        NodeAssert.ok(isCodexAppServerRequestError(opened));
+        NodeAssert.deepStrictEqual(
+          calls.map((call) => call.method),
+          ["thread/resume"],
+        );
+      }),
+  );
+
+  it.effect("resume must return the original native conversation", () =>
+    Effect.gen(function* () {
+      const client = {
+        raw: { request: () => Effect.succeed(makeThreadOpenResponse("replacement-thread")) },
+        request: () => Effect.die("A bound session cannot start a new conversation"),
+      };
+      const error = yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: undefined,
+        serviceTier: undefined,
+        resumeThreadId: "original-thread",
+      }).pipe(Effect.flip);
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.match(error.errorMessage, /original conversation/);
+    }),
+  );
+
+  // Codex refuses to resume a session it archived; unarchiving keeps its
+  // history, where a fresh start would lose it.
+  it.effect.each([
+    {
+      name: "an archived session is unarchived and resumed with its history",
+      resumeErrors: ["session saved-thread is archived"],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "saved-thread",
+    },
+    {
+      name: "Codex's unarchive hint unarchives and resumes the session",
+      resumeErrors: ["Run `codex unarchive saved-thread` to unarchive it first."],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "saved-thread",
+    },
+    {
+      name: "an archived workspace is no archived session to unarchive",
+      resumeErrors: ["workspace is archived"],
+      calls: ["thread/resume"],
+      outcome: "workspace is archived",
+    },
+    {
+      name: "an unrelated archive path is no archived session to unarchive",
+      resumeErrors: ["permission denied reading archived_sessions/saved-thread"],
+      calls: ["thread/resume"],
+      outcome: "permission denied reading archived_sessions/saved-thread",
+    },
+    {
+      name: "a session still archived after unarchiving is not retried twice",
+      resumeErrors: ["session saved-thread is archived", "session saved-thread is archived"],
+      calls: ["thread/resume", "thread/unarchive", "thread/resume"],
+      outcome: "session saved-thread is archived",
+    },
+  ])("$name", ({ resumeErrors, calls: expectedCalls, outcome }) =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      let resumeAttempt = 0;
+      const opened = yield* openCodexThread({
+        client: {
+          request: () => Effect.die("An archived session must not start fresh"),
+          raw: {
+            request: (method: string) => {
+              calls.push(method);
+              if (method === "thread/unarchive") return Effect.succeed({});
+              const errorMessage = resumeErrors[resumeAttempt++];
+              return errorMessage === undefined
+                ? Effect.succeed(makeThreadOpenResponse("saved-thread"))
+                : Effect.fail(
+                    new CodexErrors.CodexAppServerRequestError({ code: -32603, errorMessage }),
+                  );
+            },
+          },
+        },
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "saved-thread",
+      }).pipe(
+        Effect.map((metadata) => metadata.thread.id),
+        Effect.catch((error) =>
+          Effect.succeed(isCodexAppServerRequestError(error) ? error.errorMessage : "?"),
+        ),
+      );
+
+      NodeAssert.deepStrictEqual(calls, expectedCalls);
+      NodeAssert.equal(opened, outcome);
+    }),
+  );
+
+  it.effect("propagates non-recoverable resume failures", () =>
+    Effect.gen(function* () {
+      const client = {
+        request: () => Effect.die("Non-recoverable resume failures must not start a fresh thread"),
+        raw: {
+          request: () =>
+            Effect.fail(
+              new CodexErrors.CodexAppServerRequestError({
+                code: -32603,
+                errorMessage: "timed out waiting for server",
+              }),
+            ),
+        },
+      };
+
+      const error = yield* openCodexThread({
+        client,
+        threadId: ThreadId.make("thread-1"),
+        runtimeMode: "full-access",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-5.3-codex",
+        serviceTier: undefined,
+        resumeThreadId: "stale-thread",
+      }).pipe(Effect.flip);
+
+      NodeAssert.ok(isCodexAppServerRequestError(error));
+      NodeAssert.equal(error.errorMessage, "timed out waiting for server");
+    }),
+  );
+});
+
+it.effect.each([undefined, "saved-thread"])(
+  "passes the selected context window to Codex thread configuration (%s)",
+  (resumeThreadId) =>
+    Effect.gen(function* () {
+      const calls: Array<{ method: string; payload: unknown }> = [];
+      yield* openCodexThread({
+        client: {
+          request: () => Effect.die("Unexpected typed request"),
+          raw: {
+            request: (method, payload) =>
+              Effect.sync(() => {
+                calls.push({ method, payload });
+                return {
+                  cwd: "/tmp/project",
+                  model: "gpt-6-luna",
+                  thread: { id: resumeThreadId ?? "native-thread" },
+                };
+              }),
+          },
+        },
+        threadId: ThreadId.make("app-thread"),
+        runtimeMode: "auto",
+        cwd: "/tmp/project",
+        requestedModel: "gpt-6-luna",
+        serviceTier: undefined,
+        resumeThreadId,
+        contextWindow: 872000,
+      });
+      NodeAssert.deepStrictEqual(calls, [
+        {
+          method: resumeThreadId ? "thread/resume" : "thread/start",
+          payload: {
+            cwd: "/tmp/project",
+            model: "gpt-6-luna",
+            approvalPolicy: "on-request",
+            sandbox: "workspace-write",
+            approvalsReviewer: "auto_review",
+            config: { model_context_window: 872000 },
+            ...(resumeThreadId
+              ? { threadId: resumeThreadId, excludeTurns: true }
+              : { experimentalRawEvents: true }),
+          },
+        },
+      ]);
+    }),
+);

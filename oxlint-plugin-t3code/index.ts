@@ -1,0 +1,64 @@
+import { definePlugin } from "@oxlint/plugins";
+
+import namespaceNodeImports from "./rules/namespace-node-imports.ts";
+import noArbitraryValues from "./rules/no-arbitrary-values.ts";
+import noDirectPermissionRule from "./rules/no-direct-permission-rule.ts";
+import noEnvironmentAsProject from "./rules/no-environment-as-project.ts";
+import noFailureToEmpty from "./rules/no-failure-to-empty.ts";
+import noGlobalProcessRuntime from "./rules/no-global-process-runtime.ts";
+import noHermesUnsupportedApis from "./rules/no-hermes-unsupported-apis.ts";
+import noInfiniteMotion from "./rules/no-infinite-motion.ts";
+import noInlineSchemaCompile from "./rules/no-inline-schema-compile.ts";
+import noLegacyNoticeApi from "./rules/no-legacy-notice-api.ts";
+import noLegacyNoticePolicy from "./rules/no-legacy-notice-policy.ts";
+import noLegacyVocabulary from "./rules/no-legacy-vocabulary.ts";
+import noManualEffectRuntimeInTests from "./rules/no-manual-effect-runtime-in-tests.ts";
+import noNativeTitleTooltip from "./rules/no-native-title-tooltip.ts";
+import noTestInLoop from "./rules/no-test-in-loop.ts";
+import noPlatformGlobals from "./rules/no-platform-globals.ts";
+import noRemoteDataInBrowserStorage from "./rules/no-remote-data-in-browser-storage.ts";
+import noRemoteIoOutsideDataLayer from "./rules/no-remote-io-outside-data-layer.ts";
+import noRetiredMechanism from "./rules/no-retired-mechanism.ts";
+import noRestyle from "./rules/no-restyle.ts";
+import noUnguardedStorageWrite from "./rules/no-unguarded-storage-write.ts";
+import noUnknownClasses from "./rules/no-unknown-classes.ts";
+import noThemeEscapeHatches from "./rules/no-theme-escape-hatches.ts";
+import requireStaticClasses from "./rules/require-static-classes.ts";
+import noUnscopedHas from "./rules/no-unscoped-has.ts";
+import preferCatchTags from "./rules/prefer-catch-tags.ts";
+import requireSuppressionReason from "./rules/require-suppression-reason.ts";
+
+export default definePlugin({
+  meta: {
+    name: "t3code",
+  },
+  rules: {
+    "namespace-node-imports": namespaceNodeImports,
+    "no-arbitrary-values": noArbitraryValues,
+    "no-direct-permission-rule": noDirectPermissionRule,
+    "no-environment-as-project": noEnvironmentAsProject,
+    "no-failure-to-empty": noFailureToEmpty,
+    "no-global-process-runtime": noGlobalProcessRuntime,
+    "no-hermes-unsupported-apis": noHermesUnsupportedApis,
+    "no-infinite-motion": noInfiniteMotion,
+    "no-inline-schema-compile": noInlineSchemaCompile,
+    "no-legacy-notice-api": noLegacyNoticeApi,
+    "no-legacy-notice-policy": noLegacyNoticePolicy,
+    "no-legacy-vocabulary": noLegacyVocabulary,
+    "no-manual-effect-runtime-in-tests": noManualEffectRuntimeInTests,
+    "no-native-title-tooltip": noNativeTitleTooltip,
+    "no-test-in-loop": noTestInLoop,
+    "no-platform-globals": noPlatformGlobals,
+    "no-remote-data-in-browser-storage": noRemoteDataInBrowserStorage,
+    "no-remote-io-outside-data-layer": noRemoteIoOutsideDataLayer,
+    "no-restyle": noRestyle,
+    "no-retired-mechanism": noRetiredMechanism,
+    "no-unknown-classes": noUnknownClasses,
+    "no-unguarded-storage-write": noUnguardedStorageWrite,
+    "no-theme-escape-hatches": noThemeEscapeHatches,
+    "require-static-classes": requireStaticClasses,
+    "no-unscoped-has": noUnscopedHas,
+    "require-suppression-reason": requireSuppressionReason,
+    "prefer-catch-tags": preferCatchTags,
+  },
+});

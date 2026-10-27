@@ -1,0 +1,26 @@
+[
+  {
+    "path": "apps/web/src/components/MateLockup.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> mate-lockup in \"mate-lockup\"",
+    "owner": "web-intake",
+    "reason": "declared in MateMark.css, the mark's own stylesheet, which the rule does not read (it reads index.css and its imports)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/MateMark.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> mate-mark in \"mate-mark\"",
+    "owner": "web-intake",
+    "reason": "declared in MateMark.css, the mark's own stylesheet, which the rule does not read (it reads index.css and its imports)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/MateMark.tsx",
+    "kind": "Literal",
+    "fingerprint": "<> mate-mark-sides in \"mate-mark-sides\"",
+    "owner": "web-intake",
+    "reason": "declared in MateMark.css, the mark's own stylesheet, which the rule does not read (it reads index.css and its imports)",
+    "expires": "never"
+  }
+]

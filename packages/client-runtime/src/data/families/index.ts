@@ -1,0 +1,306 @@
+import { agentUsageFamily } from "./agentUsage.ts";
+import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
+import { mateShellFamily } from "./mateConversation.ts";
+import { mateGitRemoteFamily } from "./mateGitRemote.ts";
+import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
+import { mateRepositoryFamily } from "./mateRepository.ts";
+import { mateThreadSearchFamily } from "./mateThreadSearch.ts";
+import { mateWorkflowScriptFamily } from "./mateWorkflowScript.ts";
+import { mateTraceDiagnosticsFamily } from "./mateTraceDiagnostics.ts";
+import { mateProcessDiagnosticsFamily } from "./mateProcessDiagnostics.ts";
+import { mateProcessResourceHistoryFamily } from "./mateProcessResourceHistory.ts";
+import { mateResourceTelemetryHistoryFamily } from "./mateResourceTelemetryHistory.ts";
+import { mateArchiveFamily } from "./mateArchive.ts";
+import { mateVcsFamily } from "./mateVcs.ts";
+import { hqGitCredentialsFamily, hqGitCredentialRequestFamily } from "./hqGitCredentials.ts";
+import { hqAiKeyRequestFamily, hqAiKeysFamily, hqIntakeRevealFamily } from "./hqAutomation.ts";
+import {
+  hqAppDiscordFamily,
+  hqAppSchedulesFamily,
+  hqAppTasksFamily,
+  hqAppSlackFamily,
+  hqAppWebhooksFamily,
+  hqDiscordFamily,
+  hqSlackFamily,
+  hqSlackManifestFamily,
+  hqSlackChannelsFamily,
+  hqTaskLimitsFamily,
+  hqGithubFamily,
+  hqTaskSourceRequestFamily,
+  hqWebhookRevealFamily,
+} from "./hqTaskSources.ts";
+import { mateAssetUrlFamily } from "./mateAssetUrl.ts";
+import { mateFilesystemFamily } from "./mateFilesystem.ts";
+import { matePullRequestFamily } from "./matePullRequest.ts";
+import { mateReviewFamily } from "./mateReview.ts";
+import { mateReviewFileFamily } from "./mateReviewFile.ts";
+import { mateWorkspaceFileFamily } from "./mateWorkspaceFile.ts";
+import { mateWorkspaceEntriesFamily } from "./mateWorkspaceEntries.ts";
+import { mateWorkspacePathsFamily } from "./mateWorkspacePaths.ts";
+import { mateWorkspaceContentsFamily } from "./mateWorkspaceContents.ts";
+import { mateMcpServersFamily } from "./mateMcpServers.ts";
+import { mateVcsRefsFamily } from "./mateVcsRefs.ts";
+import { hqGitBrowseFamily } from "./hqGitBrowse.ts";
+import { mateActionRequestFamily } from "./mateActionRequest.ts";
+import { MATE_FEED_FAMILIES } from "./mateFeeds.ts";
+import { mateUpdateAvailabilityFamily, mateUpdateRequestFamily } from "./mateUpdate.ts";
+import { mateSetupFamily } from "./mateSetup.ts";
+import { locationLatencyFamily } from "./locationLatency.ts";
+import { hqLifecycleFamily } from "./hqLifecycle.ts";
+import { mateImageFamily } from "./mateImage.ts";
+import { MATE_ENGINE_FAMILIES } from "./mateEngine.ts";
+/**
+ * The fact families this account holds. A new family is one module beside these and one line
+ * here; the reducer, the store and the Zerops adapter loop over this list.
+ *
+ * @module data/families
+ */
+import { databaseFamily, databaseSessionFamily } from "./database.ts";
+import { mateBrowserFrameFamily } from "./mateBrowserFrame.ts";
+import { mateMacViewFamily } from "./mateMacView.ts";
+import { hqChangeMetadataFamily } from "./hqChangeMetadata.ts";
+import { hqChangeCommitsFamily } from "./hqChangeCommits.ts";
+import type { Family, MemberState, ScopeKey } from "../model.ts";
+import {
+  hqAppFamily,
+  hqOrganizationFamily,
+  hqPersonFamily,
+  hqPressFamily,
+  hqStatusFamily,
+  placementFamily,
+} from "./hqNavigation.ts";
+import { hqKeptGitFamily } from "./hqKeptGit.ts";
+import { hqDiscussionFamily } from "./hqDiscussion.ts";
+import { hqAppDetailFamily } from "./hqAppDetail.ts";
+import { hqProtocolFamily } from "./hqProtocol.ts";
+import { hqPictureFamily } from "./hqPicture.ts";
+import { hqMateFamily } from "./hqMate.ts";
+import { mateHealthFamily } from "./mateHealth.ts";
+import { mateAttentionFamily } from "./mateAttention.ts";
+import { organizationBalanceFamily } from "./organizationBalance.ts";
+import { projectSpendFamily } from "./projectSpend.ts";
+import { organizationCreditFamily } from "./organizationCredit.ts";
+import { organizationLocationsFamily } from "./organizationLocations.ts";
+import { organizationUserFamily } from "./organizationUser.ts";
+import { organizationMembersFamily } from "./organizationMembers.ts";
+import { memberProjectRolesFamily } from "./memberProjectRoles.ts";
+import { hqVerdictFamily } from "./hqVerdict.ts";
+import { mateLinkFamily } from "./mateLink.ts";
+import { processFamily } from "./process.ts";
+import { projectFamily } from "./project.ts";
+import { versionFamily } from "./version.ts";
+import { projectAddonsFamily } from "./projectAddons.ts";
+import { publicPortRoutingFamily } from "./publicPortRouting.ts";
+import { publicRoutingFamily } from "./publicRouting.ts";
+import { serviceAgentsFamily } from "./serviceAgents.ts";
+import { mateVariablesFamily } from "./mateVariables.ts";
+import { projectVariablesFamily } from "./projectVariables.ts";
+import { serviceVariableFamily } from "./serviceVariables.ts";
+import { serviceFamily } from "./service.ts";
+import { usageFamily } from "./usage.ts";
+import { usageHistoryFamily } from "./usageHistory.ts";
+import type { AnyFamilySpec, DetailListing } from "./spec.ts";
+
+/** The registry, checked once at startup: a family, a scope name and an index name each once. */
+export function defineFamilies(
+  families: ReadonlyArray<AnyFamilySpec>,
+): ReadonlyArray<AnyFamilySpec> {
+  const seen = new Set<string>();
+  const once = (what: string) => {
+    if (seen.has(what)) throw new Error(`The data layer registers ${what} twice.`);
+    seen.add(what);
+  };
+  for (const spec of families) {
+    if (spec.sampled !== undefined && (spec.zerops !== undefined || spec.scope.demand !== "detail"))
+      throw new Error(`The sampled family ${spec.family} is read on demand, never registered.`);
+    once(`family ${spec.family}`);
+    once(`scope ${spec.scope.suffix}`);
+    for (const listing of spec.details ?? []) once(`scope ${listing.suffix}`);
+    for (const listing of spec.mateDetails ?? []) once(`scope ${listing.suffix}`);
+    for (const index of spec.indexes ?? []) once(`index ${index.name}`);
+  }
+  return families;
+}
+
+export const FAMILIES = defineFamilies([
+  agentUsageFamily,
+  mateShellFamily,
+  ...MATE_ENGINE_FAMILIES,
+  mateGitRemoteFamily,
+  mateRepositoryDiscoveryFamily,
+  mateRepositoryFamily,
+  mateThreadSearchFamily,
+  mateWorkflowScriptFamily,
+  mateTraceDiagnosticsFamily,
+  mateProcessDiagnosticsFamily,
+  mateProcessResourceHistoryFamily,
+  mateResourceTelemetryHistoryFamily,
+
+  mateArchiveFamily,
+  mateVcsFamily,
+  hqGitCredentialsFamily,
+  hqGitCredentialRequestFamily,
+  hqAiKeysFamily,
+  hqAiKeyRequestFamily,
+  hqIntakeRevealFamily,
+  hqSlackFamily,
+  hqSlackManifestFamily,
+  hqSlackChannelsFamily,
+  hqDiscordFamily,
+  hqTaskLimitsFamily,
+  hqGithubFamily,
+  hqAppSlackFamily,
+  hqAppDiscordFamily,
+  hqAppWebhooksFamily,
+  hqAppSchedulesFamily,
+  hqAppTasksFamily,
+  hqTaskSourceRequestFamily,
+  hqWebhookRevealFamily,
+  mateAssetUrlFamily,
+  mateFilesystemFamily,
+  matePullRequestFamily,
+  mateReviewFamily,
+  mateReviewFileFamily,
+  mateWorkspaceFileFamily,
+  mateWorkspaceEntriesFamily,
+  mateWorkspacePathsFamily,
+  mateWorkspaceContentsFamily,
+  mateMcpServersFamily,
+  mateVcsRefsFamily,
+
+  hqGitBrowseFamily,
+  hqAutoUpdatePolicyFamily,
+  mateSetupFamily,
+  ...Object.values(MATE_FEED_FAMILIES),
+  mateActionRequestFamily,
+  hqLifecycleFamily,
+  projectFamily,
+  processFamily,
+  versionFamily,
+  hqOrganizationFamily,
+  hqStatusFamily,
+  hqAppFamily,
+  placementFamily,
+  hqPersonFamily,
+  hqPressFamily,
+  hqKeptGitFamily,
+  hqMateFamily,
+  serviceFamily,
+  mateAttentionFamily,
+  mateHealthFamily,
+  hqDiscussionFamily,
+  usageFamily,
+  usageHistoryFamily,
+  organizationMembersFamily,
+  memberProjectRolesFamily,
+  organizationUserFamily,
+  organizationLocationsFamily,
+  organizationCreditFamily,
+  organizationBalanceFamily,
+  projectSpendFamily,
+  locationLatencyFamily,
+  serviceAgentsFamily,
+  publicRoutingFamily,
+  publicPortRoutingFamily,
+  projectAddonsFamily,
+  hqAppDetailFamily,
+  hqVerdictFamily,
+  mateVariablesFamily,
+  mateLinkFamily,
+  mateImageFamily,
+  hqProtocolFamily,
+  hqPictureFamily,
+  hqChangeCommitsFamily,
+  hqChangeMetadataFamily,
+  projectVariablesFamily,
+  serviceVariableFamily,
+  databaseFamily,
+  databaseSessionFamily,
+  mateBrowserFrameFamily,
+  mateMacViewFamily,
+  mateUpdateAvailabilityFamily,
+  mateUpdateRequestFamily,
+]);
+
+const byFamily = new Map<string, AnyFamilySpec>(FAMILIES.map((spec) => [spec.family, spec]));
+/** What a scope lists: its family, what leaving it means, and the detail listing it is, if one. */
+export interface ScopeListing {
+  readonly spec: AnyFamilySpec;
+  readonly leaving: MemberState;
+  readonly detail: DetailListing | null;
+}
+
+const bySuffix = new Map<string, ScopeListing>(
+  FAMILIES.flatMap((spec) => [
+    [spec.scope.suffix, { spec, leaving: spec.scope.leaving, detail: null }] as const,
+    ...(spec.details ?? []).map(
+      (detail) => [detail.suffix, { spec, leaving: detail.leaving, detail }] as const,
+    ),
+    // Its adapter reads it into the link's own scopes: no Zerops read describes it.
+    ...(spec.mateDetails ?? []).map(
+      (listing) => [listing.suffix, { spec, leaving: listing.leaving, detail: null }] as const,
+    ),
+  ]),
+);
+
+export function familySpec(family: Family): AnyFamilySpec {
+  const spec = byFamily.get(family);
+  if (spec === undefined) throw new Error(`No family ${family} is registered.`);
+  return spec;
+}
+
+/** What a scope lists. */
+export function scopeListing(scope: ScopeKey): ScopeListing {
+  const listing = bySuffix.get(scope.split(":")[2] ?? "");
+  if (listing === undefined) throw new Error(`No family lists the scope ${scope}.`);
+  return listing;
+}
+
+/**
+ * Whether a scope's last release forgets what it observed: a detail family's own scope, unless
+ * its family keeps it, or a sampled family's freshness answers a new demand from it.
+ */
+export function forgottenOnRelease(scope: ScopeKey): boolean {
+  const listing = bySuffix.get(scope.split(":")[2] ?? "");
+  if (listing?.detail !== null || listing.spec.scope.demand !== "detail") return false;
+  const { spec } = listing;
+  return (
+    spec.scope.released !== "kept" && (spec.sampled === undefined || spec.sampled.freshMs === 0)
+  );
+}
+
+/**
+ * How a stream is observed: a sampled family's scope is read, never pushed to — on a cadence, or
+ * once where time never ages it; the rest realtime.
+ */
+export function streamMode(key: string): "realtime" | "sampled" | "once" {
+  if (key.startsWith("mate:image/")) return "once";
+  if (
+    key.startsWith("mate:browser-") ||
+    key.startsWith("mate:mac-") ||
+    key.startsWith("mate:database-session-") ||
+    key.startsWith("mate:engine-")
+  )
+    return "realtime";
+  const declaredMode = bySuffix.get(key.split(":")[2] ?? "")?.spec.scope.mode;
+  if (declaredMode !== undefined) return declaredMode;
+  if (key.startsWith("mate:")) return "sampled";
+  const sampled = bySuffix.get(key.split(":")[2] ?? "")?.spec.sampled;
+  if (sampled === undefined) return "realtime";
+  return sampled.freshMs === null ? "once" : "sampled";
+}
+
+/** The family whose members a scope lists. */
+export const scopeSpec = (scope: ScopeKey): AnyFamilySpec => scopeListing(scope).spec;
+
+/**
+ * The family's own scope under the link a scope belongs to: where a member's `listed` is read,
+ * whichever listing delivered its value. A detail listing's members are listed in their family's
+ * own navigation scope.
+ */
+export function ownScopeOf(scope: ScopeKey): ScopeKey {
+  const { spec, detail } = scopeListing(scope);
+  if (detail === null) return scope;
+  const [source, linkOwner] = scope.split(":");
+  return `${source}:${linkOwner}:${spec.scope.suffix}` as ScopeKey;
+}

@@ -1,0 +1,640 @@
+import { describe, expect, it } from "vite-plus/test";
+import type {
+  ServerProvider,
+  ZeropsAgentAuth,
+  ZeropsAgentAuthSnapshot,
+  ZeropsAgentLoginState,
+} from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
+import { AsyncResult } from "effect/reactivity";
+
+import {
+  agentAuthAction,
+  agentAuthLabel,
+  agentLoginLabel,
+  agentLoginTerminalToFocus,
+  classifyAgentLogin,
+  classifyAgentRowLogin,
+  zeropsAgentAuthNeedsAttention,
+  zeropsAgentAuthView,
+  zeropsAgentSignInRequired,
+  zeropsOtherAgentReady,
+} from "./agentLogin.ts";
+import type { FailureReason, Known } from "./knowledge/index.ts";
+
+const agent = (
+  overrides: Partial<ZeropsAgentAuth> & { agentId: "claude-code" | "codex" },
+): ZeropsAgentAuth => ({
+  credPresent: false,
+  flagOAuth: false,
+  flagToken: false,
+  state: "not-authorized",
+  providerAuth: "unknown",
+  ...overrides,
+});
+
+// The platform flag decides (`@t3tools/shared/zeropsAgentAuth`); the agent
+// CLI's own check only turns a set flag into "sign in again".
+describe("agentAuthLabel / agentAuthAction", () => {
+  const REAUTH = "Its login no longer works — sign in again";
+  it.each([
+    ["not-authorized", "authenticated", "Not signed in", "sign-in"],
+    ["not-authorized", "unknown", "Not signed in", "sign-in"],
+    ["reconnect", "authenticated", "This container has no login for it — sign in again", "sign-in"],
+    ["reconnect", "unknown", "This container has no login for it — sign in again", "sign-in"],
+    ["authorized", "authenticated", "Authorized", "none"],
+    // Set flag, check not answered yet: signed in, nothing waits on it.
+    ["authorized", "unknown", "Authorized", "none"],
+    ["authorized", "unauthenticated", REAUTH, "sign-in"],
+    ["authorized-token", "authenticated", "Authorized (token)", "none"],
+    ["authorized-token", "unauthenticated", REAUTH, "sign-in"],
+    // Signed in in the container, the flag not written yet.
+    ["local-only", "authenticated", "Signed in — registering with Zerops…", "registering"],
+    ["local-only", "unknown", "Signed in — registering with Zerops…", "registering"],
+    ["local-only", "unauthenticated", REAUTH, "sign-in"],
+  ] as const)("%s + provider %s: %s", (state, providerAuth, label, action) => {
+    const a = agent({ agentId: "claude-code", state, credPresent: true, providerAuth });
+    expect(agentAuthLabel(a)).toBe(label);
+    expect(agentAuthAction(a)).toBe(action);
+  });
+});
+
+const loginState = (
+  overrides: Partial<ZeropsAgentLoginState> & { phase: ZeropsAgentLoginState["phase"] },
+): ZeropsAgentLoginState => ({
+  terminalId: "agent-login-claude-code",
+  startedAt: "2026-08-29T12:00:00.000Z" as unknown as ZeropsAgentLoginState["startedAt"],
+  startedBy: "user-a",
+  ...overrides,
+});
+
+describe("classifyAgentLogin / agentLoginLabel", () => {
+  it("no session: none", () => {
+    expect(classifyAgentLogin(undefined)).toEqual({ kind: "none" });
+  });
+
+  it("cancelled: treated the same as no session", () => {
+    expect(classifyAgentLogin(loginState({ phase: "cancelled" }))).toEqual({ kind: "none" });
+  });
+
+  it("starting / menu: their own kind, no url/code carried", () => {
+    expect(classifyAgentLogin(loginState({ phase: "starting" }))).toEqual({ kind: "starting" });
+    expect(classifyAgentLogin(loginState({ phase: "menu" }))).toEqual({ kind: "menu" });
+    expect(agentLoginLabel({ kind: "menu" })).toBe("Choosing “Claude account with subscription”…");
+  });
+
+  it("awaiting-browser: carries url and code through", () => {
+    const presentation = classifyAgentLogin(
+      loginState({
+        phase: "awaiting-browser",
+        url: "https://example.com/auth",
+        code: "ABCD-12345",
+      }),
+    );
+    expect(presentation).toEqual({
+      kind: "awaiting-browser",
+      url: "https://example.com/auth",
+      code: "ABCD-12345",
+    });
+  });
+
+  it("awaiting-code: its own kind, labeled to paste the code", () => {
+    expect(classifyAgentLogin(loginState({ phase: "awaiting-code" }))).toEqual({
+      kind: "awaiting-code",
+    });
+    expect(agentLoginLabel({ kind: "awaiting-code" })).toBe("Paste the code from your browser");
+  });
+
+  it("verifying-code: its own kind, labeled as the check it is", () => {
+    expect(classifyAgentLogin(loginState({ phase: "verifying-code" }))).toEqual({
+      kind: "verifying-code",
+    });
+    expect(agentLoginLabel({ kind: "verifying-code" })).toBe("Checking the code…");
+  });
+
+  it("succeeded: labeled Authorized", () => {
+    expect(classifyAgentLogin(loginState({ phase: "succeeded" }))).toEqual({ kind: "succeeded" });
+    expect(agentLoginLabel({ kind: "succeeded" })).toBe("Authorized");
+  });
+
+  it("failed: carries the message through, falls back when absent", () => {
+    expect(classifyAgentLogin(loginState({ phase: "failed", message: "nope" }))).toEqual({
+      kind: "failed",
+      message: "nope",
+    });
+    expect(agentLoginLabel({ kind: "failed", message: "nope" })).toBe("nope");
+    expect(agentLoginLabel({ kind: "failed", message: undefined })).toBe("Sign-in failed");
+  });
+});
+
+/**
+ * The pure half of the terminal-focus fix (S7 fix2 finding 3): the second
+ * login session's terminal tab opened unfocused, showing an empty shell
+ * while the card said "Waiting for you to finish signing in". Deriving
+ * "what terminal id should now be focused" from the `zerops.agentLogin.start`
+ * RPC result is the part `useAgentLogin.ts` (untested by convention) can
+ * delegate to something this file can pin.
+ */
+describe("classifyAgentRowLogin", () => {
+  const authorized = {
+    state: "authorized",
+    credPresent: true,
+    providerAuth: "authenticated",
+  } as const;
+  const signedOut = {
+    state: "not-authorized",
+    credPresent: false,
+    providerAuth: "unauthenticated",
+  } as const;
+
+  it.each([
+    {
+      name: "a login still running is the row's subject",
+      phase: "verifying-code",
+      auth: signedOut,
+      kind: "verifying-code",
+    },
+    {
+      name: "a success steps aside for the verified status",
+      phase: "succeeded",
+      auth: authorized,
+      kind: "none",
+    },
+    {
+      name: "a success does not outlive a sign-out",
+      phase: "succeeded",
+      auth: signedOut,
+      kind: "none",
+    },
+    {
+      name: "a success whose check has not answered is confirming, never signed out",
+      phase: "succeeded",
+      auth: { state: "not-authorized", credPresent: false, providerAuth: "unknown" },
+      kind: "confirming",
+    },
+    {
+      name: "a failure stays while the agent is still signed out",
+      phase: "failed",
+      auth: signedOut,
+      kind: "failed",
+    },
+    {
+      name: "a failure steps aside once the agent is signed in after all",
+      phase: "failed",
+      auth: authorized,
+      kind: "none",
+    },
+  ] as const)("$name", ({ phase, auth, kind }) => {
+    expect(
+      classifyAgentRowLogin(
+        agent({ agentId: "claude-code", ...auth, login: loginState({ phase }) }),
+      ).kind,
+    ).toBe(kind);
+  });
+});
+
+describe("agentLoginTerminalToFocus", () => {
+  it("a successful start focuses the session's own terminalId", () => {
+    const result = AsyncResult.success({ terminalId: "agent-login-claude-code" });
+    expect(agentLoginTerminalToFocus(result)).toBe("agent-login-claude-code");
+  });
+
+  it("a failed start focuses nothing", () => {
+    const result = AsyncResult.fail(new Error("boom"));
+    expect(agentLoginTerminalToFocus(result)).toBeUndefined();
+  });
+});
+
+const snapshot = (agents: ReadonlyArray<ZeropsAgentAuth>): ZeropsAgentAuthSnapshot => ({
+  available: true,
+  agents,
+});
+
+describe("zeropsAgentAuthNeedsAttention", () => {
+  it("is false when the feed is not available", () => {
+    expect(zeropsAgentAuthNeedsAttention({ available: false, agents: [] })).toBe(false);
+  });
+
+  it("is false when every agent is authorized and the provider agrees", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+          }),
+          agent({
+            agentId: "codex",
+            state: "authorized-token",
+            credPresent: true,
+            providerAuth: "authenticated",
+          }),
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("is true when at least one agent is not authorized", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+          }),
+          agent({ agentId: "codex", state: "reconnect" }),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  /**
+   * The case the addendum exists for: the local state matrix says
+   * "authorized", but the live provider check disagrees. That disagreement
+   * has to surface the card, or the user never learns they need to re-auth.
+   */
+  it("is true when the state matrix says authorized but the provider disagrees", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "claude-code",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "unauthenticated",
+          }),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  it("is true when an agent has an active login session even though its baseline state is authorized", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "codex",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+            login: loginState({ phase: "menu" }),
+          }),
+        ]),
+      ),
+    ).toBe(true);
+  });
+
+  // A succeeded session stays in the feed until the next start: it must not
+  // keep the card up once the agent is authorized, nor outlive a sign-out.
+  it("is false when the only login session present succeeded and the agent is authorized", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "codex",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+            login: loginState({ phase: "succeeded" }),
+          }),
+        ]),
+      ),
+    ).toBe(false);
+  });
+
+  it("is false when the only login session present is cancelled and everything else is authorized", () => {
+    expect(
+      zeropsAgentAuthNeedsAttention(
+        snapshot([
+          agent({
+            agentId: "codex",
+            state: "authorized",
+            credPresent: true,
+            providerAuth: "authenticated",
+            login: loginState({ phase: "cancelled" }),
+          }),
+        ]),
+      ),
+    ).toBe(false);
+  });
+});
+
+/**
+ * The band below the thread header asks for a sign-in only when the
+ * environment has no agent to run at all. One authorized agent is enough to
+ * work; the other agent's row stays the panel card's business.
+ */
+describe("zeropsAgentSignInRequired", () => {
+  const authorizedClaude = agent({
+    agentId: "claude-code",
+    state: "authorized",
+    credPresent: true,
+    providerAuth: "authenticated",
+  });
+
+  it.each([
+    {
+      name: "the feed is not available",
+      snapshot: { available: false, agents: [] },
+      expected: false,
+    },
+    { name: "the feed has not listed any agent yet", snapshot: snapshot([]), expected: false },
+    {
+      name: "one agent is authorized and the other is not signed in",
+      snapshot: snapshot([authorizedClaude, agent({ agentId: "codex", state: "not-authorized" })]),
+      expected: false,
+    },
+    {
+      name: "one agent is authorized and the other needs a reconnect",
+      snapshot: snapshot([authorizedClaude, agent({ agentId: "codex", state: "reconnect" })]),
+      expected: false,
+    },
+    {
+      name: "one agent is authorized and the other is mid-login",
+      snapshot: snapshot([
+        authorizedClaude,
+        agent({ agentId: "codex", state: "not-authorized", login: loginState({ phase: "menu" }) }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "the only agent's credential is present but the provider check has not answered",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "unknown",
+        }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "no agent is signed in",
+      snapshot: snapshot([
+        agent({ agentId: "claude-code", state: "not-authorized" }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "the only authorized-looking agent is rejected by its provider",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "unauthenticated",
+        }),
+        agent({ agentId: "codex", state: "reconnect" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "the only agent's credential landed while its code is still being checked",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "local-only",
+          credPresent: true,
+          providerAuth: "unknown",
+          login: loginState({ phase: "verifying-code" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+    {
+      name: "the only agent's login succeeded and is being registered",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "local-only",
+          credPresent: true,
+          providerAuth: "unknown",
+          login: loginState({ phase: "succeeded" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "an authorized agent signing in again stays signed in",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "authorized",
+          credPresent: true,
+          providerAuth: "authenticated",
+          login: loginState({ phase: "verifying-code" }),
+        }),
+      ]),
+      expected: false,
+    },
+    {
+      name: "no agent is signed in and one login is in flight",
+      snapshot: snapshot([
+        agent({
+          agentId: "claude-code",
+          state: "not-authorized",
+          login: loginState({ phase: "awaiting-browser" }),
+        }),
+        agent({ agentId: "codex", state: "not-authorized" }),
+      ]),
+      expected: true,
+    },
+  ])("is $expected when $name", ({ snapshot: input, expected }) => {
+    expect(zeropsAgentSignInRequired(input, [])).toBe(expected);
+  });
+
+  // Mate signs people in to Claude Code and Codex only; another agent the Mate can run is
+  // enough to work, and nothing asks for a sign-in then.
+  const nobodySignedIn = snapshot([
+    agent({ agentId: "claude-code", state: "not-authorized" }),
+    agent({ agentId: "codex", state: "not-authorized" }),
+  ]);
+  const provider = (
+    driver: string,
+    overrides: Partial<Pick<ServerProvider, "enabled" | "status" | "availability" | "auth">> = {},
+  ) =>
+    ({
+      driver,
+      enabled: true,
+      installed: true,
+      status: "ready",
+      auth: { status: "authenticated" },
+      models: [{ slug: "m" }],
+      ...overrides,
+    }) as unknown as ServerProvider;
+  it.each([
+    { name: "Cursor is ready", providers: [provider("cursor")], expected: false },
+    { name: "OpenCode is ready", providers: [provider("opencode")], expected: false },
+    { name: "Grok is ready", providers: [provider("grok")], expected: false },
+    { name: "Antigravity is ready", providers: [provider("antigravity")], expected: false },
+    {
+      name: "Cursor is ready beside a Claude Code the feed says is signed out",
+      providers: [provider("claudeAgent", { status: "error" }), provider("cursor")],
+      expected: false,
+    },
+    {
+      name: "only Claude Code reads ready — the feed, not its driver, speaks for it",
+      providers: [provider("claudeAgent"), provider("codex")],
+      expected: true,
+    },
+    {
+      name: "Cursor is not signed in",
+      providers: [provider("cursor", { status: "error" })],
+      expected: true,
+    },
+    {
+      name: "Cursor is still being probed",
+      providers: [provider("cursor", { status: "warning" })],
+      expected: true,
+    },
+    {
+      name: "Cursor is turned off",
+      providers: [provider("cursor", { enabled: false })],
+      expected: true,
+    },
+    {
+      name: "Cursor is unavailable on this server",
+      providers: [provider("cursor", { availability: "unavailable" })],
+      expected: true,
+    },
+    { name: "no provider is known yet", providers: undefined, expected: true },
+    // Grok and Cursor can say ready with a sign-in they could not read: no agent to run.
+    {
+      name: "Cursor says ready, its sign-in unknown",
+      providers: [provider("cursor", { auth: { status: "unknown" } })],
+      expected: true,
+    },
+  ])("is $expected with nobody signed in when $name", ({ providers, expected }) => {
+    expect(zeropsAgentSignInRequired(nobodySignedIn, providers)).toBe(expected);
+    expect(zeropsOtherAgentReady(providers)).toBe(!expected);
+  });
+});
+
+describe("zeropsAgentAuthView", () => {
+  const SNAPSHOT: ZeropsAgentAuthSnapshot = {
+    available: true,
+    agents: [agent({ agentId: "codex" })],
+  };
+  const failed = (failure: FailureReason): Known<ZeropsAgentAuthSnapshot> => ({
+    state: "failed",
+    failure,
+    atMs: 0,
+    attempt: 1,
+    retryAtMs: null,
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly read: Known<ZeropsAgentAuthSnapshot> | undefined;
+    readonly expected: ReturnType<typeof zeropsAgentAuthView>;
+  }>([
+    {
+      name: "an unread feed is no snapshot, and the region checks",
+      read: { state: "unread", waitingFor: null },
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "Checking which coding agents are signed in…",
+          afterMs: 400,
+          tone: "quiet",
+        },
+      },
+    },
+    {
+      name: "a feed waiting for its Mate says so",
+      read: { state: "unread", waitingFor: "mate-session" },
+      expected: {
+        snapshot: null,
+        unknown: { text: "Waiting for this Mate to connect…", afterMs: 0, tone: "quiet" },
+      },
+    },
+    {
+      name: "a failed read names its cause",
+      read: failed({ kind: "transport", detail: "closed" }),
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "Couldn't read which coding agents are signed in. This Mate didn't answer.",
+          afterMs: 0,
+          tone: "alert",
+        },
+      },
+    },
+    {
+      name: "an old Mate without the feed says it is too old",
+      read: failed({ kind: "unsupported", capability: "subscribeZeropsAgentAuth" }),
+      expected: {
+        snapshot: null,
+        unknown: {
+          text: "This Mate is too old for this. Updating it adds it.",
+          afterMs: 0,
+          tone: "alert",
+        },
+      },
+    },
+    {
+      name: "a known snapshot is kept while stale",
+      read: {
+        state: "known",
+        value: SNAPSHOT,
+        asOf: { ordinal: 1, atMs: 0 },
+        coverage: "complete",
+        freshness: {
+          kind: "stale",
+          reason: { kind: "source-recovering", retryAtMs: null },
+          sinceMs: 0,
+        },
+      },
+      expected: { snapshot: SNAPSHOT, unknown: null },
+    },
+    {
+      name: "no environment to read says nothing",
+      read: undefined,
+      expected: { snapshot: null, unknown: null },
+    },
+  ])("$name", ({ read, expected }) => {
+    expect(zeropsAgentAuthView(read)).toEqual(expected);
+  });
+});
+
+describe("ended login checks", () => {
+  it("offers Check again after an inconclusive verification, including a succeeded login", () => {
+    const row = agent({
+      agentId: "codex",
+      state: "local-only",
+      credPresent: true,
+      verification: { status: "unknown", reason: "The login check timed out.", checkedAt: 1 },
+    });
+    expect(agentAuthLabel(row)).toBe("Couldn't verify");
+    expect(agentAuthAction(row)).toBe("check-again");
+    expect(
+      classifyAgentRowLogin({
+        ...row,
+        login: {
+          phase: "succeeded",
+          terminalId: "auth-terminal",
+          startedAt: DateTime.makeUnsafe("2026-10-04T00:00:00Z"),
+        },
+      }),
+    ).toEqual({ kind: "none" });
+  });
+  it("keeps local success separate from a failed platform registration", () => {
+    const row = agent({
+      agentId: "codex",
+      state: "local-only",
+      credPresent: true,
+      providerAuth: "authenticated",
+      registration: { status: "failed", reason: "Could not write the flag." },
+    });
+    expect(agentAuthLabel(row)).toBe("Signed in — registration failed");
+    expect(agentAuthAction(row)).toBe("register-again");
+  });
+});

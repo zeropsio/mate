@@ -1,0 +1,200 @@
+// @vitest-environment happy-dom
+/**
+ * *Start the crew* pressed: what the setup says when the Mate refuses it, and that the press
+ * stays there to try again.
+ */
+import { CrewCommandError, EnvironmentId, ProviderInstanceId } from "@t3tools/contracts";
+import type { CrewCommand } from "@t3tools/contracts";
+import { parseBrief, renderCrewHome } from "@t3tools/shared/crewHome";
+import { crewFromProposal } from "@t3tools/shared/crewTemplates";
+import { act } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  CREW_FAILURE_SHOWN_MS,
+  crewFailureCauseOf,
+  type CrewFailureCause,
+  type UseCrewCommand,
+} from "~/zerops/crew/useCrewCommand";
+
+import { hasCrewSetupDraft } from "~/zerops/crew/crewSetupDraft";
+
+import { CrewSetup } from "./CrewSetup";
+
+// The signed-in account's storage, in memory: what a closed page leaves behind.
+const stored = vi.hoisted(() => new Map<string, string>());
+vi.mock("~/zerops/accountLifetime", async (original) => ({
+  ...(await original<typeof import("~/zerops/accountLifetime")>()),
+  accountLocalStorage: {
+    getItem: (key: string) => stored.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      stored.set(key, value);
+      return true;
+    },
+    removeItem: (key: string) => {
+      stored.delete(key);
+    },
+  },
+}));
+
+(globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let root: Root | undefined;
+afterEach(() => {
+  stored.clear();
+  act(() => root?.unmount());
+  root = undefined;
+  document.body.innerHTML = "";
+});
+
+const crew = {
+  ...crewFromProposal({
+    proposal: {
+      lead: { name: "Planner", part: "Plans the Shop Front and splits the work." },
+      builders: [{ name: "Orders", part: "Builds the orders page." }],
+    },
+    crew: "crew",
+    devHosts: ["appdev"],
+  }),
+  brief: parseBrief("Shop Front", "A shop front for Acme's teas.\n"),
+};
+
+const REFUSAL = new CrewCommandError({
+  reason: "database-undeclared",
+  detail:
+    "crew.yaml: orders works on appdev, which reaches a database: give it its own env: or say database: shared.",
+});
+
+/** The setup over `crew`, whose Mate refuses the first Start as `REFUSAL`; every command sent. */
+function setUp(
+  written: Array<unknown> = [],
+  onClose: () => void = () => undefined,
+): Array<CrewCommand> {
+  const sent: Array<CrewCommand> = [];
+  let failure: CrewFailureCause | null = null;
+  const commands: UseCrewCommand = {
+    files: {
+      state: "known",
+      value: { files: renderCrewHome(crew) },
+      asOf: { ordinal: 1, atMs: 0 },
+      coverage: "complete",
+      freshness: { kind: "settled" },
+    },
+    send: async (command) => {
+      sent.push(command);
+      failure = sent.length === 1 ? crewFailureCauseOf(REFUSAL) : null;
+      return failure === null ? { _tag: "done" } : null;
+    },
+    readFiles: async () => null,
+    writeFiles: async (files) => {
+      written.push(files);
+      return true;
+    },
+    pending: false,
+    isPending: () => false,
+    error: null,
+    errorAt: () => null,
+    lastFailure: () => failure,
+    clearError: () => undefined,
+  };
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  act(() =>
+    root!.render(
+      <CrewSetup
+        applied={false}
+        commands={commands}
+        crewmates={[]}
+        devHosts={[{ host: "appdev", database: null }]}
+        environmentId={EnvironmentId.make("environment-acme")}
+        hosts={[]}
+        mate={{ name: "Nova", tint: "amber" }}
+        onAskPorts={() => undefined}
+        onClose={onClose}
+        onEditCrewmate={() => undefined}
+        proposeWith={{
+          kind: "ready",
+          modelSelection: {
+            instanceId: ProviderInstanceId.make("claude"),
+            model: "claude-sonnet-4-5",
+          },
+        }}
+      />,
+    ),
+  );
+  return sent;
+}
+
+const startPress = () => {
+  const button = [...document.querySelectorAll("button")].find(
+    (candidate) => candidate.textContent?.trim() === "Start the crew",
+  );
+  if (button === undefined) throw new Error("no Start the crew press");
+  return button;
+};
+const foot = () => document.querySelector(".crew-view-foot")?.textContent ?? "";
+
+describe("CrewSetup's Start", () => {
+  it("a refused start says why beside Start and lets it be pressed again", async () => {
+    const sent = setUp();
+
+    await act(async () => startPress().click());
+    expect(sent).toEqual([{ _tag: "apply" }]);
+    expect(foot()).toContain(
+      "The crew didn't start: a builder works on a service with a database and doesn't say whether it shares it.",
+    );
+    expect(document.querySelector("[role=alert]")?.textContent).toContain("didn't start");
+    expect(startPress().disabled).toBe(false);
+
+    await act(async () => startPress().click());
+    expect(sent).toEqual([{ _tag: "apply" }, { _tag: "apply" }]);
+    expect(foot()).not.toContain("didn't start");
+  });
+
+  it("a refused start's words stay, in plain words, until the goal is edited", async () => {
+    setUp();
+    await act(async () => startPress().click());
+    vi.useFakeTimers();
+    try {
+      act(() => vi.advanceTimersByTime(CREW_FAILURE_SHOWN_MS * 3));
+    } finally {
+      vi.useRealTimers();
+    }
+    expect(foot()).toContain("The crew didn't start:");
+    // The engine's crew.yaml words are folded under Details, never the line itself.
+    expect(document.querySelector("[role=alert]")?.textContent).not.toContain("crew.yaml");
+
+    const goal = document.querySelector("textarea")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      setValue.call(goal, "A shop front for Acme's teas, shipped weekly.");
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(foot()).not.toContain("didn't start");
+  });
+
+  it("closing the Crew page keeps the crew draft for when it opens again", () => {
+    const written: Array<unknown> = [];
+    let closed = 0;
+    setUp(written, () => (closed += 1));
+    const goal = document.querySelector("textarea")!;
+    const setValue = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!;
+    act(() => {
+      setValue.call(goal, "A shop front for Acme's teas and their tea club.");
+      goal.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    const close = document.querySelector<HTMLButtonElement>('[aria-label="Close the setup"]');
+    if (close === null) throw new Error("no Close press");
+    act(() => close.click());
+    act(() => root?.unmount());
+    root = undefined;
+
+    expect(closed).toBe(1);
+    // Only Drop the draft empties the crew home; closing writes nothing over it.
+    expect(written).toEqual([]);
+    expect(hasCrewSetupDraft(EnvironmentId.make("environment-acme"))).toBe(true);
+  });
+});

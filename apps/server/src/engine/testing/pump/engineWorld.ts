@@ -1,0 +1,425 @@
+// @effect-diagnostics nodeBuiltinImport:off preferSchemaOverJson:off unsafeEffectTypeAssertion:off - a test harness: a database file, rows read back plainly, one context per life.
+/**
+ * The running engine for end-to-end tests: the live layer (store, actors, outbox, handlers, live
+ * plane, pump) on a SQLite file, over a scripted ProviderService. A life is one process: `boot` builds the layers and starts the
+ * engine, `shutdown` closes them as a graceful stop does, `crash` kills every driver process
+ * first, `kill` leaves the file as it was the instant the server died; the next `boot` is the
+ * restart, on the same file, with drivers that hold nothing.
+ *
+ * Time is the test clock: `settle` lets every fiber run to its next wait, `advance` moves the
+ * clock (wakes come due) and settles.
+ */
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
+
+import * as NodeServices from "@effect/platform-node/NodeServices";
+
+import * as Context from "effect/Context";
+import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
+import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
+import * as Layer from "effect/Layer";
+import * as Scope from "effect/Scope";
+import * as SqlClient from "effect/sql/SqlClient";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import * as TestClock from "effect/testing/TestClock";
+import {
+  CommandId,
+  ConversationId,
+  type Principal,
+  type RunTrigger,
+  type RunEnd,
+  type RunId,
+  type RunState,
+} from "@t3tools/contracts";
+
+import * as ServerConfigModule from "../../../config.ts";
+import * as NodeSqliteClient from "../../../persistence/NodeSqliteClient.ts";
+import type { BridgeDriver } from "../../bridge/spi3.ts";
+import { Conversations } from "../../Conversations.ts";
+import type { Command } from "../../domain/command.ts";
+import { liveEngineLayer } from "../../live.ts";
+import { LiveBus } from "../../LiveBus.ts";
+import { MateEngine } from "../../MateEngine.ts";
+import {
+  AgentWorkspace,
+  HandedOverResume,
+  MessagePictures,
+  ProviderUsageFeed,
+  RestartEvidence,
+  RunAdmission,
+  RunRefused,
+  WorkspaceUnavailable,
+  type InstanceUsage,
+} from "../../ports.ts";
+import { providerThreadOf, TurnPump } from "../../pump/TurnPump.ts";
+import { turnPrincipalOf } from "../../../zerops/engineAdapters.ts";
+import { principalUserId } from "../../../zerops/ZeropsTurnAdmission.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "../../../zerops/zeropsSubject.ts";
+import {
+  makeScriptedProvider,
+  scriptedProviderLayer,
+  type ScriptedProvider,
+} from "./scriptedProvider.ts";
+
+export const DRIVERS: ReadonlyArray<BridgeDriver> = [
+  "claudeAgent",
+  "codex",
+  "opencode",
+  "cursor",
+  "grok",
+  "antigravity",
+];
+
+/** A person as the server names them: their Zerops session's subject. */
+export const ana: Principal = { kind: "person", subject: `${ZEROPS_SUBJECT_PREFIX}ana` };
+export const mate = ConversationId.make("mate");
+
+export interface RunRow {
+  readonly state: RunState;
+  readonly end: RunEnd | null;
+  readonly source: string | null;
+  readonly joins: string | null;
+  readonly trigger: { readonly kind: string; readonly cause?: string };
+  readonly unresponsiveSince: number | null;
+}
+
+export interface WorldOptions {
+  readonly driver: BridgeDriver;
+  /** Admission refuses every run with these words, or the principals this names. */
+  readonly refuse?: string | ((principal: Principal) => string | undefined);
+  /** Admission itself breaks (a defect) with these words. */
+  readonly admissionDies?: string;
+  /** The workspace's first this many reads cannot tell it. */
+  readonly workspaceUnavailable?: number;
+  /** What another instance of the driver left on the thread; nothing by default. */
+  readonly handedOver?: (input: {
+    readonly thread: string;
+    readonly instanceId: string;
+  }) => unknown;
+  /** The server's config, so a call's pictures and pages reach an asset store; none by default. */
+  readonly assets?: boolean;
+}
+
+let lives = 0;
+
+export const makeEngineWorld = (options: WorldOptions) =>
+  Effect.gen(function* () {
+    const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "engine-pump-"));
+    const filename = NodePath.join(dir, "state.sqlite");
+    let unavailable = options.workspaceUnavailable ?? 0;
+    /** The next admission waits on `gate` before it answers. */
+    const admission: { gate: Deferred.Deferred<void> | undefined } = { gate: undefined };
+    const thread = providerThreadOf(mate) as string;
+    let provider: ScriptedProvider = yield* makeScriptedProvider({ driver: options.driver });
+    let life: Scope.Closeable | undefined;
+    let context: Context.Context<never> = Context.empty();
+    // What the providers report of their accounts' usage: kept across lives, as the registry is.
+    const usage = yield* SubscriptionRef.make<ReadonlyArray<InstanceUsage>>([]);
+
+    const admit = (principal: Principal, trigger: RunTrigger) => {
+      if (options.admissionDies !== undefined) {
+        return Effect.die(new Error(options.admissionDies));
+      }
+      const refusal =
+        typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
+      if (refusal !== undefined) return Effect.fail(new RunRefused({ message: refusal }));
+      // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
+      // session by its Zerops subject, a wake by the bare Zerops user id it continues.
+      const acting = turnPrincipalOf(principal, trigger);
+      const user = acting === null ? null : (principalUserId(acting) ?? null);
+      return user !== null && /^[^:]+$/.test(user)
+        ? Effect.void
+        : Effect.fail(
+            new RunRefused({ message: `No Zerops user this run acts for: ${String(user)}.` }),
+          );
+    };
+
+    const ports = Layer.mergeAll(
+      Layer.succeed(
+        RunAdmission,
+        RunAdmission.of({
+          admit: ({ principal, trigger }) => {
+            const gate = admission.gate;
+            admission.gate = undefined;
+            const answer = admit(principal, trigger);
+            return gate === undefined ? answer : Deferred.await(gate).pipe(Effect.andThen(answer));
+          },
+        }),
+      ),
+      Layer.succeed(
+        RestartEvidence,
+        RestartEvidence.of({
+          read: Effect.succeed(null),
+          explain: (_facts, window) => ({
+            cause: "restarted",
+            at: DateTime.formatIso(DateTime.makeUnsafe(window.bootAt)),
+          }),
+        }),
+      ),
+      Layer.succeed(
+        AgentWorkspace,
+        AgentWorkspace.of({
+          of: () =>
+            unavailable-- > 0
+              ? Effect.fail(new WorkspaceUnavailable({ message: "The copy cannot be read now." }))
+              : Effect.succeed({ cwd: dir, runtimeMode: "full-access" }),
+        }),
+      ),
+      Layer.succeed(
+        HandedOverResume,
+        HandedOverResume.of({ of: (input) => Effect.succeed(options.handedOver?.(input)) }),
+      ),
+      Layer.succeed(
+        ProviderUsageFeed,
+        ProviderUsageFeed.of({ reports: SubscriptionRef.changes(usage) }),
+      ),
+      // Pictures pass as they came: the claim is the server's (`engineAdapters.ts`).
+      Layer.succeed(
+        MessagePictures,
+        MessagePictures.of({
+          claim: (_conversation, attachments) => Effect.succeed(attachments),
+          release: () => Effect.void,
+        }),
+      ),
+    );
+
+    const config = options.assets
+      ? ServerConfigModule.layerTest(dir, { prefix: "engine-assets-" }).pipe(
+          Layer.provide(NodeServices.layer),
+        )
+      : Layer.empty;
+    const lifeLayer = (scripted: ScriptedProvider) =>
+      liveEngineLayer({ worker: { pollMillis: 1_000 } }).pipe(
+        Layer.provideMerge(
+          Layer.mergeAll(
+            scriptedProviderLayer(scripted),
+            ports,
+            config,
+            NodeSqliteClient.layer({ filename }),
+          ),
+        ),
+      );
+
+    /** Lets every fiber run until it waits on something only time or a call can give. */
+    const settle = Effect.gen(function* () {
+      for (let i = 0; i < 200; i++) yield* Effect.yieldNow;
+      yield* TestClock.adjust(0);
+      for (let i = 0; i < 200; i++) yield* Effect.yieldNow;
+    });
+
+    const within = <A, E, R>(effect: Effect.Effect<A, E, R>): Effect.Effect<A, E> =>
+      Effect.provide(effect as Effect.Effect<A, E>, context);
+
+    const boot = Effect.gen(function* () {
+      lives += 1;
+      life = yield* Scope.make();
+      context = (yield* Layer.buildWithScope(lifeLayer(provider), life)) as Context.Context<never>;
+      yield* within(
+        Effect.gen(function* () {
+          const engine = yield* MateEngine;
+          yield* Scope.provide(engine.start(), life!);
+        }),
+      );
+      yield* settle;
+    });
+
+    const shutdown = Effect.gen(function* () {
+      if (life !== undefined) yield* Scope.close(life, Exit.void);
+      life = undefined;
+    });
+    // A world leaves nothing behind: its last life ends and its file goes.
+    yield* Effect.addFinalizer(() =>
+      shutdown.pipe(
+        Effect.andThen(Effect.sync(() => NodeFS.rmSync(dir, { recursive: true, force: true }))),
+      ),
+    );
+
+    /** The server dies: every driver process dies with it, nothing in memory survives. */
+    const crash = Effect.gen(function* () {
+      for (const session of provider.sessions.values()) session.alive = false;
+      yield* shutdown;
+      provider = yield* makeScriptedProvider({ driver: options.driver });
+    });
+
+    /**
+     * The server is killed (SIGKILL, a container restart): the file holds what was committed at
+     * that instant and nothing of a stop — no finalizer of it writes.
+     */
+    const kill = Effect.gen(function* () {
+      const files = NodeFS.readdirSync(dir).filter((name) => name.startsWith("state.sqlite"));
+      const kept = new Map(
+        files.map((name) => [name, NodeFS.readFileSync(NodePath.join(dir, name))] as const),
+      );
+      yield* crash;
+      for (const name of NodeFS.readdirSync(dir))
+        if (name.startsWith("state.sqlite")) NodeFS.rmSync(NodePath.join(dir, name));
+      for (const [name, bytes] of kept) NodeFS.writeFileSync(NodePath.join(dir, name), bytes);
+    });
+
+    let commands = 0;
+    const tell = (command: Command, by: Principal = ana, conversation: ConversationId = mate) =>
+      within(
+        Effect.gen(function* () {
+          const conversations = yield* Conversations;
+          const result = yield* conversations.tell({
+            commandId: CommandId.make(`test-${lives}-${++commands}`),
+            conversationId: conversation,
+            principal: by,
+            command,
+          });
+          yield* settle;
+          return result;
+        }),
+      );
+
+    const run = (id: RunId) =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{
+            readonly state: RunState;
+            readonly end_json: string | null;
+            readonly end_source: string | null;
+            readonly joins: string | null;
+            readonly trigger_json: string;
+            readonly unresponsive_since: number | null;
+          }>`SELECT state, end_json, end_source, joins, trigger_json, unresponsive_since
+             FROM engine_run WHERE run_id = ${id}`;
+          const row = rows[0];
+          if (row === undefined) return undefined;
+          return {
+            state: row.state,
+            end: row.end_json === null ? null : (JSON.parse(row.end_json) as RunEnd),
+            source: row.end_source,
+            joins: row.joins,
+            trigger: JSON.parse(row.trigger_json) as RunRow["trigger"],
+            unresponsiveSince: row.unresponsive_since,
+          } satisfies RunRow;
+        }),
+      );
+
+    const runs = Effect.suspend(() =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{ readonly run_id: string; readonly state: string }>`
+          SELECT run_id, state FROM engine_run ORDER BY ordinal
+        `;
+        }),
+      ),
+    );
+
+    const items = (runId: RunId) =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          const rows = yield* sql<{
+            readonly item_id: string;
+            readonly kind: string;
+            readonly state: string;
+            readonly body_json: string;
+            readonly by_json: string;
+          }>`
+            SELECT item_id, kind, state, body_json, by_json FROM engine_item
+            WHERE run_id = ${runId} ORDER BY opened_seq
+          `;
+          return rows.map((row) => ({
+            ...row,
+            body: JSON.parse(row.body_json) as Record<string, unknown>,
+            by: JSON.parse(row.by_json) as Record<string, unknown>,
+          }));
+        }),
+      );
+
+    const sessionsOpen = Effect.suspend(() =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            readonly session_id: string;
+            readonly state: string;
+            readonly close_reason: string | null;
+          }>`
+          SELECT session_id, state, close_reason FROM engine_session ORDER BY opened_at, session_id
+        `;
+        }),
+      ),
+    );
+
+    const requests = Effect.suspend(() =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            readonly request_id: string;
+            readonly state: string;
+            readonly run_id: string;
+          }>`
+            SELECT request_id, state, run_id FROM engine_request ORDER BY seq
+          `;
+        }),
+      ),
+    );
+
+    const wakes = Effect.suspend(() =>
+      within(
+        Effect.gen(function* () {
+          const sql = yield* SqlClient.SqlClient;
+          return yield* sql<{
+            readonly kind: string;
+            readonly due_at: number;
+            readonly state: string;
+          }>`
+          SELECT kind, due_at, state FROM engine_wake ORDER BY due_at
+        `;
+        }),
+      ),
+    );
+
+    return {
+      dir,
+      thread,
+      admission,
+      get provider() {
+        return provider;
+      },
+      boot,
+      shutdown,
+      crash,
+      kill,
+      settle,
+      advance: (millis: number) =>
+        Effect.gen(function* () {
+          yield* TestClock.adjust(millis);
+          yield* settle;
+        }),
+      tell,
+      /** The providers report their accounts' usage now, then everything settles. */
+      reportUsage: (reports: ReadonlyArray<InstanceUsage>) =>
+        Effect.andThen(SubscriptionRef.set(usage, reports), settle),
+      run,
+      runs,
+      items,
+      sessionsOpen,
+      requests,
+      wakes,
+      within,
+      engine: Effect.suspend(() => within(Effect.map(MateEngine, (engine) => engine))),
+      pump: Effect.suspend(() => within(Effect.map(TurnPump, (pump) => pump))),
+      live: Effect.suspend(() => within(Effect.map(LiveBus, (live) => live))),
+      /** The agent plays out a step on the conversation's thread, then everything settles. */
+      agent: <A, E>(
+        act: (scripted: ScriptedProvider["agent"], thread: string) => Effect.Effect<A, E>,
+      ) =>
+        Effect.gen(function* () {
+          const result = yield* act(provider.agent, thread);
+          yield* settle;
+          return result;
+        }),
+    };
+  });
+
+export type EngineWorld = Effect.Success<ReturnType<typeof makeEngineWorld>>;

@@ -1,0 +1,315 @@
+import {
+  ClientPresentation,
+  EnvironmentOwnedDataCleanup,
+  MateTicketIssuer,
+  PlatformConnectionSource,
+  PrimaryEnvironmentAuth,
+  RelayDeviceIdentity,
+  SshEnvironmentGateway,
+} from "@t3tools/client-runtime/platform";
+import {
+  ConnectionBlockedError,
+  Connectivity,
+  MatePresence,
+  type PlatformConnectionRegistration,
+  Wakeups,
+} from "@t3tools/client-runtime/connection";
+import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
+import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
+import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
+import * as Context from "effect/Context";
+import * as Data from "effect/Data";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
+import * as Stream from "effect/Stream";
+
+import { APP_VERSION } from "../branding";
+import { resolveInitialServerAuthGateState } from "../environments/primary";
+import type { AuthGateState } from "../environments/primary/auth";
+import {
+  readPrimaryEnvironmentTarget,
+  type PrimaryEnvironmentTarget,
+} from "../environments/primary/target";
+import { isHostedStaticApp } from "../hostedPairing";
+import { browserPlatformSignals } from "../zerops/browserSignals";
+import { mateTicketIssuer } from "@t3tools/client-runtime/data";
+import type { HqApi } from "@t3tools/client-runtime/zerops/hq";
+import { appBasePath } from "../basePath";
+import { environmentIdFromAddress } from "../routes/-environmentRoute";
+import { acknowledgeRpcRequest, trackRpcRequestSent } from "../rpc/requestLatencyState";
+import { connectionStorageLayer } from "./storage";
+import { clientPresentationMetadata } from "./clientMetadata";
+
+let nextObservedRpcRequestId = 0;
+
+function currentNetworkStatus(): "unknown" | "offline" | "online" {
+  if (typeof navigator === "undefined") {
+    return "unknown";
+  }
+  return navigator.onLine ? "online" : "offline";
+}
+
+const connectivityLayer = Connectivity.layer({
+  status: Effect.sync(currentNetworkStatus),
+  changes: Stream.callback((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        const online = () => Queue.offerUnsafe(queue, "online");
+        const offline = () => Queue.offerUnsafe(queue, "offline");
+        window.addEventListener("online", online);
+        window.addEventListener("offline", offline);
+        return { online, offline };
+      }),
+      ({ online, offline }) =>
+        Effect.sync(() => {
+          window.removeEventListener("online", online);
+          window.removeEventListener("offline", offline);
+        }),
+    ).pipe(Effect.asVoid),
+  ),
+});
+
+/**
+ * The connection wakeup a tab signal stands for, or `null` when it means
+ * nothing to the connection layer. The connection hears the same coalesced
+ * visible wake as the account (DESIGN §6.4): focus back from another
+ * application after 30 s is one, a click into an iframe and back or a short
+ * tab switch is not.
+ */
+export function connectionWakeupForSignal(signal: PlatformSignal): Wakeups.ConnectionWakeup | null {
+  switch (signal.type) {
+    case "restored":
+      // A back/forward cache restore comes back with a socket the browser
+      // already killed: replace the lease instead of probing it.
+      return "application-active-reconnect";
+    case "wake":
+      // The restore's own wake follows its `restored`, which already replaced the lease.
+      return signal.visible && signal.cause !== "pageshow" ? "application-active" : null;
+    case "visibility":
+    case "network":
+      return null;
+  }
+}
+
+/** The tab's signals for the connection layer, made when a connection first listens. */
+let tabSignals: PlatformSignals | null = null;
+
+const wakeupsLayer = Wakeups.layer({
+  changes: Stream.callback<Wakeups.ConnectionWakeup>((queue) =>
+    Effect.acquireRelease(
+      Effect.sync(() => {
+        tabSignals ??= browserPlatformSignals(document, window);
+        return tabSignals.listen((signal) => {
+          const wakeup = connectionWakeupForSignal(signal);
+          if (wakeup !== null) Queue.offerUnsafe(queue, wakeup);
+        });
+      }),
+      (unlisten) => Effect.sync(unlisten),
+    ).pipe(Effect.asVoid),
+  ),
+});
+
+function clientMetadata() {
+  return clientPresentationMetadata({
+    appVersion: APP_VERSION,
+    hosted: isHostedStaticApp(),
+    identity: {
+      userAgent: navigator.userAgent,
+      platform: navigator.platform,
+      maxTouchPoints: navigator.maxTouchPoints,
+    },
+    desktopBridge: window.desktopBridge,
+  });
+}
+
+/** The open account's HQ API per organisation, for Mate tickets; none while no account is open. */
+let mateTicketHq: (orgId: string) => Pick<HqApi, "mateTicket"> | null = () => null;
+
+/** Names where Mate tickets are asked for (`zerops/mateTickets.ts`), until the returned reset. */
+export function setMateTicketHq(hqOf: typeof mateTicketHq): () => void {
+  mateTicketHq = hqOf;
+  return () => {
+    if (mateTicketHq === hqOf) mateTicketHq = () => null;
+  };
+}
+
+const SSH_UNSUPPORTED_DETAIL =
+  "SSH environments are not available in this client — connect to a Zerops environment instead.";
+
+const capabilitiesLayer = Layer.effectContext(
+  Effect.sync(() => {
+    const presentation = ClientPresentation.of({
+      metadata: clientMetadata(),
+      scopes: AuthZeropsClientScopes,
+    });
+    const identity = RelayDeviceIdentity.of({
+      deviceId: Effect.succeedNone,
+    });
+    // No client-side source ever mints a bearer credential for the primary
+    // environment (the desktop app's local backend, the sole former source,
+    // is gone); its auth, if any, is handled by the connection/pairing flow.
+    const primaryAuth = PrimaryEnvironmentAuth.of({
+      bearerToken: Effect.succeed(Option.none()),
+    });
+    const ssh = SshEnvironmentGateway.of({
+      provision: () =>
+        Effect.fail(
+          new ConnectionBlockedError({ reason: "unsupported", detail: SSH_UNSUPPORTED_DETAIL }),
+        ),
+      prepare: () =>
+        Effect.fail(
+          new ConnectionBlockedError({ reason: "unsupported", detail: SSH_UNSUPPORTED_DETAIL }),
+        ),
+      disconnect: () => Effect.void,
+    });
+
+    return Context.make(PrimaryEnvironmentAuth, primaryAuth).pipe(
+      Context.add(RelayDeviceIdentity, identity),
+      Context.add(ClientPresentation, presentation),
+      Context.add(SshEnvironmentGateway, ssh),
+      Context.add(
+        MateTicketIssuer,
+        mateTicketIssuer((orgId) => mateTicketHq(orgId)),
+      ),
+      Context.add(MatePresence, {
+        // The Mate on screen is the one the address names.
+        onScreen: (environmentId) =>
+          environmentIdFromAddress(window.location.pathname, appBasePath()) === environmentId,
+        hidden: () => document.visibilityState === "hidden",
+      }),
+    );
+  }),
+);
+
+interface CachedPlatformRegistration {
+  readonly signature: string;
+  readonly registration: PlatformConnectionRegistration;
+  readonly refreshAtEpochMs?: number;
+}
+
+export type PrimaryEnvironmentTargetRead =
+  | {
+      readonly _tag: "Success";
+      readonly target: PrimaryEnvironmentTarget | null;
+    }
+  | {
+      readonly _tag: "Failure";
+      readonly cause: unknown;
+    };
+
+export function readPrimaryEnvironmentTargetResult(
+  readTarget: () => PrimaryEnvironmentTarget | null = readPrimaryEnvironmentTarget,
+): PrimaryEnvironmentTargetRead {
+  try {
+    return { _tag: "Success", target: readTarget() };
+  } catch (cause) {
+    return { _tag: "Failure", cause };
+  }
+}
+
+export function primaryRegistrationToRetainAfterTopologyRead(
+  previous: ReadonlyMap<string, CachedPlatformRegistration>,
+  topologyRead: PrimaryEnvironmentTargetRead,
+): CachedPlatformRegistration | undefined {
+  return topologyRead._tag === "Failure" ? previous.get(PRIMARY_LOCAL_ENVIRONMENT_ID) : undefined;
+}
+
+export function canReuseCachedPlatformRegistration(
+  cached: CachedPlatformRegistration,
+  signature: string,
+  nowEpochMs: number,
+): boolean {
+  return (
+    cached.signature === signature &&
+    (cached.refreshAtEpochMs === undefined || nowEpochMs < cached.refreshAtEpochMs)
+  );
+}
+
+/** A Zerops door authenticates its own origin with the bearer registration it mints. */
+export function primaryPlatformRegistrationStream(
+  gate: AuthGateState | null,
+  registrations: Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>>,
+): Stream.Stream<ReadonlyArray<PlatformConnectionRegistration>> {
+  return gate !== null &&
+    gate.status === "requires-auth" &&
+    gate.auth.bootstrapMethods.includes("zerops-throwaway")
+    ? registrations.pipe(
+        Stream.map((current) =>
+          current.filter((registration) => registration._tag !== "PrimaryConnectionRegistration"),
+        ),
+      )
+    : registrations;
+}
+
+class PrimaryPlatformAuthGateReadError extends Data.TaggedError(
+  "PrimaryPlatformAuthGateReadError",
+)<{
+  readonly cause: unknown;
+}> {}
+
+export function readPrimaryPlatformAuthGate(
+  readGate: () => Promise<AuthGateState> = resolveInitialServerAuthGateState,
+): Effect.Effect<AuthGateState | null> {
+  return Effect.tryPromise({
+    try: readGate,
+    catch: (cause) => new PrimaryPlatformAuthGateReadError({ cause }),
+  }).pipe(
+    Effect.catch((error) =>
+      Effect.logWarning("Could not read the primary environment auth gate.", {
+        cause: error.cause,
+      }).pipe(Effect.as(null)),
+    ),
+  );
+}
+
+const platformConnectionSourceLayer = Layer.succeed(
+  PlatformConnectionSource,
+  PlatformConnectionSource.of({ registrations: Stream.empty }),
+);
+
+const environmentOwnedDataCleanupLayer = Layer.succeed(
+  EnvironmentOwnedDataCleanup,
+  EnvironmentOwnedDataCleanup.of({
+    clear: () => Effect.void,
+  }),
+);
+
+const rpcRequestObserverLayer = Layer.succeed(
+  EnvironmentRpcRequestObserver,
+  EnvironmentRpcRequestObserver.of({
+    observe: ({ environmentId, method }) =>
+      Effect.sync(() => {
+        nextObservedRpcRequestId += 1;
+        const requestId = `${environmentId}:${nextObservedRpcRequestId}`;
+        trackRpcRequestSent(requestId, method, `${method} · ${environmentId}`);
+        return Effect.sync(() => {
+          acknowledgeRpcRequest(requestId);
+        });
+      }),
+  }),
+);
+
+type ConnectionPlatformLayerSource =
+  | typeof connectionStorageLayer
+  | typeof connectivityLayer
+  | typeof wakeupsLayer
+  | typeof capabilitiesLayer
+  | typeof platformConnectionSourceLayer
+  | typeof environmentOwnedDataCleanupLayer
+  | typeof rpcRequestObserverLayer;
+
+export const connectionPlatformLayer: Layer.Layer<
+  Layer.Success<ConnectionPlatformLayerSource>,
+  Layer.Error<ConnectionPlatformLayerSource>,
+  Layer.Services<ConnectionPlatformLayerSource>
+> = Layer.mergeAll(
+  connectionStorageLayer,
+  connectivityLayer,
+  wakeupsLayer,
+  capabilitiesLayer,
+  platformConnectionSourceLayer,
+  environmentOwnedDataCleanupLayer,
+  rpcRequestObserverLayer,
+);

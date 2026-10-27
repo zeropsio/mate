@@ -1,0 +1,314 @@
+[
+  {
+    "path": "apps/web/src/components/DiffPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/files/FileBrowserPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-5 animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/files/FilePreviewPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-5 animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/search/ProjectContentSearchDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-3.5 animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/DiagnosticsSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderInstanceCard.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderSettingsPanel.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-3 animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ResourceTelemetryDiagnostics.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-3.5 animate-spin text-muted-foreground\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SourceControlSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/DesktopUpdateStatusIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/sidebar/SidebarProviderUpdatePill.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"size-3.5 shrink-0 animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ui/spinner.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"animate-spin\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ui/toast.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"in-data-[type=loading]:animate-spin in-data-[type=error]:text-destructive in-data-[type=info]:text-info in-data-[type=success]:text-success in-data-[type=warning]:text-warning in-data-[type=loading]:opacity-80\"",
+    "owner": "karel",
+    "reason": "T3 chrome spinner; the design system replaces spinners only in Zerops surfaces",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-chroma{animation:ultrathink-chroma-shift 10s linear infinite}",
+    "owner": "karel",
+    "reason": "The ultrathink chroma shift is continuous and has no reduced-motion guard",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-frame::before{animation:ultrathink-rainbow 10s linear infinite}",
+    "owner": "karel",
+    "reason": "The ultrathink rainbow frame is continuous and has no reduced-motion guard",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-skeleton:skeleton 2s infinite linear}",
+    "owner": "karel",
+    "reason": "The skeleton loading sweep uses continuous compositor motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-first:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-second:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -1.14s infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@theme inline{--animate-typing-third:typing-wave 1.3s cubic-bezier(0.45, 0, 0.55, 1) -0.98s infinite}",
+    "owner": "ales",
+    "reason": "The composing dots rise in a wave while the Mate writes: opacity and transform on three spans, composited, shown only during a live run; stepped they read as blinking",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-body]{animation:mate-face-turn 2.4s infinite}",
+    "owner": "ales",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-state=\"working\"] [data-mate-face-glance]{animation:mate-face-glance 5.6s infinite}",
+    "owner": "ales",
+    "reason": "A Mate's face moves only while its state holds (at work it turns and glances, needing you it hops): transform-only on the face's HTML layer boxes, composited, stopped by reduced motion; the owner asked for the motion (2026-09-29)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-zerops-primitive=\"mate-face\"][data-mate-face-state=\"waking\"]{animation:mate-face-breathe 3s ease-in-out infinite}",
+    "owner": "ales",
+    "reason": "A Mate on its way up breathes while it arrives (waking): scale on the face's HTML box, composited, at most 30 minutes from its creation, stopped by reduced motion; the owner left this call to the lead (2026-10-03)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/MateMark.css",
+    "kind": "css-declaration",
+    "fingerprint": ".mate-mark[data-mate-mark-bob=\"on\"]{animation:mate-mark-bob 5.712s cubic-bezier(0.37, 0, 0.63, 1) infinite}",
+    "owner": "ales",
+    "reason": "The live mark's idle bob, moved out of the script frame loop so a resting mark runs no frame: translate-only, only on a mark 48 px tall or more while idle and awake (it falls asleep after 45 s without the pointer), stopped by reduced motion; not composited (SVG), so it costs a style recalc and a repaint of the mark a frame; the lead's call on the owner's delegation (2026-10-03)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/MateMark.css",
+    "kind": "css-declaration",
+    "fingerprint": ".mate-mark[data-mate-mark-state=\"waking\"] [data-mate-mark-band]{animation:mate-mark-swell 3s cubic-bezier(0.37, 0, 0.63, 1) infinite}",
+    "owner": "ales",
+    "reason": "A waking live mark's band swell (matePose), moved out of the script frame loop: translate-only on the band's two halves, only while the mark is held waking, stopped by reduced motion; the lead's call on the owner's delegation (2026-10-03)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-sweep-band]{animation:run-shimmer 2s linear infinite}",
+    "owner": "ales",
+    "reason": "A light sweeps across the words of each call a Mate is running now, until it returns: the card's live moment, a window sliding by translate on an HTML box, composited, stopped by reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-sweep-copy]{animation:run-shimmer-hold 2s linear infinite}",
+    "owner": "ales",
+    "reason": "The sweep's copy of the words slides back by what its window slides, so it stands still under it: translate on an HTML box, composited, only while the window runs, stopped by reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-hop]{animation:mate-face-restart-body 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-moment-box]{animation:mate-face-restart-shake 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-eye=\"left\"]{animation:mate-face-restart-eye-left 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-restarting]:not([data-mate-face-moment]) [data-mate-face-eye=\"right\"]{animation:mate-face-restart-eye-right 10s infinite}",
+    "owner": "karel",
+    "reason": "The owner's restart loop (2026-10-07): a calm 10 s cycle for as long as the container restarts, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-moment-box]{animation:mate-face-pace 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-hop]{animation:mate-face-pace-body 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-face-pacing]:not([data-mate-face-moment]) [data-mate-face-look]{animation:mate-face-pace-look 12s linear infinite}",
+    "owner": "karel",
+    "reason": "The owner's stand-up pacing (2026-10-07): a calm 12 s walk for as long as the stand-up runs, transforms on the face's HTML boxes, off under reduced motion",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/zerops/primitives/MateFaceMoments.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-mate-restart-words]{animation:mate-restart-words 10s infinite}",
+    "owner": "karel",
+    "reason": "The requested named restart lines rotate while source evidence says restarting; opacity on one HTML text box is composited and the cycle is off under reduced motion. Copy never decides readiness.",
+    "expires": "never"
+  }
+]

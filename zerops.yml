@@ -1,0 +1,131 @@
+# Zerops build/run spec for this repository.
+#
+# `buildFromGit` and `zcli push` both read this file from the repository
+# root — an inline `zeropsYaml` in an import document does not substitute
+# for it. One `setup:` per deployable; the import (or the push) selects one
+# by service hostname, or by an explicit `zeropsSetup`.
+zerops:
+  # The mate web client, served at an origin root by its own nginx: the
+  # delivery shape the hosted client needs (spec-mate §4 — "hosted separately,
+  # not built into the container"). Same bundle the container serves under
+  # /mate/, built without the prefix.
+  - setup: prod
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        # `packageManager` pins pnpm 11.10.0. The build container runs as an
+        # unprivileged user, so a plain `npm install -g` cannot write to
+        # /usr/lib/node_modules — install into $HOME and call the binary by
+        # path, since each build command gets its own shell and an exported
+        # PATH would not survive to the next one.
+        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
+        # `--filter @t3tools/web...` takes the web app and its workspace
+        # dependencies only, leaving the desktop (Electron) and mobile (Expo)
+        # halves of the monorepo uninstalled; `@t3tools/hq...` adds HQ Core's.
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
+        - $HOME/.local/bin/pnpm --filter @t3tools/web build
+        # Retained legacy HQ Core for per-org birth and update paths, served
+        # under hq-core/. The shared production HQ deploys from mate-hq
+        # through its scripts/deploy-hq.ts.
+        - node apps/hq/scripts/pack-core.ts apps/web/dist
+      # `~` shortens the deployed path: apps/web/dist lands at /var/www/dist,
+      # which documentRoot below points nginx at.
+      deployFiles:
+        - apps/web/~dist
+      envVariables:
+        # Hosted-static mode: no local server, the Zerops account flow is the
+        # one entry (`isHostedStaticApp`). Any value other than latest/nightly
+        # is silently ignored, and the app is then hosted-static only when it
+        # is served from VITE_HOSTED_APP_URL's origin.
+        VITE_HOSTED_APP_CHANNEL: latest
+        # Where this client is published, the origin `isHostedStaticApp`
+        # compares against; left unset it defaults to upstream's app.t3.codes.
+        VITE_HOSTED_APP_URL: https://mate.zerops.io
+        # Sign in by Zerops device login (`zerops/deviceLogin.ts`): the Zerops
+        # window approves, the tab polls for its session. The login app is
+        # `mate` (the default code); container builds still use the hand-over.
+        VITE_ZEROPS_SIGN_IN: device-login
+        # The consent page is HQ's, whatever origin the API's verificationUrl
+        # names: HQ approves a fresh log-in directly and closes its window.
+        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        # Mate HQ, the one every Mate and this client share (`configuredHq`):
+        # named here, no organization's anchor is read to find it.
+        VITE_HQ_ORIGIN: https://mate-hq.zerops.io
+        # `--filter` already leaves Electron out; this makes a stray install
+        # of it cheap rather than a 100 MB download.
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+        CI: "1"
+        # VITE_BASE_PATH stays unset: this bundle is served at an origin
+        # root, not under the container's /mate/ prefix.
+        #
+        # VITE_HTTP_URL / VITE_WS_URL stay unset too — either one makes the
+        # app non-hosted and pins it to that backend. The repository `.env`
+        # is gitignored, so a clone carries neither.
+    run:
+      base: alpine/static@1.0
+      routing:
+        # A Static service takes its document root from `routing`, not from
+        # `documentRoot` — that one is for webserver runtimes and is silently
+        # ignored here, leaving nginx on /var/www and every request a 404.
+        root: dist
+        # The page is asked again on every load. Served without a
+        # Cache-Control header, a browser may reuse a page it fetched before
+        # a release — and with it the old release's bundle — for a tenth of
+        # the page's age (heuristic freshness). The bundle's files under
+        # /assets are named by their content, so they never change: the
+        # longer location keeps them out of `no-cache` (left without a header
+        # they took Cloudflare's 4-hour default). nosniff is stated in both,
+        # since a location's own add_header drops any inherited from above.
+        headers:
+          - for: "/*"
+            values:
+              Cache-Control: "'no-cache' always"
+              X-Content-Type-Options: "'nosniff' always"
+          - for: "/assets/*"
+            values:
+              Cache-Control: "'public, max-age=31536000, immutable' always"
+              X-Content-Type-Options: "'nosniff' always"
+
+  # The alfa test environment: the same web client against alfa's own HQ
+  # (KRLS project `mate-hq-staging`), so web and Mate changes can be tried
+  # without touching the shared production HQ. `prod` with that HQ named by
+  # the build (`VITE_HQ_ORIGIN`, `zerops/accountHq.ts` `configuredHq`); Mates
+  # born from this web pin `T3CODE_ZEROPS_HQ_ORIGIN` to it. Sign-in stays
+  # Zerops device login through Zerops' own consent page.
+  - setup: staging
+    build:
+      base: ubuntu/nodejs@24
+      buildCommands:
+        - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
+        - $HOME/.local/bin/pnpm --filter @t3tools/web build
+        - node apps/hq/scripts/pack-core.ts apps/web/dist
+      deployFiles:
+        - apps/web/~dist
+      envVariables:
+        VITE_HOSTED_APP_CHANNEL: latest
+        # PLACEHOLDER: the staging web service's own origin, filled in once
+        # that service exists. The channel above already makes the build
+        # hosted-static; this only names its canonical origin.
+        VITE_HOSTED_APP_URL: https://staging-web-origin-placeholder.invalid
+        VITE_HQ_ORIGIN: https://hq-31d9-8080.prg1.zerops.app
+        VITE_ZEROPS_SIGN_IN: device-login
+        VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
+        PUPPETEER_SKIP_DOWNLOAD: "1"
+        CI: "1"
+        # VITE_BASE_PATH, VITE_HTTP_URL and VITE_WS_URL stay unset, as in prod.
+    run:
+      base: alpine/static@1.0
+      routing:
+        root: dist
+        headers:
+          - for: "/*"
+            values:
+              Cache-Control: "'no-cache' always"
+              X-Content-Type-Options: "'nosniff' always"
+          - for: "/assets/*"
+            values:
+              Cache-Control: "'public, max-age=31536000, immutable' always"
+              X-Content-Type-Options: "'nosniff' always"

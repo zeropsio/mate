@@ -1,0 +1,527 @@
+{
+  "name": "@t3tools/client-runtime",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./pending-requests": {
+      "types": "./src/pendingRequests.ts",
+      "default": "./src/pendingRequests.ts"
+    },
+    "./connection": {
+      "types": "./src/connection/index.ts",
+      "default": "./src/connection/index.ts"
+    },
+    "./authorization": {
+      "types": "./src/authorization/index.ts",
+      "default": "./src/authorization/index.ts"
+    },
+    "./environment": {
+      "types": "./src/environment/index.ts",
+      "default": "./src/environment/index.ts"
+    },
+    "./markdown-images": {
+      "types": "./src/markdownImages.ts",
+      "default": "./src/markdownImages.ts"
+    },
+    "./codex-file-citations": {
+      "types": "./src/codexFileCitations.ts",
+      "default": "./src/codexFileCitations.ts"
+    },
+    "./codex-artifact-templates": {
+      "types": "./src/codexArtifactTemplates.ts",
+      "default": "./src/codexArtifactTemplates.ts"
+    },
+    "./codex-markdown-directives": {
+      "types": "./src/codexMarkdownDirectives.ts",
+      "default": "./src/codexMarkdownDirectives.ts"
+    },
+    "./markdown-links": {
+      "types": "./src/markdownLinks.ts",
+      "default": "./src/markdownLinks.ts"
+    },
+    "./media-reference": {
+      "types": "./src/mediaReference.ts",
+      "default": "./src/mediaReference.ts"
+    },
+    "./errors": {
+      "types": "./src/errors/index.ts",
+      "default": "./src/errors/index.ts"
+    },
+    "./rpc": {
+      "types": "./src/rpc/index.ts",
+      "default": "./src/rpc/index.ts"
+    },
+    "./operations": {
+      "types": "./src/operations/index.ts",
+      "default": "./src/operations/index.ts"
+    },
+    "./operations/projects": {
+      "types": "./src/operations/projects.ts",
+      "default": "./src/operations/projects.ts"
+    },
+    "./platform": {
+      "types": "./src/platform/index.ts",
+      "default": "./src/platform/index.ts"
+    },
+    "./providerSkills": {
+      "types": "./src/providerSkills.ts",
+      "default": "./src/providerSkills.ts"
+    },
+    "./voice-input": {
+      "types": "./src/voice-input/index.ts",
+      "default": "./src/voice-input/index.ts"
+    },
+    "./relay": {
+      "types": "./src/relay/index.ts",
+      "default": "./src/relay/index.ts"
+    },
+    "./state/assets": {
+      "types": "./src/state/assets.ts",
+      "default": "./src/state/assets.ts"
+    },
+    "./state/attachments": {
+      "types": "./src/state/attachments.ts",
+      "default": "./src/state/attachments.ts"
+    },
+    "./delayed-status": {
+      "types": "./src/delayedStatus.ts",
+      "default": "./src/delayedStatus.ts"
+    },
+    "./state/connections": {
+      "types": "./src/state/connections.ts",
+      "default": "./src/state/connections.ts"
+    },
+    "./state/threadFileWrites": {
+      "types": "./src/state/threadFileWrites.ts",
+      "default": "./src/state/threadFileWrites.ts"
+    },
+    "./state/entities": {
+      "types": "./src/state/entities.ts",
+      "default": "./src/state/entities.ts"
+    },
+    "./state/filesystem": {
+      "types": "./src/state/filesystem.ts",
+      "default": "./src/state/filesystem.ts"
+    },
+    "./state/models": {
+      "types": "./src/state/models.ts",
+      "default": "./src/state/models.ts"
+    },
+    "./state/orchestration": {
+      "types": "./src/state/orchestration.ts",
+      "default": "./src/state/orchestration.ts"
+    },
+    "./state/presentation": {
+      "types": "./src/state/presentation.ts",
+      "default": "./src/state/presentation.ts"
+    },
+    "./state/preview": {
+      "types": "./src/state/preview.ts",
+      "default": "./src/state/preview.ts"
+    },
+    "./state/projects": {
+      "types": "./src/state/projects.ts",
+      "default": "./src/state/projects.ts"
+    },
+    "./state/provider-instance-display": {
+      "types": "./src/state/providerInstanceDisplay.ts",
+      "default": "./src/state/providerInstanceDisplay.ts"
+    },
+    "./state/project-grouping": {
+      "types": "./src/state/projectGrouping.ts",
+      "default": "./src/state/projectGrouping.ts"
+    },
+    "./state/review": {
+      "types": "./src/state/review.ts",
+      "default": "./src/state/review.ts"
+    },
+    "./state/runtime": {
+      "types": "./src/state/runtime.ts",
+      "default": "./src/state/runtime.ts"
+    },
+    "./state/server": {
+      "types": "./src/state/server.ts",
+      "default": "./src/state/server.ts"
+    },
+    "./state/session": {
+      "types": "./src/state/session.ts",
+      "default": "./src/state/session.ts"
+    },
+    "./state/shell": {
+      "types": "./src/state/shell.ts",
+      "default": "./src/state/shell.ts"
+    },
+    "./state/source-control": {
+      "types": "./src/state/sourceControl.ts",
+      "default": "./src/state/sourceControl.ts"
+    },
+    "./state/terminal": {
+      "types": "./src/state/terminal.ts",
+      "default": "./src/state/terminal.ts"
+    },
+    "./state/threads": {
+      "types": "./src/state/threads.ts",
+      "default": "./src/state/threads.ts"
+    },
+    "./state/subagentRuntime": {
+      "types": "./src/state/subagentRuntime.ts",
+      "default": "./src/state/subagentRuntime.ts"
+    },
+    "./state/thread-sort": {
+      "types": "./src/state/threadSort.ts",
+      "default": "./src/state/threadSort.ts"
+    },
+    "./state/thread-search": {
+      "types": "./src/state/threadSearch.ts",
+      "default": "./src/state/threadSearch.ts"
+    },
+    "./state/vcs": {
+      "types": "./src/state/vcs.ts",
+      "default": "./src/state/vcs.ts"
+    },
+    "./zerops": {
+      "types": "./src/zerops/index.ts",
+      "default": "./src/zerops/index.ts"
+    },
+    "./zerops/gitBrowse/*": {
+      "types": "./src/zerops/gitBrowse/*.ts",
+      "default": "./src/zerops/gitBrowse/*.ts"
+    },
+    "./zerops/agentSignIn": {
+      "types": "./src/zerops/agentSignIn.ts",
+      "default": "./src/zerops/agentSignIn.ts"
+    },
+    "./zerops/activity/attribution": {
+      "types": "./src/zerops/activity/attribution.ts",
+      "default": "./src/zerops/activity/attribution.ts"
+    },
+    "./zerops/activity/buildLog": {
+      "types": "./src/zerops/activity/buildLog.ts",
+      "default": "./src/zerops/activity/buildLog.ts"
+    },
+    "./zerops/activity/deployBuild": {
+      "types": "./src/zerops/activity/deployBuild.ts",
+      "default": "./src/zerops/activity/deployBuild.ts"
+    },
+    "./zerops/activity/dto": {
+      "types": "./src/zerops/activity/dto.ts",
+      "default": "./src/zerops/activity/dto.ts"
+    },
+    "./zerops/activity/observe": {
+      "types": "./src/zerops/activity/observe.ts",
+      "default": "./src/zerops/activity/observe.ts"
+    },
+    "./zerops/activity/observedSteps": {
+      "types": "./src/zerops/activity/observedSteps.ts",
+      "default": "./src/zerops/activity/observedSteps.ts"
+    },
+    "./zerops/activity/pipelineReadout": {
+      "types": "./src/zerops/activity/pipelineReadout.ts",
+      "default": "./src/zerops/activity/pipelineReadout.ts"
+    },
+    "./zerops/activity/pipelineState": {
+      "types": "./src/zerops/activity/pipelineState.ts",
+      "default": "./src/zerops/activity/pipelineState.ts"
+    },
+    "./zerops/activity/standupProgress": {
+      "types": "./src/zerops/activity/standupProgress.ts",
+      "default": "./src/zerops/activity/standupProgress.ts"
+    },
+    "./zerops/activity/standupReading": {
+      "types": "./src/zerops/activity/standupReading.ts",
+      "default": "./src/zerops/activity/standupReading.ts"
+    },
+    "./zerops/hq": {
+      "types": "./src/zerops/hq/index.ts",
+      "default": "./src/zerops/hq/index.ts"
+    },
+    "./zerops/activityResult": {
+      "types": "./src/zerops/activityResult.ts",
+      "default": "./src/zerops/activityResult.ts"
+    },
+    "./zerops/publishedPage": {
+      "types": "./src/zerops/publishedPage.ts",
+      "default": "./src/zerops/publishedPage.ts"
+    },
+    "./zerops/agentLogin": {
+      "types": "./src/zerops/agentLogin.ts",
+      "default": "./src/zerops/agentLogin.ts"
+    },
+    "./zerops/agentAvailability": {
+      "types": "./src/zerops/agentAvailability.ts",
+      "default": "./src/zerops/agentAvailability.ts"
+    },
+    "./zerops/logins": {
+      "types": "./src/zerops/logins.ts",
+      "default": "./src/zerops/logins.ts"
+    },
+    "./zerops/autoEnterProvisioning": {
+      "types": "./src/zerops/autoEnterProvisioning.ts",
+      "default": "./src/zerops/autoEnterProvisioning.ts"
+    },
+    "./zerops/mateSetup": {
+      "types": "./src/zerops/mateSetup.ts",
+      "default": "./src/zerops/mateSetup.ts"
+    },
+    "./zerops/birthProgress": {
+      "types": "./src/zerops/birthProgress.ts",
+      "default": "./src/zerops/birthProgress.ts"
+    },
+    "./zerops/browserStream": {
+      "types": "./src/zerops/browserStream.ts",
+      "default": "./src/zerops/browserStream.ts"
+    },
+    "./zerops/macView": {
+      "types": "./src/zerops/macView.ts",
+      "default": "./src/zerops/macView.ts"
+    },
+    "./zerops/timelineFollow": {
+      "types": "./src/zerops/timelineFollow.ts",
+      "default": "./src/zerops/timelineFollow.ts"
+    },
+    "./zerops/agentOwnership": {
+      "types": "./src/zerops/agentOwnership.ts",
+      "default": "./src/zerops/agentOwnership.ts"
+    },
+    "./zerops/conversationWriter": {
+      "types": "./src/zerops/conversationWriter.ts",
+      "default": "./src/zerops/conversationWriter.ts"
+    },
+    "./zerops/appAccess": {
+      "types": "./src/zerops/appAccess.ts",
+      "default": "./src/zerops/appAccess.ts"
+    },
+    "./zerops/teamRoles": {
+      "types": "./src/zerops/teamRoles.ts",
+      "default": "./src/zerops/teamRoles.ts"
+    },
+    "./zerops/projectAccess": {
+      "types": "./src/zerops/projectAccess.ts",
+      "default": "./src/zerops/projectAccess.ts"
+    },
+    "./zerops/mateAccess": {
+      "types": "./src/zerops/mateAccess.ts",
+      "default": "./src/zerops/mateAccess.ts"
+    },
+    "./zerops/keptSessions": {
+      "types": "./src/zerops/keptSessions.ts",
+      "default": "./src/zerops/keptSessions.ts"
+    },
+    "./zerops/diagnostics": {
+      "types": "./src/zerops/diagnostics.ts",
+      "default": "./src/zerops/diagnostics.ts"
+    },
+    "./zerops/candidates": {
+      "types": "./src/zerops/candidates.ts",
+      "default": "./src/zerops/candidates.ts"
+    },
+    "./data/fixtures": {
+      "types": "./src/data/__fixtures__/index.ts",
+      "default": "./src/data/__fixtures__/index.ts"
+    },
+    "./data/mateImage": {
+      "types": "./src/data/families/mateImage.ts",
+      "default": "./src/data/families/mateImage.ts"
+    },
+    "./data": {
+      "types": "./src/data/index.ts",
+      "default": "./src/data/index.ts"
+    },
+    "./zerops/data": {
+      "types": "./src/zerops/data/index.ts",
+      "default": "./src/zerops/data/index.ts"
+    },
+    "./zerops/flow": {
+      "types": "./src/zerops/flow/index.ts",
+      "default": "./src/zerops/flow/index.ts"
+    },
+    "./zerops/knowledge": {
+      "types": "./src/zerops/knowledge/index.ts",
+      "default": "./src/zerops/knowledge/index.ts"
+    },
+    "./zerops/projections": {
+      "types": "./src/zerops/projections/index.ts",
+      "default": "./src/zerops/projections/index.ts"
+    },
+    "./zerops/knowledge/invalidation": {
+      "types": "./src/zerops/knowledge/invalidation.ts",
+      "default": "./src/zerops/knowledge/invalidation.ts"
+    },
+    "./zerops/account": {
+      "types": "./src/zerops/account/session.ts",
+      "default": "./src/zerops/account/session.ts"
+    },
+    "./zerops/account/runtime": {
+      "types": "./src/zerops/account/accountRuntime.ts",
+      "default": "./src/zerops/account/accountRuntime.ts"
+    },
+    "./zerops/environments": {
+      "types": "./src/zerops/environments/index.ts",
+      "default": "./src/zerops/environments/index.ts"
+    },
+    "./zerops/cards/decode": {
+      "types": "./src/zerops/cards/decode.ts",
+      "default": "./src/zerops/cards/decode.ts"
+    },
+    "./zerops/cards/liveFixtures": {
+      "types": "./src/zerops/cards/liveFixtures.ts",
+      "default": "./src/zerops/cards/liveFixtures.ts"
+    },
+    "./zerops/cards/payloads": {
+      "types": "./src/zerops/cards/payloads.ts",
+      "default": "./src/zerops/cards/payloads.ts"
+    },
+    "./zerops/containerAddress": {
+      "types": "./src/zerops/containerAddress.ts",
+      "default": "./src/zerops/containerAddress.ts"
+    },
+    "./zerops/containerHealth": {
+      "types": "./src/zerops/containerHealth.ts",
+      "default": "./src/zerops/containerHealth.ts"
+    },
+    "./zerops/descriptorShare": {
+      "types": "./src/zerops/descriptorShare.ts",
+      "default": "./src/zerops/descriptorShare.ts"
+    },
+    "./zerops/dataBlob": {
+      "types": "./src/zerops/dataBlob.ts",
+      "default": "./src/zerops/dataBlob.ts"
+    },
+    "./zerops/dataConsole": {
+      "types": "./src/zerops/dataConsole.ts",
+      "default": "./src/zerops/dataConsole.ts"
+    },
+    "./zerops/errors": {
+      "types": "./src/zerops/errors.ts",
+      "default": "./src/zerops/errors.ts"
+    },
+    "./zerops/model": {
+      "types": "./src/zerops/model/index.ts",
+      "default": "./src/zerops/model/index.ts"
+    },
+    "./zerops/flow/fixtures": {
+      "types": "./src/zerops/flow/__fixtures__/index.ts",
+      "default": "./src/zerops/flow/__fixtures__/index.ts"
+    },
+    "./zerops/operations/fixtures": {
+      "types": "./src/zerops/operations/__fixtures__/index.ts",
+      "default": "./src/zerops/operations/__fixtures__/index.ts"
+    },
+    "./zerops/deviceLogin": {
+      "types": "./src/zerops/deviceLogin.ts",
+      "default": "./src/zerops/deviceLogin.ts"
+    },
+    "./zerops/handover": {
+      "types": "./src/zerops/handover.ts",
+      "default": "./src/zerops/handover.ts"
+    },
+    "./zerops/identityExchange": {
+      "types": "./src/zerops/identityExchange.ts",
+      "default": "./src/zerops/identityExchange.ts"
+    },
+    "./zerops/quickActions": {
+      "types": "./src/zerops/quickActions.ts",
+      "default": "./src/zerops/quickActions.ts"
+    },
+    "./zerops/registrationHandoff": {
+      "types": "./src/zerops/registrationHandoff.ts",
+      "default": "./src/zerops/registrationHandoff.ts"
+    },
+    "./zerops/serviceMap": {
+      "types": "./src/zerops/serviceMap.ts",
+      "default": "./src/zerops/serviceMap.ts"
+    },
+    "./zerops/servicePairs": {
+      "types": "./src/zerops/servicePairs.ts",
+      "default": "./src/zerops/servicePairs.ts"
+    },
+    "./zerops/session": {
+      "types": "./src/zerops/session.ts",
+      "default": "./src/zerops/session.ts"
+    },
+    "./zerops/testing": {
+      "types": "./src/zerops/testing/accountHarness.ts",
+      "default": "./src/zerops/testing/accountHarness.ts"
+    },
+    "./zerops/strip": {
+      "types": "./src/zerops/strip.ts",
+      "default": "./src/zerops/strip.ts"
+    },
+    "./zerops/statusPresentation": {
+      "types": "./src/zerops/statusPresentation.ts",
+      "default": "./src/zerops/statusPresentation.ts"
+    },
+    "./zerops/versionName": {
+      "types": "./src/zerops/versionName.ts",
+      "default": "./src/zerops/versionName.ts"
+    },
+    "./zerops/mateIdentity": {
+      "types": "./src/zerops/mateIdentity.ts",
+      "default": "./src/zerops/mateIdentity.ts"
+    },
+    "./zerops/topology": {
+      "types": "./src/zerops/topology.ts",
+      "default": "./src/zerops/topology.ts"
+    },
+    "./zerops/serverCompatibility": {
+      "types": "./src/zerops/serverCompatibility.ts",
+      "default": "./src/zerops/serverCompatibility.ts"
+    },
+    "./zerops/crew/phrases": {
+      "types": "./src/zerops/crew/phrases.ts",
+      "default": "./src/zerops/crew/phrases.ts"
+    },
+    "./zerops/crew/crewAccess": {
+      "types": "./src/zerops/crew/crewAccess.ts",
+      "default": "./src/zerops/crew/crewAccess.ts"
+    },
+    "./zerops/projections/crew": {
+      "types": "./src/zerops/projections/crew.ts",
+      "default": "./src/zerops/projections/crew.ts"
+    },
+    "./zerops/crew/testing/fixtures": {
+      "types": "./src/zerops/crew/testing/fixtures.ts",
+      "default": "./src/zerops/crew/testing/fixtures.ts"
+    },
+    "./work-log/activity-normalization": {
+      "types": "./src/work-log/activityNormalization.ts",
+      "default": "./src/work-log/activityNormalization.ts"
+    },
+    "./work-log/presentation": {
+      "types": "./src/work-log/presentation.ts",
+      "default": "./src/work-log/presentation.ts"
+    },
+    "./work-log/command-label": {
+      "types": "./src/work-log/commandLabel.ts",
+      "default": "./src/work-log/commandLabel.ts"
+    },
+    "./work-log/scroll-anchor": {
+      "types": "./src/work-log/scrollAnchor.ts",
+      "default": "./src/work-log/scrollAnchor.ts"
+    },
+    "./zerops/gitDelivery": {
+      "types": "./src/zerops/gitDelivery.ts",
+      "default": "./src/zerops/gitDelivery.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run"
+  },
+  "dependencies": {
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:",
+    "mdast-util-directive": "^3.1.0",
+    "micromark-extension-directive": "^4.0.0",
+    "micromark-util-character": "^2.1.1",
+    "remark-parse": "^11.0.0",
+    "unified": "^11.0.5"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "micromark-util-types": "^2.0.2",
+    "vite-plus": "catalog:"
+  }
+}

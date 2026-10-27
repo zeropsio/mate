@@ -1,0 +1,989 @@
+import {
+  EnvironmentId,
+  ProviderDriverKind,
+  ProviderInstanceId,
+  type ServerProvider,
+  type UsageLimitSourceAccount,
+  UsageLimitSourceId,
+} from "@t3tools/contracts";
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  isUsageLimitsCommand,
+  collectProviderUsageLimits,
+  sameUsageLimitCommandCoverage,
+  withUsageLimitsCommands,
+  collectLimitAccounts,
+  collectLimitSources,
+  collectLimitsGroups,
+  elapsedShare,
+  formatResetsIn,
+  limitsNotice,
+  limitsNoticeLine,
+  limitsPage,
+  paceOf,
+  providersWithLimits,
+  remainingPercent,
+} from "./usageLimits.ts";
+
+const now = Date.parse("2026-09-03T12:00:00.000Z");
+
+const window = {
+  id: "five_hour",
+  kind: "session",
+  label: "Session",
+  usedPercent: 40,
+  windowDurationMins: 300,
+  resetsAt: "2026-09-03T14:00:00.000Z",
+} as const;
+
+function provider(overrides: Partial<ServerProvider>): ServerProvider {
+  return {
+    instanceId: ProviderInstanceId.make("codex"),
+    driver: ProviderDriverKind.make("codex"),
+    enabled: true,
+    installed: true,
+    version: null,
+    status: "ready",
+    auth: { status: "authenticated" },
+    checkedAt: "2026-09-03T11:00:00.000Z",
+    models: [],
+    slashCommands: [],
+    skills: [],
+    ...overrides,
+  };
+}
+
+describe("pace", () => {
+  it("places the clock three fifths through a five-hour window with two hours left", () => {
+    expect(elapsedShare(window, now)).toBeCloseTo(0.6);
+    expect(paceOf(window, now)).toBe("under");
+    expect(paceOf({ ...window, usedPercent: 62 }, now)).toBe("on");
+    expect(paceOf({ ...window, usedPercent: 80 }, now)).toBe("ahead");
+  });
+
+  it("has no pace without a reset or a duration", () => {
+    expect(paceOf({ ...window, resetsAt: undefined }, now)).toBeNull();
+    expect(paceOf({ ...window, windowDurationMins: undefined }, now)).toBeNull();
+    expect(formatResetsIn({ ...window, resetsAt: undefined }, now)).toBeNull();
+  });
+
+  it("phrases the reset as a countdown", () => {
+    expect(formatResetsIn(window, now)).toBe("resets in 2h 0m");
+    expect(formatResetsIn({ ...window, resetsAt: "2026-09-06T15:30:00.000Z" }, now)).toBe(
+      "resets in 3d 3h",
+    );
+    expect(formatResetsIn({ ...window, resetsAt: "2026-09-03T11:00:00.000Z" }, now)).toBe(
+      "reset confirmation pending",
+    );
+  });
+});
+
+describe("limitsNotice", () => {
+  it("explains empty bars and passes provider messages through", () => {
+    const checkedAt = "2026-09-03T11:00:00.000Z";
+    expect(limitsNotice({ checkedAt, windows: [window] })).toBeNull();
+    expect(limitsNotice({ checkedAt, windows: [] })).toBe("No limits reported.");
+    expect(limitsNotice({ checkedAt, windows: [], unavailable: { reason: "unsupported" } })).toBe(
+      "This account has no subscription limits.",
+    );
+    expect(
+      limitsNotice({
+        checkedAt,
+        windows: [],
+        unavailable: { reason: "probeFailed", message: "Codex timed out." },
+      }),
+    ).toBe("Codex timed out.");
+  });
+});
+
+describe("providersWithLimits", () => {
+  it("keeps only usable providers whose driver reports limits at all", () => {
+    const limits = { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window] };
+    const codex = provider({ usageLimits: limits });
+    expect(
+      providersWithLimits([
+        codex,
+        provider({
+          instanceId: ProviderInstanceId.make("cursor"),
+          driver: ProviderDriverKind.make("cursor"),
+        }),
+        provider({
+          instanceId: ProviderInstanceId.make("off"),
+          enabled: false,
+          usageLimits: limits,
+        }),
+        provider({
+          instanceId: ProviderInstanceId.make("gone"),
+          installed: false,
+          usageLimits: limits,
+        }),
+        provider({
+          instanceId: ProviderInstanceId.make("shadow"),
+          availability: "unavailable",
+          usageLimits: limits,
+        }),
+      ]),
+    ).toEqual([codex]);
+  });
+});
+
+describe("collectLimitsGroups", () => {
+  it("labels environments only when more than one reports limits", () => {
+    const limits = { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window] };
+    const codex = provider({ usageLimits: limits });
+    const one = new Map([
+      ["env-a", { entry: { target: { label: "Laptop" } }, serverConfig: { providers: [codex] } }],
+      [
+        "env-b",
+        { entry: { target: { label: "Desktop" } }, serverConfig: { providers: [provider({})] } },
+      ],
+    ] as const);
+    expect(collectLimitsGroups(one as never).map((group) => group.environmentLabel)).toEqual([
+      null,
+    ]);
+
+    const two = new Map([
+      ["env-a", { entry: { target: { label: "Laptop" } }, serverConfig: { providers: [codex] } }],
+      ["env-b", { entry: { target: { label: "Desktop" } }, serverConfig: { providers: [codex] } }],
+    ] as const);
+    expect(collectLimitsGroups(two as never).map((group) => group.environmentLabel)).toEqual([
+      "Laptop",
+      "Desktop",
+    ]);
+  });
+});
+
+describe("collectLimitAccounts", () => {
+  const codex = ProviderDriverKind.make("codex");
+  const claude = ProviderDriverKind.make("claudeAgent");
+
+  function read(
+    email: string | undefined,
+    checkedAt: string,
+    usedPercent: number,
+    overrides: Partial<ServerProvider> = {},
+  ): ServerProvider {
+    return provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: email === undefined ? { status: "authenticated" } : { status: "authenticated", email },
+      usageLimits: { checkedAt, windows: [{ ...window, usedPercent }] },
+      ...overrides,
+    });
+  }
+
+  function presentations(
+    ...environments: ReadonlyArray<readonly [string, readonly ServerProvider[]]>
+  ) {
+    return new Map(
+      environments.map(([id, providers]) => [
+        EnvironmentId.make(id),
+        {
+          entry: { target: { label: "node-id-1.runtime.zcp.zerops" } },
+          serverConfig: { providers },
+        },
+      ]),
+    );
+  }
+
+  it("shows one account signed in on three containers by its newest read", () => {
+    const newest = read("me@example.com", "2026-09-03T11:30:00.000Z", 10);
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [read("me@example.com", "2026-09-03T11:00:00.000Z", 12)]],
+        ["env-b", [newest]],
+        ["env-c", [read("me@example.com", "2026-09-03T10:00:00.000Z", 100)]],
+      ),
+    );
+
+    expect(result.notices).toEqual([]);
+    expect(result.accounts).toEqual([
+      {
+        key: "claudeAgent:me@example.com",
+        driver: claude,
+        provider: newest,
+        environmentId: "env-b",
+        environmentIds: ["env-b", "env-a", "env-c"],
+        urgency: 90,
+      },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "different emails are different accounts",
+      environments: [
+        ["env-a", [read("a@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("b@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [
+        { key: "claudeAgent:a@example.com", environmentIds: ["env-a"] },
+        { key: "claudeAgent:b@example.com", environmentIds: ["env-b"] },
+      ],
+    },
+    {
+      name: "a provider without an email is its own account in every environment",
+      environments: [
+        ["env-a", [read(undefined, "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read(undefined, "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [
+        { key: "env-a:claude", environmentIds: ["env-a"] },
+        { key: "env-b:claude", environmentIds: ["env-b"] },
+      ],
+    },
+    {
+      name: "an email differing only in case and whitespace is the same account",
+      environments: [
+        ["env-a", [read(" Me@Example.COM ", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+      ] as const,
+      accounts: [{ key: "claudeAgent:me@example.com", environmentIds: ["env-a", "env-b"] }],
+    },
+    {
+      name: "the same email on another driver is another account",
+      environments: [
+        ["env-a", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40)]],
+        ["env-b", [read("me@example.com", "2026-09-03T11:00:00.000Z", 40, { driver: codex })]],
+      ] as const,
+      accounts: [
+        { key: "claudeAgent:me@example.com", environmentIds: ["env-a"] },
+        { key: "codex:me@example.com", environmentIds: ["env-b"] },
+      ],
+    },
+  ])("$name", ({ environments, accounts }) => {
+    const result = collectLimitAccounts(presentations(...environments));
+    expect(result.accounts.map(({ key, environmentIds }) => ({ key, environmentIds }))).toEqual(
+      accounts,
+    );
+  });
+
+  it("lists the account with the least quota left in any window first", () => {
+    const weekly = { ...window, id: "weekly", kind: "weekly", usedPercent: 95 } as const;
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [read("roomy@example.com", "2026-09-03T11:00:00.000Z", 20)]],
+        [
+          "env-b",
+          [
+            read("weekly@example.com", "2026-09-03T11:00:00.000Z", 10, {
+              usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window, weekly] },
+            }),
+          ],
+        ],
+        ["env-c", [read("session@example.com", "2026-09-03T11:00:00.000Z", 70)]],
+      ),
+    );
+    expect(result.accounts.map(({ key, urgency }) => [key, urgency])).toEqual([
+      ["claudeAgent:weekly@example.com", 5],
+      ["claudeAgent:session@example.com", 30],
+      ["claudeAgent:roomy@example.com", 80],
+    ]);
+  });
+
+  it("collapses the same notice for a driver into one entry naming every environment", () => {
+    const failed = (email: string | undefined, message?: string) =>
+      read(email, "2026-09-03T11:00:00.000Z", 0, {
+        driver: codex,
+        instanceId: ProviderInstanceId.make("codex"),
+        usageLimits: {
+          checkedAt: "2026-09-03T11:00:00.000Z",
+          windows: [],
+          unavailable: { reason: "probeFailed", ...(message ? { message } : {}) },
+        },
+      });
+    const readable = read("me@example.com", "2026-09-03T11:00:00.000Z", 40);
+    const result = collectLimitAccounts(
+      presentations(
+        ["env-a", [failed(undefined), readable]],
+        ["env-b", [failed(undefined)]],
+        ["env-c", [failed("ops@example.com")]],
+        ["env-d", [failed(undefined, "Codex timed out.")]],
+        ["env-e", [failed(undefined)]],
+      ),
+    );
+
+    expect(result.accounts.map(({ key }) => key)).toEqual(["claudeAgent:me@example.com"]);
+    expect(result.notices).toEqual([
+      {
+        driver: codex,
+        notice: "Could not read limits.",
+        environmentIds: ["env-a", "env-b", "env-c", "env-e"],
+      },
+      { driver: codex, notice: "Codex timed out.", environmentIds: ["env-d"] },
+    ]);
+  });
+
+  it("shows an account's newest readable read over a newer failed one", () => {
+    const failed = (checkedAt: string) =>
+      read("me@example.com", checkedAt, 0, {
+        usageLimits: { checkedAt, windows: [], unavailable: { reason: "probeFailed" } },
+      });
+    const readable = read("me@example.com", "2026-09-03T11:00:00.000Z", 40);
+
+    expect(
+      collectLimitAccounts(
+        presentations(
+          ["env-a", [failed("2026-09-03T11:30:00.000Z")]],
+          ["env-b", [readable]],
+          ["env-c", [read("me@example.com", "2026-09-03T10:00:00.000Z", 90)]],
+        ),
+      ),
+    ).toEqual({
+      accounts: [
+        {
+          key: "claudeAgent:me@example.com",
+          driver: claude,
+          provider: readable,
+          environmentId: "env-b",
+          environmentIds: ["env-b", "env-a", "env-c"],
+          urgency: 60,
+        },
+      ],
+      notices: [],
+    });
+  });
+
+  it("lists an account under notices only when none of its reads is readable", () => {
+    expect(
+      collectLimitAccounts(
+        presentations(
+          [
+            "env-a",
+            [
+              read("me@example.com", "2026-09-03T11:00:00.000Z", 0, {
+                usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [] },
+              }),
+            ],
+          ],
+          [
+            "env-b",
+            [
+              read("me@example.com", "2026-09-03T11:30:00.000Z", 0, {
+                usageLimits: {
+                  checkedAt: "2026-09-03T11:30:00.000Z",
+                  windows: [],
+                  unavailable: { reason: "probeFailed" },
+                },
+              }),
+            ],
+          ],
+        ),
+      ),
+    ).toEqual({
+      accounts: [],
+      notices: [
+        { driver: claude, notice: "Could not read limits.", environmentIds: ["env-b", "env-a"] },
+      ],
+    });
+  });
+});
+
+describe("limitsNoticeLine", () => {
+  it.each([
+    {
+      notice: "Could not read limits.",
+      places: ["Juno", "Nova", "Kai", "Theo"],
+      line: "Codex limits couldn't be read on Juno, Nova, Kai and Theo.",
+    },
+    { notice: "Could not read limits.", places: [], line: "Codex limits couldn't be read." },
+    {
+      notice: "Could not read limits.",
+      places: ["Juno", "Juno", "Nova"],
+      line: "Codex limits couldn't be read on Juno and Nova.",
+    },
+    {
+      notice: "Codex timed out.",
+      places: ["Juno"],
+      line: "Codex on Juno: Codex timed out.",
+    },
+    { notice: "No limits reported.", places: [], line: "Codex: No limits reported." },
+  ])("$line", ({ notice, places, line }) => {
+    expect(limitsNoticeLine({ driverLabel: "Codex", notice, places })).toBe(line);
+  });
+});
+
+describe("collectLimitSources", () => {
+  const source = {
+    id: UsageLimitSourceId.make("cliproxy-hub"),
+    kind: "cliproxy" as const,
+    label: "hub",
+    checkedAt: "2026-09-03T11:00:00.000Z",
+    accounts: [],
+  };
+  const limits = { checkedAt: source.checkedAt, windows: [window] };
+  const account: UsageLimitSourceAccount = {
+    id: "codex-personal",
+    driver: ProviderDriverKind.make("codex"),
+    email: "person@example.com",
+    plan: "ChatGPT Pro Subscription",
+    usageLimits: limits,
+  };
+  const native = provider({
+    displayName: "Personal",
+    auth: { status: "authenticated", email: account.email },
+    usageLimits: { ...limits, resetCredits: { availableCount: 2 } },
+  });
+
+  function presentations(
+    providers: readonly ServerProvider[],
+    accounts: readonly UsageLimitSourceAccount[] = [account],
+  ) {
+    return new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          entry: { target: { label: "Laptop" } },
+          serverConfig: { providers, usageLimitSources: [{ ...source, accounts }] },
+        },
+      ],
+    ]);
+  }
+
+  it.each(["codex", "claudeAgent"])(
+    "prefers native %s limits by email without changing provider rows or source snapshots",
+    (kind) => {
+      const driver = ProviderDriverKind.make(kind);
+      const first = { ...native, driver };
+      const second = { ...first, instanceId: ProviderInstanceId.make("work") };
+      const accounts = [{ ...account, driver, email: " Person@Example.COM " }];
+      const input = presentations([first, second], accounts);
+
+      expect(collectLimitSources(input)).toMatchObject([{ accounts: [], hiddenAccountCount: 1 }]);
+      expect(collectLimitsGroups(input)[0]?.providers).toEqual([first, second]);
+      expect(accounts).toHaveLength(1);
+      expect(first.usageLimits?.resetCredits?.availableCount).toBe(2);
+    },
+  );
+
+  it("matches across environments even when the hub is visited before the native provider", () => {
+    const input = presentations([]);
+    input.set(EnvironmentId.make("env-b"), {
+      entry: { target: { label: "Desktop" } },
+      serverConfig: { providers: [native], usageLimitSources: [] },
+    });
+
+    expect(collectLimitSources(input)).toMatchObject([
+      { accounts: [], hiddenAccountCount: 1, environmentId: "env-a" },
+    ]);
+  });
+
+  it("keeps other providers, other emails, and unidentified accounts with the same plan", () => {
+    const accounts = [
+      account,
+      { ...account, id: "other-provider", driver: ProviderDriverKind.make("claudeAgent") },
+      { ...account, id: "other-email", email: "other@example.com" },
+      { ...account, id: "unknown-email", email: undefined },
+    ];
+
+    expect(collectLimitSources(presentations([native], accounts))).toMatchObject([
+      { accounts: accounts.slice(1), hiddenAccountCount: 1 },
+    ]);
+    expect(
+      collectLimitSources(
+        presentations([{ ...native, auth: { status: "authenticated" } }], accounts),
+      )[0]?.accounts,
+    ).toEqual(accounts);
+  });
+
+  it.each([
+    { enabled: false },
+    { installed: false },
+    { availability: "unavailable" },
+    { usageLimits: undefined },
+    { usageLimits: { ...limits, windows: [] } },
+    { usageLimits: { ...limits, unavailable: { reason: "probeFailed" } } },
+    { usageLimits: { ...limits, unavailable: { reason: "unsupported" } } },
+  ] satisfies Partial<ServerProvider>[])(
+    "retains hub limits when the native provider cannot show them: %j",
+    (overrides) => {
+      expect(collectLimitSources(presentations([{ ...native, ...overrides }]))).toMatchObject([
+        { accounts: [account], hiddenAccountCount: 0 },
+      ]);
+    },
+  );
+
+  it("restores the hub account when the matching provider disappears", () => {
+    const input = presentations([native]);
+    expect(collectLimitSources(input)[0]?.accounts).toEqual([]);
+    input.delete(EnvironmentId.make("env-a"));
+    for (const [id, entry] of presentations([])) input.set(id, entry);
+
+    expect(collectLimitSources(input)[0]?.accounts).toEqual([account]);
+  });
+
+  it("keeps source errors and genuinely empty sources distinguishable from hidden accounts", () => {
+    const input = new Map([
+      [
+        EnvironmentId.make("env-a"),
+        {
+          entry: { target: { label: "Laptop" } },
+          serverConfig: {
+            providers: [native],
+            usageLimitSources: [{ ...source, error: "Hub unavailable" }],
+          },
+        },
+      ],
+    ]);
+    expect(collectLimitSources(input)).toMatchObject([
+      { accounts: [], hiddenAccountCount: 0, error: "Hub unavailable" },
+    ]);
+  });
+
+  it("keys sources per environment and names the environment only when several have some", () => {
+    const one = new Map([
+      [
+        "env-a",
+        { entry: { target: { label: "Laptop" } }, serverConfig: { usageLimitSources: [source] } },
+      ],
+      [
+        "env-b",
+        { entry: { target: { label: "Desktop" } }, serverConfig: { usageLimitSources: [] } },
+      ],
+    ] as const);
+    expect(collectLimitSources(one as never).map((entry) => [entry.key, entry.label])).toEqual([
+      ["env-a:cliproxy-hub", "hub"],
+    ]);
+
+    const two = new Map([
+      [
+        "env-a",
+        { entry: { target: { label: "Laptop" } }, serverConfig: { usageLimitSources: [source] } },
+      ],
+      [
+        "env-b",
+        { entry: { target: { label: "Desktop" } }, serverConfig: { usageLimitSources: [source] } },
+      ],
+    ] as const);
+    expect(collectLimitSources(two as never).map((entry) => entry.label)).toEqual([
+      "Laptop · hub",
+      "Desktop · hub",
+    ]);
+  });
+});
+
+describe("/usage-limits", () => {
+  const limits = { checkedAt: "2026-09-03T11:00:00.000Z", windows: [window] };
+  const selected = provider({
+    usageLimits: limits,
+    auth: { status: "authenticated", email: "same@example.com" },
+  });
+  const sources = [
+    {
+      id: UsageLimitSourceId.make("hub"),
+      kind: "cliproxy" as const,
+      label: "Accounts",
+      checkedAt: limits.checkedAt,
+      accounts: [
+        {
+          id: "duplicate",
+          driver: selected.driver,
+          email: "SAME@example.com",
+          usageLimits: limits,
+        },
+        { id: "oss", driver: selected.driver, plan: "Codex OSS", usageLimits: limits },
+        { id: "other-provider", driver: ProviderDriverKind.make("claude"), usageLimits: limits },
+      ],
+    },
+  ];
+
+  it("uses hub credit balances and redemption targets in the composer, including native duplicates", () => {
+    const hubs = sources.map((source) => ({
+      ...source,
+      accounts: source.accounts.map((account) => ({
+        ...account,
+        usageLimits: {
+          ...account.usageLimits,
+          resetCredits: { availableCount: 2, nextCreditId: `${account.id}-credit` },
+        },
+      })),
+    }));
+    const report = collectProviderUsageLimits(selected.instanceId, [selected], hubs, now);
+    expect(report?.accounts[0]?.limits.resetCredits?.availableCount).toBe(2);
+    expect(report?.accounts[0]?.resetCreditInput).toEqual({
+      sourceId: "hub",
+      accountId: "duplicate",
+      creditId: "duplicate-credit",
+    });
+    expect(report?.accounts.find((account) => account.id === "hub:oss")?.resetCreditInput).toEqual({
+      sourceId: "hub",
+      accountId: "oss",
+      creditId: "oss-credit",
+    });
+  });
+
+  it("keeps accounts and custom instances separate, filtering by driver", () => {
+    const report = collectProviderUsageLimits(
+      selected.instanceId,
+      [
+        selected,
+        provider({
+          instanceId: ProviderInstanceId.make("codex-work"),
+          displayName: "Work",
+          usageLimits: { ...limits, resetCredits: { availableCount: 2 } },
+        }),
+        provider({
+          driver: ProviderDriverKind.make("claude"),
+          instanceId: ProviderInstanceId.make("claude"),
+          usageLimits: limits,
+        }),
+      ],
+      sources,
+      now,
+    );
+    expect(report?.createdAt).toBe("2026-09-03T12:00:00.000Z");
+    expect(report?.accounts.map((account) => account.id)).toEqual([
+      "codex",
+      "codex-work",
+      "hub:oss",
+    ]);
+    expect(report?.accounts[0]).toMatchObject({
+      instanceId: selected.instanceId,
+      email: selected.auth.email,
+    });
+    expect(report?.accounts[1]).toMatchObject({
+      displayName: "Work",
+      limits: { resetCredits: { availableCount: 2 } },
+    });
+    expect(report?.accounts[2]).toMatchObject({
+      label: "Accounts · oss",
+      sourceLabel: "CLI Proxy",
+      plan: "Codex OSS",
+    });
+    expect(report?.notices).toEqual([]);
+  });
+
+  it("supports a source-only provider and keeps duplicates when the native probe failed", () => {
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [provider({})], sources, now)?.accounts.map(
+        (account) => account.id,
+      ),
+    ).toEqual(["hub:duplicate", "hub:oss"]);
+    const failed = provider({ usageLimits: { ...limits, unavailable: { reason: "probeFailed" } } });
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [failed], sources, now)?.accounts.map(
+        (account) => account.id,
+      ),
+    ).toEqual(["codex", "hub:duplicate", "hub:oss"]);
+    expect(collectProviderUsageLimits(selected.instanceId, [provider({})], [], now)).toBeNull();
+    expect(
+      collectProviderUsageLimits(
+        selected.instanceId,
+        [provider({ enabled: false, usageLimits: limits })],
+        [],
+        now,
+      ),
+    ).toBeNull();
+  });
+
+  it("surfaces source errors only for sources that carry the selected driver", () => {
+    const failing = { ...sources[0]!, error: "token expired" };
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [selected], [failing], now)?.notices,
+    ).toEqual(["Accounts: token expired"]);
+    const claudeOnly = { ...failing, accounts: failing.accounts.slice(2) };
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [selected], [claudeOnly], now)?.notices,
+    ).toEqual([]);
+    // A read failure clears the accounts, so the error must not depend on a match.
+    const unreadable = { ...failing, accounts: [] };
+    expect(
+      collectProviderUsageLimits(selected.instanceId, [selected], [unreadable], now)?.notices,
+    ).toEqual(["Accounts: token expired"]);
+    // A source-only provider still gets the report, carrying only the error.
+    const sourceOnly = collectProviderUsageLimits(
+      selected.instanceId,
+      [provider({})],
+      [unreadable],
+      now,
+    );
+    expect(sourceOnly?.accounts).toEqual([]);
+    expect(sourceOnly?.notices).toEqual(["Accounts: token expired"]);
+  });
+
+  it("advertises global and workspace commands only for providers present in Limits", () => {
+    const withWorkspace = provider({
+      workspaceSnapshots: [
+        { cwd: "/tmp/project", checkedAt: limits.checkedAt, slashCommands: [], skills: [] },
+      ],
+    });
+    const [supported] = withUsageLimitsCommands([withWorkspace], sources);
+    expect(supported?.slashCommands.map((command) => command.name)).toEqual(["usage-limits"]);
+    expect(
+      supported?.workspaceSnapshots?.[0]?.slashCommands.map((command) => command.name),
+    ).toEqual(["usage-limits"]);
+    expect(withUsageLimitsCommands([withWorkspace], [])[0]?.slashCommands).toEqual([]);
+    // A provider's own command of the same name is left alone without coverage.
+    const ownCommand = provider({
+      slashCommands: [{ name: "usage-limits", description: "Provider's own" }],
+    });
+    expect(withUsageLimitsCommands([ownCommand], [])[0]?.slashCommands).toEqual([
+      { name: "usage-limits", description: "Provider's own" },
+    ]);
+    const unreadable = { ...sources[0]!, accounts: [], error: "token expired" };
+    expect(
+      withUsageLimitsCommands([withWorkspace], [unreadable])[0]?.slashCommands.map(
+        (command) => command.name,
+      ),
+    ).toEqual(["usage-limits"]);
+    expect(
+      withUsageLimitsCommands([selected], [])[0]?.slashCommands.map((command) => command.name),
+    ).toEqual(["usage-limits"]);
+  });
+});
+
+describe("sameUsageLimitCommandCoverage", () => {
+  const codexAccount = {
+    id: "a",
+    driver: ProviderDriverKind.make("codex"),
+    usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [] },
+  };
+  const base = {
+    id: UsageLimitSourceId.make("hub"),
+    kind: "cliproxy" as const,
+    label: "Accounts",
+    checkedAt: "2026-09-03T11:00:00.000Z",
+  };
+  it("ignores quota movement but not the drivers offered the command", () => {
+    const withCodex = [{ ...base, accounts: [codexAccount] }];
+    const withCodexLater = [
+      {
+        ...base,
+        accounts: [
+          {
+            ...codexAccount,
+            usageLimits: { ...codexAccount.usageLimits, checkedAt: "2026-09-03T12:00:00.000Z" },
+          },
+        ],
+      },
+    ];
+    expect(sameUsageLimitCommandCoverage(withCodex, withCodexLater)).toBe(true);
+    expect(sameUsageLimitCommandCoverage(withCodex, [{ ...base, accounts: [] }])).toBe(false);
+  });
+  it("treats a failed read as a change in coverage, in both directions", () => {
+    const empty = [{ ...base, accounts: [] }];
+    const failed = [{ ...base, accounts: [], error: "token expired" }];
+    expect(sameUsageLimitCommandCoverage(empty, failed)).toBe(false);
+    expect(sameUsageLimitCommandCoverage(failed, empty)).toBe(false);
+    expect(
+      sameUsageLimitCommandCoverage(failed, [{ ...base, accounts: [], error: "still down" }]),
+    ).toBe(true);
+  });
+});
+
+describe("isUsageLimitsCommand", () => {
+  it("recognizes only the standalone local action", () => {
+    expect(isUsageLimitsCommand("  /USAGE-LIMITS\n")).toBe(true);
+    expect(isUsageLimitsCommand("/usage-limits explain")).toBe(false);
+    expect(isUsageLimitsCommand("Explain /usage-limits")).toBe(false);
+    expect(isUsageLimitsCommand("/usage")).toBe(false);
+  });
+});
+
+describe("remainingPercent", () => {
+  it("inverts and clamps the reported usage", () => {
+    expect(remainingPercent(window)).toBe(60);
+    expect(remainingPercent({ ...window, usedPercent: 0 })).toBe(100);
+    expect(remainingPercent({ ...window, usedPercent: 100 })).toBe(0);
+    expect(remainingPercent({ ...window, usedPercent: 33.4 })).toBe(67);
+  });
+});
+
+describe("limitsPage: painted once, least quota first, never none before it is known", () => {
+  const claude = ProviderDriverKind.make("claudeAgent");
+  const limited = (email: string, usedPercent = 40): ServerProvider =>
+    provider({
+      driver: claude,
+      instanceId: ProviderInstanceId.make("claude"),
+      auth: { status: "authenticated", email },
+      usageLimits: { checkedAt: "2026-09-03T11:00:00.000Z", windows: [{ ...window, usedPercent }] },
+    });
+  const unreadable = provider({
+    usageLimits: {
+      checkedAt: "2026-09-03T11:00:00.000Z",
+      windows: [],
+      unavailable: { reason: "probeFailed" },
+    },
+  });
+  const hub = {
+    id: UsageLimitSourceId.make("hub-1"),
+    kind: "cliproxy",
+    label: "Team hub",
+    checkedAt: "2026-09-03T11:00:00.000Z",
+    accounts: [],
+  } as const;
+  type Phase = "available" | "offline" | "connecting" | "reconnecting" | "connected" | "error";
+  /** One environment: its connection, and its config once it has answered. */
+  const at = (
+    phase: Phase,
+    providers: readonly ServerProvider[] | null = null,
+    error: string | null = null,
+    sources: readonly (typeof hub)[] = [],
+  ) => ({
+    entry: { target: { label: "node-id-1.runtime.zcp.zerops" } },
+    connection: { phase, error },
+    serverConfig:
+      providers === null
+        ? null
+        : { providers, ...(sources.length ? { usageLimitSources: sources } : {}) },
+  });
+  const page = (
+    options: {
+      readonly listed?: boolean;
+      readonly placed?: readonly string[];
+    },
+    ...environments: ReadonlyArray<readonly [string, ReturnType<typeof at>]>
+  ) =>
+    limitsPage({
+      listed: options.listed ?? true,
+      placed: options.placed ?? [],
+      presentations: new Map(environments.map(([id, entry]) => [EnvironmentId.make(id), entry])),
+    });
+  /** What stands on the page, in order: each entry by its kind and its account's email. */
+  const order = (result: ReturnType<typeof page>) =>
+    result.entries.map((entry) =>
+      entry.kind === "account"
+        ? (entry.account.provider.auth.email ?? entry.key)
+        : entry.kind === "source"
+          ? "source"
+          : "notice",
+    );
+  const seen = (result: ReturnType<typeof page>) => ({
+    state: result.state,
+    reading: result.reading,
+    order: order(result),
+  });
+  const roomy = limited("roomy@example.com", 20);
+  const tight = limited("tight@example.com", 90);
+  const middle = limited("middle@example.com", 50);
+
+  it.each([
+    [
+      "every environment settled: the cards, least quota left first",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]),
+      { state: "shown", reading: false, order: ["tight@example.com", "roomy@example.com"] },
+    ],
+    [
+      "a failed, a blocked and an offline environment are settled too",
+      page(
+        {},
+        ["a", at("reconnecting", null, "refused")],
+        ["b", at("error", null, "gone")],
+        ["c", at("offline")],
+        ["d", at("connected", [roomy])],
+      ),
+      { state: "shown", reading: false, order: ["roomy@example.com"] },
+    ],
+    [
+      "answered limits are shown while another source reads",
+      page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]),
+      { state: "shown", reading: true, order: ["roomy@example.com"] },
+    ],
+    [
+      "answered limits are shown before discovery completes",
+      page({ listed: false }, ["a", at("connected", [roomy])]),
+      { state: "shown", reading: true, order: ["roomy@example.com"] },
+    ],
+    [
+      "multiple answered accounts appear while another source is pending",
+      page(
+        {},
+        ["a", at("connected", [roomy])],
+        ["b", at("available")],
+        ["c", at("connected", [tight])],
+      ),
+      { state: "shown", reading: true, order: ["tight@example.com", "roomy@example.com"] },
+    ],
+    [
+      "first painted: sources, then accounts least quota first, then what could not be read",
+      page(
+        {},
+        ["a", at("connected", [roomy, unreadable], null, [hub])],
+        ["b", at("connected", [tight])],
+      ),
+      {
+        state: "shown",
+        reading: false,
+        order: ["source", "tight@example.com", "roomy@example.com", "notice"],
+      },
+    ],
+    [
+      "a late answer joins at the very end, after every source and notice painted",
+      page(
+        {
+          placed: ["source:a:hub-1", "account:claudeAgent:roomy@example.com"],
+        },
+        ["a", at("connected", [roomy], null, [hub])],
+        [
+          "b",
+          at("connected", [tight, unreadable], null, [
+            { ...hub, id: UsageLimitSourceId.make("hub-2") },
+          ]),
+        ],
+      ),
+      {
+        state: "shown",
+        reading: false,
+        order: ["source", "roomy@example.com", "source", "tight@example.com", "notice"],
+      },
+    ],
+    [
+      "painted once, a refreshed read moves nothing",
+      page(
+        {
+          placed: [
+            "account:claudeAgent:roomy@example.com",
+            "account:claudeAgent:middle@example.com",
+          ],
+        },
+        ["a", at("connected", [roomy])],
+        ["b", at("connected", [middle])],
+      ),
+      { state: "shown", reading: false, order: ["roomy@example.com", "middle@example.com"] },
+    ],
+    [
+      // A new pending source invalidates a prior absence verdict.
+      "a previous empty answer cannot establish a new pending answer",
+      page({}, ["a", at("connected", [])], ["b", at("connecting")]),
+      { state: "wait", reading: true, order: [] },
+    ],
+    [
+      "every environment settled, none reports limits",
+      page({}, ["a", at("connected", [])], ["b", at("error", null, "gone")]),
+      { state: "unavailable", reading: false, order: [] },
+    ],
+    [
+      "a pending source never proves absence",
+      page({}, ["a", at("connecting")]),
+      { state: "wait", reading: true, order: [] },
+    ],
+    [
+      "no environment and the list not whole",
+      page({ listed: false }),
+      { state: "wait", reading: true, order: [] },
+    ],
+    ["no environment, the list whole", page({}), { state: "none", reading: false, order: [] }],
+  ] as const)("%s", (_case, result, expected) => {
+    expect(seen(result)).toEqual(expected);
+  });
+
+  it("hands back what it painted, for the next read to keep", () => {
+    const result = page({}, ["a", at("connected", [roomy])], ["b", at("connected", [tight])]);
+    expect({ placed: result.placed }).toEqual({
+      placed: ["account:claudeAgent:tight@example.com", "account:claudeAgent:roomy@example.com"],
+    });
+  });
+
+  it("tells environments apart by the list, known up front, never by which reads are in", () => {
+    const one = page({ listed: false }, ["a", at("connected", [roomy])]);
+    const two = page({}, ["a", at("connected", [roomy])], ["b", at("connecting")]);
+    expect([one.tellApart, two.tellApart]).toEqual([false, true]);
+  });
+});
+
+it("A passed quota reset awaits confirmation instead of claiming a renewal now", () => {
+  expect(formatResetsIn({ ...window, resetsAt: "2026-09-03T11:00:00.000Z" }, now)).toBe(
+    "reset confirmation pending",
+  );
+});

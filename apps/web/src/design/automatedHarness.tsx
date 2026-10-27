@@ -1,0 +1,547 @@
+/**
+ * What sets up and shows automated Mates outside the menu, in each of its states: Settings ›
+ * Zerops › HQ's organization API key and Tasks from GitHub, and a task's session over its
+ * its session.
+ *
+ * Served by the dev server at `/design-automated.html` (`?theme=dark`). Open it at the owner's
+ * 1786 × 1000. The menu's automated rows are the sidebar harness's Tea Shop; the New Mate
+ * dialog's choice is `/design-newmate.html?automated=missing`. `?settle=pending` and
+ * `?settle=landed` draw the sources besides GitHub while read and once read, as an unconnected
+ * organization's: their sections stand at the same tops in both.
+ *
+ * Fixtures only. Nothing here ships — `design-automated.html` is not `index.html`, and no route
+ * imports this module.
+ */
+import type {
+  AppIntakeRead,
+  OrgAiKeysRead,
+  TaskSourceSettingValue,
+} from "@t3tools/client-runtime/data";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import type { MateTaskSource } from "@t3tools/contracts";
+import type { HqWebhookView } from "@t3tools/shared/hqIntake";
+import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
+import { StrictMode, type ReactNode } from "react";
+import { createRoot } from "react-dom/client";
+
+import {
+  AppIntakeView,
+  AutomatedMatesUnsupported,
+  OrganizationKeyView,
+} from "~/components/settings/AutomatedMatesSettings";
+import { SettingsSection } from "~/components/settings/settingsLayout";
+import {
+  AppChannelView,
+  AppSchedulesView,
+  AppWebhooksView,
+  DiscordSettingsView,
+  SchedulesSettingsView,
+  SlackSettingsView,
+  TaskLimitsView,
+  TaskSourcesUnsupported,
+  WebhooksSettingsView,
+} from "~/components/settings/TaskSourcesSettings";
+import {
+  MateTaskCardView,
+  MateTaskMessageRow,
+  MateTaskStatusView,
+} from "~/components/zerops/MateTaskCard";
+import { MateFace } from "~/components/zerops/primitives";
+import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
+import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
+import type { TaskSession } from "~/zerops/taskSession.logic";
+import "../index.css";
+
+const params = new URLSearchParams(location.search);
+const appearance = params.get("theme") === "dark" ? "dark" : "light";
+const NEBIUS = OPENCODE_KEY_PROVIDERS[0]!;
+// Built from parts: never a whole secret-shaped literal in the source.
+const SECRET = ["whsec", "3f9a", "tea", "shop", "c1d2"].join("_");
+
+const TEA_ISSUE = {
+  kind: "github-issue",
+  repo: "acme/tea-shop",
+  number: 12,
+  url: "https://github.com/acme/tea-shop/issues/12",
+  title: "Fix the checkout total",
+  author: "nova-dev",
+} as const;
+
+const DISCORD_ASK = {
+  kind: "discord-thread",
+  server: "Acme",
+  channel: "tasks",
+  url: "https://discord.com/channels/1/2/3",
+  title: "redeisgn footer",
+  author: "erza",
+} as const;
+
+/** An automated Mate's one conversation: each task's card at its turn's start, its run after. */
+const ONE_CONVERSATION: ReadonlyArray<{
+  readonly task: MateTaskSource;
+  readonly text: string;
+  readonly session: TaskSession;
+  readonly reply: string | null;
+}> = [
+  {
+    task: { ...TEA_ISSUE, number: 9, title: "Show the tea's origin", author: "juno" },
+    text: "Each tea's page should say where it was grown.",
+    session: {
+      status: "merged",
+      taskId: "task-9",
+      stoppable: false,
+      workedMs: 1_260_000,
+      spentUsd: 0.88,
+      change: { repo: "web", number: 2 },
+      pullRequest: { number: 7, url: "https://github.com/acme/tea-shop/pull/7", state: "merged" },
+    },
+    reply: "The origin now shows under each tea's name, read from the catalog. PR #7 is merged.",
+  },
+  {
+    task: {
+      kind: "slack-thread",
+      workspace: "Tea Shop",
+      channel: "support",
+      url: "https://tea-shop.slack.com/archives/C1/p2",
+      title: "The receipt email shows the wrong address",
+      author: "Ines",
+    },
+    text: "Receipts still show the old warehouse address.",
+    session: {
+      status: "review",
+      taskId: "task-11",
+      stoppable: false,
+      workedMs: 540_000,
+      spentUsd: 0.31,
+      change: { repo: "web", number: 3 },
+      pullRequest: {
+        number: 8,
+        url: "https://github.com/acme/tea-shop/pull/8",
+        state: "open",
+        checks: "passing",
+      },
+    },
+    reply:
+      "The receipt template reads the shop's address from settings now. PR #8 waits for review.",
+  },
+  {
+    task: TEA_ISSUE,
+    text: "The checkout total skips the tax line when the cart holds a gift card.",
+    session: {
+      status: "working",
+      taskId: "task-12",
+      stoppable: true,
+      workedMs: 154_000,
+      spentUsd: 0.09,
+      change: null,
+      pullRequest: null,
+    },
+    reply: null,
+  },
+];
+
+const KEY_UNSET: OrgAiKeysRead = {
+  keys: { state: "known", keys: [{ provider: "nebius", set: false, setAt: null }], stale: false },
+  action: { kind: "idle" },
+};
+const KEY_SET: OrgAiKeysRead = {
+  keys: {
+    state: "known",
+    keys: [{ provider: "nebius", set: true, setAt: "2026-10-17T09:00:00.000Z" }],
+    stale: false,
+  },
+  action: { kind: "idle" },
+};
+const NONE: AppIntakeRead = { intake: null, action: { kind: "idle" }, answer: null };
+const TAKING: AppIntakeRead = {
+  intake: { repo: "acme/tea-shop", label: "mate", waiting: 3 },
+  action: { kind: "done", verb: "set" },
+  answer: null,
+};
+const PASTE: AppIntakeRead = {
+  ...TAKING,
+  answer: {
+    appId: "tea-shop",
+    repo: "acme/tea-shop",
+    label: "mate",
+    webhookUrl: "https://hq-acme.zerops.app/api/github/webhook",
+    hook: {
+      kind: "paste",
+      secret: SECRET,
+      why: "Mate's token for acme/tea-shop may not make webhooks, so paste this one into the repository's settings.",
+    },
+  },
+};
+const MADE: AppIntakeRead = {
+  ...TAKING,
+  answer: { ...PASTE.answer!, hook: { kind: "made" } },
+};
+
+const nothing = () => {};
+
+/** A part's controls over a fixture of what is read; its presses do nothing. */
+const controls = (setting: unknown, revealed: HqWebhookView | null = null) => ({
+  read: { setting, action: { kind: "idle" }, revealed } as TaskSourceSettingValue<never>,
+  write: nothing,
+  again: nothing,
+});
+const known = (value: unknown) => ({ state: "known", held: value, stale: false });
+const APPS = [
+  { id: "tea-shop", name: "Tea Shop" },
+  { id: "shop-front", name: "Shop Front" },
+];
+const SLACK_OFF = {
+  connected: false,
+  workspace: null,
+  eventsUrl: "https://hq-acme.zerops.app/api/intake/slack/acme",
+};
+const DISCORD_OFF = {
+  connected: false,
+  interactionsUrl: "https://hq-acme.zerops.app/api/intake/discord/acme",
+  inviteUrl: null,
+  allowed: [],
+};
+const HOOK = {
+  id: "w1",
+  name: "Sentry",
+  url: "https://hq-acme.zerops.app/api/intake/webhook/9f2c41",
+  createdAt: "2026-10-17T09:00:00.000Z",
+};
+
+function Panel({ title, children }: { readonly title: string; readonly children: ReactNode }) {
+  return (
+    <section className="grid gap-2">
+      <h2 className="text-xs font-medium text-muted-foreground uppercase">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
+const RAYA = { name: "Raya", tint: "amber", shape: "clover" } as const;
+
+/** A change of Raya's waiting for review, as the menu hands it to the app bar's Review. */
+const rayaChange = (number: number, title: string) =>
+  changeReviewItem({
+    pull: {
+      repository: "web",
+      number,
+      title,
+      kind: "code",
+      mateProjectId: "mate-raya",
+    } as unknown as FlowPullRequest,
+    among: [],
+    groupId: "tea-shop",
+    by: RAYA,
+    mine: true,
+  });
+
+const RAYA_CHANGES = [
+  rayaChange(7, "Show the tea's origin"),
+  rayaChange(8, "Add a Back to top link in the footer"),
+];
+
+const doorOf = (items: ReadonlyArray<ReturnType<typeof rayaChange>>) => ({
+  review: { groupId: "tea-shop", projectName: "Tea Shop", items, release: undefined },
+  held: false,
+});
+
+const UP_FOR_REVIEW: TaskSession = {
+  status: "review",
+  taskId: "task-8",
+  stoppable: false,
+  workedMs: 420_000,
+  spentUsd: 0.31,
+  change: { repo: "web", number: 8 },
+  pullRequest: null,
+};
+
+/** The conversation's app bar as far as its Mate's line goes: face, name, then what follows it. */
+function AppBar({ children }: { readonly children: ReactNode }) {
+  return (
+    <div className="flex h-13 items-center gap-2 border-b border-border px-4 text-line">
+      <MateFace shape={RAYA.shape} size={24} state="needs" tint={RAYA.tint} />
+      <span className="font-medium">Raya ▾</span>
+      {children}
+    </div>
+  );
+}
+
+function Harness() {
+  return (
+    <div className="grid min-h-screen grid-cols-2 gap-8 bg-background p-8 text-foreground">
+      <div className="grid content-start gap-6">
+        <Panel title="Settings › Zerops › HQ">
+          <SettingsSection title="HQ">
+            <OrganizationKeyView
+              onAgain={nothing}
+              onRemove={nothing}
+              onSet={nothing}
+              provider={NEBIUS}
+              read={KEY_UNSET}
+            />
+            <OrganizationKeyView
+              onAgain={nothing}
+              onRemove={nothing}
+              onSet={nothing}
+              provider={NEBIUS}
+              read={KEY_SET}
+            />
+            <ul className="grid gap-4 px-3 pb-3 sm:px-4">
+              <AppIntakeView
+                appId="tea-shop"
+                choices={["acme/tea-shop"]}
+                name="Tea Shop"
+                onSet={nothing}
+                onStop={nothing}
+                read={NONE}
+                reposRead
+              />
+              <AppIntakeView
+                appId="tea-shop-paste"
+                choices={["acme/tea-shop"]}
+                name="Tea Shop — set, to paste"
+                onSet={nothing}
+                onStop={nothing}
+                read={PASTE}
+                reposRead
+              />
+              <AppIntakeView
+                appId="tea-shop-made"
+                choices={["acme/tea-shop"]}
+                name="Tea Shop — set, webhook made"
+                onSet={nothing}
+                onStop={nothing}
+                read={MADE}
+                reposRead
+              />
+              <AppIntakeView
+                appId="shop-front"
+                choices={[]}
+                name="Shop Front — its repositories not read"
+                onReadAgain={nothing}
+                onSet={nothing}
+                onStop={nothing}
+                read={NONE}
+                reposFailure="HQ is not answering right now."
+                reposRead={false}
+              />
+              <AppIntakeView
+                appId="notes"
+                choices={[]}
+                name="Notes — no GitHub mirror"
+                onSet={nothing}
+                onStop={nothing}
+                read={NONE}
+                reposRead
+              />
+            </ul>
+          </SettingsSection>
+        </Panel>
+        <Panel title="Settings › Zerops › HQ — an HQ older than automated Mates">
+          <SettingsSection title="HQ">
+            <AutomatedMatesUnsupported />
+          </SettingsSection>
+        </Panel>
+      </div>
+      <div className="grid content-start gap-6">
+        <Panel title="The app bar's Review: a normal Mate, then an automated Mate's task conversation">
+          <div className="grid max-w-2xl gap-3" data-harness="app-bar-review">
+            <AppBar>
+              <HeaderReviewDoor {...doorOf(RAYA_CHANGES.slice(1))} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView review={doorOf(RAYA_CHANGES.slice(1))} session={UP_FOR_REVIEW} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView review={doorOf(RAYA_CHANGES)} session={UP_FOR_REVIEW} />
+            </AppBar>
+            <AppBar>
+              <MateTaskStatusView
+                onStop={nothing}
+                review={doorOf(RAYA_CHANGES.slice(0, 1))}
+                session={{ ...UP_FOR_REVIEW, status: "waiting", stoppable: true, change: null }}
+              />
+            </AppBar>
+          </div>
+        </Panel>
+        <Panel title="One conversation, a turn per task: two finished, one at work">
+          <div className="grid max-w-2xl gap-3">
+            {/* The header follows the conversation's current task. */}
+            <MateTaskStatusView onStop={nothing} session={ONE_CONVERSATION[2]!.session} />
+            {ONE_CONVERSATION.map(({ task, text, session, reply }) => (
+              <div className="grid gap-3" key={session.taskId}>
+                <MateTaskCardView
+                  onOpenChange={nothing}
+                  session={session}
+                  task={task}
+                  text={text}
+                />
+                {reply === null ? null : <p className="px-1 text-prose text-foreground">{reply}</p>}
+              </div>
+            ))}
+          </div>
+        </Panel>
+        <Panel title="A task's session, its ask, and a follow-up">
+          <div className="grid max-w-2xl gap-3">
+            <MateTaskStatusView
+              onStop={nothing}
+              session={{
+                status: "working",
+                taskId: "task-12",
+                stoppable: true,
+                workedMs: 754_000,
+                spentUsd: 0.42,
+                change: null,
+                pullRequest: null,
+              }}
+            />
+            <MateTaskCardView
+              onOpenChange={nothing}
+              session={{
+                status: "working",
+                taskId: "task-12",
+                stoppable: true,
+                workedMs: 754_000,
+                spentUsd: 0.42,
+                change: { repo: "web", number: 3 },
+                pullRequest: null,
+              }}
+              task={TEA_ISSUE}
+              text={[
+                "The checkout total skips the tax line when the cart holds a gift card.",
+                "",
+                "Steps: add two teas and a gift card, open checkout, compare the total with the sum of the lines.",
+                "Expected: the total includes 21 % VAT on the teas, never on the gift card.",
+                "Actual: the total is the lines' sum without any tax.",
+                "",
+                "It started after Tuesday's deploy; the invoices still look right, only the cart is off.",
+                "Juno saw it on a phone too, so it is not the browser.",
+              ].join("\n")}
+            />
+            <MateTaskCardView
+              task={{
+                kind: "slack-thread",
+                workspace: "Acme",
+                channel: "support",
+                url: "https://acme.slack.com/archives/C1/p1",
+                title: "Can the shop show prices with tax?",
+                author: "Raya",
+              }}
+              text="Can the shop show prices with tax on the product page?"
+            />
+            {/* A chat ask's title is its first line: the card says the ask once. */}
+            <MateTaskCardView task={DISCORD_ASK} text="redeisgn footer" />
+            <MateTaskCardView
+              task={{ ...DISCORD_ASK, title: "redesign footer" }}
+              text={"redesign footer\nkeep the logo on the left\nmatch the header's spacing"}
+            />
+            <MateTaskMessageRow
+              message={{
+                id: "c1",
+                from: "comment",
+                author: "ida-ops",
+                text: "Keep the old rounding for invoices, only the cart total changes.",
+              }}
+            />
+          </div>
+        </Panel>
+        <Panel title="Settings › Zerops › HQ — tasks from elsewhere">
+          <SettingsSection title="HQ">
+            <SlackSettingsView
+              controls={controls(known(SLACK_OFF))}
+              manifest={controls(known("{}"))}
+            />
+            <SlackSettingsView
+              controls={controls(known({ ...SLACK_OFF, connected: true, workspace: "Acme" }))}
+            />
+            <DiscordSettingsView controls={controls(known(DISCORD_OFF))} />
+            <DiscordSettingsView
+              controls={controls(
+                known({
+                  ...DISCORD_OFF,
+                  connected: true,
+                  inviteUrl: "https://discord.com/oauth2/authorize?client_id=1",
+                  allowed: ["123456789012345678"],
+                }),
+              )}
+            />
+            <WebhooksSettingsView apps={APPS}>
+              {(app) => (
+                <AppWebhooksView
+                  controls={
+                    app.id === "tea-shop"
+                      ? controls(known([HOOK]), { ...HOOK, secret: SECRET })
+                      : controls(known([]))
+                  }
+                  name={app.name}
+                />
+              )}
+            </WebhooksSettingsView>
+            <SchedulesSettingsView apps={APPS.slice(0, 1)}>
+              {(app) => (
+                <AppSchedulesView
+                  controls={controls(
+                    known([
+                      {
+                        id: "s1",
+                        name: "Weekly upkeep",
+                        brief: "Update the dependencies and open a change.",
+                        rule: { every: "week", day: 1, at: "09:00", timeZone: "Europe/Prague" },
+                        nextAt: "2026-10-19T07:00:00.000Z",
+                      },
+                    ]),
+                  )}
+                  name={app.name}
+                />
+              )}
+            </SchedulesSettingsView>
+            <TaskLimitsView controls={controls(known({ minutes: 60, costUsd: 5 }))} />
+          </SettingsSection>
+        </Panel>
+        <Panel title="Tasks from elsewhere — reading, and an older HQ">
+          <SettingsSection title="HQ">
+            <SlackSettingsView controls={controls({ state: "reading" })} />
+            <ul className="grid gap-3 px-3 pb-3 sm:px-4">
+              <AppChannelView controls={controls({ state: "reading" })} source="slack" />
+            </ul>
+            <TaskSourcesUnsupported />
+          </SettingsSection>
+        </Panel>
+      </div>
+    </div>
+  );
+}
+
+/** The sources besides GitHub while read, or once read, for their sections' tops to be compared. */
+function Settle({ landed }: { readonly landed: boolean }) {
+  const at = (value: unknown) => controls(landed ? known(value) : { state: "reading" });
+  return (
+    <div className="max-w-4xl bg-background p-8 text-foreground">
+      <SettingsSection title="HQ">
+        <SlackSettingsView controls={at(SLACK_OFF)} manifest={controls(known("{}"))} />
+        <DiscordSettingsView controls={at({ ...DISCORD_OFF, interactionsUrl: "" })} />
+        <WebhooksSettingsView apps={APPS}>
+          {(app) => <AppWebhooksView controls={at([])} name={app.name} />}
+        </WebhooksSettingsView>
+        <SchedulesSettingsView apps={APPS}>
+          {(app) => <AppSchedulesView controls={at([])} name={app.name} />}
+        </SchedulesSettingsView>
+        <TaskLimitsView controls={at({ minutes: 60, costUsd: null })} />
+      </SettingsSection>
+    </div>
+  );
+}
+
+const settle = params.get("settle");
+
+document.documentElement.classList.toggle("dark", appearance === "dark");
+applyThemePalette(ZEROPS_THEME_ID, appearance);
+
+const host = document.getElementById("design");
+if (host) {
+  createRoot(host).render(
+    <StrictMode>
+      {settle === null ? <Harness /> : <Settle landed={settle === "landed"} />}
+    </StrictMode>,
+  );
+}

@@ -1,0 +1,498 @@
+{
+  "name": "@t3tools/shared",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./gitTokenGuide": {
+      "types": "./src/gitTokenGuide.ts",
+      "import": "./src/gitTokenGuide.ts"
+    },
+    "./releaseSource": {
+      "types": "./src/releaseSource.ts",
+      "import": "./src/releaseSource.ts"
+    },
+    "./mateAutoUpdatePolicy": {
+      "types": "./src/mateAutoUpdatePolicy.ts",
+      "import": "./src/mateAutoUpdatePolicy.ts"
+    },
+    "./hqEnvironment": {
+      "types": "./src/hqEnvironment.ts",
+      "import": "./src/hqEnvironment.ts"
+    },
+    "./hqStream": {
+      "types": "./src/hqStream.ts",
+      "import": "./src/hqStream.ts"
+    },
+    "./hqObservation": {
+      "types": "./src/hqObservation.ts",
+      "import": "./src/hqObservation.ts"
+    },
+    "./brand": {
+      "types": "./src/brand.ts",
+      "import": "./src/brand.ts"
+    },
+    "./legacyVocabulary": {
+      "types": "./src/legacyVocabulary.ts",
+      "import": "./src/legacyVocabulary.ts"
+    },
+    "./themePalettes": {
+      "types": "./src/themePalettes.ts",
+      "import": "./src/themePalettes.ts"
+    },
+    "./mobileThemeVariables": {
+      "types": "./src/mobileThemeVariables.ts",
+      "import": "./src/mobileThemeVariables.ts"
+    },
+    "./themePreview": {
+      "types": "./src/themePreview.ts",
+      "import": "./src/themePreview.ts"
+    },
+    "./projectFavicon": {
+      "types": "./src/projectFavicon.ts",
+      "import": "./src/projectFavicon.ts"
+    },
+    "./structuralSharing": {
+      "types": "./src/structuralSharing.ts",
+      "import": "./src/structuralSharing.ts"
+    },
+    "./messagePreview": {
+      "types": "./src/messagePreview.ts",
+      "import": "./src/messagePreview.ts"
+    },
+    "./modelOptions": {
+      "types": "./src/modelOptions.ts",
+      "import": "./src/modelOptions.ts"
+    },
+    "./userAsk": {
+      "types": "./src/userAsk.ts",
+      "import": "./src/userAsk.ts"
+    },
+    "./model": {
+      "types": "./src/model.ts",
+      "import": "./src/model.ts"
+    },
+    "./advertisedEndpoint": {
+      "types": "./src/advertisedEndpoint.ts",
+      "import": "./src/advertisedEndpoint.ts"
+    },
+    "./agentAwareness": {
+      "types": "./src/agentAwareness.ts",
+      "import": "./src/agentAwareness.ts"
+    },
+    "./threadStatus.vectors": {
+      "types": "./src/threadStatus.vectors.ts",
+      "import": "./src/threadStatus.vectors.ts"
+    },
+    "./threadStatus": {
+      "types": "./src/threadStatus.ts",
+      "import": "./src/threadStatus.ts"
+    },
+    "./zeropsDoor": {
+      "types": "./src/zeropsDoor.ts",
+      "import": "./src/zeropsDoor.ts"
+    },
+    "./zeropsRoles": {
+      "types": "./src/zeropsRoles.ts",
+      "import": "./src/zeropsRoles.ts"
+    },
+    "./mateKeyReach": {
+      "types": "./src/mateKeyReach.ts",
+      "import": "./src/mateKeyReach.ts"
+    },
+    "./zeropsPermissions": {
+      "types": "./src/zeropsPermissions.ts",
+      "import": "./src/zeropsPermissions.ts"
+    },
+    "./mateAccess": {
+      "types": "./src/mateAccess.ts",
+      "import": "./src/mateAccess.ts"
+    },
+    "./mateLink": {
+      "types": "./src/mateLink.ts",
+      "import": "./src/mateLink.ts"
+    },
+    "./hqGithub": {
+      "types": "./src/hqGithub.ts",
+      "import": "./src/hqGithub.ts"
+    },
+    "./hqIntake": {
+      "types": "./src/hqIntake.ts",
+      "import": "./src/hqIntake.ts"
+    },
+    "./hqMates": {
+      "types": "./src/hqMates.ts",
+      "import": "./src/hqMates.ts"
+    },
+    "./hqAttachments": {
+      "types": "./src/hqAttachments.ts",
+      "import": "./src/hqAttachments.ts"
+    },
+    "./hqGit": {
+      "types": "./src/hqGit.ts",
+      "import": "./src/hqGit.ts"
+    },
+    "./hqGitBrowse/*": {
+      "types": "./src/hqGitBrowse/*.ts",
+      "import": "./src/hqGitBrowse/*.ts"
+    },
+    "./hqChanges": {
+      "types": "./src/hqChanges.ts",
+      "import": "./src/hqChanges.ts"
+    },
+    "./hqOffers": {
+      "types": "./src/hqOffers.ts",
+      "import": "./src/hqOffers.ts"
+    },
+    "./hqAppReads": {
+      "types": "./src/hqAppReads.ts",
+      "import": "./src/hqAppReads.ts"
+    },
+    "./hqRecipe": {
+      "types": "./src/hqRecipe.ts",
+      "import": "./src/hqRecipe.ts"
+    },
+    "./hqDeploys": {
+      "types": "./src/hqDeploys.ts",
+      "import": "./src/hqDeploys.ts"
+    },
+    "./hqRelease": {
+      "types": "./src/hqRelease.ts",
+      "import": "./src/hqRelease.ts"
+    },
+    "./primaryConversation": {
+      "types": "./src/primaryConversation.ts",
+      "import": "./src/primaryConversation.ts"
+    },
+    "./zeropsAgentAuth": {
+      "types": "./src/zeropsAgentAuth.ts",
+      "import": "./src/zeropsAgentAuth.ts"
+    },
+    "./openCodeKeyProviders": {
+      "types": "./src/openCodeKeyProviders.ts",
+      "import": "./src/openCodeKeyProviders.ts"
+    },
+    "./git": {
+      "types": "./src/git.ts",
+      "import": "./src/git.ts"
+    },
+    "./sourceControl": {
+      "types": "./src/sourceControl.ts",
+      "import": "./src/sourceControl.ts"
+    },
+    "./logging": {
+      "types": "./src/logging.ts",
+      "import": "./src/logging.ts"
+    },
+    "./observability": {
+      "types": "./src/observability.ts",
+      "import": "./src/observability.ts"
+    },
+    "./otelEnvironment": {
+      "types": "./src/otelEnvironment.ts",
+      "import": "./src/otelEnvironment.ts"
+    },
+    "./httpObservability": {
+      "types": "./src/httpObservability.ts",
+      "import": "./src/httpObservability.ts"
+    },
+    "./editor": {
+      "types": "./src/editor.ts",
+      "import": "./src/editor.ts"
+    },
+    "./shell": {
+      "types": "./src/shell.ts",
+      "import": "./src/shell.ts"
+    },
+    "./semver": {
+      "types": "./src/semver.ts",
+      "import": "./src/semver.ts"
+    },
+    "./Net": {
+      "types": "./src/Net.ts",
+      "import": "./src/Net.ts"
+    },
+    "./DrainableWorker": {
+      "types": "./src/DrainableWorker.ts",
+      "import": "./src/DrainableWorker.ts"
+    },
+    "./KeyedCoalescingWorker": {
+      "types": "./src/KeyedCoalescingWorker.ts",
+      "import": "./src/KeyedCoalescingWorker.ts"
+    },
+    "./KeyedLock": {
+      "types": "./src/KeyedLock.ts",
+      "import": "./src/KeyedLock.ts"
+    },
+    "./schemaJson": {
+      "types": "./src/schemaJson.ts",
+      "import": "./src/schemaJson.ts"
+    },
+    "./schemaYaml": {
+      "types": "./src/schemaYaml.ts",
+      "import": "./src/schemaYaml.ts"
+    },
+    "./toolActivity": {
+      "types": "./src/toolActivity.ts",
+      "import": "./src/toolActivity.ts"
+    },
+    "./Struct": {
+      "types": "./src/Struct.ts",
+      "import": "./src/Struct.ts"
+    },
+    "./serverSettings": {
+      "types": "./src/serverSettings.ts",
+      "import": "./src/serverSettings.ts"
+    },
+    "./backgroundActivitySettings": {
+      "types": "./src/backgroundActivitySettings.ts",
+      "import": "./src/backgroundActivitySettings.ts"
+    },
+    "./String": {
+      "types": "./src/String.ts",
+      "import": "./src/String.ts"
+    },
+    "./projectScripts": {
+      "types": "./src/projectScripts.ts",
+      "import": "./src/projectScripts.ts"
+    },
+    "./threadEnvMode": {
+      "types": "./src/threadEnvMode.ts",
+      "import": "./src/threadEnvMode.ts"
+    },
+    "./t3ProjectFile": {
+      "types": "./src/t3ProjectFile.ts",
+      "import": "./src/t3ProjectFile.ts"
+    },
+    "./orchestrationTiming": {
+      "types": "./src/orchestrationTiming.ts",
+      "import": "./src/orchestrationTiming.ts"
+    },
+    "./remote": {
+      "types": "./src/remote.ts",
+      "import": "./src/remote.ts"
+    },
+    "./relaySigning": {
+      "types": "./src/relaySigning.ts",
+      "import": "./src/relaySigning.ts"
+    },
+    "./dpop": {
+      "types": "./src/dpop.ts",
+      "import": "./src/dpop.ts"
+    },
+    "./dpopCommon": {
+      "types": "./src/dpopCommon.ts",
+      "import": "./src/dpopCommon.ts"
+    },
+    "./relayAuth": {
+      "types": "./src/relayAuth.ts",
+      "import": "./src/relayAuth.ts"
+    },
+    "./relayUrl": {
+      "types": "./src/relayUrl.ts",
+      "import": "./src/relayUrl.ts"
+    },
+    "./relayJwt": {
+      "types": "./src/relayJwt.ts",
+      "import": "./src/relayJwt.ts"
+    },
+    "./oauthScope": {
+      "types": "./src/oauthScope.ts",
+      "import": "./src/oauthScope.ts"
+    },
+    "./searchRanking": {
+      "types": "./src/searchRanking.ts",
+      "import": "./src/searchRanking.ts"
+    },
+    "./qrCode": {
+      "types": "./src/qrCode.ts",
+      "import": "./src/qrCode.ts"
+    },
+    "./cliArgs": {
+      "types": "./src/cliArgs.ts",
+      "import": "./src/cliArgs.ts"
+    },
+    "./connectAuth": {
+      "types": "./src/connectAuth.ts",
+      "import": "./src/connectAuth.ts"
+    },
+    "./symlink": {
+      "types": "./src/symlink.ts",
+      "import": "./src/symlink.ts"
+    },
+    "./path": {
+      "types": "./src/path.ts",
+      "import": "./src/path.ts"
+    },
+    "./keybindings": {
+      "types": "./src/keybindings.ts",
+      "import": "./src/keybindings.ts"
+    },
+    "./threadReference": {
+      "types": "./src/threadReference.ts",
+      "import": "./src/threadReference.ts"
+    },
+    "./composerTrigger": {
+      "types": "./src/composerTrigger.ts",
+      "import": "./src/composerTrigger.ts"
+    },
+    "./composerInlineTokens": {
+      "types": "./src/composerInlineTokens.ts",
+      "import": "./src/composerInlineTokens.ts"
+    },
+    "./terminalLabels": {
+      "types": "./src/terminalLabels.ts",
+      "import": "./src/terminalLabels.ts"
+    },
+    "./relayClient": {
+      "types": "./src/relayClient.ts",
+      "import": "./src/relayClient.ts"
+    },
+    "./relayTracing": {
+      "types": "./src/relayTracing.ts",
+      "import": "./src/relayTracing.ts"
+    },
+    "./preview": {
+      "types": "./src/preview.ts",
+      "import": "./src/preview.ts"
+    },
+    "./previewViewport": {
+      "types": "./src/previewViewport.ts",
+      "import": "./src/previewViewport.ts"
+    },
+    "./filePreview": {
+      "types": "./src/filePreview.ts",
+      "import": "./src/filePreview.ts"
+    },
+    "./toolCallEcho": {
+      "types": "./src/toolCallEcho.ts",
+      "import": "./src/toolCallEcho.ts"
+    },
+    "./video": {
+      "types": "./src/video.ts",
+      "import": "./src/video.ts"
+    },
+    "./imageDimensions": {
+      "types": "./src/imageDimensions.ts",
+      "import": "./src/imageDimensions.ts"
+    },
+    "./composerPictures": {
+      "types": "./src/composerPictures.ts",
+      "import": "./src/composerPictures.ts"
+    },
+    "./chatList": {
+      "types": "./src/chatList.ts",
+      "import": "./src/chatList.ts"
+    },
+    "./hostProcess": {
+      "types": "./src/hostProcess.ts",
+      "import": "./src/hostProcess.ts"
+    },
+    "./testing/symlinks": {
+      "types": "./src/testing/symlinks.ts",
+      "import": "./src/testing/symlinks.ts"
+    },
+    "./testing/longTempDir": {
+      "types": "./src/testing/longTempDir.ts",
+      "import": "./src/testing/longTempDir.ts"
+    },
+    "./httpReadiness": {
+      "types": "./src/httpReadiness.ts",
+      "import": "./src/httpReadiness.ts"
+    },
+    "./devHome": {
+      "types": "./src/devHome.ts",
+      "import": "./src/devHome.ts"
+    },
+    "./devProxy": {
+      "types": "./src/devProxy.ts",
+      "import": "./src/devProxy.ts"
+    },
+    "./basePath": {
+      "types": "./src/basePath.ts",
+      "import": "./src/basePath.ts"
+    },
+    "./usageMerge": {
+      "types": "./src/usageMerge.ts",
+      "import": "./src/usageMerge.ts"
+    },
+    "./usageFormat": {
+      "types": "./src/usageFormat.ts",
+      "import": "./src/usageFormat.ts"
+    },
+    "./usageLimits": {
+      "types": "./src/usageLimits.ts",
+      "import": "./src/usageLimits.ts"
+    },
+    "./claudeCompaction": {
+      "types": "./src/claudeCompaction.ts",
+      "import": "./src/claudeCompaction.ts"
+    },
+    "./showcaseScenes": {
+      "types": "./src/showcaseScenes/index.ts",
+      "import": "./src/showcaseScenes/index.ts"
+    },
+    "./hostClassification": {
+      "types": "./src/hostClassification.ts",
+      "import": "./src/hostClassification.ts"
+    },
+    "./favicon": {
+      "types": "./src/favicon.ts",
+      "import": "./src/favicon.ts"
+    },
+    "./zeropsEffort": {
+      "types": "./src/zeropsEffort.ts",
+      "import": "./src/zeropsEffort.ts"
+    },
+    "./crewHome": {
+      "types": "./src/crewHome.ts",
+      "import": "./src/crewHome.ts"
+    },
+    "./crewTemplates": {
+      "types": "./src/crewTemplates.ts",
+      "import": "./src/crewTemplates.ts"
+    },
+    "./liveBatch": {
+      "types": "./src/liveBatch.ts",
+      "import": "./src/liveBatch.ts"
+    },
+    "./mateFaces": {
+      "types": "./src/mateFaces.ts",
+      "import": "./src/mateFaces.ts"
+    },
+    "./hqLifecycle": "./src/hqLifecycle.ts",
+    "./agentUsage": {
+      "types": "./src/agentUsage.ts",
+      "import": "./src/agentUsage.ts"
+    },
+    "./testing/handledQueue": {
+      "types": "./src/testing/handledQueue.ts",
+      "import": "./src/testing/handledQueue.ts"
+    },
+    "./completionReceipt": {
+      "types": "./src/completionReceipt.ts",
+      "import": "./src/completionReceipt.ts"
+    },
+    "./hqGitTargets": {
+      "types": "./src/hqGitTargets.ts",
+      "import": "./src/hqGitTargets.ts"
+    }
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --config ../../vite.config.ts --dir ."
+  },
+  "dependencies": {
+    "@noble/curves": "catalog:",
+    "@noble/hashes": "catalog:",
+    "@t3tools/contracts": "workspace:*",
+    "effect": "catalog:",
+    "jose": "catalog:",
+    "yaml": "catalog:"
+  },
+  "devDependencies": {
+    "@effect/platform-node": "catalog:",
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "vite-plus": "catalog:"
+  }
+}

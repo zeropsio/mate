@@ -1,0 +1,5 @@
+{
+  "driver": "cursor",
+  "notes": "Two MCP calls built from the ACP spec's shapes, recorded live each run through the real makeCursorAdapter against apps/server/scripts/acp-mock-agent.ts with T3_ACP_EMIT_MCP_TOOL_CALLS=1: a call of kind 'other' titled 'zerops: zerops_discover' and one tagged 'execute' titled 'mcp__zerops__zerops_deploy', each with rawInput {targetService:'api'} and the MCP result in rawOutput. Pins that both reach event.toolCall as the Zerops tool with its arguments and result. Not a capture of a real Cursor: no real Cursor MCP call has been recorded. See apps/server/src/spi/replay/acpReplay.ts (recordCursorMcpCalls).",
+  "synthetic": true
+}

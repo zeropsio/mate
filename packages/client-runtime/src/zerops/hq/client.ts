@@ -1,0 +1,1865 @@
+import type { KeptGitAnswer } from "@t3tools/contracts";
+import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
+import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
+import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
+import {
+  HqGithubManifestView,
+  HqGithubView,
+  type HqGithubManifestRequest,
+  type HqRepoRemoteViaAppRequest,
+} from "@t3tools/shared/hqGithub";
+import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
+import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
+import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
+/**
+ * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
+ *
+ * A person signs in with their Zerops access token (`POST /api/door {accessToken, orgId}`, in the
+ * body only) and HQ answers a session of its own, which this client sends as `Authorization:
+ * Bearer` and renews before it ends with the same request and a current token, keeping its id.
+ * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
+ *
+ * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
+ * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
+ * answered no — with HQ's own code and words — and `uncertain` when a write's answer was lost and
+ * what HQ holds, read back at once, does not show it made.
+ *
+ * @module hq/client
+ */
+import {
+  attachmentPath,
+  ChangeMetadataResponse,
+  ChangeCommitsResponse,
+  type ChangeDetailQuery,
+  HqChange,
+  HqChangeComment,
+  type AttachmentLink,
+  type ChangeLink,
+} from "@t3tools/shared/hqChanges";
+import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
+import { signInStartingOrganisation, type OrgStartPorts } from "./orgKeyMint.logic.ts";
+import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
+import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
+import {
+  Release,
+  ReleaseListResponse,
+  type CreateReleaseRequest,
+  type RollbackRequest,
+} from "@t3tools/shared/hqRelease";
+import type { HqOffers } from "@t3tools/shared/hqOffers";
+import type { HqNavigationIntake, HqNavigationMateTask } from "@t3tools/shared/hqStream";
+import {
+  HqAiKeyView,
+  HqChannelView,
+  HqDiscordView,
+  HqIntakeView,
+  HqScheduleView,
+  HqAppTasksView,
+  HqSlackChannels,
+  HqSlackView,
+  HqTaskLimitsView,
+  HqWebhookView,
+  type HqAppTask,
+  type HqAiKeyRequest,
+  type HqChannelRequest,
+  type HqDiscordAllowRequest,
+  type HqDiscordConnectRequest,
+  type HqIntakeRequest,
+  type HqScheduleRequest,
+  type HqSlackConnectRequest,
+  type HqWebhookRequest,
+} from "@t3tools/shared/hqIntake";
+import type { OverviewLogins } from "@t3tools/shared/mateLink";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import {
+  GIT_BROWSE_READS,
+  gitBrowsePath,
+  type GitBrowseBytesRead,
+  type GitBrowseParams,
+  type GitBrowseRead,
+  type GitBrowseValue,
+} from "../gitBrowse/reads.ts";
+import { fileSize } from "../gitBrowse/blob.ts";
+import { heldType } from "../gitBrowse/raw.ts";
+
+import { type FetchImplementation } from "../api.ts";
+import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
+import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
+import { hqStructureOf } from "./structure.ts";
+import { makeChiefCalls, type HqChiefCalls } from "./chief.ts";
+
+/** An organization's HQ: its project, and the address its anchor names. */
+export interface HqEndpoint {
+  readonly projectId: string;
+  readonly address: string;
+}
+
+/**
+ * A Mate's record in HQ: its face in the grammar `readMateFace` reads. Its name is its project's in
+ * Zerops (D3), never HQ's.
+ */
+export interface HqMateRecord {
+  readonly face: string;
+}
+
+/**
+ * A Mate's record as the write that makes it carries it: whether the person writing it asks for
+ * its stand-up rides with it, so the record and its ask never part (audit B3).
+ */
+export interface HqNewMate extends HqMateRecord {
+  readonly standUp?: boolean;
+  /**
+   * It is made automated (`MateState.automated`): it takes tasks from outside and runs on the
+   * organization's API key. Set at its making, never changed; an older HQ ignores it.
+   */
+  readonly automated?: true;
+}
+
+/**
+ * A Mate's record as a set-up on a project holding its zcp service already writes it: naming that
+ * service, the one Mate of its project (audit D2).
+ */
+export interface HqMateSetUp extends HqNewMate {
+  readonly serviceId?: string;
+}
+
+/**
+ * A Mate as HQ reads it: its record, its birth, and — joined from HQ's overview of it, where the
+ * reader may observe it (`hqMates.ts`) — its agents' logins.
+ */
+export interface HqMate extends Partial<HqMateRecord> {
+  readonly birthId?: string | null;
+  readonly signers?: Readonly<Record<string, string>>;
+  /**
+   * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
+   * HQ says nothing.
+   */
+  readonly madeBy?: string | null | undefined;
+  /** Who asked for its stand-up, with its record: nobody is null; an older HQ says nothing. */
+  readonly standupRequestedBy?: string | null | undefined;
+  /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
+  readonly closedOff?: boolean | undefined;
+  /** HQ’s read of the setup press marker; null while unknown. */
+  readonly setupMarker?: boolean | null | undefined;
+  /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
+  readonly logins?: OverviewLogins;
+  /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
+  readonly runsWithoutSignIn?: boolean;
+  /**
+   * It takes tasks from outside and runs on the organization's API key, never on a person's
+   * sign-in (`HqNavigationMate.automated`); absent from an older HQ: not one.
+   */
+  readonly automated?: boolean | undefined;
+  /** The task an automated Mate is on, or none; absent from an older HQ. */
+  readonly task?: HqNavigationMateTask | null | undefined;
+}
+
+/**
+ * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`); absent where
+ * HQ sent none, or none this build can read. Where it may go HQ answers as the move opens.
+ */
+export interface HqMateOffers {
+  readonly can?: HqOffers;
+}
+
+/** HQ's held records, including projects whose removal has not finished at HQ. */
+export interface HqAppContents {
+  /** The same project, change, release and code repository records that guard Delete. */
+  readonly empty: boolean;
+  /** By id: still held at HQ, deleting or absent in HQ's Zerops view. */
+  readonly deletingProjectIds: ReadonlyArray<string>;
+}
+
+/** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
+export interface HqStructure {
+  /** What the reader may do with the organization's applications; absent where HQ sent none. */
+  readonly can?: HqOffers;
+  /**
+   * Each project the reader reads that HQ holds nowhere, by id, with whether they may write its
+   * Mate's record (`create_mate_record`); absent where HQ sent none.
+   */
+  readonly unheld?: Readonly<Record<string, HqOffers>>;
+  /**
+   * When Zerops answered the org view HQ decides its offers over (ISO 8601): shown, never compared
+   * with now. None until HQ's stream names one.
+   */
+  readonly rolesAnsweredAt?: string | null;
+  readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
+  /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
+  readonly ungrouped: ReadonlyArray<
+    {
+      readonly projectId: string;
+      readonly name: string;
+      readonly mate: HqMate;
+    } & HqMateOffers
+  >;
+  readonly apps: ReadonlyArray<{
+    readonly id: string;
+    readonly name: string;
+    readonly projects: ReadonlyArray<
+      {
+        readonly projectId: string;
+        readonly name: string;
+        readonly kind: string;
+        readonly mate: HqMate | null | undefined;
+      } & HqMateOffers
+    >;
+    /** What the reader may do with it: its changes, its deploys, its release; absent where none. */
+    readonly can?: HqOffers;
+    /** Absent from an older HQ: projected projects cannot establish emptiness. */
+    readonly contents?: HqAppContents;
+    /**
+     * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
+     * changes; refused, with HQ's reason, to one who only sees it — never an empty list; absent
+     * where HQ sent none this build can read.
+     */
+    readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
+    /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
+    readonly births?: ReadonlyArray<HqBirth>;
+    /**
+     * Where its automated Mates take tasks from, and how many wait for one to be free; null:
+     * nowhere; absent from an older HQ.
+     */
+    readonly intake?: HqNavigationIntake | null;
+  }>;
+}
+
+/** HQ membership retains target identity independently of the Zerops roster. */
+export type CanonicalHqStructure = Omit<HqStructure, "apps"> & {
+  readonly apps: ReadonlyArray<
+    Omit<HqStructure["apps"][number], "environments"> & {
+      readonly environments?: ReadonlyArray<CanonicalHqEnvironment> | { readonly refused: string };
+    }
+  >;
+};
+
+export interface HqAttach {
+  readonly projectId: string;
+  readonly kind: RoleProjectKind;
+  /**
+   * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
+   * kind `mate`, and only with it. An attach that closes a birth intent takes the intent's ask
+   * instead.
+   */
+  readonly mate?: HqMateSetUp;
+  /** A stage's or a production's environment name; HQ names it from its project without one. */
+  readonly environment?: { readonly name: string };
+  /** The birth intent a Mate's project was created under (`recordBirth`): its attach closes it. */
+  readonly birth?: string;
+  /**
+   * This client created the stage's or production's project for HQ to deploy: HQ turns its
+   * services' subdomains on at their first deploy, and never otherwise (audit R1, D6).
+   */
+  readonly created?: true;
+}
+
+/**
+ * A Mate's birth intent at HQ: where it goes and with which face, recorded before its Zerops project
+ * exists, then bound by project id, until its attach closes it.
+ */
+export interface HqBirth {
+  readonly projectId?: string | null;
+  readonly id: string;
+  /** Its face as its attach records it: empty where it wears its name's tint. */
+  readonly face: string;
+}
+
+export class HqError extends Error {
+  /**
+   * `unavailable` when HQ could not be reached or is not serving; `refused` when it answered no;
+   * `uncertain` when a write was sent and its answer lost — HQ may have made it.
+   */
+  readonly kind: "unavailable" | "refused" | "uncertain";
+  /** HQ's code (`forbidden`, `conflict`, `not_active`, …), or `network`. */
+  readonly code: string;
+  /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
+  readonly reason: string | undefined;
+  readonly status: number | undefined;
+  constructor(input: {
+    readonly kind: HqError["kind"];
+    readonly code: string;
+    readonly reason?: string | undefined;
+    readonly status?: number | undefined;
+    readonly message: string;
+  }) {
+    super(input.message);
+    this.name = "HqError";
+    this.kind = input.kind;
+    this.code = input.code;
+    this.reason = input.reason;
+    this.status = input.status;
+  }
+}
+
+/**
+ * A write that asked for deploys, and where HQ answered they stand (`@t3tools/shared/hqDeploys`);
+ * none where its answer was lost and HQ's records were read back for it — HQ's stream brings the
+ * jobs either way.
+ */
+export interface Asked<T> {
+  readonly made: T;
+  readonly deploys: HqDeployAnswer | undefined;
+}
+
+/** What HQ hands for a Mate's socket: the ticket, its life in seconds and the origin to open. */
+export interface HqMateTicket {
+  readonly ticket: string;
+  readonly expiresIn: number;
+  readonly origin: string;
+}
+
+export interface HqApi {
+  readonly gitTargetWrite: (
+    requestId: string,
+    intent: HqGitTargetIntent,
+    candidate?: string,
+  ) => Promise<HqGitOperationReceipt>;
+  readonly gitTargetReceipt: (
+    requestId: string,
+    intent: HqGitTargetIntent,
+  ) => Promise<HqGitOperationReceipt | null>;
+  /** The reader's Chief registered for, or moved to, `projectId` (`chief.ts`). */
+  readonly setChief: HqChiefCalls["setChief"];
+  /** Every decision HQ holds of the proposals named (`chief.ts`). */
+  readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
+  /** One proposal's decision, then once how an approval ended (`chief.ts`). */
+  readonly decideProposal: HqChiefCalls["decideProposal"];
+  readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
+  readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
+  readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
+  /**
+   * A ticket to open the Mate of `projectId`'s socket with (`POST /api/mates/:projectId/ticket`):
+   * the connection's first frame is `{ticket}`, sent to `origin`. A Mate's connection is one per
+   * tab, and every reconnect asks again.
+   */
+  readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
+  /**
+   * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
+   * ticket for the session, telling `on` once it is open, of every text message and of its close
+   * code. A socket HQ closed for its session (`4401`) forgets that session first, so the next
+   * segment's ticket enters the door again.
+   */
+  readonly openScopeSocket: (
+    on: Parameters<OpenHqSocket>[1],
+    signal: AbortSignal,
+  ) => Promise<HqSocket>;
+  /** Original lifecycle requests and results, retained by the accepting HQ for this person. */
+  readonly lifecycleWrite: (
+    requestId: string,
+    intent: HqLifecycleIntent,
+  ) => Promise<HqLifecycleRecord>;
+  readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
+  /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
+  readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
+  /** An application's name (`PATCH /api/apps/{id}`). */
+  readonly renameApp: (appId: string, name: string) => Promise<void>;
+  /** Answers the removed project’s Git question (`POST /api/apps/{id}/kept-git`). */
+  readonly answerKeptGit: (appId: string, answer: KeptGitAnswer["answer"]) => Promise<void>;
+  /**
+   * Deletes an application that holds nothing; HQ refuses one that does (`app_not_empty`).
+   * `withCode`: its code, changes and history too, refused while a Mate is on it (`app_has_mate`).
+   */
+  readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
+  /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
+  readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
+  /**
+   * That a Mate's project is closed off, as its project's owner or admin records it (`POST
+   * /api/mates/{projectId}/closed-off`). HQ refuses it on a Mate it holds no record of
+   * (`mate_not_found`).
+   */
+  readonly recordClosedOff: (projectId: string) => Promise<void>;
+  readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
+  /**
+   * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
+   * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
+   */
+  readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  /**
+   * Holds, or renews, a press for this browser's press `owner` (`PUT /api/presses/{projectId}`):
+   * what it makes and into which application, with its container import's Zerops process once
+   * Zerops answered it — another browser takes it for a press still running. Another press's hold
+   * refuses it (`press_held`). A `renew` extends only this press's own live hold, never one its
+   * end let go (`press_not_held`).
+   */
+  readonly holdPress: (
+    projectId: string,
+    press: {
+      readonly owner: string;
+      readonly kind: "mate" | "stage" | "production";
+      readonly appId?: string;
+      readonly importProcessId?: string;
+      readonly renew?: boolean;
+    },
+  ) => Promise<void>;
+  /**
+   * This browser's press's end: one that `finished` leaves no record (`DELETE
+   * /api/presses/{projectId}/{owner}`); one that stopped ends its hold and keeps its record, for its
+   * setup to be finished for its kind (`POST …/stopped`).
+   */
+  readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
+  readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
+  readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
+  /**
+   * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
+   * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
+   */
+  readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
+  /**
+   * "Run again": the environment's newest deploy of `service`, at `sha`, ended, asked again as the
+   * person (`POST /api/apps/:appId/environments/:name/redeploy`): where HQ's submission of it
+   * stands.
+   */
+  readonly redeploy: (
+    appId: string,
+    environment: string,
+    deploy: { readonly service: string; readonly sha: string },
+  ) => Promise<HqDeployAnswer>;
+  /**
+   * "Add <service>": a service the environment's tier declares, imported into its project and
+   * deployed, as the person (`POST /api/apps/:appId/environments/:name/services`).
+   */
+  readonly addService: (
+    appId: string,
+    environment: string,
+    service: string,
+  ) => Promise<HqDeployAnswer>;
+  /**
+   * Points the application's automated Mates at a GitHub repository's issues carrying a label
+   * (`PUT /api/apps/:appId/intake`): the webhook HQ made, or the URL and secret to paste, the
+   * secret shown this once.
+   */
+  readonly setIntake?: (appId: string, request: HqIntakeRequest) => Promise<HqIntakeView>;
+  /** Stops the application's automated Mates taking tasks (`DELETE /api/apps/:appId/intake`). */
+  readonly stopIntake?: (appId: string) => Promise<void>;
+  /** The organization's API keys, by provider, as set or not, never their values. */
+  readonly aiKeys?: () => Promise<ReadonlyArray<HqAiKeyView>>;
+  /** Keeps the organization's key for a provider, sealed (`PUT /api/org/ai-keys/:provider`). */
+  readonly setAiKey?: (provider: string, value: string) => Promise<HqAiKeyView>;
+  /** Forgets the organization's key for a provider (`DELETE /api/org/ai-keys/:provider`). */
+  readonly removeAiKey?: (provider: string) => Promise<void>;
+  /** Whether the organization's Slack app is connected, and to which workspace (`GET /api/org/slack`). */
+  readonly slack?: () => Promise<HqSlackView>;
+  /** The manifest the organization's Slack app is made from (`GET /api/org/slack/manifest`). */
+  readonly slackManifest?: () => Promise<unknown>;
+  /**
+   * Connects the organization's Slack app by its bot token and signing secret, both sealed; once
+   * connected, either alone replaces the one HQ holds.
+   */
+  readonly connectSlack?: (request: HqSlackConnectRequest) => Promise<HqSlackView>;
+  /** The channels the organization's Slack bot is in (`GET /api/org/slack/channels`). */
+  readonly slackChannels?: () => Promise<HqSlackChannels>;
+  readonly disconnectSlack?: () => Promise<void>;
+  /** The organization's Discord application, its interactions URL and allowlist (`GET /api/org/discord`). */
+  readonly discord?: () => Promise<HqDiscordView>;
+  /** Connects the organization's Discord application; its bot token is sealed. */
+  readonly connectDiscord?: (request: HqDiscordConnectRequest) => Promise<HqDiscordView>;
+  readonly disconnectDiscord?: () => Promise<void>;
+  /** The Discord users allowed to start and steer tasks (`PUT /api/org/discord/allow`). */
+  readonly allowDiscord?: (request: HqDiscordAllowRequest) => Promise<HqDiscordView>;
+  /**
+   * The channel an application takes tasks from on Slack or Discord (`GET
+   * /api/apps/:appId/{slack,discord}`), `null` for none.
+   */
+  readonly appChannel?: (
+    appId: string,
+    source: "slack" | "discord",
+  ) => Promise<HqChannelView | null>;
+  readonly setAppChannel?: (
+    appId: string,
+    source: "slack" | "discord",
+    request: HqChannelRequest,
+  ) => Promise<HqChannelView>;
+  readonly stopAppChannel?: (appId: string, source: "slack" | "discord") => Promise<void>;
+  /** An application's signed webhooks, never their secrets (`GET /api/apps/:appId/webhooks`). */
+  readonly webhooks?: (appId: string) => Promise<ReadonlyArray<HqWebhookView>>;
+  /** Makes a signed webhook: its answer carries the secret, this once. */
+  readonly makeWebhook?: (appId: string, request: HqWebhookRequest) => Promise<HqWebhookView>;
+  readonly deleteWebhook?: (appId: string, webhookId: string) => Promise<void>;
+  /** An application's schedules (`GET /api/apps/:appId/schedules`). */
+  readonly schedules?: (appId: string) => Promise<ReadonlyArray<HqScheduleView>>;
+  readonly makeSchedule?: (appId: string, request: HqScheduleRequest) => Promise<HqScheduleView>;
+  readonly deleteSchedule?: (appId: string, scheduleId: string) => Promise<void>;
+  /**
+   * An application's tasks: queued, at work, and the latest that ended (`GET
+   * /api/apps/:appId/tasks`).
+   */
+  readonly appTasks?: (appId: string) => Promise<ReadonlyArray<HqAppTask>>;
+  /** Stops one of them (`POST /api/apps/:appId/tasks/:taskId/stop`). */
+  readonly stopAppTask?: (appId: string, taskId: string) => Promise<void>;
+  /** The organization's limits on each task (`GET /api/org/task-limits`). */
+  readonly taskLimits?: () => Promise<HqTaskLimitsView>;
+  readonly setTaskLimits?: (limits: HqTaskLimitsView) => Promise<HqTaskLimitsView>;
+  /** The organization's GitHub app, connected or not, never its key (`GET /api/org/github`). */
+  readonly github?: () => Promise<HqGithubView>;
+  /**
+   * The manifest GitHub makes the organization's app from (`POST /api/org/github/manifest`): the
+   * browser posts it to `postUrl` as a form, and GitHub's page takes over.
+   */
+  readonly githubManifest?: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView>;
+  /** HQ forgets the organization's GitHub app (`DELETE /api/org/github`); it stays on GitHub. */
+  readonly githubDisconnect?: () => Promise<void>;
+  /**
+   * A repository mirrors to one the organization's GitHub app is installed on, with no token
+   * (`PUT /api/apps/:appId/repos/:repo/remote/app`).
+   */
+  readonly repoRemoteViaApp?: (
+    appId: string,
+    repo: string,
+    request: HqRepoRemoteViaAppRequest,
+  ) => Promise<void>;
+  /**
+   * A repository's code kept in HQ while it follows a GitHub repository, with no token
+   * (`PUT /api/apps/:appId/repos/:repo/upstream`).
+   */
+  readonly followRepoUpstream?: (
+    appId: string,
+    repo: string,
+    request: FollowRepoUpstreamRequest,
+  ) => Promise<void>;
+  /** Its Mates no longer fetch the followed GitHub repository (`DELETE …/upstream`). */
+  readonly unfollowRepoUpstream?: (appId: string, repo: string) => Promise<void>;
+  /** The person's active Git password metadata; passwords are returned only on issue. */
+  readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
+  readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
+  readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
+  /** One of the Git browser's reads (`zerops/gitBrowse/reads.ts`), after the person's read rule. */
+  readonly gitBrowse: <R extends GitBrowseRead>(
+    read: R,
+    appId: string,
+    repo: string,
+    params: GitBrowseParams<R>,
+    signal?: AbortSignal,
+  ) => Promise<GitBrowseValue<R>>;
+  /**
+   * The bytes of a read that answers bytes (`raw`, `archive`), held as an image, plain text or
+   * an octet stream whatever HQ sends, so opening them runs nothing. Past the read's `limit` the
+   * read stops, refused `too_large`.
+   */
+  readonly gitBrowseBytes: <R extends GitBrowseBytesRead>(
+    read: R,
+    appId: string,
+    repo: string,
+    params: GitBrowseParams<R>,
+    signal?: AbortSignal,
+  ) => Promise<Blob>;
+  /** Reads database metadata without opening Git. */
+  readonly changeMetadata: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+  ) => Promise<ChangeMetadataResponse>;
+  /** Reads explicitly requested commit history without file patches. */
+  readonly changeCommits: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+    snapshot?: ChangeDetailQuery,
+  ) => Promise<ChangeCommitsResponse>;
+  /** Says `body` on a change, as the person. */
+  readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
+  /**
+   * Squashes a change into `main` as the person, if its head is still `expectedHead` — the head
+   * they were shown; HQ answers the change merged, or refuses with one of `MERGE_REFUSALS`.
+   */
+  readonly mergeChange: (link: ChangeLink, expectedHead: string) => Promise<Asked<HqChange>>;
+  /** Closes a change without merging it, as the person; its branch stays. */
+  readonly closeChange: (link: ChangeLink, expectedHead: string | null) => Promise<HqChange>;
+  /**
+   * Hands an open change whose Mate is gone to the application's Mate `mateProjectId`, as the
+   * person; its branch stays, that Mate's from then on.
+   */
+  readonly handChange: (link: ChangeLink, mateProjectId: string) => Promise<HqChange>;
+  /** A picture of a change, read as the person (`attachmentPath`). */
+  readonly changeAttachment: (link: AttachmentLink, signal?: AbortSignal) => Promise<Blob>;
+  /**
+   * The Mate tier, as the person (`GET /api/apps/:appId/recipe/mate`): read on demand only where
+   * HQ's stream does not carry it — a Core from before it did, or one that could not read it —
+   * or while the stream is down.
+   */
+  readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
+  /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
+  readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
+  /** Production back to `tag` as the person: a new release listing its entries. */
+  readonly rollback: (
+    appId: string,
+    tag: string,
+    request: RollbackRequest,
+  ) => Promise<Asked<Release>>;
+}
+
+/** A socket the structure stream reads, opened by the host (`WebSocket` in a browser). */
+export interface HqSocket {
+  readonly send: (data: string) => void;
+  readonly close: () => void;
+}
+
+/** Opens `url`, telling `on` once it is open, of every text message, and of the close, with its code. */
+export type OpenHqSocket = (
+  url: string,
+  on: {
+    readonly open: () => void;
+    readonly message: (data: string) => void;
+    readonly close: (code: number) => void;
+  },
+) => HqSocket;
+
+/** HQ closed a scope socket because its session ended (`hqStreamCloseFailure`). */
+const HQ_SESSION_ENDED_CLOSE = 4401;
+
+/** How long a read waits for HQ's answer. */
+const CALL_TIMEOUT_MS = 20_000;
+/**
+ * How long the door and every write wait for HQ's answer. HQ reads the org from Zerops for each,
+ * which took tens of seconds on a slow Zerops (measured 2026-10-03): a door given up at 20 s threw
+ * HQ's answer away, and the next caller minted another throwaway for a door queued behind the
+ * first; a release given up at 20 s told the person "HQ could not be reached." of a release under
+ * way (F22).
+ */
+const WRITE_TIMEOUT_MS = 45_000;
+
+/** A session is renewed once it is this close to its end. */
+const RENEW_BEFORE_MS = 15 * 60_000;
+
+interface DoorAnswer {
+  readonly session: string;
+  readonly expiresAt: string;
+  readonly orgKeyKept?: boolean;
+}
+
+/**
+ * A lost answer can mean the write landed. Keep an uncertain receipt rather than repeat it
+ * without checking what HQ accepted.
+ */
+export const HQ_WRITE_UNCERTAIN =
+  "HQ could not confirm whether this finished. Check the project before trying again.";
+
+const uncertain = () =>
+  new HqError({ kind: "uncertain", code: "uncertain", message: HQ_WRITE_UNCERTAIN });
+
+/** HQ's refusal evidence; a body that is not HQ's JSON names none. */
+function said(text: string): {
+  readonly code?: unknown;
+  readonly reason?: unknown;
+  readonly message?: unknown;
+  readonly repository?: unknown;
+  readonly applicationName?: unknown;
+  readonly environments?: unknown;
+} {
+  try {
+    const body: unknown = JSON.parse(text);
+    return typeof body === "object" && body !== null ? body : { code: undefined };
+  } catch {
+    return { code: undefined };
+  }
+}
+
+/** HQ's code for a write refused because Zerops did not answer its roles: nothing was written. */
+const WROTE_NOTHING_ZEROPS = "zerops_unanswered";
+
+const isRemoteRefusal = Schema.is(HqRemoteRefusal);
+
+async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
+  const body = said(await response.text());
+  const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
+  // ProbeRefused owns the host-specific remedy; other refusals keep the client's wording.
+  const probeMessage =
+    code === "git_probe_refused"
+      ? typeof body.message === "string" && body.message.trim().length > 0
+        ? body.message
+        : "Mate could not verify repository access; check the repository address and token settings, then try again."
+      : undefined;
+  if (response.status >= 500 || response.status === 429) {
+    return new HqError({
+      kind: "unavailable",
+      code,
+      status: response.status,
+      message:
+        probeMessage ??
+        (code === WROTE_NOTHING_ZEROPS ? ZEROPS_UNANSWERED : "HQ is not answering right now."),
+    });
+  }
+  const reason = typeof body.reason === "string" ? body.reason : undefined;
+  return new HqError({
+    kind: "refused",
+    code,
+    reason,
+    status: response.status,
+    message:
+      probeMessage ??
+      hqRefusalWords({
+        code,
+        reason,
+        gitSetup,
+        ...(isRemoteRefusal(body) ? { remote: body } : {}),
+      }),
+  });
+}
+
+/**
+ * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
+ * for a Core that does not lead (`not_active`), and one refused because Zerops did not answer its
+ * roles (`zerops_unanswered`): neither writes anything.
+ */
+async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
+  if (response.ok) return response;
+  const error = await errorOf(response, gitSetup);
+  if (
+    write &&
+    response.status >= 500 &&
+    error.code !== "not_active" &&
+    error.code !== WROTE_NOTHING_ZEROPS
+  ) {
+    throw uncertain();
+  }
+  throw error;
+}
+
+/** One call to HQ, ending with its answer or a visible failure; another call is the caller's ask. */
+async function send(
+  fetch: FetchImplementation,
+  url: string,
+  init: RequestInit,
+  write = false,
+): Promise<Response> {
+  const signal = init.signal ?? AbortSignal.timeout(write ? WRITE_TIMEOUT_MS : CALL_TIMEOUT_MS);
+  const headers = {
+    Accept: "application/json",
+    ...(init.body === undefined ? {} : { "Content-Type": "application/json" }),
+    ...init.headers,
+  };
+  let response: Response;
+  try {
+    response = await fetch(url, { ...init, signal, headers });
+  } catch {
+    if (write) throw uncertain();
+    throw new HqError({
+      kind: "unavailable",
+      code: "network",
+      message: "HQ could not be reached.",
+    });
+  }
+  return answered(response, write, new URL(url).pathname.startsWith("/api/git-targets/"));
+}
+
+const json = async <T>(response: Response): Promise<T> => (await response.json()) as T;
+
+/**
+ * An answer read through the contract's schema (`@t3tools/shared/hqChanges`): one this version of
+ * Mate cannot read is refused, never drawn in part.
+ */
+const decoded =
+  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  async (response: Response): Promise<S["Type"]> =>
+    Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(await bodyOf(response)), unreadable);
+
+const bodyOf = async (response: Response): Promise<unknown> => {
+  try {
+    return (await response.json()) as unknown;
+  } catch {
+    throw unreadable();
+  }
+};
+
+/**
+ * {@link decoded} for a write that asked for deploys: what it made, and the deploys beside it —
+ * none where this version of Mate cannot read them, for HQ's stream brings their jobs.
+ */
+const readDeploysBeside = Schema.decodeUnknownOption(WithDeploys);
+
+const decodedAsked =
+  <S extends Schema.Decoder<unknown>>(schema: S) =>
+  async (response: Response): Promise<Asked<S["Type"]>> => {
+    const body = await bodyOf(response);
+    return {
+      made: Option.getOrThrowWith(Schema.decodeUnknownOption(schema)(body), unreadable),
+      deploys: Option.getOrUndefined(readDeploysBeside(body))?.deploys,
+    };
+  };
+
+const unreadable = () =>
+  new HqError({
+    kind: "refused",
+    code: "unreadable",
+    message: "HQ answered in a form this version of Mate does not read.",
+  });
+
+const readChangeMetadata = decoded(ChangeMetadataResponse);
+const readChangeCommits = decoded(ChangeCommitsResponse);
+const readIntakeView = decoded(HqIntakeView);
+const readAiKeys = decoded(Schema.Array(HqAiKeyView));
+const readAiKey = decoded(HqAiKeyView);
+const readSlack = decoded(HqSlackView);
+const readSlackChannels = decoded(HqSlackChannels);
+const readDiscord = decoded(HqDiscordView);
+const readChannel = decoded(HqChannelView);
+const readAppChannel = decoded(Schema.NullOr(HqChannelView));
+const readWebhook = decoded(HqWebhookView);
+/** HQ answers an application's lists wrapped: `{ webhooks }`, `{ schedules }`. */
+const readWebhooks = decoded(Schema.Struct({ webhooks: Schema.Array(HqWebhookView) }));
+const readSchedule = decoded(HqScheduleView);
+const readSchedules = decoded(Schema.Struct({ schedules: Schema.Array(HqScheduleView) }));
+const readAppTasks = decoded(HqAppTasksView);
+const readTaskLimits = decoded(HqTaskLimitsView);
+const readGithub = decoded(HqGithubView);
+const readGithubManifest = decoded(HqGithubManifestView);
+const readComment = decoded(HqChangeComment);
+const readChange = decoded(HqChange);
+const readMerged = decodedAsked(HqChange);
+
+const readGitCredential = decoded(GitCredential);
+const readGitCredentialList = decoded(GitCredentialList);
+const readRecipeTier = decoded(RecipeTierResponse);
+const readReleases = decoded(ReleaseListResponse);
+const readRelease = decodedAsked(Release);
+const readDeploys = decoded(WithDeploys);
+
+/** A write HQ holds made, read back for its lost answer: its deploys are the stream's to say. */
+const heldAsked = <T>(made: T | undefined): Asked<T> | undefined =>
+  made === undefined ? undefined : { made, deploys: undefined };
+
+/** An application's environment, as HQ's paths name it. */
+const environmentPath = (appId: string, environment: string) =>
+  `/api/apps/${encodeURIComponent(appId)}/environments/${encodeURIComponent(environment)}`;
+
+/** Whether two releases put the same commits live: each service at the same commit. */
+const sameEntries = (
+  made: ReadonlyArray<{ readonly service: string; readonly sha: string }>,
+  asked: ReadonlyArray<{ readonly service: string; readonly sha: string }>,
+): boolean =>
+  made.length === asked.length &&
+  asked.every((entry) =>
+    made.some((other) => other.service === entry.service && other.sha === entry.sha),
+  );
+
+/** An application's releases' path at HQ's API. */
+const releasesPath = (appId: string): string => `/api/apps/${encodeURIComponent(appId)}/releases`;
+
+/** A change's own path at HQ's API. */
+const changePath = ({ appId, repo, number }: ChangeLink): string =>
+  `/api/apps/${encodeURIComponent(appId)}/changes/${encodeURIComponent(repo)}/${String(number)}`;
+
+/**
+ * What HQ's `/health` says (`apps/hq/src/health.ts`): `healthy` while it leads as the official
+ * HQ; `unchecked` while it leads but cannot check Zerops right now — HQ's grace keeps it the
+ * official HQ for ten minutes past its last answer (`apps/hq/src/official.ts`), and it serves
+ * meanwhile; `not-ready` while it answers as anything else — a standby, an HQ whose anchor is
+ * missing; `unreachable` while nothing answers as Core does.
+ */
+export type HqHealth =
+  | { readonly kind: "healthy"; readonly build: string; readonly parts: HqParts }
+  | { readonly kind: "unchecked"; readonly build: string; readonly parts: HqParts }
+  | { readonly kind: "not-ready"; readonly state: string; readonly official: string }
+  | { readonly kind: "unreachable" };
+
+/**
+ * How HQ's parts stand while it serves, as its health reports them (`apps/hq/src/health.ts`):
+ * `db` its database's answer to a fresh probe, `quarantined` the repositories it withholds until
+ * they converge (`<appId>/<repo>`), `backup` its newest set's outcome, `keys` where its key for
+ * deploy tokens stands. A part an older Core does not report, or reports in a shape this build
+ * cannot read, is absent.
+ */
+export interface HqParts {
+  readonly db?: "up" | "down";
+  readonly quarantined: ReadonlyArray<string>;
+  readonly backup?: HqBackup;
+  readonly keys?: HqKeys;
+}
+
+/** What a backup set needed beside what the backup bucket holds (`apps/hq/src/backup.ts`). */
+export interface HqBackupUsage {
+  readonly usedBytes: number;
+  readonly neededBytes: number;
+  readonly quotaBytes: number;
+}
+
+/**
+ * HQ's backup by its newest set (`apps/hq/src/backup.ts` `BackupStatus`): `off` with no bucket,
+ * `pending` before a first set, `ok` with the time the newest set was taken (wall ms), `degraded`
+ * when that set cost a set the retention targets keep, `failed` with HQ's reason — a quarantined
+ * repository's name, or the bucket's usage when it is full.
+ */
+export type HqBackup =
+  | { readonly state: "off" | "pending" }
+  | { readonly state: "ok"; readonly takenAt: number }
+  | { readonly state: "degraded"; readonly takenAt: number; readonly usage: HqBackupUsage }
+  | {
+      readonly state: "failed";
+      readonly reason: string;
+      readonly repo?: string;
+      readonly usage?: HqBackupUsage;
+    };
+
+/**
+ * HQ's key for deploy tokens (`apps/hq/src/deployKeys.ts` `KeysStatus`): none, one that is no key,
+ * the key, or the key beside tokens sealed under another.
+ */
+export type HqKeys = "ok" | "no_secret" | "bad_secret" | "other_secret";
+
+const HQ_KEYS: ReadonlySet<string> = new Set(["ok", "no_secret", "bad_secret", "other_secret"]);
+
+/** A set's id is the time it was taken, ISO without its separators: `20261004T120000.000Z`. */
+const SET_ID = /^(\d{4})(\d{2})(\d{2})T(\d{2})(\d{2})(\d{2})(?:\.(\d{3}))?Z$/u;
+
+function setTakenAt(set: unknown): number | undefined {
+  const match = typeof set === "string" ? SET_ID.exec(set) : null;
+  if (match === null) return undefined;
+  const [, year, month, day, hour, minute, second, ms] = match.map(Number);
+  return Date.UTC(year!, month! - 1, day!, hour!, minute!, second!, ms ?? 0);
+}
+
+function readUsage(backup: Record<string, unknown>): HqBackupUsage | undefined {
+  const { usedBytes, neededBytes, quotaBytes } = backup;
+  return typeof usedBytes === "number" &&
+    typeof neededBytes === "number" &&
+    typeof quotaBytes === "number"
+    ? { usedBytes, neededBytes, quotaBytes }
+    : undefined;
+}
+
+function readBackup(raw: unknown): HqBackup | undefined {
+  if (typeof raw !== "object" || raw === null) return undefined;
+  const backup = raw as Record<string, unknown>;
+  switch (backup.state) {
+    case "off":
+    case "pending":
+      return { state: backup.state };
+    case "ok": {
+      const takenAt = setTakenAt(backup.set);
+      return takenAt === undefined ? undefined : { state: "ok", takenAt };
+    }
+    case "degraded": {
+      const takenAt = setTakenAt(backup.set);
+      const usage = readUsage(backup);
+      return takenAt === undefined || usage === undefined
+        ? undefined
+        : { state: "degraded", takenAt, usage };
+    }
+    case "failed": {
+      if (typeof backup.reason !== "string") return undefined;
+      const usage = readUsage(backup);
+      return {
+        state: "failed",
+        reason: backup.reason,
+        ...(typeof backup.repo === "string" ? { repo: backup.repo } : {}),
+        ...(usage === undefined ? {} : { usage }),
+      };
+    }
+    default:
+      return undefined;
+  }
+}
+
+/** The repositories HQ withholds, by name: `[{ repo, reason }]` on the wire. */
+function readQuarantined(raw: unknown): ReadonlyArray<string> {
+  if (!Array.isArray(raw)) return [];
+  return raw.flatMap((entry: unknown) => {
+    const repo =
+      typeof entry === "object" && entry !== null ? (entry as { repo?: unknown }).repo : undefined;
+    return typeof repo === "string" ? [repo] : [];
+  });
+}
+
+/**
+ * How HQ's parts stand, as its health or its structure stream reports them: a part this build
+ * cannot read is absent.
+ */
+export function readHqParts(body: Record<string, unknown>): HqParts {
+  const backup = readBackup(body.backup);
+  return {
+    ...(body.db === "up" || body.db === "down" ? { db: body.db } : {}),
+    quarantined: readQuarantined(body.quarantined),
+    ...(backup === undefined ? {} : { backup }),
+    ...(typeof body.keys === "string" && HQ_KEYS.has(body.keys)
+      ? { keys: body.keys as HqKeys }
+      : {}),
+  };
+}
+
+export async function readHqHealth(
+  fetch: FetchImplementation,
+  address: string,
+  signal?: AbortSignal,
+): Promise<HqHealth> {
+  try {
+    const response = await fetch(`${address.replace(/\/+$/u, "")}/health`, {
+      cache: "no-store",
+      signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
+    });
+    const body = (await response.json()) as Record<string, unknown>;
+    if (typeof body.state !== "string" || typeof body.official !== "string") {
+      return { kind: "unreachable" };
+    }
+    const build = typeof body.build === "string" ? body.build : "";
+    if (response.ok && body.state === "active" && body.official === "ok") {
+      return { kind: "healthy", build, parts: readHqParts(body) };
+    }
+    return response.ok && body.state === "active" && body.official === "unknown"
+      ? { kind: "unchecked", build, parts: readHqParts(body) }
+      : { kind: "not-ready", state: body.state, official: body.official };
+  } catch {
+    return { kind: "unreachable" };
+  }
+}
+
+/** A browse read's address; what HQ refuses as invalid is refused here, as HQ words it, unsent. */
+const browsePathOrRefuse = <R extends GitBrowseRead>(
+  read: R,
+  appId: string,
+  repo: string,
+  params: GitBrowseParams<R>,
+) => {
+  const path = gitBrowsePath(read, appId, repo, params);
+  if (path === null)
+    throw new HqError({
+      kind: "refused",
+      code: "invalid",
+      status: 400,
+      message: hqRefusalWords({ code: "invalid", reason: undefined }),
+    });
+  return path;
+};
+
+export function makeHqApi(input: {
+  /** HQ's origin, as its anchor or the build's configuration names it. */
+  readonly address: string;
+  readonly fetch: FetchImplementation;
+  /**
+   * The person's Zerops access token; `refused`, the one HQ answered `401 zerops_person_required`
+   * to, asks Zerops for a new one first unless a renewal has already replaced it, which a sign-in
+   * does once. HQ reads it once at sign-in and at each renewal and keeps nothing of it.
+   */
+  readonly accessToken: (refused?: string) => Promise<string>;
+  /** The organisation this client signs in to. */
+  readonly orgId: string;
+  /** The instant, for the renewal of a session; the wall clock where absent. */
+  readonly now?: () => number;
+  readonly openSocket: OpenHqSocket;
+  /**
+   * Waits until a write may be sent to this HQ, or fails it before anything is sent: the page may
+   * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
+   */
+  readonly beforeWrite?: () => Promise<void>;
+  /** Captured account and HQ; checked immediately before each protected fetch. */
+  readonly isCurrent?: () => boolean;
+  /**
+   * The organization's key, for a sign-in HQ answers `409 org_not_started` or
+   * `403 org_key_refused`: HQ serves an
+   * organization once its Owner's or Admin's client hands it one as `orgKey`. Absent: that refusal
+   * stands.
+   */
+  readonly startOrganisation?: Pick<
+    OrgStartPorts<DoorAnswer>,
+    "mayStart" | "mintKey" | "deleteKey" | "withLock"
+  >;
+  /** HQ's session as the account keeps it for this organization and HQ across loads. */
+  readonly kept?: {
+    /** The kept session; null when none is kept, or it ends too soon to present. */
+    readonly read: () => { readonly token: string; readonly expiresAtMs: number } | null;
+    readonly keep: (session: { readonly token: string; readonly expiresAt: string }) => void;
+    readonly forget: (token: string) => void;
+  };
+}): HqApi {
+  const origin = input.address.replace(/\/+$/u, "");
+  /** The session HQ issued, or the door exchange under way that will issue it. */
+  let session: Promise<string> | null = null;
+
+  /** When the session in hand ends; null where it is not known. */
+  let expiresAtMs: number | null = null;
+  const now = input.now ?? Date.now;
+
+  /** The session the account kept, presented before any sign-in; null when it keeps none. */
+  const restore = (): Promise<string> | null => {
+    const kept = input.kept?.read() ?? null;
+    if (kept === null) return null;
+    expiresAtMs = kept.expiresAtMs;
+    session = Promise.resolve(kept.token);
+    return session;
+  };
+
+  /** HQ no longer takes this session: it is dropped here, and forgotten where it was kept. */
+  const drop = (held: Promise<string> | null, token: string) => {
+    if (session === held) {
+      session = null;
+      expiresAtMs = null;
+    }
+    input.kept?.forget(token);
+  };
+
+  /** The sessions sign-in opened that HQ has not yet taken on any call: none renews. */
+  const unproven = new WeakSet<Promise<string>>();
+
+  /**
+   * `POST /api/door` with the person's access token; with a session as its bearer it renews that
+   * session, which keeps its id.
+   */
+  const signIn = async (orgKey?: string, renewing?: string): Promise<DoorAnswer> => {
+    const attempt = async (accessToken: string) =>
+      json<DoorAnswer>(
+        await send(input.fetch, `${origin}/api/door`, {
+          method: "POST",
+          ...(renewing === undefined ? {} : { headers: { Authorization: `Bearer ${renewing}` } }),
+          body: JSON.stringify({
+            accessToken,
+            orgId: input.orgId,
+            ...(orgKey === undefined ? {} : { orgKey }),
+          }),
+          signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
+        }),
+      );
+    const accessToken = await input.accessToken();
+    try {
+      return await attempt(accessToken);
+    } catch (cause) {
+      if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
+      return attempt(await input.accessToken(accessToken));
+    }
+  };
+
+  const remember = (answer: DoorAnswer) => {
+    const ends = Date.parse(answer.expiresAt);
+    expiresAtMs = Number.isFinite(ends) ? ends : null;
+    input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
+  };
+
+  const enterDoor = (renewing?: string) => {
+    const start = input.startOrganisation;
+    return start === undefined
+      ? signIn(undefined, renewing)
+      : signInStartingOrganisation<DoorAnswer>({
+          ...start,
+          orgId: input.orgId,
+          signIn: (orgKey) => signIn(orgKey, renewing),
+          needsOrgKey: (cause) =>
+            cause instanceof HqError &&
+            ((cause.status === 409 && cause.code === "org_not_started") ||
+              (cause.status === 403 && cause.code === "org_key_refused")),
+        });
+  };
+
+  const enter = () => {
+    const entering = enterDoor().then((answer) => {
+      remember(answer);
+      return answer.session;
+    });
+    // A sign-in that refused is not a session: the next call asks again.
+    entering.catch(() => {
+      if (session === entering) session = null;
+    });
+    unproven.add(entering);
+    session = entering;
+    return entering;
+  };
+
+  /** The renewal under way, shared by the calls that meet it. */
+  let renewal: Promise<void> | null = null;
+
+  /**
+   * Renews a session close to its end, silently: the same request with a current access token and
+   * the session as its bearer, which keeps the session's id. A renewal that fails leaves the
+   * session as it was; its own end is met by the call that finds it ended.
+   */
+  const renewIfDue = async (token: string): Promise<void> => {
+    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
+    renewal ??= enterDoor(token)
+      .then(remember, () => undefined)
+      .finally(() => {
+        renewal = null;
+      });
+    await renewal;
+  };
+
+  /**
+   * A call as the session's holder. A session HQ no longer takes is forgotten and renewed once —
+   * another tab's kept one, else through the door — and the call made again; HQ refusing the
+   * renewal too, or a session from its door it never took, ends the call with that refusal. A call
+   * HQ refused for its session wrote nothing, so a write is made again as safely as a read.
+   */
+  const authorized = async (
+    path: string,
+    init: RequestInit = {},
+    write = false,
+  ): Promise<Response> => {
+    if (write) await input.beforeWrite?.();
+    let renewed = false;
+    for (;;) {
+      const held = session ?? restore() ?? enter();
+      const token = await held;
+      if (!unproven.has(held)) await renewIfDue(token);
+      if (write && input.isCurrent?.() === false)
+        throw new HqError({
+          kind: "refused",
+          code: "account_changed",
+          message: "This Zerops sign-in or its HQ has changed.",
+        });
+      try {
+        const response = await send(
+          input.fetch,
+          `${origin}${path}`,
+          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+          write,
+        );
+        unproven.delete(held);
+        return response;
+      } catch (cause) {
+        if (!(cause instanceof HqError && cause.code === "session_required")) throw cause;
+        drop(held, token);
+        if (renewed || unproven.has(held)) throw cause;
+        renewed = true;
+      }
+    }
+  };
+
+  /**
+   * A write whose answer was lost, decided by what HQ holds now: `holds` reads it back — what the
+   * write would have answered, or `undefined` while HQ holds nothing of it. Nothing held, or no
+   * answer to the read either, leaves it uncertain.
+   *
+   * HQ finishes a write whose client went away (F22), so one pressed again can meet itself: a
+   * refusal for one of `itself` — HQ's reasons that may be this very write made already — is read
+   * back the same way, and stands where HQ holds nothing of it.
+   */
+  const confirmed = async <T>(
+    write: () => Promise<T>,
+    holds: () => Promise<T | undefined>,
+    itself: ReadonlyArray<string> = [],
+  ): Promise<T> => {
+    try {
+      return await write();
+    } catch (cause) {
+      const lost = cause instanceof HqError && cause.kind === "uncertain";
+      const met =
+        cause instanceof HqError &&
+        cause.kind === "refused" &&
+        cause.reason !== undefined &&
+        itself.includes(cause.reason);
+      if (!lost && !met) throw cause;
+      let held: T | undefined;
+      try {
+        held = await holds();
+      } catch {
+        // No answer to the read either: the write stays as it was answered.
+        throw cause;
+      }
+      if (held === undefined) throw cause;
+      return held;
+    }
+  };
+
+  /** {@link confirmed} for a write that answers nothing: `holds` says whether HQ holds it made. */
+  const confirmedDone = async (
+    write: () => Promise<unknown>,
+    holds: () => Promise<boolean>,
+  ): Promise<void> => {
+    await confirmed(
+      async () => {
+        await write();
+        return true;
+      },
+      async () => ((await holds()) ? true : undefined),
+    );
+  };
+
+  const structureOf = async (signal?: AbortSignal) =>
+    Option.getOrThrowWith(
+      Option.fromUndefinedOr(
+        hqStructureOf(
+          await bodyOf(await authorized("/api/structure", signal === undefined ? {} : { signal })),
+        ),
+      ),
+      unreadable,
+    );
+  const appOf = async (appId: string) => (await structureOf()).apps.find((app) => app.id === appId);
+  // Only a lost release/rollback write answer needs this direct confirmation, never a load.
+  const releasesOf = async (appId: string) =>
+    (await readReleases(await authorized(releasesPath(appId)))).releases;
+  /** The change as HQ holds it, if it is in `state`; its record, never its diff. */
+  const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
+    const { change } = await readChangeMetadata(await authorized(`${changePath(link)}/metadata`));
+    return change.state === state ? change : undefined;
+  };
+
+  return {
+    ...makeChiefCalls({ authorized, decoded }),
+    structure: structureOf,
+    mateTicket: async (projectId, signal) =>
+      json<HqMateTicket>(
+        await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
+          method: "POST",
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      ),
+    openScopeSocket: async (on, signal) => {
+      const { ticket } = await json<{ readonly ticket: string }>(
+        await authorized("/api/stream-ticket", { method: "POST", signal }),
+      );
+      /** The session the ticket was minted for. */
+      const held = session;
+      const token = held === null ? null : await held;
+      signal.throwIfAborted();
+      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
+      return input.openSocket(url, {
+        open: on.open,
+        message: on.message,
+        close: (code) => {
+          if (code === HQ_SESSION_ENDED_CLOSE && held !== null && token !== null) drop(held, token);
+          on.close(code);
+        },
+      });
+    },
+    // An application has no name of HQ's to ask for before it is made: the one by this name is
+    // taken for it.
+    recordBirth: async (birth) =>
+      json<HqBirth>(
+        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
+      ),
+    holdPress: async (projectId, press) => {
+      await authorized(
+        `/api/presses/${encodeURIComponent(projectId)}`,
+        { method: "PUT", body: JSON.stringify(press) },
+        true,
+      );
+    },
+    endPress: async (projectId, owner, finished) => {
+      const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
+      await authorized(
+        finished ? path : `${path}/stopped`,
+        { method: finished ? "DELETE" : "POST" },
+        true,
+      );
+    },
+    bindBirth: async (birthId, projectId) => {
+      await authorized(
+        `/api/births/${encodeURIComponent(birthId)}/project`,
+        { method: "PUT", body: JSON.stringify({ projectId }) },
+        true,
+      );
+    },
+    createApp: (name) =>
+      confirmed(
+        async () =>
+          json<{ readonly id: string; readonly name: string }>(
+            await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, true),
+          ),
+        async () => {
+          const made = (await structureOf()).apps.find((app) => app.name === name);
+          return made === undefined ? undefined : { id: made.id, name: made.name };
+        },
+      ),
+    attachProject: (appId, attach) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}/projects`,
+            { method: "POST", body: JSON.stringify(attach) },
+            true,
+          ),
+        async () =>
+          (await appOf(appId))?.projects.some(
+            (project) => project.projectId === attach.projectId && project.kind === attach.kind,
+          ) === true,
+      ),
+    keepDeployToken: async (appId, environment, token) => {
+      await authorized(
+        `${environmentPath(appId, environment)}/deploy-token`,
+        { method: "PUT", body: JSON.stringify({ token }) },
+        true,
+      );
+    },
+    redeploy: async (appId, environment, deploy) =>
+      (
+        await readDeploys(
+          await authorized(
+            `${environmentPath(appId, environment)}/redeploy`,
+            { method: "POST", body: JSON.stringify(deploy) },
+            true,
+          ),
+        )
+      ).deploys,
+    addService: async (appId, environment, service) =>
+      (
+        await readDeploys(
+          await authorized(
+            `${environmentPath(appId, environment)}/services`,
+            { method: "POST", body: JSON.stringify({ service }) },
+            true,
+          ),
+        )
+      ).deploys,
+    autoUpdatePolicy: async (signal) =>
+      decoded(HqAutoUpdatePolicy)(
+        await authorized("/api/auto-update", signal === undefined ? {} : { signal }),
+      ),
+    setAutoUpdatePolicy: async (enabled) => {
+      // Neither a matching boolean nor a later revision identifies a lost PUT as ours.
+      try {
+        return await decoded(HqAutoUpdatePolicy)(
+          await authorized(
+            "/api/auto-update",
+            { method: "PUT", body: JSON.stringify({ enabled }) },
+            true,
+          ),
+        );
+      } catch (cause) {
+        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
+        throw cause;
+      }
+    },
+    gitTargetWrite: async (requestId, intent, candidate) =>
+      decoded(HqGitOperationReceipt)(
+        await authorized(
+          `/api/git-targets/${encodeURIComponent(requestId)}`,
+          {
+            method: "POST",
+            body: JSON.stringify({ intent, ...(candidate === undefined ? {} : { candidate }) }),
+          },
+          true,
+        ),
+      ),
+    gitTargetReceipt: async (requestId, intent) =>
+      (
+        await decoded(Schema.Struct({ receipt: Schema.NullOr(HqGitOperationReceipt) }))(
+          await authorized(`/api/git-targets/${encodeURIComponent(requestId)}/receipt`, {
+            method: "POST",
+            body: JSON.stringify({ intent }),
+          }),
+        )
+      ).receipt,
+    lifecycleWrite: async (requestId, intent) =>
+      decoded(HqLifecycleRecord)(
+        await authorized(
+          `/api/lifecycle/${encodeURIComponent(requestId)}`,
+          { method: "POST", body: JSON.stringify(intent) },
+          true,
+        ),
+      ),
+    lifecycleReceipt: async (requestId) =>
+      (
+        await decoded(Schema.Struct({ record: Schema.NullOr(HqLifecycleRecord) }))(
+          await authorized(`/api/lifecycle/${encodeURIComponent(requestId)}`),
+        )
+      ).record,
+    updateMate: async (projectId, change) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}`,
+        { method: "PATCH", body: JSON.stringify(change) },
+        true,
+      );
+    },
+    renameApp: (appId, name) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}`,
+            { method: "PATCH", body: JSON.stringify({ name }) },
+            true,
+          ),
+        async () => (await appOf(appId))?.name === name,
+      ),
+    deleteApp: (appId, options) =>
+      confirmedDone(
+        () =>
+          authorized(
+            `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
+            { method: "DELETE" },
+            true,
+          ),
+        async () => (await appOf(appId)) === undefined,
+      ),
+    answerKeptGit: async (appId, answer) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/kept-git`,
+        { method: "POST", body: JSON.stringify({ answer }) },
+        true,
+      );
+    },
+    createMate: (mate) =>
+      confirmedDone(
+        () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),
+        async () => {
+          const { ungrouped, apps } = await structureOf();
+          return (
+            ungrouped.some((held) => held.projectId === mate.projectId) ||
+            apps.some((app) =>
+              app.projects.some(
+                (project) => project.projectId === mate.projectId && project.mate !== null,
+              ),
+            )
+          );
+        },
+      ),
+    changeMetadata: async (link, signal) =>
+      readChangeMetadata(
+        await authorized(`${changePath(link)}/metadata`, signal === undefined ? {} : { signal }),
+      ),
+    changeCommits: async (link, signal, snapshot = {}) => {
+      const search = new URLSearchParams(snapshot).toString();
+      return readChangeCommits(
+        await authorized(
+          `${changePath(link)}/commits${search === "" ? "" : `?${search}`}`,
+          signal === undefined ? {} : { signal },
+        ),
+      );
+    },
+    // A comment has no name of its own: one whose answer was lost stays uncertain here, and the
+    // account's operation tells it from HQ's conversation by its author.
+    commentOnChange: async (link, body) =>
+      readComment(
+        await authorized(
+          `${changePath(link)}/comments`,
+          { method: "POST", body: JSON.stringify({ body }) },
+          true,
+        ),
+      ),
+    mergeChange: (link, expectedHead) =>
+      confirmed(
+        async () =>
+          readMerged(
+            await authorized(
+              `${changePath(link)}/merge`,
+              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              true,
+            ),
+          ),
+        async () => heldAsked(await changeIn(link, "merged")),
+        ["already_merged", "change_not_open"],
+      ),
+    closeChange: (link, expectedHead) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/close`,
+              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              true,
+            ),
+          ),
+        () => changeIn(link, "closed"),
+        ["change_not_open"],
+      ),
+    handChange: (link, mateProjectId) =>
+      confirmed(
+        async () =>
+          readChange(
+            await authorized(
+              `${changePath(link)}/hand`,
+              { method: "POST", body: JSON.stringify({ mateProjectId }) },
+              true,
+            ),
+          ),
+        async () => {
+          const held = await changeIn(link, "open");
+          return held?.mateProjectId === mateProjectId ? held : undefined;
+        },
+      ),
+    changeAttachment: async (link, signal) =>
+      (
+        await authorized(attachmentPath(link.appId, link.repo, link.number, link.id), {
+          headers: { Accept: RASTER_CONTENT_TYPES.join(", ") },
+          ...(signal === undefined ? {} : { signal }),
+        })
+      ).blob(),
+    setIntake: async (appId, request) =>
+      readIntakeView(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/intake`,
+          { method: "PUT", body: JSON.stringify(request) },
+          true,
+        ),
+      ),
+    stopIntake: async (appId) => {
+      await authorized(`/api/apps/${encodeURIComponent(appId)}/intake`, { method: "DELETE" }, true);
+    },
+    aiKeys: async () => readAiKeys(await authorized("/api/org/ai-keys")),
+    setAiKey: async (provider, value) =>
+      readAiKey(
+        await authorized(
+          `/api/org/ai-keys/${encodeURIComponent(provider)}`,
+          { method: "PUT", body: JSON.stringify({ value } satisfies HqAiKeyRequest) },
+          true,
+        ),
+      ),
+    removeAiKey: async (provider) => {
+      await authorized(
+        `/api/org/ai-keys/${encodeURIComponent(provider)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    slack: async () => readSlack(await authorized("/api/org/slack")),
+    slackManifest: async () => bodyOf(await authorized("/api/org/slack/manifest")),
+    connectSlack: async (request) =>
+      readSlack(
+        await authorized(
+          "/api/org/slack",
+          { method: "PUT", body: JSON.stringify(request satisfies HqSlackConnectRequest) },
+          true,
+        ),
+      ),
+    disconnectSlack: async () => {
+      await authorized("/api/org/slack", { method: "DELETE" }, true);
+    },
+    slackChannels: async () => readSlackChannels(await authorized("/api/org/slack/channels")),
+    discord: async () => readDiscord(await authorized("/api/org/discord")),
+    connectDiscord: async (request) =>
+      readDiscord(
+        await authorized(
+          "/api/org/discord",
+          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordConnectRequest) },
+          true,
+        ),
+      ),
+    disconnectDiscord: async () => {
+      await authorized("/api/org/discord", { method: "DELETE" }, true);
+    },
+    allowDiscord: async (request) =>
+      readDiscord(
+        await authorized(
+          "/api/org/discord/allow",
+          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordAllowRequest) },
+          true,
+        ),
+      ),
+    appChannel: async (appId, source) =>
+      readAppChannel(await authorized(`/api/apps/${encodeURIComponent(appId)}/${source}`)),
+    setAppChannel: async (appId, source, request) =>
+      readChannel(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/${source}`,
+          { method: "PUT", body: JSON.stringify(request satisfies HqChannelRequest) },
+          true,
+        ),
+      ),
+    stopAppChannel: async (appId, source) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/${source}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    webhooks: async (appId) =>
+      (await readWebhooks(await authorized(`/api/apps/${encodeURIComponent(appId)}/webhooks`)))
+        .webhooks,
+    makeWebhook: async (appId, request) =>
+      readWebhook(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/webhooks`,
+          { method: "POST", body: JSON.stringify(request satisfies HqWebhookRequest) },
+          true,
+        ),
+      ),
+    deleteWebhook: async (appId, webhookId) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/webhooks/${encodeURIComponent(webhookId)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    schedules: async (appId) =>
+      (await readSchedules(await authorized(`/api/apps/${encodeURIComponent(appId)}/schedules`)))
+        .schedules,
+    makeSchedule: async (appId, request) =>
+      readSchedule(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/schedules`,
+          { method: "POST", body: JSON.stringify(request satisfies HqScheduleRequest) },
+          true,
+        ),
+      ),
+    deleteSchedule: async (appId, scheduleId) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/schedules/${encodeURIComponent(scheduleId)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    appTasks: async (appId) =>
+      (await readAppTasks(await authorized(`/api/apps/${encodeURIComponent(appId)}/tasks`))).tasks,
+    stopAppTask: async (appId, taskId) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/stop`,
+        { method: "POST" },
+        true,
+      );
+    },
+    taskLimits: async () => readTaskLimits(await authorized("/api/org/task-limits")),
+    setTaskLimits: async (limits) =>
+      readTaskLimits(
+        await authorized(
+          "/api/org/task-limits",
+          { method: "PUT", body: JSON.stringify(limits satisfies HqTaskLimitsView) },
+          true,
+        ),
+      ),
+    github: async () => readGithub(await authorized("/api/org/github")),
+    githubManifest: async (request) =>
+      readGithubManifest(
+        await authorized(
+          "/api/org/github/manifest",
+          { method: "POST", body: JSON.stringify(request satisfies HqGithubManifestRequest) },
+          true,
+        ),
+      ),
+    githubDisconnect: async () => {
+      await authorized("/api/org/github", { method: "DELETE" }, true);
+    },
+    repoRemoteViaApp: async (appId, repo, request) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app`,
+        { method: "PUT", body: JSON.stringify(request satisfies HqRepoRemoteViaAppRequest) },
+        true,
+      );
+    },
+    followRepoUpstream: async (appId, repo, request) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
+        { method: "PUT", body: JSON.stringify(request satisfies FollowRepoUpstreamRequest) },
+        true,
+      );
+    },
+    unfollowRepoUpstream: async (appId, repo) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    gitCredentials: async (appId) =>
+      (
+        await readGitCredentialList(
+          await authorized(`/api/apps/${encodeURIComponent(appId)}/git-credentials`),
+        )
+      ).credentials,
+    issueGitCredential: async (appId) =>
+      readGitCredential(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/git-credentials`,
+          { method: "POST" },
+          true,
+        ),
+      ),
+    revokeGitCredential: async (appId, id) => {
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/git-credentials/${encodeURIComponent(id)}`,
+        { method: "DELETE" },
+        true,
+      );
+    },
+    gitBrowse: async <R extends GitBrowseRead>(
+      read: R,
+      appId: string,
+      repo: string,
+      params: GitBrowseParams<R>,
+      signal?: AbortSignal,
+    ) =>
+      decoded(GIT_BROWSE_READS[read].value as Schema.Decoder<GitBrowseValue<R>>)(
+        await authorized(
+          browsePathOrRefuse(read, appId, repo, params),
+          signal === undefined ? {} : { signal },
+        ),
+      ),
+    gitBrowseBytes: async (read, appId, repo, params, signal) => {
+      // @effect-diagnostics-next-line globalDate:off -- plain promises: a byte read's age against HQ's deadline.
+      const asked = Date.now();
+      const response = await authorized(
+        browsePathOrRefuse(read, appId, repo, params),
+        signal === undefined ? {} : { signal },
+      );
+      const { limit, deadline }: { readonly limit: number; readonly deadline?: number } =
+        GIT_BROWSE_READS[read].bytes;
+      const chunks: Uint8Array<ArrayBuffer>[] = [];
+      let size = 0;
+      const reader = response.body?.getReader();
+      try {
+        for (;;) {
+          const next = await reader?.read();
+          if (next === undefined || next.done) break;
+          size += next.value.byteLength;
+          if (size > limit) {
+            // Nothing past the limit is read: letting the body go stops HQ's stream with it.
+            void reader?.cancel().catch(() => {});
+            throw new HqError({
+              kind: "refused",
+              code: "too_large",
+              status: 413,
+              message: `It is larger than ${fileSize(limit)}. Clone the repository instead.`,
+            });
+          }
+          chunks.push(next.value);
+        }
+      } catch (error) {
+        if (error instanceof HqError) throw error;
+        // HQ cuts a read at its deadline; a cut past it is that answer, never HQ out of reach.
+        // @effect-diagnostics-next-line globalDate:off -- plain promises: a byte read's age against HQ's deadline.
+        if (deadline !== undefined && Date.now() - asked >= deadline)
+          throw new HqError({
+            kind: "refused",
+            code: "too_slow",
+            message: `It took more than ${String(deadline / 60_000)} minutes. Clone the repository instead.`,
+          });
+        // Cut on its way, like a call that never arrived.
+        throw new HqError({
+          kind: "unavailable",
+          code: "network",
+          message: "HQ could not be reached.",
+        });
+      }
+      return new Blob(chunks, { type: heldType(response.headers.get("content-type")) });
+    },
+    // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
+    // this one where it tags the same `main` with the same commits.
+    release: (appId, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              releasesPath(appId),
+              { method: "POST", body: JSON.stringify(request) },
+              true,
+            ),
+          ),
+        async () =>
+          heldAsked(
+            (await releasesOf(appId)).find(
+              (made) =>
+                made.tag === request.tag &&
+                made.sha === request.groupHead &&
+                sameEntries(made.entries, request.entries),
+            ),
+          ),
+        ["tag_taken"],
+      ),
+    // A roll back is a new release HQ names: the newest, rolling back to `tag` at the same `main`,
+    // is taken for it.
+    rollback: (appId, tag, request) =>
+      confirmed(
+        async () =>
+          readRelease(
+            await authorized(
+              `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
+              { method: "POST", body: JSON.stringify(request) },
+              true,
+            ),
+          ),
+        async () => {
+          const [newest] = await releasesOf(appId);
+          return heldAsked(
+            newest?.rollbackOf === tag && newest.sha === request.groupHead ? newest : undefined,
+          );
+        },
+      ),
+    mateRecipe: async (appId, signal) =>
+      readRecipeTier(
+        await authorized(
+          `/api/apps/${encodeURIComponent(appId)}/recipe/mate`,
+          signal === undefined ? {} : { signal },
+        ),
+      ),
+    recordClosedOff: async (projectId) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
+        { method: "POST" },
+        true,
+      );
+    },
+  };
+}

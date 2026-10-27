@@ -1,0 +1,82 @@
+import type {
+  ChatAttachment as ContractChatAttachment,
+  ChatImageAttachment as ContractChatImageAttachment,
+  CrewCard as ContractCrewCard,
+  MateTaskMessage,
+  MateTaskSource,
+  OrchestrationMessage,
+  OrchestrationProposedPlan,
+  OrchestrationSession,
+  ProjectScript as ContractProjectScript,
+  ProviderInteractionMode,
+  RuntimeMode,
+} from "@t3tools/contracts";
+import type {
+  EnvironmentProject,
+  EnvironmentThread,
+  EnvironmentThreadShell,
+} from "@t3tools/client-runtime/state/shell";
+
+export type SessionPhase = "disconnected" | "connecting" | "ready" | "running";
+export const DEFAULT_RUNTIME_MODE: RuntimeMode = "full-access";
+
+export const DEFAULT_INTERACTION_MODE: ProviderInteractionMode = "default";
+export const DEFAULT_THREAD_TERMINAL_HEIGHT = 280;
+export const DEFAULT_THREAD_TERMINAL_ID = "term-1";
+export const MAX_TERMINALS_PER_GROUP = 4;
+export type ProjectScript = ContractProjectScript;
+
+export interface ThreadTerminalGroup {
+  id: string;
+  terminalIds: string[];
+  splitDirection?: "horizontal" | "vertical";
+}
+
+export interface ChatImageAttachment extends ContractChatImageAttachment {
+  readonly previewUrl?: string;
+}
+
+// Non-image members pass through with the contract shape. The web UI renders
+// them once it grows file support; until then they only need to typecheck.
+export type ChatAttachment =
+  | ChatImageAttachment
+  | Exclude<ContractChatAttachment, ContractChatImageAttachment>;
+
+// The union has an open member (`type: string`), so a literal comparison does
+// not narrow. Use this guard wherever image-only fields are read.
+export function isImageAttachment(attachment: ChatAttachment): attachment is ChatImageAttachment {
+  return attachment.type === "image";
+}
+
+export interface ChatMessage extends Omit<OrchestrationMessage, "attachments"> {
+  readonly attachments?: ReadonlyArray<ChatAttachment> | undefined;
+  /** On an engine conversation, the crew's typed card this message opens its run with. */
+  readonly crewCard?: ContractCrewCard | undefined;
+  /** A task's first message on an automated Mate: the issue it brings, drawn as its card. */
+  readonly task?: MateTaskSource | undefined;
+  /** With `task`: what its asker wrote where they asked, drawn as theirs; never the brief. */
+  readonly taskAsk?: string | undefined;
+  /**
+   * HQ's id of the task this message is of: its brief, or something said about it after. Absent on
+   * a task's own conversation from an older server, which its id names (`mateTaskIdOfConversation`).
+   */
+  readonly taskId?: string | undefined;
+  /**
+   * Something said about the task after its Mate took it (a comment, a reply, a review comment,
+   * an edit), told to it: drawn as its author's, never as the viewer's words.
+   */
+  readonly taskMessage?: MateTaskMessage | undefined;
+  /** On an engine conversation, the message waits in the engine's queue: no run took it yet. */
+  readonly queued?: true | undefined;
+  /** On an engine conversation, the queued run of a message no agent has yet: it can be withdrawn. */
+  readonly heldRunId?: string | undefined;
+}
+
+export type ProposedPlan = OrchestrationProposedPlan;
+
+export type Project = EnvironmentProject;
+export type Thread = EnvironmentThread;
+export type ThreadShell = EnvironmentThreadShell;
+
+export type SidebarThreadSummary = EnvironmentThreadShell;
+export type ThreadSession = OrchestrationSession;

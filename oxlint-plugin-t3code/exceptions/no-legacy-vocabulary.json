@@ -1,0 +1,362 @@
+[
+  {
+    "path": "apps/desktop/src/app/DesktopEnvironment.ts",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code (Alpha)\"",
+    "owner": "karel",
+    "reason": "persisted user-data directory name; renaming it strands existing desktop profiles",
+    "expires": "never"
+  },
+  {
+    "path": "apps/desktop/src/app/DesktopEnvironment.ts",
+    "kind": "Literal",
+    "fingerprint": "\"T3 Code (Dev)\"",
+    "owner": "karel",
+    "reason": "persisted user-data directory name; renaming it strands existing desktop profiles",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
+    "kind": "JSXText",
+    "fingerprint": "This thread has no ready turn diffs and the worktree diff is empty.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/reviewModel.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Dirty worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/reviewModel.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Tracked, staged, and untracked worktree changes\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"a new worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadGitControls.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Turn diffs and worktree changes\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Branches & worktrees\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Create worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitBranchesSheet.tsx",
+    "kind": "JSXText",
+    "fingerprint": "New worktree",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Branches & worktrees\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Inspect turn diffs, worktree changes, and base branch diff\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Switch branch, create branch, or move to a worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/new-task-context-presentation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Current worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/new-task-context-presentation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/projectThreadCreationValidation.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Select a base branch before creating a worktree.\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/state/use-selected-thread-git-actions.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Creating worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Current worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Local checkout\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Previous worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "karel",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"worktree\"",
+    "owner": "web-intake",
+    "reason": "internal environment-mode tag returned to state logic; never rendered as copy",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbar.logic.ts",
+    "kind": "TemplateElement",
+    "fingerprint": "`Previous worktree (${",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Start worktree from origin\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/BranchToolbarBranchSelector.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Creates the worktree from the latest matching branch on origin instead of your local branch.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Preparing worktree...\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PullRequestThreadDialog.tsx",
+    "kind": "JSXText",
+    "fingerprint": ", then create the draft thread in the main repo or in a dedicated worktree.",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/ChatComposer.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Preparing worktree...",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/chat/ComposerPrimaryActions.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Preparing worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Run automatically on worktree creation",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Creates the worktree from the latest matching branch on origin instead of your local branch.\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"New worktree\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Start new worktrees from origin by default\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"new worktrees start from origin\"",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/SettingsPanels.tsx",
+    "kind": "JSXText",
+    "fingerprint": "New worktree",
+    "owner": "karel",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Setting up worktree\u2026\"",
+    "owner": "mobile-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"Setting up worktree\u2026\"",
+    "owner": "mobile-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/PreviousWorktreeItemContent.tsx",
+    "kind": "JSXText",
+    "fingerprint": "Previous worktree",
+    "owner": "web-intake",
+    "reason": "user-facing worktree copy retained for environments that support worktrees (DN3 capability)",
+    "expires": "never"
+  }
+]

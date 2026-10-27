@@ -1,0 +1,34 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2024", "DOM", "DOM.Iterable"],
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "diagnosticSeverity": {
+          "globalDate": "error",
+          "globalTimers": "error",
+          "globalFetch": "error",
+          "globalConsole": "error"
+        },
+        "overrides": [
+          {
+            "include": ["**/*.ts"],
+            "options": {
+              "diagnosticSeverity": {
+                "globalDate": "off",
+                "globalTimers": "off",
+                "globalFetch": "off",
+                "globalConsole": "off"
+              }
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "include": ["**/*.ts"]
+}

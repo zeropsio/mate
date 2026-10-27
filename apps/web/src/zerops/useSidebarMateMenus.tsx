@@ -1,0 +1,355 @@
+/**
+ * What a Mate's own menu in the left menu does, wired to the session.
+ *
+ * The verbs the projects screen offers too — *Restart* or *Start*, *Finish
+ * setup*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
+ * `useMateActions`', one definition with its dialogs; *Check for updates* and
+ * *Update to x.y.z* are its update control's, read off its environment once
+ * the menu opens (a hook cannot run in a menu-building function); *Rename* is its write
+ * too, done where the name stands instead of in a dialog, and *Change face…*
+ * its dialog, placed beside *Rename*. The rest is this viewer's own: a mute
+ * this browser keeps (`mutedMates.ts`), read or unread (the visit marks the
+ * thread rows use), a link to the conversation, and stopping the run it is on
+ * — which the server leaves open to every member, a colleague having to be
+ * able to stop an agent they may not start.
+ *
+ * A Mate this page holds no socket to is acted on by HQ's word of it (`mateMenuTarget`): its
+ * environment and its main chat's last finished turn. Stopping a run holds the Mate connected
+ * until it answers (`useMateCommand`).
+ *
+ * The group registry is read only once somebody opens a Mate's menu: it is
+ * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
+ */
+import { useAtomValue } from "@effect/atom-react";
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { projectNameInApp, readZeropsMembership } from "@t3tools/client-runtime/zerops";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { createSharer } from "@t3tools/shared/structuralSharing";
+import { useRouter } from "@tanstack/react-router";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+
+import type { MateRowActions } from "~/components/zerops/SidebarMateMenu";
+import type { ZeropsMenuEntry } from "~/components/zerops/ZeropsProjectMenu";
+import { toastManager } from "~/components/ui/toast";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
+import { hqMatesAtom } from "~/state/zerops";
+import { buildThreadRouteParams } from "~/threadRoutes";
+import { useUiStateStore } from "~/uiStateStore";
+
+import { useStopConversation } from "./conversationStop";
+import type { ZeropsAgentActivity } from "./agentActivity";
+import { useMateActions } from "./useMateActions";
+import { useDrawnProjectAccess } from "./useVisibleProjectAccess";
+import { useMutedMates } from "./mutedMates";
+import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
+import { useZeropsRegistry } from "./useZeropsRegistry";
+import { useZeropsContainers } from "./zeropsContainers";
+
+/** The shared verbs this menu carries, relabelled for a Mate's own menu. */
+const SHARED_VERBS: Readonly<Record<string, string | null>> = {
+  start: null,
+  restart: null,
+  "finish-setup": null,
+  assign: "Hand over…",
+  access: null,
+  move: "Move to project…",
+  delete: null,
+};
+
+/** `useMateActions`' entries this menu offers, in its words; the rest are the projects screen's. */
+export function sidebarMateVerbs(
+  entries: ReadonlyArray<ZeropsMenuEntry>,
+): ReadonlyArray<ZeropsMenuEntry> {
+  return entries.flatMap((entry) => {
+    if ("separator" in entry || !(entry.id in SHARED_VERBS)) return [];
+    const label = SHARED_VERBS[entry.id];
+    return [label === null || label === undefined ? entry : { ...entry, label }];
+  });
+}
+
+/** What a Mate's menu reads of HQ's word of it (`MateLiveView`): its environment, its main chat. */
+interface MenuTold {
+  readonly identity?: { readonly environmentId: EnvironmentId } | undefined;
+  readonly main?:
+    | {
+        readonly id: ThreadId;
+        readonly latestTurn: { readonly completedAt: string | null } | null;
+      }
+    | null
+    | undefined;
+}
+
+/**
+ * HQ's word of each Mate as its menu reads it (`MenuTold`), by project: plain data, so a reading
+ * shares with the last (`createSharer`) and the menus stand while no Mate's word of it changed —
+ * HQ relays far more of each Mate than a menu reads.
+ */
+function menuToldOf(
+  mates: ReadonlyMap<string, MateLiveView> | undefined,
+): Readonly<Record<string, MenuTold>> {
+  const told: Record<string, MenuTold> = {};
+  for (const [projectId, mate] of mates ?? []) {
+    told[projectId] = {
+      ...(mate.identity === undefined
+        ? {}
+        : { identity: { environmentId: mate.identity.environmentId } }),
+      ...(mate.main
+        ? {
+            main: {
+              id: mate.main.id,
+              latestTurn:
+                mate.main.latestTurn === null
+                  ? null
+                  : { completedAt: mate.main.latestTurn.completedAt },
+            },
+          }
+        : {}),
+    };
+  }
+  return told;
+}
+
+/**
+ * Where a Mate's menu acts: its environment — its socket's, else the one HQ names — when the
+ * chat its row reads last finished, for *Mark as unread*: this page's shell of it, else HQ's word,
+ * and the run *Stop* interrupts while that chat works.
+ */
+export function mateMenuTarget(input: {
+  /** Its socket's environment, where this page holds one. */
+  readonly environmentId: EnvironmentId | undefined;
+  /** HQ's word of it, where HQ holds one. */
+  readonly told: MenuTold | undefined;
+  readonly activity: ZeropsAgentActivity | undefined;
+  /** Each chat's last finished turn as this page's shells hold it, by thread key. */
+  readonly completedAt: ReadonlyMap<string, string>;
+}): {
+  readonly environmentId: EnvironmentId | undefined;
+  readonly finished: string | undefined;
+  readonly stop:
+    | { readonly environmentId: EnvironmentId; readonly input: { readonly threadId: ThreadId } }
+    | undefined;
+} {
+  const { activity, told } = input;
+  const environmentId = input.environmentId ?? told?.identity?.environmentId;
+  const toldFinished =
+    activity !== undefined && told?.main?.id === activity.threadId
+      ? (told.main.latestTurn?.completedAt ?? undefined)
+      : undefined;
+  return {
+    environmentId,
+    finished:
+      activity === undefined
+        ? undefined
+        : (input.completedAt.get(activity.threadKey) ?? toldFinished),
+    stop:
+      environmentId === undefined || activity === undefined || activity.face !== "working"
+        ? undefined
+        : { environmentId, input: { threadId: activity.threadId } },
+  };
+}
+
+/** Keeps each row's actions while its own inputs stand, even when another row's factory changes. */
+export function createMateMenuReader<A>() {
+  const built = new WeakMap<
+    ZeropsCandidatePresentation,
+    {
+      readonly facts: ReadonlyArray<unknown>;
+      readonly actions: A;
+    }
+  >();
+  return (
+    candidate: ZeropsCandidatePresentation,
+    facts: ReadonlyArray<unknown>,
+    build: () => A,
+  ): A => {
+    const held = built.get(candidate);
+    if (
+      held !== undefined &&
+      held.facts.length === facts.length &&
+      facts.every((fact, i) => Object.is(fact, held.facts[i]))
+    )
+      return held.actions;
+    const actions = build();
+    built.set(candidate, { facts, actions });
+    return actions;
+  };
+}
+
+/** Each chat's last finished turn by thread key, the last map kept while it reads the same. */
+function createCompletedAtReader(): (
+  threads: ReadonlyArray<EnvironmentThreadShell>,
+) => ReadonlyMap<string, string> {
+  let last: ReadonlyMap<string, string> = new Map();
+  return (threads) => {
+    const byThread = new Map<string, string>();
+    for (const thread of threads) {
+      const at = thread.latestTurn?.completedAt;
+      if (at !== null && at !== undefined) byThread.set(`${thread.environmentId}:${thread.id}`, at);
+    }
+    const same =
+      byThread.size === last.size && [...byThread].every(([key, at]) => last.get(key) === at);
+    if (!same) last = byThread;
+    return last;
+  };
+}
+
+export function useSidebarMateMenus(input: {
+  /** Every conversation's shell: what *Mark as unread* marks is its last finished turn. */
+  readonly threads: ReadonlyArray<EnvironmentThreadShell>;
+}): {
+  readonly getMateActions: (
+    candidate: ZeropsCandidatePresentation,
+    activity: ZeropsAgentActivity | undefined,
+  ) => MateRowActions | undefined;
+  readonly dialogs: ReactNode;
+} {
+  const { serverVersions } = useZeropsContainers();
+  const registry = useZeropsRegistry();
+  const mateActions = useMateActions({ registry, serverVersions });
+  // Each drawn row holds the project detail needed to decide the viewer’s access.
+  const drawnOf = useDrawnProjectAccess();
+  const { muted, toggle } = useMutedMates();
+  const markThreadUnread = useUiStateStore((store) => store.markThreadUnread);
+  const markThreadVisited = useUiStateStore((store) => store.markThreadVisited);
+  const stopConversation = useStopConversation();
+  const router = useRouter();
+  const hq = useAtomValue(hqMatesAtom);
+  const [shareTold] = useState(() => createSharer<Readonly<Record<string, MenuTold>>>());
+  const told = useMemo(() => shareTold(menuToldOf(hq?.mates)), [hq, shareTold]);
+  const { copyToClipboard } = useCopyToClipboard<{ readonly name: string }>({
+    onCopy: ({ name }) => {
+      toastManager.add({ type: "success", title: `Link to ${name} copied` });
+    },
+    onError: (error) => {
+      toastManager.add({
+        type: "error",
+        title: "Could not copy the link",
+        description: error.message,
+      });
+    },
+  });
+
+  // A refused write says so once, where it happened is the row's own business.
+  useEffect(() => {
+    if (mateActions.trouble !== null) {
+      toastManager.add({ type: "error", title: mateActions.trouble });
+    }
+  }, [mateActions.trouble]);
+
+  // Each chat's last finished turn: the same map while no turn finishes, however often a
+  // streaming chat's shell changes — every row's menu is built off it.
+  const [completedAtOf] = useState(createCompletedAtReader);
+  const completedAt = useMemo(() => completedAtOf(input.threads), [completedAtOf, input.threads]);
+
+  const { actionsFor, renameInPlace, changeFace } = mateActions;
+  const [readActions] = useState(() => createMateMenuReader<MateRowActions>());
+  // A row's menu stands while its Mate and its activity do: a memoised row redraws only when its
+  // own menu changes.
+  const getMateActions = useMemo(
+    () => (candidate: ZeropsCandidatePresentation, activity: ZeropsAgentActivity | undefined) =>
+      readActions(
+        candidate,
+        [
+          activity,
+          told[candidate.project.id],
+          activity === undefined ? undefined : completedAt.get(activity.threadKey),
+          actionsFor,
+          changeFace,
+          copyToClipboard,
+          drawnOf,
+          stopConversation,
+          markThreadUnread,
+          markThreadVisited,
+          muted,
+          renameInPlace,
+          router,
+          toggle,
+        ],
+        () => {
+          const { environmentId, finished, stop } = mateMenuTarget({
+            environmentId: candidate.environmentId,
+            told: told[candidate.project.id],
+            activity,
+            completedAt,
+          });
+          const tags = readZeropsMembership(candidate.project);
+          const name = projectNameInApp(candidate.project);
+          const threadRef =
+            environmentId === undefined || activity === undefined
+              ? undefined
+              : scopeThreadRef(environmentId, activity.threadId);
+          return {
+            muted: environmentId !== undefined && muted.includes(environmentId),
+            toggleMute:
+              environmentId === undefined
+                ? undefined
+                : () => {
+                    toggle(environmentId);
+                  },
+            toggleUnread:
+              activity === undefined || finished === undefined
+                ? undefined
+                : () => {
+                    if (activity.unread)
+                      markThreadVisited(activity.threadKey, new Date().toISOString());
+                    else markThreadUnread(activity.threadKey, finished);
+                  },
+            copyLink:
+              threadRef === undefined
+                ? undefined
+                : () => {
+                    const { href } = router.buildLocation({
+                      to: "/$environmentId/$threadId",
+                      params: buildThreadRouteParams(threadRef),
+                    });
+                    copyToClipboard(new URL(href, window.location.origin).toString(), { name });
+                  },
+            rename: renameInPlace(candidate),
+            changeFace: changeFace(candidate),
+            // The one Stop every control sends: the turn and everything it started.
+            stop:
+              stop === undefined
+                ? undefined
+                : () => {
+                    void stopConversation({
+                      environmentId: stop.environmentId,
+                      threadId: stop.input.threadId,
+                      turnId: activity?.turnId ?? null,
+                    }).then((answer) => {
+                      if (answer.kind === "refused") {
+                        toastManager.add({
+                          type: "error",
+                          title: `Could not stop ${name}`,
+                          description: answer.reason,
+                        });
+                      }
+                    });
+                  },
+            entries: sidebarMateVerbs(actionsFor(candidate, tags)),
+            environmentId,
+            drawn: drawnOf(candidate.project.id),
+          };
+        },
+      ),
+    [
+      actionsFor,
+      changeFace,
+      completedAt,
+      copyToClipboard,
+      drawnOf,
+      stopConversation,
+      markThreadUnread,
+      markThreadVisited,
+      muted,
+      renameInPlace,
+      readActions,
+      router,
+      toggle,
+      told,
+    ],
+  );
+
+  return { getMateActions, dialogs: mateActions.dialogs };
+}

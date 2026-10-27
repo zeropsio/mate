@@ -1,0 +1,109 @@
+/*
+ * The mark's own colours are brand geometry, not theme: they come from
+ * `MATE_MARK` in shared/brand.ts, and the favicon generator inlines the same
+ * values. The side wall is the one surface drawn behind the mark rather than
+ * on it, so it alone needs a light/dark pair — `--zerops-mate-mark-side`, in
+ * the app's palette (index.css, pinned to `MATE_MARK_LIVE.side`), so it
+ * follows the app's appearance rather than the OS's.
+ *
+ * The <svg> IS the component's root — no wrapper element. A wrapper meant the
+ * caller's sizing classes landed on a box that did not centre the same way,
+ * and `mx-auto` silently stopped working.
+ */
+.mate-mark {
+  display: block;
+  /* The turn rotates the slab past its own box; clipping it would flatten
+     exactly the edge the extrusion exists to show. */
+  overflow: visible;
+  transform-origin: 50% 50%;
+  color: var(--foreground);
+}
+
+.mate-mark[data-mate-mark="live"] {
+  will-change: transform;
+}
+
+.mate-mark-sides {
+  fill: var(--zerops-mate-mark-side);
+}
+
+/*
+ * The two motions a live mark makes while it otherwise rests are the
+ * stylesheet's, so a page of resting marks runs no script frame at all
+ * (`mateMarkRuntime.ts`):
+ *
+ * - idle and awake, the whole mark bobs — `sin(1.1 t)` of 0.3 of its 52-unit
+ *   height, so a period of 2π / 1.1 s; the driver turns it on
+ *   (`data-mate-mark-bob`) and sets its phase, and only on a mark 48 px tall
+ *   or more. Chrome composites no animation on an SVG element, so the bob
+ *   costs a style recalc and a repaint of the mark a frame — paid only where
+ *   it can be seen; on a menu-size mark it would move a fifth of a pixel.
+ * - waking, the band swells a fifth of the way out and back once every three
+ *   seconds (`matePose`), each half along its own track (`--mate-mark-swell`,
+ *   set by `MateMark`).
+ *
+ * The easing is the sine's own half (`easeInOutSine`), so each is the curve
+ * the driver drew before. Reduced motion stills both, as it stills the driver.
+ */
+@media (prefers-reduced-motion: no-preference) {
+  .mate-mark[data-mate-mark-bob="on"] {
+    animation: mate-mark-bob 5.712s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+    animation-delay: var(--mate-mark-bob-delay, 0s);
+  }
+
+  .mate-mark[data-mate-mark-state="waking"] [data-mate-mark-band] {
+    animation: mate-mark-swell 3s cubic-bezier(0.37, 0, 0.63, 1) infinite;
+  }
+}
+
+@keyframes mate-mark-bob {
+  0%,
+  100% {
+    translate: 0 -0.577%;
+  }
+  50% {
+    translate: 0 0.577%;
+  }
+}
+
+@keyframes mate-mark-swell {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: var(--mate-mark-swell);
+  }
+}
+
+/*
+ * Reduced motion: the driver already holds the mark open, still and forward —
+ * it never starts the band, the gaze, the tilt or the blink. This only stops
+ * the browser from interpolating the transform the driver leaves behind.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .mate-mark {
+    transition: none;
+    will-change: auto;
+  }
+}
+
+/*
+ * The lockup is two boxes at one height — the mark (still or live) and the
+ * word — laid side by side so that the live mark can turn on its own root
+ * without taking the letters with it. Each child fills the height and takes
+ * its width from its viewBox, so the pair is the one `MATE_LOCKUP` box.
+ */
+.mate-lockup {
+  display: inline-flex;
+  align-items: stretch;
+  color: var(--foreground);
+}
+
+.mate-lockup > svg {
+  display: block;
+  height: 100%;
+  width: auto;
+  /* The t's ascender rises just past the box, and the live mark turns past it. */
+  overflow: visible;
+}

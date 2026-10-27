@@ -1,0 +1,142 @@
+import {
+  type ApprovalRequestId,
+  type ProviderApprovalDecision,
+  type ProviderApprovalOption,
+} from "@t3tools/contracts";
+import { memo } from "react";
+import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
+import { Button } from "../ui/button";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+
+interface ComposerPendingApprovalActionsProps {
+  requestId: ApprovalRequestId;
+  isResponding: boolean;
+  options?: ReadonlyArray<ProviderApprovalOption> | undefined;
+  onRespondToApproval: (
+    requestId: ApprovalRequestId,
+    decision: ProviderApprovalDecision,
+  ) => Promise<unknown>;
+}
+
+const DEFAULT_APPROVAL_OPTIONS = [
+  { decision: "cancel", label: "Cancel" },
+  { decision: "decline", label: "Decline" },
+  { decision: "acceptForSession", label: "Always allow this session" },
+  { decision: "accept", label: "Approve" },
+] satisfies ReadonlyArray<ProviderApprovalOption>;
+
+export const ComposerPendingApprovalActions = memo(function ComposerPendingApprovalActions({
+  requestId,
+  isResponding,
+  options = DEFAULT_APPROVAL_OPTIONS,
+  onRespondToApproval,
+}: ComposerPendingApprovalActionsProps) {
+  // The row keeps the decisions a reader weighs: approve, the standing
+  // approvals, and decline. Anything else (cancel, provider extras) waits
+  // behind the overflow menu.
+  const rowOptions = options.filter(isRowDecision);
+  const moreOptions = options.filter((option) => !isRowDecision(option));
+
+  return (
+    <>
+      {rowOptions.map((option) => {
+        const actionTone =
+          option.decision === "accept"
+            ? "primary"
+            : option.decision === "acceptForSession" || option.decision === "acceptAlways"
+              ? "secondary"
+              : "quiet";
+        const variant =
+          actionTone === "primary" ? "primary" : actionTone === "secondary" ? "secondary" : "ghost";
+
+        const label = (
+          <>
+            {option.warning ? <TriangleAlertIcon className="size-3 shrink-0 text-warning" /> : null}
+            <span className="max-w-48 whitespace-normal break-words text-center">
+              {option.label}
+            </span>
+          </>
+        );
+        // Approve is the ask's one primary button; a long label wraps inside it.
+        const button = (
+          <Button
+            key={option.decision}
+            size="sm"
+            variant={variant}
+            className="max-w-full"
+            data-approval-decision={option.decision}
+            data-approval-action-tone={actionTone}
+            disabled={isResponding}
+            aria-description={option.warning}
+            onClick={() => void onRespondToApproval(requestId, option.decision)}
+          >
+            {label}
+          </Button>
+        );
+        // A provider caution, such as a prompt injection warning on "allow
+        // always", rides along as a tooltip so the row stays one line.
+        return option.warning ? (
+          <Tooltip key={option.decision}>
+            <TooltipTrigger render={button} />
+            <TooltipPopup side="top">{option.warning}</TooltipPopup>
+          </Tooltip>
+        ) : (
+          button
+        );
+      })}
+      {moreOptions.length > 0 ? (
+        <Menu>
+          <MenuTrigger
+            disabled={isResponding}
+            render={
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                className="self-center"
+                aria-label="More approval options"
+              />
+            }
+          >
+            <EllipsisIcon />
+          </MenuTrigger>
+          <MenuPopup side="top" align="end">
+            {moreOptions.map((option) => {
+              const item = (
+                <MenuItem
+                  key={option.decision}
+                  disabled={isResponding}
+                  aria-description={option.warning}
+                  data-approval-decision={option.decision}
+                  onClick={() => void onRespondToApproval(requestId, option.decision)}
+                  variant="ghost"
+                  className="mb-1 last:mb-0"
+                >
+                  {option.warning ? <TriangleAlertIcon className="size-3 text-warning" /> : null}
+                  <span className="min-w-0 whitespace-normal wrap-break-word">{option.label}</span>
+                </MenuItem>
+              );
+              return option.warning ? (
+                <Tooltip key={option.decision}>
+                  <TooltipTrigger render={item} />
+                  <TooltipPopup side="top">{option.warning}</TooltipPopup>
+                </Tooltip>
+              ) : (
+                item
+              );
+            })}
+          </MenuPopup>
+        </Menu>
+      ) : null}
+    </>
+  );
+});
+
+function isRowDecision(option: ProviderApprovalOption): boolean {
+  return (
+    option.decision === "accept" ||
+    option.decision === "acceptForSession" ||
+    option.decision === "acceptAlways" ||
+    option.decision === "decline"
+  );
+}

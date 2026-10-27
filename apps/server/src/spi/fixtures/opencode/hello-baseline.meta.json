@@ -1,0 +1,5 @@
+{
+  "driver": "opencode",
+  "notes": "No static wire capture: OpenCode is driven through OpencodeClient, an SDK object obtained from the injectable OpenCodeRuntime service. This 'fixture' is recorded by running the real makeOpenCodeAdapter against a from-scratch minimal OpenCodeRuntime test double whose event.subscribe() replays a fixed, canned SSE body sequence (message.updated, message.part.updated, message.part.delta, message.part.updated) — the same technique OpenCodeAdapter.test.ts's own deterministic tests use. See apps/server/src/spi/replay/openCodeReplay.ts (recordOpenCodeBaseline).",
+  "synthetic": true
+}

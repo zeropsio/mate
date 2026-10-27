@@ -1,0 +1,496 @@
+import { describe, expect, it } from "vite-plus/test";
+
+import {
+  browserFiguresLine,
+  browserLiveCaption,
+  envChangeWords,
+  gitPushClosing,
+  gitPushVoice,
+  humanizeCheckName,
+  humanizeToolName,
+  operationStatusWord,
+  operationTone,
+  platformStatus,
+  processActionWord,
+  sentenceCase,
+  statusWord,
+} from "./phrases.ts";
+
+describe("statusWord", () => {
+  const doneRaws = ["ACTIVE", "DEPLOYED", "FINISHED", "complete", "pass", "healthy", "mounted"];
+  it.each(Array.from(doneRaws, (raw) => ({ title: `maps ${raw} to Done`, raw })))(
+    "$title",
+    ({ raw }) => {
+      expect(statusWord(raw)).toBe("Done");
+    },
+  );
+
+  const runningRaws = ["BUILDING", "DEPLOYING", "RUNNING", "in_progress", "running"];
+  it.each(Array.from(runningRaws, (raw) => ({ title: `maps ${raw} to Running`, raw })))(
+    "$title",
+    ({ raw }) => {
+      expect(statusWord(raw)).toBe("Running");
+    },
+  );
+
+  const failedRaws = ["FAILED", "BUILD_FAILED", "fail", "error"];
+  it.each(Array.from(failedRaws, (raw) => ({ title: `maps ${raw} to Failed`, raw })))(
+    "$title",
+    ({ raw }) => {
+      expect(statusWord(raw)).toBe("Failed");
+    },
+  );
+
+  it("maps pending to Waiting", () => {
+    expect(statusWord("pending")).toBe("Waiting");
+  });
+
+  it("maps a WAITING_* raw to Waiting", () => {
+    expect(statusWord("WAITING_FOR_BUILD")).toBe("Waiting");
+  });
+
+  it("maps skipped to Skipped", () => {
+    expect(statusWord("skipped")).toBe("Skipped");
+  });
+
+  it("sentence-cases an unrecognized raw instead of rendering it verbatim", () => {
+    expect(statusWord("SOME_NEW_ENUM")).toBe("Some new enum");
+  });
+});
+
+describe("sentenceCase", () => {
+  it("capitalizes only the first letter of an underscored value", () => {
+    expect(sentenceCase("some_new_enum")).toBe("Some new enum");
+  });
+});
+
+describe("humanizeCheckName", () => {
+  it("humanizes service_running", () => {
+    expect(humanizeCheckName("service_running")).toBe("Service running");
+  });
+
+  it("uppercases http in http_root", () => {
+    expect(humanizeCheckName("http_root")).toBe("HTTP root");
+  });
+
+  it("humanizes error_logs", () => {
+    expect(humanizeCheckName("error_logs")).toBe("Error logs");
+  });
+
+  it("uppercases known tokens: https, url, ssh, db", () => {
+    expect(humanizeCheckName("https_url")).toBe("HTTPS URL");
+    expect(humanizeCheckName("ssh_ready")).toBe("SSH ready");
+    expect(humanizeCheckName("db_connection")).toBe("DB connection");
+  });
+});
+
+describe("humanizeToolName", () => {
+  it("turns zerops_discover into Discover", () => {
+    expect(humanizeToolName("zerops_discover")).toBe("Discover");
+  });
+
+  it("turns zerops_yml_exists into Yml exists", () => {
+    expect(humanizeToolName("zerops_yml_exists")).toBe("Yml exists");
+  });
+});
+
+describe("processActionWord — a platform process's action, in words", () => {
+  it.each([
+    { actionName: "stack.enableSubdomainAccess", word: "Enable subdomain access" },
+    { actionName: "stack.deploy", word: "Deploy" },
+    { actionName: "stack.updateUserData", word: "Update user data" },
+    { actionName: "stack.restart", word: "Restart" },
+    { actionName: "serviceStackRestart", word: "Service stack restart" },
+  ])("$actionName → $word", ({ actionName, word }) => {
+    expect(processActionWord(actionName)).toBe(word);
+  });
+});
+
+describe("operationStatusWord — running phase", () => {
+  it("deploy running is Deploying", () => {
+    expect(operationStatusWord("deploy", "running")).toBe("Deploying");
+  });
+
+  it("verify running is Checking", () => {
+    expect(operationStatusWord("verify", "running")).toBe("Checking");
+  });
+
+  it("import running is Importing", () => {
+    expect(operationStatusWord("import", "running")).toBe("Importing");
+  });
+
+  it("mount running is Mounting", () => {
+    expect(operationStatusWord("mount", "running")).toBe("Mounting");
+  });
+
+  it.each([
+    { kind: "delete", word: "Deleting" },
+    { kind: "scale", word: "Scaling" },
+    { kind: "manage", word: "Managing" },
+    { kind: "env", word: "Updating" },
+  ] as const)("$kind running names its own verb: $word", ({ kind, word }) => {
+    expect(operationStatusWord(kind, "running")).toBe(word);
+  });
+
+  it("bootstrap running is In progress", () => {
+    expect(operationStatusWord("bootstrap", "running")).toBe("In progress");
+  });
+
+  it("a deploy running with a BUILD_TRIGGERED result says Build triggered", () => {
+    expect(operationStatusWord("deploy", "running", { resultStatus: "BUILD_TRIGGERED" })).toBe(
+      "Build triggered",
+    );
+  });
+
+  it("subdomain running is Enabling or Disabling by action", () => {
+    expect(operationStatusWord("subdomain", "running", { action: "enable" })).toBe("Enabling");
+    expect(operationStatusWord("subdomain", "running", { action: "disable" })).toBe("Disabling");
+  });
+
+  it.each([
+    { action: "start", word: "Starting" },
+    { action: "restart", word: "Restarting" },
+    { action: "stop", word: "Stopping" },
+    { action: "status", word: "Checking" },
+    { action: "logs", word: "Reading" },
+    { action: undefined, word: "Working" },
+  ])("devServer running with action $action is $word", ({ action, word }) => {
+    expect(operationStatusWord("devServer", "running", { action })).toBe(word);
+  });
+
+  it("browser running is Checking", () => {
+    expect(operationStatusWord("browser", "running")).toBe("Checking");
+  });
+});
+
+describe("operationStatusWord — done phase", () => {
+  it("deploy done is Deployed", () => {
+    expect(operationStatusWord("deploy", "done")).toBe("Deployed");
+  });
+
+  it("verify done is Healthy", () => {
+    expect(operationStatusWord("verify", "done")).toBe("Healthy");
+  });
+
+  it("import done is Imported", () => {
+    expect(operationStatusWord("import", "done")).toBe("Imported");
+  });
+
+  it("mount done is Mounted", () => {
+    expect(operationStatusWord("mount", "done")).toBe("Mounted");
+  });
+
+  it("bootstrap done is Complete", () => {
+    expect(operationStatusWord("bootstrap", "done")).toBe("Complete");
+  });
+
+  it("devServer done is Running, or Not running when the card says running=false", () => {
+    expect(operationStatusWord("devServer", "done")).toBe("Running");
+    expect(operationStatusWord("devServer", "done", { running: false })).toBe("Not running");
+    expect(operationStatusWord("devServer", "done", { running: true })).toBe("Running");
+  });
+
+  it("browser done is Checked", () => {
+    expect(operationStatusWord("browser", "done")).toBe("Checked");
+  });
+});
+
+describe("operationStatusWord — failed phase", () => {
+  it("deploy failed is Failed", () => {
+    expect(operationStatusWord("deploy", "failed")).toBe("Failed");
+  });
+
+  it("verify failed is Checks failed", () => {
+    expect(operationStatusWord("verify", "failed")).toBe("Checks failed");
+  });
+
+  it("import failed is Import failed", () => {
+    expect(operationStatusWord("import", "failed")).toBe("Import failed");
+  });
+
+  it("mount failed is Mount failed", () => {
+    expect(operationStatusWord("mount", "failed")).toBe("Mount failed");
+  });
+
+  it("error kind is always Failed", () => {
+    expect(operationStatusWord("error", "failed")).toBe("Failed");
+  });
+
+  it("subdomain done is Enabled or Disabled by action", () => {
+    expect(operationStatusWord("subdomain", "done", { action: "enable" })).toBe("Enabled");
+    expect(operationStatusWord("subdomain", "done", { action: "disable" })).toBe("Disabled");
+  });
+});
+
+describe("a git push's words — a deploy only once the build it triggered landed", () => {
+  it.each([
+    { phase: "running", resultStatus: undefined, word: "Pushing" },
+    { phase: "done", resultStatus: "PUSHED", word: "Pushed" },
+    { phase: "done", resultStatus: "NOTHING_TO_PUSH", word: "Up to date" },
+    { phase: "done", resultStatus: "DELIVERED", word: "Deployed" },
+    { phase: "failed", resultStatus: "PUSHED", word: "Failed" },
+    { phase: "uncertain", resultStatus: "PUSHED", word: "Unconfirmed" },
+  ] as const)("$phase with $resultStatus is $word", ({ phase, resultStatus, word }) => {
+    expect(operationStatusWord("deploy", phase, { gitPush: true, resultStatus })).toBe(word);
+  });
+
+  it("the voice says a push", () => {
+    expect(gitPushVoice("appdev")).toBe("Pushing appdev.");
+  });
+
+  it.each([
+    {
+      name: "the change the branch lands through",
+      outcome: "pushed",
+      context: { branch: "mate/fen", pullRequest: 8 },
+      closing: "Pushed to change #8.",
+    },
+    {
+      name: "the branch, without a change",
+      outcome: "pushed",
+      context: { branch: "main" },
+      closing: "Pushed to main.",
+    },
+    { name: "where, when neither is known", outcome: "pushed", context: {}, closing: "Pushed." },
+    {
+      name: "that there was nothing to push",
+      outcome: "upToDate",
+      context: { branch: "main" },
+      closing: "Nothing new to push.",
+    },
+  ] as const)("the closing names $name", ({ outcome, context, closing }) => {
+    expect(gitPushClosing(outcome, context)).toBe(closing);
+  });
+});
+
+describe("browserFiguresLine", () => {
+  const clean = { stepCount: 7, consoleErrorCount: 0, pageErrorCount: 0, failedRequestCount: 0 };
+  it.each([
+    {
+      name: "a viewport, steps and no errors",
+      input: { ...clean, viewport: { width: 1440, height: 900 } },
+      line: "1440×900 · 7 steps · 0 errors",
+    },
+    {
+      name: "dark media beside the viewport",
+      input: { ...clean, viewport: { width: 1920, height: 1080 }, media: "dark" as const },
+      line: "1920×1080, dark · 7 steps · 0 errors",
+    },
+    {
+      name: "an explicit light media adds nothing",
+      input: { ...clean, viewport: { width: 1920, height: 1080 }, media: "light" as const },
+      line: "1920×1080 · 7 steps · 0 errors",
+    },
+    {
+      name: "dark with no known viewport",
+      input: { ...clean, media: "dark" as const },
+      line: "dark · 7 steps · 0 errors",
+    },
+    { name: "no viewport at all", input: clean, line: "7 steps · 0 errors" },
+    {
+      name: "console and page errors fold into one figure",
+      input: { ...clean, consoleErrorCount: 1, pageErrorCount: 1 },
+      line: "7 steps · 2 errors",
+    },
+    {
+      name: "failed requests are named only when there are some",
+      input: { ...clean, stepCount: 1, consoleErrorCount: 1, failedRequestCount: 1 },
+      line: "1 step · 1 error · 1 failed request",
+    },
+  ])("$name", ({ input, line }) => {
+    expect(browserFiguresLine(input)).toBe(line);
+  });
+});
+
+describe("browserLiveCaption", () => {
+  it("names the subject the agent is verifying", () => {
+    expect(browserLiveCaption("https://kanbandev-26a7.prg1.zerops.app")).toBe(
+      "Agent is verifying https://kanbandev-26a7.prg1.zerops.app.",
+    );
+  });
+});
+
+describe("operationTone — one tone for a card and every summary of it", () => {
+  const step = (state: "done" | "failed") => ({
+    id: state,
+    label: state,
+    state,
+    stateLabel: state,
+  });
+  it.each([
+    { phase: "running" as const, steps: [], expected: "busy" },
+    { phase: "done" as const, steps: [step("done")], expected: "ok" },
+    { phase: "done" as const, steps: [step("done"), step("failed")], expected: "attention" },
+    { phase: "failed" as const, steps: [], expected: "failed" },
+    { phase: "uncertain" as const, steps: [], expected: "attention" },
+    { phase: "interrupted" as const, steps: [], expected: "ok" },
+  ])("$phase with $steps.length steps: $expected", ({ phase, steps, expected }) => {
+    expect(operationTone({ phase, steps })).toBe(expected);
+  });
+});
+
+describe("platformStatus — one reading of a platform process or app-version status", () => {
+  it.each([
+    { raw: "PENDING", expected: { state: "queued", tone: "off", word: "Queued" } },
+    { raw: "RUNNING", expected: { state: "running", tone: "busy", word: "Running" } },
+    { raw: "ROLLBACKING", expected: { state: "running", tone: "busy", word: "Rolling back" } },
+    { raw: "CANCELING", expected: { state: "running", tone: "busy", word: "Cancelling" } },
+    { raw: "FINISHED", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "CANCELED", expected: { state: "queued", tone: "off", word: "Cancelled" } },
+    { raw: "ACTIVE", expected: { state: "done", tone: "ok", word: "Done" } },
+    { raw: "BUILD_FAILED", expected: { state: "failed", tone: "failed", word: "Failed" } },
+    { raw: "DEPLOY_FAILED", expected: { state: "failed", tone: "failed", word: "Deploy failed" } },
+    { raw: "UPLOADING", expected: { state: "running", tone: "busy", word: "Uploading" } },
+    { raw: "WAITING_TO_BUILD", expected: { state: "queued", tone: "off", word: "Waiting" } },
+    { raw: "SOMETHING_NEW", expected: { state: "queued", tone: "off", word: "Something new" } },
+  ])("$raw", ({ raw, expected }) => {
+    expect(platformStatus(raw)).toEqual(expected);
+  });
+
+  it("a process card's cancel words use the same spelling", () => {
+    expect([
+      operationStatusWord("process", "running", { action: "cancel" }),
+      operationStatusWord("process", "done", { processOutcome: "canceled" }),
+    ]).toEqual(["Cancelling", "Cancelled"]);
+  });
+});
+
+describe("envChangeWords — what an env call changed and where, never a value", () => {
+  const project = { scope: "project" } as const;
+  const service = { scope: "service", service: "apidev" } as const;
+  it.each([
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "done",
+      words: "Set 6 of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 1 },
+      tense: "done",
+      words: "Set one of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "running",
+      words: "Setting 6 of the project's variables",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "failed",
+      words: "Setting 6 of the project's variables failed",
+    },
+    {
+      change: { ...project, action: "set", count: 6 },
+      tense: "asked",
+      words: "Set 6 of the project's variables",
+    },
+    {
+      change: { ...service, action: "set", count: 2 },
+      tense: "done",
+      words: "Set 2 of apidev's variables",
+    },
+    { change: { ...service, action: "set" }, tense: "done", words: "Set apidev's variables" },
+    {
+      change: { ...project, action: "delete", count: 2 },
+      tense: "done",
+      words: "Removed 2 of the project's variables",
+    },
+    {
+      change: { ...service, action: "delete", count: 1 },
+      tense: "asked",
+      words: "Remove one of apidev's variables",
+    },
+    { change: { ...project, action: "get" }, tense: "done", words: "Read the project's variables" },
+    {
+      change: { ...service, action: "get" },
+      tense: "running",
+      words: "Reading apidev's variables",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv" },
+      tense: "done",
+      words: "Wrote the .env for dev",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv" },
+      tense: "failed",
+      words: "Writing the .env for dev failed",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "done",
+      words: "Changed apidev's variables",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "asked",
+      words: "Change apidev's variables",
+    },
+    {
+      change: { scope: "service", action: "set", count: 2 },
+      tense: "done",
+      words: "Set 2 of the service's variables",
+    },
+    { change: { scope: "service", action: "dotenv" }, tense: "done", words: "Wrote the .env" },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "running",
+      words: "Reading what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenvPreview" },
+      tense: "done",
+      words: "Read what the .env for dev would change",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 2 },
+      tense: "done",
+      words: "Didn't write the .env for dev: 2 of its variables were set by hand",
+    },
+    {
+      change: { scope: "service", service: "dev", action: "dotenv", refused: 1 },
+      tense: "done",
+      words: "Didn't write the .env for dev: one of its variables was set by hand",
+    },
+    {
+      change: { ...service, action: "update" },
+      tense: "failed",
+      words: "Changing apidev's variables failed",
+    },
+    {
+      change: {
+        ...project,
+        action: "request",
+        request: { key: "STRIPE_KEY", sensitive: true, alreadySet: false },
+      },
+      tense: "asked",
+      words: "Ask for STRIPE_KEY",
+    },
+    {
+      change: {
+        ...service,
+        action: "request",
+        request: { key: "MAIL_FROM", sensitive: false, alreadySet: false },
+      },
+      tense: "done",
+      words: "Asked for MAIL_FROM",
+    },
+    {
+      change: {
+        ...project,
+        action: "request",
+        request: { key: "STRIPE_KEY", sensitive: true, alreadySet: true },
+      },
+      tense: "done",
+      words: "STRIPE_KEY is in the vault already",
+    },
+    {
+      change: { ...project, action: "request" },
+      tense: "failed",
+      words: "Asking for a value failed",
+    },
+  ] as const)("$words", ({ change, tense, words }) => {
+    expect(envChangeWords(change, tense)).toBe(words);
+  });
+});

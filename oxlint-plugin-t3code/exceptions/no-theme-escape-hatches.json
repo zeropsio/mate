@@ -1,0 +1,3250 @@
+[
+  {
+    "path": "apps/mobile/src/components/ComposerAttachmentStrip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute h-[22px] w-[22px] items-center justify-center rounded-[11px] bg-black/55\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ComposerAttachmentStrip awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/components/ProviderIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#D97757\"",
+    "owner": "karel",
+    "reason": "vendor provider icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0052CC\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0fafff\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2c68e0\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#66c0ff\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2684FF\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2684FF\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#E24329\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FC6D26\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FC6D26\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FCA326\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/SourceControlIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/archive/ArchivedThreadsScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionSheetButton.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ConnectionSheetButton awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionSheetButton.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ConnectionSheetButton awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionSheetButton.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"rgba(23,23,23,0.08)\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ConnectionSheetButton awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/diffs/nativeReviewDiffHighlighter.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#0a0a0a\"",
+    "owner": "karel",
+    "reason": "vendor diff/highlight themes",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/diffs/nativeReviewDiffHighlighter.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#ffffff\"",
+    "owner": "karel",
+    "reason": "vendor diff/highlight themes",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/files/FileMarkdownPreview.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/files/SourceFileSurface.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/files/thread-file-navigator-pane.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/files/ThreadFilesRouteScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/home/HomeHeader.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/reviewDiffRendering.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"h-px w-[5px] bg-rose-400\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in reviewDiffRendering awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-2xs font-t3-bold text-emerald-600\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ReviewSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-2xs font-t3-bold text-rose-600\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ReviewSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/review/ReviewSheet.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/review/useNativeReviewDiffBridge.ts",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/settings/appearance/components/FontSizeSliderRow.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000000\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in FontSizeSliderRow awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/settings/SettingsEnvironmentsRouteScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/terminal/terminalTheme.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#0a0a0a\"",
+    "owner": "karel",
+    "reason": "fixed terminal palette; only bg/fg/cursor/border are themed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/terminal/terminalTheme.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#f2f2f7\"",
+    "owner": "karel",
+    "reason": "fixed terminal palette; only bg/fg/cursor/border are themed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitCommitSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-xs font-t3-bold text-emerald-500\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitCommitSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitCommitSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-xs font-t3-bold text-emerald-500\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitCommitSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitCommitSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-xs font-t3-bold text-rose-500\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitCommitSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitCommitSheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-xs font-t3-bold text-rose-500\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitCommitSheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/git/GitOverviewSheet.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"h-6 w-6 items-center justify-center rounded-full bg-green-500\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionProgressOverlay awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "`flex-row items-center gap-2.5 rounded-[26px] border border-continuous px-3.5 py-3 shadow-lg shadow-black/10 ${bgClass}`",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionProgressOverlay awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/GitActionProgressOverlay.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/NewTaskDraftScreen.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/thread-list-v2-items.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadComposer.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadFeed.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"aspect-[1.3] w-full rounded-[14px] bg-white/15\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ThreadFeed awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadFeed.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/features/threads/ThreadSettingsSheet.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/lib/useMobileNavigationTheme.ts",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/native/T3ComposerEditor.ios.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/native/T3ComposerEditor.native.tsx",
+    "kind": "ImportSpecifier",
+    "fingerprint": "useUniwindTheme",
+    "owner": "karel",
+    "reason": "native/third-party interop boundary — reviewed",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0284c7\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#059669\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#4f46e5\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6ee7b7\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7dd3fc\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#a5b4fc\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d97706\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#dc2626\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fca5a5\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/widgets/AgentActivity.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fcd34d\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute left-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:left-6\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/ExpandedImageDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute right-2 top-1/2 z-20 -translate-y-1/2 text-white/90 hover:bg-white/10 hover:text-white sm:right-6\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ExpandedImageDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/MessagesTimeline.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass block rounded-xl p-3 text-left text-popover-foreground shadow-xl shadow-black/25\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in MessagesTimeline awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/PanelLayoutControls.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute -top-1 -right-1 flex h-3.5 min-w-3.5 items-center justify-center rounded-full bg-info px-1 text-3xs font-semibold tabular-nums text-white\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in PanelLayoutControls awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/ProviderInstanceIcon.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"bg-(--provider-accent) text-white\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ProviderInstanceIcon awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/SkillInlineText.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-fuchsia-500/25 bg-fuchsia-500/12 text-fuchsia-700 dark:text-fuchsia-300\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in SkillInlineText awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/chat/TraitsPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-[#d97757]\"",
+    "owner": "karel",
+    "reason": "vendor provider accent colour (Claude)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ChatMarkdown.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"chat-markdown-codeblock my-[0.65rem] overflow-hidden rounded-lg border border-border/70 bg-secondary leading-snug dark:border-transparent dark:bg-input/32\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ChatMarkdown awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-b border-border/70 bg-foreground/[0.025] dark:border-transparent dark:bg-transparent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-border bg-background dark:border-transparent dark:bg-white/[0.05]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-border bg-background hover:border-foreground/20 hover:bg-muted/50 dark:border-transparent dark:bg-white/[0.035] dark:hover:bg-accent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-border bg-background hover:border-foreground/20 hover:bg-muted/50 dark:border-transparent dark:bg-white/[0.035] dark:hover:bg-accent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-border bg-muted/40 dark:border-transparent dark:bg-white/[0.025]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-primary bg-background shadow-sm ring-2 ring-primary/35 dark:border-transparent dark:bg-primary/10 dark:shadow-none dark:ring-1 dark:ring-primary/30\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-primary bg-background shadow-sm ring-2 ring-primary/35 dark:border-transparent dark:bg-primary/10 dark:shadow-none dark:ring-1 dark:ring-primary/30\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-primary bg-primary/10 ring-1 ring-primary/25 dark:border-transparent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dark:border-transparent dark:bg-transparent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex items-center gap-2 rounded-lg border border-input bg-muted/40 px-3 py-2 dark:border-transparent dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex items-center gap-2 rounded-md border border-input bg-muted/40 px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"h-44 rounded-lg bg-card ring-1 ring-black/5 dark:bg-white/[0.025] dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex cursor-not-allowed items-center gap-3 rounded-lg border border-border bg-background px-3 py-3 text-left opacity-64 dark:border-transparent dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"rounded-md border border-input bg-background px-3 py-2 text-xs text-muted-foreground dark:border-transparent dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"space-y-3 rounded-xl bg-zinc-25 p-3 text-sm ring-1 ring-black/5 dark:bg-white/[0.035] dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/GitActionsControl.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"space-y-5 border-b border-border/70 bg-muted/20 px-6 py-5 dark:border-transparent dark:bg-transparent\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in GitActionsControl awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0052CC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (BitbucketIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0065A9\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCode)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0fafff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#102784\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#163697\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#16bbda\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2052cb\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#26cfe8\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2764e7\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2c68e0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#367af2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#66c0ff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#6be7a0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (AzureDevOpsIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007ACC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCode)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#009a7c\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCodeInsiders)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00b294\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCodeInsiders)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0e254f\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#0e254f\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#14BB69\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#14BB69\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#1A5FB4\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VSCodium)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#1F9CF0\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCode)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#211E1E\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (OpenCodeIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#24bfa5\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VisualStudioCodeInsiders)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2684FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (BitbucketIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2684FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (BitbucketIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#2f9fdf\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#309fdf\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#3186FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#3689FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#42acde\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#4B4646\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (OpenCodeIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#62A0EA\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (VSCodium)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#71beea\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#9046FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#a7bcd9\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#CFCECD\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (OpenCodeIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#DE4C36\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (GitIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#e9f2f1\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JujutsuIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F1ECEC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (OpenCodeIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F6C013\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F6C013\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FA4340\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FA4340\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Gemini)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (KiroIcon / VisualStudioCode / VisualStudioCodeInsiders / Zed / PiAgentIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dark:hidden\"",
+    "owner": "karel",
+    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dark:hidden\"",
+    "owner": "karel",
+    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-[#0F0F0F] dark:fill-[#F5F5F5]\"",
+    "owner": "karel",
+    "reason": "Grok icon foreground toggle awaiting a semantic icon token",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-[#26251E] dark:fill-[#EDECEC]\"",
+    "owner": "karel",
+    "reason": "Cursor icon foreground toggle awaiting a semantic icon token",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-[#d97757]\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (Claude)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-black dark:fill-white\"",
+    "owner": "karel",
+    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-black dark:fill-white\"",
+    "owner": "karel",
+    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"fill-black dark:fill-white\"",
+    "owner": "karel",
+    "reason": "monochrome vendor icon toggle awaiting a semantic icon token",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"hidden dark:block\"",
+    "owner": "karel",
+    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"hidden dark:block\"",
+    "owner": "karel",
+    "reason": "vendor icon visibility toggle awaiting appearance-neutral rendering",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ff6600\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/Icons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#d40000\"",
+    "owner": "karel",
+    "reason": "vendor source-control icon colour (ForgejoIcon)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#000\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007DFE\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#007EFF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#009AE5\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#009AE5\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00C4F4\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00C4F4\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00C4F4\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D886\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D980\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D980\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#00D980\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#7256FF\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#D249FC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#D249FC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#D249FC\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#F0EB18\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FC801D\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FE2857\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FE2857\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF004C\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF0A67\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2358\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2358\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2D90\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2D90\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2D90\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF2D90\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF43F2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF43F2\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF8100\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF8100\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FF8100\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FFAB00\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FFAB00\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FFB700\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#FFB700\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/JetBrainsIcons.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#fff\"",
+    "owner": "karel",
+    "reason": "vendor icon path colour (JetBrains)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex items-center justify-between gap-3 rounded-md border border-border/70 px-3 py-2 text-sm dark:border-transparent dark:bg-white/[0.035]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/projectScriptEditor.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "`relative flex flex-col items-center gap-2 rounded-md border px-2 py-2 text-xs dark:border-transparent ${ isSelected ? \"border-primary/70 bg-primary/10 dark:ring-1 dark:ring-primary/30\" : \"border-border/70 hover:bg-accent/60 dark:bg-white/[0.035]\" }`",
+    "owner": "karel",
+    "reason": "T3 chrome styling in projectScriptEditor awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-black/10 hover:scale-105 dark:border-white/20\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex cursor-not-allowed items-center gap-3 rounded-lg bg-card/60 px-3 py-3 text-left opacity-64 outline-none ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex cursor-pointer items-center gap-3 rounded-lg bg-card px-3 py-3 text-left text-muted-foreground outline-none ring-1 ring-black/5 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring data-checked:bg-primary/8 data-checked:text-foreground data-checked:ring-2 data-checked:ring-primary data-checked:hover:bg-primary/8 dark:bg-white/3 dark:ring-white/5 dark:hover:bg-white/5 dark:data-checked:bg-primary/15 dark:data-checked:ring-primary dark:data-checked:hover:bg-primary/15\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceDialog.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"space-y-4 bg-zinc-25/80 px-6 py-5 ring-1 ring-black/5 dark:bg-white/2 dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceDialog awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"bg-card text-foreground shadow-xs ring-1 ring-black/5 hover:bg-card dark:shadow-none dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceWizardSteps awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"bg-card text-muted-foreground ring-black/10 dark:bg-white/5 dark:ring-white/10\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceWizardSteps awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/AddProviderInstanceWizardSteps.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"grid grid-cols-3 gap-1 rounded-xl bg-zinc-25 p-1 ring-1 ring-black/5 dark:bg-white/4 dark:ring-white/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in AddProviderInstanceWizardSteps awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex size-6 cursor-pointer items-center justify-center rounded-full text-white transition-transform duration-200 active:scale-90\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.35)]\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ProviderAccentColorPicker.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"h-2.5 w-full rounded-full shadow-[inset_0_0_0_1px_rgb(0_0_0_/_12%)]\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"linear-gradient(to right, #f00, #ff0, #0f0, #0ff, #00f, #f0f, #f00)\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"pointer-events-none absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"pointer-events-none absolute top-1/2 size-4 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-white shadow-[0_0_0_1px_rgb(0_0_0/0.4)]\"",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeColorPicker.tsx",
+    "kind": "TemplateElement",
+    "fingerprint": "`hsl(${hsv.h} 100% 50%)`",
+    "owner": "karel",
+    "reason": "picker chrome / derived foreground",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/settings/ThemeSettings.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"col-start-1 row-start-1 size-full appearance-none rounded-sm border border-input bg-background outline-none checked:border-primary checked:bg-primary focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring dark:not-checked:bg-input/32 forced-colors:appearance-auto\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in ThemeSettings awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-amber-500 dark:bg-amber-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-emerald-500 dark:bg-emerald-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-indigo-500 dark:bg-indigo-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-red-500 dark:bg-red-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-sky-500 dark:bg-sky-300/80\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"bg-violet-500 dark:bg-violet-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-amber-600 dark:text-amber-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-amber-700 dark:text-amber-300\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-emerald-600 dark:text-emerald-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-emerald-700 dark:text-emerald-300\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-indigo-600 dark:text-indigo-300\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-indigo-600 dark:text-indigo-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-red-600 dark:text-red-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-red-700 dark:text-red-300\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-sky-600 dark:text-sky-300/80\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-sky-600 dark:text-sky-400\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-violet-600 dark:text-violet-300\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/Sidebar.logic.ts",
+    "kind": "Literal",
+    "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-emerald-600 dark:text-emerald-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-red-600 dark:text-red-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-teal-600 dark:text-teal-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ThreadStatusIndicators.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-violet-600 dark:text-violet-300/90\"",
+    "owner": "karel",
+    "reason": "status hue awaiting F4 theme roles (W2-F4-THEME)",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/autocomplete.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg border bg-popover not-dark:bg-clip-padding shadow-lg/5 transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in autocomplete awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/card.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"[--clip-top:-1rem] [--clip-bottom:-1rem] *:data-[slot=card]:first:[--clip-top:1px] *:data-[slot=card]:last:[--clip-bottom:1px] flex flex-col relative rounded-2xl border bg-card before:bg-muted/72 not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] *:data-[slot=card]:-m-px *:not-last:data-[slot=card]:rounded-b-xl *:not-last:data-[slot=card]:before:rounded-b-[calc(var(--radius-xl)-1px)] *:not-first:data-[slot=card]:rounded-t-xl *:not-first:data-[slot=card]:before:rounded-t-[calc(var(--radius-xl)-1px)] *:data-[slot=card]:[clip-path:inset(var(--clip-top)_1px_var(--clip-bottom)_1px_round_calc(var(--radius-2xl)-1px))] *:data-[slot=card]:shadow-none *:data-[slot=card]:before:hidden *:data-[slot=card]:bg-clip-padding\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in card awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/card.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex flex-col rounded-2xl border bg-card not-dark:bg-clip-padding text-card-foreground shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-2xl)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in card awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/checkbox.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-[.25rem] border border-input bg-background not-dark:bg-clip-padding shadow-xs/5 outline-none ring-ring transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[3px] not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] focus-visible:ring-2 focus-visible:ring-offset-1 focus-visible:ring-offset-background aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/48 data-disabled:opacity-64 sm:size-4 dark:not-data-checked:bg-input/32 dark:aria-invalid:ring-destructive/24 dark:not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)] [[data-disabled],[data-checked],[aria-invalid]]:shadow-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in checkbox awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/combobox.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass relative flex max-h-full min-w-(--anchor-width) max-w-(--available-width) origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] transition-[scale,opacity] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in combobox awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/empty.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex size-9 shrink-0 items-center justify-center rounded-md border bg-card not-dark:bg-clip-padding text-foreground shadow-sm/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] dark:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='size-'])]:size-4.5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in empty awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"[[data-slot=input-control]:focus-within+&,[data-slot=input-group]:focus-within+&,[data-slot=select-trigger]:focus-visible+*+&,[data-slot=number-field]:focus-within+input+&]:-translate-x-px pointer-events-none relative z-2 bg-input before:absolute before:inset-0 has-[+[data-slot=input-control]:focus-within,+[data-slot=input-group]:focus-within,+[data-slot=select-trigger]:focus-visible+*,+[data-slot=number-field]:focus-within]:translate-x-px has-[+[data-slot=input-control]:focus-within,+[data-slot=input-group]:focus-within,+[data-slot=select-trigger]:focus-visible+*,+[data-slot=number-field]:focus-within]:bg-ring dark:before:bg-input/32 [[data-slot=input-control]:focus-within+&,[data-slot=input-group]:focus-within+&,[data-slot=select-trigger]:focus-visible+*+&,[data-slot=number-field]:focus-within+&,[data-slot=number-field]:focus-within+input+&]:bg-ring\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"*:[[data-slot]~[data-slot]:not([data-slot=separator])]:before:-top-[0.5px] *:data-slot:not-data-[slot=separator]:has-[~[data-slot]]:before:-bottom-[0.5px] flex-col *:pointer-coarse:after:min-h-auto *:data-slot:has-[~[data-slot]]:rounded-b-none *:data-slot:has-[~[data-slot]]:border-b-0 *:data-slot:not-data-[slot=separator]:has-[~[data-slot]]:before:hidden *:data-slot:has-[~[data-slot]]:before:rounded-b-none dark:*:last:before:hidden dark:*:first:before:block *:[[data-slot]~[data-slot]]:rounded-t-none *:[[data-slot]~[data-slot]]:border-t-0 *:[[data-slot]~[data-slot]]:before:rounded-t-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex w-fit *:focus-visible:z-1 has-[>[data-slot=group]]:gap-2 *:has-focus-visible:z-1 dark:*:[[data-slot=button]:hover~[data-slot=separator]:not([data-slot]:hover~[data-slot=separator]~[data-slot=separator]),[data-slot][data-pressed]~[data-slot=separator]:not([data-slot][data-pressed]~[data-slot=separator]~[data-slot=separator])]:before:bg-input/64 dark:*:[[data-slot=separator]:has(~[data-slot=button]:hover):not(:has(~[data-slot=separator]~[data-slot]:hover)),[data-slot=separator]:has(~[data-slot][data-pressed]):not(:has(~[data-slot=separator]~[data-slot][data-pressed]))]:before:bg-input/64\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/input-group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-input bg-background not-dark:bg-clip-padding shadow-xs/5 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--control-radius)-1px)] not-has-[input:disabled,textarea:disabled]:not-has-[input:focus-visible,textarea:focus-visible]:not-has-[input[aria-invalid],textarea[aria-invalid]]:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:not-has-[input:disabled,textarea:disabled]:not-has-[input:focus-visible,textarea:focus-visible]:not-has-[input[aria-invalid],textarea[aria-invalid]]:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in input-group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/input-group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative inline-flex w-full min-w-0 items-center rounded-[var(--control-radius)] border text-base text-foreground ring-ring/24 transition-shadow has-[input:focus-visible,textarea:focus-visible]:has-[input[aria-invalid],textarea[aria-invalid]]:border-destructive/64 has-[input:focus-visible,textarea:focus-visible]:has-[input[aria-invalid],textarea[aria-invalid]]:ring-destructive/16 has-[textarea]:h-auto has-data-[align=block-end]:h-auto has-data-[align=block-start]:h-auto has-data-[align=block-end]:flex-col has-data-[align=block-start]:flex-col has-[input:focus-visible,textarea:focus-visible]:border-ring has-[input[aria-invalid],textarea[aria-invalid]]:border-destructive/36 has-autofill:bg-foreground/4 has-[input:disabled,textarea:disabled]:opacity-64 has-[input:disabled,textarea:disabled,input:focus-visible,textarea:focus-visible,input[aria-invalid],textarea[aria-invalid]]:shadow-none has-[input:focus-visible,textarea:focus-visible]:ring-[3px] sm:text-sm dark:has-autofill:bg-foreground/8 dark:has-[input[aria-invalid],textarea[aria-invalid]]:ring-destructive/24 has-data-[align=inline-start]:**:[[data-size=sm]_input]:ps-1.5 has-data-[align=inline-end]:**:[[data-size=sm]_input]:pe-1.5 *:[[data-slot=input-control],[data-slot=textarea-control]]:contents *:[[data-slot=input-control],[data-slot=textarea-control]]:before:hidden has-[[data-align=block-start],[data-align=block-end]]:**:[input]:h-auto has-data-[align=inline-start]:**:[input]:ps-2 has-data-[align=inline-end]:**:[input]:pe-2 has-data-[align=block-end]:**:[input]:pt-1.5 has-data-[align=block-start]:**:[input]:pb-1.5 **:[textarea]:min-h-20.5 **:[textarea]:resize-none **:[textarea]:py-[calc(--spacing(3)-1px)] **:[textarea]:max-sm:min-h-23.5 **:[textarea_button]:rounded-[calc(var(--control-radius)-1px)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in input-group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/input.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-autofill:bg-foreground/4 has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:not-has-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in input awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/menu.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass relative flex origin-(--transform-origin) rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] outline-none focus:outline-none dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in menu awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/number-field.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex w-full justify-between rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-data-disabled:not-focus-within:not-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] focus-within:border-ring focus-within:ring-[3px] has-aria-invalid:border-destructive/36 has-autofill:bg-foreground/4 focus-within:has-aria-invalid:border-destructive/64 focus-within:has-aria-invalid:ring-destructive/48 data-disabled:pointer-events-none data-disabled:opacity-64 sm:text-sm dark:bg-input/32 dark:has-autofill:bg-foreground/8 dark:has-aria-invalid:ring-destructive/24 dark:not-data-disabled:not-focus-within:not-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='size-'])]:size-4.5 sm:[&_svg:not([class*='size-'])]:size-4 [&_svg]:pointer-events-none [&_svg]:shrink-0 [[data-disabled],:focus-within,[aria-invalid]]:shadow-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in number-field awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/popover.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass relative flex origin-(--transform-origin) rounded-lg text-popover-foreground outline-none transition-[scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] has-data-[slot=calendar]:rounded-xl has-data-[slot=calendar]:before:rounded-[calc(var(--radius-xl)-1px)] data-starting-style:scale-98 data-starting-style:opacity-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in popover awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/popover.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in popover awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/radio-group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative inline-flex size-4.5 shrink-0 items-center justify-center rounded-full border border-input bg-background not-dark:bg-clip-padding shadow-xs/5 outline-none transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-full not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 focus-visible:ring-offset-background aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/48 data-disabled:opacity-64 sm:size-4 dark:not-data-checked:bg-input/32 dark:aria-invalid:ring-destructive/24 dark:not-data-disabled:not-data-checked:not-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)] [[data-disabled],[data-checked],[aria-invalid]]:shadow-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in radio-group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/scroll-area.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,black_calc(100%-var(--fade-size)),transparent)]\"",
+    "owner": "karel",
+    "reason": "mask geometry / alpha ramp, not a colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ui/scroll-area.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,transparent,black_var(--fade-size))]\"",
+    "owner": "karel",
+    "reason": "mask geometry / alpha ramp, not a colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ui/scroll-area.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"[--virtualized-scroll-fade-mask:linear-gradient(to_bottom,transparent,black_var(--fade-size),black_calc(100%-var(--fade-size)),transparent)]\"",
+    "owner": "karel",
+    "reason": "mask geometry / alpha ramp, not a colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/ui/select.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass relative h-full rounded-lg shadow-[0_16px_40px_-18px_rgb(0_0_0/55%)] dark:shadow-[0_18px_44px_-18px_rgb(0_0_0/80%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in select awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/select.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"w-full min-w-36 border-input bg-background not-dark:bg-clip-padding text-foreground shadow-xs/5 ring-ring/24 before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] not-data-disabled:not-focus-visible:not-aria-invalid:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] pointer-coarse:after:absolute pointer-coarse:after:size-full pointer-coarse:after:min-h-11 focus-visible:border-ring focus-visible:ring-[3px] aria-invalid:border-destructive/36 focus-visible:aria-invalid:border-destructive/64 focus-visible:aria-invalid:ring-destructive/16 dark:bg-input/32 dark:aria-invalid:ring-destructive/24 dark:not-data-disabled:not-focus-visible:not-aria-invalid:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] [&_svg:not([class*='opacity-'])]:opacity-80 [&_svg:not([class*='text-'])]:text-icon-muted [[data-disabled],:focus-visible,[aria-invalid],[data-pressed]]:shadow-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in select awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/sheet.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex max-h-full min-h-0 w-full min-w-0 flex-col bg-popover not-dark:bg-clip-padding text-popover-foreground shadow-lg/5 transition-[opacity,translate] duration-200 ease-in-out will-change-transform before:pointer-events-none before:absolute before:inset-0 before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:opacity-0 data-starting-style:opacity-0 max-sm:before:hidden dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in sheet awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/skeleton.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative overflow-hidden bg-muted [--skeleton-highlight:--alpha(var(--color-white)/64%)] after:absolute after:inset-0 after:animate-skeleton after:bg-[linear-gradient(120deg,transparent_40%,var(--skeleton-highlight),transparent_60%)] motion-reduce:after:content-none dark:[--skeleton-highlight:--alpha(var(--color-white)/4%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in skeleton awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/textarea.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative inline-flex w-full rounded-lg border border-input bg-background not-dark:bg-clip-padding text-base text-foreground shadow-xs/5 ring-ring/24 transition-shadow before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-lg)-1px)] has-focus-visible:has-aria-invalid:border-destructive/64 has-focus-visible:has-aria-invalid:ring-destructive/16 has-aria-invalid:border-destructive/36 has-focus-visible:border-ring has-disabled:opacity-64 has-[:disabled,:focus-visible,[aria-invalid]]:shadow-none has-focus-visible:ring-[3px] not-has-disabled:has-not-focus-visible:not-has-aria-invalid:before:shadow-[0_1px_--theme(--color-black/4%)] sm:text-sm dark:bg-input/32 dark:has-aria-invalid:ring-destructive/24 dark:not-has-disabled:has-not-focus-visible:not-has-aria-invalid:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in textarea awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toast.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass absolute z-[calc(9999-var(--toast-index))] w-full overflow-visible select-none rounded-lg text-popover-foreground shadow-xl shadow-black/25 [transition:transform_.5s_cubic-bezier(.22,1,.36,1),opacity_.5s,height_.15s]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toast awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toast.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass relative overflow-visible text-balance text-popover-foreground text-xs shadow-xl shadow-black/25 transition-[scale,opacity] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toast awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toggle-group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"*:not-first:not-data-[slot=separator]:before:-top-[0.5px] *:not-last:not-data-[slot=separator]:before:-bottom-[0.5px] flex-col *:not-first:rounded-t-none *:not-last:rounded-b-none *:not-first:border-t-0 *:not-last:border-b-0 *:not-first:before:rounded-t-none *:not-last:before:rounded-b-none *:data-[slot=toggle]:not-last:before:hidden dark:*:last:before:hidden dark:*:first:before:block\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toggle-group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toggle-group.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex w-fit *:focus-visible:z-10 dark:*:[[data-slot=separator]:has(+[data-slot=toggle]:hover)]:before:bg-input/64 dark:*:[[data-slot=separator]:has(+[data-slot=toggle][data-pressed])]:before:bg-input dark:*:[[data-slot=toggle]:hover+[data-slot=separator]]:before:bg-input/64 dark:*:[[data-slot=toggle][data-pressed]+[data-slot=separator]]:before:bg-input\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toggle-group awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toggle.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-input bg-background not-dark:bg-clip-padding shadow-xs/5 not-disabled:not-active:not-data-pressed:before:shadow-[0_1px_--theme(--color-black/4%)] dark:bg-input/32 dark:data-pressed:bg-input dark:hover:bg-input/64 dark:not-disabled:not-active:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/6%)] dark:not-disabled:not-data-pressed:before:shadow-[0_-1px_--theme(--color-white/2%)] [:disabled,:active,[data-pressed]]:shadow-none\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toggle awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/toggle.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border-transparent text-muted-foreground shadow-none transition-colors before:shadow-none hover:bg-background/55 hover:text-foreground data-pressed:bg-background data-pressed:text-foreground data-pressed:shadow-xs/10 dark:hover:bg-input/32 dark:data-pressed:bg-input/72\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in toggle awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/tooltip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"border bg-popover not-dark:bg-clip-padding shadow-md/5\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in tooltip awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/tooltip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"dropdown-glass shadow-xl shadow-black/25 before:hidden\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in tooltip awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/ui/tooltip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative flex h-(--popup-height,auto) w-(--popup-width,auto) origin-(--transform-origin) text-balance rounded-md text-popover-foreground text-xs transition-[width,height,scale,opacity] before:pointer-events-none before:absolute before:inset-0 before:rounded-[calc(var(--radius-md)-1px)] before:shadow-[0_1px_--theme(--color-black/4%)] data-ending-style:scale-98 data-starting-style:scale-98 data-ending-style:opacity-0 data-starting-style:opacity-0 data-instant:duration-0 dark:before:shadow-[0_-1px_--theme(--color-white/6%)]\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in tooltip awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#d97757\"",
+    "owner": "karel",
+    "reason": "vendor provider icon colour (Claude)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#8b8b8b\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (Cursor)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#5b9bbd\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (OpenCode)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/components/usage/usageProviders.ts",
+    "kind": "Literal",
+    "fingerprint": "\"#8c7bd1\"",
+    "owner": "karel",
+    "reason": "vendor provider series colour (Antigravity)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".theme-inspector-spotlight-dimmer{fill:rgb(2 3 8 / 54%)}",
+    "owner": "karel",
+    "reason": "theme inspector overlay / shadow",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-frame::before{-webkit-mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)}",
+    "owner": "karel",
+    "reason": "mask geometry / alpha ramp, not a colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-frame::before{mask:linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0)}",
+    "owner": "karel",
+    "reason": "mask geometry / alpha ramp, not a colour",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": ".ultrathink-frame{--ultrathink-spectrum:linear-gradient( 120deg, #ff6b6b 0%, #f59e0b 18%, #22c55e 36%, #14b8a6 54%, #3b82f6 72%, #ec4899 90%, #ff6b6b 100% )}",
+    "owner": "karel",
+    "reason": "deliberate rainbow affordance (T3 idiom kept)",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--accent-foreground:#f7f9ff}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--accent:#191a1d}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--background:#000}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--border:rgb(255 255 255 / 8%)}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--card:#000}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--foreground:#f1f3f7}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--input:rgb(255 255 255 / 18%)}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--muted-foreground:#a3a3a3}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "[data-app-sidebar] > @variant dark{--muted:#0a0a0a}",
+    "owner": "karel",
+    "reason": "sidebar's local palette under the theme library; replaced only if a surface round redesigns the sidebar",
+    "expires": "never"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > :is(.chat-composer-drawer-surface, .chat-composer-top-drawer)::before{box-shadow:0 12px 28px -18px rgb(0 0 0 / 40%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-context-strip > @variant dark > &::before{background:linear-gradient( to bottom, transparent 0 1rem, rgb(0 0 0 / 18%) 1rem, transparent calc(1rem + 10px) ), rgb(255 255 255 / 2%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-context-strip > @variant dark > &::before{border-color:rgb(255 255 255 / 7%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-context-strip > @variant dark > &::before{box-shadow:0 14px 32px -18px rgb(0 0 0 / 75%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-context-strip::before{box-shadow:0 12px 28px -18px rgb(0 0 0 / 40%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-drawer-surface, .chat-composer-top-drawer > @variant dark > &::before{background:linear-gradient(var(--chat-composer-attached-tint), var(--chat-composer-attached-tint)), linear-gradient( to top, transparent 0 var(--chat-composer-attachment-overlap), rgb(0 0 0 / 18%) var(--chat-composer-attachment-overlap), transparent calc(var(--chat-composer-attachment-overlap) + 10px) ), color-mix( in srgb, var(--chat-composer-attached-surface) var(--glass-opacity), transparent )}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-drawer-surface, .chat-composer-top-drawer > @variant dark > &::before{box-shadow:0 14px 32px -18px rgb(0 0 0 / 75%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-glass-shell:is( .chat-composer-glass-shell-attached, :has(:is(.chat-composer-top-drawer, .chat-composer-shoulder-tab)) ) .chat-composer-context-strip > @variant dark > &::before{background:linear-gradient( to bottom, transparent 0 1rem, rgb(0 0 0 / 18%) 1rem, transparent calc(1rem + 10px) ), linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)), color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-shoulder-tab > @variant dark{box-shadow:0 -10px 28px -18px rgb(0 0 0 / 80%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > .chat-composer-shoulder-tab{box-shadow:0 -8px 24px -18px rgb(0 0 0 / 45%)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@layer components > @supports not (clip-path: shape(from 0 0, line to 1px 1px)) > .chat-composer-context-strip > @variant dark > &::before{background:linear-gradient( to bottom, transparent 0 1rem, rgb(0 0 0 / 18%) 1rem, transparent calc(1rem + 10px) ), linear-gradient(rgb(255 255 255 / 2%), rgb(255 255 255 / 2%)), color-mix(in srgb, var(--chat-composer-glass-surface) var(--glass-opacity), transparent)}",
+    "owner": "karel",
+    "reason": "chat composer shadow / tint outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@utility dialog-glass > @variant dark{box-shadow:inset 0 1px rgb(255 255 255 / 4%), 0 24px 72px -20px rgb(0 0 0 / 90%)}",
+    "owner": "karel",
+    "reason": "dialog glass shadow outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "@utility dialog-glass{box-shadow:0 24px 64px -24px rgb(0 0 0 / 65%)}",
+    "owner": "karel",
+    "reason": "dialog glass shadow outside semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/index.css",
+    "kind": "css-declaration",
+    "fingerprint": "#theme-inspector-hover [data-theme-inspector-hover-label]{box-shadow:0 4px 16px rgb(0 0 0 / 24%)}",
+    "owner": "karel",
+    "reason": "theme inspector overlay / shadow",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/web/src/routes/__root.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"relative w-full max-w-xl rounded-2xl border border-border/80 bg-card/90 p-6 shadow-2xl shadow-black/20 backdrop-blur-md sm:p-8\"",
+    "owner": "karel",
+    "reason": "T3 chrome styling in __root awaiting semantic roles",
+    "expires": "F4"
+  },
+  {
+    "path": "apps/mobile/src/components/ComposerAttachmentStrip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute bottom-0.5 left-0.5 flex-row items-center gap-0.5 rounded-full bg-black/70 px-1 py-0.5\"",
+    "owner": "mobile-intake",
+    "reason": "upload badge over an image thumbnail: fixed black/white stay legible on any picture, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/ComposerAttachmentStrip.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-2xs text-white\"",
+    "owner": "mobile-intake",
+    "reason": "upload badge over an image thumbnail: fixed black/white stay legible on any picture, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"absolute inset-x-0 bottom-0 bg-black/55 px-2 py-1.5\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"items-center justify-center overflow-hidden bg-black/80\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"items-center justify-center rounded-full bg-black/45\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoAttachmentTile.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-center text-xs text-white\"",
+    "owner": "mobile-intake",
+    "reason": "scrim and label over a video thumbnail: fixed black/white stay legible on any frame, correct by design",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ffffff\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"#ffffff\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex-1 bg-black\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"flex-1 font-t3-medium text-base text-white\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"font-t3-medium text-base text-white\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"mx-4 my-3 min-h-12 items-center justify-center rounded-xl bg-white/15 px-4\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"px-4 pb-3 text-sm text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"px-6 text-center text-base text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-center text-base text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  },
+  {
+    "path": "apps/mobile/src/components/VideoPreviewModal.tsx",
+    "kind": "Literal",
+    "fingerprint": "\"text-sm text-white/80\"",
+    "owner": "mobile-intake",
+    "reason": "video player chrome: fixed black stage and white controls over video, correct by design in every theme",
+    "expires": "never"
+  }
+]

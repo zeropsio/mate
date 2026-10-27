@@ -1,0 +1,148 @@
+// @effect-diagnostics nodeBuiltinImport:off -- content-addressed, worktree-local production bundles.
+import { HostProcessPlatform, HostProcessArchitecture } from "@t3tools/shared/hostProcess";
+import * as NodeChildProcess from "node:child_process";
+import * as NodeUtil from "node:util";
+import * as NodeCrypto from "node:crypto";
+import * as NodeFSP from "node:fs/promises";
+import * as NodePath from "node:path";
+import { acquireProcessLock } from "../../../../../scripts/test-process-lock.ts";
+
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
+
+// Tailwind's Vite plugin scans from the Vite root (apps/web), not the checkout root.
+// Keep that entire tree, including non-module candidates, and the web's workspace dependencies.
+// Uncertainty within an input tree invalidates the bundle; unrelated apps/docs/scripts do not.
+const bundleInputPaths = [
+  "apps/web",
+  "packages/client-runtime",
+  "packages/contracts",
+  "packages/shared",
+  "scripts/lib/public-config.ts", // imported by apps/web/vite.config.ts
+  "vite.config.ts",
+  "tsconfig.base.json",
+  "package.json",
+  "pnpm-lock.yaml",
+  "pnpm-workspace.yaml",
+  ".npmrc",
+  ".gitignore", // Tailwind's automatic discovery respects ignore rules.
+];
+
+async function bundleInputs(root: string) {
+  const { stdout } = await execFile(
+    "git",
+    [
+      "ls-files",
+      "--cached",
+      "--others",
+      "--exclude-standard",
+      "-z",
+      "--",
+      ...bundleInputPaths,
+      ":(exclude)apps/web/src/routeTree.gen.ts",
+    ],
+    { cwd: root },
+  );
+  const inputs = new Set(stdout.split("\0").filter(Boolean));
+  // Explicit Tailwind sources can leave the default tree. Resolve globs relative to the
+  // declaring stylesheet; include even `not` sources conservatively. Inline sources live in CSS.
+  for (const path of [...inputs].filter((path) => path.endsWith(".css"))) {
+    let css: string;
+    try {
+      css = await NodeFSP.readFile(NodePath.join(root, path), "utf8");
+    } catch (error) {
+      // Git still lists tracked files after deletion; the hash visitor also omits them.
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") continue;
+      throw error;
+    }
+    const base = NodePath.dirname(NodePath.join(root, path));
+    for (const match of css.matchAll(
+      /@source\s+(?:not\s+)?(["'])([^"']+)\1|@import\s+[^;]*?\bsource\(\s*(["'])([^"']+)\3\s*\)/gu,
+    )) {
+      const pattern = match[2] ?? match[4]!;
+      for await (const input of NodeFSP.glob(pattern, { cwd: base }))
+        inputs.add(NodePath.relative(root, NodePath.resolve(base, input)));
+    }
+  }
+  // Vite and loadRepoEnv intentionally read ignored local environment files.
+  for (const directory of ["", "apps/web/"])
+    for (const name of [".env", ".env.local", ".env.production", ".env.production.local"])
+      inputs.add(`${directory}${name}`);
+  return [...inputs].sort();
+}
+
+export async function bundleKey(root: string, env: NodeJS.ProcessEnv) {
+  const hash = NodeCrypto.createHash("sha256");
+  hash.update(
+    JSON.stringify([
+      process.version,
+      HostProcessPlatform.defaultValue(),
+      HostProcessArchitecture.defaultValue(),
+      Object.entries(env)
+        .filter(([key]) =>
+          /^(?:VITE_|VERCEL_|APP_VERSION$|NODE_ENV$|T3CODE_|EXPO_PUBLIC_)/u.test(key),
+        )
+        .sort(([a], [b]) => a.localeCompare(b)),
+    ]),
+  );
+  const visit = async (path: string): Promise<void> => {
+    if (
+      /\.tsbuildinfo$|(?:^|\/)(?:routeTree\.gen\.ts|\.DS_Store|__screenshots__|\.tanstack)$/u.test(
+        path,
+      )
+    )
+      return;
+    const absolute = NodePath.join(root, path);
+    let stat;
+    try {
+      stat = await NodeFSP.stat(absolute);
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw error;
+    }
+    if (stat.isDirectory()) {
+      for (const name of (await NodeFSP.readdir(absolute)).sort()) await visit(`${path}/${name}`);
+    } else {
+      hash.update(path);
+      hash.update("\0");
+      hash.update(await NodeFSP.readFile(absolute));
+      hash.update("\0");
+    }
+  };
+  for (const input of await bundleInputs(root)) await visit(input);
+  return hash.digest("hex");
+}
+
+export async function cachedBundle(
+  root: string,
+  env: NodeJS.ProcessEnv,
+  build: (dist: string) => Promise<void>,
+): Promise<string> {
+  const key = await bundleKey(root, env);
+  const cache = NodePath.join(root, "node_modules/.cache/mate-scenario-web");
+  const dist = NodePath.join(cache, key);
+  const ready = async () => {
+    try {
+      await NodeFSP.access(NodePath.join(dist, "index.html"));
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  if (await ready()) return dist;
+  await NodeFSP.mkdir(cache, { recursive: true });
+  // Keep the inode: unlinking a lock lets later builders bypass existing waiters.
+  const release = await acquireProcessLock(NodePath.join(cache, `${key}.lock`));
+  let staging: string | undefined;
+  try {
+    if (await ready()) return dist;
+    staging = await NodeFSP.mkdtemp(NodePath.join(cache, ".building-"));
+    await build(staging);
+    if (key !== (await bundleKey(root, env)))
+      throw new Error("Scenario bundle inputs changed during build; rerun the gate");
+    await NodeFSP.rename(staging, dist);
+    return dist;
+  } finally {
+    if (staging) await NodeFSP.rm(staging, { recursive: true, force: true });
+    await release();
+  }
+}

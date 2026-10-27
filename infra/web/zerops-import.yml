@@ -1,0 +1,34 @@
+# The mate web client as a standalone static service.
+#
+# This is the delivery shape the hosted client needs (spec-mate §4: "hosted
+# separately, not built into the container"): the same bundle the container
+# serves under /mate/, built for an origin root and served by its own nginx.
+# The container-served copy stays where it is; this one is reached
+# cross-origin and therefore exercises the CORS half of the door (§3.4),
+# which same-origin /mate/ never touches.
+#
+# Import into an EXISTING project (no `project:` key):
+#
+#   zcli project service-import infra/web/zerops-import.yml --project-id <id>
+#
+# The build spec lives in the repository root `zerops.yml` under
+# `setup: prod`, NOT here: `buildFromGit` clones the repository and reads
+# that file from the clone's root. An inline `zeropsYaml` in this document
+# does not substitute for it — the build ends "zerops.yml file not found at
+# the root of your project". So the root file has to be on the branch this
+# clones (`main`) before the import can build.
+#
+# The hostname IS the setup selector: with no explicit `zeropsSetup`, Zerops
+# looks for a setup named after the service hostname, and a miss fails the
+# build before it starts ("The setup was not found"). So this service is
+# `prod`, matching the root file's only setup — rename one and you rename
+# both, or add `zeropsSetup:` here.
+services:
+  - hostname: prod
+    type: alpine/static@1.0
+    enableSubdomainAccess: true
+    # Public repository, plain URL: a trailing `.git` fails clone-preflight
+    # in ~0.3s with no build log. Clones the default branch (`main`).
+    buildFromGit: https://github.com/zeropsio/mate
+    verticalAutoscaling:
+      minRam: 0.25

@@ -1,0 +1,56 @@
+zerops:
+  - setup: relay
+    build:
+      base: ubuntu/nodejs@22
+      buildCommands:
+        # buildFromGit clones the whole monorepo; pnpm's workspace resolves
+        # infra/relay's @t3tools/* siblings from here.
+        - corepack enable
+        - pnpm install --frozen-lockfile
+        - cd infra/relay && pnpm run typecheck
+      deployFiles:
+        - infra/relay/src
+        - infra/relay/scripts
+        - infra/relay/migrations
+        - infra/relay/package.json
+        - infra/relay/tsconfig.json
+        - node_modules
+        - package.json
+        - pnpm-workspace.yaml
+        - pnpm-lock.yaml
+        - tsconfig.base.json
+        - packages
+    run:
+      base: ubuntu/nodejs@22
+      ports:
+        - port: 8080
+          httpSupport: true
+      initCommands:
+        - cd infra/relay && pnpm run migrate
+      start: cd infra/relay && pnpm run start
+      envVariables:
+        PORT: "8080"
+        HOST: 0.0.0.0
+        # `db_connectionString` is a cross-service reference to the paired
+        # PostgreSQL service's generated connection string (see
+        # zerops-import.yml — the `db` service must exist in the same
+        # project under that hostname).
+        DATABASE_URL: ${db_connectionString}
+        # The platform injects the service's own public origin as the
+        # `zeropsSubdomain` runtime env var once enableSubdomainAccess is on
+        # — but only after the first deploy assigns it, so it cannot be
+        # cross-referenced here at import time. Set this explicitly to the
+        # assigned https://<subdomain> origin after the first deploy (or
+        # change server.ts to fall back to `process.env.zeropsSubdomain`
+        # when RELAY_ISSUER is unset).
+        RELAY_ISSUER: https://relay-<subdomain>.<region>.zerops.app
+        # Secrets: set these on the service before the first deploy. Never
+        # commit real values.
+        CLOUD_MINT_PRIVATE_KEY: ${CLOUD_MINT_PRIVATE_KEY}
+        CLOUD_MINT_PUBLIC_KEY: ${CLOUD_MINT_PUBLIC_KEY}
+        APNS_DELIVERY_JOB_SIGNING_SECRET: ${APNS_DELIVERY_JOB_SIGNING_SECRET}
+        APNS_ENVIRONMENT: ${APNS_ENVIRONMENT}
+        APNS_TEAM_ID: ${APNS_TEAM_ID}
+        APNS_KEY_ID: ${APNS_KEY_ID}
+        APNS_BUNDLE_ID: ${APNS_BUNDLE_ID}
+        APNS_PRIVATE_KEY: ${APNS_PRIVATE_KEY}

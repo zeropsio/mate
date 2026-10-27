@@ -1,0 +1,1323 @@
+import {
+  EnvironmentId,
+  ThreadId,
+  ProjectId,
+  ProviderInstanceId,
+  EngineSendContext,
+  RunId,
+  type EngineCallResult,
+} from "@t3tools/contracts";
+import { describe, expect, it } from "@effect/vitest";
+import * as Crypto from "effect/Crypto";
+import * as Layer from "effect/Layer";
+import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
+import * as Schema from "effect/Schema";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+import { Atom, AtomRegistry } from "effect/reactivity";
+
+import { createThreadEnvironmentAtoms } from "../state/threadCommands.ts";
+import { EnvironmentRegistry } from "../connection/registry.ts";
+import { EnvironmentSupervisor } from "../connection/supervisor.ts";
+import {
+  engineSetInteractionMode,
+  engineSetRuntimeMode,
+  engineUpdateMetadata,
+  engineDismissUserInput,
+  engineInterruptTurn,
+  engineRespondToApproval,
+  engineRespondToUserInput,
+  engineAnswerVaultAsk,
+  engineStartTurn,
+  viaEngine,
+} from "./engineCommands.ts";
+import { mateEngineHostAtom, type MateEngineHost } from "./engineHost.ts";
+import { makeMateEngineOperations, type EngineCommand } from "./operations/executors/mateEngine.ts";
+import { makeAccountStore, readsOfState } from "./store.ts";
+import { graceOver, liveZerops, ORG } from "./__fixtures__/account.ts";
+import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
+import { inventory } from "./projections/inventory.ts";
+import { linkKeys } from "./model.ts";
+import {
+  makeZeropsApiOrigin,
+  ZeropsAccountId,
+  ZeropsOrganizationId,
+} from "../zerops/data/types.ts";
+import {
+  engineConversationId,
+  engineConversationScopes,
+  engineFactId,
+} from "./families/mateEngine.ts";
+import { engineHeader, engineRun } from "./__fixtures__/mateEngine.ts";
+import { engineResendId } from "./projections/mateEngine.ts";
+import { agentNotesFor } from "../zerops/projectFlow.ts";
+import { agentContext } from "./projections/agentContext.ts";
+import { vaultChangesSince, vaultNote } from "./projections/vaultChanges.ts";
+import type { VaultChange, VaultView } from "./projections/vaultModel.ts";
+
+const ENV = "env-ada";
+const turn = (attachments: ReadonlyArray<unknown> = []) =>
+  ({
+    threadId: "thread-ada",
+    message: { messageId: "message-7", role: "user", text: "And the worker", attachments },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+  }) as unknown as Parameters<typeof engineStartTurn>[1];
+
+const ACCEPTED = { _tag: "Accepted", seq: 16, itemId: "x" } as EngineCallResult;
+
+function rig(
+  mateEngine: number | undefined,
+  /** How the Mate's engine answers each command: accepted unless said otherwise. */
+  answer: (command: EngineCommand) => EngineCallResult = () => ACCEPTED,
+) {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const calls: EngineCommand[] = [];
+  const operations = makeMateEngineOperations({
+    store,
+    makeId: () => "op-1",
+    wire: {
+      call: (_environmentId, command) => {
+        calls.push(command);
+        return Effect.succeed(answer(command));
+      },
+      receipt: () => Effect.succeed({ _tag: "None" }),
+    },
+  });
+  registry.set(mateEngineHostAtom, { store, operations } as unknown as MateEngineHost);
+  const run = <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+    Effect.gen(function* () {
+      const prepared = yield* SubscriptionRef.make(
+        Option.some(mateEngine === undefined ? {} : { mateEngine }),
+      );
+      return yield* effect.pipe(
+        Effect.provideService(EnvironmentSupervisor, {
+          target: { environmentId: ENV },
+          prepared,
+        } as never),
+      );
+    });
+  /** The conversation the account holds, with these runs (and its header so patched). */
+  const runs = (
+    held: ReadonlyArray<ReturnType<typeof engineRun>>,
+    headerPatch: Parameters<typeof engineHeader>[1] = {},
+  ) => {
+    const key = { environmentId: ENV, conversationId: "thread-ada" };
+    header(headerPatch);
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+        scope,
+        generation: 0,
+      })),
+      reset: false,
+      rows: held.map((run) => ({
+        family: "mateEngineRun" as const,
+        id: engineFactId(ENV, run.id),
+        value: { ...run, environmentId: ENV },
+        revision: {
+          kind: "mate-conversation" as const,
+          environmentId: ENV,
+          epoch: 1,
+          seq: run.rev,
+        },
+      })),
+      removals: [],
+    });
+  };
+  /** The conversation the account holds: its agent and model, as the engine's header says. */
+  const header = (patch: Parameters<typeof engineHeader>[1] = {}) => {
+    const key = { environmentId: ENV, conversationId: "thread-ada" };
+    store.dispatch({
+      kind: "delivery",
+      via: "mate-direct",
+      scopes: Object.values(engineConversationScopes(key)).map((scope) => ({
+        scope,
+        generation: 0,
+      })),
+      reset: true,
+      rows: [
+        {
+          family: "mateEngineConversation",
+          id: engineConversationId(key),
+          value: {
+            environmentId: ENV,
+            header: engineHeader("thread-ada", patch),
+            window: { oldestOrdinal: null, earlier: false },
+          },
+          revision: { kind: "mate-conversation", environmentId: ENV, epoch: 1, seq: 1 },
+        },
+      ],
+      removals: [],
+    });
+  };
+  return { registry, store, calls, run, header, runs };
+}
+
+describe("the thread commands a view sends, by its Mate's wire", () => {
+  describe("Decision: engine gets parity.", () => {
+    it.effect.each([
+      { action: "archive", archived: true, protocol: 1 },
+      { action: "unarchive", archived: false, protocol: 1 },
+    ] as const)(
+      "$action follows the Mate door (engine $protocol)",
+      ({ action, archived, protocol }) =>
+        Effect.gen(function* () {
+          const r = rig(protocol);
+          yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+          const runtime = Atom.runtime(
+            Layer.mergeAll(
+              Layer.succeed(EnvironmentRegistry, {
+                run: (_id, effect) => r.run(effect),
+              } as EnvironmentRegistry["Service"]),
+              Layer.succeed(
+                Crypto.Crypto,
+                Crypto.make({
+                  randomBytes: (size) => new Uint8Array(size),
+                  digest: (_algorithm, data) => Effect.succeed(data),
+                }),
+              ),
+            ),
+          );
+          const commands = createThreadEnvironmentAtoms(runtime, () => Atom.make(null));
+          const result = yield* Effect.promise(() =>
+            commands[action].run(r.registry, {
+              environmentId: EnvironmentId.make(ENV),
+              input: { threadId: ThreadId.make("thread-ada") },
+            }),
+          );
+          expect(result._tag).toBe("Success");
+          expect(r.calls).toEqual([
+            {
+              kind: "set-archived",
+              conversationId: "thread-ada",
+              commandId: "op-1",
+              archived,
+            },
+          ]);
+        }),
+    );
+  });
+
+  describe("Decision: P0+P1 in this card.", () => {
+    it.effect.each([
+      { creation: "inline", protocol: 1 },
+      { creation: "separate", protocol: 1 },
+    ] as const)(
+      "a fresh engine conversation's first send uses the selected agent ($creation, engine $protocol)",
+      ({ creation, protocol }) =>
+        Effect.gen(function* () {
+          const r = rig(protocol);
+          yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+          const runtime = Atom.runtime(
+            Layer.mergeAll(
+              Layer.succeed(EnvironmentRegistry, {
+                run: (_id, effect) => r.run(effect),
+              } as EnvironmentRegistry["Service"]),
+              Layer.succeed(
+                Crypto.Crypto,
+                Crypto.make({
+                  randomBytes: (size) => new Uint8Array(size),
+                  digest: (_algorithm, data) => Effect.succeed(data),
+                }),
+              ),
+            ),
+          );
+          const commands = createThreadEnvironmentAtoms(runtime, () => Atom.make(null));
+          const create = {
+            projectId: ProjectId.make("project-ada"),
+            title: "First ask",
+            createdAt: "2026-10-09T00:00:00.000Z",
+            modelSelection: {
+              instanceId: ProviderInstanceId.make("claude"),
+              model: "sonnet",
+              options: [{ id: "effort", value: "low" }],
+            },
+            runtimeMode: "approval-required" as const,
+            interactionMode: "default" as const,
+            branch: null,
+            worktreePath: null,
+          };
+          if (creation === "separate") {
+            const result = yield* Effect.promise(() =>
+              commands.create.run(r.registry, {
+                environmentId: EnvironmentId.make(ENV),
+                input: { threadId: ThreadId.make("thread-ada"), ...create },
+              }),
+            );
+            expect(result._tag).toBe("Success");
+          }
+          const result = yield* Effect.promise(() =>
+            commands.startTurn.run(r.registry, {
+              environmentId: EnvironmentId.make(ENV),
+              input: {
+                ...turn(),
+                ...(creation === "inline" ? { bootstrap: { createThread: create } } : {}),
+              },
+            }),
+          );
+          expect(result._tag).toBe("Success");
+          expect(
+            r.calls.map(({ kind }) => kind),
+            "ASSERTION: a fresh engine conversation's first send uses the selected agent",
+          ).toEqual(["assign-agent", "set-runtime-mode", "send"]);
+          expect(r.calls[0]).toMatchObject({
+            conversationId: "thread-ada",
+            instanceId: "claude",
+            model: "sonnet",
+            options: [{ id: "effort", value: "low" }],
+          });
+          expect(r.calls[1]).toMatchObject({
+            conversationId: "thread-ada",
+            runtimeMode: "approval-required",
+          });
+        }),
+    );
+  });
+
+  it.effect.each(["assign-agent", "set-runtime-mode"] as const)(
+    "a refused fresh conversation %s never admits its first run",
+    (refused) =>
+      Effect.gen(function* () {
+        const r = rig(1, (command) =>
+          command.kind === refused
+            ? {
+                _tag: "Rejected",
+                rejection: { reason: "unknown", detail: "The agent cannot start." },
+              }
+            : ACCEPTED,
+        );
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        const result = yield* Effect.exit(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineStartTurn(ENV, {
+                ...turn(),
+                bootstrap: {
+                  createThread: {
+                    projectId: ProjectId.make("project-ada"),
+                    title: "First ask",
+                    createdAt: "2026-10-09T00:00:00.000Z",
+                    modelSelection: {
+                      instanceId: ProviderInstanceId.make("claude"),
+                      model: "sonnet",
+                    },
+                    runtimeMode: "full-access",
+                    interactionMode: "default",
+                    branch: null,
+                    worktreePath: null,
+                  },
+                },
+              }),
+            ),
+          ),
+        );
+        expect(result._tag).toBe("Failure");
+        expect(r.calls.map(({ kind }) => kind)).toEqual(
+          refused === "assign-agent" ? ["assign-agent"] : ["assign-agent", "set-runtime-mode"],
+        );
+      }),
+  );
+
+  // Catches a Stop sent to the card a continuing run draws on: the engine refuses an ended run, and
+  // the run that works goes on (a usage-limit resume, an agent's own turn, a restart's continuation).
+  const SESSION = (steer: boolean, active = true, steerAttachments?: boolean) => ({
+    activeRunId: active ? RunId.make("thread-ada/r/2") : null,
+    latestRunId: RunId.make(active ? "thread-ada/r/2" : "thread-ada/r/1"),
+    runStatus: active ? ("running" as const) : ("ready" as const),
+    session: {
+      driver: "claudeAgent",
+      model: "claude-sonnet-4-5",
+      steer,
+      ...(steerAttachments === undefined ? {} : { steerAttachments }),
+    },
+  });
+  const working = (state: "running" | "waiting" | "admitted") =>
+    engineRun("thread-ada", 2, { state, end: null, endedAt: null } as never);
+
+  it.effect.each(["running", "waiting"] as const)(
+    "a message sent while the conversation's run is %s steers that run, as V1's mid-turn send does",
+    (state) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs([engineRun("thread-ada", 1), working(state)], SESSION(true));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+        expect(r.calls).toEqual([
+          {
+            kind: "steer",
+            conversationId: "thread-ada",
+            commandId: "message-7",
+            runId: "thread-ada/r/2",
+            text: "And the worker",
+          },
+        ]);
+      }),
+  );
+
+  const LANDED = "appdev #3 landed: Add the order summary";
+  it.effect.each([
+    { how: "its send", runs: [engineRun("thread-ada", 1)], steer: false, kind: "send" },
+    { how: "its steer", runs: [working("running")], steer: true, kind: "steer" },
+  ])(
+    "the agent hears the merged changes and the vault's key names with the message, on $how",
+    ({ runs, steer, kind }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs(runs, SESSION(steer, steer));
+        const vault = "Vault changes since your last turn:\n+ STRIPE_KEY  Shared · sensitive";
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), agentNotes: [LANDED, vault] } as never),
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind, text: "And the worker", context: [LANDED, vault] }]);
+      }),
+  );
+
+  const fitsEngine = Schema.is(EngineSendContext);
+  const vaultKeys = (count: number): ReadonlyArray<VaultChange> =>
+    Array.from({ length: count }, (_, n) => ({
+      scope: { kind: "shared" },
+      hostname: null,
+      key: `KEY_${n + 1}`,
+      kind: "added",
+      sensitive: true,
+      at: "2026-10-07T11:00:00Z",
+      impact: { restart: [], unread: true, literal: [] },
+    }));
+
+  it.effect("a message with more vault changes than fit still sends, its context fitted", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const { lines } = agentContext([LANDED, "apidev #4 landed"], vaultKeys(9));
+      yield* r.run(
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: lines } as never)),
+      );
+      const sent = r.calls[0] as { readonly kind: string; readonly context?: unknown };
+      expect(sent.kind).toBe("send");
+      expect(fitsEngine(sent.context)).toBe(true);
+      expect(sent.context).toEqual([
+        LANDED,
+        "apidev #4 landed",
+        expect.stringContaining("KEY_1"),
+        expect.stringContaining("KEY_2"),
+        "and 7 more vault changes",
+      ]);
+    }),
+  );
+
+  it.effect("notes past the engine's bound are fitted before they go, never refused", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const notes = Array.from({ length: 7 }, (_, n) => `${"word ".repeat(60)}${n}`);
+      yield* r.run(
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), agentNotes: notes } as never)),
+      );
+      const sent = r.calls[0] as { readonly context?: unknown };
+      expect(fitsEngine(sent.context)).toBe(true);
+    }),
+  );
+
+  it.effect("a message with nothing to tell sends no context", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+      expect(r.calls).toHaveLength(1);
+      expect(r.calls[0]).not.toHaveProperty("context");
+    }),
+  );
+
+  it.effect("a vault value never travels with a message: the agent hears its key's name", () =>
+    Effect.gen(function* () {
+      const VALUE = ["synthetic", "billing", "secret"].join("-");
+      const view = {
+        status: "ready",
+        complete: true,
+        notLive: [],
+        scopes: [
+          {
+            ref: { kind: "shared" },
+            id: "shared",
+            hostname: null,
+            kind: "shared",
+            serviceType: null,
+            editable: true,
+            reads: [],
+            startedAt: null,
+            values: [
+              {
+                id: "e-billing",
+                key: "BILLING_KEY",
+                value: VALUE,
+                sensitive: false,
+                createdAt: "2026-10-07T11:00:00Z",
+                changedAt: "2026-10-07T11:00:00Z",
+                madeByZerops: false,
+                readers: [],
+              },
+            ],
+          },
+        ],
+      } as unknown as VaultView;
+      const note = vaultNote(vaultChangesSince(view, "2026-10-07T10:00:00Z", []));
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), agentNotes: [note!] } as never),
+        ),
+      );
+      const sent = JSON.stringify(r.calls);
+      expect(sent).toContain("BILLING_KEY");
+      expect(sent).not.toContain(VALUE);
+    }),
+  );
+
+  const picture = {
+    type: "image",
+    id: "img-1",
+    name: "a.png",
+    mimeType: "image/png",
+    sizeBytes: 3,
+  } as const;
+  const file = {
+    type: "file",
+    id: "file-1",
+    name: "spec.pdf",
+    mimeType: "application/pdf",
+    sizeBytes: 9,
+  } as const;
+  it.effect.each([
+    {
+      name: "no run works",
+      runs: [engineRun("thread-ada", 1)],
+      steer: false,
+      active: false,
+      carries: [],
+    },
+    // The header carries current eligibility, not merely the session's capability.
+    { name: "the run is not started yet", runs: [working("admitted")], steer: false, carries: [] },
+    { name: "its session cannot steer", runs: [working("running")], steer: false, carries: [] },
+    // An engine from before steers carried them: the picture never drops from a words-only steer.
+    {
+      name: "its steer takes words only and it carries pictures",
+      runs: [working("running")],
+      steer: true,
+      carries: [picture],
+    },
+    {
+      name: "its steer takes words only and it carries a file",
+      runs: [working("running")],
+      steer: true,
+      carries: [file],
+    },
+  ])(
+    "a message sent when $name goes as the conversation's next run",
+    ({ runs, steer, active, carries }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs(runs, SESSION(steer, active));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries))));
+        expect(r.calls.map((call) => call.kind)).toEqual(["send"]);
+      }),
+  );
+
+  // The owner, 2026-10-13: a picture sent while the Mate worked stood under its card as a run of
+  // its own; it goes into the work, as words do.
+  it.effect.each([
+    { what: "pictures", carries: [picture] },
+    { what: "a file", carries: [file] },
+  ])(
+    "a message with $what sent while the run works steers that run where its steer carries them",
+    ({ carries }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true, true, true));
+        yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn(carries))));
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: "steer",
+            runId: "thread-ada/r/2",
+            commandId: "message-7",
+            attachments: carries,
+          }),
+        ]);
+      }),
+  );
+
+  it.effect("a request a page sent goes to the engine marked as the page's, never typed", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+      r.runs([], SESSION(true, false));
+      yield* r.run(
+        viaEngine(r.registry, ENV, engineStartTurn(ENV, { ...turn(), fromPanel: true } as never)),
+      );
+      expect(r.calls).toMatchObject([{ kind: "send", text: "And the worker", fromPanel: true }]);
+    }),
+  );
+
+  it.effect("with plan mode on, a message sent in plan mode goes to the agent as a plan", () =>
+    Effect.gen(function* () {
+      for (const state of ["idle", "running", "waiting"] as const) {
+        const r = rig(1);
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        r.runs(state === "idle" ? [engineRun("thread-ada", 1)] : [working(state)], SESSION(true));
+        const receipt = yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+          ),
+        );
+        expect(receipt).toEqual({ sequence: 16 });
+        expect(r.calls).toMatchObject([
+          { kind: "send", text: "And the worker", interactionMode: "plan" },
+        ]);
+        expect(r.calls).toHaveLength(1);
+      }
+    }),
+  );
+
+  it.effect("J09: landed context stays separate from the person's message and compact event", () =>
+    Effect.gen(function* () {
+      for (const running of [false, true]) {
+        const r = rig(1);
+        yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+        r.runs(
+          running ? [working("running")] : [engineRun("thread-ada", 1)],
+          SESSION(running, running),
+        );
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, {
+              ...turn(),
+              agentNotes: [LANDED],
+            } as never),
+          ),
+        );
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: running ? "steer" : "send",
+            text: "And the worker",
+            context: [LANDED],
+          }),
+        ]);
+        const compact = turn();
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, {
+              ...compact,
+              message: { ...compact.message, text: "/compact" },
+              agentNotes: agentNotesFor("/compact", [LANDED]),
+            } as never),
+          ),
+        );
+        expect(r.calls.at(-1)).toMatchObject({ text: "/compact" });
+        expect(r.calls.at(-1)).not.toHaveProperty("context");
+      }
+    }),
+  );
+
+  // Catches plan mode dropped: a steer carries no interaction mode, and the working run keeps its own.
+  it.effect("a plan sent while the run works goes as the next run, in plan mode", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+        ),
+      );
+      expect(r.calls).toMatchObject([
+        { kind: "send", commandId: "message-7", interactionMode: "plan" },
+      ]);
+    }),
+  );
+
+  // Catches a steer racing the run's end: the engine refuses it, and the person saw "Nothing is
+  // running to stop." for a message. V1 starts a new turn with it.
+  it.effect.each([
+    { why: "the run ended", reason: "run-not-running" },
+    { why: "its session can no longer steer", reason: "steer-unsupported" },
+  ])(
+    "a message steered as $why goes as the conversation's next run, under its own message",
+    ({ reason }) =>
+      Effect.gen(function* () {
+        const r = rig(1, (command) =>
+          command.kind === "steer"
+            ? ({ _tag: "Rejected", rejection: { reason } } as EngineCallResult)
+            : ACCEPTED,
+        );
+        r.runs([engineRun("thread-ada", 1), working("running")], SESSION(true));
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+        expect(result).toEqual({ sequence: 16 });
+        expect(r.calls).toMatchObject([
+          { kind: "steer", commandId: "message-7" },
+          { kind: "send", text: "And the worker", attachments: [] },
+        ]);
+        // The engine keeps the steer's refusal under the message's id: the send goes under its own.
+        expect(r.calls[1]?.commandId).toBe(engineResendId("message-7"));
+      }),
+  );
+
+  it.effect("a Stop on a run that continues another stops the run that works, not its card", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.runs(
+        [
+          engineRun("thread-ada", 1),
+          engineRun("thread-ada", 2, {
+            joins: "thread-ada/r/1" as never,
+            trigger: { kind: "wake", cause: "self", wakeId: null } as never,
+            state: "running",
+            end: null,
+            endedAt: null,
+          }),
+        ],
+        SESSION(true),
+      );
+      yield* Effect.forkChild(
+        r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineInterruptTurn(ENV, {
+              type: "thread.turn.interrupt",
+              commandId: "stop-1",
+              threadId: "thread-ada",
+              turnId: "thread-ada/r/1",
+              createdAt: "2026-10-08T00:00:00.000Z",
+            } as never),
+          ),
+        ),
+      );
+      yield* Effect.yieldNow;
+      expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
+    }),
+  );
+
+  it.effect.each([
+    { title: "HQ down: the menu holds and a Mate still opens and chats", zeropsDown: false },
+    {
+      title: "Zerops outage shows catching up and retains menu/chat through capped HQ retries",
+      zeropsDown: true,
+    },
+  ])("$title", ({ zeropsDown }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* Effect.addFinalizer(() => Effect.sync(() => r.registry.dispose()));
+      for (const input of liveZerops({
+        running: [],
+        projects: [{ id: "ada", name: "Ada", status: "ACTIVE" }],
+      }))
+        r.store.dispatch(input);
+      seedHqNavigation(r.store, ORG, {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "shop",
+              name: "Shop",
+              projects: [
+                { projectId: "ada", name: "Ada", kind: "mate", mate: { face: "rose:seal" } },
+              ],
+            },
+          ],
+        },
+      });
+      r.header();
+      const key = {
+        organization: {
+          kind: "organization" as const,
+          account: {
+            apiOrigin: makeZeropsApiOrigin("https://api.test"),
+            accountId: ZeropsAccountId.make("account"),
+          },
+          organizationId: ZeropsOrganizationId.make(ORG),
+        },
+        viewer: { id: ORG, name: "Org", membershipId: "owner", roleCode: "ADMIN" },
+      };
+      const menu = () => inventory.derive(readsOfState(r.store.state()), key);
+      const expectedProjects = [{ id: "ada", name: "Ada", app: "Shop" }];
+      const rows = () =>
+        menu().projects.map((p) => ({ id: p.id, name: p.name, app: p.hq?.appName }));
+      expect(rows()).toEqual(expectedProjects);
+      const sources = [linkKeys.hq(ORG), ...(zeropsDown ? [linkKeys.zerops(ORG)] : [])];
+      for (const source of sources) {
+        for (const scope of r.store.state().streams.keys()) {
+          if (scope.startsWith(`${source}:`))
+            r.store.dispatch({
+              kind: "stream",
+              key: scope,
+              now: 0,
+              event: { kind: "parent-lost" },
+            });
+        }
+        let now = 0;
+        for (let attempt = 0; attempt < 8; attempt++) {
+          r.store.dispatch({
+            kind: "stream",
+            key: source,
+            now,
+            event: {
+              kind: "fault",
+              jitter: 1,
+              fault: { outcome: "transient", message: "Source unavailable" },
+            },
+          });
+          const next = r.store.state().streams.get(source)!.next;
+          expect(next.kind).toBe("retry");
+          if (next.kind !== "retry") throw new Error("A transient outage must schedule recovery");
+          if (attempt === 7) expect(next.at - now).toBe(60_000);
+          expect(rows()).toEqual(expectedProjects);
+          if (attempt < 7) {
+            now = next.at;
+            r.store.dispatch({ kind: "stream", key: source, now, event: { kind: "retry-due" } });
+          }
+        }
+      }
+      // Minutes of retries passed on the stream's clock; the store's grace timer is wall time.
+      for (const input of graceOver(r.store.state())) r.store.dispatch(input);
+      expect(menu().trouble).toBe(zeropsDown ? "retrying" : null);
+      const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+      expect(result).toEqual({ sequence: 16 });
+      expect(r.calls).toEqual([
+        {
+          kind: "send",
+          conversationId: "thread-ada",
+          commandId: "message-7",
+          text: "And the worker",
+          attachments: [],
+        },
+      ]);
+      expect(rows()).toEqual(expectedProjects);
+    }),
+  );
+
+  it.effect(
+    "a turn on a Mate on the engine goes as the engine's send, under its message's id",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        const result = yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn())));
+        expect(result).toEqual({ sequence: 16 });
+        expect(r.calls).toEqual([
+          {
+            kind: "send",
+            conversationId: "thread-ada",
+            commandId: "message-7",
+            text: "And the worker",
+            attachments: [],
+          },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "a command on a Mate from before the engine is refused with the Mate's update, sending nothing",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(undefined);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()))),
+        );
+        expect(failure._tag).toBe("MateEngineUnsupported");
+        expect(failure.message).toBe(
+          "This Mate is older than this app. Update the Mate to talk to it here.",
+        );
+        expect(r.calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a Mate serving only a newer protocol refuses with the app's way out: a reload or an update",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(2);
+        const failure = yield* Effect.flip(
+          r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn()))),
+        );
+        expect(failure.message).toBe(
+          "This Mate speaks a newer conversation protocol. Reload or update this app to keep talking to it.",
+        );
+        expect(r.calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a picture not yet in the Mate's asset store is refused in words, sending nothing",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        const failure = yield* Effect.flip(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineStartTurn(
+                ENV,
+                turn([
+                  {
+                    type: "image",
+                    name: "a.png",
+                    mimeType: "image/png",
+                    sizeBytes: 3,
+                    dataUrl: "data:image/png;base64,AAA",
+                  },
+                ]),
+              ),
+            ),
+          ),
+        );
+        expect(failure.message).toMatch(/Pictures/);
+        expect(r.calls).toEqual([]);
+      }),
+  );
+
+  it.effect("decline an agent command and see it resolve", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineRespondToApproval(ENV, {
+            threadId: "thread-ada",
+            requestId: "thread-ada/r/2/q/1",
+            decision: "decline",
+          } as never),
+        ),
+      );
+      expect(r.calls).toEqual([
+        expect.objectContaining({
+          kind: "answer",
+          requestId: "thread-ada/r/2/q/1",
+          answer: { kind: "approval", decision: "decline" },
+          summary: "Declined",
+        }),
+      ]);
+    }),
+  );
+
+  it.effect("an approval's decision goes as the engine's answer, its words as the summary", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineRespondToApproval(ENV, {
+            threadId: "thread-ada",
+            requestId: "thread-ada/r/2/q/1",
+            decision: "accept",
+          } as never),
+        ),
+      );
+      expect(r.calls[0]).toMatchObject({
+        kind: "answer",
+        requestId: "thread-ada/r/2/q/1",
+        answer: { kind: "approval", decision: "accept" },
+        summary: "Approved",
+      });
+    }),
+  );
+
+  it.effect.each(["saved", "declined"] as const)(
+    "a value asked of the person is answered %s on the engine, with nothing but how it ended",
+    (outcome) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineAnswerVaultAsk(ENV, {
+              threadId: "thread-ada",
+              requestId: "thread-ada/r/2/q/1",
+              outcome,
+            }),
+          ),
+        );
+        expect(r.calls).toEqual([
+          expect.objectContaining({
+            kind: "answer",
+            requestId: "thread-ada/r/2/q/1",
+            answer: { kind: "secret", outcome },
+            summary: outcome,
+          }),
+        ]);
+      }),
+  );
+
+  it.effect("an answer carrying pictures goes to the engine with them, never without them", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineRespondToUserInput(ENV, {
+            threadId: "thread-ada",
+            requestId: "thread-ada/r/2/q/1",
+            answers: { target: "Inspect the preview" },
+            attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
+          } as never),
+        ),
+      );
+      expect(r.calls[0]).toMatchObject({
+        kind: "answer",
+        requestId: "thread-ada/r/2/q/1",
+        answer: {
+          kind: "input",
+          answers: { target: "Inspect the preview" },
+          attachmentsByQuestionId: { target: [{ name: "preview.png" }] },
+        },
+      });
+    }),
+  );
+
+  it.effect(
+    "dismissing a question on the engine goes as the engine's dismissal, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineDismissUserInput(ENV, {
+              threadId: "thread-ada",
+              requestId: "thread-ada/r/2/q/1",
+            } as never),
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "dismiss",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            requestId: "thread-ada/r/2/q/1",
+          },
+        ]);
+      }),
+  );
+
+  it.effect("a first message's title is never sent to an engine Mate, nor over V1", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", title: "Deploy the api" } as never),
+        ),
+      );
+      expect(r.calls).toEqual([]);
+    }),
+  );
+
+  it.effect("a model change on the conversation's agent goes as the engine's model switch", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, {
+            threadId: "thread-ada",
+            title: "Deploy",
+            modelSelection: { instanceId: "claudeAgent", model: "claude-opus-4-1" },
+          } as never),
+        ),
+      );
+      expect(r.calls).toEqual([
+        {
+          kind: "switch-model",
+          conversationId: "thread-ada",
+          commandId: "op-1",
+          model: "claude-opus-4-1",
+        },
+      ]);
+    }),
+  );
+
+  it.effect("the same model again sends nothing", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, {
+            threadId: "thread-ada",
+            modelSelection: { instanceId: "claudeAgent", model: "claude-sonnet-4-5" },
+          } as never),
+        ),
+      );
+      expect(r.calls).toEqual([]);
+    }),
+  );
+
+  it.effect.each([
+    {
+      name: "another agent",
+      input: { modelSelection: { instanceId: "codex", model: "gpt-5.4" } },
+      call: {
+        kind: "assign-agent",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        instanceId: "codex",
+        model: "gpt-5.4",
+      },
+      route: "the engine's agent pick",
+    },
+    {
+      name: "a changed effort",
+      input: {
+        modelSelection: {
+          instanceId: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          options: [{ id: "effort", value: "high" }],
+        },
+      },
+      call: {
+        kind: "switch-model",
+        conversationId: "thread-ada",
+        commandId: "op-1",
+        model: "claude-sonnet-4-5",
+        options: [{ id: "effort", value: "high" }],
+      },
+      route: "the engine's model switch, with its options",
+    },
+  ])("$name for an engine conversation goes as $route, never over V1", ({ input, call }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header();
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+        ),
+      );
+      expect(r.calls).toEqual([call]);
+    }),
+  );
+
+  /** Claude's options as its model reports them: an effort, a context window, Fast Mode. */
+  const CLAUDE = {
+    optionDescriptors: [
+      {
+        id: "effort",
+        label: "Reasoning",
+        type: "select",
+        options: [
+          { id: "low", label: "Low" },
+          { id: "medium", label: "Medium", isDefault: true },
+          { id: "high", label: "High" },
+          { id: "xhigh", label: "Extra High" },
+        ],
+      },
+      { id: "fastMode", label: "Fast Mode", type: "boolean" },
+      {
+        id: "contextWindow",
+        label: "Context Window",
+        type: "select",
+        options: [
+          { id: "200k", label: "200k" },
+          { id: "1m", label: "1M", isDefault: true },
+        ],
+      },
+    ],
+  } as const;
+  const DEFAULTS = [
+    { id: "effort", value: "medium" },
+    { id: "fastMode", value: false },
+    { id: "contextWindow", value: "1m" },
+  ];
+
+  it.effect.each([
+    { name: "the composer's spelled-out defaults", runs: undefined, picked: DEFAULTS },
+    {
+      name: "the same options in another order",
+      runs: [
+        { id: "contextWindow", value: "200k" },
+        { id: "effort", value: "xhigh" },
+      ],
+      picked: [
+        { id: "effort", value: "xhigh" },
+        { id: "fastMode", value: false },
+        { id: "contextWindow", value: "200k" },
+      ],
+    },
+    { name: "no options against the defaults it runs on", runs: DEFAULTS, picked: undefined },
+  ])("$name on the conversation's model change nothing and send nothing", ({ runs, picked }) =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      r.header({
+        agent: {
+          instanceId: "claudeAgent",
+          driver: "claudeAgent",
+          model: "claude-sonnet-4-5",
+          ...(runs === undefined ? {} : { options: runs }),
+          profile: { kind: "mate" },
+        },
+      } as never);
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineUpdateMetadata(
+            ENV,
+            {
+              threadId: "thread-ada",
+              modelSelection: {
+                instanceId: "claudeAgent",
+                model: "claude-sonnet-4-5",
+                ...(picked === undefined ? {} : { options: picked }),
+              },
+            } as never,
+            () => CLAUDE as never,
+          ),
+        ),
+      );
+      expect(r.calls).toEqual([]);
+    }),
+  );
+
+  it.effect.each([
+    { name: "an effort", option: { id: "effort", value: "xhigh" } },
+    { name: "Fast Mode", option: { id: "fastMode", value: true } },
+    { name: "a context window", option: { id: "contextWindow", value: "200k" } },
+  ])(
+    "a change to $name goes as the engine's model switch carrying only what changed",
+    ({ option }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.header();
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineUpdateMetadata(
+              ENV,
+              {
+                threadId: "thread-ada",
+                modelSelection: {
+                  instanceId: "claudeAgent",
+                  model: "claude-sonnet-4-5",
+                  options: DEFAULTS.map((each) => (each.id === option.id ? option : each)),
+                },
+              } as never,
+              () => CLAUDE as never,
+            ),
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "switch-model",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            model: "claude-sonnet-4-5",
+            options: [option],
+          },
+        ]);
+      }),
+  );
+
+  it.effect.each([{ name: "a branch", input: { branch: "feature" }, words: /branch/ }])(
+    "$name for an engine conversation is refused in words, sending nothing",
+    ({ input, words }) =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        r.header();
+        const failure = yield* Effect.flip(
+          r.run(
+            viaEngine(
+              r.registry,
+              ENV,
+              engineUpdateMetadata(ENV, { threadId: "thread-ada", ...input } as never),
+            ),
+          ),
+        );
+        expect(failure.message).toMatch(words);
+        expect(r.calls).toEqual([]);
+      }),
+  );
+
+  it.effect(
+    "a runtime mode change for an engine conversation goes as the engine's own call, never over V1",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineSetRuntimeMode(ENV, {
+              threadId: "thread-ada",
+              runtimeMode: "approval-required",
+            } as never),
+          ),
+        );
+        expect(r.calls).toEqual([
+          {
+            kind: "set-runtime-mode",
+            conversationId: "thread-ada",
+            commandId: "op-1",
+            runtimeMode: "approval-required",
+          },
+        ]);
+      }),
+  );
+
+  it.effect(
+    "an interaction mode change for an engine conversation is never sent over V1: the mode goes with the next message",
+    () =>
+      Effect.gen(function* () {
+        const r = rig(1);
+        yield* r.run(viaEngine(r.registry, ENV, engineSetInteractionMode));
+        expect(r.calls).toEqual([]);
+        yield* r.run(
+          viaEngine(
+            r.registry,
+            ENV,
+            engineStartTurn(ENV, { ...turn(), interactionMode: "plan" } as never),
+          ),
+        );
+        expect(r.calls).toMatchObject([{ kind: "send", interactionMode: "plan" }]);
+      }),
+  );
+
+  it.effect("a turn's files go to the engine with it, by the id they were uploaded under", () =>
+    Effect.gen(function* () {
+      const r = rig(1);
+      const file = {
+        type: "file",
+        id: "file-1",
+        name: "spec.pdf",
+        mimeType: "application/pdf",
+        sizeBytes: 9,
+      };
+      yield* r.run(viaEngine(r.registry, ENV, engineStartTurn(ENV, turn([file]))));
+      expect(r.calls).toMatchObject([{ kind: "send", attachments: [file] }]);
+    }),
+  );
+});

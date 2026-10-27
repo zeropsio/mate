@@ -1,0 +1,176 @@
+/**
+ * Where an environment is reachable from outside: its public routes
+ * (`derivePublicRoutes`), in the two places the product offers them.
+ *
+ * In a menu, as a group: one item per route — the service as the developer
+ * names it (`app`, `api`; with its port when one service answers on several),
+ * the host in a muted hand, a click that opens it. Six public services are
+ * six items in a menu that scrolls, never six chips in a row and never a
+ * column of hostnames; and when nobody can reach the environment yet, the
+ * group says so instead of vanishing, so a person learns where to look next
+ * time. The icon menu is the left menu's, where there is room for one glyph
+ * beside a name.
+ */
+import type { ZeropsPublicRoute, ZeropsRouteOffer } from "@t3tools/client-runtime/zerops";
+import { ExternalLinkIcon, GlobeIcon } from "lucide-react";
+
+import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { routeMenuEntries } from "./ZeropsPublicRoutes.logic";
+
+/**
+ * The public-access group of a menu: a label, then a route per item, then
+ * whatever could be published and is not.
+ *
+ * An offer is an ordinary item, not a recovery affordance tucked away: the
+ * question "where is this reachable" and "why is it not" are the same question,
+ * and a person asking the first is exactly the person who needs the second.
+ * "None yet" is only honest when there is also nothing to offer.
+ */
+export function ZeropsRouteMenuItems({
+  routes,
+  offers = [],
+  onEnable,
+  enablingServiceId = null,
+  label = "Public access",
+}: {
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Services that serve HTTP with their subdomain off (`publicRoutes.ts`). */
+  readonly offers?: ReadonlyArray<ZeropsRouteOffer>;
+  readonly onEnable?: (offer: ZeropsRouteOffer) => void;
+  readonly enablingServiceId?: string | null;
+  readonly label?: string;
+}) {
+  const entries = routeMenuEntries(routes);
+  const offered = onEnable === undefined ? [] : offers;
+  return (
+    <MenuGroup data-zerops-surface="public-routes">
+      <MenuGroupLabel>{label}</MenuGroupLabel>
+      {entries.length === 0 && offered.length === 0 ? (
+        <MenuItem data-zerops-surface="public-routes-empty" disabled>
+          None yet
+        </MenuItem>
+      ) : (
+        entries.map((entry) => (
+          <MenuItem
+            data-zerops-surface="public-route"
+            key={entry.key}
+            render={<a href={entry.url} rel="noreferrer" target="_blank" />}
+          >
+            <span className="shrink-0 font-medium">
+              {entry.service}
+              {entry.port === undefined ? null : (
+                <span className="font-normal text-muted-foreground">:{entry.port}</span>
+              )}
+            </span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{entry.host}</span>
+            <ExternalLinkIcon aria-hidden="true" />
+          </MenuItem>
+        ))
+      )}
+      {offered.map((offer) => (
+        <MenuItem
+          closeOnClick={false}
+          data-zerops-surface="public-route-offer"
+          disabled={enablingServiceId !== null}
+          key={`offer:${offer.serviceId}`}
+          onClick={() => onEnable?.(offer)}
+        >
+          <GlobeIcon aria-hidden="true" className="shrink-0" />
+          <span className="min-w-0 flex-1 truncate">
+            {enablingServiceId === offer.serviceId ? "Publishing" : "Publish"}{" "}
+            <span className="font-medium">{offer.service}</span>
+          </span>
+        </MenuItem>
+      ))}
+    </MenuGroup>
+  );
+}
+
+/**
+ * The left menu's public-access control: a globe, and **how many** once there
+ * is more than one.
+ *
+ * Neither of the two obvious answers survives ten routes. Writing the host out
+ * spends most of a 256px row on one of them and looks ridiculous at ten (the
+ * owner, 2026-09-19). A bare arrow fits any number and says nothing about any
+ * of them — "the open in new is ambiguous, everything could have more public
+ * urls/ips" — and, worse, two routes and ten drew identically, so the menu hid
+ * the very fact a person opens it to learn.
+ *
+ * One route is the globe alone: a globe already means "reachable here", and
+ * a `1` beside it spent the one-line stop row's width on saying so twice.
+ * Several wear the count as a bubble on the globe's corner rather than a
+ * number beside it (the owner, 2026-09-25), so the control is the same width
+ * at 2 and at 10. One route still opens directly, because a menu holding a
+ * single item is a click spent on nothing; its host is the hover. Several
+ * open the menu listing every one of them.
+ */
+export function ZeropsRoutesMenu({
+  routes,
+  label,
+}: {
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Whose routes these are — read by assistive technology. */
+  readonly label: string;
+}) {
+  if (routes.length === 0) return null;
+  const [only] = routes;
+  if (routes.length === 1 && only !== undefined) {
+    return (
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <a
+              aria-label={`${label}: ${only.host}`}
+              className={ROUTE_GLOBE_CLASS}
+              data-zerops-surface="public-routes-menu"
+              href={only.url}
+              rel="noreferrer"
+              target="_blank"
+            />
+          }
+        >
+          <GlobeIcon aria-hidden="true" className="size-3.5" />
+        </TooltipTrigger>
+        <TooltipPopup side="right">{only.host}</TooltipPopup>
+      </Tooltip>
+    );
+  }
+  return (
+    <Menu>
+      {/* A globe and a number say nothing on their own: the single-route case
+          has always had a tooltip and this one had none, so `10` was a number
+          with no noun anywhere near it. The number is a count, not a call for
+          attention: a soft chip, never the menu's full ink, which made it the
+          loudest mark in the menu, over the dots of what waits on the person. */}
+      <Tooltip>
+        <TooltipTrigger
+          render={
+            <MenuTrigger
+              aria-label={`${label}: ${routes.length} public URLs`}
+              className={ROUTE_GLOBE_CLASS}
+              data-zerops-surface="public-routes-menu"
+            >
+              <GlobeIcon aria-hidden="true" className="size-3.5" />
+              <span
+                aria-hidden="true"
+                className="absolute -top-1 -end-1 inline-flex h-3 min-w-3 items-center justify-center rounded-full bg-sidebar-row-active px-0.5 text-[9px] leading-none font-semibold text-sidebar-foreground tabular-nums ring-1 ring-sidebar"
+                data-zerops-surface="public-routes-count"
+              >
+                {routes.length}
+              </span>
+            </MenuTrigger>
+          }
+        />
+        <TooltipPopup side="right">{routes.length} public URLs</TooltipPopup>
+      </Tooltip>
+      <MenuPopup align="end" className="max-w-[24rem] min-w-48">
+        <ZeropsRouteMenuItems routes={routes} />
+      </MenuPopup>
+    </Menu>
+  );
+}
+
+const ROUTE_GLOBE_CLASS =
+  "relative inline-flex size-5 shrink-0 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";

@@ -1,0 +1,403 @@
+/**
+ * The Crew tab's host (PRD §4.3, seam S6): for the crew the tab read, its
+ * column or one of its views in place of it — setup, the goal, a crewmate's
+ * job (`useCrewView`: the left menu's ⋯ and the conversation's line ask for
+ * them too) — and the commands, drafts, confirmations and the run dialog
+ * behind every press. A Mate with no crew yet has its empty state, and *Set
+ * up a crew* opens the setup; the setup stays while the crew's copies are
+ * made, and becomes the tab once the crew stands.
+ *
+ * Three command states, so each outcome shows where it was pressed: the
+ * column's presses, the composer, and the views.
+ *
+ * A view slides 24 px in from the right; "‹ Crew" brings the column back from
+ * the left. A first paint never moves.
+ *
+ * Nothing that runs or changes the crew is offered to a viewer who may not
+ * run the logins it reaches (`crewAccess`, D6): a view that changes the crew
+ * opens only for one who may change what it changes, and the column stands in
+ * its place otherwise.
+ */
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import type { CrewAccess, CrewLock } from "@t3tools/client-runtime/zerops/crew/crewAccess";
+import {
+  crewClearConfirm,
+  crewDeliverAsk,
+  crewNamingTheMate,
+  crewPortsAsk,
+  crewPortsOfferWords,
+  crewRemoveConfirm,
+  crewRemoveUnlandedConfirm,
+  crewShipLine,
+  crewShipWhat,
+} from "@t3tools/client-runtime/zerops/crew/phrases";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { CrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import type { CrewCommand, CrewSnapshot, EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
+import { useNavigate } from "@tanstack/react-router";
+import { useCallback, useState } from "react";
+
+import { requestConfirmDialog } from "../../../confirmDialog";
+import { useServerConfigs } from "../../../state/entities";
+import { buildThreadRouteParams } from "../../../threadRoutes";
+import { useCrewView, type CrewTabView } from "../../../zerops/crew/crewTab";
+import { hasCrewSetupDraft } from "../../../zerops/crew/crewSetupDraft";
+import { useCrewCommand } from "../../../zerops/crew/useCrewCommand";
+import { useOpenReview } from "../../../zerops/review";
+import { ZeropsAskDialog } from "../ZeropsAskDialog";
+import { crewDevHosts, crewWaitingMembers } from "./CrewEditors.logic";
+import { useCrewHome } from "../../../zerops/crew/useCrewHome";
+import { CREW_HOME_FILE } from "@t3tools/shared/crewHome";
+import { CrewGoal } from "./CrewGoal";
+import { CrewLeadPlanBlock, crewPlanPresses } from "./CrewLeadPlan";
+import { crewPlanCard } from "./CrewLeadPlan.logic";
+import { CrewmateJob } from "./CrewmateJob";
+import { CrewRunDialog, type CrewRunDialogAsk } from "./CrewRunDialog";
+import { CREW_ORIGIN } from "./CrewRows.logic";
+import { CrewSection, CrewSectionEmpty } from "./CrewSection";
+import { CrewSetup } from "./CrewSetup";
+import type { CrewProposeWith } from "./CrewSetup.logic";
+
+export interface CrewSectionHostProps {
+  readonly environmentId: EnvironmentId;
+  readonly snapshot: CrewSnapshot;
+  /** `null` while no crew stands. */
+  readonly view: CrewView<EnvironmentThreadShell> | null;
+  /** The snapshot is current: a press acts on what is shown. */
+  readonly current: boolean;
+  /** The Mate who lives here: Fen, in its face. */
+  readonly mate:
+    | { readonly name: string; readonly tint: MateTintId; readonly shape?: MateShapeId }
+    | undefined;
+  /** The Mate's tree, where the composer's `@` finds files; `null` while unread. */
+  readonly treeCwd: string | null;
+  /** Hands the Mate a draft, into the chat the tab is open beside when it is a person chat. */
+  readonly onAskMate: (draft: string) => void;
+  /** What this viewer may run or change on the crew. */
+  readonly access: CrewAccess;
+  /** The chat an ask for the Mate goes to is not this viewer's to run; `null` where it is. */
+  readonly askLock: CrewLock | null;
+  /** A closed crew's one way out: the viewer's own sign-in. */
+  readonly onSignIn: (lock: CrewLock) => void;
+  /** Where the setup's *Let Fen suggest a crew* runs, or why it can't for this viewer. */
+  readonly proposeWith: CrewProposeWith;
+}
+
+/** Which of the tab's screens stands: its column, or a view. */
+const screenOf = (view: CrewTabView | null): string =>
+  view === null ? "column" : view.kind === "job" ? `job:${view.handle ?? "new"}` : view.kind;
+
+/** What a view changes: one crewmate's job, or the whole crew — its setup, its goal, a crewmate added. */
+const viewLock = (access: CrewAccess, view: CrewTabView): CrewLock | null =>
+  view.kind === "job" && view.handle !== null ? access.crewmate(view.handle) : access.crew;
+
+export function CrewSectionHost({
+  environmentId,
+  snapshot,
+  view: crew,
+  current,
+  mate,
+  treeCwd,
+  onAskMate,
+  access,
+  askLock,
+  onSignIn,
+  proposeWith,
+}: CrewSectionHostProps) {
+  const commands = useCrewCommand(environmentId);
+  const tell = useCrewCommand(environmentId);
+  const editorCommands = useCrewCommand(environmentId);
+  const navigate = useNavigate();
+  const openReview = useOpenReview();
+  const providers = useServerConfigs().get(environmentId)?.providers;
+  // A draft kept from before (a reload, a closed tab) opens the setup it belongs to.
+  const [asked, setView] = useCrewView(environmentId, () =>
+    crew === null && hasCrewSetupDraft(environmentId) ? { kind: "setup" } : null,
+  );
+  const view = asked === null || viewLock(access, asked) !== null ? null : asked;
+  const [runDialog, setRunDialog] = useState<CrewRunDialogAsk | null>(null);
+  const [ask, setAsk] = useState<{ readonly ask: string; readonly what: string } | null>(null);
+  // The screen before this one, so a change of screen slides and a first paint does not.
+  const [shown, setShown] = useState(() => ({
+    screen: screenOf(view),
+    enter: null as string | null,
+  }));
+  const screen = screenOf(view);
+  if (shown.screen !== screen) {
+    setShown({ screen, enter: screen === "column" ? "back" : "forward" });
+  }
+  const mateName = mate?.name ?? "the Mate";
+  const applied = crew !== null;
+  // A press waits while whose the crew's logins are is still being read.
+  const busy = !current || commands.pending || access.reading;
+  // The crew home as written: a crewmate it lists that the crew lacks waits to be added or removed.
+  const home = useCrewHome(editorCommands);
+  const waiting = applied ? crewWaitingMembers(home.definition, snapshot.crewmates) : [];
+  const changeLocked = busy || editorCommands.pending || access.crew !== null;
+  const takeOut = (handle: string) => {
+    const definition = home.definition;
+    if (definition === null) return;
+    void home.save(
+      {
+        ...definition,
+        members: definition.members.filter((member) => member.handle !== handle),
+      },
+      [CREW_HOME_FILE],
+    );
+  };
+  const errorAt = (origin: string) => {
+    const words = commands.errorAt(origin);
+    return words === null ? null : crewNamingTheMate(words, mateName);
+  };
+
+  const openThread = useCallback(
+    (threadId: ThreadId) => {
+      void navigate({
+        to: "/$environmentId/$threadId",
+        params: buildThreadRouteParams(scopeThreadRef(environmentId, threadId)),
+      });
+    },
+    [environmentId, navigate],
+  );
+
+  const closeView = () => setView(applied || view?.kind === "setup" ? null : { kind: "setup" });
+
+  const clear = (handle: string) => {
+    const name = snapshot.crewmates.find((row) => row.handle === handle)?.displayName ?? "";
+    void requestConfirmDialog(crewClearConfirm(name))?.then((ok) => {
+      if (ok) void commands.send({ _tag: "startFresh", handle }, CREW_ORIGIN.crewmate(handle));
+    });
+  };
+
+  /**
+   * *Remove from the crew* (PRD §5.6): a copy whose work all went in goes
+   * with it; one with work not in the Mate's code is kept and the removal
+   * refused, and only then is dropping that work offered.
+   */
+  const remove = (handle: string) => {
+    const name = snapshot.crewmates.find((row) => row.handle === handle)?.displayName ?? "";
+    void requestConfirmDialog(crewRemoveConfirm(name))?.then(async (ok) => {
+      if (!ok) return;
+      const origin = CREW_ORIGIN.crewmate(handle);
+      const removed = await commands.send(
+        { _tag: "removeCrewmate", handle, discardUnlanded: false },
+        origin,
+      );
+      if (removed !== null) {
+        setView(null);
+        return;
+      }
+      if (commands.lastFailure()?.reason !== "unlanded-commits") return;
+      const drop = await requestConfirmDialog(crewRemoveUnlandedConfirm(name, mateName), {
+        variant: "destructive",
+      });
+      if (!drop) return;
+      if (
+        (await commands.send({ _tag: "removeCrewmate", handle, discardUnlanded: true }, origin)) !==
+        null
+      ) {
+        setView(null);
+      }
+    });
+  };
+
+  const ship = () => {
+    void commands.send({ _tag: "deliverDraft" }, CREW_ORIGIN.deliver).then((result) => {
+      if (result?._tag !== "deliverDraft") return;
+      setAsk({
+        ask: crewDeliverAsk(snapshot, result.dirtyPaths),
+        what: `${crewShipWhat(snapshot.landedNotDelivered)} ${crewShipLine(mateName)}`,
+      });
+    });
+  };
+
+  const askPorts = (host: string, count: number) => {
+    void editorCommands
+      .send({ _tag: "addCrewPorts", host, count: Math.max(1, count) }, CREW_ORIGIN.ports)
+      .then((result) => {
+        if (result?._tag !== "crewPorts") return;
+        setAsk({
+          ask: crewPortsAsk(result.host, result.ports),
+          what: crewPortsOfferWords(mateName),
+        });
+      });
+  };
+
+  const send = (command: CrewCommand, origin: string) => commands.send(command, origin);
+  const run = snapshot.run;
+  const plan = crew === null ? null : crewPlanCard(snapshot, crew);
+
+  const body = (() => {
+    if (view?.kind === "setup") {
+      return (
+        <CrewSetup
+          applied={applied}
+          commands={editorCommands}
+          crewmates={snapshot.crewmates}
+          devHosts={crewDevHosts(snapshot)}
+          hosts={snapshot.hosts}
+          environmentId={environmentId}
+          mate={{ name: mateName, tint: mate?.tint, shape: mate?.shape }}
+          onAskPorts={askPorts}
+          proposeWith={proposeWith}
+          onClose={() => setView(null)}
+          onEditCrewmate={(handle) => setView({ kind: "job", handle })}
+          startLock={access.home}
+        />
+      );
+    }
+    if (view?.kind === "goal") {
+      return <CrewGoal applied={applied} commands={editorCommands} onClose={closeView} />;
+    }
+    if (view?.kind === "job") {
+      const target = {
+        handle: view.handle,
+        lead:
+          view.lead === true ||
+          snapshot.crewmates.find((row) => row.handle === view.handle)?.kind === "lead",
+      };
+      return (
+        <CrewmateJob
+          applied={new Set(snapshot.crewmates.map((row) => row.handle))}
+          commands={editorCommands}
+          crewApplied={applied}
+          crewPort={snapshot.crewmates.find((row) => row.handle === view.handle)?.app?.port ?? null}
+          devHosts={crewDevHosts(snapshot)}
+          key={view.handle ?? "new"}
+          mateName={mateName}
+          mateTint={mate?.tint}
+          onClose={closeView}
+          onRemove={remove}
+          providers={providers}
+          saveLock={(login) => viewLock(access, view) ?? access.login(login)}
+          target={target}
+        />
+      );
+    }
+    if (crew === null) {
+      return (
+        <CrewSectionEmpty
+          draft={hasCrewSetupDraft(environmentId) || (home.definition?.members.length ?? 0) > 0}
+          lock={access.crew}
+          mate={{
+            name: mateName,
+            tint: mate?.tint ?? "amber",
+            ...(mate?.shape === undefined ? {} : { shape: mate.shape }),
+          }}
+          onSetUp={() => setView({ kind: "setup" })}
+          onSignIn={onSignIn}
+        />
+      );
+    }
+    return (
+      <CrewSection
+        waiting={{
+          members: waiting,
+          onAdd: changeLocked ? null : () => void editorCommands.send({ _tag: "apply" }),
+          onRemove: changeLocked ? null : takeOut,
+        }}
+        access={access}
+        askLock={askLock}
+        busy={busy}
+        environmentId={environmentId}
+        errorAt={errorAt}
+        mateName={mateName}
+        onAsk={(draft, what) => setAsk({ ask: draft, what })}
+        onHeadMenu={(item) => {
+          if (item === "goal") setView({ kind: "goal" });
+          else if (item === "addCrewmate") setView({ kind: "job", handle: null });
+          else setRunDialog({ mode: "start", after: null });
+        }}
+        onModePress={(press) => {
+          if (press === "letItWork") setRunDialog({ mode: "start", after: null });
+          else if (press === "keepGoing") setRunDialog({ mode: "resume", after: null });
+          else if (run !== null && press === "stop") {
+            void send({ _tag: "stop", runId: run.id }, CREW_ORIGIN.run);
+          } else if (run !== null) void send({ _tag: "resume", runId: run.id }, CREW_ORIGIN.run);
+        }}
+        onOpenThread={openThread}
+        onReview={(taskId, from) =>
+          openReview({ kind: "crew-task", environmentId, taskId }, { from })
+        }
+        onRowMenu={(handle, item) => {
+          if (item === "job") setView({ kind: "job", handle });
+          else if (item === "goal") setView({ kind: "goal" });
+          else if (item === "clear") clear(handle);
+          else if (item === "remove") remove(handle);
+        }}
+        onShip={ship}
+        onSignIn={onSignIn}
+        renderPlan={(words) =>
+          plan === null ? null : (
+            <CrewLeadPlanBlock
+              busy={busy}
+              error={errorAt(CREW_ORIGIN.plan)}
+              limits={run?.options ?? null}
+              plan={plan}
+              presses={crewPlanPresses({
+                snapshot,
+                plan,
+                send,
+                openRunDialog: setRunDialog,
+                access,
+              })}
+              words={words}
+            />
+          )
+        }
+        send={send}
+        snapshot={snapshot}
+        tell={{
+          send: (command) => tell.send(command),
+          pending: tell.pending,
+          error: tell.error === null ? null : crewNamingTheMate(tell.error, mateName),
+        }}
+        treeCwd={treeCwd}
+        view={crew}
+      />
+    );
+  })();
+
+  return (
+    <section className="flex flex-1 flex-col" data-zerops-crew>
+      <div
+        className="crew-view flex flex-1 flex-col"
+        data-crew-screen={screen}
+        data-enter={shown.enter ?? undefined}
+        key={screen}
+      >
+        {body}
+      </div>
+      <CrewRunDialog
+        ask={runDialog}
+        current={current}
+        environmentId={environmentId}
+        hasLead={crew?.lead != null}
+        mateName={mateName}
+        onClose={() => setRunDialog(null)}
+        onDone={(after) => {
+          if (after !== null) void send(after, CREW_ORIGIN.plan);
+        }}
+        snapshot={crew === null ? null : snapshot}
+      />
+      <ZeropsAskDialog
+        ask={ask?.ask ?? ""}
+        mateName={mate?.name}
+        onConfirm={() => {
+          if (ask === null) return;
+          setAsk(null);
+          onAskMate(ask.ask);
+        }}
+        onOpenChange={(open) => {
+          if (!open) setAsk(null);
+        }}
+        open={ask !== null}
+        sending={false}
+        shape={mate?.shape}
+        tint={mate?.tint}
+        what={ask?.what ?? ""}
+      />
+    </section>
+  );
+}

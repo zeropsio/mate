@@ -1,0 +1,222 @@
+import { mateArrivalNotice } from "./mateNoticeVoice";
+import { MateRestartError } from "./mateRestartRefusal";
+import { act, useLayoutEffect } from "react";
+import { create as render, type ReactTestRenderer } from "react-test-renderer";
+import type { ReactNode } from "react";
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/reactivity";
+import { makeAccountStore } from "@t3tools/client-runtime/data";
+import { AccountDataContext, type AccountData } from "./accountData";
+const cleanups: Array<() => void> = [];
+function create(node: ReactNode): ReactTestRenderer {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const mounted = render(
+    <RegistryContext.Provider value={registry}>
+      <AccountDataContext.Provider value={{ orgId: "org-1", data: store.data } as AccountData}>
+        {node}
+      </AccountDataContext.Provider>
+    </RegistryContext.Provider>,
+  );
+  cleanups.push(() => {
+    mounted.unmount();
+    store.close();
+    registry.dispose();
+  });
+  return mounted;
+}
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { useRestartMate, useReviveFailedMate } from "./mateRestart";
+
+const mock = vi.hoisted(() => ({
+  submit: vi.fn(),
+  hideChiefFromLists: false,
+  toasts: [] as Array<{ readonly type: string; readonly title: string }>,
+}));
+vi.mock("./useZeropsCandidates", () => ({
+  useHeldZeropsCandidates: () =>
+    mock.hideChiefFromLists
+      ? []
+      : [{ key: "p1:s1", project: { id: "p1" }, service: { id: "s1", status: "SERVICE_FAILED" } }],
+  useHeldZeropsDetailCandidates: () => [
+    { key: "p1:s1", project: { id: "p1" }, service: { id: "s1", status: "SERVICE_FAILED" } },
+  ],
+}));
+vi.mock("./accountOperations", () => ({ useAccountOperations: () => ({ submit: mock.submit }) }));
+vi.mock("./zeropsContainers", () => ({
+  intendContainer: () => true,
+  readContainerInitAt: async () => null,
+}));
+vi.mock("~/components/ui/toast", () => ({
+  toastManager: { add: (toast: { type: string; title: string }) => mock.toasts.push(toast) },
+}));
+
+let revive: (serviceId: string | undefined) => boolean;
+function Probe() {
+  const hook = useReviveFailedMate();
+  useLayoutEffect(() => {
+    revive = hook;
+  }, [hook]);
+  return null;
+}
+
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  mock.toasts.length = 0;
+  mock.hideChiefFromLists = false;
+  mock.submit.mockReset();
+});
+afterEach(() => {
+  act(() => {
+    cleanups.splice(0).forEach((close) => close());
+  });
+  vi.unstubAllGlobals();
+});
+
+describe("useReviveFailedMate", () => {
+  it("says a stop it could not follow, with starting the Mate as the next step", async () => {
+    mock.submit.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: {
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "person",
+        nextAction: "Start the Mate",
+      },
+    });
+    await act(async () => {
+      create(<Probe />);
+    });
+    await act(async () => {
+      expect(revive("s1")).toBe(true);
+    });
+    expect(mock.toasts).toEqual([
+      {
+        type: "error",
+        title: "The Mate was stopped, but it was not started again here. Start the Mate.",
+      },
+    ]);
+  });
+
+  it("says why Zerops refused the start after the stop, with starting the Mate next", async () => {
+    mock.submit.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: {
+        stage: "unresolved",
+        operationId: null,
+        nextActor: "person",
+        nextAction: "Start the Mate",
+        reason: "Service is busy.",
+      },
+    });
+    await act(async () => {
+      create(<Probe />);
+    });
+    await act(async () => {
+      expect(revive("s1")).toBe(true);
+    });
+    expect(mock.toasts).toEqual([
+      {
+        type: "error",
+        title:
+          "The Mate was stopped, but it was not started again here: Service is busy. Start the Mate.",
+      },
+    ]);
+  });
+
+  it("says nothing once Zerops took the restart", async () => {
+    mock.submit.mockResolvedValue({
+      requestId: "r1",
+      evidence: null,
+      progress: { stage: "accepted", operationId: "proc-start" },
+    });
+    await act(async () => {
+      create(<Probe />);
+    });
+    await act(async () => {
+      revive("s1");
+    });
+    expect(mock.toasts).toEqual([]);
+  });
+});
+
+let restart: ReturnType<typeof useRestartMate>;
+function RestartProbe() {
+  restart = useRestartMate();
+  return null;
+}
+
+it.each([
+  {
+    progress: { stage: "uncertain", next: "asking-owner" },
+    text: "Zerops did not answer whether it took the restart. Check the Mate before trying again.",
+  },
+  {
+    progress: {
+      stage: "unresolved",
+      operationId: null,
+      nextActor: "person",
+      nextAction: "Start the Mate",
+      reason: "500: Internal Server Error",
+    },
+    text: "The Mate was stopped, but it was not started again here. Start the Mate.",
+  },
+])(
+  "keeps receipt guidance through a rejected restart: $progress.stage",
+  async ({ progress, text }) => {
+    mock.submit.mockResolvedValue({ progress });
+    let rendered: ReturnType<typeof create>;
+    await act(async () => {
+      rendered = create(<RestartProbe />);
+    });
+    const error = await restart({
+      key: "p1:s1",
+      projectId: "p1",
+      serviceId: "s1",
+      status: "SERVICE_FAILED",
+    }).catch((error: unknown) => error);
+    expect(error).toBeInstanceOf(MateRestartError);
+    if (!(error instanceof MateRestartError)) throw error;
+    expect(
+      mateArrivalNotice({
+        coming: { kind: "failed", line: "Setup stopped.", verb: "try-again" },
+        progress: undefined,
+        attemptId: "failed",
+        refusal: {
+          kind: "retry",
+          attemptId: "failed",
+          details: error.message,
+          receipt: error.receipt,
+        },
+      }).secondary,
+    ).toBe(text);
+    await act(async () => {
+      rendered!.unmount();
+    });
+  },
+);
+
+it("revives the person's Chief from its detail even though no Mate list contains it", async () => {
+  mock.hideChiefFromLists = true;
+  mock.submit.mockResolvedValue({
+    requestId: "r1",
+    evidence: null,
+    progress: { stage: "accepted", operationId: "proc-start" },
+  });
+  await act(async () => {
+    create(<Probe />);
+  });
+  await act(async () => {
+    expect(revive("s1")).toBe(true);
+  });
+  expect(mock.submit).toHaveBeenCalledWith({
+    kind: "mate-restart",
+    orgId: "org-1",
+    projectId: "p1",
+    serviceId: "s1",
+    way: "stop-then-start",
+  });
+});

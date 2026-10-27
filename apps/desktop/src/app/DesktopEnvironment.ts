@@ -1,0 +1,273 @@
+import type {
+  DesktopAppBranding,
+  DesktopAppStageLabel,
+  DesktopRuntimeArch,
+  DesktopRuntimeInfo,
+} from "@t3tools/contracts";
+import * as Config from "effect/Config";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+
+import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
+
+import * as DesktopAppSettings from "../settings/DesktopAppSettings.ts";
+import * as DesktopConfig from "./DesktopConfig.ts";
+import { resolveDesktopBaseDir, resolveDesktopStateDir } from "./DesktopStatePaths.ts";
+import { isNightlyDesktopVersion } from "../updates/updateChannels.ts";
+import type { OtlpProtocol } from "@t3tools/shared/observability";
+
+export interface MakeDesktopEnvironmentInput {
+  readonly dirname: string;
+  readonly homeDirectory: string;
+  readonly platform: NodeJS.Platform;
+  readonly processArch: string;
+  readonly appVersion: string;
+  readonly appPath: string;
+  readonly isPackaged: boolean;
+  readonly resourcesPath: string;
+  readonly runningUnderArm64Translation: boolean;
+}
+
+export class DesktopEnvironment extends Context.Service<
+  DesktopEnvironment,
+  {
+    readonly path: Path.Path;
+    readonly dirname: string;
+    readonly platform: NodeJS.Platform;
+    readonly processArch: string;
+    readonly isPackaged: boolean;
+    readonly isDevelopment: boolean;
+    readonly appVersion: string;
+    readonly appPath: string;
+    readonly resourcesPath: string;
+    readonly homeDirectory: string;
+    readonly appDataDirectory: string;
+    readonly baseDir: string;
+    readonly stateDir: string;
+    readonly desktopSettingsPath: string;
+    readonly clientSettingsPath: string;
+    readonly savedEnvironmentRegistryPath: string;
+    readonly serverSettingsPath: string;
+    readonly logDir: string;
+    readonly browserArtifactsDir: string;
+    readonly rootDir: string;
+    readonly appRoot: string;
+    readonly preloadPath: string;
+    readonly appUpdateYmlPath: string;
+    readonly devServerUrl: Option.Option<URL>;
+    readonly applicationUrl: string;
+    readonly commitHashOverride: Option.Option<string>;
+    readonly otlpTracesUrl: Option.Option<string>;
+    readonly otlpMetricsUrl: Option.Option<string>;
+    readonly otlpLogsUrl: Option.Option<string>;
+    readonly otlpExportIntervalMs: number;
+    readonly otlpHeaders: Option.Option<Record<string, string>>;
+    readonly otlpProtocol: OtlpProtocol;
+    readonly branding: DesktopAppBranding;
+    readonly displayName: string;
+    readonly appUserModelId: string;
+    readonly linuxDesktopEntryName: string;
+    readonly linuxWmClass: string;
+    readonly linuxApplicationsDir: string;
+    readonly appImagePath: Option.Option<string>;
+    readonly userDataDirName: string;
+    readonly legacyUserDataDirNames: readonly string[];
+    readonly defaultDesktopSettings: DesktopAppSettings.DesktopSettings;
+    readonly runtimeInfo: DesktopRuntimeInfo;
+    readonly resolveResourcePathCandidates: (fileName: string) => readonly string[];
+  }
+>()("@t3tools/desktop/app/DesktopEnvironment") {}
+
+const APP_BASE_NAME = "Zerops Mate";
+
+function resolveDesktopAppStageLabel(input: {
+  readonly isDevelopment: boolean;
+  readonly appVersion: string;
+}): DesktopAppStageLabel {
+  if (input.isDevelopment) {
+    return "Dev";
+  }
+
+  return isNightlyDesktopVersion(input.appVersion) ? "Nightly" : "Alpha";
+}
+
+function resolveDesktopAppBranding(input: {
+  readonly isDevelopment: boolean;
+  readonly appVersion: string;
+}): DesktopAppBranding {
+  const stageLabel = resolveDesktopAppStageLabel(input);
+  return {
+    baseName: APP_BASE_NAME,
+    stageLabel,
+    displayName: `${APP_BASE_NAME} (${stageLabel})`,
+  };
+}
+
+/**
+ * Where the window's `loadURL` points. The shell no longer serves its own
+ * snapshot of the client, so the app is always pointed at a real client
+ * somewhere: an explicit override wins (a staged bundle under test, or an
+ * operator pinning a specific deployment); otherwise a running Vite dev
+ * server (`VITE_DEV_SERVER_URL`) is loaded directly, no custom-scheme proxy
+ * in between; otherwise the hosted client at `DEFAULT_HOSTED_APP_URL` —
+ * imported rather than retyped, so this shell and the client it loads can
+ * never disagree about where the hosted app lives.
+ */
+export function resolveDesktopApplicationUrl(input: {
+  readonly applicationUrlOverride: Option.Option<string>;
+  readonly devServerUrl: Option.Option<URL>;
+}): string {
+  if (Option.isSome(input.applicationUrlOverride)) {
+    return input.applicationUrlOverride.value;
+  }
+  if (Option.isSome(input.devServerUrl)) {
+    return input.devServerUrl.value.href;
+  }
+  return DEFAULT_HOSTED_APP_URL;
+}
+
+function normalizeDesktopArch(arch: string): DesktopRuntimeArch {
+  if (arch === "arm64") return "arm64";
+  if (arch === "x64") return "x64";
+  return "other";
+}
+
+function resolveDesktopRuntimeInfo(input: {
+  readonly platform: NodeJS.Platform;
+  readonly processArch: string;
+  readonly runningUnderArm64Translation: boolean;
+}): DesktopRuntimeInfo {
+  const appArch = normalizeDesktopArch(input.processArch);
+
+  if (input.platform !== "darwin") {
+    return {
+      hostArch: appArch,
+      appArch,
+      runningUnderArm64Translation: false,
+    };
+  }
+
+  const hostArch = appArch === "arm64" || input.runningUnderArm64Translation ? "arm64" : appArch;
+
+  return {
+    hostArch,
+    appArch,
+    runningUnderArm64Translation: input.runningUnderArm64Translation,
+  };
+}
+
+const make = Effect.fn("desktop.environment.make")(function* (
+  input: MakeDesktopEnvironmentInput,
+): Effect.fn.Return<DesktopEnvironment["Service"], Config.ConfigError, Path.Path> {
+  const path = yield* Path.Path;
+  const config = yield* DesktopConfig.DesktopConfig;
+  const homeDirectory = input.homeDirectory;
+  const devServerUrl = config.devServerUrl;
+  const isDevelopment = Option.isSome(devServerUrl);
+  const appDataDirectory =
+    input.platform === "win32"
+      ? Option.getOrElse(config.appDataDirectory, () =>
+          path.join(homeDirectory, "AppData", "Roaming"),
+        )
+      : input.platform === "darwin"
+        ? path.join(homeDirectory, "Library", "Application Support")
+        : Option.getOrElse(config.xdgConfigHome, () => path.join(homeDirectory, ".config"));
+  const baseDir = resolveDesktopBaseDir({
+    homeDirectory,
+    joinPath: path.join,
+    t3Home: config.t3Home,
+  });
+  const rootDir = path.resolve(input.dirname, "../../..");
+  const appRoot = input.isPackaged ? input.appPath : rootDir;
+  const branding = resolveDesktopAppBranding({
+    isDevelopment,
+    appVersion: input.appVersion,
+  });
+  const displayName = branding.displayName;
+  const stateDir = resolveDesktopStateDir({
+    baseDir,
+    isDevelopment,
+    joinPath: path.join,
+    t3Home: config.t3Home,
+  });
+  const userDataDirName = isDevelopment ? "mate-dev" : "mate";
+  // Ordered oldest-first: the original pre-fork name, then the pre-rename
+  // "t3code" name this identity superseded. The first one found on disk wins.
+  const legacyUserDataDirNames = isDevelopment
+    ? ["T3 Code (Dev)", "t3code-dev"]
+    : ["T3 Code (Alpha)", "t3code"];
+  const linuxApplicationsDir = path.join(
+    Option.getOrElse(config.xdgDataHome, () => path.join(homeDirectory, ".local", "share")),
+    "applications",
+  );
+  const resourcesPath = input.resourcesPath;
+
+  return DesktopEnvironment.of({
+    path,
+    dirname: input.dirname,
+    platform: input.platform,
+    processArch: input.processArch,
+    isPackaged: input.isPackaged,
+    isDevelopment,
+    appVersion: input.appVersion,
+    appPath: input.appPath,
+    resourcesPath,
+    homeDirectory,
+    appDataDirectory,
+    baseDir,
+    stateDir,
+    desktopSettingsPath: path.join(stateDir, "desktop-settings.json"),
+    clientSettingsPath: path.join(stateDir, "client-settings.json"),
+    savedEnvironmentRegistryPath: path.join(stateDir, "saved-environments.json"),
+    serverSettingsPath: path.join(stateDir, "settings.json"),
+    logDir: path.join(stateDir, "logs"),
+    browserArtifactsDir: path.join(stateDir, "browser-artifacts"),
+    rootDir,
+    appRoot,
+    preloadPath: path.join(input.dirname, "preload.cjs"),
+    appUpdateYmlPath: input.isPackaged
+      ? path.join(resourcesPath, "app-update.yml")
+      : path.join(input.appPath, "dev-app-update.yml"),
+    devServerUrl,
+    applicationUrl: resolveDesktopApplicationUrl({
+      applicationUrlOverride: config.applicationUrlOverride,
+      devServerUrl,
+    }),
+    commitHashOverride: config.commitHashOverride,
+    otlpTracesUrl: config.otlpTracesUrl,
+    otlpMetricsUrl: config.otlpMetricsUrl,
+    otlpLogsUrl: config.otlpLogsUrl,
+    otlpExportIntervalMs: config.otlpExportIntervalMs,
+    otlpHeaders: config.otlpHeaders,
+    otlpProtocol: config.otlpProtocol,
+    branding,
+    displayName,
+    appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
+      isDevelopment ? "io.zerops.mate.dev" : "io.zerops.mate",
+    ),
+    linuxDesktopEntryName: isDevelopment ? "zerops-mate-dev.desktop" : "zerops-mate.desktop",
+    linuxWmClass: isDevelopment ? "zerops-mate-dev" : "zerops-mate",
+    linuxApplicationsDir,
+    appImagePath: config.appImagePath,
+    userDataDirName,
+    legacyUserDataDirNames,
+    defaultDesktopSettings: DesktopAppSettings.resolveDefaultDesktopSettings(input.appVersion),
+    runtimeInfo: resolveDesktopRuntimeInfo({
+      platform: input.platform,
+      processArch: input.processArch,
+      runningUnderArm64Translation: input.runningUnderArm64Translation,
+    }),
+    resolveResourcePathCandidates: (fileName) => [
+      path.join(input.dirname, "../resources", fileName),
+      path.join(input.dirname, "../prod-resources", fileName),
+      path.join(resourcesPath, "resources", fileName),
+      path.join(resourcesPath, fileName),
+    ],
+  });
+});
+
+export const layer = (input: MakeDesktopEnvironmentInput) =>
+  Layer.effect(DesktopEnvironment, make(input));

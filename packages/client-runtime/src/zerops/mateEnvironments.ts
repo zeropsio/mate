@@ -1,0 +1,108 @@
+/**
+ * Which of the account's projects have a Mate — the rows of the left menu and
+ * the cards of the projects screen.
+ *
+ * The rule is HQ's word with a fallback, and one exclusion:
+ *
+ * - **HQ places it as a Mate** (`groups.ts`) — dev or dev/stage. Kept when its
+ *   container is rebuilt or lost: the Mate exists whether or not its body is
+ *   there right now. Not "is connected" — keying membership on a live session
+ *   would reshuffle a person's navigation every time the platform hiccuped.
+ *   Presence is durable; only the face moves. The project's `mate` tag is the
+ *   Zerops GUI's marker and says nothing here.
+ * - **Or a Mate container is there** — a project HQ has not placed yet, or
+ *   while its word is unread, is still a Mate where its body runs.
+ *   `candidates.ts` already emits a candidate with a `service` per zcp
+ *   container, so this only reads that.
+ * - **Never stage or production.** A Mate is a coding agent with a shell in
+ *   the environment; that is what a dev box is for and not what stage or
+ *   production are for — they get their code from dev. A container found in
+ *   one is a fact about the platform, not a Mate, and the row is an
+ *   environment's.
+ *
+ * It is not "is tagged into a group": a group tag is grouping, not membership.
+ * And it is never a **tool**: Gitea is a project the account shares, not
+ * somewhere anyone works.
+ */
+import type { ZeropsCandidate } from "./candidates.ts";
+import { readZeropsMembership } from "./groups.ts";
+import { readZeropsToolKind } from "./tools.ts";
+
+/**
+ * Best-first, so a project running two containers shows the one a click can
+ * actually reach rather than whichever the platform happened to list first.
+ */
+const GROUP_RANK: Record<ZeropsCandidate["group"], number> = {
+  connected: 0,
+  ready: 1,
+  provisioning: 2,
+  unavailable: 3,
+};
+
+/** A Mate container backs this candidate — the body, whether or not HQ places the Mate. */
+export function hasMateContainer(candidate: ZeropsCandidate): boolean {
+  return candidate.service !== undefined;
+}
+
+/**
+ * A tool is not an environment: it is a singleton the whole account shares,
+ * with no dev/stage/prod axis and nothing to put a Mate in (`tools.ts`).
+ * Excluded here as well as from the group tree, because "does this account
+ * have anywhere to work?" is a question about environments — an account whose
+ * only project is Gitea has nowhere, and saying otherwise offers to put a
+ * coding agent in the account's git host.
+ */
+function isTool(candidate: ZeropsCandidate): boolean {
+  return readZeropsToolKind(candidate.project) !== undefined;
+}
+
+/** A Mate lives here — see the module doc for the rule. */
+export function hasMate(candidate: ZeropsCandidate): boolean {
+  if (isTool(candidate)) return false;
+  const membership = readZeropsMembership(candidate.project);
+  if (membership.role === "stage" || membership.role === "prod") return false;
+  return membership.mate || hasMateContainer(candidate);
+}
+
+/**
+ * One per project that has a Mate, best container first.
+ *
+ * Deduplicated per project because a project is one environment — one
+ * container, one agent, one conversation. Two zcp containers in a project is a
+ * platform accident, not a second environment, and the menu must not imply
+ * otherwise.
+ *
+ * Input order does not matter: ties beyond the group rank break on the
+ * candidate key, so the same account always produces the same menu.
+ */
+export function selectMateEnvironments<T extends ZeropsCandidate>(
+  candidates: ReadonlyArray<T>,
+): ReadonlyArray<T> {
+  const best = new Map<string, T>();
+  for (const candidate of candidates) {
+    if (!hasMate(candidate)) continue;
+    const current = best.get(candidate.project.id);
+    if (current === undefined || wins(candidate, current))
+      best.set(candidate.project.id, candidate);
+  }
+  return [...best.values()];
+}
+
+function wins(candidate: ZeropsCandidate, incumbent: ZeropsCandidate): boolean {
+  const rank = GROUP_RANK[candidate.group] - GROUP_RANK[incumbent.group];
+  return rank === 0 ? candidate.key < incumbent.key : rank < 0;
+}
+
+/**
+ * Why the menu is empty, or `undefined` when it is not.
+ *
+ * The distinction the first version got wrong: an account with projects but no
+ * Mate anywhere is not an account with no projects, and saying so sends the
+ * reader looking for a project they already have.
+ */
+export function mateEnvironmentsEmptyReason(
+  candidates: ReadonlyArray<ZeropsCandidate>,
+): "no-projects" | "no-mate" | undefined {
+  if (candidates.some(hasMate)) return undefined;
+  return candidates.every(isTool) ? "no-projects" : "no-mate";
+}

@@ -1,0 +1,253 @@
+/**
+ * The browser half of Zerops device login (`client-runtime/zerops/deviceLogin`): the Zerops
+ * window, and this build's choice of way in.
+ *
+ * **Why a window opened on the click.** Popup blockers allow only what a click opens directly,
+ * and the request starts after an await. So the window opens blank on the click and is pointed
+ * at the consent page once the request exists. Where the browser blocked it, the person gets a
+ * link, and their own click opens the same page in a tab.
+ *
+ * **Why polling.** Nothing comes back to this origin: the tab asks the API until the person
+ * approves or denies in the Zerops window. A container-served copy collects its own session the
+ * same way, with no destination for the platform to check.
+ *
+ * The build picks the way in (`VITE_ZEROPS_SIGN_IN`): `handover` (the default) sends the tab to
+ * app.zerops.io's `/authorize-app`; `device-login` runs this. `VITE_ZEROPS_LOGIN_APP_CODE` names
+ * the app the consent page asks for (`mate`), and `VITE_ZEROPS_CONSENT_ORIGIN` swaps the consent
+ * page's origin (a local HQ).
+ *
+ * Opened from HQ's Mate card, the same request makes a trip of this tab instead (`hqSignIn.ts`).
+ */
+import {
+  checkZeropsDeviceLogin,
+  pollZeropsDeviceLogin,
+  startZeropsDeviceLogin,
+  zeropsDeviceLoginUrl,
+  type ZeropsDeviceLoginIntent,
+  type ZeropsDeviceLoginKind,
+  type ZeropsDeviceLoginOutcome,
+} from "@t3tools/client-runtime/zerops/deviceLogin";
+import { browserTransportFetch } from "@t3tools/client-runtime/data";
+
+export type ZeropsSignInMode = "handover" | "device-login";
+
+export function zeropsSignInMode(): ZeropsSignInMode {
+  return import.meta.env.VITE_ZEROPS_SIGN_IN === "device-login" ? "device-login" : "handover";
+}
+
+const DEFAULT_LOGIN_APP_CODE = "mate";
+
+/** An early wake (the tab shown, the window focused) asks at once, but not more than this often. */
+const EARLY_WAKE_FLOOR_MS = 1_000;
+
+export type ZeropsDeviceLoginStage =
+  /** The request is starting; the window is blank. */
+  | { readonly kind: "opening" }
+  /**
+   * The consent page is open, or `blocked`: the browser kept the window from opening, and `url`
+   * is the link the person opens themselves. The page shows `userCode` beside the request and asks
+   * the person to match it with the one shown here.
+   */
+  | {
+      readonly kind: "waiting";
+      readonly url: string;
+      readonly blocked: boolean;
+      readonly userCode: string;
+      /**
+       * The request was renewed since the Zerops window (or the link's tab) was last pointed at
+       * one: what it shows may be the lapsed request, with an older code. Mate cannot read that
+       * window, and never navigates one the person may be typing in; "Open it again" does.
+       */
+      readonly windowMayBeOlder: boolean;
+    };
+
+export interface ZeropsDeviceLoginRun {
+  /** Settles once. Rejects only when the request could not start. */
+  readonly outcome: Promise<ZeropsDeviceLoginOutcome>;
+  /** Brings the Zerops window back, or opens it again where it closed. Call it on a click. */
+  readonly reopen: () => void;
+  /** Stops asking; the request lapses by itself. */
+  readonly cancel: () => void;
+}
+
+export interface ZeropsDeviceLoginPorts {
+  readonly open: (url: string) => Window | null;
+  readonly fetch: (input: string, init?: RequestInit) => Promise<Response>;
+  readonly nowMs: () => number;
+  readonly wait: (ms: number, signal: AbortSignal) => Promise<void>;
+  readonly appCode: string;
+  readonly consentOrigin: string | undefined;
+}
+
+/** The app the consent page asks for: the build's, or `mate`. */
+export function zeropsLoginAppCode(): string {
+  const appCode = import.meta.env.VITE_ZEROPS_LOGIN_APP_CODE;
+  return appCode === undefined || appCode === "" ? DEFAULT_LOGIN_APP_CODE : appCode;
+}
+
+/** The consent page's origin where the build swaps the API's (HQ's), else `undefined`. */
+export function zeropsConsentOrigin(): string | undefined {
+  const consentOrigin = import.meta.env.VITE_ZEROPS_CONSENT_ORIGIN;
+  return consentOrigin === undefined || consentOrigin === "" ? undefined : consentOrigin;
+}
+
+/**
+ * Resolves after `ms`, or as soon as asking is worth it: the tab shown again or its window
+ * focused (the Zerops window just closed), or the run stopped.
+ */
+export function browserWait(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve) => {
+    const began = performance.now();
+    const done = () => {
+      window.clearTimeout(timer);
+      document.removeEventListener("visibilitychange", early);
+      window.removeEventListener("focus", early);
+      signal.removeEventListener("abort", done);
+      resolve();
+    };
+    const early = () => {
+      if (document.visibilityState !== "visible") return;
+      if (performance.now() - began < EARLY_WAKE_FLOOR_MS) return;
+      done();
+    };
+    const timer = window.setTimeout(done, ms);
+    document.addEventListener("visibilitychange", early);
+    window.addEventListener("focus", early);
+    signal.addEventListener("abort", done, { once: true });
+  });
+}
+
+function browserPorts(): ZeropsDeviceLoginPorts {
+  return {
+    open: (url) => window.open(url, "zerops-hq", "popup,width=520,height=760"),
+    fetch: browserTransportFetch,
+    // The wall clock: a sign-in waits half an hour across lapses, and a test's clock moves it.
+    nowMs: () => Date.now(),
+    wait: browserWait,
+    appCode: zeropsLoginAppCode(),
+    consentOrigin: zeropsConsentOrigin(),
+  };
+}
+
+/**
+ * How long a sign-in waits for the person. A request lapses after five minutes, which a first
+ * sign-up (a form, a browser check, a confirmation e-mail) easily outlasts; the run renews it
+ * until then, and stops asking once the person has plainly walked away.
+ */
+const WAIT_FOR_PERSON_MS = 30 * 60_000;
+
+/**
+ * Runs one device login. Call it on the person's click: the Zerops window opens synchronously
+ * here, before anything is awaited. A request that lapses is renewed with a new code, and the
+ * window is left alone: the person may be halfway through signing up in it, so the stage says it
+ * may show an older code, and "Open it again" then points it at the current request. The window
+ * is closed once the person is answered (approved, denied) or cancels here; HQ's own page would
+ * close itself, app.zerops.io's would not. A run that finally lapses leaves the window as the
+ * person left it.
+ */
+export function runZeropsDeviceLogin(input: {
+  readonly kind: ZeropsDeviceLoginKind;
+  readonly apiBase: string;
+  readonly intent?: ZeropsDeviceLoginIntent;
+  /** A sudo request's: the session's bearer, renewed first where needed (the session's `sudoBearer`). */
+  readonly bearer?: () => Promise<string>;
+  readonly onStage: (stage: ZeropsDeviceLoginStage) => void;
+  readonly ports?: ZeropsDeviceLoginPorts;
+}): ZeropsDeviceLoginRun {
+  const ports = input.ports ?? browserPorts();
+  const controller = new AbortController();
+  let zeropsWindow = ports.open("about:blank");
+  /** The consent page of the request asked now. */
+  let consentUrl: string | null = null;
+  /** The consent page the window was last pointed at; older than `consentUrl` after a renewal. */
+  let windowUrl: string | null = null;
+  /** Set by the first request: whether the browser kept the window from opening. */
+  let blocked: boolean | null = null;
+  /** The stage last told, so pointing the window again can tell it afresh. */
+  let shown: Extract<ZeropsDeviceLoginStage, { kind: "waiting" }> | null = null;
+  input.onStage({ kind: "opening" });
+  const linkFor = (verificationUrl: string, popup: boolean) =>
+    zeropsDeviceLoginUrl({
+      verificationUrl,
+      ...(ports.consentOrigin === undefined ? {} : { consentOrigin: ports.consentOrigin }),
+      ...(input.intent === undefined ? {} : { intent: input.intent }),
+      popup,
+    });
+  const windowOpen = () => zeropsWindow !== null && !zeropsWindow.closed;
+  const closeWindow = () => {
+    try {
+      if (zeropsWindow !== null && !zeropsWindow.closed) zeropsWindow.close();
+    } catch {
+      // A window another origin took over may refuse; it closes itself or stays as the person left it.
+    }
+  };
+  const begunAt = ports.nowMs();
+  const outcome = (async (): Promise<ZeropsDeviceLoginOutcome> => {
+    let settled: ZeropsDeviceLoginOutcome | null = null;
+    try {
+      while (true) {
+        const bearer = input.bearer === undefined ? undefined : await input.bearer();
+        const request = await startZeropsDeviceLogin({
+          fetch: ports.fetch,
+          apiBase: input.apiBase,
+          appCode: ports.appCode,
+          kind: input.kind,
+          ...(bearer === undefined ? {} : { bearer }),
+          nowMs: ports.nowMs(),
+        });
+        if (controller.signal.aborted) return (settled = { kind: "cancelled" });
+        const first = blocked === null;
+        // Closed before the first request existed reads as blocked: the person opens the link.
+        if (blocked === null) blocked = !windowOpen();
+        consentUrl = linkFor(request.verificationUrl, !blocked);
+        if (first && !blocked) {
+          zeropsWindow!.location.href = consentUrl;
+          windowUrl = consentUrl;
+        }
+        shown = {
+          kind: "waiting",
+          url: consentUrl,
+          blocked,
+          userCode: request.userCode,
+          // A blocked window's link may have been opened in a tab Mate never sees.
+          windowMayBeOlder: !first && (blocked || (windowOpen() && windowUrl !== consentUrl)),
+        };
+        input.onStage(shown);
+        const answer = await pollZeropsDeviceLogin({
+          request,
+          check: () =>
+            checkZeropsDeviceLogin({ fetch: ports.fetch, apiBase: input.apiBase, request }),
+          wait: ports.wait,
+          nowMs: ports.nowMs,
+          signal: controller.signal,
+        });
+        if (answer.kind === "expired" && ports.nowMs() - begunAt < WAIT_FOR_PERSON_MS) continue;
+        return (settled = answer);
+      }
+    } finally {
+      // Never the window the person is still using: only one answered, cancelled, or still blank.
+      if (settled === null ? windowUrl === null : settled.kind !== "expired") closeWindow();
+    }
+  })();
+  return {
+    outcome,
+    reopen: () => {
+      if (consentUrl === null) return;
+      if (windowOpen()) {
+        if (windowUrl !== consentUrl) {
+          zeropsWindow!.location.href = consentUrl;
+          windowUrl = consentUrl;
+        }
+        zeropsWindow!.focus();
+      } else {
+        zeropsWindow = ports.open(consentUrl);
+        windowUrl = consentUrl;
+      }
+      if (shown?.windowMayBeOlder === true && !shown.blocked) {
+        shown = { ...shown, windowMayBeOlder: false };
+        input.onStage(shown);
+      }
+    },
+    cancel: () => controller.abort(),
+  };
+}

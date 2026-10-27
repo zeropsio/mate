@@ -1,0 +1,1139 @@
+/**
+ * One Mate target — `projectId:serviceId` — as one pure machine (DESIGN §4.4):
+ * `transitionEnvironment(state, event, ctx) → { state, effects }`.
+ *
+ * Four parallel regions: P presence (a function of the inventory), K the Mate credential, L a
+ * read-only mirror of the T3 supervisor's link, and C the container verdict. K is the only region
+ * this machine decides; P, L and C arrive as events and feed its guards. Reachability is a
+ * projection over all four (`reachability.ts`).
+ *
+ * - Effects are data: `run` an op and feed its answer back as an event carrying the op's
+ *   `attempt`; arm the one timer per `schedule`, which delivers `TICK`; `cancel` it; `log`.
+ * - An answer for any attempt but the one in flight is dropped (§4.0).
+ * - Timers are hints: every event first settles the deadlines that have passed on either clock.
+ * - Every non-terminal credential state holds a timer, waits on a named input, or waits for the
+ *   user (I7).
+ */
+import type { EnvironmentId, ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+
+import type { ConnectionBlockedReason } from "../../connection/model.ts";
+import type { Instant } from "./exchange.ts";
+import type { AbsenceEvidence } from "../knowledge/known.ts";
+import {
+  backoffOn,
+  INITIAL_BACKOFF,
+  scheduleRetry,
+  type Backoff,
+  type RetryTrigger,
+} from "../knowledge/retryPolicy.ts";
+
+// ── Region P: presence ────────────────────────────────────────────────────────────────────────
+
+/**
+ * The platform statuses a service passes through on its way up (`candidates.ts`) — a Mate's
+ * `READY_TO_DEPLOY` among them, its first build.
+ */
+export type ServiceTransition =
+  | "NEW"
+  | "CREATING"
+  | "STARTING"
+  | "RESTARTING"
+  | "UPGRADING"
+  | "READY_TO_DEPLOY";
+
+export type NoOriginReason = "subdomain-off" | "no-port" | "no-subdomain";
+
+export type Presence =
+  | { readonly kind: "unknown" }
+  | { readonly kind: "present"; readonly origin: string }
+  /**
+   * A registration record names the target and its project's services are not read yet this
+   * epoch (A16): its Mate is looked for at the origin the record kept, and exchanged there only
+   * while that Mate's descriptor names the record's environment.
+   */
+  | { readonly kind: "remembered"; readonly origin: string }
+  | { readonly kind: "transitioning"; readonly status: ServiceTransition }
+  /**
+   * ACTIVE and young, its address not landed yet (`ZeropsCandidate.addressAwaited`): on its way,
+   * like a transition — never `no-origin` while the platform is still enabling it.
+   */
+  | { readonly kind: "address-pending" }
+  | { readonly kind: "inactive"; readonly status: string }
+  | { readonly kind: "no-origin"; readonly reason: NoOriginReason }
+  /** Only with absence evidence (§3.1): a confirmed project denial, or a confirmed service removal. */
+  | { readonly kind: "gone"; readonly evidence: AbsenceEvidence };
+
+// ── Region C: container ───────────────────────────────────────────────────────────────────────
+
+/**
+ * The container lifecycle's verdict for this target (§4.5). Levels change only on read facts; a
+ * cap past its budget sets `overdue` and changes nothing else.
+ */
+export type ContainerVerdict =
+  | { readonly level: "unknown" }
+  | { readonly level: "ready" }
+  | { readonly level: "creating"; readonly overdue: boolean }
+  | { readonly level: "provisioning"; readonly overdue: boolean }
+  /**
+   * `guessed`: only failed probes say it is coming up — no platform transition, no process. The
+   * platform says nothing of a start, so its link, not its container, is what fails (§4.4).
+   */
+  | { readonly level: "booting"; readonly overdue: boolean; readonly guessed?: true }
+  | {
+      readonly level: "restarting";
+      readonly by: "platform" | "you" | "announced";
+      readonly overdue: boolean;
+    }
+  | { readonly level: "updating"; readonly overdue: boolean }
+  | { readonly level: "needs-enable" }
+  | { readonly level: "needs-update" }
+  | { readonly level: "not-yet-available" }
+  | { readonly level: "inactive"; readonly status: string };
+
+// ── Region L: link ────────────────────────────────────────────────────────────────────────────
+
+/**
+ * What the supervisor says, before this machine stamps a connect. `idle` is a link the registry
+ * holds closed — not opened yet, or parked (krok-a-hub §3): no drop.
+ */
+export type LinkPhase =
+  | { readonly phase: "idle" }
+  | { readonly phase: "connecting"; readonly unavailableReason?: string; readonly noLink?: true }
+  | { readonly phase: "connected" }
+  | {
+      readonly phase: "backoff";
+      readonly retryAtMs: number | null;
+      readonly unavailableReason?: string;
+      /** HQ holds no live link to this Mate's container (its ticket answer `no-link`). */
+      readonly noLink?: true;
+    }
+  | {
+      readonly phase: "blocked";
+      readonly reason: ConnectionBlockedReason;
+      readonly chiefOwnerName?: string;
+    }
+  | { readonly phase: "offline" };
+
+/** The mirror. Each connect is stamped, so a connect can be ordered against a restart (§4.5). */
+export type Link =
+  | Exclude<LinkPhase, { readonly phase: "connected" }>
+  | { readonly phase: "connected"; readonly since: Instant };
+
+// ── Region K: credential ──────────────────────────────────────────────────────────────────────
+
+/** What a wanted exchange waits for before it may start. */
+export type WaitingOn = "presence" | "container" | "access" | "zerops" | "visible" | "budget";
+
+/** A failure the machine retries on its own (§4.4 failure classes). */
+export type ExchangeCause =
+  | { readonly kind: "network" }
+  | { readonly kind: "timeout" }
+  /** The Mate server or its door answered 5xx. */
+  | { readonly kind: "server"; readonly status: number }
+  /** The throwaway mint answered 429 or 5xx. */
+  | { readonly kind: "mint"; readonly status: number }
+  | { readonly kind: "descriptor-unreachable" }
+  /** The door's `503 zerops_identity_unavailable` (D11). */
+  | { readonly kind: "identity-unavailable" }
+  /** The descriptor reports `zerops.identity = "failed"`: the Mate could not check who you are. */
+  | { readonly kind: "identity-failed" }
+  /** The exchanged credential could not be registered or rotated in this tab. */
+  | { readonly kind: "install" };
+
+/** A "no" that retrying does not change; it waits for the user or an input change. */
+export type RefusalReason =
+  /** The door refused the role (READ_ONLY / NO_ACCESS), or the link was blocked on it twice. */
+  | { readonly kind: "role"; readonly chiefOwnerName?: string }
+  /**
+   * HQ has no Mate here the person may open, twice in a row: deleted, or their access ended. A
+   * change of their access asks again (`ROLE_CHANGED`).
+   */
+  | { readonly kind: "not-found" }
+  /** The server is below the client floor, or the link was blocked as unsupported. */
+  | { readonly kind: "version" }
+  /** The Mate at this origin belongs to another project: presence needs a re-read. */
+  | { readonly kind: "project-mismatch" }
+  /**
+   * The link kept being blocked on configuration while the descriptor showed the same
+   * environment: re-exchanging does not change it, and each round mints a throwaway.
+   */
+  | { readonly kind: "configuration" }
+  /**
+   * The Mate refused the credential: its door turned the exchange's away, or the link kept
+   * rejecting freshly exchanged ones (`AUTH_LOOP_REJECTIONS`).
+   */
+  | { readonly kind: "credential" }
+  /** The account session ended during an exchange. */
+  | {
+      readonly kind: "access";
+      readonly reason: "epoch-closed" | "role-denies";
+    };
+
+export type ExchangeFailure =
+  | { readonly class: "retryable"; readonly cause: ExchangeCause }
+  | { readonly class: "refusal"; readonly reason: RefusalReason };
+
+/** The blocks a descriptor re-read answers: a redeploy, or a server version with no facts yet. */
+export type RereadBlock = Extract<ConnectionBlockedReason, "configuration" | "unsupported">;
+
+export type Credential =
+  | {
+      readonly kind: "none";
+      /** It is here because the Mate rejected the credential it held: a reconnect, not a first connect. */
+      readonly reconnect: boolean;
+    }
+  | { readonly kind: "waiting"; readonly on: WaitingOn; readonly reconnect: boolean }
+  | {
+      readonly kind: "exchanging";
+      readonly attempt: number;
+      readonly deadline: Instant;
+      readonly reconnect: boolean;
+    }
+  | {
+      readonly kind: "backoff";
+      readonly retryAt: Instant;
+      readonly last: ExchangeCause;
+      readonly reconnect: boolean;
+    }
+  | { readonly kind: "refused"; readonly reason: RefusalReason }
+  | {
+      readonly kind: "held";
+      readonly environmentId: EnvironmentId;
+      /** The registry took it; until then the ladder it was exchanged on still counts. */
+      readonly installed: boolean;
+      /**
+       * The link's block was published for the credential this one replaced. Installing this one
+       * retries the link (`rotateCredential`), so the next LINK event is the one judged.
+       */
+      readonly staleBlock: boolean;
+      /** A descriptor re-read the link's block asked for; null while nothing is re-evaluated. */
+      readonly rereading: {
+        readonly attempt: number;
+        readonly deadline: Instant;
+        readonly block: RereadBlock;
+      } | null;
+    }
+  /** Terminal: the target is gone or the user removed it. */
+  | { readonly kind: "retired"; readonly evidence: AbsenceEvidence };
+
+// ── Inputs ────────────────────────────────────────────────────────────────────────────────────
+
+/** The descriptor facts the machine reasons on (C6). */
+export interface DescriptorFacts {
+  readonly environmentId: EnvironmentId;
+  readonly serverVersion: string;
+  readonly update: ExecutionEnvironmentUpdate | null;
+  readonly identity: "unknown" | "ok" | "failed";
+  readonly identityCheckedAt: string | null;
+}
+
+/** The guard inputs the driver computes outside this target (§4.4 WANT and CAN). */
+export interface EnvironmentGuards {
+  /** Any lease holds: the route's, the screen's, the Mate left last, an action's, a Connect's. */
+  readonly want: boolean;
+  readonly routeTarget: boolean;
+  readonly visible: boolean;
+  /** The account's sign-in has verified its principal. */
+  readonly verified: boolean;
+  /** The source's own observation state, retained independently from its facts. */
+  readonly zeropsState: "unknown" | "live" | "unavailable";
+  /** The tab's exchange budget has a token. */
+  readonly budget: boolean;
+}
+
+export const IDLE_GUARDS: EnvironmentGuards = {
+  want: false,
+  routeTarget: false,
+  visible: false,
+  verified: false,
+  zeropsState: "unknown",
+  budget: false,
+};
+
+// ── Machine ───────────────────────────────────────────────────────────────────────────────────
+
+export interface EnvironmentMachine {
+  readonly presence: Presence;
+  readonly credential: Credential;
+  readonly link: Link;
+  /**
+   * When the link last dropped — stopped being connected while the registry still held it open;
+   * null while it is connected, before it first was, and after a park. DESIGN §9 C1b bounds a
+   * conversation shown without verified access by it.
+   */
+  readonly linkLostAt: Instant | null;
+  readonly container: ContainerVerdict;
+  readonly guards: EnvironmentGuards;
+  /** The registration record's environment (C1); null when nothing is remembered here. */
+  readonly record: EnvironmentId | null;
+  /** The newest descriptor read; null before one. */
+  readonly descriptor: DescriptorFacts | null;
+  /** Environment ids a redeploy replaced, each mapped to the newest one that replaced it. */
+  readonly superseded: ReadonlyMap<EnvironmentId, EnvironmentId>;
+  /** Where the next automatic retry sits on the backoff ladder. */
+  readonly ladder: Backoff;
+  /** Consecutive automatic failures; from the cap on, retries slow to the capped interval. */
+  readonly failures: number;
+  /**
+   * Failures since its link last connected, whatever started the ladder over (a Try now, a
+   * registry taking the credential): only a connect clears it. A new Mate's arrival holds its
+   * board only through the first of them (`arrivalHoldsThrough`).
+   */
+  readonly failuresSinceConnect: number;
+  /**
+   * Of those, the ones its server answered — with an error, a refusal of its credential, a
+   * failed mint or install — rather than not at all (`NOT_ANSWERING_CAUSES`): a server still
+   * starting fails its probes, one that answers with errors is not starting. Only a connect clears
+   * it.
+   */
+  readonly errorsSinceConnect: number;
+  /**
+   * Its container has been found ready on this page: its probe answered, or its link connected.
+   * Kept through a boot that follows, so a Mate that answered never reads as arriving again.
+   */
+  readonly readySeen: boolean;
+  /**
+   * Monotonic times of the auth rejections counted in the loop window. Every published
+   * `blocked(authentication)` belongs to the stored credential, so one counts per credential held.
+   */
+  readonly authRejections: ReadonlyArray<number>;
+  /** The link was blocked on permission or found no Mate once, and one exchange was spent on it. */
+  readonly permissionRetried: boolean;
+  /**
+   * Configuration blocks in a row the descriptor did not explain (the same environment), each
+   * answered by a re-exchange; a connect or an input change starts the count over.
+   */
+  readonly configurationBlocks: number;
+  /** A descriptor read reported identity `ok` since the account's Zerops source stopped answering. */
+  readonly identityAnswered: boolean;
+  /** Consecutive descriptor reads reporting identity `failed`, each with a newer check. */
+  readonly identityFailures: {
+    readonly reads: number;
+    readonly lastCheckedAt: string | null;
+  };
+  readonly nextAttempt: number;
+  /**
+   * The attempt that began by reading a remembered Mate's descriptor (A16), and the origin it
+   * reads: an exchanging credential on this attempt is still waiting for that read. Null before
+   * the first.
+   */
+  readonly probing: { readonly attempt: number; readonly origin: string } | null;
+  /** When the interpreter's one timer fires; null when nothing waits on time. */
+  readonly timer: Instant | null;
+}
+
+export type EnvironmentEvent =
+  | { readonly type: "GUARDS"; readonly guards: EnvironmentGuards }
+  | { readonly type: "PRESENCE"; readonly presence: Presence }
+  | { readonly type: "CONTAINER"; readonly container: ContainerVerdict }
+  | { readonly type: "LINK"; readonly link: LinkPhase }
+  /** A descriptor read outside this machine's own ops (the probe store). */
+  | { readonly type: "DESCRIPTOR"; readonly descriptor: DescriptorFacts }
+  | {
+      readonly type: "DESCRIPTOR_READ";
+      readonly attempt: number;
+      readonly result:
+        | { readonly ok: true; readonly descriptor: DescriptorFacts }
+        | { readonly ok: false };
+    }
+  | {
+      readonly type: "EXCHANGE_SUCCEEDED";
+      readonly attempt: number;
+      readonly environmentId: EnvironmentId;
+      readonly descriptor: DescriptorFacts | null;
+    }
+  | {
+      readonly type: "EXCHANGE_FAILED";
+      readonly attempt: number;
+      readonly failure: ExchangeFailure;
+      readonly descriptor: DescriptorFacts | null;
+    }
+  /** The held credential is registered or rotated in. */
+  | { readonly type: "INSTALLED"; readonly environmentId: EnvironmentId }
+  /** The held credential could not be installed: nothing was registered or rotated for it. */
+  | { readonly type: "INSTALL_FAILED"; readonly environmentId: EnvironmentId }
+  | { readonly type: "ROLE_CHANGED" }
+  | { readonly type: "TICK" }
+  /** §6.4's coalesced wake: a visible one resets the ladder and retries now. */
+  | { readonly type: "WAKE"; readonly visible: boolean }
+  | { readonly type: "ONLINE" }
+  | { readonly type: "USER_RETRY" }
+  | { readonly type: "USER_REMOVE" };
+
+export type EnvironmentOp =
+  | {
+      readonly kind: "exchange";
+      readonly origin: string;
+      /** The remembered environment the exchange expects; null without a record. */
+      readonly expected: EnvironmentId | null;
+    }
+  | { readonly kind: "read-descriptor"; readonly origin: string }
+  /** The supervisor's `retryNow`: a link in backoff tries again at once. */
+  | { readonly kind: "retry-link"; readonly environmentId: EnvironmentId }
+  /** `catalog.remove`, the door's logout and the record's deletion; drafts keep their keys. */
+  | { readonly kind: "retire"; readonly environmentId: EnvironmentId | null };
+
+export type EnvironmentDiagnostic =
+  | { readonly kind: "stale-result"; readonly attempt: number }
+  | { readonly kind: "auth-loop"; readonly rejections: number }
+  | { readonly kind: "configuration-loop"; readonly blocks: number };
+
+export const ENVIRONMENT_TIMER_KEY = "environment";
+
+export type EnvironmentEffect =
+  | { readonly kind: "run"; readonly attempt: number; readonly op: EnvironmentOp }
+  | {
+      readonly kind: "schedule";
+      readonly key: typeof ENVIRONMENT_TIMER_KEY;
+      readonly at: Instant;
+      readonly event: { readonly type: "TICK" };
+    }
+  | { readonly kind: "cancel"; readonly key: typeof ENVIRONMENT_TIMER_KEY }
+  | { readonly kind: "log"; readonly diagnostic: EnvironmentDiagnostic };
+
+export interface EnvironmentContext {
+  readonly now: Instant;
+  /** The jitter source for the backoff ladder. */
+  readonly random: () => number;
+}
+
+/** From the moment the capability is allowed: descriptor, mint, door and token exchange (§4.4). */
+export const EXCHANGE_DEADLINE_MS = 20_000;
+/** One descriptor probe (§4.5's pool deadline). */
+export const DESCRIPTOR_DEADLINE_MS = 8_000;
+/** After this many consecutive automatic failures, retries slow to `CAPPED_RETRY_MS`. */
+export const RETRY_CAP = 5;
+export const CAPPED_RETRY_MS = 5 * 60_000;
+/** This many auth rejections inside `AUTH_LOOP_WINDOW_MS` refuse instead of re-exchanging. */
+export const AUTH_LOOP_REJECTIONS = 3;
+export const AUTH_LOOP_WINDOW_MS = 2 * 60_000;
+/** This many unexplained configuration blocks in a row refuse instead of re-exchanging. */
+export const CONFIGURATION_LOOP_BLOCKS = 3;
+/** Identity `failed` backs off from the 15 s rung (§4.4). */
+const IDENTITY_FAILED_RUNG = 3;
+
+const NO_IDENTITY_FAILURES: EnvironmentMachine["identityFailures"] = {
+  reads: 0,
+  lastCheckedAt: null,
+};
+
+export const initialEnvironment = (input: {
+  readonly record: EnvironmentId | null;
+}): EnvironmentMachine => ({
+  presence: { kind: "unknown" },
+  credential: { kind: "none", reconnect: false },
+  link: { phase: "idle" },
+  linkLostAt: null,
+  container: { level: "unknown" },
+  guards: IDLE_GUARDS,
+  record: input.record,
+  descriptor: null,
+  superseded: new Map(),
+  ladder: INITIAL_BACKOFF,
+  failures: 0,
+  failuresSinceConnect: 0,
+  errorsSinceConnect: 0,
+  readySeen: false,
+  authRejections: [],
+  permissionRetried: false,
+  configurationBlocks: 0,
+  identityAnswered: false,
+  identityFailures: NO_IDENTITY_FAILURES,
+  nextAttempt: 1,
+  probing: null,
+  timer: null,
+});
+
+// ── Guards ────────────────────────────────────────────────────────────────────────────────────
+
+const after = (instant: Instant, ms: number): Instant => ({
+  wall: instant.wall + ms,
+  mono: instant.mono + ms,
+});
+
+/** True once either clock has passed `at`. */
+const reached = (at: Instant, now: Instant): boolean => now.wall >= at.wall || now.mono >= at.mono;
+
+/** Container levels an exchange waits out; `ready` and `unknown` let it run. */
+const containerHolds = (machine: EnvironmentMachine): boolean =>
+  machine.link.phase !== "connected" &&
+  machine.container.level !== "ready" &&
+  machine.container.level !== "unknown";
+
+/** Where the Mate is reached: the origin the inventory lists, or the one its record kept. */
+const originOf = (presence: Presence): string | null =>
+  presence.kind === "present" || presence.kind === "remembered" ? presence.origin : null;
+
+/** A remembered Mate whose descriptor names another environment than its record's (A16). */
+const rememberedElsewhere = (machine: EnvironmentMachine): boolean =>
+  machine.presence.kind === "remembered" &&
+  machine.descriptor !== null &&
+  machine.descriptor.environmentId !== machine.record;
+
+type Verdict =
+  | { readonly kind: "idle" }
+  | { readonly kind: "wait"; readonly on: WaitingOn }
+  | { readonly kind: "refuse"; readonly reason: RefusalReason }
+  /** `probe`: the descriptor is read first, and the exchange runs only if it names the record. */
+  | { readonly kind: "go"; readonly origin: string; readonly probe: boolean };
+
+/** WANT ∧ CAN, in the order §4.4 lists CAN's conjuncts. */
+const gate = (machine: EnvironmentMachine): Verdict => {
+  const guards = machine.guards;
+  if (!guards.want) return { kind: "idle" };
+  if (!guards.verified) return { kind: "wait", on: "access" };
+  const origin = originOf(machine.presence);
+  if (origin === null || rememberedElsewhere(machine)) return { kind: "wait", on: "presence" };
+  if (containerHolds(machine)) return { kind: "wait", on: "container" };
+  if (guards.zeropsState === "unavailable" && !machine.identityAnswered)
+    return { kind: "wait", on: "zerops" };
+  if (!guards.visible && !guards.routeTarget) return { kind: "wait", on: "visible" };
+  if (!guards.budget) return { kind: "wait", on: "budget" };
+  return { kind: "go", origin, probe: machine.presence.kind === "remembered" };
+};
+
+type Effects = Array<EnvironmentEffect>;
+
+const reconnecting = (credential: Credential): boolean =>
+  (credential.kind === "none" ||
+    credential.kind === "waiting" ||
+    credential.kind === "exchanging" ||
+    credential.kind === "backoff") &&
+  credential.reconnect;
+
+/** Moves an idle or waiting credential to where its guards put it now. */
+const evaluate = (
+  machine: EnvironmentMachine,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  if (credential.kind !== "none" && credential.kind !== "waiting") return machine;
+  const reconnect = reconnecting(credential);
+  const verdict = gate(machine);
+  switch (verdict.kind) {
+    case "idle":
+      return { ...machine, credential: { kind: "none", reconnect } };
+    case "wait":
+      return { ...machine, credential: { kind: "waiting", on: verdict.on, reconnect } };
+    case "refuse":
+      return { ...machine, credential: { kind: "refused", reason: verdict.reason } };
+    case "go": {
+      const attempt = machine.nextAttempt;
+      out.push({
+        kind: "run",
+        attempt,
+        op: verdict.probe
+          ? { kind: "read-descriptor", origin: verdict.origin }
+          : { kind: "exchange", origin: verdict.origin, expected: machine.record },
+      });
+      return {
+        ...machine,
+        nextAttempt: attempt + 1,
+        probing: verdict.probe ? { attempt, origin: verdict.origin } : machine.probing,
+        credential: {
+          kind: "exchanging",
+          attempt,
+          deadline: after(ctx.now, EXCHANGE_DEADLINE_MS),
+          reconnect,
+        },
+      };
+    }
+  }
+};
+
+/** A backoff the trigger releases returns to `none`, which the guards judge next. */
+const release = (machine: EnvironmentMachine, trigger: RetryTrigger): EnvironmentMachine => {
+  const ladder = backoffOn(machine.ladder, trigger);
+  const credential = machine.credential;
+  return credential.kind === "backoff"
+    ? { ...machine, ladder, credential: { kind: "none", reconnect: credential.reconnect } }
+    : { ...machine, ladder };
+};
+
+/**
+ * A user retry or an input change: the ladder, the cap and the permission retry start over, a
+ * refusal re-evaluates.
+ */
+const inputChanged = (
+  machine: EnvironmentMachine,
+  trigger: "user-retry" | "input-change",
+): EnvironmentMachine => {
+  const reset = { ...machine, failures: 0, permissionRetried: false, configurationBlocks: 0 };
+  return machine.credential.kind === "refused"
+    ? { ...reset, ladder: INITIAL_BACKOFF, credential: { kind: "none", reconnect: false } }
+    : release(reset, trigger);
+};
+
+// ── Failures ──────────────────────────────────────────────────────────────────────────────────
+
+/** The failures that say a Mate's server did not answer at all, as one still starting fails. */
+export const NOT_ANSWERING_CAUSES: ReadonlySet<ExchangeCause["kind"]> = new Set([
+  "network",
+  "timeout",
+  "descriptor-unreachable",
+]);
+
+const backoff = (
+  machine: EnvironmentMachine,
+  cause: ExchangeCause,
+  reconnect: boolean,
+  ctx: EnvironmentContext,
+): EnvironmentMachine => {
+  const failures = machine.failures + 1;
+  const from: Backoff =
+    cause.kind === "identity-failed"
+      ? { rung: Math.max(machine.ladder.rung, IDENTITY_FAILED_RUNG) }
+      : machine.ladder;
+  const next = scheduleRetry(from, ctx.now.wall, ctx.random);
+  // The cap spares a Mate nobody is looking at; the route's own stays on the ladder, which its
+  // container coming back also cuts short (`bindContainerStore`).
+  const capped = failures >= RETRY_CAP && !machine.guards.routeTarget;
+  const delayMs = capped ? CAPPED_RETRY_MS : next.retryAtMs - ctx.now.wall;
+  return {
+    ...machine,
+    failures,
+    failuresSinceConnect: machine.failuresSinceConnect + 1,
+    errorsSinceConnect: machine.errorsSinceConnect + (NOT_ANSWERING_CAUSES.has(cause.kind) ? 0 : 1),
+    ladder: next.backoff,
+    credential: { kind: "backoff", retryAt: after(ctx.now, delayMs), last: cause, reconnect },
+  };
+};
+
+const refuse = (machine: EnvironmentMachine, reason: RefusalReason): EnvironmentMachine => ({
+  ...machine,
+  credential: { kind: "refused", reason },
+});
+
+// ── Descriptor ────────────────────────────────────────────────────────────────────────────────
+
+/** A change that re-opens a refusal or a backoff: a new environment or a new server version. */
+const descriptorMoved = (before: DescriptorFacts | null, after: DescriptorFacts): boolean =>
+  before !== null &&
+  (before.environmentId !== after.environmentId || before.serverVersion !== after.serverVersion);
+
+/** A failed identity counts once per check the Mate made; any other verdict ends the run. */
+const countIdentityFailure = (
+  failures: EnvironmentMachine["identityFailures"],
+  descriptor: DescriptorFacts,
+): EnvironmentMachine["identityFailures"] => {
+  if (descriptor.identity !== "failed") return NO_IDENTITY_FAILURES;
+  const checkedAt = descriptor.identityCheckedAt;
+  if (checkedAt === null) return failures;
+  if (failures.lastCheckedAt !== null && checkedAt <= failures.lastCheckedAt) return failures;
+  return {
+    reads: failures.reads + 1,
+    lastCheckedAt: checkedAt,
+  };
+};
+
+const ingestDescriptor = (
+  machine: EnvironmentMachine,
+  descriptor: DescriptorFacts,
+): EnvironmentMachine => ({
+  ...machine,
+  descriptor,
+  identityAnswered: machine.identityAnswered || descriptor.identity === "ok",
+  identityFailures: countIdentityFailure(machine.identityFailures, descriptor),
+});
+
+/** Two advancing identity failures while Zerops is answering identify the Mate's key as failed. */
+export const identityRestartOffered = (machine: EnvironmentMachine): boolean =>
+  machine.identityFailures.reads >= 2 &&
+  machine.guards.verified &&
+  machine.guards.zeropsState === "live";
+
+/** `from` was replaced by `to`: every id that pointed at `from` now points at `to`. */
+const supersede = (
+  superseded: ReadonlyMap<EnvironmentId, EnvironmentId>,
+  from: EnvironmentId,
+  to: EnvironmentId,
+): ReadonlyMap<EnvironmentId, EnvironmentId> => {
+  const next = new Map<EnvironmentId, EnvironmentId>();
+  for (const [old, by] of superseded) {
+    if (old !== to) next.set(old, by === from ? to : by);
+  }
+  next.set(from, to);
+  return next;
+};
+
+/**
+ * A remembered Mate's descriptor probe answered (A16); a presence that moves off the probed origin
+ * drops the probe before it answers. The exchange runs, inside the same attempt's deadline, when
+ * the guards still admit it: the Mate at the recorded origin is the one the record names, or the
+ * inventory listed the target there meanwhile. Otherwise the guards judge it again, and a Mate
+ * that serves another environment waits for its project's services.
+ */
+const probed = (
+  machine: EnvironmentMachine,
+  credential: Extract<Credential, { readonly kind: "exchanging" }>,
+  result: Extract<EnvironmentEvent, { readonly type: "DESCRIPTOR_READ" }>["result"],
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  if (!result.ok) {
+    return backoff(machine, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+  }
+  const next = ingestDescriptor(machine, result.descriptor);
+  const verdict = gate(next);
+  if (verdict.kind !== "go") {
+    return { ...next, credential: { kind: "none", reconnect: credential.reconnect } };
+  }
+  const attempt = next.nextAttempt;
+  out.push({
+    kind: "run",
+    attempt,
+    op: { kind: "exchange", origin: verdict.origin, expected: next.record },
+  });
+  return { ...next, nextAttempt: attempt + 1, credential: { ...credential, attempt } };
+};
+
+// ── Link ──────────────────────────────────────────────────────────────────────────────────────
+
+const onBlocked = (
+  machine: EnvironmentMachine,
+  block: Extract<LinkPhase, { phase: "blocked" }>,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  // A block while nothing is held belongs to the credential already being replaced.
+  if (credential.kind !== "held" || credential.rereading !== null) return machine;
+  switch (block.reason) {
+    case "authentication": {
+      const authRejections = [
+        ...machine.authRejections.filter((at) => ctx.now.mono - at < AUTH_LOOP_WINDOW_MS),
+        ctx.now.mono,
+      ];
+      const next = { ...machine, authRejections };
+      if (authRejections.length >= AUTH_LOOP_REJECTIONS) {
+        out.push({
+          kind: "log",
+          diagnostic: { kind: "auth-loop", rejections: authRejections.length },
+        });
+        return refuse(next, { kind: "credential" });
+      }
+      // A reconnect only once a link was lost; a first link blocked is still a first connect.
+      return { ...next, credential: { kind: "none", reconnect: next.linkLostAt !== null } };
+    }
+    case "configuration":
+    case "unsupported":
+      // `judgeDescriptorBlock` answers these, now or once their facts can be read.
+      return machine;
+    case "permission":
+    case "read-only":
+    case "not-found":
+      if (block.chiefOwnerName !== undefined)
+        return refuse(machine, { kind: "role", chiefOwnerName: block.chiefOwnerName });
+      if (machine.permissionRetried)
+        return refuse(machine, { kind: block.reason === "not-found" ? "not-found" : "role" });
+      return {
+        ...machine,
+        permissionRetried: true,
+        credential: { kind: "none", reconnect: machine.linkLostAt !== null },
+      };
+  }
+};
+
+/**
+ * A held credential behind a block the descriptor answers: `unsupported` with a descriptor is a
+ * version refusal; otherwise the descriptor is re-read as soon as the Mate has an origin, whichever
+ * of the block, the presence and a probe's descriptor arrived last.
+ */
+const judgeDescriptorBlock = (
+  machine: EnvironmentMachine,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  const link = machine.link;
+  if (
+    !machine.guards.want ||
+    credential.kind !== "held" ||
+    credential.staleBlock ||
+    credential.rereading !== null ||
+    link.phase !== "blocked"
+  ) {
+    return machine;
+  }
+  const block = link.reason;
+  if (block !== "configuration" && block !== "unsupported") return machine;
+  if (block === "unsupported" && machine.descriptor !== null) {
+    return refuse(machine, { kind: "version" });
+  }
+  const origin = originOf(machine.presence);
+  if (origin === null) return machine;
+  const attempt = machine.nextAttempt;
+  out.push({
+    kind: "run",
+    attempt,
+    op: { kind: "read-descriptor", origin },
+  });
+  return {
+    ...machine,
+    nextAttempt: attempt + 1,
+    credential: {
+      ...credential,
+      rereading: { attempt, deadline: after(ctx.now, DESCRIPTOR_DEADLINE_MS), block },
+    },
+  };
+};
+
+const onLink = (
+  machine: EnvironmentMachine,
+  phase: LinkPhase,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  if (phase.phase === "connected" && machine.link.phase === "connected") return machine;
+  // Whatever the link says now, it says it about the credential held now.
+  const credential =
+    machine.credential.kind === "held"
+      ? { ...machine.credential, staleBlock: false }
+      : machine.credential;
+  if (phase.phase === "connected") {
+    const next: EnvironmentMachine = {
+      ...machine,
+      link: { phase: "connected", since: ctx.now },
+      linkLostAt: null,
+      credential,
+      permissionRetried: false,
+      configurationBlocks: 0,
+    };
+    // A live socket proves the container is up: a wait on it ends.
+    return next.credential.kind === "held"
+      ? {
+          ...next,
+          failures: 0,
+          failuresSinceConnect: 0,
+          errorsSinceConnect: 0,
+          ladder: INITIAL_BACKOFF,
+        }
+      : next;
+  }
+  // A park closes the link on purpose: only a link lost while the registry holds it open drops. A
+  // restart the platform reports on a drop (the service RESTARTING) reaches the inventory by itself,
+  // in the organization's live services listing.
+  const dropped = machine.link.phase === "connected" && phase.phase !== "idle";
+  const next: EnvironmentMachine = {
+    ...machine,
+    link: phase,
+    linkLostAt: dropped ? ctx.now : machine.linkLostAt,
+    credential,
+  };
+  return phase.phase === "blocked" ? onBlocked(next, phase, ctx, out) : next;
+};
+
+// ── Transition ────────────────────────────────────────────────────────────────────────────────
+
+const sameJson = (left: unknown, right: unknown): boolean =>
+  JSON.stringify(left) === JSON.stringify(right);
+
+/** An in-flight op whose deadline passed failed; a due backoff goes back through the guards. */
+const settle = (machine: EnvironmentMachine, ctx: EnvironmentContext): EnvironmentMachine => {
+  const credential = machine.credential;
+  switch (credential.kind) {
+    case "exchanging":
+      return reached(credential.deadline, ctx.now)
+        ? backoff(machine, { kind: "timeout" }, credential.reconnect, ctx)
+        : machine;
+    case "held":
+      return credential.rereading !== null && reached(credential.rereading.deadline, ctx.now)
+        ? backoff(machine, { kind: "descriptor-unreachable" }, true, ctx)
+        : machine;
+    case "backoff":
+      return reached(credential.retryAt, ctx.now) ? release(machine, "retry-at-reached") : machine;
+    case "none":
+    case "waiting":
+    case "refused":
+    case "retired":
+      return machine;
+  }
+};
+
+const stale = (machine: EnvironmentMachine, attempt: number, out: Effects): EnvironmentMachine => {
+  out.push({ kind: "log", diagnostic: { kind: "stale-result", attempt } });
+  return machine;
+};
+
+const apply = (
+  machine: EnvironmentMachine,
+  event: EnvironmentEvent,
+  ctx: EnvironmentContext,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  switch (event.type) {
+    case "GUARDS": {
+      const before = machine.guards;
+      const next: EnvironmentMachine = {
+        ...machine,
+        guards: event.guards,
+        identityAnswered:
+          event.guards.zeropsState === "unavailable" && before.zeropsState !== "unavailable"
+            ? false
+            : machine.identityAnswered,
+      };
+      // With no connection demand, abandon pending work but keep an installed credential.
+      // The driver aborts the old attempt once it is no longer tracked by the machine.
+      if (!event.guards.want) {
+        if (credential.kind === "held")
+          return { ...next, credential: { ...credential, rereading: null } };
+        if (credential.kind === "exchanging" || credential.kind === "backoff")
+          return {
+            ...next,
+            probing: null,
+            credential: { kind: "none", reconnect: credential.reconnect },
+          };
+      }
+      // A Mate the cap put five minutes out that becomes the route is tried now: the cap spares
+      // only the Mates nobody is looking at.
+      if (
+        event.guards.routeTarget &&
+        !before.routeTarget &&
+        credential.kind === "backoff" &&
+        machine.failures >= RETRY_CAP
+      ) {
+        return release(next, "prerequisite-arrived");
+      }
+      return next;
+    }
+    case "PRESENCE": {
+      if (sameJson(machine.presence, event.presence)) return machine;
+      if (event.presence.kind === "gone") {
+        return retire({ ...machine, presence: event.presence }, event.presence.evidence, out);
+      }
+      const next: EnvironmentMachine = { ...machine, presence: event.presence };
+      // A probe of the origin the presence moved from says nothing of the Mate: its answer is not
+      // waited for, and the guards judge the new presence now.
+      if (
+        credential.kind === "exchanging" &&
+        machine.probing?.attempt === credential.attempt &&
+        originOf(event.presence) !== machine.probing.origin
+      ) {
+        return inputChanged(
+          { ...next, credential: { kind: "none", reconnect: credential.reconnect } },
+          "input-change",
+        );
+      }
+      return inputChanged(next, "input-change");
+    }
+    case "CONTAINER": {
+      if (sameJson(machine.container, event.container)) return machine;
+      const next: EnvironmentMachine = { ...machine, container: event.container };
+      if (event.container.level !== "ready") return next;
+      // Container ready kicks a link in backoff.
+      if (credential.kind === "held" && machine.link.phase === "backoff") {
+        out.push({
+          kind: "run",
+          attempt: next.nextAttempt,
+          op: { kind: "retry-link", environmentId: credential.environmentId },
+        });
+        return { ...next, nextAttempt: next.nextAttempt + 1 };
+      }
+      return release(next, "prerequisite-arrived");
+    }
+    case "LINK":
+      return onLink(machine, event.link, ctx, out);
+    case "DESCRIPTOR": {
+      const moved = descriptorMoved(machine.descriptor, event.descriptor);
+      const next = ingestDescriptor(machine, event.descriptor);
+      return moved ? inputChanged(next, "input-change") : next;
+    }
+    case "DESCRIPTOR_READ": {
+      if (
+        credential.kind === "exchanging" &&
+        credential.attempt === event.attempt &&
+        machine.probing?.attempt === event.attempt
+      ) {
+        return probed(machine, credential, event.result, ctx, out);
+      }
+      if (credential.kind !== "held" || credential.rereading?.attempt !== event.attempt) {
+        return stale(machine, event.attempt, out);
+      }
+      if (!event.result.ok) {
+        return backoff(machine, { kind: "descriptor-unreachable" }, true, ctx);
+      }
+      const read = event.result.descriptor;
+      const next = ingestDescriptor(machine, read);
+      if (read.environmentId !== credential.environmentId) {
+        return {
+          ...next,
+          superseded: supersede(next.superseded, credential.environmentId, read.environmentId),
+          credential: { kind: "none", reconnect: false },
+        };
+      }
+      if (credential.rereading.block === "unsupported") return refuse(next, { kind: "version" });
+      // The same environment behind a configuration block: another exchange may clear it, but a
+      // block that keeps coming back only spends throwaways.
+      const configurationBlocks = next.configurationBlocks + 1;
+      if (configurationBlocks >= CONFIGURATION_LOOP_BLOCKS) {
+        out.push({
+          kind: "log",
+          diagnostic: { kind: "configuration-loop", blocks: configurationBlocks },
+        });
+        return refuse({ ...next, configurationBlocks }, { kind: "configuration" });
+      }
+      return {
+        ...next,
+        configurationBlocks,
+        credential: { kind: "none", reconnect: next.linkLostAt !== null },
+      };
+    }
+    case "EXCHANGE_SUCCEEDED": {
+      if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {
+        return stale(machine, event.attempt, out);
+      }
+      const next =
+        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor);
+      const record = machine.record;
+      return {
+        ...next,
+        record: event.environmentId,
+        superseded:
+          record !== null && record !== event.environmentId
+            ? supersede(next.superseded, record, event.environmentId)
+            : next.superseded,
+        credential: {
+          kind: "held",
+          environmentId: event.environmentId,
+          installed: false,
+          staleBlock: machine.link.phase === "blocked",
+          rereading: null,
+        },
+      };
+    }
+    case "EXCHANGE_FAILED": {
+      if (credential.kind !== "exchanging" || credential.attempt !== event.attempt) {
+        return stale(machine, event.attempt, out);
+      }
+      const next =
+        event.descriptor === null ? machine : ingestDescriptor(machine, event.descriptor);
+      if (event.failure.class === "retryable") {
+        return backoff(next, event.failure.cause, credential.reconnect, ctx);
+      }
+      // A version is refused on the descriptor it was judged on; without one it is read again.
+      if (event.failure.reason.kind === "version" && next.descriptor === null) {
+        return backoff(next, { kind: "descriptor-unreachable" }, credential.reconnect, ctx);
+      }
+      return refuse(next, event.failure.reason);
+    }
+    case "INSTALLED":
+      if (
+        credential.kind !== "held" ||
+        credential.environmentId !== event.environmentId ||
+        credential.installed
+      ) {
+        return machine;
+      }
+      return {
+        ...machine,
+        failures: 0,
+        ladder: INITIAL_BACKOFF,
+        credential: { ...credential, installed: true },
+      };
+    case "INSTALL_FAILED":
+      if (
+        credential.kind !== "held" ||
+        credential.environmentId !== event.environmentId ||
+        credential.installed
+      ) {
+        return machine;
+      }
+      // A link already published means an earlier credential was installed: this was a reconnect.
+      return backoff(machine, { kind: "install" }, machine.link.phase !== "idle", ctx);
+    case "ROLE_CHANGED":
+      return inputChanged(machine, "input-change");
+    case "TICK":
+      return machine;
+    case "WAKE":
+      return event.visible ? release(machine, "visible-wake") : machine;
+    case "ONLINE":
+      return release(machine, "online");
+    case "USER_RETRY": {
+      if (credential.kind === "held" && machine.link.phase !== "connected") {
+        out.push({
+          kind: "run",
+          attempt: machine.nextAttempt,
+          op: { kind: "retry-link", environmentId: credential.environmentId },
+        });
+        return { ...machine, nextAttempt: machine.nextAttempt + 1 };
+      }
+      return inputChanged(machine, "user-retry");
+    }
+    case "USER_REMOVE":
+      return retire(machine, "removed-by-user", out);
+  }
+};
+
+const retire = (
+  machine: EnvironmentMachine,
+  evidence: AbsenceEvidence,
+  out: Effects,
+): EnvironmentMachine => {
+  const credential = machine.credential;
+  out.push({
+    kind: "run",
+    attempt: machine.nextAttempt,
+    op: {
+      kind: "retire",
+      environmentId: credential.kind === "held" ? credential.environmentId : machine.record,
+    },
+  });
+  return {
+    ...machine,
+    nextAttempt: machine.nextAttempt + 1,
+    credential: { kind: "retired", evidence },
+  };
+};
+
+/** The one instant the machine waits on: a deadline in flight or a backoff's retry. */
+const dueAt = (credential: Credential): Instant | null => {
+  switch (credential.kind) {
+    case "exchanging":
+      return credential.deadline;
+    case "backoff":
+      return credential.retryAt;
+    case "held":
+      return credential.rereading?.deadline ?? null;
+    case "none":
+    case "waiting":
+    case "refused":
+    case "retired":
+      return null;
+  }
+};
+
+const reschedule = (machine: EnvironmentMachine, out: Effects): EnvironmentMachine => {
+  const due = dueAt(machine.credential);
+  if (sameJson(due, machine.timer)) return machine;
+  if (due === null) {
+    out.push({ kind: "cancel", key: ENVIRONMENT_TIMER_KEY });
+  } else {
+    out.push({ kind: "schedule", key: ENVIRONMENT_TIMER_KEY, at: due, event: { type: "TICK" } });
+  }
+  return { ...machine, timer: due };
+};
+
+export const transitionEnvironment = (
+  machine: EnvironmentMachine,
+  event: EnvironmentEvent,
+  ctx: EnvironmentContext,
+): { readonly state: EnvironmentMachine; readonly effects: ReadonlyArray<EnvironmentEffect> } => {
+  const out: Effects = [];
+  if (machine.credential.kind === "retired") {
+    // An op's answer after retirement is never accepted: no credential is installed for it.
+    if ("attempt" in event) stale(machine, event.attempt, out);
+    return { state: machine, effects: out };
+  }
+  // The clocks first: an event is judged at the instant it is delivered.
+  let next = settle(machine, ctx);
+  next = apply(next, event, ctx, out);
+  next = settle(next, ctx);
+  next = judgeDescriptorBlock(next, ctx, out);
+  // Every input can move a guard: an idle or waiting credential is re-judged after each event.
+  next = evaluate(next, ctx, out);
+  next = reschedule(next, out);
+  if (!next.readySeen && next.container.level === "ready") next = { ...next, readySeen: true };
+  return { state: next, effects: out };
+};

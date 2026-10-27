@@ -1,0 +1,248 @@
+import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { mateImageSource } from "@t3tools/client-runtime/data";
+import { act } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create } from "react-test-renderer";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+const testState = vi.hoisted(() => ({
+  resources: [] as Array<unknown>,
+  assetState: "success" as "success" | "loading" | "failure",
+  dimensions: undefined as { width: number; height: number } | undefined,
+  url: "https://signed.test/workspace-image.svg",
+}));
+
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => null }));
+vi.mock("../assets/assetUrls", () => ({
+  useAssetUrlState: (_environmentId: unknown, resource: unknown) => {
+    testState.resources.push(resource);
+    if (testState.assetState === "loading") return { _tag: "Loading" };
+    if (testState.assetState === "failure") return { _tag: "Failure" };
+    return {
+      _tag: "Success",
+      url: testState.url,
+      ...(testState.dimensions === undefined ? {} : { imageDimensions: testState.dimensions }),
+    };
+  },
+}));
+vi.mock("../hooks/useTheme", () => ({ useTheme: () => ({ resolvedTheme: "dark" }) }));
+vi.mock("../state/use-atom-query-runner", () => ({ useAtomQueryRunner: () => vi.fn() }));
+vi.mock("../state/use-atom-command", () => ({ useAtomCommand: () => vi.fn() }));
+vi.mock("../state/session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../state/session")>()),
+  usePreparedConnection: () => ({ _tag: "Loading" }),
+}));
+vi.mock("../state/entities", () => ({
+  readThreadShell: () => null,
+  useProjects: () => [],
+}));
+vi.mock("../remoteOpen", () => ({
+  useRemoteOpenResolution: () => ({ state: { mode: "local-exec" }, isResolved: true }),
+}));
+vi.mock("../editorPreferences", () => ({
+  useOpenInPreferredEditor: () => vi.fn(),
+  usePreferredEditor: () => [null, vi.fn()],
+}));
+vi.mock("~/lib/openPullRequestLink", () => ({
+  findProjectForChangeRequest: () => undefined,
+  matchesLinkedPullRequestUrl: () => false,
+  parseChangeRequestUrl: () => null,
+  useOpenChangeRequestLink: () => vi.fn(),
+}));
+
+import ChatMarkdown from "./ChatMarkdown";
+
+const threadRef = {
+  environmentId: EnvironmentId.make("env-windows"),
+  threadId: ThreadId.make("thread-windows"),
+};
+
+function render(markdown: string): string {
+  return renderToStaticMarkup(
+    <ChatMarkdown cwd={"C:\\Users\\shawn\\project"} threadRef={threadRef} text={markdown} />,
+  );
+}
+
+function renderWithoutThread(markdown: string): string {
+  return renderToStaticMarkup(<ChatMarkdown cwd={"C:\\Users\\shawn\\project"} text={markdown} />);
+}
+
+describe("ChatMarkdown workspace images", () => {
+  beforeEach(() => {
+    testState.resources = [];
+    testState.assetState = "success";
+    testState.url = "https://signed.test/workspace-image.svg";
+  });
+
+  it("loads every Windows workspace path form through a signed asset URL", () => {
+    const imagePath = "C:/Users/shawn/project/.t3/workspace-image.svg";
+    const html = render(
+      [
+        "![relative](.t3/workspace-image.svg)",
+        `![absolute](${imagePath})`,
+        `![file URL](file:///${imagePath})`,
+        "![UNC file URL](file://server/share/workspace-image.svg)",
+      ].join("\n\n"),
+    );
+
+    expect(testState.resources).toEqual([
+      {
+        _tag: "workspace-file",
+        threadId: threadRef.threadId,
+        path: "C:\\Users\\shawn\\project\\.t3\\workspace-image.svg",
+      },
+      { _tag: "workspace-file", threadId: threadRef.threadId, path: imagePath },
+      { _tag: "workspace-file", threadId: threadRef.threadId, path: imagePath },
+      {
+        _tag: "workspace-file",
+        threadId: threadRef.threadId,
+        path: "\\\\server\\share\\workspace-image.svg",
+      },
+    ]);
+    expect(
+      html.match(/<img\b[^>]*\bsrc="https:\/\/signed\.test\/workspace-image\.svg"/g),
+    ).toHaveLength(4);
+    expect(html).not.toContain("Image unavailable");
+  });
+
+  it("normalizes a drive-absolute src in raw image HTML", () => {
+    const html = render(String.raw`<img src="D:\screens\workspace-image.svg" alt="raw">`);
+
+    expect(testState.resources).toEqual([
+      {
+        _tag: "workspace-file",
+        threadId: threadRef.threadId,
+        path: "D:/screens/workspace-image.svg",
+      },
+    ]);
+    expect(html).toContain("https://signed.test/workspace-image.svg");
+  });
+
+  it("uses a static placeholder while a signed asset URL loads", () => {
+    testState.assetState = "loading";
+
+    const html = render("![loading](.t3/workspace-image.svg)");
+
+    expect(html).toContain('aria-label="Loading image"');
+  });
+
+  it("never passes a workspace source to a raw image when thread context is unavailable", () => {
+    const html = renderWithoutThread(
+      "![file URL](file:///C:/Users/shawn/project/workspace-image.svg)",
+    );
+
+    expect(testState.resources).toEqual([]);
+    expect(html).toContain("Image unavailable");
+    expect(html).not.toContain("file://");
+  });
+
+  it("blocks unsupported image schemes instead of passing them to a raw image", () => {
+    const html = render("![unsupported](content://media/image/1)");
+
+    expect(testState.resources).toEqual([]);
+    expect(html).toContain("Image unavailable");
+    expect(html).not.toContain("content://");
+  });
+
+  it("keeps remote images directly loadable", () => {
+    const html = render("![remote](https://example.com/image.png)");
+
+    expect(testState.resources).toEqual([]);
+    expect(html).toContain('src="https://example.com/image.png"');
+    expect(html).not.toContain("Image unavailable");
+  });
+
+  it.each(["loaded", "unloaded"])(
+    "opens a Markdown gallery by occurrence even when its preview is %s",
+    (status) => {
+      (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+      const source = mateImageSource({
+        environmentId: threadRef.environmentId,
+        resource: {
+          _tag: "workspace-file",
+          threadId: threadRef.threadId,
+          path: "mate-asset:aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+        },
+      });
+      const image = {
+        currentSrc: status === "loaded" ? "blob:preview" : "",
+        src: "blob:preview",
+        dataset: { imageSrc: source },
+        alt: "original",
+      };
+      const external = {
+        currentSrc: "https://example.org/other.png",
+        src: "https://example.org/other.png",
+        dataset: {},
+        alt: "other",
+      };
+      const open = vi.fn();
+      testState.url = "https://signed.test/workspace-image.svg";
+      let renderer!: ReturnType<typeof create>;
+      act(() => {
+        renderer = create(
+          <ChatMarkdown
+            cwd="/workspace"
+            threadRef={threadRef}
+            text="![original](shot.png)"
+            onOpenImage={open}
+          />,
+        );
+      });
+      act(() =>
+        renderer.root.findByProps({ "data-markdown-image-opener": true }).props.onClick({
+          currentTarget: {
+            querySelector: () => image,
+            closest: () => ({ querySelectorAll: () => [image, external] }),
+          },
+        }),
+      );
+      expect(open).toHaveBeenCalledWith({
+        index: 0,
+        images: [
+          { src: source, name: "original" },
+          { src: external.src, name: "other" },
+        ],
+      });
+      act(() => renderer.unmount());
+    },
+  );
+});
+
+describe("a picture's room before it loads", () => {
+  beforeEach(() => {
+    testState.assetState = "success";
+    testState.dimensions = undefined;
+  });
+
+  // The server reads a workspace picture's size from its header as it signs
+  // its address: the picture stands in its own box before a byte has come,
+  // and loading it moves nothing (the owner, 2026-10-05: "it shifts layout,
+  // because it only gets its size after its loaded").
+  it("stands at the size its Mate read from the file before a byte has come", () => {
+    testState.dimensions = { width: 1200, height: 800 };
+    const html = render("![shop](.t3/storefront-home.png)");
+    expect(html).toMatch(/<img[^>]*height="800"/);
+    expect(html).toMatch(/<img[^>]*width="1200"/);
+  });
+
+  it("holds its own shape from its first frame once it has been seen", () => {
+    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+    const markdown = "![seen](https://example.com/seen-before.png)";
+    let renderer: ReturnType<typeof create> | undefined;
+    act(() => {
+      renderer = create(<ChatMarkdown cwd="/srv/app" threadRef={threadRef} text={markdown} />);
+    });
+    const image = renderer!.root.find(
+      (node) => node.type === "img" && node.props["data-markdown-image"] !== undefined,
+    );
+    act(() => {
+      image.props.onLoad({ currentTarget: { naturalWidth: 800, naturalHeight: 600 } });
+    });
+    act(() => renderer!.unmount());
+
+    const html = render(markdown);
+    expect(html).toMatch(/<img[^>]*height="600"/);
+    expect(html).toMatch(/<img[^>]*width="800"/);
+  });
+});

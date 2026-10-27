@@ -1,0 +1,1569 @@
+import { MateOverview } from "@t3tools/shared/mateLink";
+import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
+import {
+  ConversationRow,
+  EnvironmentId,
+  ProjectId,
+  ProviderInstanceId,
+  ThreadId,
+  TurnId,
+  type ThreadLiveStep,
+} from "@t3tools/contracts";
+import { MateLiveView } from "@t3tools/shared/hqMates";
+import { SECRET_MASK } from "@t3tools/shared/messagePreview";
+import * as Schema from "effect/Schema";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+
+import {
+  agentActivityAt,
+  agentActivityAwaitsWords,
+  agentActivityErrorLine,
+  agentActivitySnippet,
+  agentActivitySubject,
+  deriveZeropsAgentActivity,
+  listedMateFace,
+  mateFaceFor,
+  mateFaceOf,
+  mateReviewCount,
+  mateReviewWaits,
+  overviewAgentActivity,
+  restingActivity,
+  rowAgentActivity,
+  threadAgentActivity,
+} from "./agentActivity";
+
+const FEN = EnvironmentId.make("env-fen");
+const OTTO = EnvironmentId.make("env-otto");
+
+function shell(overrides: Partial<EnvironmentThreadShell> = {}): EnvironmentThreadShell {
+  return {
+    id: ThreadId.make("thread-1"),
+    environmentId: FEN,
+    projectId: ProjectId.make("project-1"),
+    title: "Add the login page",
+    modelSelection: { instanceId: ProviderInstanceId.make("codex"), model: "gpt-5.4" },
+    runtimeMode: "full-access",
+    interactionMode: "default",
+    branch: null,
+    worktreePath: null,
+    latestTurn: null,
+    createdAt: "2026-09-05T10:00:00.000Z",
+    updatedAt: "2026-09-05T10:00:00.000Z",
+    archivedAt: null,
+    settledOverride: null,
+    settledAt: null,
+    session: null,
+    latestUserMessageAt: "2026-09-05T10:00:00.000Z",
+    hasPendingApprovals: false,
+    hasPendingUserInput: false,
+    hasActionableProposedPlan: false,
+    ...overrides,
+  };
+}
+
+const RUNNING = shell({
+  latestTurn: {
+    turnId: TurnId.make("turn-1"),
+    state: "running",
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:00.000Z",
+    completedAt: null,
+    assistantMessageId: null,
+  },
+});
+
+// One rule for "its change waits for your review" wherever a Mate's face is drawn: the composer's
+// top's (`mateNextStep`), on a flow HQ answered.
+describe("mateReviewWaits — a Mate's own change waits for the person's review", () => {
+  const pull = (overrides: Partial<FlowPullRequest> = {}): FlowPullRequest =>
+    ({
+      repository: "appdev",
+      number: 2,
+      title: "Add a page",
+      kind: "code",
+      mateProjectId: "nova",
+      mergeability: "mergeable",
+      merged: false,
+      ...overrides,
+    }) as FlowPullRequest;
+  it.each([
+    { case: "its change merges", flow: { pullRequests: [pull()] }, waits: true },
+    { case: "the flow unread", flow: undefined, waits: false },
+    {
+      case: "HQ not answered yet",
+      flow: { pullRequests: [pull()], changesKnown: false },
+      waits: false,
+    },
+    {
+      case: "another Mate's change",
+      flow: { pullRequests: [pull({ mateProjectId: "kai" })] },
+      waits: false,
+    },
+    {
+      case: "still being checked: it waits on HQ",
+      flow: { pullRequests: [pull({ mergeability: "checking" })] },
+      waits: false,
+    },
+    {
+      case: "a recipe change is the project's",
+      flow: { pullRequests: [pull({ kind: "recipe" })] },
+      waits: false,
+    },
+  ])("$case", ({ flow, waits }) => {
+    expect(mateReviewWaits(flow, "nova")).toBe(waits);
+  });
+
+  it.each([
+    { case: "none", pulls: [], count: 0 },
+    { case: "one", pulls: [pull()], count: 1 },
+    {
+      case: "one per task, several at once",
+      pulls: [pull(), pull({ number: 3 }), pull({ number: 4, repository: "apidev" })],
+      count: 3,
+    },
+    {
+      case: "only its own that merge",
+      pulls: [
+        pull(),
+        pull({ number: 3, mateProjectId: "kai" }),
+        pull({ number: 4, mergeability: "checking" }),
+      ],
+      count: 1,
+    },
+    // r3: "3 changes in review" where one of them was still being written.
+    {
+      case: "none still being written",
+      pulls: [pull(), pull({ number: 3, ready: false }), pull({ number: 4, ready: true })],
+      count: 2,
+    },
+  ])("counts a Mate's own changes waiting for the person's review: $case", ({ pulls, count }) => {
+    expect(mateReviewCount({ pullRequests: pulls }, "nova")).toBe(count);
+  });
+});
+
+// Run 2: for a Guest, whose tab opens no socket to a Mate, its menu row and its card wore open eyes
+// and its changes' rows sleepy ones, at the same moment.
+describe("listedMateFace — one face for a Mate on every surface that lists it", () => {
+  it.each([
+    { case: "its container runs, no socket open", group: "ready", online: false, face: "idle" },
+    { case: "HQ holds its link open", group: "unavailable", online: true, face: "idle" },
+    { case: "neither", group: "unavailable", online: false, face: "sleep" },
+  ] as const)("A Mate wears the face its menu row wears: $case", ({ group, online, face }) => {
+    expect(
+      listedMateFace({
+        candidate: { group, project: { id: "nova" } },
+        hqMates: new Map([["nova", { presence: { online } as MateLiveView["presence"] }]]),
+        activity: undefined,
+        reviewWaits: false,
+        mine: false,
+        pose: undefined,
+      }),
+    ).toBe(face);
+  });
+});
+
+describe("mateFaceOf — the face a Mate wears wherever it is drawn", () => {
+  it.each([
+    { case: "asking, no review", connected: true, face: "needs", review: false, shown: "needs" },
+    {
+      case: "at rest, its review waits",
+      connected: true,
+      face: "idle",
+      review: true,
+      shown: "needs",
+    },
+    {
+      case: "at work, its review waits: the work shows",
+      connected: true,
+      face: "working",
+      review: true,
+      shown: "working",
+    },
+    {
+      case: "not connected, its review waits",
+      connected: false,
+      face: undefined,
+      review: true,
+      shown: "needs",
+    },
+    {
+      case: "not connected, nothing waits",
+      connected: false,
+      face: undefined,
+      review: false,
+      shown: "sleep",
+    },
+    {
+      case: "not connected, HQ's live word says it asks",
+      connected: false,
+      face: "needs",
+      review: false,
+      shown: "needs",
+    },
+    {
+      case: "not connected, only a word at rest",
+      connected: false,
+      face: "needs",
+      atRest: true,
+      review: false,
+      shown: "sleep",
+    },
+    {
+      case: "connected, only a word at rest",
+      connected: true,
+      face: "working",
+      atRest: true,
+      review: false,
+      shown: "idle",
+    },
+  ] as const)("$case", (row) => {
+    const { connected, face, review, shown } = row;
+    const atRest = "atRest" in row ? { remembered: true as const } : {};
+    expect(
+      mateFaceOf({
+        connected,
+        activity: face === undefined ? undefined : { face, ...atRest },
+        reviewWaits: review,
+        mine: true,
+        pose: undefined,
+      }),
+    ).toBe(shown);
+  });
+
+  // Waiting on you is claimed only by your own Mate — the one HQ says waits on you, you signed it
+  // in (the owner, 2026-09-30: "sana doesn't wait for me, it waits for karlos"). Another's Mate waits on its
+  // owner: it wears no needs face here, though its change can still be reviewed and merged.
+  describe("waits on you only when it is yours", () => {
+    it.each([
+      {
+        case: "own Mate, its change waits",
+        mine: true,
+        face: "idle",
+        review: true,
+        shown: "needs",
+      },
+      {
+        case: "another's Mate, its change waits",
+        mine: false,
+        face: "idle",
+        review: true,
+        shown: "idle",
+      },
+      {
+        case: "own Mate, its question waits",
+        mine: true,
+        face: "needs",
+        review: false,
+        shown: "needs",
+      },
+      {
+        case: "another's Mate, its question waits",
+        mine: false,
+        face: "needs",
+        review: false,
+        shown: "idle",
+      },
+      {
+        case: "another's Mate at work: the work shows",
+        mine: false,
+        face: "working",
+        review: true,
+        shown: "working",
+      },
+    ] as const)("$case", ({ mine, face, review, shown }) => {
+      expect(
+        mateFaceOf({
+          connected: true,
+          activity: { face },
+          reviewWaits: review,
+          mine,
+          pose: undefined,
+        }),
+      ).toBe(shown);
+    });
+  });
+
+  it("keeps a Mate paused at its usage limit asleep, its review waiting or not", () => {
+    expect(
+      mateFaceOf({
+        connected: true,
+        activity: { face: "sleep", pausedUntil: "2026-09-29T23:00:00.000Z" },
+        reviewWaits: true,
+        mine: true,
+        pose: undefined,
+      }),
+    ).toBe("sleep");
+  });
+
+  it.each([
+    { case: "its last task done", face: "done", connected: true, shown: "idle" },
+    { case: "its last result unseen", face: "needs", connected: true, shown: "idle" },
+    { case: "at work on its next", face: "working", connected: true, shown: "working" },
+    { case: "its container asleep", face: undefined, connected: false, shown: "sleep" },
+  ] as const)(
+    "an automated Mate free for a task wears the resting face: $case",
+    ({ face, connected, shown }) => {
+      expect(
+        mateFaceOf({
+          connected,
+          activity: face === undefined ? undefined : { face },
+          reviewWaits: false,
+          mine: true,
+          pose: undefined,
+          free: true,
+        }),
+      ).toBe(shown);
+    },
+  );
+});
+
+describe("deriveZeropsAgentActivity", () => {
+  it("answers per environment from its one conversation, through the one resolver", () => {
+    const activity = deriveZeropsAgentActivity(
+      [RUNNING, shell({ id: ThreadId.make("thread-2"), environmentId: OTTO })],
+      {},
+    );
+    expect(activity.get(FEN)).toMatchObject({
+      threadId: ThreadId.make("thread-1"),
+      kind: "working",
+      status: { kind: "working", label: "Working", pulse: true },
+      face: "working",
+      subject: "Add the login page",
+    });
+    // Idle has no phrase of its own — the face says it — but the subject stays:
+    // the line under the name keeps saying what this Mate is about.
+    expect(activity.get(OTTO)).toMatchObject({
+      kind: "idle",
+      status: null,
+      face: "idle",
+      subject: "Add the login page",
+    });
+  });
+
+  it("knows nothing about an environment with no conversation", () => {
+    expect(deriveZeropsAgentActivity([], {}).size).toBe(0);
+  });
+
+  it("prefers the running plan step as the subject when the server reports one", () => {
+    const stepping = shell({
+      ...RUNNING,
+      planProgress: { step: "Wire the session cookie", completedSteps: 2, totalSteps: 5 },
+    });
+    expect(deriveZeropsAgentActivity([stepping], {}).get(FEN)?.subject).toBe(
+      "Wire the session cookie",
+    );
+  });
+
+  it("wears the needs-you face and says so when a conversation waits on an approval", () => {
+    const waiting = shell({ hasPendingApprovals: true });
+    expect(deriveZeropsAgentActivity([waiting], {}).get(FEN)).toMatchObject({
+      kind: "approval",
+      status: { kind: "approval", label: "Approval" },
+      face: "needs",
+      subject: "Add the login page",
+    });
+  });
+
+  it("reads the client's visit marker so an unseen completion is done and a seen one idle", () => {
+    const completed = shell({
+      latestTurn: {
+        turnId: TurnId.make("turn-1"),
+        state: "completed",
+        requestedAt: "2026-09-05T10:01:00.000Z",
+        startedAt: "2026-09-05T10:01:00.000Z",
+        completedAt: "2026-09-05T10:05:00.000Z",
+        assistantMessageId: null,
+      },
+    });
+    const key = `${FEN}:thread-1`;
+    const unseen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:04:00.000Z" });
+    expect(unseen.get(FEN)).toMatchObject({ kind: "done", status: { kind: "done" }, face: "done" });
+    const seen = deriveZeropsAgentActivity([completed], { [key]: "2026-09-05T10:06:00.000Z" });
+    expect(seen.get(FEN)).toMatchObject({
+      kind: "idle",
+      status: null,
+      subject: "Add the login page",
+    });
+  });
+});
+
+describe("threadAgentActivity", () => {
+  it("answers for the chat it is given, not for the Mate's main one", () => {
+    const main = shell({
+      id: ThreadId.make("main"),
+      pinnedAt: "2026-09-05T09:00:00.000Z",
+      latestUserMessagePreview: {
+        role: "user",
+        text: "Fix pagination",
+        createdAt: "2026-09-05T09:00:00.000Z",
+      },
+    });
+    const logs = {
+      ...RUNNING,
+      id: ThreadId.make("logs"),
+      latestUserMessagePreview: {
+        role: "user" as const,
+        text: "Why does /api/items 500?",
+        createdAt: "2026-09-05T10:01:00.000Z",
+      },
+    };
+
+    expect(deriveZeropsAgentActivity([main, logs], {}).get(FEN)?.threadId).toBe("main");
+    expect(threadAgentActivity(logs, undefined)).toMatchObject({
+      threadId: "logs",
+      kind: "working",
+      face: "working",
+      subject: "Why does /api/items 500?",
+    });
+  });
+
+  // Run 11 (D8): its turn over, its helpers at work, the menu read "Working on
+  // a reply" while its card said "Waiting for its helpers".
+  it("knows a Mate whose turn is over waits on its helpers, and one at work does not", () => {
+    const after = shell({ backgroundLiveness: "working" });
+    expect(threadAgentActivity(after, undefined)).toMatchObject({
+      kind: "working",
+      waitsOnHelpers: true,
+    });
+    const both = { ...RUNNING, backgroundLiveness: "working" as const };
+    expect(threadAgentActivity(both, undefined).waitsOnHelpers).toBeUndefined();
+  });
+
+  it("names what a Mate whose turn is over waits on, where its shell names it, and nothing once it works", () => {
+    const work = {
+      items: [{ title: "Final batched browser check", of: "mate" as const, since: 1 }],
+      count: 1,
+    };
+    const after = shell({ backgroundLiveness: "working", backgroundWork: work });
+    expect(threadAgentActivity(after, undefined).backgroundWork).toEqual(work);
+    const both = { ...RUNNING, backgroundLiveness: "working" as const, backgroundWork: work };
+    expect(threadAgentActivity(both, undefined).backgroundWork).toBeUndefined();
+  });
+});
+
+describe("agentActivitySubject", () => {
+  it.each([
+    ["idle", "Add the login page"],
+    ["working", "Add the login page"],
+    ["approval", "Add the login page"],
+    ["done", "Add the login page"],
+  ] as const)("for %s is the title on a server that keeps no preview", (kind, expected) => {
+    expect(agentActivitySubject(shell(), kind)).toBe(expected);
+  });
+
+  it.each(["idle", "working", "done"] as const)(
+    "for %s is the last task as the person put it, not the first task's title",
+    (kind) => {
+      // One conversation per environment: the title names the first task
+      // forever; the row must say what the Mate was set on last.
+      expect(
+        agentActivitySubject(
+          shell({
+            title: "create todo app",
+            latestUserMessagePreview: {
+              role: "user",
+              text: "give it optimistic updates",
+              createdAt: "2026-09-06T01:55:00.000Z",
+            },
+          }),
+          kind,
+        ),
+      ).toBe("give it optimistic updates");
+    },
+  );
+
+  // Milo's stress run 5: after a restart no preview stood, and the row read the title's raw
+  // backticks: "(`sleep 25 && echo helper-job-done` and `sh -c …`)".
+  it("is the title in plain words when no preview stands, its markdown read", () => {
+    expect(
+      agentActivitySubject(
+        shell({ title: "Start two helpers (`sleep 25 && echo done` and **`exit 4`**)" }),
+        "working",
+      ),
+    ).toBe("Start two helpers (sleep 25 && echo done and exit 4)");
+  });
+
+  // J03: the stand-up the person's sign-in sent is no task they wrote: never the Mate's subject.
+  it.each([
+    [
+      "its latest ask",
+      {
+        title: "Stand up development of the project.",
+        latestUserMessagePreview: {
+          role: "user",
+          text: "Stand up development of the project.",
+          createdAt: "2026-10-05T14:00:00.000Z",
+        },
+      },
+    ],
+    ["its title", { title: "Stand up development of the project." }],
+  ] as const)("is never the stand-up its sign-in sent, as %s", (_, patch) => {
+    expect(agentActivitySubject(shell(patch as never), "done")).toBeUndefined();
+  });
+
+  it("is the running step over the task while the server reports one", () => {
+    expect(
+      agentActivitySubject(
+        shell({
+          planProgress: { step: "Wire the toggle", completedSteps: 1, totalSteps: 3 },
+          latestUserMessagePreview: {
+            role: "user",
+            text: "give it optimistic updates",
+            createdAt: "2026-09-06T01:55:00.000Z",
+          },
+        }),
+        "working",
+      ),
+    ).toBe("Wire the toggle");
+  });
+
+  it("has nothing to say for a conversation nobody has spoken into — its title is a placeholder", () => {
+    expect(
+      agentActivitySubject(shell({ title: "New thread", latestUserMessageAt: null }), "idle"),
+    ).toBeUndefined();
+  });
+
+  it.each([
+    ["the last message was a slash command", "/compact", "create todo app", "create todo app"],
+    ["the title is one too", "/compact", "/compact", undefined],
+    [
+      "an image-only placeholder",
+      "[User attached one or more images without additional text. Respond using the conversation context and the attached image(s).]",
+      "create todo app",
+      "create todo app",
+    ],
+  ] as const)(
+    "never names a command or the client's placeholder as the task: %s",
+    (_label, preview, title, expected) => {
+      expect(
+        agentActivitySubject(
+          shell({
+            title,
+            latestUserMessagePreview: {
+              role: "user",
+              text: preview,
+              createdAt: "2026-09-06T01:55:00.000Z",
+            },
+          }),
+          "idle",
+        ),
+      ).toBe(expected);
+    },
+  );
+
+  it("has nothing to say for a blank step and a blank title", () => {
+    expect(
+      agentActivitySubject(
+        shell({ title: " ", planProgress: { step: " ", completedSteps: 0, totalSteps: 1 } }),
+        "working",
+      ),
+    ).toBeUndefined();
+  });
+});
+
+describe("a row's words never quote a credential", () => {
+  it("masks one in what was asked, and in what the Mate last said", () => {
+    const pasted = shell({
+      latestUserMessagePreview: {
+        role: "user",
+        text: "log in with SHOP_PASSWORD hunter2026 please",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        // A made-up password, put together so no scanner takes it for a leak.
+        text: `Signed in. Heslo: ${["xK93mPq", "Lw2vNt8RzY4a"].join("_")} works on dev.`,
+        createdAt: "2026-09-05T10:05:00.000Z",
+      },
+    });
+    expect(agentActivitySubject(pasted, "idle")).toBe(
+      `log in with SHOP_PASSWORD ${SECRET_MASK} please`,
+    );
+    expect(agentActivitySnippet(pasted)).toBe(`Signed in. Heslo: ${SECRET_MASK} works on dev.`);
+  });
+});
+
+// Sent, the person's words are the last thing said until the Mate's first
+// words back — also in the second before its run starts, when its last run
+// has ended and the new one is not running yet (Nova, 2026-09-28: the row
+// lost its last line in that second, 76 → 58 → 76 px).
+describe("agentActivityAwaitsWords", () => {
+  const asked = (text: string, at: string) => ({
+    latestMessagePreview: { role: "user" as const, text, createdAt: at },
+    latestUserMessageAt: at,
+  });
+  const turn = (state: "running" | "completed", completedAt: string | null) => ({
+    latestTurn: {
+      turnId: TurnId.make("turn-1"),
+      state,
+      requestedAt: "2026-09-05T10:01:00.000Z",
+      startedAt: "2026-09-05T10:01:00.000Z",
+      completedAt,
+      assistantMessageId: null,
+    },
+  });
+
+  it.each([
+    [
+      "sent after the last run ended, before the next one starts",
+      {
+        ...asked("and the footer", "2026-09-05T10:05:00.000Z"),
+        ...turn("completed", "2026-09-05T10:04:00.000Z"),
+      },
+    ],
+    [
+      "the run answering them is under way",
+      { ...asked("and the footer", "2026-09-05T10:05:00.000Z"), ...turn("running", null) },
+    ],
+    ["no run has answered anything yet", asked("add the login page", "2026-09-05T10:00:00.000Z")],
+  ] as const)("waits for words when %s", (_, overrides) => {
+    expect(agentActivityAwaitsWords(shell(overrides))).toBe(true);
+  });
+
+  it.each([
+    [
+      "the Mate's words are the last thing said",
+      {
+        latestMessagePreview: {
+          role: "assistant" as const,
+          text: "Done.",
+          createdAt: "2026-09-05T10:06:00.000Z",
+        },
+      },
+    ],
+    [
+      "the run that answered them ended without words",
+      {
+        ...asked("stop", "2026-09-05T10:05:00.000Z"),
+        ...turn("completed", "2026-09-05T10:05:30.000Z"),
+      },
+    ],
+    ["nobody has said anything", { latestMessagePreview: null, latestUserMessageAt: null }],
+  ] as const)("waits for nothing when %s", (_, overrides) => {
+    expect(agentActivityAwaitsWords(shell(overrides))).toBe(false);
+  });
+});
+
+describe("agentActivitySnippet", () => {
+  it("quotes the Mate's last words", () => {
+    expect(
+      agentActivitySnippet(
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "Done. The app is live.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ),
+    ).toBe("Done. The app is live.");
+  });
+
+  // A row is one line of words: a link reads as its text, never as its markdown (the owner's live
+  // menu, 2026-10-11: "I restored the [stage preview](https://appstage-2fe…").
+  it("quotes them as plain words: a link its text, no marks", () => {
+    expect(
+      agentActivitySnippet(
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "I restored the [stage preview](https://app.example.test/) — **build** passes.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ),
+    ).toBe("I restored the stage preview — build passes.");
+  });
+
+  it.each([
+    ["a shell that carries none", {}],
+    ["a conversation nobody has spoken into", { latestMessagePreview: null }],
+    [
+      "a conversation whose last word is the person's — the subject already says it",
+      {
+        latestMessagePreview: {
+          role: "user",
+          text: "add the login page",
+          createdAt: "2026-09-05T10:00:00.000Z",
+        },
+      },
+    ],
+  ] as const)("has nothing to quote from %s", (_, overrides) => {
+    expect(agentActivitySnippet(shell(overrides))).toBeUndefined();
+  });
+
+  it("rides along on the activity", () => {
+    const activity = deriveZeropsAgentActivity(
+      [
+        shell({
+          latestMessagePreview: {
+            role: "assistant",
+            text: "Deployed.",
+            createdAt: "2026-09-05T10:05:00.000Z",
+          },
+        }),
+      ],
+      {},
+    );
+    expect(activity.get(FEN)?.snippet).toBe("Deployed.");
+  });
+});
+
+describe("agentActivityAt", () => {
+  const turn = {
+    turnId: TurnId.make("turn-1"),
+    state: "completed" as const,
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:05.000Z",
+    completedAt: "2026-09-05T10:05:00.000Z",
+    assistantMessageId: null,
+  };
+
+  it.each([
+    ["the last turn's end when it has one", shell({ latestTurn: turn }), turn.completedAt],
+    [
+      "the turn's start while it still runs",
+      shell({ latestTurn: { ...turn, state: "running", completedAt: null } }),
+      turn.startedAt,
+    ],
+    [
+      "the last message when no turn has run",
+      shell({ latestTurn: null, latestUserMessageAt: "2026-09-05T09:00:00.000Z" }),
+      "2026-09-05T09:00:00.000Z",
+    ],
+    [
+      "the conversation's last change when nobody has spoken",
+      shell({ latestTurn: null, latestUserMessageAt: null, updatedAt: "2026-09-04T08:00:00.000Z" }),
+      "2026-09-04T08:00:00.000Z",
+    ],
+  ] as const)("is %s", (_, thread, expected) => {
+    expect(agentActivityAt(thread)).toBe(expected);
+  });
+
+  // The owner, 2026-10-15: "the 'last active' is not reliable". A row's time is the last thing a
+  // person would call activity in the conversation, never a bump of the chat's own record.
+  it.each([
+    {
+      name: "A failed run dates the row by its end",
+      thread: shell({ latestTurn: { ...turn, state: "error" } }),
+      at: turn.completedAt,
+    },
+    {
+      name: "An interrupted run dates the row by its end",
+      thread: shell({ latestTurn: { ...turn, state: "interrupted" } }),
+      at: turn.completedAt,
+    },
+    {
+      name: "A restart never re-dates a Mate's row",
+      thread: shell({
+        latestTurn: turn,
+        latestUserMessageAt: turn.requestedAt,
+        updatedAt: "2026-09-05T18:00:00.000Z",
+        session: {
+          threadId: ThreadId.make("thread-1"),
+          status: "ready",
+          providerName: "codex",
+          runtimeMode: "full-access",
+          activeTurnId: null,
+          lastError: null,
+          updatedAt: "2026-09-05T18:00:00.000Z",
+        },
+      }),
+      at: turn.completedAt,
+    },
+    {
+      name: "A message the person sent after the last run ended dates the row",
+      thread: shell({ latestTurn: turn, latestUserMessageAt: "2026-09-05T10:07:00.000Z" }),
+      at: "2026-09-05T10:07:00.000Z",
+    },
+    {
+      name: "A run at work dates the row by its start, whatever is sent into it",
+      thread: shell({
+        latestTurn: { ...turn, state: "running", completedAt: null },
+        latestUserMessageAt: "2026-09-05T10:03:00.000Z",
+      }),
+      at: turn.startedAt,
+    },
+  ])("$name", ({ thread, at }) => {
+    expect(agentActivityAt(thread)).toBe(at);
+  });
+});
+
+describe("mateFaceFor", () => {
+  const cases = [
+    { connected: false, activity: undefined, face: "sleep" },
+    // Known before its socket is up, or read back from the last reload's
+    // cache: the state of a conversation nobody is connected to is not a face.
+    { connected: false, activity: { face: "working" }, face: "sleep" },
+    { connected: true, activity: undefined, face: "idle" },
+    { connected: true, activity: { face: "working" }, face: "working" },
+    { connected: true, activity: { face: "needs" }, face: "needs" },
+    { connected: true, activity: { face: "done" }, face: "done" },
+  ] as const;
+
+  it.each(cases)("wears $face when connected=$connected", ({ activity, connected, face }) => {
+    expect(mateFaceFor(connected, activity)).toBe(face);
+  });
+
+  // Its pose (`matePose`) is read here, once, for every surface that draws the Mate: a row, the
+  // ⌘K list, the projects pages, a conversation's header, the panel.
+  it.each([
+    {
+      case: "coming up",
+      connected: false,
+      activity: undefined,
+      pose: { life: "coming" },
+      face: "waking",
+    },
+    {
+      case: "arriving, its socket not up",
+      connected: false,
+      activity: undefined,
+      pose: { arriving: true },
+      face: "waking",
+    },
+    {
+      case: "arriving, waiting for its sign-in",
+      connected: true,
+      activity: undefined,
+      pose: { arriving: true },
+      face: "waking",
+    },
+    {
+      case: "arriving, at work",
+      connected: true,
+      activity: { face: "working" },
+      pose: { arriving: true },
+      face: "working",
+    },
+    {
+      case: "past its window, never signed in",
+      connected: true,
+      activity: undefined,
+      pose: { arriving: false },
+      face: "idle",
+    },
+    {
+      case: "did not come up",
+      connected: false,
+      activity: undefined,
+      pose: { life: "failed" },
+      face: "sleep",
+    },
+    {
+      case: "deleting, at work",
+      connected: true,
+      activity: { face: "working" },
+      pose: { life: "deleting" },
+      face: "sleep",
+    },
+  ] as const)("wears $face: $case", ({ activity, connected, pose, face }) => {
+    expect(mateFaceFor(connected, activity, pose)).toBe(face);
+    expect(mateFaceOf({ connected, activity, reviewWaits: false, mine: false, pose })).toBe(face);
+  });
+});
+
+describe("what a Mate's row says without words", () => {
+  const COMPLETED = {
+    turnId: TurnId.make("turn-1"),
+    state: "completed" as const,
+    requestedAt: "2026-09-05T10:01:00.000Z",
+    startedAt: "2026-09-05T10:01:00.000Z",
+    completedAt: "2026-09-05T10:05:00.000Z",
+    assistantMessageId: null,
+  };
+  const key = "env-fen:thread-1";
+
+  it.each([
+    {
+      case: "a completion after the last visit",
+      visited: "2026-09-05T10:04:00.000Z",
+      unread: true,
+    },
+    { case: "a completion seen since", visited: "2026-09-05T10:06:00.000Z", unread: false },
+    { case: "never visited on this device", visited: undefined, unread: false },
+  ])("is unread for $case", ({ visited, unread }) => {
+    const activity = deriveZeropsAgentActivity(
+      [shell({ latestTurn: COMPLETED })],
+      visited === undefined ? {} : { [key]: visited },
+    );
+    expect(activity.get(FEN)?.unread).toBe(unread);
+  });
+
+  it("sleeps through a usage limit and says when it wakes", () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-09-05T10:05:00Z"));
+    const paused = shell({
+      latestTurn: { ...COMPLETED, state: "error" },
+      usagePause: {
+        resetsAt: "2026-09-05T14:20:00.000Z",
+        window: "5-hour",
+        held: 0,
+        pausedAt: "2026-09-05T10:05:00.000Z",
+        autoResume: true,
+      },
+    });
+    const activity = deriveZeropsAgentActivity([paused], {}).get(FEN);
+    expect(activity?.face).toBe("sleep");
+    expect(activity?.pausedUntil).toBe("2026-09-05T14:20:00.000Z");
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.pausedUntil).toBeUndefined();
+    vi.useRealTimers();
+  });
+
+  it("a refused turn with no reset time still shows a calm usage pause", () => {
+    const refused = shell({
+      latestTurn: { ...COMPLETED, state: "error" },
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "error",
+        providerName: "claude-code",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        updatedAt: "2026-09-05T10:05:00.000Z",
+      },
+    });
+    const activity = deriveZeropsAgentActivity([refused], {}).get(FEN);
+    expect(activity?.face).toBe("sleep");
+    expect(activity?.usageLimited).toBe(true);
+    expect(activity?.pausedUntil).toBeUndefined();
+    expect(activity?.errorLine).toBe(refused.session!.lastError);
+  });
+
+  it("names its conversation by the key a draft is kept under", () => {
+    expect(deriveZeropsAgentActivity([RUNNING], {}).get(FEN)?.threadKey).toBe(key);
+  });
+});
+
+describe("the task as the person asked it", () => {
+  it("keeps the ask while the row says the running plan step", () => {
+    const working = shell({
+      ...RUNNING,
+      latestUserMessagePreview: {
+        role: "user",
+        text: "Add a /status page",
+        createdAt: "2026-09-05T10:00:00.000Z",
+      },
+      planProgress: { step: "Run the build", completedSteps: 2, totalSteps: 5 },
+    });
+    const activity = deriveZeropsAgentActivity([working], {}).get(FEN);
+    expect(activity?.subject).toBe("Run the build");
+    expect(activity?.task).toBe("Add a /status page");
+  });
+});
+
+describe("agentActivityErrorLine", () => {
+  const session = (lastError: string | null): EnvironmentThreadShell["session"] => ({
+    threadId: ThreadId.make("thread-1"),
+    status: "error",
+    providerName: null,
+    runtimeMode: "full-access",
+    activeTurnId: null,
+    lastError,
+    updatedAt: "2026-09-29T08:00:00.000Z",
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly lastError: string | null;
+    readonly kind: Parameters<typeof agentActivityErrorLine>[1];
+    readonly line: string | undefined;
+  }>([
+    {
+      name: "a stopped Mate says the error's first line",
+      lastError: "The type check found 2 errors\n  at src/gallery/grid.ts",
+      kind: "failed",
+      line: "The type check found 2 errors",
+    },
+    {
+      name: "blank leading lines are skipped",
+      lastError: "\n   \nProcess exited with code 137",
+      kind: "failed",
+      line: "Process exited with code 137",
+    },
+    {
+      name: "a Mate that is not stopped says none, whatever its session kept",
+      lastError: "The type check failed",
+      kind: "idle",
+      line: undefined,
+    },
+    { name: "no error kept, no line", lastError: null, kind: "failed", line: undefined },
+    // F7: under the Mate's name, its sign-in failure says what the person signs in to.
+    {
+      name: "retains the source error for the named surface to present",
+      lastError:
+        "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+      kind: "failed",
+      line: "Claude's sign-in has expired. Sign Claude in again, then send a message to pick up where it left off.",
+    },
+  ])("$name", ({ lastError, kind, line }) => {
+    expect(agentActivityErrorLine({ session: session(lastError) }, kind).errorLine).toBe(line);
+  });
+});
+
+const since = "2026-09-05T10:01:05.000Z";
+const building: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-build",
+      activityKind: "tool.updated",
+      itemType: "command_execution",
+      title: "Command run",
+      detail: "Bash: npm run compile",
+      toolName: "Bash",
+      command: "npm run compile",
+      input: { description: "Compile the gallery" },
+      startedAt: since,
+    },
+  ],
+};
+const asking: ThreadLiveStep = {
+  kind: "calls",
+  since,
+  calls: [
+    {
+      id: "call-ask",
+      activityKind: "tool.updated",
+      itemType: "dynamic_tool_call",
+      title: "Tool call",
+      detail: 'AskUserQuestion: {"questions":[{"question":"Ship it now?"}]}',
+      toolName: "AskUserQuestion",
+      startedAt: since,
+    },
+  ],
+};
+
+describe("the row's live step", () => {
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly liveStep: { readonly words: string } | undefined;
+  }>([
+    {
+      name: "a working Mate says the step its card's now line says, never its code",
+      thread: shell({ ...RUNNING, liveStep: building }),
+      liveStep: { words: "Compile the gallery" },
+    },
+    {
+      name: "between steps it thinks",
+      thread: shell({ ...RUNNING, liveStep: { kind: "thinking", since } }),
+      liveStep: { words: "Thinking" },
+    },
+    {
+      name: "its words streaming, it writes",
+      thread: shell({ ...RUNNING, liveStep: { kind: "writing", since } }),
+      liveStep: { words: "Writing" },
+    },
+    {
+      name: "asking, before the question reaches the shell: waiting for the answer",
+      thread: shell({ ...RUNNING, liveStep: asking }),
+      liveStep: { words: "Waiting for your answer" },
+    },
+    {
+      name: "a server that relays no step: none, and the row holds its dots",
+      thread: RUNNING,
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate at rest has no step, whatever a shell still carries",
+      thread: shell({ liveStep: building }),
+      liveStep: undefined,
+    },
+    {
+      name: "a Mate waiting on the person has no step: what it waits on is its line",
+      thread: shell({ ...RUNNING, hasPendingUserInput: true, liveStep: asking }),
+      liveStep: undefined,
+    },
+  ])("$name", ({ thread, liveStep }) => {
+    expect(threadAgentActivity(thread, undefined).liveStep).toEqual(liveStep);
+  });
+});
+
+describe("the question a needs-you row says", () => {
+  it("retains a last-known question during an outage without claiming live activity", () => {
+    const activity = restingActivity(
+      threadAgentActivity(
+        shell({
+          hasPendingUserInput: true,
+          pendingQuestion: "Which checkout should I inspect?",
+        }),
+        undefined,
+      ),
+    );
+    expect(activity).toMatchObject({
+      question: "Which checkout should I inspect?",
+      kind: "idle",
+      status: null,
+      remembered: true,
+    });
+    expect(activity.liveStep).toBeUndefined();
+  });
+
+  it.each<{
+    readonly name: string;
+    readonly thread: EnvironmentThreadShell;
+    readonly question: string | undefined;
+  }>([
+    {
+      name: "a Mate waiting on its question says the question",
+      thread: shell({
+        ...RUNNING,
+        hasPendingUserInput: true,
+        pendingQuestion: "Ship the status page now, or after the review?",
+        liveStep: asking,
+      }),
+      question: "Ship the status page now, or after the review?",
+    },
+    {
+      name: "a server that relays no question: none, and the row keeps its last words",
+      thread: shell({ hasPendingUserInput: true }),
+      question: undefined,
+    },
+    {
+      name: "an approval waits first: that is no question",
+      thread: shell({
+        hasPendingApprovals: true,
+        hasPendingUserInput: true,
+        pendingQuestion: "Which colour?",
+      }),
+      question: undefined,
+    },
+    {
+      name: "answered: no question",
+      thread: shell({ pendingQuestion: null }),
+      question: undefined,
+    },
+  ])("$name", ({ thread, question }) => {
+    expect(threadAgentActivity(thread, undefined).question).toBe(question);
+  });
+});
+
+const mateLiveView = Schema.decodeUnknownSync(MateLiveView);
+
+describe("overviewAgentActivity", () => {
+  const told = (main: unknown) =>
+    mateLiveView({
+      presence: { online: false, since: "2026-10-03T09:00:00.000Z", overview: "stored" },
+      identity: { environmentId: "env-vera", serverVersion: "0.11.90", update: null },
+      main,
+    });
+
+  it("keys the main chat HQ names under its environment — its draft's key — where it names one", () => {
+    const main = {
+      id: "t1",
+      title: "Add a login page",
+      hasPendingApprovals: false,
+      hasPendingUserInput: false,
+      hasActionableProposedPlan: false,
+      interactionMode: "default",
+      backgroundLiveness: null,
+      session: null,
+      latestTurn: null,
+      latestUserMessageAt: null,
+      updatedAt: "2026-10-03T09:00:00.000Z",
+      latestUserMessagePreview: null,
+      latestMessagePreview: null,
+      planProgress: null,
+      pendingQuestion: null,
+      usagePause: null,
+      liveStep: null,
+    };
+    expect(overviewAgentActivity(told(main), false, {})?.threadKey).toBe("env-vera:t1");
+    expect(overviewAgentActivity(told(null), false, {})).toBeUndefined();
+  });
+});
+
+// The reset expires the refusal, without asserting that an agent has resumed.
+describe("a provider refusal in the menu", () => {
+  afterEach(() => vi.useRealTimers());
+  const refused = () =>
+    shell({
+      latestTurn: {
+        ...RUNNING.latestTurn!,
+        state: "error",
+        completedAt: "2026-10-06T21:53:56.937Z",
+      },
+      latestMessagePreview: {
+        role: "assistant",
+        text: "You've hit your weekly limit · resets 2am (UTC)",
+        createdAt: "2026-10-06T21:53:56.892Z",
+      },
+      session: {
+        threadId: ThreadId.make("thread-1"),
+        status: "stopped",
+        providerName: "claudeAgent",
+        runtimeMode: "full-access",
+        activeTurnId: null,
+        lastError: "Claude usage limit reached. Send the message again once the limit resets.",
+        usageLimitResetAt: "2026-10-07T02:00:00.000Z",
+        updatedAt: "2026-10-06T22:24:44.519Z",
+      },
+      usagePause: null,
+    });
+  it.each([
+    { name: "before the provider reset", now: "2026-10-07T01:59:59Z", limited: true },
+    { name: "at the provider reset", now: "2026-10-07T02:00:00Z", limited: false },
+    { name: "after the provider reset", now: "2026-10-08T10:00:00Z", limited: false },
+  ])("shows a current limit only $name", ({ now, limited }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date(now));
+    const thread = refused();
+    const read = threadAgentActivity(thread, undefined);
+    expect(read.usageLimited).toBe(limited);
+    expect(read.pausedUntil).toBe(limited ? "2026-10-07T02:00:00.000Z" : undefined);
+    if (!limited) {
+      expect(read.face).not.toBe("sleep");
+      expect(read.errorLine).toBeUndefined();
+      expect(read.kind).not.toBe("failed");
+    }
+    // The same immutable shell must not freeze a current reading across its reset.
+    vi.setSystemTime(new Date("2026-10-08T10:00:00Z"));
+    expect(threadAgentActivity(thread, undefined).usageLimited).toBe(false);
+  });
+  it.each([-1, 0])(
+    "a cold menu reads typed HQ refusal at reset offset %j without a new delivery",
+    (offset) => {
+      const overview = decodeOverview(
+        JSON.parse(
+          JSON.stringify({
+            identity: { environmentId: "env-vera", serverVersion: "0.1.0", update: null },
+            main: {
+              ...refused(),
+              backgroundLiveness: null,
+              latestUserMessagePreview: null,
+              planProgress: null,
+              pendingQuestion: null,
+              usagePause: null,
+              liveStep: null,
+              session: { status: "stopped", lastError: null },
+              refusal: {
+                turnId: "turn-1",
+                provider: "Claude",
+                resetsAt: "2026-10-07T02:00:00.000Z",
+              },
+            },
+            threads: { list: [], omitted: 0 },
+            logins: {},
+            crew: { status: "off" },
+          }),
+        ),
+      );
+      const main = overview.main;
+      if (main === null) throw new Error("Expected main conversation");
+      const read = threadAgentActivity(
+        { ...main, environmentId: EnvironmentId.make("env-vera") },
+        undefined,
+        Date.parse("2026-10-07T02:00:00.000Z") + offset,
+      );
+      expect(read.usageLimited).toBe(offset < 0);
+      expect(read.kind).toBe(offset < 0 ? "failed" : "idle");
+      expect(read.limitHistory).toEqual({
+        provider: "Claude",
+        resetsAt: "2026-10-07T02:00:00.000Z",
+      });
+    },
+  );
+  it("a parked SDK refusal expires without an assistant preview or another provider event", () => {
+    const thread = refused();
+    const parked = {
+      ...thread,
+      latestMessagePreview: null,
+      latestTurn: { ...thread.latestTurn!, state: "running" as const, completedAt: null },
+      session: {
+        ...thread.session!,
+        status: "running" as const,
+        activeTurnId: thread.latestTurn!.turnId,
+        usageLimitResetAt: "2026-10-07T02:00:00Z",
+      },
+    };
+    expect(
+      threadAgentActivity(parked, undefined, Date.parse("2026-10-07T01:59:59Z")).usageLimited,
+    ).toBe(true);
+    const expired = threadAgentActivity(parked, undefined, Date.parse("2026-10-08T10:00:00Z"));
+    expect(expired.usageLimited).toBe(false);
+    expect(expired.errorLine).toBeUndefined();
+    expect(expired.kind).toBe("idle");
+    expect(expired.face).not.toBe("working");
+  });
+  it("a new turn keeps the past refusal out of the menu", () => {
+    const thread = refused();
+    const read = threadAgentActivity(
+      {
+        ...thread,
+        latestTurn: { ...RUNNING.latestTurn!, requestedAt: "2026-10-08T10:00:00Z" },
+        session: { ...thread.session!, status: "running", lastError: null },
+      },
+      undefined,
+    );
+    expect(read.usageLimited).toBe(false);
+    expect(read.face).toBe("working");
+  });
+});
+
+const decodeOverview = Schema.decodeUnknownSync(MateOverview);
+
+const ENV = EnvironmentId.make("env-vera");
+const STARTED = Date.parse("2026-10-08T09:00:00.000Z");
+const ENDED = Date.parse("2026-10-08T09:05:00.000Z");
+const RESETS = Date.parse("2026-10-08T14:00:00.000Z");
+
+const decodeRow = Schema.decodeUnknownSync(ConversationRow);
+/** Vera's main conversation as her engine rows it: at rest, her last task answered. */
+const row = (patch: Record<string, unknown> = {}): ConversationRow =>
+  decodeRow({
+    conversationId: "t1",
+    agent: {
+      instanceId: "claudeAgent",
+      driver: "claudeAgent",
+      model: null,
+      profile: { kind: "mate" },
+    },
+    revision: { environmentId: "env-vera", epoch: 1, seq: 9 },
+    state: { kind: "idle" },
+    activeRunId: null,
+    latestRun: { id: "run-1", end: { kind: "completed" }, endedAt: ENDED },
+    subject: "Add a login page",
+    snippet: "The login page is up at /login.",
+    at: ENDED,
+    askedAt: null,
+    ...patch,
+  });
+
+describe("rowAgentActivity — an engine Mate's menu state off its own row", () => {
+  it.each<[string, Record<string, unknown>, Record<string, unknown>]>([
+    ["at rest", {}, { kind: "idle", face: "idle" }],
+    [
+      "queued behind nothing yet",
+      { state: { kind: "queued", since: STARTED } },
+      { kind: "working", face: "working", awaitingWords: true },
+    ],
+    [
+      "at work",
+      { state: { kind: "working", since: STARTED, waitsOnHelpers: false } },
+      { kind: "working", face: "working" },
+    ],
+    [
+      "waiting on its helpers",
+      { state: { kind: "working", since: STARTED, waitsOnHelpers: true } },
+      { kind: "working", face: "working", waitsOnHelpers: true },
+    ],
+    [
+      "waiting on its own background job, by name",
+      {
+        state: {
+          kind: "working",
+          since: STARTED,
+          waitsOnHelpers: true,
+          work: {
+            items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+            count: 1,
+          },
+        },
+      },
+      {
+        kind: "working",
+        waitsOnHelpers: true,
+        backgroundWork: {
+          items: [{ title: "Final batched browser check", of: "mate", since: 1 }],
+          count: 1,
+        },
+      },
+    ],
+    [
+      "waiting on an approval",
+      { state: { kind: "waiting", on: "approval", words: "Run pnpm build?" } },
+      { kind: "approval", face: "needs" },
+    ],
+    [
+      "waiting on a question",
+      { state: { kind: "waiting", on: "question", words: "Which provider?" } },
+      { kind: "input", face: "needs", question: "Which provider?" },
+    ],
+    [
+      "waiting on a vault value",
+      { state: { kind: "waiting", on: "vault", words: null } },
+      { kind: "input", face: "needs", asksFor: "key" },
+    ],
+    [
+      "waiting on its plan",
+      { state: { kind: "waiting", on: "plan", words: null } },
+      { kind: "planReady", face: "needs" },
+    ],
+    [
+      "paused at a usage limit",
+      { state: { kind: "paused", resetsAt: RESETS } },
+      {
+        kind: "idle",
+        face: "sleep",
+        usageLimited: true,
+        pausedUntil: "2026-10-08T14:00:00.000Z",
+        limitProvider: "Claude",
+      },
+    ],
+    [
+      "stopped on an error",
+      { state: { kind: "failed", errorLine: "Claude crashed\nat line 3" } },
+      { kind: "failed", face: "needs", errorLine: "Claude crashed" },
+    ],
+    ["in a state a later engine adds", { state: { kind: "dreaming" } }, { kind: "idle" }],
+  ])("reads a row %s as the menu's kind and face", (_case, patch, expected) => {
+    expect(rowAgentActivity(row(patch), ENV, undefined, STARTED)).toMatchObject(expected);
+  });
+
+  it("reads a row's pause whose reset has passed as at rest, not asleep", () => {
+    const paused = row({ state: { kind: "paused", resetsAt: RESETS } });
+    expect(rowAgentActivity(paused, ENV, undefined, RESETS + 1)).toMatchObject({
+      kind: "idle",
+      face: "idle",
+      usageLimited: false,
+      limit: { kind: "expired" },
+    });
+  });
+
+  it("reads a result as unseen when its run ended after the person's last visit", () => {
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:01:00.000Z", STARTED)).toMatchObject({
+      kind: "done",
+      face: "done",
+      unread: true,
+    });
+    expect(rowAgentActivity(row(), ENV, "2026-10-08T09:06:00.000Z", STARTED)).toMatchObject({
+      kind: "idle",
+      unread: false,
+    });
+  });
+
+  it("takes its task and last words from the row, never a command to the harness", () => {
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
+    expect([read.subject, read.task, read.snippet]).toEqual([
+      "Add a login page",
+      "Add a login page",
+      "The login page is up at /login.",
+    ]);
+    const command = rowAgentActivity(
+      row({ subject: "/compact", snippet: null }),
+      ENV,
+      undefined,
+      STARTED,
+    );
+    expect([command.subject, command.snippet]).toEqual([undefined, undefined]);
+  });
+
+  it("dates it by its run's start while it works, else by its last run's end", () => {
+    const working = row({
+      state: { kind: "working", since: STARTED, waitsOnHelpers: false },
+      at: ENDED + 1,
+    });
+    expect(rowAgentActivity(working, ENV, undefined, STARTED).at).toBe("2026-10-08T09:00:00.000Z");
+    expect(rowAgentActivity(row({ at: ENDED + 60_000 }), ENV, undefined, STARTED).at).toBe(
+      "2026-10-08T09:05:00.000Z",
+    );
+    expect(rowAgentActivity(row({ latestRun: null }), ENV, undefined, STARTED).at).toBe(
+      "2026-10-08T09:05:00.000Z",
+    );
+  });
+
+  const RESTARTED = ENDED + 3_600_000;
+  it.each([
+    {
+      name: "A failed run dates the row by its end",
+      patch: {
+        state: { kind: "failed", errorLine: "Claude crashed" },
+        latestRun: { id: "run-1", end: { kind: "crashed", reason: "crashed" }, endedAt: ENDED },
+        at: RESTARTED,
+      },
+      at: ENDED,
+    },
+    {
+      name: "A restart never re-dates a Mate's row",
+      patch: { at: RESTARTED },
+      at: ENDED,
+    },
+    {
+      name: "A question dates the row by when it was asked, not by a restart",
+      patch: {
+        state: { kind: "waiting", on: "question", words: "Which page?" },
+        latestRun: { id: "run-2", end: null, endedAt: null },
+        askedAt: STARTED + 60_000,
+        at: RESTARTED,
+      },
+      at: STARTED + 60_000,
+    },
+  ])("$name (an engine row)", ({ patch, at }) => {
+    expect(rowAgentActivity(row(patch), ENV, undefined, STARTED).at).toBe(
+      new Date(at).toISOString(),
+    );
+  });
+
+  it("names the conversation it reads, under the key its draft is kept by", () => {
+    const read = rowAgentActivity(row(), ENV, undefined, STARTED);
+    expect([read.threadId, read.threadKey]).toEqual([
+      "t1",
+      scopedThreadKey(scopeThreadRef(ENV, ThreadId.make("t1"))),
+    ]);
+  });
+});
+
+// The stand-up a sign-in sent runs out of the person's sight: its run is the Mate setting up, and
+// its end leaves no reply the person has not seen (a run, 2026-10-15: a working clock beside
+// "Nothing asked yet" for three minutes, then a smiling face with nothing to open).
+describe("a Mate's stand-up, as its activity says it", () => {
+  const STAND_UP = "Stand up development of the project.";
+  const asked = {
+    role: "user",
+    text: STAND_UP,
+    createdAt: "2026-09-05T10:00:00.000Z",
+  } as const;
+  const ran = {
+    turnId: TurnId.make("turn-1"),
+    requestedAt: "2026-09-05T10:00:00.000Z",
+    startedAt: "2026-09-05T10:00:01.000Z",
+    assistantMessageId: null,
+  } as const;
+
+  it("is setting up while its stand-up runs, whatever its conversation is read from", () => {
+    const thread = threadAgentActivity(
+      shell({
+        title: STAND_UP,
+        latestUserMessagePreview: asked,
+        latestTurn: { ...ran, state: "running", completedAt: null },
+      } as never),
+      undefined,
+    );
+    expect(thread).toMatchObject({ kind: "working", standUp: true });
+    const engine = rowAgentActivity(
+      row({
+        subject: STAND_UP,
+        snippet: null,
+        state: { kind: "working", since: STARTED, waitsOnHelpers: false },
+      }),
+      ENV,
+      undefined,
+    );
+    expect(engine).toMatchObject({ kind: "working", standUp: true });
+  });
+
+  it("leaves no unseen reply once its stand-up is done", () => {
+    const thread = threadAgentActivity(
+      shell({
+        title: STAND_UP,
+        latestUserMessagePreview: asked,
+        latestTurn: { ...ran, state: "completed", completedAt: "2026-09-05T10:03:00.000Z" },
+      } as never),
+      "2026-09-05T09:00:00.000Z",
+    );
+    expect(thread).toMatchObject({ unread: false, standUp: true });
+    expect(thread.face).not.toBe("done");
+    const engine = rowAgentActivity(row({ subject: STAND_UP }), ENV, "2026-10-08T08:00:00.000Z");
+    expect(engine).toMatchObject({ kind: "idle", unread: false, standUp: true });
+  });
+
+  it("is no stand-up once the person asked something of their own", () => {
+    const engine = rowAgentActivity(row(), ENV, "2026-10-08T08:00:00.000Z");
+    expect(engine.standUp).toBeUndefined();
+    expect(engine.unread).toBe(true);
+  });
+});

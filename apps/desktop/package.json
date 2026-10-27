@@ -1,0 +1,32 @@
+{
+  "name": "@t3tools/desktop",
+  "version": "0.15.101",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/boot.cjs",
+  "scripts": {
+    "ensure:electron": "node scripts/ensure-electron-runtime.mjs",
+    "start": "node scripts/start-electron.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vp test run --passWithNoTests",
+    "smoke-test": "node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "@effect/platform-node": "catalog:",
+    "@t3tools/client-runtime": "workspace:*",
+    "@t3tools/contracts": "workspace:*",
+    "@t3tools/shared": "workspace:*",
+    "effect": "catalog:",
+    "electron": "44.4.2",
+    "electron-updater": "^6.8.9"
+  },
+  "devDependencies": {
+    "@effect/vitest": "catalog:",
+    "@types/node": "catalog:",
+    "acorn": "8.16.0",
+    "cross-env": "^10.1.0",
+    "electron-builder": "26.15.6",
+    "vite-plus": "catalog:"
+  },
+  "productName": "Zerops Mate (Alpha)"
+}

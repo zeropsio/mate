@@ -1,0 +1,635 @@
+import {
+  EnvironmentId,
+  ThreadId,
+  type ScopedThreadRef,
+  type ZeropsAgentAuthSnapshot,
+} from "@t3tools/contracts";
+import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
+import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
+import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+import * as DateTime from "effect/DateTime";
+import { renderToStaticMarkup } from "react-dom/server";
+import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+const buttonState = vi.hoisted(() => ({
+  handlers: new Map<string, () => void>(),
+}));
+
+interface TopologySnapshot {
+  readonly view: ZeropsTopologyView | undefined;
+  readonly liveness: "live" | "polling" | undefined;
+  readonly lastReadAt: number | undefined;
+  readonly error: string | undefined;
+}
+
+const feedState = vi.hoisted(() => ({
+  topology: {
+    view: undefined,
+    liveness: undefined,
+    lastReadAt: undefined,
+    error: undefined,
+  } as TopologySnapshot,
+}));
+
+const actions = vi.hoisted(() => ({
+  cancel: vi.fn(),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
+
+const signOutState = vi.hoisted(() => ({
+  supported: false,
+  statuses: new Map<string, { readonly pending: boolean; readonly error: string | undefined }>(),
+}));
+
+vi.mock("../../zerops/useProjectTopology", () => ({
+  useProjectTopology: () => feedState.topology,
+}));
+
+vi.mock("../../zerops/useZeropsFeeds", () => ({
+  useZeropsLifecycle: () => undefined,
+  useZeropsAgentAuth: () => {
+    throw new Error("ZeropsPanel must not consult the agent-auth feed");
+  },
+}));
+
+// OpenCode's key row reads its own settings; these tests are about the agents Mate signs in.
+vi.mock("./OpenCodeAgentKeys", () => ({ OpenCodeAgentKeys: () => null }));
+
+// A press opens the sign-in (`ZeropsAgentSignInDialog`); the panel starts no login itself.
+vi.mock("../../zerops/useAgentLogin", () => ({
+  useAgentLogin: () => actions.signIn,
+}));
+
+vi.mock("../../zerops/useAgentLoginCancel", () => ({
+  useAgentLoginCancel: () => actions.cancel,
+}));
+
+vi.mock("../../zerops/useAgentSignOut", () => ({
+  useAgentSignOut: () => ({
+    signOut: actions.signOut,
+    statusFor: (agentId: string) =>
+      signOutState.statuses.get(agentId) ?? { pending: false, error: undefined },
+  }),
+}));
+
+vi.mock("~/state/environments", () => ({
+  useEnvironment: () => ({
+    serverConfig: {
+      environment: {
+        serverVersion: "0.11.43",
+        update: { installed: "0.11.43", latest: "0.11.47", available: true },
+        capabilities: { agentSignOut: signOutState.supported, mateUpdate: true },
+      },
+    },
+  }),
+}));
+
+vi.mock("../../zerops/useMateUpdate", () => ({
+  useMateUpdate: () => ({
+    state: { phase: "idle" },
+    request: () => {},
+    confirm: () => {},
+    cancel: () => {},
+    checked: undefined,
+    check: () => {},
+  }),
+}));
+
+const mateState = vi.hoisted(() => ({
+  mates: new Map<
+    string,
+    {
+      name: string;
+      tint: string;
+      project: string | undefined;
+      connected: boolean;
+      serviceId?: string;
+    }
+  >(),
+  faces: new Map<string, { face: string; remembered?: true }>(),
+}));
+
+vi.mock("../../zerops/useZeropsMates", () => ({
+  useZeropsMateDirectory: () => mateState.mates,
+}));
+
+vi.mock("../../zerops/useZeropsAgentActivity", () => ({
+  useMatesActivity: () => ({
+    ofProject: () => undefined,
+    ofEnvironment: (environmentId: string) => mateState.faces.get(environmentId),
+  }),
+}));
+
+/** What the crew feed answers: nothing read yet, unless a test hands it a crew. */
+const crewFeed = vi.hoisted(() => ({
+  read: { status: null, snapshot: null, view: null, current: false } as CrewRead,
+}));
+
+vi.mock("../../zerops/crew/useCrew", async (original) => ({
+  ...(await original<typeof import("../../zerops/crew/useCrew")>()),
+  useCrew: () => crewFeed.read,
+}));
+
+vi.mock("~/components/ui/button", () => ({
+  Button: ({
+    children,
+    disabled,
+    onClick,
+  }: {
+    readonly children: unknown;
+    readonly disabled?: boolean;
+    readonly onClick?: (event: never) => void;
+  }) => {
+    if (typeof children === "string" && onClick !== undefined) {
+      buttonState.handlers.set(children, () => {
+        onClick(undefined as never);
+      });
+    }
+    return <button disabled={disabled}>{children as string}</button>;
+  },
+}));
+
+import type { CrewRead } from "../../zerops/crew/useCrew";
+import { ZeropsPanel, ZeropsPanelPlaceholder } from "./ZeropsPanel";
+
+const THREAD_REF: ScopedThreadRef = {
+  environmentId: EnvironmentId.make("environment-1"),
+  threadId: ThreadId.make("thread-1"),
+};
+
+const VIEW: ZeropsTopologyView = {
+  project: { id: "proj-1", name: "z3-eval", status: "ACTIVE" },
+  services: [],
+  warnings: [],
+  usageRead: false,
+};
+
+/** A project with its control plane — the container the Mate lives in. */
+const VIEW_WITH_ZCP: ZeropsTopologyView = {
+  ...VIEW,
+  services: [
+    {
+      serviceId: "svc-zcp",
+      hostname: "zcp",
+      type: "ubuntu/zcp@1",
+      status: "ACTIVE",
+      group: "infrastructure",
+      transient: false,
+      routes: [],
+      ports: [{ port: 8080, scheme: "http" }],
+    },
+  ],
+};
+
+const resolved = (
+  view: ZeropsTopologyView | undefined,
+  overrides: Partial<Omit<TopologySnapshot, "view">> = {},
+): TopologySnapshot => ({
+  view,
+  liveness: "live",
+  lastReadAt: 1_756_382_400_000,
+  error: undefined,
+  ...overrides,
+});
+
+const AGENT_AUTH: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "codex",
+      credPresent: false,
+      flagOAuth: false,
+      flagToken: false,
+      providerAuth: "unknown",
+      state: "not-authorized",
+    },
+  ],
+};
+
+const AUTHORIZED: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      agentId: "codex",
+      credPresent: true,
+      flagOAuth: true,
+      flagToken: false,
+      providerAuth: "authenticated",
+      state: "authorized",
+    },
+  ],
+};
+
+const LOGIN_IN_PROGRESS: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      ...AGENT_AUTH.agents[0]!,
+      login: {
+        phase: "menu",
+        terminalId: "agent-login-codex",
+        startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
+        startedBy: "user-a",
+      },
+    },
+  ],
+};
+
+const CANCELLED: ZeropsAgentAuthSnapshot = {
+  available: true,
+  agents: [
+    {
+      ...AGENT_AUTH.agents[0]!,
+      login: {
+        phase: "cancelled",
+        terminalId: "agent-login-codex",
+        startedAt: DateTime.makeUnsafe("2026-08-30T12:00:00.000Z"),
+        startedBy: "user-a",
+      },
+    },
+  ],
+};
+
+beforeEach(() => {
+  actions.cancel.mockReset();
+  actions.signIn.mockReset();
+  actions.signOut.mockReset();
+  signOutState.supported = false;
+  signOutState.statuses.clear();
+  buttonState.handlers.clear();
+  mateState.mates.clear();
+  mateState.faces.clear();
+  crewFeed.read = { status: null, snapshot: null, view: null, current: false };
+  feedState.topology = {
+    view: undefined,
+    liveness: undefined,
+    lastReadAt: undefined,
+    error: undefined,
+  };
+});
+
+/**
+ * The client can no longer tell "still resolving which project this is"
+ * apart from "never will" (that was `zcp studio topology`'s `available:
+ * false`, a fact only the container's own zcp binary could state), so one
+ * honest, non-committal message covers the whole absent-view case.
+ */
+describe("ZeropsPanelPlaceholder", () => {
+  it("says it is reading the project", () => {
+    const html = renderToStaticMarkup(<ZeropsPanelPlaceholder />);
+
+    expect(html).toContain("Reading the project");
+  });
+});
+
+describe("ZeropsPanel agent authorization ownership", () => {
+  it.each([
+    {
+      name: "no card when handed null even though the auth feed reports attention",
+      agentAuthCard: null,
+      view: VIEW,
+      rendersCard: false,
+    },
+    {
+      name: "a resolver-owned snapshot",
+      agentAuthCard: AGENT_AUTH,
+      view: VIEW,
+      rendersCard: true,
+    },
+    {
+      name: "a resolver-owned snapshot before topology answers",
+      agentAuthCard: AGENT_AUTH,
+      view: undefined,
+      rendersCard: true,
+    },
+  ])(
+    "renders authorization exactly once inside the project panel: $name",
+    ({ agentAuthCard, view, rendersCard }) => {
+      feedState.topology = view === undefined ? resolved(undefined) : resolved(view);
+      const html = renderToStaticMarkup(
+        <ZeropsPanel agentAuthCard={agentAuthCard} threadRef={THREAD_REF} />,
+      );
+
+      expect(html.match(/data-zerops-agent-auth-card/gu) ?? []).toHaveLength(rendersCard ? 1 : 0);
+      expect(html.includes("data-zerops-agent-auth-tray")).toBe(rendersCard);
+      if (rendersCard) {
+        expect(html.indexOf("data-zerops-project-panel")).toBeLessThan(
+          html.indexOf("data-zerops-agent-auth-tray"),
+        );
+      }
+    },
+  );
+
+  it("an unread agent-auth feed never renders as no coding agents: the tray says it is checking", () => {
+    feedState.topology = resolved(VIEW);
+    const html = renderToStaticMarkup(
+      <ZeropsPanel
+        agentAuthCard={null}
+        agentAuthUnknown={{
+          text: "Checking which coding agents are signed in…",
+          afterMs: 400,
+          tone: "quiet",
+        }}
+        threadRef={THREAD_REF}
+      />,
+    );
+
+    expect(html).toContain("data-zerops-agent-auth-tray");
+    expect(html).toContain("Checking which coding agents are signed in…");
+    expect(html).toContain("animation-delay:400ms");
+    expect(html).not.toContain("data-zerops-agent-auth-card");
+  });
+
+  it.each([
+    {
+      name: "not authorized while topology is pending",
+      snapshot: AGENT_AUTH,
+      topology: resolved(undefined),
+      label: "Sign in to Codex",
+      expectedSignIn: false,
+      expectedCancel: false,
+    },
+    {
+      name: "login in progress while the last read failed",
+      snapshot: LOGIN_IN_PROGRESS,
+      topology: resolved(VIEW, { error: "last read failed" }),
+      label: "Cancel",
+      expectedSignIn: false,
+      expectedCancel: true,
+    },
+    {
+      name: "authorized",
+      snapshot: AUTHORIZED,
+      topology: resolved(VIEW),
+      label: null,
+      expectedSignIn: false,
+      expectedCancel: false,
+    },
+    {
+      name: "cancelled login returns to sign in",
+      snapshot: CANCELLED,
+      topology: resolved(VIEW),
+      label: "Sign in to Codex",
+      expectedSignIn: false,
+      expectedCancel: false,
+    },
+  ] as const)(
+    "preserves not-authorized, login-in-progress, authorized and cancelled sign-in/cancel wiring: $name",
+    ({ snapshot, topology, label, expectedSignIn, expectedCancel }) => {
+      feedState.topology = topology;
+      const html = renderToStaticMarkup(
+        <ZeropsPanel agentAuthCard={snapshot} threadRef={THREAD_REF} />,
+      );
+
+      expect(html).toContain('data-slot="card"');
+      if (label !== null) {
+        buttonState.handlers.get(label)?.();
+      }
+      expect(actions.signIn).toHaveBeenCalledTimes(expectedSignIn ? 1 : 0);
+      expect(actions.cancel).toHaveBeenCalledTimes(expectedCancel ? 1 : 0);
+      if (expectedSignIn) {
+        expect(actions.signIn).toHaveBeenCalledWith("codex");
+      }
+      if (expectedCancel) {
+        expect(actions.cancel).toHaveBeenCalledWith("codex");
+      }
+    },
+  );
+});
+
+describe("ZeropsPanel — the Mate's home", () => {
+  it.each(["svc-zcp", "svc-probe", "missing", undefined])(
+    "keeps authorization on the current service, or outside the map when unresolved: %s",
+    (serviceId) => {
+      const first = VIEW_WITH_ZCP.services[0]!;
+      feedState.topology = resolved({
+        ...VIEW,
+        services: [first, { ...first, serviceId: "svc-probe", hostname: "probe" }],
+      });
+      mateState.mates.set(THREAD_REF.environmentId, {
+        name: "Fen",
+        tint: "coral",
+        project: "Acme",
+        connected: true,
+        ...(serviceId === undefined ? {} : { serviceId }),
+      });
+      const html = renderToStaticMarkup(
+        <ZeropsPanel
+          agentAuthCard={LOGIN_IN_PROGRESS}
+          agentSignInDemanded
+          threadRef={THREAD_REF}
+        />,
+      );
+      expect(html.match(/data-zerops-agent-auth-card/gu)).toHaveLength(1);
+      const matched = serviceId === "svc-zcp" || serviceId === "svc-probe";
+      expect(html.match(/data-zerops-mate-home/gu) ?? []).toHaveLength(matched ? 1 : 0);
+      expect(html.includes("Coding agents")).toBe(!matched);
+      for (const id of ["svc-zcp", "svc-probe"]) {
+        const start = html.indexOf(`data-zerops-service-id="${id}"`);
+        const row = html.slice(start, html.indexOf("</li>", start));
+        expect(row.includes("data-zerops-agent-auth-card")).toBe(id === serviceId);
+        expect(row.includes("data-zerops-mate-home")).toBe(id === serviceId);
+      }
+      buttonState.handlers.get("Cancel")?.();
+      expect(actions.cancel).toHaveBeenCalledExactlyOnceWith("codex");
+    },
+  );
+
+  it("hangs the agents card from the control-plane card when the project has one", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+      serviceId: "svc-zcp",
+    });
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AGENT_AUTH} agentSignInDemanded threadRef={THREAD_REF} />,
+    );
+
+    const rowAt = html.indexOf('data-zerops-service-row="control-plane"');
+    expect(rowAt).toBeGreaterThan(0);
+    const row = html.slice(rowAt, html.indexOf("</li>", rowAt));
+    expect(row).toContain("data-zerops-agent-auth-tray");
+    expect(row).toContain("data-zerops-agent-auth-card");
+    expect(html.match(/data-zerops-agent-auth-card/gu)).toHaveLength(1);
+    // No second heading: the card is part of the control plane's, not a section of its own.
+    expect(html).not.toContain("Coding agents");
+  });
+
+  it("keeps the agents card on its own under a heading while there is no control plane to hang it from", () => {
+    feedState.topology = resolved(VIEW);
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AGENT_AUTH} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain("Coding agents");
+    expect(html).toContain("data-zerops-agent-auth-tray");
+    expect(html).not.toContain('data-zerops-service-row="control-plane"');
+  });
+
+  it("says who lives in the control plane, with the face the conversation wears", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+      serviceId: "svc-zcp",
+    });
+    mateState.faces.set(THREAD_REF.environmentId, { face: "needs" });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain("data-zerops-mate-home");
+    expect(html).toContain('data-mate-face-tint="coral"');
+    expect(html).toContain('data-mate-face-state="needs"');
+    expect(html).toContain(">Fen</span>");
+  });
+
+  it("keeps the Mate's version and its Update on its home, and none where nobody is known", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: true,
+      serviceId: "svc-zcp",
+    });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+    const home = html.slice(html.indexOf("data-zerops-mate-home"));
+    expect(home).toContain("data-zerops-mate-update");
+    expect(home).toContain("Server 0.11.43");
+    expect(home).toContain("0.11.47 available");
+    expect(home).toContain(">Update<");
+
+    mateState.mates.clear();
+    const nobody = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />,
+    );
+    expect(nobody).not.toContain("data-zerops-mate-update");
+  });
+
+  it("wears the idle face until the conversation has an activity, and names nobody it does not know", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "sky",
+      project: undefined,
+      connected: true,
+      serviceId: "svc-zcp",
+    });
+    const idle = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+    expect(idle).toContain('data-mate-face-state="idle"');
+
+    mateState.mates.clear();
+    const nobody = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />,
+    );
+    expect(nobody).not.toContain("data-zerops-mate-home");
+  });
+
+  it("sleeps while the container is not connected, whatever the last activity said", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    // Known from the project's tags before this session's socket is up: the
+    // home says who, not that it is awake.
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: false,
+      serviceId: "svc-zcp",
+    });
+    // What it said last, at rest: no socket stands, and HQ holds no live link of it.
+    mateState.faces.set(THREAD_REF.environmentId, { face: "working", remembered: true });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain('data-mate-face-state="sleep"');
+    expect(html).toContain(">Fen</span>");
+  });
+
+  it("wears the face HQ's live word gives it, its socket not up yet", () => {
+    feedState.topology = resolved(VIEW_WITH_ZCP);
+    mateState.mates.set(THREAD_REF.environmentId, {
+      name: "Fen",
+      tint: "coral",
+      project: "Acme",
+      connected: false,
+      serviceId: "svc-zcp",
+    });
+    mateState.faces.set(THREAD_REF.environmentId, { face: "working" });
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).toContain('data-mate-face-state="working"');
+  });
+});
+
+describe("ZeropsPanel — signing an agent out (D6 round 5)", () => {
+  it("hides Sign out where the environment does not advertise the capability", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = false;
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).not.toContain(">Sign out<");
+  });
+
+  it("wires Sign out to the sign-out hook, by agent id, where the capability is advertised", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = true;
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain(">Sign out<");
+    buttonState.handlers.get("Sign out")?.();
+    expect(actions.signOut).toHaveBeenCalledExactlyOnceWith("codex");
+  });
+
+  it("shows this agent's own pending/error status, not another's", () => {
+    feedState.topology = resolved(VIEW);
+    signOutState.supported = true;
+    signOutState.statuses.set("codex", {
+      pending: false,
+      error: "The container could not be reached.",
+    });
+    const html = renderToStaticMarkup(
+      <ZeropsPanel agentAuthCard={AUTHORIZED} threadRef={THREAD_REF} />,
+    );
+
+    expect(html).toContain("data-zerops-agent-sign-out-error");
+    expect(html).toContain("The container could not be reached.");
+  });
+});
+
+// The owner, 2026-09-29: "shouldn't we put the 'setup crew' screen from the
+// zerops tab to the 'crew' tab?" — the crew's section and its setup live in the
+// Crew tab alone; the map still names a crew port by whose app answers there.
+describe("ZeropsPanel — no crew section, no setup", () => {
+  const applied = crewSnapshotFixture();
+  const none = { ...applied, status: "none" as const, crew: null, crewmates: [], attention: [] };
+  const readOf = (snapshot: typeof applied): CrewRead => ({
+    status: snapshot.status,
+    snapshot,
+    view: deriveCrewView(snapshot, [], () => {
+      throw new Error("no shells here");
+    }) as CrewRead["view"],
+    current: true,
+  });
+
+  it.each([
+    { case: "a Mate without a crew", read: readOf(none) },
+    { case: "a Mate with a crew", read: readOf(applied) },
+  ])("$case: no crew section, no setup, no brief", ({ read }) => {
+    feedState.topology = resolved(VIEW);
+    crewFeed.read = read;
+    const html = renderToStaticMarkup(<ZeropsPanel agentAuthCard={null} threadRef={THREAD_REF} />);
+
+    expect(html).not.toContain("data-zerops-crew");
+    expect(html).not.toContain("data-crew-section");
+    expect(html).not.toContain("Set up a crew");
+    expect(html).not.toContain("Camera and HUD rework");
+  });
+});

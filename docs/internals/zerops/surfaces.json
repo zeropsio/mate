@@ -1,0 +1,2435 @@
+{
+  "version": 1,
+  "surfaces": [
+    {
+      "id": "zerops-session",
+      "title": "Zerops session provider",
+      "components": [
+        "apps/web/src/zerops/ZeropsSessionProvider.tsx",
+        "apps/web/src/zerops/ZeropsAccountEnvironmentProvider.tsx",
+        "apps/web/src/zerops/ZeropsAccountData.tsx",
+        "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+        "packages/client-runtime/src/zerops/account/accountRuntime.ts",
+        "apps/mobile/src/features/zerops/ZeropsAccountEnvironmentProvider.tsx",
+        "apps/mobile/src/features/zerops/ZeropsAccountData.tsx",
+        "packages/client-runtime/src/data/account.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "provider",
+          "value": "AppRoot"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops"],
+      "reverseStates": [
+        {
+          "action": "Sign in",
+          "reverse": "Sign out"
+        },
+        {
+          "action": "Sign out",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Register",
+          "reverse": "Sign out"
+        },
+        {
+          "action": "Verify TOTP",
+          "reverse": "none: Verification completes the pending sign-in and has no separate reverse action."
+        },
+        {
+          "action": "Clear last registration",
+          "reverse": "none: Clearing consumed registration handoff state is intentionally one-way."
+        }
+      ],
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
+      "tests": [
+        "apps/web/src/AppRoot.test.tsx",
+        "apps/web/src/zerops/accountLifetime.test.ts",
+        "apps/web/src/zerops/draftStorage.test.ts",
+        "apps/web/src/zerops/signIn.guards.test.tsx",
+        "apps/web/src/zerops/zeropsDataContext.test.tsx",
+        "apps/web/src/zerops/environmentPorts.test.ts",
+        "apps/mobile/src/features/zerops/ZeropsAccountEnvironmentProvider.test.tsx",
+        "packages/client-runtime/src/data/account.test.ts"
+      ],
+      "untested": "A live Zerops account sign-in pass has not been run in this lane; session guards and account lifecycle behavior have focused automated coverage.",
+      "captures": []
+    },
+    {
+      "id": "zerops-panel",
+      "title": "Zerops right panel",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsPanel.tsx",
+        "apps/web/src/zerops/chatChrome.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Zerops (shortcut Z)"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatView Zerops panel opener"
+        },
+        {
+          "kind": "inline",
+          "value": "Zerops lifecycle strip click"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/data",
+        "subscribeZeropsLifecycle",
+        "subscribeZeropsAgentAuth"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open",
+          "reverse": "Close"
+        },
+        {
+          "action": "Close",
+          "reverse": "Open"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Zerops right panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsPanel.test.tsx",
+        "apps/web/src/zerops/chatChrome.test.ts",
+        "apps/web/src/zerops/feeds.test.ts"
+      ],
+      "untested": "The populated panel, service detail, Browser panel and public-page side panel were exercised in a real browser. Quick-action prefill and completed agent authorization remain test-only evidence.",
+      "captures": [
+        "web:service-map-live",
+        "web:service-map-degraded",
+        "web:no-zerops",
+        "web:lifecycle-active",
+        "web:agent-auth-attention",
+        "web:agent-auth-ok"
+      ]
+    },
+    {
+      "id": "zerops-browser-panel",
+      "title": "Zerops browser panel",
+      "components": [
+        "apps/web/src/components/zerops/MateAddresses.tsx",
+        "apps/web/src/components/zerops/ZeropsBrowserSurface.tsx",
+        "apps/web/src/components/ServiceBrowserPanel.tsx",
+        "packages/client-runtime/src/zerops/browserStream.ts",
+        "apps/web/src/zerops/browserStreamLinks.tsx",
+        "packages/client-runtime/src/data/projections/mateBrowserFrame.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Browser (shortcut B)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/browserStream",
+        "subscribeZeropsBrowserStream",
+        "@t3tools/client-runtime/data"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open a site",
+          "reverse": "none: its tab closes like any panel tab."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Browser panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsBrowserSurface.test.tsx",
+        "apps/web/src/components/ServiceBrowserPanel.test.tsx",
+        "packages/client-runtime/src/zerops/browserStream.test.ts",
+        "apps/web/src/zerops/browserStreamLinks.test.ts",
+        "packages/client-runtime/src/data/adapters/mateBrowserFrame.test.ts",
+        "packages/client-runtime/src/data/adapters/mateBrowserFrame.supervisor.test.ts",
+        "apps/server/src/zerops/ZeropsBrowserCallFrames.test.ts",
+        "apps/server/src/zerops/ZeropsBrowserStream.test.ts",
+        "packages/contracts/src/zerops.browserFrame.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-mac-panel",
+      "title": "Zerops Mac panel",
+      "components": [
+        "apps/web/src/components/zerops/LiveFrameViewer.tsx",
+        "apps/web/src/components/zerops/ZeropsMacPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsMacSurface.tsx",
+        "packages/client-runtime/src/zerops/macView.ts",
+        "apps/web/src/zerops/macViewLinks.tsx",
+        "packages/client-runtime/src/data/projections/mateMacView.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Mac"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/macView",
+        "subscribeZeropsMacStream",
+        "zerops.mac.input",
+        "zerops.mac.forget",
+        "@t3tools/client-runtime/data"
+      ],
+      "reverseStates": [
+        {
+          "action": "Click or type into the app",
+          "reverse": "none: the input reaches the real app on the Mac; it is undone there, like any click."
+        },
+        {
+          "action": "Forget the Mac here",
+          "reverse": "none: pairing again is done on the Mac, with the steps and commands the tab then shows."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Mac panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsMacPanel.test.tsx",
+        "packages/client-runtime/src/data/adapters/mateMacView.test.ts",
+        "apps/server/src/zerops/ZeropsMacStream.test.ts",
+        "apps/server/src/zerops/mac/macViewScript.test.ts",
+        "packages/contracts/src/zerops.macView.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-data",
+      "title": "Zerops Data panel",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsDataPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTree.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTable.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBlob.tsx",
+        "apps/web/src/components/zerops/ZeropsDataQuery.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBreadcrumbs.tsx",
+        "apps/web/src/components/zerops/ZeropsDataCell.tsx",
+        "apps/web/src/components/zerops/ZeropsDataFilters.tsx",
+        "apps/web/src/components/zerops/ZeropsDataRowDrawer.tsx",
+        "packages/client-runtime/src/zerops/dataConsole.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Data (shortcut V)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/dataConsole",
+        "subscribeZeropsDataConsole",
+        "zerops.dataConsole.call"
+      ],
+      "reverseStates": [
+        {
+          "action": "Expand a container node",
+          "reverse": "Collapse a container node"
+        },
+        {
+          "action": "Collapse a container node",
+          "reverse": "Expand a container node"
+        },
+        {
+          "action": "Select a service, node, or run a query",
+          "reverse": "none: browsing is read-only in this slice — there is nothing to undo, only a different selection to make."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Data panel yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsDataPanel.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTree.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataTable.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBlob.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataQuery.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataBreadcrumbs.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataCell.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataFilters.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDataRowDrawer.test.tsx",
+        "packages/client-runtime/src/zerops/dataConsole.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-git-tab",
+      "title": "Zerops Git tab",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsGitBlock.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.tsx",
+        "apps/web/src/components/zerops/ZeropsGitCommitChanges.tsx",
+        "apps/web/src/components/zerops/ZeropsGitCommitCode.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsGitSurface.tsx",
+        "apps/web/src/components/zerops/ZeropsGitTab.tsx",
+        "packages/client-runtime/src/zerops/gitTab.ts",
+        "packages/client-runtime/src/zerops/release.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Git (shortcut G)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/gitTab",
+        "@t3tools/client-runtime/zerops/release",
+        "review.getDiffPreview",
+        "subscribeVcsStatus",
+        "zerops.git.probeRemote"
+      ],
+      "reverseStates": [
+        {
+          "action": "Release",
+          "reverse": "Roll back to this"
+        },
+        {
+          "action": "Roll back to this",
+          "reverse": "Release"
+        },
+        {
+          "action": "Update from main",
+          "reverse": "none: the checkout keeps what it pulled."
+        },
+        {
+          "action": "Open a commit",
+          "reverse": "Back to commits"
+        },
+        {
+          "action": "Back to commits",
+          "reverse": "Open a commit"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Git tab yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsGitBlock.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitBlockCommits.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitCommitChanges.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGitPanel.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitTab.commit.test.tsx",
+        "packages/client-runtime/src/zerops/gitTab.test.ts",
+        "packages/client-runtime/src/zerops/release.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-vault",
+      "title": "Zerops Vault tab",
+      "components": [
+        "apps/web/src/components/zerops/vault/VaultEditors.tsx",
+        "apps/web/src/components/zerops/vault/VaultLines.tsx",
+        "apps/web/src/components/zerops/vault/VaultPanel.tsx",
+        "apps/web/src/components/zerops/vault/VaultPanelContainer.tsx",
+        "apps/web/src/components/zerops/vault/VaultRow.tsx",
+        "apps/web/src/components/zerops/vault/VaultStepUp.tsx",
+        "apps/web/src/components/zerops/vault/StopVault.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Vault (shortcut E)"
+        },
+        {
+          "kind": "inline",
+          "value": "Vault beside a stage or production page (its header's Vault toggle)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Add",
+          "reverse": "Remove"
+        },
+        {
+          "action": "Remove",
+          "reverse": "Add"
+        },
+        {
+          "action": "Save",
+          "reverse": "none: a sensitive value is never read back, so its previous value cannot be put back."
+        },
+        {
+          "action": "Make sensitive",
+          "reverse": "none: a sensitive value is never shown again; it is replaced, not made plain."
+        },
+        {
+          "action": "Restart",
+          "reverse": "none: a restart only applies what the vault already holds."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Vault tab yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/vault/VaultPanel.test.tsx",
+        "apps/web/src/components/zerops/vault/vault.logic.test.ts",
+        "apps/web/src/components/zerops/vault/vaultText.logic.test.ts",
+        "apps/web/src/components/zerops/vault/vaultOutcome.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-addresses",
+      "title": "Zerops addresses sheet",
+      "components": [
+        "apps/web/src/components/zerops/addresses/AddressesSheet.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesSheetBits.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesSheetContainer.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesWeb.tsx",
+        "apps/web/src/components/zerops/addresses/AddressesDirect.tsx",
+        "apps/web/src/components/zerops/addresses/DnsRecords.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "overlay",
+          "value": "A place's addresses — every door that calls useAddressesSheet.open (the globe popover, the project's ··· menu, Chief's card, the release review)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Add your domain",
+          "reverse": "Remove"
+        },
+        {
+          "action": "Remove",
+          "reverse": "Add your domain"
+        },
+        {
+          "action": "Close it",
+          "reverse": "Open to the internet"
+        },
+        {
+          "action": "Open to the internet",
+          "reverse": "Close it"
+        },
+        {
+          "action": "Open a port",
+          "reverse": "Close port"
+        },
+        {
+          "action": "Close port",
+          "reverse": "Open a port"
+        },
+        {
+          "action": "Change who can connect",
+          "reverse": "none: changing it again puts back who could connect."
+        },
+        {
+          "action": "Get your own IPv4",
+          "reverse": "none: it is turned off in Zerops (Open in Zerops); a paid period can't be refunded."
+        },
+        {
+          "action": "Put them live",
+          "reverse": "none: each change put live is undone by its own reverse."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the addresses sheet yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/addresses/AddressesSheet.test.tsx",
+        "apps/web/src/components/zerops/addresses/addresses.logic.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-vault-request",
+      "title": "Zerops vault request card",
+      "components": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.tsx",
+        "apps/web/src/components/zerops/vault/VaultRequestCardContainer.tsx",
+        "apps/web/src/components/zerops/vault/ComposerVaultAsk.tsx",
+        "apps/web/src/components/zerops/vault/ComposerVaultAskContainer.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_env action=request"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/client-runtime/zerops/model"],
+      "reverseStates": [
+        {
+          "action": "Put in vault",
+          "reverse": "none: a sensitive value is never read back; the Vault tab removes or replaces it."
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: kept in memory only; a reload draws the request open until the key is in the vault."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the vault request yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/vault/VaultRequestCard.test.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-origin-request",
+      "title": "Zerops origin request card",
+      "components": [
+        "apps/web/src/components/zerops/origin/OriginAskCard.tsx",
+        "apps/web/src/components/zerops/origin/OriginAskCardContainer.tsx",
+        "apps/web/src/components/zerops/origin/OriginGithubSheet.tsx",
+        "apps/web/src/components/zerops/origin/originAsk.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation, after a run whose Mate called zerops_origin action=request"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data", "@t3tools/shared/hqChanges"],
+      "reverseStates": [
+        {
+          "action": "Keep the code on GitHub",
+          "reverse": "none: closing the sheet before HQ mounts the repository leaves the ask open on its card; a mounted repository is disconnected in the project's Mirror code to GitHub or GitLab."
+        },
+        {
+          "action": "Keep the code in Mate",
+          "reverse": "none: the engine closes the ask with the code kept in Mate; the Mate can ask again."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the origin request yet."
+      },
+      "tests": ["apps/web/src/components/zerops/origin/OriginAskCard.test.tsx"],
+      "captures": []
+    },
+    {
+      "id": "zerops-review",
+      "title": "Zerops review",
+      "components": [
+        "apps/web/src/components/zerops/review/ReviewCommits.tsx",
+        "apps/web/src/components/zerops/review/ReviewConversation.tsx",
+        "apps/web/src/components/zerops/review/ReviewDescription.tsx",
+        "apps/web/src/components/zerops/review/ZeropsChangeReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReleaseReview.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReleaseSteps.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReview.logic.ts",
+        "apps/web/src/components/zerops/review/ZeropsReviewDialog.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReviewSurface.tsx",
+        "apps/web/src/zerops/ZeropsReviewProvider.tsx",
+        "apps/web/src/zerops/review.ts",
+        "apps/web/src/zerops/useProjectedHqPicture.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.ts",
+        "apps/web/src/zerops/useZeropsChangeRun.ts",
+        "apps/web/src/zerops/useZeropsReviewMates.ts",
+        "packages/client-runtime/src/zerops/changeDiff.ts",
+        "packages/client-runtime/src/zerops/changeReadout.ts",
+        "packages/client-runtime/src/zerops/recipeReach.ts",
+        "packages/client-runtime/src/zerops/reviewVerdict.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "overlay",
+          "value": "Review — every door to a change, the next release, a roll back or a crew task"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/reviewVerdict",
+        "@t3tools/client-runtime/zerops/changeDiff",
+        "@t3tools/client-runtime/zerops/changeReadout",
+        "@t3tools/client-runtime/zerops/projectFlow"
+      ],
+      "reverseStates": [
+        {
+          "action": "Merge",
+          "reverse": "none: a merge is undone by a revert, which is a new change."
+        },
+        {
+          "action": "Close without merging",
+          "reverse": "none: a closed change is not reopened."
+        },
+        {
+          "action": "Release",
+          "reverse": "Roll back"
+        },
+        {
+          "action": "Roll back",
+          "reverse": "Release"
+        },
+        {
+          "action": "Add to <Mate>'s code",
+          "reverse": "none: work added to the Mate's code is undone by new work."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the review yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/review/ReviewCommits.test.tsx",
+        "apps/web/src/components/zerops/review/ReviewConversation.test.tsx",
+        "apps/web/src/components/zerops/review/ReviewDescription.test.tsx",
+        "apps/web/src/components/zerops/review/ZeropsChangeReview.test.tsx",
+        "apps/web/src/components/zerops/review/ZeropsCrewTaskReview.test.tsx",
+        "apps/web/src/components/zerops/review/ZeropsReview.logic.test.ts",
+        "apps/web/src/zerops/changeDiscussion.logic.test.ts",
+        "apps/web/src/zerops/useProjectedHqPicture.test.tsx",
+        "packages/client-runtime/src/data/projections/hqPicture.test.ts",
+        "packages/client-runtime/src/data/adapters/hqPictures.test.ts",
+        "apps/web/src/zerops/useZeropsChangeDetail.test.ts",
+        "packages/client-runtime/src/zerops/changeDiff.test.ts",
+        "packages/client-runtime/src/zerops/changeReadout.test.ts",
+        "packages/client-runtime/src/zerops/recipeReach.test.ts",
+        "packages/client-runtime/src/zerops/reviewVerdict.test.ts",
+        "apps/web/src/zerops/useLinkedChange.test.ts",
+        "packages/client-runtime/src/data/adapters/hqChangeReads.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-service-map",
+      "title": "Zerops service map",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsServiceMap.tsx",
+        "packages/client-runtime/src/zerops/serviceMap.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/data",
+        "subscribeZeropsLifecycle"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open service link",
+          "reverse": "none: The action opens an external URL and does not mutate application state."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Zerops service map yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsServiceMap.test.tsx",
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/serviceMap.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
+      ],
+      "captures": [
+        "web:service-map-live",
+        "web:service-map-degraded",
+        "web:no-zerops",
+        "web:lifecycle-active"
+      ]
+    },
+    {
+      "id": "zerops-quick-actions",
+      "title": "Zerops quick actions",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsQuickActions.tsx",
+        "packages/client-runtime/src/zerops/quickActions.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/topology",
+        "@t3tools/client-runtime/zerops/data"
+      ],
+      "reverseStates": [
+        {
+          "action": "Prefill composer",
+          "reverse": "none: Quick actions only insert editable draft text and expose no dedicated undo action."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops quick actions yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsQuickActions.test.tsx",
+        "packages/client-runtime/src/zerops/quickActions.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-agent-auth-card",
+      "title": "Zerops agent authorization card",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsAgentAuthCard.tsx",
+        "apps/web/src/components/zerops/OpenCodeAgentKeys.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.ts",
+        "apps/web/src/components/zerops/ZeropsAgentPickerPanel.tsx",
+        "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.tsx",
+        "packages/client-runtime/src/zerops/agentLogin.ts",
+        "packages/client-runtime/src/zerops/agentAvailability.ts",
+        "apps/web/src/zerops/useAgentLogin.ts",
+        "apps/web/src/zerops/useAgentLoginCancel.ts",
+        "apps/web/src/zerops/useZeropsAgentSignInDialog.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ZeropsPanel"
+        },
+        {
+          "kind": "overlay",
+          "value": "ChatView when agent authorization needs attention"
+        },
+        {
+          "kind": "inline",
+          "value": "Model picker, per agent rail icon, for an agent this viewer cannot run"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "zerops.agentLogin.start",
+        "zerops.agentLogin.cancel",
+        "subscribeZeropsAgentAuth"
+      ],
+      "reverseStates": [
+        {
+          "action": "Sign in",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Sign in again",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Open sign-in link",
+          "reverse": "none: The action opens the provider's external authorization page."
+        },
+        {
+          "action": "Copy code",
+          "reverse": "none: Copying text to the system clipboard has no application-managed reverse action."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops agent authorization yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsAgentAuthCard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentSignIn.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsAgentPickerPanel.test.tsx",
+        "apps/web/src/components/zerops/ZeropsAgentPickerPanel.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsReadOnlyConversationFooter.test.tsx",
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/agentLogin.test.ts",
+        "packages/client-runtime/src/zerops/agentAvailability.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
+      ],
+      "captures": ["web:agent-auth-attention", "web:agent-auth-ok"]
+    },
+    {
+      "id": "zerops-lifecycle-strip",
+      "title": "Mate arrival",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
+        "packages/client-runtime/src/zerops/strip.ts",
+        "apps/web/src/components/zerops/ZeropsWorkspaceChip.tsx",
+        "packages/client-runtime/src/zerops/workspaceChip.ts",
+        "apps/web/src/zerops/releaseAskNotice.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ChatHeader"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["subscribeZeropsLifecycle"],
+      "reverseStates": [
+        {
+          "action": "Open Zerops panel",
+          "reverse": "Close Zerops panel"
+        },
+        {
+          "action": "Close Zerops panel",
+          "reverse": "Open Zerops panel"
+        },
+        {
+          "action": "Ask to release a bound workspace",
+          "reverse": "Not now"
+        },
+        {
+          "action": "Not now",
+          "reverse": "Ask to release a bound workspace"
+        },
+        {
+          "action": "Open the Mate's workspaces",
+          "reverse": "Close the Mate's workspaces"
+        },
+        {
+          "action": "Close the Mate's workspaces",
+          "reverse": "Open the Mate's workspaces"
+        },
+        {
+          "action": "Ask to release one of the Mate's workspaces",
+          "reverse": "Not now"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Zerops lifecycle strip yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/strip.test.ts",
+        "apps/web/src/components/zerops/ZeropsWorkspaceChip.test.tsx",
+        "apps/web/src/components/zerops/ZeropsWorkspaceChip.release.test.tsx",
+        "packages/client-runtime/src/zerops/workspaceChip.test.ts",
+        "apps/web/src/hooks/useThreadActions.undo.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
+      ],
+      "captures": ["web:lifecycle-active", "web:lifecycle-waiting"]
+    },
+    {
+      "id": "zerops-resource-health",
+      "title": "Mate resource health",
+      "components": ["apps/web/src/components/chat/MateHealthBanner.tsx"],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "ChatView composer"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "planned",
+          "reason": "Mobile later: health presentation and direct subscription are deferred; shared contracts compile."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsHealth",
+        "@t3tools/client-runtime/data:mateHealth",
+        "@t3tools/contracts:MateHealth"
+      ],
+      "reverseStates": [
+        {
+          "action": "Read resource strain",
+          "reverse": "none: A newer healthy live sample clears the notice; loss of connection hides retained health."
+        }
+      ],
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
+      "tests": [
+        "apps/server/src/zerops/mateResourceHealth.test.ts",
+        "apps/hq/src/mateOverviews.test.ts",
+        "packages/client-runtime/src/data/projections/mateHealth.test.ts",
+        "apps/web/test/engine-oracle/mateHealth.oracle.test.ts",
+        "apps/web/test/scenarios/areas/c-mate/health.scenario.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-tool-card",
+      "title": "Zerops operation card",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsOperationCard.tsx",
+        "apps/web/src/components/zerops/ZeropsToolResultCards.tsx",
+        "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
+        "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
+        "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
+        "apps/web/src/components/zerops/operation/PipelineStepList.tsx",
+        "packages/client-runtime/src/zerops/activity/pipelineReadout.ts",
+        "packages/client-runtime/src/zerops/activityResult.ts",
+        "packages/client-runtime/src/zerops/cards/payloads.ts",
+        "packages/client-runtime/src/zerops/cards/readResults.ts",
+        "packages/client-runtime/src/zerops/model/builders/readTools.ts",
+        "apps/web/src/components/zerops/ZeropsBuildLog.tsx",
+        "packages/client-runtime/src/zerops/model/operations.ts",
+        "packages/client-runtime/src/zerops/model/classify.ts",
+        "packages/client-runtime/src/zerops/operations/phrases.ts",
+        "apps/web/src/zerops/activity/useOperationCard.ts",
+        "apps/web/src/components/zerops/proposal/ProposalCard.tsx",
+        "apps/web/src/components/zerops/proposal/ProposalCardContainer.tsx",
+        "apps/web/src/components/zerops/MateTaskCard.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "MessagesTimeline tool result"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["projection:zeropsResult"],
+      "reverseStates": [
+        {
+          "action": "Open result link",
+          "reverse": "none: The action opens an external URL and does not mutate application state."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops tool result cards yet."
+      },
+      "tests": [
+        "apps/web/src/components/chat/MessagesTimeline.logic.test.ts",
+        "apps/web/src/components/chat/MessagesTimeline.test.tsx",
+        "apps/web/src/components/zerops/ZeropsOperationCard.test.tsx",
+        "apps/web/src/components/zerops/MateTaskCard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsToolResultCards.test.tsx",
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
+        "packages/client-runtime/src/zerops/cards/payloads.test.ts",
+        "packages/client-runtime/src/zerops/cards/readResults.test.ts",
+        "packages/client-runtime/src/zerops/model/builders/readTools.test.ts",
+        "packages/client-runtime/src/zerops/activityResult.test.ts",
+        "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts",
+        "apps/web/src/components/zerops/ZeropsBuildLog.test.tsx",
+        "packages/client-runtime/src/zerops/activity/pipelineReadout.test.ts",
+        "packages/client-runtime/src/zerops/model/operations.test.ts",
+        "packages/client-runtime/src/zerops/model/calls.test.ts",
+        "packages/client-runtime/src/zerops/model/classify.test.ts",
+        "packages/client-runtime/src/zerops/model/convergence.test.ts",
+        "packages/client-runtime/src/zerops/operations/phrases.test.ts",
+        "apps/web/src/zerops/activity/useOperationCard.test.ts",
+        "apps/web/src/session-logic.test.ts"
+      ],
+      "captures": ["web:cards"]
+    },
+    {
+      "id": "zerops-primitives",
+      "kind": "component-set",
+      "title": "Zerops web primitives",
+      "components": [
+        "apps/web/src/components/zerops/primitives/statusBadgeTone.ts",
+        "apps/web/src/components/zerops/primitives/VerdictPanel.tsx",
+        "apps/web/src/components/zerops/primitives/MicroLabel.tsx",
+        "apps/web/src/components/zerops/primitives/MintPanel.tsx",
+        "apps/web/src/components/zerops/primitives/ProcessSteps.tsx",
+        "apps/web/src/components/zerops/primitives/StepGlyph.tsx",
+        "apps/web/src/components/zerops/primitives/PersonAvatar.tsx",
+        "apps/web/src/components/zerops/primitives/LivenessLine.tsx",
+        "apps/web/src/components/zerops/primitives/MateFace.tsx"
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "docs": {
+        "none": "Foundation primitives have no user-facing behavior to document."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/primitives/MicroLabel.test.tsx",
+        "apps/web/src/components/zerops/primitives/PersonAvatar.test.tsx",
+        "apps/web/src/components/zerops/primitives/MintPanel.test.tsx",
+        "apps/web/src/components/zerops/primitives/ProcessSteps.test.tsx",
+        "apps/web/src/components/zerops/primitives/LivenessLine.test.tsx",
+        "apps/web/src/components/zerops/primitives/MateFace.test.tsx",
+        "apps/web/src/components/zerops/showcaseScenes.render.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-landing",
+      "title": "Zerops hosted landing",
+      "components": [
+        "apps/web/src/components/zerops/landing/ZeropsAccountControl.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsDeviceLoginWait.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedFrame.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedLanding.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsLandingShell.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "Every unauthenticated product URL; /zerops/authorized only consumes the handover"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops"],
+      "reverseStates": [
+        {
+          "action": "Open Zerops sign-in or registration",
+          "reverse": "none: Return or cancel in the Zerops account application"
+        },
+        {
+          "action": "Retry verification",
+          "reverse": "none: Sign out"
+        }
+      ],
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/landing/ZeropsAccountControl.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedFrame.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsLandingShell.test.tsx",
+        "apps/web/src/components/zerops/landing/ZeropsHostedLanding.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-projects",
+      "title": "Zerops projects",
+      "components": [
+        "apps/web/src/components/zerops/AccountVoiceLine.tsx",
+        "apps/web/src/components/zerops/KeptGitQuestions.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsAccount.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+        "apps/web/src/components/zerops/SidebarMateAge.tsx",
+        "apps/web/src/components/zerops/MateOwnerMark.tsx",
+        "apps/web/src/components/zerops/MateAutomatedMark.tsx",
+        "apps/web/src/components/zerops/MateDot.tsx",
+        "apps/web/src/components/zerops/SidebarComingEnds.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsTree.logic.ts",
+        "apps/web/src/components/zerops/SidebarProjectRow.logic.ts",
+        "apps/web/src/components/zerops/SidebarProjectSites.tsx",
+        "apps/web/src/components/zerops/SidebarProjectSites.logic.ts",
+        "apps/web/src/components/zerops/SidebarProjectReview.tsx",
+        "apps/web/src/components/zerops/SidebarProjectReview.logic.ts",
+        "apps/web/src/components/zerops/SidebarMateRow.logic.ts",
+        "apps/web/src/components/zerops/MateStatusMarker.tsx",
+        "apps/web/src/components/zerops/SidebarSelectedBand.tsx",
+        "apps/web/src/components/zerops/SidebarSelectedBand.logic.ts",
+        "apps/web/src/components/zerops/SidebarProjectReorder.tsx",
+        "apps/web/src/components/zerops/SidebarProjectFold.tsx",
+        "apps/web/src/components/zerops/SidebarProjectCluster.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.tsx",
+        "apps/web/src/components/zerops/SidebarProductionChip.logic.ts",
+        "apps/web/src/components/zerops/StopReadAgain.tsx",
+        "apps/web/src/components/zerops/StopPublicAccess.tsx",
+        "apps/web/src/components/zerops/SidebarHeadingLine.tsx",
+        "apps/web/src/components/zerops/SidebarHeadingLine.logic.ts",
+        "apps/web/src/components/zerops/SidebarProjects.logic.ts",
+        "apps/web/src/components/zerops/SidebarMateMenu.tsx",
+        "apps/web/src/components/zerops/MenuItemWithWhy.tsx",
+        "apps/web/src/components/zerops/mateDecision.logic.ts",
+        "apps/web/src/components/zerops/SidebarWaiting.tsx",
+        "apps/web/src/components/zerops/SidebarWaiting.logic.ts",
+        "apps/web/src/components/zerops/JumpBox.tsx",
+        "apps/web/src/components/zerops/SidebarJumpBox.tsx",
+        "apps/web/src/components/zerops/SidebarJumpButton.tsx",
+        "apps/web/src/components/zerops/SidebarScopeButton.tsx",
+        "apps/web/src/zerops/projectPartsShown.ts",
+        "apps/web/src/components/zerops/SidebarOverview.tsx",
+        "apps/web/src/components/zerops/SidebarOverview.logic.ts",
+        "apps/web/src/components/zerops/SidebarRail.tsx",
+        "apps/web/src/components/zerops/SidebarStage.tsx",
+        "apps/web/src/components/zerops/SidebarRail.logic.ts",
+        "apps/web/src/components/zerops/SidebarRevealBridge.tsx",
+        "apps/web/src/zerops/useSidebarWaiting.ts",
+        "apps/web/src/zerops/useMateWrite.ts",
+        "apps/web/src/zerops/sidebarReveal.ts",
+        "apps/web/src/components/zerops/ZeropsEnvironmentCreation.tsx",
+        "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx",
+        "apps/web/src/components/zerops/GitEnvironmentForm.tsx",
+        "apps/web/src/components/zerops/ZeropsNewMateForm.tsx",
+        "apps/web/src/components/zerops/AddAutomatedMatesForm.tsx",
+        "apps/web/src/components/zerops/addAutomatedMates.logic.ts",
+        "apps/web/src/components/zerops/ZeropsNewMateHost.tsx",
+        "apps/web/src/components/zerops/MateNameInput.tsx",
+        "apps/web/src/components/zerops/WhatHappensNext.tsx",
+        "apps/web/src/components/zerops/whatHappensNext.logic.ts",
+        "apps/web/src/components/zerops/ZeropsMateComingPage.tsx",
+        "apps/web/src/components/zerops/MateLinkLine.tsx",
+        "apps/web/src/components/zerops/MateStateDetails.tsx",
+        "apps/web/src/components/zerops/MateLinkStage.tsx",
+        "apps/web/src/components/zerops/MateDetailFailure.tsx",
+        "apps/web/src/components/zerops/RouteStandIn.tsx",
+        "apps/web/src/components/zerops/ConversationFooterStandIn.tsx",
+        "apps/web/src/components/zerops/WaitLine.tsx",
+        "apps/web/src/components/zerops/ZeropsArrivalSteps.tsx",
+        "apps/web/src/components/zerops/ArrivalSwap.tsx",
+        "apps/web/src/components/zerops/MateFacePicker.tsx",
+        "apps/web/src/components/zerops/ZeropsEnvironmentRow.tsx",
+        "apps/web/src/components/zerops/ZeropsMateCard.tsx",
+        "apps/web/src/components/zerops/ZeropsBirthProgress.tsx",
+        "apps/web/src/components/zerops/MateUpdateLine.tsx",
+        "apps/web/src/components/zerops/ZeropsMateUpdateControl.tsx",
+        "apps/web/src/components/zerops/ZeropsGroupTree.logic.ts",
+        "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.tsx",
+        "apps/web/src/components/zerops/projects/flowSteps.tsx",
+        "apps/web/src/components/zerops/projects/ProjectList.tsx",
+        "apps/web/src/components/zerops/projects/ProjectCards.tsx",
+        "apps/web/src/components/zerops/projects/OverviewFilters.tsx",
+        "apps/web/src/components/zerops/projects/OverviewStandIn.tsx",
+        "apps/web/src/components/zerops/projects/ArrivalWelcome.tsx",
+        "apps/web/src/components/zerops/projects/PlacePanel.tsx",
+        "apps/web/src/components/zerops/projects/projectCard.logic.ts",
+        "apps/web/src/components/zerops/projects/overviewSlots.tsx",
+        "apps/web/src/components/zerops/projects/OverviewCardMate.tsx",
+        "apps/web/src/components/zerops/projects/projectsView.logic.ts",
+        "apps/web/src/components/zerops/projects/ProjectPeople.tsx",
+        "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx",
+        "apps/web/src/components/zerops/projects/ProjectSpend.tsx",
+        "apps/web/src/components/zerops/projects/projectSpend.logic.ts",
+        "apps/web/src/components/zerops/projects/ChangeRow.tsx",
+        "apps/web/src/components/zerops/projects/ProjectHistory.tsx",
+        "apps/web/src/components/zerops/ZeropsAskDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeLinkChip.tsx",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.tsx",
+        "apps/web/src/components/zerops/place/PlaceServices.tsx",
+        "apps/web/src/components/zerops/place/place.logic.ts",
+        "apps/web/src/components/zerops/place/usePlaceServiceMap.ts",
+        "apps/web/src/components/zerops/StopTierStops.tsx",
+        "apps/web/src/components/zerops/GitStopDetail.tsx",
+        "apps/web/src/components/zerops/GitRemoteSettings.tsx",
+        "apps/web/src/components/zerops/GitMirrorDialog.tsx",
+        "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
+        "apps/web/src/components/zerops/projectAutomation/sourceForms.tsx",
+        "apps/web/src/components/zerops/GitDeliveryStatus.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectLink.tsx",
+        "apps/web/src/components/zerops/ZeropsReleaseVerb.tsx",
+        "apps/web/src/components/zerops/ZeropsHistoryView.tsx",
+        "apps/web/src/components/zerops/RecordedStageHistory.tsx",
+        "apps/web/src/components/zerops/ZeropsReleaseRows.tsx",
+        "apps/web/src/components/zerops/ZeropsDeployAnswer.tsx",
+        "apps/web/src/components/zerops/ZeropsDeployLog.tsx",
+        "apps/web/src/components/zerops/ZeropsNextStepBanner.tsx",
+        "apps/web/src/components/zerops/PutLiveHost.tsx",
+        "apps/web/src/components/zerops/PutLiveSheet.tsx",
+        "apps/web/src/components/zerops/ProductionRun.tsx",
+        "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsMoveToGroupDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsOrganizationScope.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectRenameMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectRow.logic.ts",
+        "apps/web/src/components/zerops/ZeropsProjectsPage.tsx",
+        "apps/web/src/components/zerops/ZeropsDeletionRecovery.tsx",
+        "apps/web/src/zerops/useMateActions.tsx",
+        "apps/web/src/zerops/RestartMateConfirmation.tsx",
+        "apps/web/src/zerops/MateDeployConfirmation.tsx",
+        "apps/web/src/zerops/recoveryOutcomes.tsx",
+        "apps/web/src/components/zerops/ZeropsRestartMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRestartMateDialog.logic.ts",
+        "apps/web/src/zerops/useSidebarMateMenus.tsx",
+        "apps/web/src/components/zerops/ZeropsPullRequestRow.tsx",
+        "apps/web/src/components/zerops/ZeropsPublicRoutes.tsx",
+        "apps/web/src/components/zerops/ZeropsPublicRoutes.logic.ts",
+        "apps/web/src/components/zerops/ZeropsStopMenu.tsx",
+        "apps/web/src/components/zerops/ZeropsAssignMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsProjectAccessDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRenameDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsRenameProjectDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationLists.tsx",
+        "apps/web/src/zerops/deleteApplicationDialog.ts",
+        "apps/web/src/zerops/useDeleteApplication.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectForm.tsx",
+        "apps/web/src/components/zerops/ZeropsSetUpMateDialog.tsx",
+        "apps/web/src/zerops/deletingMates.ts",
+        "apps/web/src/zerops/ZeropsInventoryProvider.tsx",
+        "apps/web/src/zerops/agentActivity.ts",
+        "packages/client-runtime/src/zerops/accountScope.ts",
+        "packages/client-runtime/src/zerops/autoEnterProvisioning.ts",
+        "packages/client-runtime/src/zerops/bots.ts",
+        "packages/client-runtime/src/zerops/candidates.ts",
+        "packages/client-runtime/src/zerops/containerHealth.ts",
+        "apps/web/src/components/zerops/ZeropsHqCard.tsx",
+        "apps/web/src/components/zerops/ZeropsHqCard.logic.ts",
+        "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
+        "apps/web/src/components/zerops/ZeropsHqUpdate.logic.ts",
+        "apps/web/src/components/zerops/ZeropsHqGate.tsx",
+        "packages/client-runtime/src/zerops/groupTree.ts",
+        "packages/client-runtime/src/zerops/groups.ts",
+        "packages/client-runtime/src/zerops/mateEnvironments.ts",
+        "packages/client-runtime/src/zerops/mateTints.ts",
+        "packages/client-runtime/src/zerops/publicRoutes.ts",
+        "packages/client-runtime/src/zerops/registrationHandoff.ts",
+        "packages/client-runtime/src/zerops/tools.ts",
+        "apps/web/src/zerops/projectFlows.ts",
+        "packages/client-runtime/src/data/projections/projectFlowJoin.ts",
+        "packages/client-runtime/src/data/projections/projectFlow.ts",
+        "packages/client-runtime/src/data/projections/inventoryGroups.ts",
+        "apps/web/src/zerops/projectsInventory.ts",
+        "apps/web/src/zerops/projectsPageRows.ts",
+        "packages/client-runtime/src/zerops/projectFlow.ts",
+        "apps/web/src/zerops/useMenuRows.tsx",
+        "apps/web/src/zerops/hqNavigation.tsx",
+        "apps/web/src/components/zerops/ZeropsReadFailure.tsx",
+        "apps/web/src/components/zerops/chief/ChiefSetupHost.tsx",
+        "apps/web/src/components/zerops/chief/ChiefPage.tsx",
+        "apps/web/src/components/zerops/chief/ChiefOverviewButton.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefTop.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/zerops"
+        },
+        {
+          "kind": "route",
+          "value": "/group/$groupId/$projectId"
+        },
+        {
+          "kind": "route",
+          "value": "/mate/$projectId"
+        },
+        {
+          "kind": "route",
+          "value": "/chief"
+        },
+        {
+          "kind": "inline",
+          "value": "Signed-in ZeropsHostedLanding"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Zerops"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Open Zerops"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops",
+        "apps/web/src/zerops/environmentPorts:webEnvironmentPorts"
+      ],
+      "reverseStates": [
+        {
+          "action": "Connect",
+          "reverse": "none: The projects page exposes no explicit disconnect action."
+        },
+        {
+          "action": "Wait",
+          "reverse": "Stop waiting"
+        },
+        {
+          "action": "Stop waiting",
+          "reverse": "Wait"
+        },
+        {
+          "action": "Back",
+          "reverse": "Wait"
+        },
+        {
+          "action": "Switch organization",
+          "reverse": "Switch organization"
+        },
+        {
+          "action": "Enable",
+          "reverse": "none: Enable restarts the service and the page exposes no inverse operation."
+        },
+        {
+          "action": "Refresh",
+          "reverse": "none: Refresh is a read-only request with no state to reverse."
+        },
+        {
+          "action": "New project",
+          "reverse": "none: Project deletion is not offered on this page."
+        },
+        {
+          "action": "Retry",
+          "reverse": "none: Retry repeats a failed operation and creates no reversible state of its own."
+        },
+        {
+          "action": "Check it in the Zerops GUI",
+          "reverse": "none: The action opens the external Zerops GUI."
+        },
+        {
+          "action": "Restart and check for updates",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Check connection",
+          "reverse": "none: Readiness and identity are checked again; a restart is never automatically resubmitted."
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Restart and check for updates"
+        },
+        {
+          "action": "Restart container",
+          "reverse": "none: A confirmed container restart cannot be undone. Leaving the target or signing out stops the subsequent compatibility checks."
+        },
+        {
+          "action": "Delete a service its tier no longer declares",
+          "reverse": "none: Zerops deletes the service and its data; the dialog says it cannot be undone before it deletes anything, and only a change declaring it again brings a new one."
+        },
+        {
+          "action": "Delete a Mate",
+          "reverse": "none: A deleted Mate's environment, its services and its conversations are gone from Zerops; the dialog asks for its name typed before it deletes anything."
+        },
+        {
+          "action": "Change face",
+          "reverse": "Change face"
+        },
+        {
+          "action": "Clean up sign-in tokens",
+          "reverse": "none: Deleted throwaway tokens cannot be restored. A failure stays visible with Try again."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops project connection yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/KeptGitQuestions.test.tsx",
+        "apps/web/src/components/zerops/ZeropsEnvironmentRow.test.tsx",
+        "apps/web/src/components/zerops/ZeropsMateCard.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewMateForm.test.tsx",
+        "apps/web/src/components/zerops/AddAutomatedMatesForm.test.tsx",
+        "apps/web/src/components/zerops/addAutomatedMates.logic.test.ts",
+        "apps/web/src/components/zerops/whatHappensNext.logic.test.ts",
+        "apps/web/src/zerops/newMate.test.ts",
+        "apps/web/src/zerops/mateComing.test.ts",
+        "apps/web/src/components/zerops/ZeropsMateComingPage.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGroupTree.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarZeropsTree.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarMateAge.test.tsx",
+        "apps/web/src/components/zerops/SidebarComingEnds.test.tsx",
+        "apps/web/src/components/zerops/SidebarMateRow.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarSelectedBand.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarProjectReorder.test.ts",
+        "apps/web/src/components/zerops/SidebarProjects.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarJumpButton.test.tsx",
+        "apps/web/src/components/zerops/SidebarOverview.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarRail.test.tsx",
+        "apps/web/src/components/zerops/chief/SidebarChiefRow.test.tsx",
+        "apps/web/src/components/zerops/SidebarRail.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarProductionChip.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarProjectPlaces.test.tsx",
+        "apps/web/src/components/zerops/StopReadAgain.test.tsx",
+        "apps/web/src/components/zerops/StopPublicAccess.test.tsx",
+        "packages/client-runtime/src/data/projections/publicAccess.test.ts",
+        "apps/web/src/components/zerops/SidebarHeadingLine.logic.test.ts",
+        "apps/web/src/components/zerops/SidebarMateMenu.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteMateDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteApplicationDialog.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeleteProjectForm.test.tsx",
+        "apps/web/src/components/zerops/ZeropsSetUpMateDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.test.tsx",
+        "apps/web/src/components/zerops/ZeropsChangeFaceDialog.logic.test.ts",
+        "apps/web/src/zerops/deletingMates.test.ts",
+        "apps/web/src/components/zerops/mateDecision.logic.test.ts",
+        "apps/web/src/zerops/sidebarReveal.test.ts",
+        "apps/web/src/components/zerops/SidebarWaiting.test.tsx",
+        "apps/web/src/components/zerops/SidebarWaiting.logic.test.ts",
+        "apps/web/src/components/zerops/JumpBox.logic.test.ts",
+        "apps/web/src/zerops/useMateReadOnly.test.ts",
+        "apps/web/src/zerops/useSidebarWaiting.test.ts",
+        "apps/web/src/zerops/mateScope.test.ts",
+        "apps/web/src/zerops/useSidebarMateMenus.test.ts",
+        "apps/web/src/zerops/useMateActions.test.tsx",
+        "apps/web/src/components/zerops/ZeropsDeletionRecovery.test.tsx",
+        "packages/client-runtime/src/data/projections/lifecycleRemainders.test.ts",
+        "apps/web/src/zerops/useOpenMate.test.ts",
+        "apps/web/src/zerops/mutedMates.test.ts",
+        "apps/web/src/components/zerops/projects/ZeropsProjectsFlow.test.tsx",
+        "packages/client-runtime/src/data/projections/projectFlowJoin.test.ts",
+        "packages/client-runtime/src/data/projections/projectFlow.test.ts",
+        "packages/client-runtime/src/data/projections/inventoryGroups.test.ts",
+        "apps/web/src/zerops/projectsPageRows.test.ts",
+        "apps/web/src/components/zerops/projects/projectsView.logic.test.ts",
+        "apps/web/src/components/zerops/projects/projectCard.logic.test.ts",
+        "apps/web/src/components/zerops/projects/OverviewCardMate.test.tsx",
+        "apps/web/src/components/zerops/ZeropsOrganizationScope.test.tsx",
+        "apps/web/src/components/zerops/ZeropsPublicRoutes.test.tsx",
+        "apps/web/src/components/zerops/StopTierStops.test.tsx",
+        "apps/web/src/components/zerops/ZeropsStopMenu.test.tsx",
+        "apps/web/src/components/zerops/ZeropsReleaseRows.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGroupDetail.test.tsx",
+        "apps/web/src/zerops/agentActivity.test.ts",
+        "packages/client-runtime/src/zerops/mateTints.test.ts",
+        "packages/client-runtime/src/zerops/publicRoutes.test.ts",
+        "packages/client-runtime/src/zerops/accountScope.test.ts",
+        "packages/client-runtime/src/zerops/candidates.test.ts",
+        "packages/client-runtime/src/zerops/autoEnterProvisioning.test.ts",
+        "packages/client-runtime/src/zerops/registrationHandoff.test.ts",
+        "packages/client-runtime/src/zerops/containerHealth.test.ts",
+        "apps/web/src/zerops/useMateUpgradeRecovery.test.ts",
+        "packages/client-runtime/src/data/projections/platformAccess.test.ts",
+        "apps/web/src/zerops/useProjectTopology.test.ts",
+        "packages/client-runtime/src/data/projections/platformInventory.test.ts",
+        "packages/client-runtime/src/zerops/identityExchange.test.ts",
+        "packages/client-runtime/src/zerops/projectFlow.test.ts",
+        "packages/client-runtime/src/zerops/hq/menuRows.test.ts",
+        "apps/web/src/zerops/useAccountVoice.test.ts",
+        "packages/client-runtime/src/data/demand.test.ts",
+        "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-git",
+      "title": "Git page",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsGitPage.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.ts",
+        "apps/web/src/components/zerops/ZeropsGitChangeRow.tsx",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.tsx",
+        "apps/web/src/components/zerops/GitTokenGuide.tsx",
+        "apps/web/src/zerops/useGitCredentials.ts",
+        "apps/web/src/zerops/useGitRaw.ts",
+        "apps/web/src/zerops/useGitBrowse.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitRepoFrame.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitBrowseView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitRefPicker.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitRefPicker.logic.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitRepoHome.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitRepoCode.tsx",
+        "apps/web/src/components/zerops/gitBrowser/RepoMarkdown.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitWhen.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitCommitsView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitAtCommit.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitDirectoryList.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitPathCrumbs.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.logic.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitFileView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitCommitView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitDiffFiles.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitCompareView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitSearchView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitFileFinder.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitFileFinder.logic.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitBlameView.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitArchiveButton.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitBrowserLink.tsx",
+        "apps/web/src/zerops/useHqAppDetail.ts",
+        "packages/client-runtime/src/zerops/gitOverview.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/git"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Git (the account menu)"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops/gitOverview",
+        "@t3tools/client-runtime/zerops/hq"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open a change's own page",
+          "reverse": "none: navigation."
+        },
+        {
+          "action": "Browse a repository",
+          "reverse": "Back to repositories"
+        },
+        {
+          "action": "Back to repositories",
+          "reverse": "Browse a repository"
+        },
+        {
+          "action": "Create Git password",
+          "reverse": "Revoke"
+        },
+        {
+          "action": "Revoke",
+          "reverse": "none: A revoked password cannot be restored. Create Git password issues a new one."
+        },
+        {
+          "action": "Read again",
+          "reverse": "none: An explicit read changes no remote state."
+        }
+      ],
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsGitPage.test.tsx",
+        "apps/web/src/components/zerops/ZeropsGitPage.logic.test.ts",
+        "apps/web/src/components/zerops/ZeropsGitCredentials.test.tsx",
+        "apps/web/src/components/zerops/ZeropsRepositoryBrowser.test.tsx",
+        "packages/client-runtime/src/zerops/hq/gitCredentialStore.test.ts",
+        "packages/client-runtime/src/zerops/gitBrowse/files.test.ts",
+        "apps/web/src/components/zerops/gitBrowser/GitFileView.test.tsx",
+        "apps/web/src/components/zerops/gitBrowser/GitTreeSidebar.logic.test.ts",
+        "packages/client-runtime/src/zerops/gitOverview.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-new-project",
+      "title": "Zerops new project dialog",
+      "components": [
+        "apps/web/src/components/zerops/ZeropsNewProjectHost.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.ts",
+        "apps/web/src/components/zerops/ZeropsCreditForecast.tsx",
+        "apps/web/src/zerops/useCreditForecast.ts",
+        "apps/web/src/zerops/hqCredit.ts",
+        "apps/web/src/zerops/newProjectAsk.ts",
+        "apps/web/src/components/zerops/ZeropsNewProjectComingPage.tsx",
+        "apps/web/src/zerops/newProjectBirth.ts",
+        "packages/client-runtime/src/zerops/newProject.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/zerops/new"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "New project"
+        },
+        {
+          "kind": "inline",
+          "value": "Zerops projects page New project button"
+        },
+        {
+          "kind": "inline",
+          "value": "Zerops projects page after a registration that claimed no project"
+        },
+        {
+          "kind": "inline",
+          "value": "Left menu header New project button and its empty state"
+        },
+        {
+          "kind": "overlay",
+          "value": "Command palette Create Zerops project, and the jump box's New project"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops",
+        "apps/web/src/zerops/environmentPorts:webEnvironmentPorts"
+      ],
+      "reverseStates": [
+        {
+          "action": "Create project",
+          "reverse": "none: Project deletion is not offered here; the created project is reversed only in the Zerops GUI."
+        },
+        {
+          "action": "Select agents",
+          "reverse": "Select agents"
+        },
+        {
+          "action": "Switch organization",
+          "reverse": "Switch organization"
+        },
+        {
+          "action": "Back to projects",
+          "reverse": "none: Leaving the wizard is reached again through its entry points, not through an action of this surface."
+        },
+        {
+          "action": "Retry",
+          "reverse": "none: Retry repeats a failed operation and creates no reversible state of its own."
+        },
+        {
+          "action": "Enable",
+          "reverse": "none: Enable restarts the service and the wizard exposes no inverse operation."
+        },
+        {
+          "action": "Restart and check for updates",
+          "reverse": "Cancel"
+        },
+        {
+          "action": "Check connection",
+          "reverse": "none: Readiness and identity are checked again; a restart is never automatically resubmitted."
+        },
+        {
+          "action": "Cancel",
+          "reverse": "Restart and check for updates"
+        },
+        {
+          "action": "Restart container",
+          "reverse": "none: A confirmed container restart cannot be undone. Leaving the target or signing out stops the subsequent compatibility checks."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the Zerops new project dialog yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.test.tsx",
+        "apps/web/src/components/zerops/ZeropsNewProjectForm.logic.test.ts",
+        "apps/web/src/zerops/newProjectAsk.test.ts",
+        "apps/web/src/components/zerops/ZeropsNewProjectComingPage.test.tsx",
+        "apps/web/src/zerops/newProjectBirth.test.ts",
+        "packages/client-runtime/src/zerops/newProject.test.ts",
+        "packages/client-runtime/src/data/operations/executors/platformAdmission.test.ts",
+        "packages/client-runtime/src/data/operations/executors/zerops.test.ts",
+        "packages/client-runtime/src/data/account.test.ts",
+        "apps/web/src/zerops/useMateUpgradeRecovery.test.ts",
+        "packages/client-runtime/src/zerops/identityExchange.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-settings",
+      "title": "Zerops settings",
+      "components": ["apps/web/src/components/settings/ZeropsSettings.tsx"],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/settings/zerops"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Zerops"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-account"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-organizations"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-auto-update"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/shared/mateAutoUpdatePolicy"],
+      "reverseStates": [
+        {
+          "action": "Sign out",
+          "reverse": "none: Signing in happens on the Zerops landing; this settings page only offers the way out."
+        },
+        {
+          "action": "Open Zerops",
+          "reverse": "none: This action navigates to the Zerops projects page and does not mutate account state."
+        },
+        {
+          "action": "Turn automatic updates on",
+          "reverse": "Turn automatic updates off"
+        },
+        {
+          "action": "Turn automatic updates off",
+          "reverse": "Turn automatic updates on"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents Zerops account settings yet."
+      },
+      "tests": [
+        "apps/web/src/components/settings/ZeropsSettings.test.tsx",
+        "apps/web/src/components/settings/settingsSearch.test.ts",
+        "packages/client-runtime/src/data/adapters/hqAutoUpdatePolicy.test.ts",
+        "packages/client-runtime/src/data/operations/hqWrites.test.ts",
+        "apps/hq/src/autoUpdate.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-team-settings",
+      "title": "Team settings",
+      "components": [
+        "apps/web/src/components/settings/TeamSettings.tsx",
+        "apps/web/src/components/settings/TeamMemberPage.tsx",
+        "apps/web/src/components/settings/TeamInvitePage.tsx",
+        "apps/web/src/components/settings/TeamRoleEditor.tsx",
+        "apps/web/src/components/settings/MemberProjectAccess.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.ts",
+        "apps/web/src/components/settings/teamMember.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/settings/team"
+        },
+        {
+          "kind": "route",
+          "value": "/settings/team/$clientUserId"
+        },
+        {
+          "kind": "route",
+          "value": "/settings/team/invite"
+        },
+        {
+          "kind": "settings-section",
+          "value": "Team"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/client-runtime/zerops/teamRoles"],
+      "reverseStates": [
+        {
+          "action": "Invite",
+          "reverse": "Withdraw invite"
+        },
+        {
+          "action": "Change a person's role",
+          "reverse": "none: Choosing their earlier role card on their page is the way back."
+        },
+        {
+          "action": "Set a person's project access",
+          "reverse": "none: Remove override on the project's chip is the way back."
+        },
+        {
+          "action": "Withdraw invite",
+          "reverse": "Invite"
+        },
+        {
+          "action": "Remove from the organization",
+          "reverse": "Invite"
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents the team yet."
+      },
+      "tests": [
+        "apps/web/src/components/settings/TeamSettings.test.tsx",
+        "apps/web/src/components/settings/TeamMemberPage.test.tsx",
+        "apps/web/src/components/settings/TeamInvitePage.test.tsx",
+        "apps/web/src/components/settings/teamSettings.logic.test.ts",
+        "apps/web/src/components/settings/teamMember.logic.test.ts",
+        "packages/client-runtime/src/zerops/teamRoles.test.ts",
+        "packages/client-runtime/src/data/operations/executors/team.test.ts",
+        "packages/client-runtime/src/data/operations/executors/appAccess.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-section",
+      "title": "Crew tab",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewPanel.tsx",
+        "apps/web/src/components/zerops/crew/CrewSectionHost.tsx",
+        "apps/web/src/components/zerops/crew/CrewSection.tsx",
+        "apps/web/src/components/zerops/crew/CrewHead.tsx",
+        "apps/web/src/components/zerops/crew/CrewHead.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.tsx",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewRows.tsx",
+        "apps/web/src/components/zerops/crew/CrewRows.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewWaiting.tsx",
+        "apps/web/src/components/zerops/crew/CrewInFensCode.tsx",
+        "apps/web/src/components/zerops/crew/CrewParts.tsx",
+        "apps/web/src/zerops/crew/useCrew.ts",
+        "apps/web/src/zerops/crew/useCrewCommand.ts",
+        "apps/web/src/zerops/crew/crewCommands.ts",
+        "apps/web/src/zerops/crew/useCrewAccess.ts",
+        "packages/client-runtime/src/zerops/projections/crew.ts",
+        "packages/client-runtime/src/zerops/crew/crewAccess.ts",
+        "packages/client-runtime/src/zerops/crew/phrases.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "right-panel-tab",
+          "value": "Crew (shortcut C): the crew's column, or the Mate's empty state while it has no crew"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "A Mate's own menu in the left menu: Crew, on the viewer's own Mate with a crew"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsCrew",
+        "zerops.crew.command",
+        "@t3tools/client-runtime/zerops/projections/crew",
+        "@t3tools/client-runtime/zerops/crew/crewAccess",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Send",
+          "reverse": "none: each piece of work it starts leaves the tab by Drop it."
+        },
+        {
+          "action": "Answer",
+          "reverse": "none: an answer is a message in the crewmate's chat."
+        },
+        {
+          "action": "Review",
+          "reverse": "none: it opens the review; nothing goes into the Mate's code until Add to <Mate>'s code there."
+        },
+        {
+          "action": "Let it",
+          "reverse": "Back to <Mate>'s"
+        },
+        {
+          "action": "Not now",
+          "reverse": "none: the crewmate asks again when it needs the Mate's dev address."
+        },
+        {
+          "action": "Back to <Mate>'s",
+          "reverse": "none: the dev address shows the Mate's code again until a crewmate asks and you let it."
+        },
+        {
+          "action": "Ask <Mate> to commit them",
+          "reverse": "none: it drafts a message to the Mate in your chat; nothing runs until you send it."
+        },
+        {
+          "action": "Ask it to sort it out",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
+        },
+        {
+          "action": "Ask it to fix them",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
+        },
+        {
+          "action": "Ask it to rework",
+          "reverse": "none: the crewmate works one turn on its own copy; nothing goes into the Mate's code without Add to <Mate>'s code."
+        },
+        {
+          "action": "Continue",
+          "reverse": "none: the crewmate carries its task on from its copy; Drop it takes it off."
+        },
+        {
+          "action": "Try again",
+          "reverse": "none: the task starts again as the person who created it; a refusal leaves it where it was."
+        },
+        {
+          "action": "Drop it",
+          "reverse": "none: dropped work leaves the tab; the same work is new work."
+        },
+        {
+          "action": "Clear its conversation",
+          "reverse": "none: the previous conversation stays readable and is never resumed."
+        },
+        {
+          "action": "Remove from the crew",
+          "reverse": "none: a crewmate added again is a new one with a new copy of the code."
+        },
+        {
+          "action": "Ask <Mate> to ship them",
+          "reverse": "none: it drafts a message to the Mate, whose pipeline ships; nothing runs until you send it."
+        },
+        {
+          "action": "Stop",
+          "reverse": "Keep going…"
+        },
+        {
+          "action": "Keep going…",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Start",
+          "reverse": "Stop"
+        },
+        {
+          "action": "Drop the plan",
+          "reverse": "none: a dropped plan leaves the tab; the lead proposes again when asked."
+        },
+        {
+          "action": "Leave this one out",
+          "reverse": "none: the task leaves the plan; the lead proposes it again when asked."
+        },
+        {
+          "action": "Sign in with your own account",
+          "reverse": "none: it opens the agent's sign-in; the crew stays as it is until the viewer's own sign-in completes."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewPanel.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewSection.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewHead.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewRows.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewTellComposer.logic.test.ts",
+        "apps/web/src/zerops/crew/useCrewCommand.test.ts",
+        "apps/web/src/zerops/feeds.test.ts",
+        "apps/web/src/rightPanelKinds.test.ts",
+        "apps/web/src/rightPanelStore.test.ts",
+        "packages/client-runtime/src/zerops/projections/crew.test.ts",
+        "packages/client-runtime/src/zerops/crew/crewAccess.test.ts",
+        "packages/client-runtime/src/zerops/crew/phrases.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-editors",
+      "title": "Crew views",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewView.tsx",
+        "apps/web/src/components/zerops/crew/CrewSetup.tsx",
+        "apps/web/src/components/zerops/crew/CrewGoal.tsx",
+        "apps/web/src/components/zerops/crew/CrewGoal.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewmateJob.tsx",
+        "apps/web/src/components/zerops/crew/CrewEditors.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.logic.ts",
+        "apps/web/src/zerops/crew/useCrewHome.ts",
+        "apps/web/src/zerops/crew/crewHome.ts",
+        "apps/web/src/zerops/crew/crewTab.ts",
+        "packages/shared/src/crewTemplates.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Crew tab: Set up a crew; the left menu's Set up a crew on the viewer's own Mate with crew mode on and no crew"
+        },
+        {
+          "kind": "inline",
+          "value": "Crew tab: the crew's ··· Change the goal and Add a crewmate, a row's ··· Change its job"
+        },
+        {
+          "kind": "inline",
+          "value": "Crewmate chat: its menu's Change its job, the lead's Change the goal"
+        },
+        {
+          "kind": "overlay",
+          "value": "Crew tab: Let it work on its own…, Keep going…, and a plan's Start or Change while the crew doesn't work on its own"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "zerops.crew.files.get",
+        "zerops.crew.files.put",
+        "zerops.crew.command",
+        "subscribeZeropsCrew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Let <Mate> suggest a crew",
+          "reverse": "none: it drafts a message to the Mate, who writes the crew; nothing runs until you send it."
+        },
+        {
+          "action": "Start with a lead and two builders",
+          "reverse": "none: it drafts the crew here; nothing starts until Start the crew."
+        },
+        {
+          "action": "Start the crew",
+          "reverse": "none: it makes each builder's copy of the code; a crewmate leaves by Remove from the crew."
+        },
+        {
+          "action": "Save",
+          "reverse": "none: a save is a new version; the earlier text comes back only by saving it again."
+        },
+        {
+          "action": "Ask <Mate>",
+          "reverse": "none: the Mate declares the crew ports and redeploys the service; taking them out is another change asked of the Mate."
+        },
+        {
+          "action": "Start",
+          "reverse": "none: the crew stops working on its own by the Crew tab's Stop."
+        },
+        {
+          "action": "Keep going",
+          "reverse": "none: the crew stops again by the Crew tab's Stop; its new limits stay."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewEditors.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewGoal.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewRunDialog.logic.test.ts",
+        "apps/web/src/zerops/crew/crewHome.test.ts",
+        "apps/web/src/zerops/crew/crewTab.test.ts",
+        "packages/shared/src/crewTemplates.test.ts"
+      ],
+      "captures": []
+    },
+    {
+      "id": "zerops-crew-chat",
+      "title": "Crewmate chat",
+      "components": [
+        "apps/web/src/components/zerops/crew/CrewmateMenu.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateMenu.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewTryIt.tsx",
+        "apps/web/src/zerops/crew/crewTry.ts",
+        "apps/web/src/zerops/crew/useCrewTry.ts",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.tsx",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewSeamLine.tsx",
+        "apps/web/src/components/zerops/crew/crewChatNotices.ts",
+        "apps/web/src/components/zerops/crew/crewChatSeams.ts",
+        "apps/web/src/components/zerops/crew/crewComposerSend.ts",
+        "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.ts",
+        "apps/web/src/components/zerops/crew/SidebarCrewMinis.tsx",
+        "apps/web/src/components/zerops/crew/SidebarCrewMinis.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.ts",
+        "apps/web/src/components/zerops/crew/CrewRunsOnControl.tsx"
+      ],
+      "entryPoints": [
+        {
+          "kind": "sidebar-item",
+          "value": "Crew faces on the Mate row"
+        },
+        {
+          "kind": "inline",
+          "value": "Crew tab: a crewmate's row"
+        },
+        {
+          "kind": "inline",
+          "value": "The conversation's line: the crew's faces, the open crewmate's pill and its menu"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatHeader and MessagesTimeline, in a crewmate's chat"
+        },
+        {
+          "kind": "inline",
+          "value": "A finished run's result row: Try it beside Review, while its crew task's work is ready to go into the Mate's code"
+        },
+        {
+          "kind": "inline",
+          "value": "The lead's chat: its plan, while the lead proposes tasks"
+        },
+        {
+          "kind": "inline",
+          "value": "ChatComposer footer, in a crewmate's chat: what it runs on"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Native release is dormant; its entry directs users to hosted Mate. This web surface has no active native implementation."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": [
+        "subscribeZeropsCrew",
+        "zerops.crew.command",
+        "@t3tools/client-runtime/zerops/projections/crew",
+        "@t3tools/client-runtime/zerops/crew/phrases"
+      ],
+      "reverseStates": [
+        {
+          "action": "Send",
+          "reverse": "none: a message stays in the conversation; the crewmate reads it at its next turn or steers by it now."
+        },
+        {
+          "action": "Try its work",
+          "reverse": "Stop its app"
+        },
+        {
+          "action": "Stop its app",
+          "reverse": "Try its work"
+        },
+        {
+          "action": "Try it",
+          "reverse": "Stop its app"
+        },
+        {
+          "action": "Change its job",
+          "reverse": "none: it opens its job in the Crew tab; nothing changes until Save."
+        },
+        {
+          "action": "Change the goal",
+          "reverse": "none: it opens the crew's goal in the Crew tab; nothing changes until Save."
+        },
+        {
+          "action": "Add to <Mate>'s code",
+          "reverse": "none: work added to the Mate's code is undone by new work."
+        },
+        {
+          "action": "Add what it has",
+          "reverse": "none: work added to the Mate's code is undone by new work."
+        },
+        {
+          "action": "Clear its conversation",
+          "reverse": "none: the previous conversation stays readable, linked from the new one's first line, and is never resumed."
+        },
+        {
+          "action": "Start",
+          "reverse": "Drop the plan"
+        },
+        {
+          "action": "Drop the plan",
+          "reverse": "none: a dropped plan leaves the tab; the lead proposes again when asked."
+        }
+      ],
+      "docs": {
+        "none": "No docs/user page documents crew mode yet."
+      },
+      "tests": [
+        "apps/web/src/components/zerops/crew/CrewmateMenu.logic.test.ts",
+        "apps/web/src/zerops/crew/crewTry.test.ts",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewTaskCard.logic.test.ts",
+        "apps/web/src/components/zerops/crew/crewChatNotices.test.ts",
+        "apps/web/src/components/zerops/crew/crewChatSeams.test.ts",
+        "apps/web/src/components/zerops/crew/crewComposerSend.test.ts",
+        "apps/web/src/components/zerops/crew/SidebarCrewLine.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewmateEmptyState.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.test.tsx",
+        "apps/web/src/components/zerops/crew/CrewLeadPlan.logic.test.ts",
+        "apps/web/src/components/zerops/crew/CrewRunsOnControl.test.tsx"
+      ],
+      "captures": []
+    },
+    {
+      "id": "manual-link",
+      "title": "Retained inactive native connection source",
+      "components": [
+        "apps/web/src/hostedPairing.ts",
+        "apps/web/src/routes/_chat.index.tsx",
+        "apps/mobile/src/features/connection/ConnectionsNewRouteScreen.tsx",
+        "apps/mobile/src/features/connection/pairing.ts",
+        "apps/mobile/src/features/connection/useConnectionController.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "route",
+          "value": "/pair: retired bookmark redirects to Zerops sign-in without exchanging a credential"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Retained source is unreachable from the dormant native entry."
+        }
+      },
+      "providers": "n/a",
+      "connectionModes": ["manual-link"],
+      "contracts": [
+        "Retained native source only; no public pairing endpoint or native product release"
+      ],
+      "reverseStates": [
+        {
+          "action": "Open a retired pairing bookmark",
+          "reverse": "none: Its credential is discarded and the account entry is shown."
+        }
+      ],
+      "docs": {
+        "none": "Implemented behaviour belongs in consumer tests, not user docs."
+      },
+      "tests": [
+        "apps/web/src/hostedPairing.test.ts",
+        "apps/mobile/src/features/connection/pairing.test.ts"
+      ],
+      "untested": "Native pairing source is retained but is not reachable from the dormant native entry. Released web has no manual connection flow.",
+      "captures": []
+    },
+    {
+      "id": "agent-admission",
+      "title": "Agent sign-in admission",
+      "components": [
+        "packages/client-runtime/src/data/projections/agentAdmission.ts",
+        "packages/client-runtime/src/data/index.ts",
+        "apps/web/src/routes/__root.tsx",
+        "apps/web/src/zerops/AgentAdmissionComposition.tsx",
+        "apps/web/src/zerops/useMateReadOnly.ts",
+        "apps/web/src/components/ChatView.tsx",
+        "apps/web/src/components/chat/AgentAdmissionExplanation.tsx",
+        "apps/web/src/components/chat/threadErrorNotice.logic.ts",
+        "apps/web/src/components/chat/providerAvailability.logic.ts",
+        "apps/web/src/components/chat/ProviderModelPicker.tsx",
+        "apps/web/src/components/zerops/MateStatusMarker.tsx",
+        "apps/web/src/components/zerops/SidebarZeropsTree.tsx",
+        "apps/web/src/zerops/mateStatus.logic.ts"
+      ],
+      "entryPoints": [
+        {
+          "kind": "inline",
+          "value": "Conversation input"
+        },
+        {
+          "kind": "sidebar-item",
+          "value": "Mate summary"
+        }
+      ],
+      "clients": {
+        "web": "yes",
+        "desktop": "yes",
+        "mobile": {
+          "status": "n/a",
+          "reason": "Mobile later: native admission remains on its current path."
+        }
+      },
+      "providers": ["claude-code", "codex"],
+      "connectionModes": ["zerops-door"],
+      "contracts": ["@t3tools/client-runtime/data"],
+      "reverseStates": [
+        {
+          "action": "Sign in",
+          "reverse": "Sign out"
+        },
+        {
+          "action": "Sign out",
+          "reverse": "Sign in"
+        },
+        {
+          "action": "Open admission summary",
+          "reverse": "none: Focuses the explanation in the conversation."
+        }
+      ],
+      "docs": {
+        "none": "Admission behavior is protected by consumed-record tests."
+      },
+      "tests": [
+        "apps/web/test/scenarios/areas/c-mate/admission.scenario.ts",
+        "apps/web/src/components/chat/threadErrorNotice.test.tsx",
+        "packages/client-runtime/src/data/projections/agentAdmission.test.ts"
+      ],
+      "captures": []
+    }
+  ]
+}

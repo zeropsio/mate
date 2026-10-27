@@ -1,0 +1,1016 @@
+import { EnvironmentId } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
+import * as Context from "effect/Context";
+import * as Effect from "effect/Effect";
+import * as Equal from "effect/Equal";
+import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
+import * as Schema from "effect/Schema";
+import * as Scope from "effect/Scope";
+import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
+
+import * as ClientCapabilities from "../platform/capabilities.ts";
+import {
+  type BearerConnectionCredential,
+  type ConnectionCatalogEntry,
+  type ConnectionRegistration,
+  type PlatformConnectionRegistration,
+  type PrimaryConnectionRegistration,
+  SshConnectionProfile,
+  connectionRegistrationCatalogEntry,
+} from "./catalog.ts";
+import * as ConnectionCredentialStore from "./credentialStore.ts";
+import * as CredentialRenewal from "./credentialRenewal.ts";
+import * as ConnectionProfileStore from "./profileStore.ts";
+import * as Connectivity from "./connectivity.ts";
+import {
+  type ConnectionAttemptError,
+  ConnectionBlockedError,
+  type ConnectionTarget,
+  type NetworkStatus,
+  type SupervisorConnectionState,
+} from "./model.ts";
+import * as Persistence from "../platform/persistence.ts";
+import * as EnvironmentSupervisor from "./supervisor.ts";
+import * as ConnectionDriver from "./driver.ts";
+import * as ConnectionWakeups from "./wakeups.ts";
+
+const isSshConnectionProfile = Schema.is(SshConnectionProfile);
+
+export class EnvironmentNotRegisteredError extends Schema.TaggedError<EnvironmentNotRegisteredError>()(
+  "EnvironmentNotRegisteredError",
+  {
+    environmentId: EnvironmentId,
+  },
+) {
+  override get message(): string {
+    return `Environment ${this.environmentId} is not registered.`;
+  }
+}
+
+export class PlatformEnvironmentRemovalError extends Schema.TaggedError<PlatformEnvironmentRemovalError>()(
+  "PlatformEnvironmentRemovalError",
+  {
+    environmentId: EnvironmentId,
+  },
+) {
+  override get message(): string {
+    return `Platform-managed environment ${this.environmentId} cannot be removed.`;
+  }
+}
+
+export class EnvironmentRegistry extends Context.Service<
+  EnvironmentRegistry,
+  {
+    readonly entries: SubscriptionRef.SubscriptionRef<
+      ReadonlyMap<EnvironmentId, ConnectionCatalogEntry>
+    >;
+    readonly networkStatus: SubscriptionRef.SubscriptionRef<NetworkStatus>;
+    readonly start: Effect.Effect<void>;
+    readonly register: (
+      registration: ConnectionRegistration,
+    ) => Effect.Effect<void, Persistence.ConnectionPersistenceError>;
+    readonly registerPlatform: (registration: PrimaryConnectionRegistration) => Effect.Effect<void>;
+    readonly reconcilePlatform: (
+      registrations: ReadonlyArray<PlatformConnectionRegistration>,
+    ) => Effect.Effect<void>;
+    readonly remove: (
+      environmentId: EnvironmentId,
+    ) => Effect.Effect<
+      void,
+      | Persistence.ConnectionPersistenceError
+      | ConnectionAttemptError
+      | EnvironmentNotRegisteredError
+      | PlatformEnvironmentRemovalError
+    >;
+    readonly removeRelayEnvironments: () => Effect.Effect<
+      void,
+      | Persistence.ConnectionPersistenceError
+      | ConnectionAttemptError
+      | PlatformEnvironmentRemovalError
+    >;
+    readonly retryNow: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    /**
+     * Ends the environment's socket and keeps everything else: its registration, its stored
+     * credential, its cached data and its supervisor. Nothing connects it again, nor renews its
+     * credential, until it is unparked.
+     */
+    readonly park: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    /** Connects a parked environment again, on the credential it kept. */
+    readonly unpark: (environmentId: EnvironmentId) => Effect.Effect<void>;
+    readonly rotateCredential: (
+      environmentId: EnvironmentId,
+      credential: BearerConnectionCredential,
+    ) => Effect.Effect<void, ConnectionAttemptError | EnvironmentNotRegisteredError>;
+    readonly state: (
+      environmentId: EnvironmentId,
+    ) => Effect.Effect<SupervisorConnectionState, EnvironmentNotRegisteredError>;
+    readonly stateChanges: (
+      environmentId: EnvironmentId,
+    ) => Stream.Stream<SupervisorConnectionState, EnvironmentNotRegisteredError>;
+    readonly run: <A, E, R>(
+      environmentId: EnvironmentId,
+      effect: Effect.Effect<A, E, R>,
+    ) => Effect.Effect<
+      A,
+      E | EnvironmentNotRegisteredError,
+      Exclude<R, EnvironmentSupervisor.EnvironmentSupervisor>
+    >;
+    readonly runStream: <A, E, R>(
+      environmentId: EnvironmentId,
+      stream: Stream.Stream<A, E, R>,
+    ) => Stream.Stream<
+      A,
+      E | EnvironmentNotRegisteredError,
+      Exclude<R, EnvironmentSupervisor.EnvironmentSupervisor>
+    >;
+    readonly followStream: <A, E, R>(
+      environmentId: EnvironmentId,
+      stream: Stream.Stream<A, E, R>,
+    ) => Stream.Stream<A, E, Exclude<R, EnvironmentSupervisor.EnvironmentSupervisor>>;
+  }
+>()("@t3tools/client-runtime/connection/registry/EnvironmentRegistry") {}
+
+interface EnvironmentServiceScope {
+  readonly entry: ConnectionCatalogEntry;
+  readonly supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"];
+  readonly scope: Scope.Closeable;
+  // Counts the credentials `rotateCredential` handed this supervisor; the
+  // supervisor stamps each attempt with it.
+  readonly credentialGeneration: Ref.Ref<number>;
+  // Held while a rotated credential is written, so no attempt starts, and no
+  // block is judged, between the store write and the generation bump.
+  readonly credentialWrite: Semaphore.Semaphore;
+  // The credential renewal keeping it ahead of its deadline: none while it is parked.
+  readonly renewal: Ref.Ref<Fiber.Fiber<void> | null>;
+}
+
+/** @public Service construction is part of the canonical Effect module API. */
+export const make = Effect.gen(function* () {
+  const registryScope = yield* Scope.Scope;
+  const storage = yield* Persistence.ConnectionTargetStore;
+  const registrations = yield* Persistence.ConnectionRegistrationStore;
+  const cache = yield* Persistence.EnvironmentCacheStore;
+  const ownedDataCleanup = yield* Persistence.EnvironmentOwnedDataCleanup;
+  const profiles = yield* ConnectionProfileStore.ConnectionProfileStore;
+  const credentials = yield* ConnectionCredentialStore.ConnectionCredentialStore;
+  const connectivity = yield* Connectivity.Connectivity;
+  const driver = yield* ConnectionDriver.ConnectionDriver;
+  const wakeups = yield* ConnectionWakeups.ConnectionWakeups;
+  const ssh = yield* ClientCapabilities.SshEnvironmentGateway;
+  // Optional: clients that do not provide one keep the reactive path.
+  const credentialRenewer = yield* Effect.serviceOption(
+    CredentialRenewal.ConnectionCredentialRenewer,
+  );
+  const persistedTargets = yield* storage.list;
+  const initialEntries = new Map(
+    yield* Effect.forEach(
+      persistedTargets,
+      Effect.fn("EnvironmentRegistry.loadCatalogEntry")(function* (target) {
+        const profile =
+          target._tag === "BearerConnectionTarget" || target._tag === "SshConnectionTarget"
+            ? yield* profiles.get(target.connectionId)
+            : Option.none();
+        return [
+          target.environmentId,
+          { target, profile } satisfies ConnectionCatalogEntry,
+        ] as const;
+      }),
+      { concurrency: "unbounded" },
+    ),
+  );
+  const entries =
+    yield* SubscriptionRef.make<ReadonlyMap<EnvironmentId, ConnectionCatalogEntry>>(initialEntries);
+  const networkStatus = yield* SubscriptionRef.make(yield* connectivity.status);
+  const serviceScopes = yield* SubscriptionRef.make<
+    ReadonlyMap<EnvironmentId, EnvironmentServiceScope>
+  >(new Map());
+  // Bumped whenever `installEntryLocked` replaces an environment's supervisor.
+  // `followStream` keys on this instead of on the entry: a re-registration can
+  // carry a STRUCTURALLY IDENTICAL entry — the Zerops identity repair re-mints a
+  // credential, which is not part of the entry — and still build a new
+  // supervisor. Deduping on the entry left every consumer bound to the closed
+  // one, so a repair that succeeded never reached the UI.
+  const installGenerations = yield* SubscriptionRef.make<ReadonlyMap<EnvironmentId, number>>(
+    new Map(),
+  );
+  const forgetInstallGeneration = (environmentId: EnvironmentId) =>
+    SubscriptionRef.update(installGenerations, (current) => {
+      if (!current.has(environmentId)) {
+        return current;
+      }
+      const next = new Map(current);
+      next.delete(environmentId);
+      return next;
+    });
+  const platformEnvironmentIds = yield* Ref.make<ReadonlySet<EnvironmentId>>(new Set());
+  const persistedTargetsByEnvironment = yield* Ref.make<
+    ReadonlyMap<EnvironmentId, ConnectionTarget>
+  >(new Map(persistedTargets.map((target) => [target.environmentId, target])));
+  interface LeaseLock {
+    readonly semaphore: Semaphore.Semaphore;
+    readonly users: number;
+  }
+
+  const leaseLocks = yield* Ref.make<ReadonlyMap<EnvironmentId, LeaseLock>>(new Map());
+  const leaseLocksGuard = yield* Semaphore.make(1);
+  const started = yield* Ref.make(false);
+  /**
+   * Whether each environment is parked (A9, krok-a-hub §3): connected only while something holds
+   * a lease on it, set by `park` and `unpark`. One never set is parked when it is a Mate — its
+   * bearer minted at a Zerops door — and connected otherwise, as every environment was.
+   */
+  const parking = yield* Ref.make<ReadonlyMap<EnvironmentId, boolean>>(new Map());
+
+  const withLeaseLock = <A, E, R>(
+    environmentId: EnvironmentId,
+    effect: Effect.Effect<A, E, R>,
+  ): Effect.Effect<A, E, R> =>
+    Effect.acquireUseRelease(
+      leaseLocksGuard.withPermits(1)(
+        Effect.gen(function* () {
+          const current = yield* Ref.get(leaseLocks);
+          const existing = current.get(environmentId);
+          if (existing !== undefined) {
+            yield* Ref.set(
+              leaseLocks,
+              new Map(current).set(environmentId, {
+                semaphore: existing.semaphore,
+                users: existing.users + 1,
+              }),
+            );
+            return existing.semaphore;
+          }
+          const semaphore = yield* Semaphore.make(1);
+          yield* Ref.set(leaseLocks, new Map(current).set(environmentId, { semaphore, users: 1 }));
+          return semaphore;
+        }),
+      ),
+      (semaphore) => semaphore.withPermits(1)(effect),
+      (semaphore) =>
+        leaseLocksGuard.withPermits(1)(
+          Ref.update(leaseLocks, (current) => {
+            const existing = current.get(environmentId);
+            if (existing === undefined || existing.semaphore !== semaphore) {
+              return current;
+            }
+            const next = new Map(current);
+            if (existing.users === 1) {
+              next.delete(environmentId);
+            } else {
+              next.set(environmentId, {
+                semaphore,
+                users: existing.users - 1,
+              });
+            }
+            return next;
+          }),
+        ),
+    ).pipe(Effect.withSpan("EnvironmentRegistry.withLeaseLock"));
+
+  const getEntry = Effect.fn("EnvironmentRegistry.getEntry")(function* (
+    environmentId: EnvironmentId,
+  ) {
+    const entry = (yield* SubscriptionRef.get(entries)).get(environmentId);
+    if (entry === undefined) {
+      return yield* new EnvironmentNotRegisteredError({
+        environmentId,
+      });
+    }
+    return entry;
+  });
+
+  const closeServiceScope = Effect.fn("EnvironmentRegistry.closeServiceScope")(function* (
+    environmentId: EnvironmentId,
+  ) {
+    const current = yield* SubscriptionRef.get(serviceScopes);
+    const lease = current.get(environmentId);
+    if (lease === undefined) {
+      return;
+    }
+    const next = new Map(current);
+    next.delete(environmentId);
+    yield* SubscriptionRef.set(serviceScopes, next);
+    yield* Scope.close(lease.scope, Exit.void);
+  });
+
+  /**
+   * Keeps one environment's bearer ahead of its own deadline.
+   *
+   * Writes through the credential STORE and never through `register`: the
+   * socket is authorised at upgrade time only, so `resolver.prepare` picks the
+   * rotated token up on the next attempt with no teardown. Re-registering
+   * instead would rebuild the supervisor and drop a live socket mid-turn every
+   * window.
+   */
+  const runCredentialRenewal = Effect.fnUntraced(function* (
+    entry: ConnectionCatalogEntry,
+    supervisor: EnvironmentSupervisor.EnvironmentSupervisor["Service"],
+  ) {
+    if (Option.isNone(credentialRenewer) || entry.target._tag !== "BearerConnectionTarget") {
+      return;
+    }
+    const renewer = credentialRenewer.value;
+    const { environmentId, connectionId } = entry.target;
+    const httpBaseUrl =
+      Option.isSome(entry.profile) && entry.profile.value._tag === "BearerConnectionProfile"
+        ? entry.profile.value.httpBaseUrl
+        : undefined;
+    const storedBearer = Effect.gen(function* () {
+      const stored = yield* credentials.get(connectionId).pipe(Effect.orElseSucceed(Option.none));
+      return Option.isSome(stored) && stored.value._tag === "BearerConnectionCredential"
+        ? Option.some(stored.value)
+        : Option.none<BearerConnectionCredential>();
+    });
+    const stillStored = (credential: BearerConnectionCredential) =>
+      storedBearer.pipe(
+        Effect.map((stored) => Option.isSome(stored) && Equal.equals(stored.value, credential)),
+      );
+    let previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+
+    for (;;) {
+      const stored = yield* storedBearer;
+      if (Option.isNone(stored)) {
+        return;
+      }
+      const credential = stored.value;
+      const renewAtEpochMs = CredentialRenewal.credentialRenewAtEpochMs(credential);
+      if (renewAtEpochMs === null) {
+        // No deadline on the record — nothing to be proactive about.
+        return;
+      }
+      // A renewer that hands back a credential no fresher than the one it
+      // replaced would otherwise spin this loop.
+      if (renewAtEpochMs <= previousRenewAtEpochMs) {
+        yield* Effect.logWarning("Credential renewal did not advance its deadline; stopping.", {
+          environmentId,
+        });
+        return;
+      }
+      previousRenewAtEpochMs = renewAtEpochMs;
+
+      const delayMs = renewAtEpochMs - (yield* Clock.currentTimeMillis);
+      if (delayMs > 0) {
+        yield* Effect.sleep(delayMs);
+      }
+      // `rotateCredential` replaced the credential this schedule was built on.
+      // Start over on the stored one's own deadline.
+      if (!(yield* stillStored(credential))) {
+        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+        continue;
+      }
+
+      const renewed = yield* renewer
+        .renew({ environmentId, connectionId, httpBaseUrl, credential })
+        .pipe(
+          Effect.tapError((error) =>
+            Effect.logWarning("Could not renew the environment credential.", {
+              environmentId,
+              error,
+            }),
+          ),
+          Effect.option,
+          Effect.map(Option.flatten),
+        );
+      if (Option.isNone(renewed)) {
+        // Either this renewer does not own the credential, or the attempt
+        // failed. Either way the reactive path still covers it.
+        return;
+      }
+      // Checked and written under the lease `rotateCredential` holds, so a
+      // renewal of the replaced credential never overwrites the rotated one.
+      const replaced = yield* withLeaseLock(
+        environmentId,
+        Effect.gen(function* () {
+          if (!(yield* stillStored(credential))) {
+            return true;
+          }
+          yield* credentials.put(connectionId, renewed.value).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Could not store the renewed environment credential.", {
+                environmentId,
+                error,
+              }),
+            ),
+            Effect.ignore,
+          );
+          return false;
+        }),
+      );
+      if (replaced) {
+        previousRenewAtEpochMs = Number.NEGATIVE_INFINITY;
+        continue;
+      }
+      // A healthy socket is deliberately left alone — it stays authorised for
+      // its lifetime and picks the new token up at its next upgrade. Only a
+      // connection already parked on an auth failure needs prodding.
+      const state = yield* SubscriptionRef.get(supervisor.state);
+      if (state.phase === "blocked") {
+        yield* supervisor.retryNow;
+      }
+    }
+  });
+
+  /** Whether the environment is parked: as `park` or `unpark` last set it, else whether it is a Mate. */
+  const parked = Effect.fn("EnvironmentRegistry.parked")(function* (entry: ConnectionCatalogEntry) {
+    const set = (yield* Ref.get(parking)).get(entry.target.environmentId);
+    if (set !== undefined) return set;
+    if (entry.target._tag !== "BearerConnectionTarget") return false;
+    const stored = yield* credentials
+      .get(entry.target.connectionId)
+      .pipe(Effect.orElseSucceed(Option.none));
+    return (
+      Option.isSome(stored) &&
+      stored.value._tag === "BearerConnectionCredential" &&
+      stored.value.origin === "zerops-identity"
+    );
+  });
+
+  const createServiceScope = Effect.fn("EnvironmentRegistry.createServiceScope")(
+    (entry: ConnectionCatalogEntry) =>
+      Effect.uninterruptible(
+        Effect.gen(function* () {
+          const environmentId = entry.target.environmentId;
+          const scope = yield* Scope.fork(registryScope);
+          const credentialGeneration = yield* Ref.make(0);
+          const credentialWrite = yield* Semaphore.make(1);
+          const supervisor = yield* EnvironmentSupervisor.make(entry, {
+            initiallyDesired: false,
+            credentialGeneration: credentialWrite.withPermits(1)(Ref.get(credentialGeneration)),
+          }).pipe(
+            Effect.provideService(Connectivity.Connectivity, connectivity),
+            Effect.provideService(ConnectionDriver.ConnectionDriver, driver),
+            Effect.provideService(ConnectionWakeups.ConnectionWakeups, wakeups),
+            Scope.provide(scope),
+            Effect.onError(() => Scope.close(scope, Exit.void)),
+          );
+          const renewal = yield* Ref.make<Fiber.Fiber<void> | null>(null);
+          if (!(yield* parked(entry))) {
+            yield* supervisor.connect;
+            yield* Ref.set(
+              renewal,
+              yield* runCredentialRenewal(entry, supervisor).pipe(Effect.forkIn(scope)),
+            );
+          }
+          yield* SubscriptionRef.update(serviceScopes, (current) => {
+            const next = new Map(current);
+            next.set(environmentId, {
+              entry,
+              supervisor,
+              scope,
+              credentialGeneration,
+              credentialWrite,
+              renewal,
+            });
+            return next;
+          });
+          return supervisor;
+        }),
+      ),
+  );
+
+  const acquireSupervisorLocked = Effect.fn("EnvironmentRegistry.acquireSupervisorLocked")(
+    function* (environmentId: EnvironmentId) {
+      const entry = yield* getEntry(environmentId);
+      const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+      if (existing !== undefined) {
+        if (Equal.equals(existing.entry, entry)) {
+          return existing.supervisor;
+        }
+        yield* closeServiceScope(environmentId);
+      }
+      return yield* createServiceScope(entry);
+    },
+  );
+
+  const acquireSupervisor = (environmentId: EnvironmentId) =>
+    withLeaseLock(environmentId, acquireSupervisorLocked(environmentId));
+
+  const run: EnvironmentRegistry["Service"]["run"] = Effect.fn("EnvironmentRegistry.run")(
+    function* <A, E, R>(environmentId: EnvironmentId, effect: Effect.Effect<A, E, R>) {
+      const supervisor = yield* acquireSupervisor(environmentId);
+      return yield* Effect.provideService(
+        effect,
+        EnvironmentSupervisor.EnvironmentSupervisor,
+        supervisor,
+      );
+    },
+  );
+
+  const runStream: EnvironmentRegistry["Service"]["runStream"] = <A, E, R>(
+    environmentId: EnvironmentId,
+    stream: Stream.Stream<A, E, R>,
+  ) =>
+    Stream.unwrap(
+      acquireSupervisor(environmentId).pipe(
+        Effect.map((supervisor) =>
+          Stream.provideService(stream, EnvironmentSupervisor.EnvironmentSupervisor, supervisor),
+        ),
+      ),
+    );
+
+  // The key a consumer's binding is switched on: `none` while the environment is
+  // not registered, otherwise the install generation of the supervisor it should
+  // be bound to. Registration of an unrelated environment also ticks `entries`,
+  // so the trailing `Stream.changes` keeps those from tearing this binding down.
+  const bindingKeys = (environmentId: EnvironmentId) =>
+    Stream.merge(
+      Stream.concat(
+        Stream.succeed(undefined),
+        SubscriptionRef.changes(entries).pipe(Stream.map(() => undefined)),
+      ),
+      SubscriptionRef.changes(installGenerations).pipe(Stream.map(() => undefined)),
+    ).pipe(
+      Stream.mapEffect(() =>
+        Effect.gen(function* () {
+          const currentEntries = yield* SubscriptionRef.get(entries);
+          if (!currentEntries.has(environmentId)) {
+            return Option.none<number>();
+          }
+          const generations = yield* SubscriptionRef.get(installGenerations);
+          return Option.some(generations.get(environmentId) ?? 0);
+        }),
+      ),
+      Stream.changes,
+    );
+
+  const followStream: EnvironmentRegistry["Service"]["followStream"] = <A, E, R>(
+    environmentId: EnvironmentId,
+    stream: Stream.Stream<A, E, R>,
+  ) =>
+    bindingKeys(environmentId).pipe(
+      Stream.switchMap(
+        Option.match({
+          onNone: () => Stream.empty,
+          onSome: () =>
+            Stream.unwrap(
+              acquireSupervisor(environmentId).pipe(
+                Effect.match({
+                  onFailure: () => Stream.empty,
+                  onSuccess: (supervisor) =>
+                    Stream.provideService(
+                      stream,
+                      EnvironmentSupervisor.EnvironmentSupervisor,
+                      supervisor,
+                    ),
+                }),
+              ),
+            ),
+        }),
+      ),
+    );
+
+  const start = Effect.gen(function* () {
+    if (yield* Ref.getAndSet(started, true)) {
+      return;
+    }
+    yield* Effect.forEach(
+      persistedTargets,
+      (target) =>
+        acquireSupervisor(target.environmentId).pipe(
+          Effect.catchTags({ EnvironmentNotRegisteredError: () => Effect.void }),
+        ),
+      {
+        concurrency: "unbounded",
+        discard: true,
+      },
+    );
+  }).pipe(Effect.withSpan("EnvironmentRegistry.start"));
+
+  const installEntryLocked = Effect.fn("EnvironmentRegistry.installEntryLocked")(function* (
+    entry: ConnectionCatalogEntry,
+    options?: { readonly retainEquivalentRuntime?: boolean },
+  ) {
+    const target = entry.target;
+    const previous = (yield* SubscriptionRef.get(entries)).get(target.environmentId);
+    const existingScope = (yield* SubscriptionRef.get(serviceScopes)).get(target.environmentId);
+    if (
+      options?.retainEquivalentRuntime === true &&
+      previous !== undefined &&
+      Equal.equals(previous, entry) &&
+      existingScope !== undefined &&
+      Equal.equals(existingScope.entry, entry)
+    ) {
+      return;
+    }
+
+    yield* closeServiceScope(target.environmentId);
+    yield* SubscriptionRef.update(entries, (current) => {
+      const next = new Map(current);
+      next.set(target.environmentId, entry);
+      return next;
+    });
+    yield* createServiceScope(entry);
+    // Published only once the replacement exists, so a consumer woken by this
+    // key acquires the new supervisor rather than racing its construction.
+    yield* SubscriptionRef.update(installGenerations, (current) => {
+      const next = new Map(current);
+      next.set(target.environmentId, (current.get(target.environmentId) ?? 0) + 1);
+      return next;
+    });
+  });
+
+  const register = Effect.fn("EnvironmentRegistry.register")(function* (
+    registration: ConnectionRegistration,
+  ) {
+    const entry = connectionRegistrationCatalogEntry(registration);
+    const environmentId = entry.target.environmentId;
+    yield* withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        if ((yield* Ref.get(platformEnvironmentIds)).has(environmentId)) {
+          return;
+        }
+        yield* registrations.register(registration);
+        yield* Ref.update(persistedTargetsByEnvironment, (current) => {
+          const next = new Map(current);
+          next.set(environmentId, registration.target);
+          return next;
+        });
+        yield* installEntryLocked(entry);
+      }),
+    );
+  });
+
+  const installPlatformRegistration = Effect.fn("EnvironmentRegistry.installPlatformRegistration")(
+    function* (registration: PlatformConnectionRegistration) {
+      const entry = connectionRegistrationCatalogEntry(registration);
+      const target = entry.target;
+      yield* withLeaseLock(
+        target.environmentId,
+        Effect.gen(function* () {
+          yield* Ref.update(platformEnvironmentIds, (current) => {
+            const next = new Set(current);
+            next.add(target.environmentId);
+            return next;
+          });
+
+          // Secondary desktop-local backends (e.g. a parallel WSL backend) live
+          // on their own loopback origin, so they authenticate with a bearer
+          // token instead of the primary's same-origin cookie. Stash it where
+          // the resolver's bearer broker looks it up.
+          if (registration._tag === "BearerConnectionRegistration") {
+            yield* credentials.put(registration.target.connectionId, registration.credential).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning("Could not store the platform bearer credential.", {
+                  environmentId: target.environmentId,
+                  error,
+                }),
+              ),
+            );
+          }
+
+          const persistedTarget = (yield* Ref.get(persistedTargetsByEnvironment)).get(
+            target.environmentId,
+          );
+          if (persistedTarget !== undefined) {
+            yield* registrations.remove(persistedTarget).pipe(
+              Effect.tap(() =>
+                Ref.update(persistedTargetsByEnvironment, (current) => {
+                  const next = new Map(current);
+                  next.delete(target.environmentId);
+                  return next;
+                }),
+              ),
+              Effect.catch((error) =>
+                Effect.logWarning(
+                  "Could not remove a persisted registration shadowed by a platform environment.",
+                  {
+                    environmentId: target.environmentId,
+                    error,
+                  },
+                ),
+              ),
+            );
+          }
+
+          yield* installEntryLocked(entry, { retainEquivalentRuntime: true });
+        }),
+      );
+    },
+  );
+
+  // Tear down a platform-managed environment that the host no longer reports
+  // (e.g. the user turned the parallel WSL backend off). Platform environments
+  // bypass the user-facing `remove` guard since they are reconciled from the
+  // bootstrap rather than removed by hand.
+  const removePlatformEnvironment = Effect.fn("EnvironmentRegistry.removePlatformEnvironment")(
+    function* (environmentId: EnvironmentId) {
+      yield* withLeaseLock(
+        environmentId,
+        Effect.gen(function* () {
+          const entry = (yield* SubscriptionRef.get(entries)).get(environmentId);
+          yield* Ref.update(platformEnvironmentIds, (current) => {
+            const next = new Set(current);
+            next.delete(environmentId);
+            return next;
+          });
+          yield* closeServiceScope(environmentId);
+          yield* SubscriptionRef.update(entries, (current) => {
+            const next = new Map(current);
+            next.delete(environmentId);
+            return next;
+          });
+          yield* forgetInstallGeneration(environmentId);
+          if (entry !== undefined && entry.target._tag === "BearerConnectionTarget") {
+            yield* credentials.remove(entry.target.connectionId).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning("Could not clear the platform bearer credential.", {
+                  environmentId,
+                  error,
+                }),
+              ),
+            );
+          }
+          yield* Effect.all(
+            [
+              cache.clear(environmentId).pipe(
+                Effect.catch((error) =>
+                  Effect.logWarning("Could not clear cached environment data after removal.", {
+                    environmentId,
+                    error,
+                  }),
+                ),
+              ),
+              ownedDataCleanup.clear(environmentId),
+            ],
+            { concurrency: "unbounded", discard: true },
+          );
+        }),
+      );
+    },
+  );
+
+  const registerPlatform = Effect.fn("EnvironmentRegistry.registerPlatform")(function* (
+    registration: PrimaryConnectionRegistration,
+  ) {
+    yield* installPlatformRegistration(registration);
+  });
+
+  // Reconcile the full set of platform-managed environments against what the
+  // host currently reports: add/refresh the desired ones and tear down any
+  // platform environment that disappeared (WSL toggled off, distro switched).
+  const reconcilePlatform = Effect.fn("EnvironmentRegistry.reconcilePlatform")(function* (
+    platformRegistrations: ReadonlyArray<PlatformConnectionRegistration>,
+  ) {
+    const desiredIds = new Set(
+      platformRegistrations.map((registration) => registration.target.environmentId),
+    );
+    const currentPlatformIds = yield* Ref.get(platformEnvironmentIds);
+    yield* Effect.forEach(
+      currentPlatformIds,
+      (environmentId) =>
+        desiredIds.has(environmentId) ? Effect.void : removePlatformEnvironment(environmentId),
+      { discard: true },
+    );
+    yield* Effect.forEach(platformRegistrations, installPlatformRegistration, { discard: true });
+  });
+
+  const remove = Effect.fn("EnvironmentRegistry.remove")(function* (environmentId: EnvironmentId) {
+    return yield* withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        if ((yield* Ref.get(platformEnvironmentIds)).has(environmentId)) {
+          return yield* new PlatformEnvironmentRemovalError({
+            environmentId,
+          });
+        }
+        const target = (yield* getEntry(environmentId)).target;
+        const profile =
+          target._tag === "BearerConnectionTarget" || target._tag === "SshConnectionTarget"
+            ? yield* profiles.get(target.connectionId)
+            : Option.none();
+
+        yield* registrations.remove(target);
+        yield* Ref.update(persistedTargetsByEnvironment, (current) => {
+          const next = new Map(current);
+          next.delete(environmentId);
+          return next;
+        });
+        yield* closeServiceScope(environmentId);
+        yield* SubscriptionRef.update(entries, (current) => {
+          const next = new Map(current);
+          next.delete(environmentId);
+          return next;
+        });
+        yield* Ref.update(parking, (current) => {
+          const next = new Map(current);
+          next.delete(environmentId);
+          return next;
+        });
+        yield* forgetInstallGeneration(environmentId);
+        yield* Effect.all(
+          [
+            cache.clear(environmentId).pipe(
+              Effect.catch((error) =>
+                Effect.logWarning("Could not clear cached environment data after removal.", {
+                  environmentId,
+                  error,
+                }),
+              ),
+            ),
+            ownedDataCleanup.clear(environmentId),
+          ],
+          { concurrency: "unbounded", discard: true },
+        );
+
+        if (
+          target._tag === "SshConnectionTarget" &&
+          Option.isSome(profile) &&
+          isSshConnectionProfile(profile.value)
+        ) {
+          yield* ssh.disconnect(profile.value.target).pipe(
+            Effect.tapError((error) =>
+              Effect.logWarning("Could not disconnect the managed SSH environment.", {
+                environmentId,
+                error,
+              }),
+            ),
+            Effect.ignore,
+          );
+        }
+      }),
+    );
+  });
+
+  const removeRelayEnvironments = Effect.fn("EnvironmentRegistry.removeRelayEnvironments")(
+    function* () {
+      const relayEnvironmentIds = [...(yield* SubscriptionRef.get(entries)).values()]
+        .filter((entry) => entry.target._tag === "RelayConnectionTarget")
+        .map((entry) => entry.target.environmentId);
+
+      yield* Effect.forEach(
+        relayEnvironmentIds,
+        (environmentId) =>
+          remove(environmentId).pipe(
+            Effect.catchTags({ EnvironmentNotRegisteredError: () => Effect.void }),
+          ),
+        {
+          concurrency: "unbounded",
+          discard: true,
+        },
+      );
+    },
+  );
+
+  const setParking = (environmentId: EnvironmentId, value: boolean) =>
+    Ref.update(parking, (current) => new Map(current).set(environmentId, value));
+
+  const park = (environmentId: EnvironmentId) =>
+    withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        yield* setParking(environmentId, true);
+        const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        if (lease === undefined) return;
+        const renewal = yield* Ref.getAndSet(lease.renewal, null);
+        if (renewal !== null) yield* Fiber.interrupt(renewal);
+        yield* lease.supervisor.disconnect;
+      }),
+    ).pipe(Effect.withSpan("EnvironmentRegistry.park"));
+
+  const unpark = (environmentId: EnvironmentId) =>
+    withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        yield* setParking(environmentId, false);
+        const lease = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        // Built now, it connects as it is built.
+        if (lease === undefined) {
+          yield* acquireSupervisorLocked(environmentId);
+          return;
+        }
+        yield* lease.supervisor.connect;
+        if ((yield* Ref.get(lease.renewal)) === null) {
+          yield* Ref.set(
+            lease.renewal,
+            yield* runCredentialRenewal(lease.entry, lease.supervisor).pipe(
+              Effect.forkIn(lease.scope),
+            ),
+          );
+        }
+      }),
+    ).pipe(
+      Effect.catchTags({ EnvironmentNotRegisteredError: () => Effect.void }),
+      Effect.withSpan("EnvironmentRegistry.unpark"),
+    );
+
+  const retryNow = (environmentId: EnvironmentId) =>
+    acquireSupervisor(environmentId).pipe(
+      Effect.flatMap((supervisor) => supervisor.retryNow),
+      Effect.catchTags({ EnvironmentNotRegisteredError: () => Effect.void }),
+      Effect.withSpan("EnvironmentRegistry.retryNow"),
+    );
+  /**
+   * Hands a live environment a new bearer — the Zerops door's re-exchange after
+   * the old one was revoked.
+   *
+   * Like `runCredentialRenewal` it writes through the credential STORE, never
+   * through `register`: re-registering rebuilds the supervisor, which moves the
+   * install generation and rebinds every `followStream` consumer, the shell
+   * among them. Here the supervisor, its install generation and the catalog
+   * entry stay as they are. A live socket is closed and reopened with the new
+   * bearer: it stays authorized as whoever opened it. The reconnect is this
+   * environment's alone — never the global `credentials-changed` wakeup, which
+   * would kick every blocked supervisor.
+   *
+   * It holds the environment's lease for the whole write, so a `remove` cannot
+   * land between the lookup and the store and leave the new bearer behind in a
+   * catalog that no longer lists the environment.
+   */
+  const rotateCredential = Effect.fn("EnvironmentRegistry.rotateCredential")(function* (
+    environmentId: EnvironmentId,
+    credential: BearerConnectionCredential,
+  ) {
+    yield* withLeaseLock(
+      environmentId,
+      Effect.gen(function* () {
+        const entry = yield* getEntry(environmentId);
+        const target = entry.target;
+        if (target._tag !== "BearerConnectionTarget") {
+          return yield* new ConnectionBlockedError({
+            reason: "configuration",
+            detail: `${target.label} does not authenticate with a bearer credential.`,
+          });
+        }
+        const store = credentials.put(target.connectionId, credential);
+        const existing = (yield* SubscriptionRef.get(serviceScopes)).get(environmentId);
+        if (existing !== undefined && Equal.equals(existing.entry, entry)) {
+          // The bump and the reconnect are one step: a block judged stale by the
+          // bump is left waiting for exactly that reconnect.
+          yield* existing.credentialWrite.withPermits(1)(
+            store.pipe(
+              Effect.andThen(
+                Effect.uninterruptible(
+                  Ref.update(existing.credentialGeneration, (generation) => generation + 1).pipe(
+                    Effect.andThen(existing.supervisor.credentialRotated),
+                  ),
+                ),
+              ),
+            ),
+          );
+          return;
+        }
+        // No live supervisor: store first, so the one built next presents only
+        // the new bearer.
+        yield* store;
+        yield* acquireSupervisorLocked(environmentId);
+      }),
+    );
+  });
+  const state = Effect.fn("EnvironmentRegistry.state")(function* (environmentId: EnvironmentId) {
+    const supervisor = yield* acquireSupervisor(environmentId);
+    return yield* SubscriptionRef.get(supervisor.state);
+  });
+  const stateChanges = (environmentId: EnvironmentId) =>
+    followStream(
+      environmentId,
+      Stream.unwrap(
+        EnvironmentSupervisor.EnvironmentSupervisor.pipe(
+          Effect.map((supervisor) => SubscriptionRef.changes(supervisor.state)),
+        ),
+      ),
+    );
+
+  yield* Effect.addFinalizer(() =>
+    SubscriptionRef.get(serviceScopes).pipe(
+      Effect.flatMap((current) =>
+        Effect.forEach(current.values(), (lease) => Scope.close(lease.scope, Exit.void), {
+          concurrency: "unbounded",
+          discard: true,
+        }),
+      ),
+    ),
+  );
+  yield* connectivity.changes.pipe(
+    Stream.runForEach((status) => SubscriptionRef.set(networkStatus, status)),
+    Effect.forkScoped,
+  );
+
+  return EnvironmentRegistry.of({
+    entries,
+    networkStatus,
+    start,
+    register,
+    registerPlatform,
+    reconcilePlatform,
+    remove,
+    removeRelayEnvironments,
+    retryNow,
+    park,
+    unpark,
+    rotateCredential,
+    state,
+    stateChanges,
+    run,
+    runStream,
+    followStream,
+  });
+});
+
+export const layer = Layer.effect(EnvironmentRegistry, make);

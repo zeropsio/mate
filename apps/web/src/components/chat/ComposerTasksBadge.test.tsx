@@ -1,0 +1,96 @@
+import { markupDom } from "../../../test/markupDom";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it } from "vite-plus/test";
+
+import { ComposerTasksBadge, ComposerTasksDrawer } from "./ComposerTasksBadge";
+
+const progress = {
+  step: "Attach task progress",
+  completedSteps: 1,
+  totalSteps: 3,
+};
+const steps = [
+  { durationMs: 4_000, step: "Inspect the composer", status: "completed" as const },
+  { step: "Attach task progress", status: "inProgress" as const },
+  { step: "Verify the result", status: "pending" as const },
+];
+
+describe("ComposerTasksBadge", () => {
+  it("renders active progress as an attached composer tab", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerTasksBadge
+        expanded={false}
+        onDismiss={() => undefined}
+        onToggle={() => undefined}
+        progress={progress}
+        steps={steps}
+      />,
+    );
+
+    expect(markup).toContain('data-composer-tasks-badge="true"');
+    expect(markup).toContain('aria-expanded="false"');
+
+    expect(markup).toContain('data-composer-task-current="true"');
+
+    expect(markup).toContain("Tasks");
+    expect(markup).toContain("Attach task progress");
+    expect(markup).not.toContain("·");
+    expect(markup).toContain("1/3");
+    expect(markup).toContain("Current task: Attach task progress");
+    expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
+  });
+
+  it("has a compact inline fallback for occupied composer shoulders", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerTasksBadge
+        expanded={false}
+        onDismiss={() => undefined}
+        onToggle={() => undefined}
+        placement="inline"
+        progress={progress}
+        steps={steps}
+      />,
+    );
+
+    expect(markup).toContain("1/3");
+  });
+
+  it("expands into a read-only attached task list", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerTasksDrawer
+        onCollapse={() => undefined}
+        onDismiss={() => undefined}
+        progress={progress}
+        steps={steps}
+      />,
+    );
+
+    expect(markup).toContain('data-chat-composer-tasks-drawer="true"');
+    expect(markup).not.toContain("data-variant");
+    expect(markup).toContain('aria-expanded="true"');
+    expect(markup).toContain('role="list"');
+    expect(markup).toContain("Inspect the composer");
+    expect(markup).toContain('data-composer-task-duration="true"');
+
+    expect(markupDom(markup).body.textContent).toContain("Running: Attach task progress");
+    expect(markup).toContain("4.0s");
+    expect(markup).toContain("now");
+    expect(markup).toContain("Attach task progress");
+    expect(markup).toContain("Verify the result");
+    expect(markup).toContain('aria-label="Dismiss tasks for this turn"');
+  });
+
+  it("does not render an empty task count", () => {
+    const markup = renderToStaticMarkup(
+      <ComposerTasksBadge
+        expanded={false}
+        onDismiss={() => undefined}
+        onToggle={() => undefined}
+        progress={{ ...progress, totalSteps: 0 }}
+        steps={steps}
+      />,
+    );
+
+    expect(markup).toBe("");
+  });
+});

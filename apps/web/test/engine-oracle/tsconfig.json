@@ -1,0 +1,29 @@
+{
+  "extends": "../../../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "Preserve",
+    "jsx": "react-jsx",
+    "moduleResolution": "Bundler",
+    "erasableSyntaxOnly": false,
+    "verbatimModuleSyntax": false,
+    "lib": ["ES2024", "DOM", "DOM.Iterable", "esnext.disposable"],
+    "types": ["node"],
+    "paths": {
+      "~/*": ["../../src/*"]
+    },
+    "plugins": [
+      {
+        "name": "@effect/language-service",
+        "ignoreEffectWarningsInTscExitCode": true,
+        "diagnosticSeverity": {
+          "globalDate": "off",
+          "globalConsole": "off",
+          "globalRandom": "off",
+          "globalTimers": "off",
+          "globalFetch": "off"
+        }
+      }
+    ]
+  },
+  "include": ["**/*.ts", "../../src/vite-env.d.ts"]
+}

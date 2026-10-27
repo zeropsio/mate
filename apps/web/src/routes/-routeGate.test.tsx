@@ -1,0 +1,355 @@
+import {
+  MATE_VOICE_QUIET_MS,
+  mateVoice,
+  routeGatePhrase,
+  selectRouteGate,
+  type ConversationView,
+  type Reachability,
+  type RouteContent,
+} from "@t3tools/client-runtime/zerops/environments";
+import { act, useEffect, type ReactNode } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { gatedPortal } from "../components/ui/portal-gate";
+import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
+import { useMateVoice } from "../zerops/mateVoiceContext";
+import { RouteGateView } from "./-routeGate";
+import {
+  mateProjectUnavailable,
+  mateRecovery,
+  readsOfState,
+  recoveryNotice,
+} from "@t3tools/client-runtime/data";
+import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
+import { AtomRegistry } from "effect/reactivity";
+
+// "Go to projects" is a router link; no router runs here.
+vi.mock("@tanstack/react-router", async (actual) => ({
+  ...(await actual<typeof import("@tanstack/react-router")>()),
+  Link: ({ children }: { readonly children?: ReactNode }) => children ?? null,
+}));
+
+// This text-only DOM fixture does not implement SVG namespaces.
+vi.mock("lucide-react", async (actual) => ({
+  ...(await actual<typeof import("lucide-react")>()),
+  CircleAlertIcon: () => null,
+  CircleHelpIcon: () => null,
+}));
+
+/** A floating layer as the UI kit gates one; it renders in place here. */
+const FloatingLayer = gatedPortal(({ children }: { readonly children?: ReactNode }) => children);
+
+const READY: Reachability = { kind: "ready", notice: null };
+const SHOWN: ConversationView = { kind: "shown", until: null };
+const RESTARTING_UNDER_LINK: Reachability = {
+  kind: "ready",
+  notice: { level: "restarting", by: "platform", overdue: false },
+};
+const RESTARTING: Reachability = {
+  kind: "container",
+  container: { level: "restarting", by: "platform", overdue: false },
+};
+
+/** The gate `__root` renders for the route environment's verdict and content. */
+function gateFor(
+  reachability: Reachability,
+  content: RouteContent,
+  conversation: ConversationView = SHOWN,
+) {
+  const gate = selectRouteGate({ kind: "resolved", reachability, content });
+  const voice = mateVoice({
+    reachability: gate.kind === "outlet" ? gate.banner : null,
+    conversationShown: gate.kind === "outlet",
+    heldMs: MATE_VOICE_QUIET_MS,
+    nowMs: 0,
+    mateName: "Shop",
+  });
+  return {
+    gate,
+    phrase: routeGatePhrase(gate, { nowMs: 0, mateName: "shop" }),
+    conversation,
+    voice,
+    stage: null,
+    projectId: null,
+  };
+}
+
+let container: TestNode;
+let root: Root;
+
+beforeEach(() => {
+  const document = new TestNode("#document", null, 9);
+  vi.stubGlobal("document", document);
+  vi.stubGlobal("window", {
+    document,
+    HTMLIFrameElement: TestNode,
+    addEventListener() {},
+    removeEventListener() {},
+  });
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  container = document.createElement("div");
+  root = createRoot(container as unknown as Element);
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  vi.unstubAllGlobals();
+});
+
+describe("RouteGateView", () => {
+  it.each([
+    { kind: "denied" as const, headline: "You no longer have access to Shop's project." },
+    { kind: "deleted" as const, headline: "Shop's project was deleted." },
+  ])(
+    "A $kind project's recovery replaces waiting and unavailable route content",
+    ({ kind, headline }) => {
+      const registry = AtomRegistry.make();
+      const orgId = "org";
+      const store = mountRoster(registry, orgId, [
+        { id: "p1", name: "Shop", status: "ACTIVE", description: "Private description" },
+      ]);
+      store.dispatch(
+        kind === "denied"
+          ? { kind: "access", family: "project", id: "p1", access: "denied" }
+          : { kind: "proven-deletion", family: "project", id: "p1", evidence: "projectNotFound" },
+      );
+      const recovery = mateRecovery.derive(readsOfState(store.state()), {
+        orgId,
+        projectId: "p1",
+        serviceId: undefined,
+      });
+      for (const gateKind of ["wait", "unavailable"] as const) {
+        act(() =>
+          root.render(
+            <RouteGateView
+              {...gateFor({ kind: "refused-role" }, "live")}
+              gate={
+                gateKind === "wait"
+                  ? { kind: "wait", reachability: { kind: "connecting", waitingOn: "exchange" } }
+                  : { kind: "unavailable", reachability: { kind: "refused-role" } }
+              }
+              projectId="p1"
+              projectUnavailable={mateProjectUnavailable(recovery.standing)}
+              recoveryPhrase={recoveryNotice(recovery, "Shop")}
+            >
+              Protected conversation
+            </RouteGateView>,
+          ),
+        );
+        const text = readableText(container);
+        expect(text).toContain(headline);
+        expect(text).toContain("Go to projects");
+        expect(text).not.toContain("Private description");
+        expect(text).not.toContain("Protected conversation");
+      }
+      registry.dispose();
+    },
+  );
+
+  it.each(["denied", "deleted"] as const)(
+    "owner-proven %s supersedes a refused detail read while the route is unavailable",
+    (kind) => {
+      const recoveryPhrase = recoveryNotice(
+        { standing: { kind, name: "Wren" }, status: undefined, process: undefined },
+        "This Mate",
+      );
+      act(() =>
+        root.render(
+          <RouteGateView
+            {...gateFor({ kind: "refused-role" }, "live")}
+            projectId={null}
+            projectUnavailable
+            recoveryPhrase={recoveryPhrase}
+            stage={<p>Zerops refused this project's services. Again</p>}
+          >
+            conversation
+          </RouteGateView>,
+        ),
+      );
+      expect(readableText(container)).toContain(recoveryPhrase?.headline);
+      expect(readableText(container)).toContain(recoveryPhrase?.secondary);
+      expect(readableText(container)).toContain("Go to projects");
+      expect(readableText(container)).not.toContain("Open in Zerops");
+      expect(readableText(container)).not.toContain("refused this project's services");
+    },
+  );
+
+  // The gate says nothing over a mounted conversation: the link's one voice goes down to it, for
+  // the banner over its composer (`mateVoice`).
+  it("a restart under a live link, then with the link down, keeps the ChatView instance and hands it the voice", () => {
+    const mounts: Array<number> = [];
+    let next = 0;
+    function ChatView() {
+      useEffect(() => {
+        next += 1;
+        mounts.push(next);
+      }, []);
+      const voice = useMateVoice();
+      return `conversation${voice.surface === "banner" ? ` · ${voice.text ?? ""}` : ""}`;
+    }
+    const render = (view: ReturnType<typeof gateFor>) =>
+      act(() =>
+        root.render(
+          <RouteGateView {...view} projectId="project-1">
+            <ChatView />
+          </RouteGateView>,
+        ),
+      );
+    const texts: Array<string> = [];
+
+    render(gateFor(READY, "live"));
+    texts.push(container.textContent);
+    render(gateFor(RESTARTING_UNDER_LINK, "live"));
+    texts.push(container.textContent);
+    render(gateFor(RESTARTING, "live"));
+    texts.push(container.textContent);
+    render(gateFor(READY, "live"));
+    texts.push(container.textContent);
+
+    expect(mounts).toEqual([1]);
+    expect(texts).toEqual([
+      "conversation",
+      "conversation · Shop is restarting.",
+      "conversation · Shop is restarting.",
+      "conversation",
+    ]);
+    expect(texts.join(" ")).not.toContain("not reachable");
+  });
+
+  it("replaces the outlet only on a terminal verdict", () => {
+    let mounted = false;
+    function ChatView() {
+      useEffect(() => {
+        mounted = true;
+        return () => {
+          mounted = false;
+        };
+      }, []);
+      return "conversation";
+    }
+    const refused = gateFor({ kind: "refused-role" }, "live");
+
+    act(() =>
+      root.render(
+        <RouteGateView {...gateFor(READY, "live")} projectId="project-1">
+          <ChatView />
+        </RouteGateView>,
+      ),
+    );
+    expect(mounted).toBe(true);
+    act(() =>
+      root.render(
+        <RouteGateView {...refused} projectId="project-1">
+          <ChatView />
+        </RouteGateView>,
+      ),
+    );
+
+    expect(mounted).toBe(false);
+    expect(container.textContent).toBe(
+      "You can see this project in Zerops but can't operate its Mate.",
+    );
+  });
+
+  // DESIGN §9 C1b: hidden, never unmounted, until the access vouches for it again.
+  it("a suppressed conversation keeps the ChatView instance and hides it, its floating layers and drafts included", () => {
+    const mounts: Array<number> = [];
+    function ChatView() {
+      useEffect(() => {
+        mounts.push(mounts.length + 1);
+      }, []);
+      return (
+        <>
+          conversation
+          <FloatingLayer>menu</FloatingLayer>
+        </>
+      );
+    }
+    const render = (conversation: ConversationView) =>
+      act(() =>
+        root.render(
+          <RouteGateView {...gateFor(RESTARTING_UNDER_LINK, "live", conversation)} projectId="p1">
+            <ChatView />
+          </RouteGateView>,
+        ),
+      );
+
+    render(SHOWN);
+    expect(readableText(container)).toContain("conversationmenu");
+    render({ kind: "suppressed", reason: "access-denied" });
+    const suppressed = readableText(container);
+    const suppressedText = container.textContent;
+    render(SHOWN);
+
+    expect(mounts).toEqual([1]);
+    expect(suppressed).toBe("Your access to this project changed.Go to projects");
+    expect(suppressedText).not.toContain("menu");
+    expect(readableText(container)).toContain("conversationmenu");
+    expect(container.textContent).toContain("conversationmenu");
+  });
+});
+
+it("project revocation withdraws the open Mate while its receiver still pongs", () => {
+  act(() =>
+    root.render(
+      <RouteGateView {...gateFor(READY, "live")}>
+        The existing conversation is still here
+      </RouteGateView>,
+    ),
+  );
+  expect(readableText(container)).toContain("The existing conversation is still here");
+  // A connected receiver cannot overrule the route's authoritative project denial.
+  act(() =>
+    root.render(
+      <RouteGateView {...gateFor(READY, "live", { kind: "suppressed", reason: "access-denied" })}>
+        The existing conversation is still here
+      </RouteGateView>,
+    ),
+  );
+  expect(readableText(container)).not.toContain("The existing conversation is still here");
+  expect(readableText(container)).toContain("access");
+});
+
+it("project deletion is named and leaves no dead Open in Zerops link", () => {
+  const registry = AtomRegistry.make();
+  const store = mountRoster(registry, "org", [{ id: "p1", name: "Wren", status: "ACTIVE" }]);
+  try {
+    store.dispatch({
+      kind: "proven-deletion",
+      family: "project",
+      id: "p1",
+      evidence: "projectNotFound",
+    });
+    const recovery = mateRecovery.derive(readsOfState(store.state()), {
+      orgId: "org",
+      projectId: "p1",
+      serviceId: undefined,
+    });
+    for (const known of [true, false]) {
+      const standing = known ? recovery.standing : { kind: "deleted" as const };
+      act(() =>
+        root.render(
+          <RouteGateView
+            key={known ? "live" : "cold"}
+            {...gateFor({ kind: "refused-role" }, "live")}
+            gate={{ kind: "unavailable", reachability: { kind: "refused-role" } }}
+            projectId={known ? "p1" : null}
+            projectUnavailable={mateProjectUnavailable(standing)}
+            recoveryPhrase={recoveryNotice({ ...recovery, standing }, known ? "Wren" : "The Mate")}
+          >
+            The existing conversation is still here
+          </RouteGateView>,
+        ),
+      );
+      const text = readableText(container);
+      expect(text).toContain(
+        known ? "Wren's project was deleted" : "The Mate's project was deleted",
+      );
+      expect(text).not.toContain("The existing conversation is still here");
+      expect(text).not.toContain("Open in Zerops");
+    }
+  } finally {
+    registry.dispose();
+  }
+});

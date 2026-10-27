@@ -1,0 +1,327 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
+/**
+ * The groups, entries and slot defaults the projects-flow tests share. Plain
+ * TypeScript, not TSX: it is no component, so no surface claims it.
+ */
+
+import {
+  buildZeropsGroupTree,
+  canonicalEnvironmentRow,
+  groupFlow,
+  type FlowPullRequest,
+  type GroupFlowInput,
+  type ZeropsGroup,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
+import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { act, createElement as h, type ReactElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { vi } from "vite-plus/test";
+
+import {
+  ZeropsProjectsFlow,
+  type ProjectsFlowGroup,
+  type ZeropsProjectsFlowProps,
+} from "./ZeropsProjectsFlow";
+
+export interface Item {
+  readonly project: ZeropsProject;
+  readonly mate?: boolean;
+}
+
+/** Where HQ places a project: in application `appId`, named `appName`, as `kind`. */
+export function placed(
+  appId: string,
+  appName: string,
+  kind: HqPlacement["kind"] = "mate",
+): HqPlacement {
+  return { appId, appName, kind, mate: null };
+}
+
+/** A project as the listing holds it, where HQ places it, if anywhere. */
+export function item(name: string, hq?: HqPlacement, mate = true): Item {
+  return {
+    project: { id: name, name, status: "ACTIVE", tagList: [], ...(hq === undefined ? {} : { hq }) },
+    mate,
+  };
+}
+
+export function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
+  return {
+    repository: "app",
+    number: 1,
+    title: "Greet with a fuller line",
+    kind: "code",
+    mateProjectId: "wren-dev",
+    url: undefined,
+    mergeability: "mergeable",
+    behind: false,
+    merged: false,
+    mergedAt: undefined,
+    headSha: "abc",
+    baseBranch: "main",
+    line: "app #1",
+    updatedAt: undefined,
+    ...over,
+  };
+}
+
+function groupOf(items: ReadonlyArray<Item>): ZeropsGroup {
+  const [group] = buildZeropsGroupTree(items, { order: "name" }).groups;
+  return group!.group;
+}
+
+export const WREN = item("wren-dev", placed("aaa", "sm-fixture"));
+export const STAGE = item("fixture-stage", placed("aaa", "sm-fixture", "stage"), false);
+export const PROD = item("fixture-prod", placed("aaa", "sm-fixture", "production"), false);
+export const UMA = item("uma-dev", placed("bbb", "hokuspokus"));
+
+export const PRODUCTION_STOP = {
+  projectId: "fixture-prod",
+  name: "production",
+  tier: "production" as const,
+  row: undefined,
+  deployment: undefined,
+  addresses: [],
+};
+export const STAGE_STOP = {
+  ...PRODUCTION_STOP,
+  projectId: "fixture-stage",
+  name: "stage",
+  tier: "stage" as const,
+};
+
+export function entry(
+  members: ReadonlyArray<Item>,
+  over: Partial<GroupFlowInput> = {},
+  read = true,
+): ProjectsFlowGroup<Item> {
+  return entryOf(groupOf(members), members, over, read);
+}
+
+/** A Mate being created, as the group tree carries it and the flow reads it. */
+export const VERA_COMING = {
+  projectId: "vera-dev",
+  kind: "mate" as const,
+  name: "Vera",
+  startedAt: 5,
+};
+
+/**
+ * A group the listing holds nothing of yet — its only member is being created —
+ * placed by the group tree from its birth, beside `members` of other groups.
+ */
+export function born(members: ReadonlyArray<Item> = []): ReadonlyArray<ProjectsFlowGroup<Item>> {
+  const tree = buildZeropsGroupTree(members, {
+    order: "newest",
+    births: [
+      {
+        projectId: VERA_COMING.projectId,
+        startedAt: Date.parse("2026-09-24T12:00:00.000Z"),
+        placement: { groupId: "ccc", groupName: "Todo", kind: "mate", displayName: "Vera" },
+      },
+    ],
+  });
+  return tree.groups.map(({ group, environments }) =>
+    entryOf(
+      group,
+      environments.map(({ item: member }) => member),
+      { pending: group.pending },
+      group.groupId !== "ccc",
+    ),
+  );
+}
+
+function entryOf(
+  group: ZeropsGroup,
+  members: ReadonlyArray<Item>,
+  over: Partial<GroupFlowInput>,
+  read: boolean,
+): ProjectsFlowGroup<Item> {
+  const mates = members.filter((member) => member.mate === true);
+  return {
+    group,
+    flow: groupFlow({
+      groupId: group.groupId,
+      mates: mates.map((mate) => ({
+        projectId: mate.project.id,
+        name: mate.project.id === "uma-dev" ? "Uma" : "Wren",
+        previews: [],
+        waiting: false,
+        talked: mate.project.id !== "uma-dev",
+      })),
+      pullRequests: [],
+      merged: [],
+      stops: [],
+      release: {
+        gate: { allowed: false, reason: "Nothing is merged to release." },
+        suggestion: "v0.1.0",
+        waiting: 0,
+        waitingAtLeast: false,
+        untold: [],
+      },
+      mainHasCode: undefined,
+      mainHead: undefined,
+      pending: [],
+      ...over,
+    }),
+    activities: [],
+    awaiting: !read,
+    changesAwaiting: !read,
+    mates: new Map(mates.map((mate) => [mate.project.id, mate])),
+    stops: new Map(
+      members
+        .filter((member) => member === STAGE || member === PROD)
+        .map((member) => [
+          member.project.id,
+          { item: member, role: member === STAGE ? ("stage" as const) : ("prod" as const) },
+        ]),
+    ),
+    others: [],
+    lastMerged: undefined,
+    line: undefined,
+    placeholder: false,
+  };
+}
+
+/** The markup of one element that carries `marker`, up to the next group. */
+export function section(html: string, marker: string): string {
+  const start = html.indexOf(marker);
+  const next = html.indexOf("data-zerops-group=", start + marker.length);
+  return html.slice(start, next === -1 ? undefined : next);
+}
+
+export const MERGING = entry([WREN, STAGE], { pullRequests: [pull()], stops: [STAGE_STOP] });
+export const RELEASING = entry([WREN, PROD], {
+  merged: [pull({ number: 4, merged: true })],
+  stops: [PRODUCTION_STOP],
+  release: {
+    gate: { allowed: true },
+    suggestion: "v0.1.0",
+    waiting: 1,
+    waitingAtLeast: false,
+    untold: [],
+  },
+});
+export const FRESH = entry([UMA]);
+
+/** A production whose last deploy failed, with merged work a release could put there. */
+export function brokenProduction() {
+  const FAILED_PROD_SHA = "055a7e8f0c1d2e3f4a5b6c7d8e9f0a1b2c3d4e5f";
+  return entry([WREN, PROD], {
+    merged: [pull({ number: 4, merged: true })],
+    stops: [
+      {
+        ...PRODUCTION_STOP,
+        row: environmentRow({
+          projectId: "fixture-prod",
+          name: "production",
+          tier: "production",
+          sources: "release",
+          services: [
+            {
+              hostname: "app",
+              appVersionName: FAILED_PROD_SHA,
+              deploy: {
+                latest: {
+                  id: "job-failed-prod",
+                  kind: "deploy",
+                  service: "app",
+                  sha: FAILED_PROD_SHA,
+                  state: "failed",
+                  cause: "release",
+                  ref: null,
+                  reason: null,
+                  appVersionId: null,
+                  processId: null,
+                  requestedBy: null,
+                  at: "2026-09-29T10:41:00Z",
+                  endedAt: "2026-09-29T10:41:00Z",
+                  supersededBy: null,
+                },
+                live: null,
+              },
+            },
+          ],
+        }),
+        deployment: {
+          state: "known",
+          value: {
+            kind: "running",
+            activatedAt: null,
+            version: {
+              name: undefined,
+              commit: "055a7e8",
+              sha: FAILED_PROD_SHA,
+              taggedBy: undefined,
+              label: "055a7e8",
+            },
+          },
+          asOf: { ordinal: 1, atMs: 0 },
+          coverage: "complete",
+          freshness: { kind: "live" },
+        },
+      },
+    ],
+    release: {
+      gate: { allowed: true },
+      suggestion: "v0.1.0",
+      waiting: 1,
+      waitingAtLeast: false,
+      untold: [],
+    },
+  });
+}
+
+/** Every slot, drawn as a marker the tests look for. */
+export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
+  getKey: (value) => value.project.id,
+  groups: [],
+  isMate: (value) => value.mate === true,
+  onRetryContainers: () => {},
+  renderEnvironment: (value) => h("li", { "data-test-environment": value.project.id }),
+  renderGroupMenu: (value) => h("span", { "data-test-menu": value.group.groupId }),
+  renderMate: (value, options) =>
+    h("div", {
+      "data-test-mate": value.project.id,
+      "data-test-layout": options.layout,
+      "data-test-previews": options.previews.map((preview) => preview.service).join(" "),
+      "data-test-review": options.review?.number,
+    }),
+  renderMateFace: (value, size) =>
+    h("span", { "data-test-face": value.project.id, "data-test-size": size }),
+  openMate: () => undefined,
+  renderReleaseVerb: () => h("button", { "data-test-release-verb": "true", type: "button" }),
+  hqCard: h("div", { "data-test-hq-card": "true" }),
+  ungrouped: [],
+};
+
+/** A tree to press and to walk — the markup alone cannot say what a click does. */
+export function mount(element: ReactElement): ReactTestRenderer {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  let renderer: ReactTestRenderer | undefined;
+  act(() => {
+    renderer = create(element);
+  });
+  return renderer!;
+}
+
+/** The whole flow's markup, every slot a marker unless the test says otherwise. */
+export function renderFlow(props: Partial<ZeropsProjectsFlowProps<Item>> = {}): string {
+  return renderToStaticMarkup(h(ZeropsProjectsFlow<Item>, { ...FLOW_PROPS, ...props }));
+}
+
+/** Equal addresses model deployed Zerops rows; identity witnesses supply unequal addresses themselves. */
+export function environmentRow(
+  input: Omit<Parameters<typeof canonicalEnvironmentRow>[0], "id" | "target" | "projectId"> & {
+    readonly projectId: string;
+  },
+) {
+  const { projectId, ...payload } = input;
+  return canonicalEnvironmentRow({
+    ...payload,
+    id: HqEnvironmentId.make(projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(projectId) },
+  });
+}

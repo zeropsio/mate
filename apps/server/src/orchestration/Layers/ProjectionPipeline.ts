@@ -1,0 +1,1806 @@
+import {
+  ApprovalRequestId,
+  mateInterruptionOf,
+  UserInputAttachmentAnswerPayload,
+  type ChatAttachment,
+  type MessageId,
+  type OrchestrationEvent,
+  type OrchestrationSessionStatus,
+  ThreadId,
+  type ThreadMessagePreview,
+} from "@t3tools/contracts";
+import { messagePreviewText } from "@t3tools/shared/messagePreview";
+import { userAskPreviewText, isCompactCommandMessage } from "@t3tools/shared/userAsk";
+import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
+import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Path from "effect/Path";
+import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
+import * as SqlClient from "effect/sql/SqlClient";
+
+import { toPersistenceSqlError, type ProjectionRepositoryError } from "../../persistence/Errors.ts";
+import { OrchestrationEventStore } from "../../persistence/Services/OrchestrationEventStore.ts";
+import { ProjectionPendingApprovalRepository } from "../../persistence/Services/ProjectionPendingApprovals.ts";
+import { ProjectionProjectRepository } from "../../persistence/Services/ProjectionProjects.ts";
+import { ProjectionStateRepository } from "../../persistence/Services/ProjectionState.ts";
+import { ProjectionThreadActivityRepository } from "../../persistence/Services/ProjectionThreadActivities.ts";
+import { type ProjectionThreadActivity } from "../../persistence/Services/ProjectionThreadActivities.ts";
+import {
+  type ProjectionThreadMessage,
+  type ProjectionThreadMessagePreviewSource,
+  ProjectionThreadMessageRepository,
+} from "../../persistence/Services/ProjectionThreadMessages.ts";
+import {
+  type ProjectionThreadProposedPlan,
+  ProjectionThreadProposedPlanRepository,
+} from "../../persistence/Services/ProjectionThreadProposedPlans.ts";
+import { ProjectionThreadSessionRepository } from "../../persistence/Services/ProjectionThreadSessions.ts";
+import {
+  type ProjectionTurn,
+  ProjectionTurnRepository,
+} from "../../persistence/Services/ProjectionTurns.ts";
+import { ProjectionThreadRepository } from "../../persistence/Services/ProjectionThreads.ts";
+import { ProjectionPendingApprovalRepositoryLive } from "../../persistence/Layers/ProjectionPendingApprovals.ts";
+import { ProjectionProjectRepositoryLive } from "../../persistence/Layers/ProjectionProjects.ts";
+import { ProjectionStateRepositoryLive } from "../../persistence/Layers/ProjectionState.ts";
+import { ProjectionThreadActivityRepositoryLive } from "../../persistence/Layers/ProjectionThreadActivities.ts";
+import { ProjectionThreadMessageRepositoryLive } from "../../persistence/Layers/ProjectionThreadMessages.ts";
+import { ProjectionThreadProposedPlanRepositoryLive } from "../../persistence/Layers/ProjectionThreadProposedPlans.ts";
+import { ProjectionThreadSessionRepositoryLive } from "../../persistence/Layers/ProjectionThreadSessions.ts";
+import { ProjectionTurnRepositoryLive } from "../../persistence/Layers/ProjectionTurns.ts";
+import { ProjectionThreadRepositoryLive } from "../../persistence/Layers/ProjectionThreads.ts";
+import { ServerConfig } from "../../config.ts";
+import {
+  OrchestrationProjectionPipeline,
+  type OrchestrationProjectionPipelineShape,
+} from "../Services/ProjectionPipeline.ts";
+import { openUserInputRequests } from "../pendingUserInput.ts";
+import {
+  attachmentRelativePath,
+  parseAttachmentIdFromRelativePath,
+  parseThreadSegmentFromAttachmentId,
+  toSafeThreadAttachmentSegment,
+} from "../../attachmentStore.ts";
+
+export const ORCHESTRATION_PROJECTOR_NAMES = {
+  projects: "projection.projects",
+  threads: "projection.threads",
+  threadMessages: "projection.thread-messages",
+  threadProposedPlans: "projection.thread-proposed-plans",
+  threadActivities: "projection.thread-activities",
+  threadSessions: "projection.thread-sessions",
+  threadTurns: "projection.thread-turns",
+  pendingApprovals: "projection.pending-approvals",
+} as const;
+
+type ProjectorName =
+  (typeof ORCHESTRATION_PROJECTOR_NAMES)[keyof typeof ORCHESTRATION_PROJECTOR_NAMES];
+
+/**
+ * Turn state to settle still-running turns with when their session leaves the
+ * "running" status, or null while the session is (re)starting or running and
+ * turns must stay unsettled.
+ */
+function settledTurnStateForSessionStatus(
+  status: OrchestrationSessionStatus,
+): "completed" | "interrupted" | "error" | null {
+  switch (status) {
+    case "idle":
+    case "ready":
+      return "completed";
+    case "error":
+      return "error";
+    case "interrupted":
+    case "stopped":
+      return "interrupted";
+    case "starting":
+    case "running":
+      return null;
+  }
+}
+
+interface ProjectorDefinition {
+  readonly name: ProjectorName;
+  readonly apply: (
+    event: OrchestrationEvent,
+    attachmentSideEffects: AttachmentSideEffects,
+  ) => Effect.Effect<void, ProjectionRepositoryError>;
+}
+
+interface AttachmentSideEffects {
+  readonly deletedThreadIds: Set<string>;
+}
+
+const materializeAttachmentsForProjection = Effect.fn("materializeAttachmentsForProjection")(
+  (input: { readonly attachments: ReadonlyArray<ChatAttachment> }) =>
+    Effect.succeed(input.attachments.length === 0 ? [] : input.attachments),
+);
+
+function extractActivityRequestId(payload: unknown): ApprovalRequestId | null {
+  if (typeof payload !== "object" || payload === null) {
+    return null;
+  }
+  const requestId = (payload as Record<string, unknown>).requestId;
+  return typeof requestId === "string" ? ApprovalRequestId.make(requestId) : null;
+}
+
+function isStalePendingApprovalFailureDetail(detail: string | null): boolean {
+  if (detail === null) {
+    return false;
+  }
+  return (
+    detail.includes("stale pending approval request") ||
+    detail.includes("unknown pending approval request") ||
+    detail.includes("unknown pending permission request")
+  );
+}
+
+// The shell's preview of a message: the assistant's words quoted
+// (`@t3tools/shared/messagePreview`), the person's ask as `userAskPreviewText`
+// reads it — attachments without words by their count, a slash command or the
+// usage-limit resume not at all. Null when nothing said quotes to anything.
+function threadMessagePreviewFromSource(
+  source: ProjectionThreadMessagePreviewSource,
+): ThreadMessagePreview | null {
+  const text =
+    source.role === "user" ? userAskPreviewText(source) : messagePreviewText(source.text);
+  return text === null ? null : { role: source.role, text, createdAt: source.createdAt };
+}
+
+// How many of the newest messages a preview looks through for one that
+// previews: past this many slash commands in a row, it says nothing.
+const PREVIEW_SOURCE_WINDOW = 20;
+
+function firstThreadMessagePreview(
+  sources: ReadonlyArray<ProjectionThreadMessagePreviewSource>,
+): ThreadMessagePreview | null {
+  for (const source of sources) {
+    const preview = threadMessagePreviewFromSource(source);
+    if (preview !== null) return preview;
+  }
+  return null;
+}
+
+// A refresh reads each persisted summary source, so skip activities that cannot change the result.
+function shouldRefreshThreadShellSummary(event: OrchestrationEvent): boolean {
+  if (event.type !== "thread.activity-appended") {
+    return true;
+  }
+
+  switch (event.payload.activity.kind) {
+    case "approval.requested":
+    case "approval.resolved":
+    case "provider.approval.respond.failed":
+    case "user-input.requested":
+    case "user-input.resolved":
+    case "provider.user-input.respond.failed":
+      return true;
+    default:
+      return false;
+  }
+}
+
+const runAttachmentSideEffects = Effect.fn("runAttachmentSideEffects")(function* (
+  sideEffects: AttachmentSideEffects,
+) {
+  const serverConfig = yield* Effect.service(ServerConfig);
+  const fileSystem = yield* Effect.service(FileSystem.FileSystem);
+  const path = yield* Effect.service(Path.Path);
+
+  const attachmentsRootDir = serverConfig.attachmentsDir;
+  const readAttachmentRootEntries = fileSystem.readDirectory(attachmentsRootDir, {
+    recursive: false,
+  });
+
+  const removeDeletedThreadAttachmentEntry = Effect.fn("removeDeletedThreadAttachmentEntry")(
+    function* (threadSegment: string, entry: string) {
+      const normalizedEntry = entry.replace(/^[/\\]+/, "").replace(/\\/g, "/");
+      if (normalizedEntry.length === 0 || normalizedEntry.includes("/")) {
+        return;
+      }
+      const attachmentId = parseAttachmentIdFromRelativePath(normalizedEntry);
+      if (!attachmentId) {
+        return;
+      }
+      const attachmentThreadSegment = parseThreadSegmentFromAttachmentId(attachmentId);
+      if (!attachmentThreadSegment || attachmentThreadSegment !== threadSegment) {
+        return;
+      }
+      yield* fileSystem.remove(path.join(attachmentsRootDir, normalizedEntry), {
+        force: true,
+      });
+    },
+  );
+
+  const deleteThreadAttachments = Effect.fn("deleteThreadAttachments")(function* (
+    threadId: string,
+  ) {
+    const threadSegment = toSafeThreadAttachmentSegment(threadId);
+    if (!threadSegment) {
+      yield* Effect.logWarning("skipping attachment cleanup for unsafe thread id", {
+        threadId,
+      });
+      return;
+    }
+
+    const entries = yield* readAttachmentRootEntries;
+    yield* Effect.forEach(
+      entries,
+      (entry) => removeDeletedThreadAttachmentEntry(threadSegment, entry),
+      {
+        concurrency: 1,
+      },
+    );
+  });
+
+  yield* Effect.forEach(sideEffects.deletedThreadIds, deleteThreadAttachments, {
+    concurrency: 1,
+  });
+});
+
+const makeOrchestrationProjectionPipeline = Effect.fn("makeOrchestrationProjectionPipeline")(
+  function* () {
+    const sql = yield* SqlClient.SqlClient;
+    const eventStore = yield* OrchestrationEventStore;
+    const projectionStateRepository = yield* ProjectionStateRepository;
+    const projectionProjectRepository = yield* ProjectionProjectRepository;
+    const projectionThreadRepository = yield* ProjectionThreadRepository;
+    const projectionThreadMessageRepository = yield* ProjectionThreadMessageRepository;
+    const projectionThreadProposedPlanRepository = yield* ProjectionThreadProposedPlanRepository;
+    const projectionThreadActivityRepository = yield* ProjectionThreadActivityRepository;
+    const projectionThreadSessionRepository = yield* ProjectionThreadSessionRepository;
+    const projectionTurnRepository = yield* ProjectionTurnRepository;
+    const projectionPendingApprovalRepository = yield* ProjectionPendingApprovalRepository;
+
+    const fileSystem = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const serverConfig = yield* ServerConfig;
+
+    const applyProjectsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyProjectsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "project.created":
+          yield* projectionProjectRepository.upsert({
+            projectId: event.payload.projectId,
+            title: event.payload.title,
+            workspaceRoot: event.payload.workspaceRoot,
+            defaultModelSelection: event.payload.defaultModelSelection,
+            defaultThreadEnvMode: null,
+            faviconPath: event.payload.faviconPath ?? null,
+            scripts: event.payload.scripts,
+            createdAt: event.payload.createdAt,
+            updatedAt: event.payload.updatedAt,
+            deletedAt: null,
+          });
+          return;
+
+        case "project.meta-updated": {
+          const existingRow = yield* projectionProjectRepository.getById({
+            projectId: event.payload.projectId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionProjectRepository.upsert({
+            ...existingRow.value,
+            ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+            ...(event.payload.workspaceRoot !== undefined
+              ? { workspaceRoot: event.payload.workspaceRoot }
+              : {}),
+            ...(event.payload.defaultModelSelection !== undefined
+              ? { defaultModelSelection: event.payload.defaultModelSelection }
+              : {}),
+            ...(event.payload.defaultThreadEnvMode !== undefined
+              ? { defaultThreadEnvMode: event.payload.defaultThreadEnvMode }
+              : {}),
+            ...(event.payload.faviconPath !== undefined
+              ? { faviconPath: event.payload.faviconPath }
+              : {}),
+            ...(event.payload.scripts !== undefined ? { scripts: event.payload.scripts } : {}),
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "project.deleted": {
+          const existingRow = yield* projectionProjectRepository.getById({
+            projectId: event.payload.projectId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionProjectRepository.upsert({
+            ...existingRow.value,
+            deletedAt: event.payload.deletedAt,
+            updatedAt: event.payload.deletedAt,
+          });
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
+    // The previews fold in the way latestUserMessageAt does: a completed user
+    // or assistant message that previews becomes the preview when it is the
+    // newest — of anyone for `latestMessagePreview`, of the person for
+    // `latestUserMessagePreview`. The person's message arrives whole; an
+    // assistant completion may carry no text (the streamed body stands), and
+    // then the projected rows are read — a bounded window of that role, not
+    // the thread.
+    const foldLatestMessagePreview = Effect.fn("foldLatestMessagePreview")(function* (
+      previous: ThreadMessagePreview | null,
+      payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
+    ) {
+      // A thinking trace is not a message anyone said; it never becomes the preview.
+      if (payload.streaming || payload.role === "system" || payload.role === "reasoning") {
+        return previous;
+      }
+      const next =
+        payload.role === "user" || payload.text.length > 0
+          ? threadMessagePreviewFromSource({
+              role: payload.role,
+              text: payload.text,
+              attachments: payload.attachments ?? [],
+              createdAt: payload.createdAt,
+            })
+          : firstThreadMessagePreview(
+              yield* projectionThreadMessageRepository.listLatestPreviewSources({
+                threadId: payload.threadId,
+                role: payload.role,
+                limit: PREVIEW_SOURCE_WINDOW,
+              }),
+            );
+      if (next === null || (previous !== null && previous.createdAt > next.createdAt)) {
+        return previous;
+      }
+      return next;
+    });
+
+    // Older events lack the verdict: read their immutable accepted message, never another projector's head.
+    const continuesWork = Effect.fn("continuesWork")(function* (
+      event: Extract<OrchestrationEvent, { type: "thread.turn-start-requested" }>,
+    ) {
+      if (event.payload.purpose !== undefined) return event.payload.purpose === "work";
+      const source = yield* eventStore
+        .readAggregateRange({
+          aggregateKind: "thread",
+          aggregateId: event.payload.threadId,
+          fromSequenceExclusive: 0,
+          toSequenceInclusive: event.sequence,
+        })
+        .pipe(
+          Stream.filter(
+            (each) =>
+              each.type === "thread.message-sent" &&
+              each.payload.messageId === event.payload.messageId,
+          ),
+          Stream.runHead,
+        );
+      return (
+        Option.isSome(source) &&
+        source.value.type === "thread.message-sent" &&
+        !isCompactCommandMessage(source.value.payload)
+      );
+    });
+
+    const isCompactRequestId = Effect.fn("isCompactRequestId")(function* (messageId: MessageId) {
+      const message = yield* projectionThreadMessageRepository.getByMessageId({ messageId });
+      return Option.isSome(message) && isCompactCommandMessage(message.value);
+    });
+
+    // Whether the person's message lands in a run already on — a turn the
+    // provider is running for an ask (the command reactor's continuation) or
+    // starting for an earlier message — and is steered into it: a follow-up,
+    // not the task. A compaction's run, or one a background result woke, is
+    // nobody's task: what arrives during it starts the next run.
+    const isSteeredIntoRun = Effect.fn("isSteeredIntoRun")(function* (
+      payload: Extract<OrchestrationEvent, { type: "thread.message-sent" }>["payload"],
+    ) {
+      const threadId = payload.threadId;
+      const session = yield* projectionThreadSessionRepository.getByThreadId({ threadId });
+      if (Option.isNone(session)) return false;
+      const { status, activeTurnId } = session.value;
+      if (status === "running" && activeTurnId !== null) {
+        const turn = yield* projectionTurnRepository.getByTurnId({
+          threadId,
+          turnId: activeTurnId,
+        });
+        // A run nobody's ask started — a background result woke it — takes no
+        // follow-ups: the provider ends it and runs the message as its own.
+        const opener = Option.isSome(turn) ? turn.value.pendingMessageId : null;
+        return opener !== null && !(yield* isCompactRequestId(opener));
+      }
+      if (status !== "starting") return false;
+      const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+        threadId,
+      });
+      if (
+        Option.isNone(pendingTurnStart) ||
+        pendingTurnStart.value.messageId === payload.messageId
+      ) {
+        return false;
+      }
+      return !(yield* isCompactRequestId(pendingTurnStart.value.messageId));
+    });
+
+    const refreshThreadShellSummary = Effect.fn("refreshThreadShellSummary")(function* (
+      threadId: ThreadId,
+    ) {
+      const existingRow = yield* projectionThreadRepository.getById({
+        threadId,
+      });
+      if (Option.isNone(existingRow)) {
+        return;
+      }
+
+      const [
+        latestUserMessageAt,
+        previewSources,
+        hasActionableProposedPlan,
+        activities,
+        pendingApprovalCount,
+      ] = yield* Effect.all([
+        projectionThreadMessageRepository.getLatestUserMessageAt({ threadId }),
+        projectionThreadMessageRepository.listLatestPreviewSources({
+          threadId,
+          limit: PREVIEW_SOURCE_WINDOW,
+        }),
+        projectionThreadProposedPlanRepository.hasActionableByThreadId({
+          threadId,
+          latestTurnId: existingRow.value.latestTurnId,
+        }),
+        projectionThreadActivityRepository.listUserInputLifecycleByThreadId({ threadId }),
+        projectionPendingApprovalRepository.countPendingByThreadId({ threadId }),
+      ]);
+
+      const pendingUserInputCount = openUserInputRequests(activities).length;
+
+      // The task stays as the fold chose it: whether an ask started a run or
+      // was steered into one is known only as it arrives.
+      const latestUserMessagePreview = existingRow.value.latestUserMessagePreview ?? null;
+
+      yield* projectionThreadRepository.upsert({
+        ...existingRow.value,
+        latestUserMessageAt,
+        latestMessagePreview: firstThreadMessagePreview(previewSources),
+        latestUserMessagePreview,
+        pendingApprovalCount,
+        pendingUserInputCount,
+        hasActionableProposedPlan: hasActionableProposedPlan ? 1 : 0,
+      });
+    });
+
+    const applyThreadsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadsProjection",
+    )(function* (event, attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.created":
+          yield* projectionThreadRepository.upsert({
+            threadId: event.payload.threadId,
+            projectId: event.payload.projectId,
+            title: event.payload.title,
+            modelSelection: event.payload.modelSelection,
+            runtimeMode: event.payload.runtimeMode,
+            interactionMode: event.payload.interactionMode,
+            branch: event.payload.branch,
+            worktreePath: event.payload.worktreePath,
+            linkedPullRequest: null,
+            latestTurnId: null,
+            createdAt: event.payload.createdAt,
+            updatedAt: event.payload.updatedAt,
+            archivedAt: null,
+            settledOverride: null,
+            settledAt: null,
+            unsettledAt: null,
+            snoozedUntil: null,
+            snoozedAt: null,
+            pinnedAt: null,
+            pinOrderKey: null,
+            activeOrderKey: null,
+            autoSettleDisabledAt: null,
+            titleRegenerationRequestId: null,
+            titleRegenerationStartedAt: null,
+            latestUserMessageAt: null,
+            latestMessagePreview: null,
+            latestUserMessagePreview: null,
+            pendingApprovalCount: 0,
+            pendingUserInputCount: 0,
+            hasActionableProposedPlan: 0,
+            crew: event.payload.crew ?? null,
+            deletedAt: null,
+          });
+          return;
+
+        case "thread.archived": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            archivedAt: event.payload.archivedAt,
+            titleRegenerationRequestId: null,
+            titleRegenerationStartedAt: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.unarchived": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            archivedAt: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.settled": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            settledOverride: "settled",
+            settledAt: event.payload.settledAt,
+            unsettledAt: null,
+            activeOrderKey: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.unsettled": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            settledOverride: event.payload.reason === "user" ? "active" : null,
+            settledAt: null,
+            // Re-entry stamp for active-list ordering. A thread already pinned
+            // active keeps its stamp: the activity reset that clears the pin
+            // is not a re-entry and must not reorder the list.
+            unsettledAt:
+              existingRow.value.settledOverride === "active"
+                ? existingRow.value.unsettledAt
+                : event.payload.updatedAt,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.snoozed": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            snoozedUntil: event.payload.snoozedUntil,
+            snoozedAt: event.payload.snoozedAt,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.unsnoozed": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            snoozedUntil: null,
+            snoozedAt: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.pinned": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            pinnedAt: event.payload.pinnedAt,
+            ...(event.payload.pinOrderKey !== undefined
+              ? { pinOrderKey: event.payload.pinOrderKey }
+              : {}),
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.unpinned": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            pinnedAt: null,
+            pinOrderKey: null,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.auto-settle-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            autoSettleDisabledAt: event.payload.autoSettleDisabledAt,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        // A usage pause is an overlay on the thread, not activity: it never
+        // moves the thread in a list, so updatedAt stays.
+        case "thread.usage-pause-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            usagePause: event.payload.usagePause,
+          });
+          return;
+        }
+
+        case "thread.usage-auto-resume-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            usageAutoResumeDisabledAt: event.payload.usageAutoResumeDisabledAt,
+          });
+          return;
+        }
+
+        case "thread.pin-reordered": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            pinOrderKey: event.payload.orderKey,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.meta-updated": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            ...(event.payload.title !== undefined ? { title: event.payload.title } : {}),
+            ...(event.payload.activeOrderKey !== undefined
+              ? { activeOrderKey: event.payload.activeOrderKey }
+              : {}),
+            ...(event.payload.titleState !== undefined
+              ? { titleState: event.payload.titleState }
+              : {}),
+            ...(event.payload.titleRegeneration !== undefined
+              ? {
+                  titleRegenerationRequestId: event.payload.titleRegeneration?.requestId ?? null,
+                  titleRegenerationStartedAt: event.payload.titleRegeneration?.startedAt ?? null,
+                }
+              : {}),
+            ...(event.payload.modelSelection !== undefined
+              ? { modelSelection: event.payload.modelSelection }
+              : {}),
+            ...(event.payload.branch !== undefined ? { branch: event.payload.branch } : {}),
+            ...(event.payload.worktreePath !== undefined
+              ? { worktreePath: event.payload.worktreePath }
+              : {}),
+            ...(event.payload.linkedPullRequest !== undefined
+              ? { linkedPullRequest: event.payload.linkedPullRequest }
+              : {}),
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.runtime-mode-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            runtimeMode: event.payload.runtimeMode,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.interaction-mode-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            interactionMode: event.payload.interactionMode,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        case "thread.deleted": {
+          // A draft retry can re-create this id later in the log. During
+          // replay the attachment files on disk already belong to that later
+          // incarnation, so only an unsuperseded deletion removes them.
+          const recreatedLater = yield* eventStore.hasEventAfter({
+            aggregateKind: "thread",
+            aggregateId: event.payload.threadId,
+            type: "thread.created",
+            sequenceExclusive: event.sequence,
+          });
+          if (!recreatedLater) {
+            attachmentSideEffects.deletedThreadIds.add(event.payload.threadId);
+          }
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            deletedAt: event.payload.deletedAt,
+            updatedAt: event.payload.deletedAt,
+          });
+          return;
+        }
+
+        // A message cannot change any summary field except latestUserMessageAt
+        // and the preview of the last message, both monotonic by time and both
+        // folding in directly. The full refresh would re-read every message
+        // body in the thread per user message.
+        case "thread.message-sent": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          const previousLatest = existingRow.value.latestUserMessageAt;
+          const latestMessagePreview = yield* foldLatestMessagePreview(
+            existingRow.value.latestMessagePreview ?? null,
+            event.payload,
+          );
+          // The task as the person put it: the same fold, over the messages of
+          // theirs that start a run. One steered into a run already on is a
+          // follow-up, and the task stays.
+          const latestUserMessagePreview =
+            event.payload.role === "user" && !(yield* isSteeredIntoRun(event.payload))
+              ? yield* foldLatestMessagePreview(
+                  existingRow.value.latestUserMessagePreview ?? null,
+                  event.payload,
+                )
+              : (existingRow.value.latestUserMessagePreview ?? null);
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            updatedAt: event.occurredAt,
+            latestMessagePreview,
+            latestUserMessagePreview,
+            latestUserMessageAt:
+              event.payload.role === "user" &&
+              (previousLatest === null || event.payload.createdAt > previousLatest)
+                ? event.payload.createdAt
+                : previousLatest,
+          });
+          return;
+        }
+
+        case "thread.proposed-plan-upserted":
+        case "thread.activity-appended":
+        case "thread.approval-response-requested":
+        case "thread.user-input-response-requested": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            updatedAt: event.occurredAt,
+          });
+          if (shouldRefreshThreadShellSummary(event)) {
+            yield* refreshThreadShellSummary(event.payload.threadId);
+          }
+          return;
+        }
+
+        case "thread.session-set": {
+          const existingRow = yield* projectionThreadRepository.getById({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isNone(existingRow)) {
+            return;
+          }
+          yield* projectionThreadRepository.upsert({
+            ...existingRow.value,
+            // activeTurnId describes current work; a terminal session must not erase history.
+            latestTurnId: event.payload.session.activeTurnId ?? existingRow.value.latestTurnId,
+            updatedAt: event.occurredAt,
+          });
+          yield* refreshThreadShellSummary(event.payload.threadId);
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
+    const applyThreadMessagesProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadMessagesProjection",
+    )(function* (event, attachmentSideEffects) {
+      switch (event.type) {
+        // A draft retry re-creates a soft-deleted thread id. Every projector
+        // drops its own rows for the old incarnation here so replay from any
+        // per-projector cursor rebuilds the new thread without stale history.
+        case "thread.created":
+          yield* projectionThreadMessageRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.message-sent": {
+          if (event.payload.streaming) {
+            const attachments =
+              event.payload.attachments !== undefined
+                ? yield* materializeAttachmentsForProjection({
+                    attachments: event.payload.attachments,
+                  })
+                : undefined;
+            yield* projectionThreadMessageRepository.appendStreaming({
+              messageId: event.payload.messageId,
+              threadId: event.payload.threadId,
+              turnId: event.payload.turnId,
+              role: event.payload.role,
+              text: event.payload.text,
+              ...(attachments !== undefined ? { attachments: [...attachments] } : {}),
+              createdAt: event.payload.createdAt,
+              updatedAt: event.payload.updatedAt,
+            });
+            return;
+          }
+
+          const existingMessage = yield* projectionThreadMessageRepository.getByMessageId({
+            messageId: event.payload.messageId,
+          });
+          const previousMessage = Option.getOrUndefined(existingMessage);
+          const nextText = Option.match(existingMessage, {
+            onNone: () => event.payload.text,
+            onSome: (message) =>
+              event.payload.text.length === 0 ? message.text : event.payload.text,
+          });
+          const nextAttachments =
+            event.payload.attachments !== undefined
+              ? yield* materializeAttachmentsForProjection({
+                  attachments: event.payload.attachments,
+                })
+              : previousMessage?.attachments;
+          yield* projectionThreadMessageRepository.upsert({
+            messageId: event.payload.messageId,
+            threadId: event.payload.threadId,
+            turnId: event.payload.turnId,
+            role: event.payload.role,
+            text: nextText,
+            ...(nextAttachments !== undefined ? { attachments: [...nextAttachments] } : {}),
+            isStreaming: false,
+            createdAt: previousMessage?.createdAt ?? event.payload.createdAt,
+            updatedAt: event.payload.updatedAt,
+          });
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
+    const applyThreadProposedPlansProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadProposedPlansProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.created":
+          yield* projectionThreadProposedPlanRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.proposed-plan-upserted":
+          yield* projectionThreadProposedPlanRepository.upsert({
+            planId: event.payload.proposedPlan.id,
+            threadId: event.payload.threadId,
+            turnId: event.payload.proposedPlan.turnId,
+            planMarkdown: event.payload.proposedPlan.planMarkdown,
+            implementedAt: event.payload.proposedPlan.implementedAt,
+            implementationThreadId: event.payload.proposedPlan.implementationThreadId,
+            createdAt: event.payload.proposedPlan.createdAt,
+            updatedAt: event.payload.proposedPlan.updatedAt,
+          });
+          return;
+
+        default:
+          return;
+      }
+    });
+
+    const applyThreadActivitiesProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadActivitiesProjection",
+    )(function* (event, attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.created":
+          yield* projectionThreadActivityRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.turn-start-requested": {
+          // Fold this projector's event-ordered history, not another projector's current head.
+          const rows = yield* projectionThreadActivityRepository.listByThreadId({
+            threadId: event.payload.threadId,
+            activityKinds: ["runtime.interrupted"],
+          });
+          if (
+            !rows.some((row) => mateInterruptionOf(row)?.continuation === "manual") ||
+            !(yield* continuesWork(event))
+          )
+            return;
+          for (const row of rows) {
+            const item = mateInterruptionOf(row);
+            if (item?.continuation !== "manual") continue;
+            yield* projectionThreadActivityRepository.upsert({
+              ...row,
+              payload: { interruption: { ...item, continuation: "requested" } },
+            });
+          }
+          return;
+        }
+        case "thread.session-set": {
+          const interruption = event.payload.session.interruption;
+          if (interruption == null) return;
+          yield* projectionThreadActivityRepository.upsert({
+            activityId: event.eventId,
+            threadId: event.payload.threadId,
+            turnId: interruption.turnId,
+            tone: "info",
+            kind: "runtime.interrupted",
+            summary: "Interrupted by a Mate restart",
+            payload: { interruption },
+            sequence: event.sequence,
+            createdAt: event.payload.session.updatedAt,
+          });
+          return;
+        }
+        case "thread.activity-appended":
+          yield* projectionThreadActivityRepository.upsert({
+            activityId: event.payload.activity.id,
+            threadId: event.payload.threadId,
+            turnId: event.payload.activity.turnId,
+            tone: event.payload.activity.tone,
+            kind: event.payload.activity.kind,
+            summary: event.payload.activity.summary,
+            payload: event.payload.activity.payload,
+            ...(event.payload.activity.sequence !== undefined
+              ? { sequence: event.payload.activity.sequence }
+              : {}),
+            createdAt: event.payload.activity.createdAt,
+          });
+          return;
+
+        default:
+          return;
+      }
+    });
+
+    const applyThreadSessionsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadSessionsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      if (event.type === "thread.created") {
+        yield* projectionThreadSessionRepository.deleteByThreadId({
+          threadId: event.payload.threadId,
+        });
+        return;
+      }
+      if (event.type === "thread.turn-start-requested") {
+        const session = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+        if (
+          Option.isSome(session) &&
+          session.value.interruption != null &&
+          (yield* continuesWork(event))
+        ) {
+          yield* projectionThreadSessionRepository.upsert({
+            ...session.value,
+            interruption: null,
+            status: session.value.status === "interrupted" ? "ready" : session.value.status,
+            updatedAt: event.occurredAt,
+          });
+        }
+        return;
+      }
+      if (event.type !== "thread.session-set") {
+        return;
+      }
+      const current = yield* projectionThreadSessionRepository.getByThreadId(event.payload);
+      yield* projectionThreadSessionRepository.upsert({
+        threadId: event.payload.threadId,
+        status: event.payload.session.status,
+        providerName: event.payload.session.providerName,
+        providerInstanceId: event.payload.session.providerInstanceId ?? null,
+        runtimeMode: event.payload.session.runtimeMode,
+        activeTurnId: event.payload.session.activeTurnId,
+        lastError: event.payload.session.lastError,
+        // Provider rebinds omit restart evidence; only explicit evidence or acceptance replaces it.
+        interruption:
+          event.payload.session.interruption === undefined
+            ? Option.isSome(current)
+              ? current.value.interruption
+              : null
+            : event.payload.session.interruption,
+        usageLimitResetAt: event.payload.session.usageLimitResetAt,
+        updatedAt: event.payload.session.updatedAt,
+      });
+    });
+
+    const applyThreadTurnsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyThreadTurnsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.created":
+          yield* projectionTurnRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.turn-start-requested": {
+          const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isSome(pendingTurnStart)) {
+            const pendingMessage = yield* projectionThreadMessageRepository.getByMessageId({
+              messageId: pendingTurnStart.value.messageId,
+            });
+            if (Option.isSome(pendingMessage) && isCompactCommandMessage(pendingMessage.value)) {
+              return;
+            }
+          }
+          yield* projectionTurnRepository.replacePendingTurnStart({
+            threadId: event.payload.threadId,
+            messageId: event.payload.messageId,
+            sourceProposedPlanThreadId: event.payload.sourceProposedPlan?.threadId ?? null,
+            sourceProposedPlanId: event.payload.sourceProposedPlan?.planId ?? null,
+            requestedAt: event.payload.createdAt,
+          });
+          return;
+        }
+
+        case "thread.activity-appended": {
+          if (event.payload.activity.kind === "context-compaction") {
+            const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId(
+              event.payload,
+            );
+            if (
+              Option.isNone(pendingTurnStart) ||
+              String(pendingTurnStart.value.messageId) !==
+                extractActivityRequestId(event.payload.activity.payload)
+            ) {
+              return;
+            }
+            yield* projectionTurnRepository.deletePendingTurnStartByThreadId(event.payload);
+            return;
+          }
+          if (event.payload.activity.kind !== "provider.turn.start.failed") return;
+          const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId(
+            event.payload,
+          );
+          if (
+            Option.isNone(pendingTurnStart) ||
+            String(pendingTurnStart.value.messageId) !==
+              extractActivityRequestId(event.payload.activity.payload)
+          ) {
+            return;
+          }
+          yield* projectionTurnRepository.deletePendingTurnStartByThreadId(event.payload);
+          return;
+        }
+
+        case "thread.session-set": {
+          const turnId = event.payload.session.activeTurnId;
+          if (turnId === null || event.payload.session.status !== "running") {
+            if (
+              (event.payload.session.status === "ready" &&
+                event.commandId?.startsWith("server:provider-session-set:") === true) ||
+              event.payload.session.status === "error" ||
+              event.payload.session.status === "stopped" ||
+              event.payload.session.status === "interrupted"
+            ) {
+              yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+                threadId: event.payload.threadId,
+              });
+            }
+            // Leaving the "running" session status is the turn-end signal:
+            // settle still-running turns so their duration reflects the whole
+            // turn rather than the last assistant message.
+            const settledTurnState = settledTurnStateForSessionStatus(event.payload.session.status);
+            if (settledTurnState === null) {
+              return;
+            }
+            const existingTurns = yield* projectionTurnRepository.listByThreadId({
+              threadId: event.payload.threadId,
+            });
+            yield* Effect.forEach(
+              existingTurns.filter(
+                (turn) =>
+                  turn.turnId !== null &&
+                  (turn.state === "running" ||
+                    (event.payload.session.interruption?.turnId === turn.turnId &&
+                      turn.state === "error")),
+              ),
+              (turn) =>
+                turn.turnId === null
+                  ? Effect.void
+                  : projectionTurnRepository.upsertByTurnId({
+                      ...turn,
+                      turnId: turn.turnId,
+                      state: settledTurnState,
+                      // The session leaving "running" is the authoritative turn end.
+                      completedAt: event.payload.session.updatedAt,
+                    }),
+              { concurrency: 1 },
+            );
+            return;
+          }
+
+          // A new active turn supersedes any still-running turn on the same
+          // thread — steering can open a new turn without the provider ever
+          // completing the previous one.
+          const otherRunningTurns = yield* projectionTurnRepository.listByThreadId({
+            threadId: event.payload.threadId,
+          });
+          yield* Effect.forEach(
+            otherRunningTurns.filter(
+              (turn) => turn.turnId !== null && turn.turnId !== turnId && turn.state === "running",
+            ),
+            (turn) =>
+              turn.turnId === null
+                ? Effect.void
+                : projectionTurnRepository.upsertByTurnId({
+                    ...turn,
+                    turnId: turn.turnId,
+                    state: "completed",
+                    completedAt: event.payload.session.updatedAt,
+                  }),
+            { concurrency: 1 },
+          );
+
+          const existingTurn = yield* projectionTurnRepository.getByTurnId({
+            threadId: event.payload.threadId,
+            turnId,
+          });
+          const pendingTurnStart = yield* projectionTurnRepository.getPendingTurnStartByThreadId({
+            threadId: event.payload.threadId,
+          });
+          if (Option.isSome(existingTurn)) {
+            const nextState =
+              existingTurn.value.state === "completed" || existingTurn.value.state === "error"
+                ? existingTurn.value.state
+                : "running";
+            yield* projectionTurnRepository.upsertByTurnId({
+              ...existingTurn.value,
+              state: nextState,
+              pendingMessageId:
+                existingTurn.value.pendingMessageId ??
+                (Option.isSome(pendingTurnStart) ? pendingTurnStart.value.messageId : null),
+              sourceProposedPlanThreadId:
+                existingTurn.value.sourceProposedPlanThreadId ??
+                (Option.isSome(pendingTurnStart)
+                  ? pendingTurnStart.value.sourceProposedPlanThreadId
+                  : null),
+              sourceProposedPlanId:
+                existingTurn.value.sourceProposedPlanId ??
+                (Option.isSome(pendingTurnStart)
+                  ? pendingTurnStart.value.sourceProposedPlanId
+                  : null),
+              startedAt:
+                existingTurn.value.startedAt ??
+                (Option.isSome(pendingTurnStart)
+                  ? pendingTurnStart.value.requestedAt
+                  : event.occurredAt),
+              requestedAt:
+                existingTurn.value.requestedAt ??
+                (Option.isSome(pendingTurnStart)
+                  ? pendingTurnStart.value.requestedAt
+                  : event.occurredAt),
+            });
+          } else {
+            yield* projectionTurnRepository.upsertByTurnId({
+              turnId,
+              threadId: event.payload.threadId,
+              pendingMessageId: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.messageId
+                : null,
+              sourceProposedPlanThreadId: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.sourceProposedPlanThreadId
+                : null,
+              sourceProposedPlanId: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.sourceProposedPlanId
+                : null,
+              assistantMessageId: null,
+              state: "running",
+              requestedAt: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.requestedAt
+                : event.occurredAt,
+              startedAt: Option.isSome(pendingTurnStart)
+                ? pendingTurnStart.value.requestedAt
+                : event.occurredAt,
+              completedAt: null,
+            });
+          }
+
+          yield* projectionTurnRepository.deletePendingTurnStartByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+        }
+
+        case "thread.message-sent": {
+          if (event.payload.turnId === null || event.payload.role !== "assistant") {
+            return;
+          }
+          // A completed assistant message only settles the turn once the
+          // session is no longer running it — providers may emit several
+          // assistant messages per turn (commentary between tool calls), and
+          // the turn must stay unsettled until the provider reports turn end
+          // (projected as thread.session-set leaving the "running" status).
+          const session = yield* projectionThreadSessionRepository.getByThreadId({
+            threadId: event.payload.threadId,
+          });
+          const turnStillRunning =
+            Option.isSome(session) &&
+            session.value.status === "running" &&
+            session.value.activeTurnId === event.payload.turnId;
+          const settlesTurn = !event.payload.streaming && !turnStillRunning;
+          const existingTurn = yield* projectionTurnRepository.getByTurnId({
+            threadId: event.payload.threadId,
+            turnId: event.payload.turnId,
+          });
+          if (Option.isSome(existingTurn)) {
+            yield* projectionTurnRepository.upsertByTurnId({
+              ...existingTurn.value,
+              assistantMessageId: event.payload.messageId,
+              state: settlesTurn
+                ? existingTurn.value.state === "interrupted"
+                  ? "interrupted"
+                  : existingTurn.value.state === "error"
+                    ? "error"
+                    : "completed"
+                : existingTurn.value.state,
+              completedAt: settlesTurn
+                ? (existingTurn.value.completedAt ?? event.payload.updatedAt)
+                : existingTurn.value.completedAt,
+              startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
+              requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
+            });
+            return;
+          }
+          yield* projectionTurnRepository.upsertByTurnId({
+            turnId: event.payload.turnId,
+            threadId: event.payload.threadId,
+            pendingMessageId: null,
+            sourceProposedPlanThreadId: null,
+            sourceProposedPlanId: null,
+            assistantMessageId: event.payload.messageId,
+            state: settlesTurn ? "completed" : "running",
+            requestedAt: event.payload.createdAt,
+            startedAt: event.payload.createdAt,
+            completedAt: settlesTurn ? event.payload.updatedAt : null,
+          });
+          return;
+        }
+
+        case "thread.turn-interrupt-requested": {
+          if (event.payload.turnId === undefined) {
+            return;
+          }
+          const existingTurn = yield* projectionTurnRepository.getByTurnId({
+            threadId: event.payload.threadId,
+            turnId: event.payload.turnId,
+          });
+          if (Option.isSome(existingTurn)) {
+            yield* projectionTurnRepository.upsertByTurnId({
+              ...existingTurn.value,
+              state: "interrupted",
+              completedAt: existingTurn.value.completedAt ?? event.payload.createdAt,
+              startedAt: existingTurn.value.startedAt ?? event.payload.createdAt,
+              requestedAt: existingTurn.value.requestedAt ?? event.payload.createdAt,
+            });
+            return;
+          }
+          yield* projectionTurnRepository.upsertByTurnId({
+            turnId: event.payload.turnId,
+            threadId: event.payload.threadId,
+            pendingMessageId: null,
+            sourceProposedPlanThreadId: null,
+            sourceProposedPlanId: null,
+            assistantMessageId: null,
+            state: "interrupted",
+            requestedAt: event.payload.createdAt,
+            startedAt: event.payload.createdAt,
+            completedAt: event.payload.createdAt,
+          });
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
+    const applyPendingApprovalsProjection: ProjectorDefinition["apply"] = Effect.fn(
+      "applyPendingApprovalsProjection",
+    )(function* (event, _attachmentSideEffects) {
+      switch (event.type) {
+        case "thread.created":
+          yield* projectionPendingApprovalRepository.deleteByThreadId({
+            threadId: event.payload.threadId,
+          });
+          return;
+
+        case "thread.activity-appended": {
+          const requestId =
+            extractActivityRequestId(event.payload.activity.payload) ??
+            event.metadata.requestId ??
+            null;
+          if (requestId === null) {
+            return;
+          }
+          const existingRow = yield* projectionPendingApprovalRepository.getByRequestId({
+            requestId,
+          });
+          if (event.payload.activity.kind === "approval.resolved") {
+            const resolvedDecisionRaw =
+              typeof event.payload.activity.payload === "object" &&
+              event.payload.activity.payload !== null &&
+              "decision" in event.payload.activity.payload
+                ? (event.payload.activity.payload as { decision?: unknown }).decision
+                : null;
+            const resolvedDecision =
+              resolvedDecisionRaw === "accept" ||
+              resolvedDecisionRaw === "acceptForSession" ||
+              resolvedDecisionRaw === "acceptAlways" ||
+              resolvedDecisionRaw === "decline" ||
+              resolvedDecisionRaw === "cancel"
+                ? resolvedDecisionRaw
+                : null;
+            yield* projectionPendingApprovalRepository.upsert({
+              requestId,
+              threadId: Option.isSome(existingRow)
+                ? existingRow.value.threadId
+                : event.payload.threadId,
+              turnId: Option.isSome(existingRow)
+                ? existingRow.value.turnId
+                : event.payload.activity.turnId,
+              status: "resolved",
+              decision: resolvedDecision,
+              createdAt: Option.isSome(existingRow)
+                ? existingRow.value.createdAt
+                : event.payload.activity.createdAt,
+              resolvedAt: event.payload.activity.createdAt,
+            });
+            return;
+          }
+          if (event.payload.activity.kind === "provider.approval.respond.failed") {
+            const payload =
+              typeof event.payload.activity.payload === "object" &&
+              event.payload.activity.payload !== null
+                ? (event.payload.activity.payload as Record<string, unknown>)
+                : null;
+            const detail =
+              typeof payload?.detail === "string" ? payload.detail.toLowerCase() : null;
+            if (isStalePendingApprovalFailureDetail(detail)) {
+              if (Option.isNone(existingRow)) {
+                return;
+              }
+              if (existingRow.value.status === "resolved") {
+                return;
+              }
+              yield* projectionPendingApprovalRepository.upsert({
+                requestId,
+                threadId: existingRow.value.threadId,
+                turnId: existingRow.value.turnId,
+                status: "resolved",
+                decision: null,
+                createdAt: existingRow.value.createdAt,
+                resolvedAt: event.payload.activity.createdAt,
+              });
+              return;
+            }
+            if (Option.isNone(existingRow) || existingRow.value.status !== "resolved") {
+              return;
+            }
+
+            // Sending a reply clears the badge before the provider accepts it.
+            // A failed reply must restore the request unless a terminal event
+            // already closed it, including a reply from another client.
+            const requestActivities = (yield* projectionThreadActivityRepository.listByThreadId({
+              threadId: existingRow.value.threadId,
+            })).filter((activity) => extractActivityRequestId(activity.payload) === requestId);
+            const wasRequested = requestActivities.some(
+              (activity) => activity.kind === "approval.requested",
+            );
+            const wasResolved = requestActivities.some((activity) => {
+              if (activity.kind === "approval.resolved") {
+                return true;
+              }
+              if (activity.kind !== "provider.approval.respond.failed") {
+                return false;
+              }
+              const activityPayload =
+                typeof activity.payload === "object" && activity.payload !== null
+                  ? (activity.payload as Record<string, unknown>)
+                  : null;
+              return isStalePendingApprovalFailureDetail(
+                typeof activityPayload?.detail === "string"
+                  ? activityPayload.detail.toLowerCase()
+                  : null,
+              );
+            });
+            if (wasRequested && !wasResolved) {
+              yield* projectionPendingApprovalRepository.upsert({
+                ...existingRow.value,
+                status: "pending",
+                decision: null,
+                resolvedAt: null,
+              });
+            }
+            return;
+          }
+          // Only approval-requested activities should create pending-approval
+          // rows.  Other activity kinds that happen to carry a requestId
+          // (e.g. user-input.requested / user-input.resolved) must not
+          // pollute this projection — they have their own accounting via
+          // openUserInputRequests.
+          if (event.payload.activity.kind !== "approval.requested") {
+            return;
+          }
+          if (Option.isSome(existingRow) && existingRow.value.status === "resolved") {
+            return;
+          }
+          yield* projectionPendingApprovalRepository.upsert({
+            requestId,
+            threadId: event.payload.threadId,
+            turnId: event.payload.activity.turnId,
+            status: "pending",
+            decision: null,
+            createdAt: Option.isSome(existingRow)
+              ? existingRow.value.createdAt
+              : event.payload.activity.createdAt,
+            resolvedAt: null,
+          });
+          return;
+        }
+
+        case "thread.approval-response-requested": {
+          const existingRow = yield* projectionPendingApprovalRepository.getByRequestId({
+            requestId: event.payload.requestId,
+          });
+          yield* projectionPendingApprovalRepository.upsert({
+            requestId: event.payload.requestId,
+            threadId: Option.isSome(existingRow)
+              ? existingRow.value.threadId
+              : event.payload.threadId,
+            turnId: Option.isSome(existingRow) ? existingRow.value.turnId : null,
+            status: "resolved",
+            decision: event.payload.decision,
+            createdAt: Option.isSome(existingRow)
+              ? existingRow.value.createdAt
+              : event.payload.createdAt,
+            resolvedAt: event.payload.createdAt,
+          });
+          return;
+        }
+
+        default:
+          return;
+      }
+    });
+
+    const projectors: ReadonlyArray<ProjectorDefinition> = [
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.projects,
+        apply: applyProjectsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadMessages,
+        apply: applyThreadMessagesProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadProposedPlans,
+        apply: applyThreadProposedPlansProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadActivities,
+        apply: applyThreadActivitiesProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadSessions,
+        apply: applyThreadSessionsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threadTurns,
+        apply: applyThreadTurnsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.pendingApprovals,
+        apply: applyPendingApprovalsProjection,
+      },
+      {
+        name: ORCHESTRATION_PROJECTOR_NAMES.threads,
+        apply: applyThreadsProjection,
+      },
+    ];
+
+    const applyAttachmentSideEffects = Effect.fn("applyAttachmentSideEffects")(
+      function* (event: OrchestrationEvent, sideEffects: AttachmentSideEffects) {
+        const deletedThreadIds = new Set<string>();
+        for (const threadId of sideEffects.deletedThreadIds) {
+          const recreatedLater = yield* eventStore.hasEventAfter({
+            aggregateKind: "thread",
+            aggregateId: ThreadId.make(threadId),
+            type: "thread.created",
+            sequenceExclusive: event.sequence,
+          });
+          if (!recreatedLater) {
+            deletedThreadIds.add(threadId);
+          }
+        }
+
+        yield* runAttachmentSideEffects({ deletedThreadIds });
+      },
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(ServerConfig, serverConfig),
+      (effect, event) =>
+        effect.pipe(
+          Effect.as(true),
+          Effect.catch((cause) =>
+            Effect.logWarning("failed to apply projected attachment side-effects", {
+              sequence: event.sequence,
+              eventType: event.type,
+              cause,
+            }).pipe(Effect.as(false)),
+          ),
+        ),
+    );
+
+    const runProjectorForEvent = Effect.fn("runProjectorForEvent")(function* (
+      projector: ProjectorDefinition,
+      event: OrchestrationEvent,
+    ) {
+      const attachmentSideEffects: AttachmentSideEffects = {
+        deletedThreadIds: new Set<string>(),
+      };
+
+      yield* sql.withTransaction(
+        Effect.gen(function* () {
+          yield* projector.apply(event, attachmentSideEffects);
+          yield* projectionStateRepository.upsert({
+            projector: projector.name,
+            lastAppliedSequence: event.sequence,
+            updatedAt: event.occurredAt,
+          });
+        }),
+      );
+    });
+
+    const bootstrapProjector = (projector: ProjectorDefinition) =>
+      projectionStateRepository
+        .getByProjector({
+          projector: projector.name,
+        })
+        .pipe(
+          Effect.flatMap((stateRow) =>
+            Stream.runForEach(
+              eventStore.readFromSequence(
+                Option.isSome(stateRow) ? stateRow.value.lastAppliedSequence : 0,
+                Number.MAX_SAFE_INTEGER,
+              ),
+              (event) => runProjectorForEvent(projector, event),
+            ),
+          ),
+        );
+
+    const projectEventDeferred: OrchestrationProjectionPipelineShape["projectEventDeferred"] =
+      Effect.fn("projectEventDeferred")(
+        function* (event) {
+          const attachmentSideEffects: AttachmentSideEffects = {
+            deletedThreadIds: new Set<string>(),
+          };
+          yield* sql.withTransaction(
+            Effect.gen(function* () {
+              yield* Effect.forEach(
+                projectors,
+                (projector) => projector.apply(event, attachmentSideEffects),
+                { concurrency: 1, discard: true },
+              );
+              // Runtime projectors commit together. Bootstrap still advances each cursor separately.
+              yield* projectionStateRepository.upsertMany(
+                projectors.map((projector) => ({
+                  projector: projector.name,
+                  lastAppliedSequence: event.sequence,
+                  updatedAt: event.occurredAt,
+                })),
+              );
+            }),
+          );
+          const hasCleanup = attachmentSideEffects.deletedThreadIds.size > 0;
+          // Return the cleanup effect so the caller runs it after the outer transaction commits.
+          // Most events have no cleanup, so they skip the call and write no cleanup span.
+          // @effect-diagnostics-next-line returnEffectInGen:off
+          return hasCleanup
+            ? applyAttachmentSideEffects(event, attachmentSideEffects).pipe(Effect.asVoid)
+            : Effect.void;
+        },
+        Effect.provideService(FileSystem.FileSystem, fileSystem),
+        Effect.provideService(Path.Path, path),
+        Effect.provideService(ServerConfig, serverConfig),
+        Effect.catchTags({
+          SqlError: (sqlError) =>
+            Effect.fail(toPersistenceSqlError("ProjectionPipeline.projectEvent:query")(sqlError)),
+        }),
+      );
+
+    const projectEvent: OrchestrationProjectionPipelineShape["projectEvent"] = Effect.fn(
+      "projectEvent",
+    )(function* (event) {
+      const cleanup = yield* projectEventDeferred(event);
+      yield* cleanup;
+    });
+
+    const bootstrap: OrchestrationProjectionPipelineShape["bootstrap"] = Effect.gen(function* () {
+      const cleanupProjector = "projection.attachment-cleanup";
+      const states = yield* projectionStateRepository.listAll();
+      const byProjector = new Map(states.map((state) => [state.projector, state]));
+      const cleanupState = byProjector.get(cleanupProjector);
+      const cleanupStart = Math.min(
+        cleanupState?.lastAppliedSequence ?? 0,
+        ...projectors.map((projector) => byProjector.get(projector.name)?.lastAppliedSequence ?? 0),
+      );
+      // Persist this boundary before replay: a reset projector can encounter an old
+      // deletion, then fail after other projectors have committed past that event.
+      yield* projectionStateRepository.upsert({
+        projector: cleanupProjector,
+        lastAppliedSequence: cleanupStart,
+        updatedAt: cleanupState?.updatedAt ?? "1970-01-01T00:00:00.000Z",
+      });
+      yield* Effect.forEach(projectors, bootstrapProjector, { concurrency: 1, discard: true });
+
+      // Cleanup has its own cursor so retries never have to replay committed text.
+      // All message and activity references are current before any files are removed.
+      const pendingCleanup = new Map<string, OrchestrationEvent>();
+      let lastEvent: OrchestrationEvent | undefined;
+      yield* Stream.runForEach(
+        eventStore.readFromSequence(cleanupStart, Number.MAX_SAFE_INTEGER),
+        (event) =>
+          Effect.sync(() => {
+            lastEvent = event;
+            if (event.type === "thread.deleted") {
+              pendingCleanup.set(`${event.type}:${event.payload.threadId}`, event);
+            }
+          }),
+      );
+      for (const event of pendingCleanup.values()) {
+        if (event.type !== "thread.deleted") continue;
+        const cleaned = yield* applyAttachmentSideEffects(event, {
+          deletedThreadIds: new Set([event.payload.threadId]),
+        });
+        // Leave the cleanup cursor behind this event so the next bootstrap retries it.
+        if (!cleaned) return;
+      }
+      if (lastEvent) {
+        yield* projectionStateRepository.upsert({
+          projector: cleanupProjector,
+          lastAppliedSequence: lastEvent.sequence,
+          updatedAt: lastEvent.occurredAt,
+        });
+      }
+    }).pipe(
+      Effect.provideService(FileSystem.FileSystem, fileSystem),
+      Effect.provideService(Path.Path, path),
+      Effect.provideService(ServerConfig, serverConfig),
+      Effect.asVoid,
+      Effect.tap(() =>
+        Effect.logDebug("orchestration projection pipeline bootstrapped").pipe(
+          Effect.annotateLogs({ projectors: projectors.length }),
+        ),
+      ),
+      Effect.catchTags({
+        SqlError: (sqlError) =>
+          Effect.fail(toPersistenceSqlError("ProjectionPipeline.bootstrap:query")(sqlError)),
+      }),
+    );
+
+    return {
+      bootstrap,
+      projectEvent,
+      projectEventDeferred,
+    } satisfies OrchestrationProjectionPipelineShape;
+  },
+);
+
+export const OrchestrationProjectionPipelineLive = Layer.effect(
+  OrchestrationProjectionPipeline,
+  makeOrchestrationProjectionPipeline(),
+).pipe(
+  Layer.provideMerge(ProjectionProjectRepositoryLive),
+  Layer.provideMerge(ProjectionThreadRepositoryLive),
+  Layer.provideMerge(ProjectionThreadMessageRepositoryLive),
+  Layer.provideMerge(ProjectionThreadProposedPlanRepositoryLive),
+  Layer.provideMerge(ProjectionThreadActivityRepositoryLive),
+  Layer.provideMerge(ProjectionThreadSessionRepositoryLive),
+  Layer.provideMerge(ProjectionTurnRepositoryLive),
+  Layer.provideMerge(ProjectionPendingApprovalRepositoryLive),
+  Layer.provideMerge(ProjectionStateRepositoryLive),
+);

@@ -1,0 +1,139 @@
+/**
+ * The one reader of "is there a newer Mate" the client renders (spec-mate.md
+ * §2.9, MU-1): a pure presenter over the descriptor's `update` field, never
+ * a version comparison of its own. `update` absent — a standalone server, or
+ * `zcp` unreachable (MU-3) — shows the installed version alone, same as a
+ * server that checked and found nothing newer.
+ */
+import { MATE_UPDATE_DRAIN_MINUTES } from "@t3tools/shared/mateAutoUpdatePolicy";
+import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+
+export interface MateUpdateLine {
+  readonly text: string;
+  /** `"attention"` marks the trailing "· x.y.z available" clause only. */
+  readonly tone: "default" | "attention";
+}
+
+export function mateUpdateLine(
+  update: ExecutionEnvironmentUpdate | undefined,
+  serverVersion: string,
+): MateUpdateLine {
+  if (update === undefined) {
+    return { text: `Server ${serverVersion}`, tone: "default" };
+  }
+  // A settled attempt speaks only while its version is the one installed: a later update (a
+  // manual one) leaves the updater's record behind, and its version is not what runs now.
+  const automatic =
+    (update.automatic?.phase === "updated" || update.automatic?.phase === "postponed") &&
+    update.automatic.runningVersion !== update.installed
+      ? undefined
+      : update.automatic;
+  if (automatic !== undefined) {
+    const text =
+      automatic.phase === "draining"
+        ? "Update ready; waiting for your work to finish"
+        : automatic.phase === "switching" || automatic.phase === "verifying"
+          ? "Updating — your conversations are safe"
+          : // "Updated" only while nothing newer waits: beside an Update it said none did.
+            automatic.phase === "updated" && !update.available
+            ? `Updated to ${automatic.runningVersion}`
+            : automatic.phase === "postponed"
+              ? `Update postponed; Mate is running ${automatic.runningVersion}`
+              : update.available && !automatic.rollbackCompatible
+                ? "Update available — needs your confirmation"
+                : undefined;
+    if (text !== undefined) return { text, tone: "default" };
+  }
+  if (!update.available) {
+    return { text: `Server ${update.installed}`, tone: "default" };
+  }
+  return {
+    text: `Server ${update.installed} · ${update.latest} available`,
+    tone: "attention",
+  };
+}
+
+/**
+ * Where one Mate's update or check stands (`useZeropsMateUpdate`), read by
+ * every surface that shows that Mate.
+ */
+export type MateUpdateState =
+  | { readonly phase: "idle" }
+  | { readonly phase: "checking" }
+  | {
+      readonly phase: "updating";
+      readonly to: string;
+      /** Past its budget: still the update's, only slower than usual — never failed by a clock. */
+      readonly overdue?: true;
+    }
+  | { readonly phase: "already-current" }
+  | { readonly phase: "updated"; readonly to: string }
+  | { readonly phase: "failed"; readonly message: string };
+
+export interface MateUpdateStatus {
+  readonly text: string;
+  readonly tone: "quiet" | "failed";
+}
+
+/**
+ * What a Mate's card says while a check or an update runs, and for a moment
+ * after; `null` while nothing was asked of it. The menu that starts either
+ * closes on the click, so the card is where the answer is seen (the owner,
+ * 2026-09-26: "I pressed that update button on all of them, there is no
+ * indication and nothing seems to be happening").
+ */
+export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdateStatus | null {
+  switch (state?.phase) {
+    case undefined:
+    case "idle":
+      return null;
+    case "checking":
+      return { text: "Checking for updates…", tone: "quiet" };
+    case "updating":
+      return {
+        text: `Updating to ${state.to}…${state.overdue === true ? " taking longer than usual" : ""}`,
+        tone: "quiet",
+      };
+    case "updated":
+      return { text: `Updated to ${state.to}`, tone: "quiet" };
+    case "already-current":
+      return { text: "Up to date", tone: "quiet" };
+    case "failed":
+      return { text: state.message, tone: "failed" };
+  }
+}
+
+/**
+ * The status said beside the update line: the person's own answer, unless the line already says
+ * the same — the server's record of the update and the person's both read "Updated to 0.15.31"
+ * (Milo's stress run 6 read it twice).
+ */
+export function mateUpdateStatusBeside(
+  line: MateUpdateLine,
+  state: MateUpdateState | undefined,
+): MateUpdateStatus | null {
+  const status = mateUpdateStatus(state);
+  return status !== null && status.text === line.text ? null : status;
+}
+
+/**
+ * The version an update goes to where no check could name it: the update installs the newest
+ * there is, so a version an older check knew would be a version it may not install.
+ */
+export const NEWEST_MATE_VERSION = "the newest version";
+
+/**
+ * What the app's confirm dialog asks before an update: the Mate and the
+ * version, and what the update does with its work, said before the click.
+ * The update waits until the Mate's work is done, up to the drain's deadline,
+ * and past it does not happen (`drainMateUpdate`); it never stops the work.
+ * The line ending in "?" is the dialog's title. `latest` is the version a
+ * check just found; null where none could say (`NEWEST_MATE_VERSION`).
+ */
+export function mateUpdateQuestion(mateName: string | undefined, latest: string | null): string {
+  const who = mateName ?? "It";
+  return [
+    `Update ${mateName ?? "this Mate"} to ${latest ?? NEWEST_MATE_VERSION}?`,
+    `${who} finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within ${MATE_UPDATE_DRAIN_MINUTES} minutes, ${mateName ?? "it"} doesn't update and keeps working.`,
+  ].join("\n");
+}
