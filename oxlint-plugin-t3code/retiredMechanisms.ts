@@ -758,6 +758,12 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "creations and sent asks are kept by the app; the operations adapter feeds the store",
   },
   {
+    token: "sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
+    family: "operations",
+    reason: "the HQ update panel sleeps between its own polls; the operation's stream drives it",
+    paths: ["apps/web/src/zerops/accountHq.ts"],
+  },
+  {
     token: "zeropsAgentActivityOf(",
     family: "Mate attention/overview",
     reason: "Mate activity is picked by send time; the source decides, never the clock",
@@ -828,6 +834,11 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
   },
   {
     token: "useZeropsOrganizationMembers(",
+    family: "permissions/members",
+    reason: "the client reads organization members for owners and admins; HQ sends them finished",
+  },
+  {
+    token: "ownersAndAdmins(",
     family: "permissions/members",
     reason: "the client reads organization members for owners and admins; HQ sends them finished",
   },
