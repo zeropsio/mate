@@ -34,6 +34,7 @@ import {
   ApprovalRequestId,
   type CanonicalItemType,
   type CanonicalRequestType,
+  CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW,
   type ClaudeSettings,
   EventId,
   type ProviderApprovalDecision,
@@ -5609,9 +5610,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(requestThinkingSummaries ? { showThinkingSummaries: true } : {}),
         ...(fastMode ? { fastMode: true } : {}),
         ...(ultracode ? { ultracode: true } : {}),
-        ...(claudeSettings.autoCompactWindow
-          ? { autoCompactWindow: Number(claudeSettings.autoCompactWindow) }
-          : {}),
+        autoCompactWindow: claudeSettings.autoCompactWindow
+          ? Number(claudeSettings.autoCompactWindow)
+          : CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW,
       };
       if (requestThinkingSummaries && extraArgs["thinking-display"] === undefined) {
         extraArgs["thinking-display"] = "summarized";
@@ -5657,7 +5658,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         ...(permissionMode === "bypassPermissions"
           ? { allowDangerouslySkipPermissions: true }
           : {}),
-        ...(Object.keys(settings).length > 0 ? { settings } : {}),
+        settings,
         ...(existingResumeSessionId ? { resume: existingResumeSessionId } : {}),
         ...(newSessionId ? { sessionId: newSessionId } : {}),
         includePartialMessages: true,
@@ -5666,7 +5667,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         supportedDialogKinds: ["resume_return"],
         // Claude says when it is idle: only once every background result reached the model, which
         // the engine reads as nothing finished still waiting for a turn (`session_state_changed`).
-        env: { ...claudeEnvironment, CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1" },
+        // The CLI waits for its MCP servers (its connect timeout, about 5 s) before reading the
+        // first prompt. Started in the background, a resumed session's first prompt told the model
+        // its tools were gone and then back, and it spent a round loading them again.
+        env: {
+          ...claudeEnvironment,
+          CLAUDE_CODE_EMIT_SESSION_STATE_EVENTS: "1",
+          MCP_CONNECTION_NONBLOCKING: "false",
+        },
         additionalDirectories,
         ...(Object.keys(extraArgs).length > 0 ? { extraArgs } : {}),
       };

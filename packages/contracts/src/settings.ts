@@ -350,6 +350,13 @@ export type CodexSettings = typeof CodexSettings.Type;
 // the update that introduced it.
 const CLAUDE_AUTO_COMPACT_WINDOW_PATTERN = /^(?:|[1-9]\d{5}|1000000)$/;
 
+/**
+ * The window a Claude conversation compacts at when none is configured.
+ * Claude's own is the model's whole window, a million tokens on the 1M
+ * models, so a Mate's finished work was re-read on every later call.
+ */
+export const CLAUDE_DEFAULT_AUTO_COMPACT_WINDOW = 200_000;
+
 export const ClaudeSettings = makeProviderSettingsSchema(
   {
     enabled: Schema.Boolean.pipe(
@@ -394,7 +401,7 @@ export const ClaudeSettings = makeProviderSettingsSchema(
       Schema.annotateKey({
         title: "Auto-compact after",
         description:
-          "Compact after 100,000 to 1,000,000 tokens. Leave empty to use Claude's default.",
+          "Compact after 100,000 to 1,000,000 tokens. Leave empty to compact after 200,000.",
         providerSettingsForm: {
           placeholder: "e.g. 300000",
           clearWhenEmpty: "omit",
