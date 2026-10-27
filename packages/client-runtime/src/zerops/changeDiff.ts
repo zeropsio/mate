@@ -4,16 +4,13 @@
  * Nowhere in the app could a pull request's diff be read before merging it
  * (pass 16's audit): a person merged on a title and a check's colour. The
  * review lists the files with their +/− and opens a file's diff in place, so
- * it needs the patch HQ hands over for each file (`changeReadout.ts`) as lines a row
+ * it needs the patch read for that file (`changeFileDiff.ts`) as lines a row
  * can draw — each with its number on the side it belongs to, the hunk's
  * header kept as git wrote it.
  *
  * Keyed by the path a file has after the change — a deleted file's last path —
- * which is the path HQ's detail names a file by, so a row finds its diff by the
- * name it already shows.
- *
- * A diff too long to read whole is read only so far: the file the read stopped
- * inside says so, and a file past it is not there at all.
+ * which is the path HQ names a file by, so a row finds its diff by the name it
+ * already shows.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -43,8 +40,6 @@ export interface ChangeDiffFile {
   /** Git said only that it differs: there are no lines to show. */
   readonly binary: boolean;
   readonly hunks: ReadonlyArray<ChangeDiffHunk>;
-  /** The read stopped inside it: its last lines, or some of them, are not here. */
-  readonly cut: boolean;
 }
 
 const FILE_HEADER = /^diff --git (.+)$/u;
@@ -111,21 +106,14 @@ interface OpenFile {
   hunks: Array<{ header: string; lines: Array<ChangeDiffLine> }>;
 }
 
-/**
- * Every file the diff changes, by the path it has after the change, in git's order. A diff that
- * was `cut` loses the line the read stopped inside, and the file it stopped in says so.
- */
-export function parseChangeDiff(
-  text: string,
-  options: { readonly cut?: boolean } = {},
-): ReadonlyMap<string, ChangeDiffFile> {
-  const cut = options.cut === true;
+/** Every file the diff changes, by the path it has after the change, in git's order. */
+export function parseChangeDiff(text: string): ReadonlyMap<string, ChangeDiffFile> {
   const files = new Map<string, ChangeDiffFile>();
   let file: OpenFile | undefined;
   let oldLine = 0;
   let newLine = 0;
 
-  const close = (last = false) => {
+  const close = () => {
     if (file === undefined) return;
     const path = file.deleted ? file.from : file.to;
     const previous =
@@ -135,13 +123,11 @@ export function parseChangeDiff(
       previousPath: previous === "/dev/null" ? undefined : previous,
       binary: file.binary,
       hunks: file.hunks,
-      cut: cut && last,
     });
     file = undefined;
   };
 
-  const whole = cut ? text.slice(0, text.lastIndexOf("\n") + 1) : text;
-  for (const line of whole.split("\n")) {
+  for (const line of text.split("\n")) {
     const header = FILE_HEADER.exec(line);
     if (header !== null) {
       close();
@@ -189,7 +175,7 @@ export function parseChangeDiff(
     }
     // `\ No newline at end of file`, and the empty line a diff ends on, are no lines of code.
   }
-  close(true);
+  close();
   return files;
 }
 

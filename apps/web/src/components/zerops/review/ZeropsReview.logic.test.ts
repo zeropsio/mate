@@ -314,47 +314,22 @@ describe("runWords: what it does, in the Mate's words (R3)", () => {
 describe("diffFold: a long file's diff folds, the fold opens, and past what fits it says so (D4)", () => {
   const SHOWN = REVIEW_DIFF_LINES_SHOWN;
   const MAX = REVIEW_DIFF_LINES_MAX;
-  it.each<[string, { total: number; all: boolean; cut: boolean }, ReturnType<typeof diffFold>]>([
-    ["a short diff, whole", { total: 40, all: false, cut: false }, { shown: 40, rest: undefined }],
+  it.each<[string, { total: number; all: boolean }, ReturnType<typeof diffFold>]>([
+    ["a short diff, whole", { total: 40, all: false }, { shown: 40, rest: undefined }],
     [
       "a long one, folded",
-      { total: SHOWN + 1, all: false, cut: false },
+      { total: SHOWN + 1, all: false },
       { shown: SHOWN, rest: { kind: "show", label: `Show all ${String(SHOWN + 1)} lines` } },
     ],
-    [
-      "a long one, opened",
-      { total: SHOWN + 1, all: true, cut: false },
-      { shown: SHOWN + 1, rest: undefined },
-    ],
+    ["a long one, opened", { total: SHOWN + 1, all: true }, { shown: SHOWN + 1, rest: undefined }],
     [
       "one too long to show here",
-      { total: MAX + 1, all: false, cut: false },
+      { total: MAX + 1, all: false },
       {
         shown: SHOWN,
         rest: {
           kind: "cut",
           words: `${String(MAX + 1 - SHOWN)} more lines, too many to show here.`,
-        },
-      },
-    ],
-    [
-      "one the read stopped inside, short",
-      { total: 40, all: false, cut: true },
-      { shown: 40, rest: { kind: "cut", words: "The rest is too long to read here." } },
-    ],
-    [
-      "one the read stopped inside, opened",
-      { total: SHOWN + 1, all: true, cut: true },
-      { shown: SHOWN + 1, rest: { kind: "cut", words: "The rest is too long to read here." } },
-    ],
-    [
-      "one too long to show that the read stopped inside",
-      { total: MAX + 1, all: false, cut: true },
-      {
-        shown: SHOWN,
-        rest: {
-          kind: "cut",
-          words: `${String(MAX + 1 - SHOWN)}+ more lines, too many to show here.`,
         },
       },
     ],

@@ -532,8 +532,8 @@ export interface ReviewFileRow {
 }
 
 /**
- * A file's diff: read, still reading, or why it could not be. `cut` where the diff was too long
- * to read whole — a file missing from it lies past where the read stopped.
+ * A file's diff: read, still reading, or why it could not be. `cut` where the file's diff was too
+ * long to read here: no lines of it are held.
  */
 export type ReviewDiffState =
   | { readonly kind: "reading" }
@@ -758,7 +758,7 @@ export function ReviewDiff({
       });
     });
   });
-  const { shown, rest } = diffFold({ total: rows.length, all, cut: file.cut });
+  const { shown, rest } = diffFold({ total: rows.length, all });
   return (
     <div className="rv-diff">
       <div className="rv-diff-lines">

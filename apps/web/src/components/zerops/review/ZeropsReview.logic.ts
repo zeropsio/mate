@@ -335,27 +335,25 @@ export type DiffRest =
 
 /**
  * How much of one file's diff stands (D4): its first lines, all of them once opened — and where
- * it is too long to show here, or the read stopped inside it (`cut`), what is missing, said.
+ * it is too long to show here, what is missing, said.
  */
-export function diffFold(input: {
-  readonly total: number;
-  readonly all: boolean;
-  readonly cut: boolean;
-}): { readonly shown: number; readonly rest: DiffRest | undefined } {
-  const { total, cut } = input;
+export function diffFold(input: { readonly total: number; readonly all: boolean }): {
+  readonly shown: number;
+  readonly rest: DiffRest | undefined;
+} {
+  const { total } = input;
   const tooMany = total > REVIEW_DIFF_LINES_MAX;
   const shown = input.all && !tooMany ? total : Math.min(total, REVIEW_DIFF_LINES_SHOWN);
   if (tooMany) {
-    const more = `${String(total - shown)}${cut ? "+" : ""}`;
-    return { shown, rest: { kind: "cut", words: `${more} more lines, too many to show here.` } };
+    return {
+      shown,
+      rest: { kind: "cut", words: `${String(total - shown)} more lines, too many to show here.` },
+    };
   }
   if (shown < total) {
     return { shown, rest: { kind: "show", label: `Show all ${String(total)} lines` } };
   }
-  return {
-    shown,
-    rest: cut ? { kind: "cut", words: "The rest is too long to read here." } : undefined,
-  };
+  return { shown, rest: undefined };
 }
 
 /**

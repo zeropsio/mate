@@ -3,12 +3,7 @@
  * them merges, releases, rolls back or lands by itself. The review's own surface says what its
  * button does and presses it only while it is safe (R5).
  */
-import {
-  parseChangeDiff,
-  releaseRow,
-  type FlowRelease,
-  type ReviewVerdict,
-} from "@t3tools/client-runtime/zerops";
+import { releaseRow, type FlowRelease, type ReviewVerdict } from "@t3tools/client-runtime/zerops";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -270,27 +265,15 @@ describe("the page presses its button on ⌘↵ while it is safe, never from a f
   });
 });
 
-const STOPPED_INSIDE = parseChangeDiff(
-  ["diff --git a/a.ts b/a.ts", "--- a/a.ts", "+++ b/a.ts", "@@ -1 +1,2 @@", "-x", "+y", "+z"].join(
-    "\n",
-  ),
-  { cut: true },
-).get("a.ts");
-
 describe("a diff too long to read here says so (D4)", () => {
   it.each<[string, ReviewDiffState, string]>([
     [
-      "a file the read stopped inside",
-      { kind: "read", file: STOPPED_INSIDE, cut: true },
-      "The rest is too long to read here.",
-    ],
-    [
-      "a file past where the read stopped",
+      "a file too long to read here",
       { kind: "read", file: undefined, cut: true },
       "Too long to read here.",
     ],
     [
-      "a file with nothing to show in a diff read whole",
+      "a file with nothing to show in its diff",
       { kind: "read", file: undefined, cut: false },
       "Nothing to show for this file.",
     ],
