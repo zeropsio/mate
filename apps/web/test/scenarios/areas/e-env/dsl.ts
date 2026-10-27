@@ -302,6 +302,12 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
         );
       }
     });
+  /** The review has finished closing: a press before that lands on its backdrop and opens nothing. */
+  const reviewClosed = Effect.promise(() =>
+    page.waitForFunction(() => document.querySelector('[role="dialog"]') === null, {
+      polling: "raf",
+    }),
+  );
   const keepsWord = (tag: string, word: string) =>
     Effect.promise(async () => {
       const guard = await recordReleaseWords(page, tag);
@@ -384,6 +390,7 @@ export function environmentActions(f: Fixture, page: Page = f.s.page) {
       releaseDisabled,
       keepsDocument,
       keepsWord,
+      reviewClosed,
       releaseEntriesShow,
       productionBuildCount,
     },
