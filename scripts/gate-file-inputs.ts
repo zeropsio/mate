@@ -59,6 +59,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/server/src/**",
     "packages/shared/src/**",
     "packages/contracts/src/**",
+    "scripts/lib/**",
   ],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
@@ -172,9 +173,14 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   ],
   "scripts/check-guard-exceptions.test.ts": [],
   "scripts/ci-local.test.ts": [".github/workflows/ci.yml"],
-  "scripts/ci-blame.test.ts": [".github/workflows/ci.yml", "scripts/ci-blame.ts"],
+  "scripts/ci-blame.test.ts": [
+    ".github/workflows/ci.yml",
+    "scripts/ci-blame.ts",
+    "apps/web/test/scenarios/areas/**",
+  ],
   "scripts/ci-workflow.test.ts": [
     ".github/workflows/*.yml",
+    "apps/web/test/scenarios/areas/**",
     "pnpm-workspace.yaml",
     "apps/mobile/package.json",
     "apps/desktop/package.json",

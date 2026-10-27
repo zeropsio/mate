@@ -394,45 +394,55 @@ const fixtureGit = (...args: string[]) => {
   if (result.status !== 0) throw new Error(result.stderr);
   return result.stdout.trim();
 };
+const sourceGit = (args: string[]) => {
+  const result = NodeChildProcess.spawnSync("git", args, {
+    cwd: sourceRoot,
+    maxBuffer: 64 * 1024 * 1024,
+  });
+  if (result.status !== 0) throw new Error(String(result.stderr));
+  return result.stdout;
+};
 beforeAll(() => {
   repositoryFixture = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-real-"));
-  const archivePath = NodePath.join(repositoryFixture, "source.tar");
-  const archive = NodeChildProcess.spawnSync(
-    "git",
-    [
-      "archive",
-      "--output",
-      archivePath,
-      "HEAD",
-      "apps/web/src",
-      "apps/web/test",
-      "apps/web/index.html",
-      "apps/web/vite.config.ts",
-      "apps/web/tsconfig.json",
-      "apps/web/package.json",
-      "apps/server/src",
-      "apps/server/package.json",
-      "packages",
-      "scripts",
-      "oxlint-plugin-t3code/rules",
-      "infra/relay/package.json",
-      "apps/mobile/package.json",
-      "apps/desktop/package.json",
-      "package.json",
-      "tsconfig.base.json",
-      "pnpm-lock.yaml",
-    ],
-    { cwd: sourceRoot },
+  fixtureGit("init", "-q");
+  // The fixture borrows the source repository's content-addressed objects: re-hashing a copy of
+  // its tree (`git add` over ~60 MB) spent most of this hook's budget on a loaded CI runner.
+  NodeFS.writeFileSync(
+    NodePath.join(repositoryFixture, ".git/objects/info/alternates"),
+    `${sourceGit(["rev-parse", "--path-format=absolute", "--git-path", "objects"])
+      .toString()
+      .trim()}\n`,
   );
-  if (archive.status !== 0) throw new Error(String(archive.stderr));
-  const extracted = NodeChildProcess.spawnSync("tar", [
-    "-xf",
-    archivePath,
-    "-C",
-    repositoryFixture,
+  const entries = sourceGit([
+    "ls-tree",
+    "-r",
+    "-z",
+    "HEAD",
+    "--",
+    "apps/web/src",
+    "apps/web/test",
+    "apps/web/index.html",
+    "apps/web/vite.config.ts",
+    "apps/web/tsconfig.json",
+    "apps/web/package.json",
+    "apps/server/src",
+    "apps/server/package.json",
+    "packages",
+    "scripts",
+    "oxlint-plugin-t3code/rules",
+    "infra/relay/package.json",
+    "apps/mobile/package.json",
+    "apps/desktop/package.json",
+    "package.json",
+    "tsconfig.base.json",
+    "pnpm-lock.yaml",
   ]);
-  if (extracted.status !== 0) throw new Error(String(extracted.stderr));
-  NodeFS.rmSync(archivePath);
+  const indexed = NodeChildProcess.spawnSync("git", ["update-index", "-z", "--index-info"], {
+    cwd: repositoryFixture,
+    input: entries,
+  });
+  if (indexed.status !== 0) throw new Error(String(indexed.stderr));
+  fixtureGit("checkout-index", "--all", "-u");
   for (const file of gateRunnerFiles)
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
@@ -443,7 +453,6 @@ beforeAll(() => {
     NodePath.join(repositoryFixture, "scripts/node_modules"),
   );
   installLockfile(repositoryFixture);
-  fixtureGit("init", "-q");
   fixtureGit("config", "user.name", "Gate fixture");
   fixtureGit("config", "user.email", "gate@example.test");
   fixtureGit("add", ".");

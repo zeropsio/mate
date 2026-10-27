@@ -5,7 +5,8 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { parse } from "yaml";
 import { expect, it } from "vite-plus/test";
-import { blameMatrices, blameSelection } from "./ci-blame.ts";
+import { blameMatrices, blameSelection, stateSmokeMatrix } from "./ci-blame.ts";
+import { stateSmokePlan } from "./state-smoke.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
 const workflow = parse(
@@ -38,7 +39,9 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
     selection.selected.sort(),
     "ASSERTION: blocking State Smoke selects only its execution dependencies",
   ).toEqual(["changes", "state_smoke"]);
-  expect(selection.matrices.state_smoke).toEqual({ include: [{ shard: 2, total: 8 }] });
+  expect(stateSmokeMatrix(8, selection.stateSmokeShards)).toEqual({
+    include: [{ shard: 2, total: 8 }],
+  });
   for (const context of ["Test Web Scenarios (C shard 3)", "Signal classification"]) {
     expect(
       () => blameSelection("refs/heads/kh-bisect/abc1234", context),
@@ -187,6 +190,10 @@ it.each([
     >;
     const needsOf = (job: string) => [jobs[job]!.needs ?? []].flat();
     const smokeNeeds = new Set(needsOf("state_smoke"));
+    // The most shards State Smoke emits: its plan when every scenario file is affected.
+    const smokeShards = stateSmokePlan(
+      NodeFS.globSync("apps/web/test/scenarios/areas/**/*.scenario.ts", { cwd: root }),
+    ).shards.length;
     // Running or ready when the smoke shards become ready: every job whose needs
     // the smoke shards' needs cover, minus those needs themselves (already done).
     const wave = Object.keys(jobs)
@@ -197,7 +204,9 @@ it.each([
       .map((job) =>
         job === "cache"
           ? jobs.cache!.strategy!.matrix.os!.length
-          : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
+          : job === "state_smoke"
+            ? smokeShards
+            : (blameMatrices[job as keyof typeof blameMatrices]?.length ?? 1),
       )
       .reduce((sum, count) => sum + count, 0);
     expect(wave, "ASSERTION: no State Smoke shard queues behind a full pool").toBeLessThanOrEqual(

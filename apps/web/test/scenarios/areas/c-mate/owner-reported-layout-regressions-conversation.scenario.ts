@@ -634,7 +634,6 @@ describe("owner-reported layout regressions", () => {
             tool: { name: "Bash" },
             words: `Command ${step}`,
             state: "done",
-            endedAt: yield* Clock.currentTimeMillis,
             input: `Bash: echo step-${step}`,
           });
         yield* Effect.promise(() =>
@@ -1004,7 +1003,6 @@ describe("owner-reported layout regressions", () => {
               tool: { name: "Bash" },
               words: `Command ${step}`,
               state: "done",
-              endedAt: yield* Clock.currentTimeMillis,
               input: `Bash: echo step-${step}`,
             });
           }

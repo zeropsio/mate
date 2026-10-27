@@ -5,11 +5,18 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeVM from "node:vm";
 import { parse as parseYaml } from "yaml";
-import { blameMatrices } from "./ci-blame.ts";
+import { blameMatrices, stateSmokeMatrix } from "./ci-blame.ts";
+import { stateSmokePlan } from "./state-smoke.ts";
 
 const parse = (source: string) => {
   const parsed = parseYaml(source);
-  for (const [job, matrix] of Object.entries(blameMatrices)) {
+  // State Smoke's matrix as prepare emits it when every scenario file is affected.
+  const stateSmoke = stateSmokeMatrix(
+    stateSmokePlan(NodeFS.globSync("apps/web/test/scenarios/areas/**/*.scenario.ts", { cwd: root }))
+      .shards.length,
+    "all",
+  ).include;
+  for (const [job, matrix] of Object.entries({ ...blameMatrices, state_smoke: stateSmoke })) {
     if (typeof parsed.jobs?.[job]?.strategy?.matrix === "string") {
       parsed.jobs[job].strategy.matrix = {
         include: matrix,
