@@ -985,6 +985,7 @@ describe("owner-reported layout regressions", () => {
           // Past a window's tail and a page after it: read back once the card is opened afresh,
           // the card reads the second page as the reader nears its top.
           const done = 2 * engine.liveTailItems + engine.runPageItems;
+          let last = "";
           for (let step = 0; step < done; step++) {
             // The person wrote to it mid-run: the window pins their words however old, far above
             // the newest lines it carries (review of k27).
@@ -997,7 +998,7 @@ describe("owner-reported layout regressions", () => {
                 sendId: "steer-mid-run",
                 delivery: { state: "delivered", at: yield* Clock.currentTimeMillis },
               });
-            engine.item(run, {
+            last = engine.item(run, {
               kind: "call",
               step: "command",
               tool: { name: "Bash" },
@@ -1007,8 +1008,16 @@ describe("owner-reported layout regressions", () => {
               input: `Bash: echo step-${step}`,
             });
           }
-          // Out of sight, nothing paints to wait on: the steps reach the page over its socket.
-          yield* Effect.sleep("2 seconds");
+          // Out of sight it paints nothing, yet it takes in what arrives: once the last step is
+          // drawn in its card, the page holds them all (a slow runner took them in for seconds,
+          // the last ones after the page was shown again).
+          yield* Effect.promise(() =>
+            s.page.waitForFunction(
+              (key: string) => document.querySelector(`[data-run-key="${key}"]`) !== null,
+              { polling: "mutation" },
+              `step:${last}#started`,
+            ),
+          );
           return { s, tab, engine, run, done };
         });
         /** Each frame the page paints, from now: the lines the live card's slot draws. */
