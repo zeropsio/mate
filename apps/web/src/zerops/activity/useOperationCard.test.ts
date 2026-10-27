@@ -1078,8 +1078,9 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
     appVersion,
   });
   const T = (second: number) => `2026-09-01T00:00:${String(second).padStart(2, "0")}.000Z`;
-  // Each service at its own point: building, deploying, done, failed, its
-  // process read before its pipeline, and none read yet.
+  // Each service at its own point: building, deploying, done (a pipeline with
+  // no runtime to prepare), failed, its process read before its pipeline, and
+  // none read yet.
   const SERVICES: ReadonlyArray<ObservedService> = [
     {
       serviceIds: ["svc-apipool"],
@@ -1120,7 +1121,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
       rows: [
         ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
         ["edgepool", "running", ["done", "done", "done", "done", "running"]],
-        ["embedderpool", "done", ["done", "done", "done", "done", "done"]],
+        ["embedderpool", "done", ["done", "done", "done"]],
         ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
         ["webpool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
         ["sitepool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
@@ -1143,7 +1144,7 @@ describe("batchServiceRows — a batch deploy's card, one named row per service"
       rows: [
         ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
         ["edgepool", "running", ["done", "done", "done", "done", "running"]],
-        ["embedderpool", "done", ["done", "done", "done", "done", "done"]],
+        ["embedderpool", "done", ["done", "done", "done"]],
         ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
         ["webpool", "done", []],
         ["sitepool", "done", []],

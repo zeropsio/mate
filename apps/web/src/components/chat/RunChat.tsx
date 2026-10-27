@@ -187,7 +187,6 @@ import { versionText } from "../zerops/operation/version";
 import { ImportDetail } from "./ImportDetail";
 import { useStandupReading } from "../../zerops/activity/useStandupReading";
 import {
-  cardOperationOf,
   detailLines,
   liveOperationBar,
   observedLinesOf,
@@ -1892,12 +1891,7 @@ export function OperationDetail({
   }
   if (regions !== undefined) {
     return (
-      <ZeropsOperationCard
-        headless
-        operation={cardOperationOf(operation, regions.service)}
-        threadRef={threadRef}
-        {...regions}
-      />
+      <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />
     );
   }
   return (
@@ -1926,14 +1920,7 @@ function ZeropsOperationDetail({
     true,
     threadRef?.threadId ?? null,
   );
-  return (
-    <ZeropsOperationCard
-      headless
-      operation={cardOperationOf(operation, regions.service)}
-      threadRef={threadRef}
-      {...regions}
-    />
-  );
+  return <ZeropsOperationCard headless operation={operation} threadRef={threadRef} {...regions} />;
 }
 
 /**
