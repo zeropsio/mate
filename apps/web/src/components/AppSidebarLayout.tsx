@@ -22,11 +22,7 @@ import { isMacPlatform } from "../lib/utils";
 import { primaryServerKeybindingsAtom } from "../state/server";
 import ThreadSidebar from "./Sidebar";
 import { SettingsSidebarNav } from "./settings/SettingsSidebarNav";
-import {
-  SidebarChromeFooter,
-  SidebarChromeHeader,
-  SidebarCornerMark,
-} from "./sidebar/SidebarChrome";
+import { SidebarChromeHeader, SidebarCornerMark } from "./sidebar/SidebarChrome";
 import { MainAppLocationTracker } from "./sidebar/mainAppLocation";
 import { useProjects } from "../state/entities";
 import {
@@ -48,8 +44,6 @@ import { resolveSidebarOpenerPlacement } from "./ui/sidebarState";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "./ui/tooltip";
 import { SidebarRevealBridge } from "./zerops/SidebarRevealBridge";
 import { SidebarAccountMenuProvider } from "./zerops/SidebarZeropsAccount";
-import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
-import { MenuSkeleton } from "./zerops/SidebarZeropsTree";
 
 const MACOS_TRAFFIC_LIGHTS_LEFT_INSET = "var(--desktop-window-controls-inset, 90px)";
 
