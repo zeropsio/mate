@@ -104,6 +104,18 @@ describe("ZeropsCli.mateStatus", () => {
   );
 });
 
+describe("zcp versions", () => {
+  it.each([
+    { version: "v9.226.0", expected: true },
+    { version: "9.226.0", expected: true },
+    { version: "v9.227.1", expected: true },
+    { version: "v9.225.9", expected: false },
+    { version: "dev", expected: false },
+  ])("zcp $version can restart its Mate: $expected", ({ version, expected }) => {
+    expect(ZeropsCli.zcpAtLeast(version, ZeropsCli.ZCP_SELF_RESTART_SINCE)).toBe(expected);
+  });
+});
+
 describe("ZeropsCli.mateStatus reads zcp's own reading", () => {
   it.effect.each([
     {
@@ -113,6 +125,33 @@ describe("ZeropsCli.mateStatus reads zcp's own reading", () => {
         zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
         restartNeeded: true,
         why: "zcp 9.226.0 is out",
+      },
+    },
+    {
+      name: "zcp's own shape, versions with a leading v, relays them without it",
+      line: '{"installed":"0.15.200","latest":"0.15.200","contract":1,"updateAvailable":false,"checkedAt":"2026-10-27T00:00:00Z","zcp":{"installed":"v9.225.0","latest":"v9.226.0","behind":true},"restartNeeded":true,"why":"zcp v9.226.0 is out; a restart installs it"}',
+      expected: {
+        zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+        restartNeeded: true,
+        why: "zcp v9.226.0 is out; a restart installs it",
+      },
+    },
+    {
+      name: "zcp current with no release evidence says no restart and an empty latest",
+      line: '{"installed":"0.15.200","latest":"0.15.200","contract":1,"updateAvailable":false,"checkedAt":"2026-10-27T00:00:00Z","zcp":{"installed":"v9.226.0","latest":"","behind":false},"restartNeeded":false}',
+      expected: {
+        zcp: { installed: "9.226.0", latest: "", behind: false },
+        restartNeeded: false,
+        why: undefined,
+      },
+    },
+    {
+      name: "a mate without the updater needs a restart, in zcp's words",
+      line: '{"installed":"0.14.0","latest":"0.16.1","contract":1,"updateAvailable":true,"checkedAt":"2026-10-27T00:00:00Z","zcp":{"installed":"v9.226.0","latest":"v9.226.0","behind":false},"restartNeeded":true,"why":"mate 0.14.0 has no updater; a restart installs mate 0.16.1"}',
+      expected: {
+        zcp: { installed: "9.226.0", latest: "9.226.0", behind: false },
+        restartNeeded: true,
+        why: "mate 0.14.0 has no updater; a restart installs mate 0.16.1",
       },
     },
     {
@@ -163,14 +202,34 @@ describe("ZeropsCli.selfRestart", () => {
       reason: "the project token may not restart zcp",
     },
     {
-      name: "a zcp without the verb reads refused, in a fixed phrase",
-      script: `process.stderr.write("unknown command \\"self\\"\\n"); process.exit(2)`,
-      reason: "this zcp can't restart its Mate yet",
+      name: "a zcp that cannot be run reads refused: nothing was asked",
+      script: undefined,
+      reason: "zcp could not be run",
     },
   ])("$name", ({ script, reason }) =>
     Effect.gen(function* () {
-      const result = yield* run(restart(script), (cli) => cli.selfRestart);
+      const result = yield* run(
+        script === undefined
+          ? ZeropsCli.make({
+              command: "definitely-not-a-real-zcp",
+              baseArgs: [],
+              cwd: process.cwd(),
+            })
+          : restart(script),
+        (cli) => cli.selfRestart,
+      );
       expect(result).toEqual({ outcome: "refused", reason });
+    }),
+  );
+
+  // The platform may have taken a restart zcp did not answer for: never read as refused.
+  it.effect("an answer zcp did not give in words reads uncertain, never refused", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        restart(`process.stderr.write("unknown command \\"self\\"\\n"); process.exit(2)`),
+        (cli) => cli.selfRestart,
+      );
+      expect(result).toEqual({ outcome: "uncertain" });
     }),
   );
 });

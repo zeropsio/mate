@@ -259,6 +259,11 @@ describe("a Mate that only a restart gets current", () => {
       },
     },
     {
+      name: "zcp behind with no version named",
+      update: { ...base, zcp: { installed: "9.225.0", latest: "", behind: true } },
+      expected: { text: "Server 0.15.200", tone: "default" },
+    },
+    {
       name: "zcp current",
       update: { ...base, zcp: { installed: "9.226.0", latest: "9.226.0", behind: false } },
       expected: { text: "Server 0.15.200", tone: "default" },
@@ -294,5 +299,18 @@ describe("a Mate that only a restart gets current", () => {
     expect(mateUpdateQuestion("Nova", "0.15.201", { zcp: "9.226.0" }).split("\n")[0]).toBe(
       "Update Nova to 0.15.201 and zcp 9.226.0?",
     );
+  });
+
+  it.each([
+    {
+      state: { phase: "updated", to: null, zcp: "9.226.0" } as const,
+      text: "Updated zcp to 9.226.0",
+    },
+    {
+      state: { phase: "updated", to: "0.15.201", zcp: "9.226.0" } as const,
+      text: "Updated to 0.15.201 and zcp 9.226.0",
+    },
+  ])("a finished restart says what moved: $text", ({ state, text }) => {
+    expect(mateUpdateStatus(state)?.text).toBe(text);
   });
 });

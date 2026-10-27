@@ -162,3 +162,13 @@ describe("automatic restarts for a Mate only a restart gets current", () => {
     );
   });
 });
+
+describe("one reading of zcp", () => {
+  it("zcp's versions read the same with or without a leading v", () => {
+    expect(
+      restartReading({ installed: "0.15.200", zcp: { installed: "v9.225.0", latest: "v9.226.0" } }),
+    ).toBe(
+      restartReading({ installed: "0.15.200", zcp: { installed: "9.225.0", latest: "9.226.0" } }),
+    );
+  });
+});

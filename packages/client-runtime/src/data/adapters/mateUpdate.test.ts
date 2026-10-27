@@ -340,3 +340,64 @@ describe("an update pressed where its Mate is not connected", () => {
     }),
   );
 });
+
+describe("an Update that only a container restart answers", () => {
+  const started = {
+    action: "none" as const,
+    restarted: false,
+    started: true,
+    restartAttempt: "restart-1",
+    serverVersion: "1",
+  };
+  const behind = {
+    installed: "1",
+    latest: "1",
+    available: false,
+    checkedAt: "now",
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restart: { needed: true },
+  };
+  it("a postponed restart frees Update again, saying why, and the next press starts again", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state).toEqual({ phase: "updating", to: "zcp 9.226.0" });
+    host.observe(env, {
+      ...server,
+      update: {
+        ...behind,
+        restart: {
+          needed: true,
+          phase: "postponed",
+          reason: "the container did not restart",
+          attempt: "restart-1",
+        },
+      },
+    });
+    expect(read().state).toEqual({
+      phase: "failed",
+      message: "Update postponed; the container did not restart",
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state).toEqual({ phase: "updating", to: "zcp 9.226.0" });
+    host.close();
+  });
+  it("a finished restart for zcp says zcp's version, never the unchanged mate's", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    host.observe(env, {
+      serverVersion: "1",
+      bootId: "new",
+      update: {
+        ...behind,
+        zcp: { installed: "9.226.0", latest: "9.226.0", behind: false },
+        restart: { needed: false },
+      },
+    });
+    expect(read().state).toEqual({ phase: "updated", to: null, zcp: "9.226.0" });
+    host.close();
+  });
+});

@@ -194,8 +194,14 @@ describe("Update on a Mate that only a restart gets current", () => {
   it.effect.each([
     {
       name: "starts the restart instead of a mate update",
-      restart: { started: true },
-      expected: { action: "none", restarted: false, started: true, serverVersion: "0.15.200" },
+      restart: { started: true, attempt: "restart-1" },
+      expected: {
+        action: "none",
+        restarted: false,
+        started: true,
+        restartAttempt: "restart-1",
+        serverVersion: "0.15.200",
+      },
     },
     {
       name: "answers why a restart cannot start",
