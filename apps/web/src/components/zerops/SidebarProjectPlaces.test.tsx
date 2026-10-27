@@ -372,9 +372,7 @@ describe("the stages in the globe's popover", () => {
     const container = await mount(
       panel({ stages: stageMenu({ stages: [stageOf("stage")], creating: [], nowMs: 0 }) }),
     );
-    expect(heads(container), "the one stage is Main, which runs what is merged").toEqual([
-      "Main3f9c1b2Deployed",
-    ]);
+    expect(heads(container)).toEqual(["stage3f9c1b2Deployed"]);
     expect(hosts(container)).toEqual(["stage.example.app"]);
     expect(doors(container).map((door) => door.getAttribute("href"))).toEqual([
       "https://app.zerops.io/project/shop-stage",
