@@ -783,12 +783,13 @@ type MessagesTimelineRowBody =
       /**
        * An origin the Mate asked the person to deliver finished work back to (`zerops_origin
        * action=request`): theirs to answer, so it stands after the run and its answer. The row
-       * names the engine's request; its card reads the ask as it stands.
+       * names the engine's requests it stands for, one question per address (`originAskPlaces`);
+       * its card reads the asks as they stand.
        */
       kind: "origin-request";
       id: string;
       createdAt: string;
-      requestId: string;
+      requestIds: ReadonlyArray<string>;
     }
   | {
       /**
@@ -3435,7 +3436,7 @@ export function deriveMessagesTimelineRows(input: {
         kind: "origin-request",
         id: `origin-request:${ask.requestId}`,
         createdAt: ask.createdAt,
-        requestId: ask.requestId,
+        requestIds: ask.requestIds,
       });
     }
     lastEnd = last.endedAt ?? last.startedAt;

@@ -117,6 +117,7 @@ const surfaces = (store: AccountStore, nowMs: number) => {
               environmentId: read.attention.source.environmentId,
               overview: hqMateOverview.derive(reads, key) ?? undefined,
               shells: [],
+              followed: false,
               lastVisitedAtById: {},
             });
       const view = mateRowReading({

@@ -4021,7 +4021,7 @@ const OriginRequestTimelineRow = memo(function OriginRequestTimelineRow({
     <div className="min-w-0 px-1 py-0.5">
       <OriginAskCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
-        requestId={row.requestId}
+        requestIds={row.requestIds}
         threadRef={ctx.threadRef}
       />
     </div>

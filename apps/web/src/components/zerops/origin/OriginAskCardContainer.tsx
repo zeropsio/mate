@@ -1,9 +1,12 @@
 /**
- * An origin ask as the conversation draws it: the engine's record of the request, the application
- * HQ places the Mate in (whose repository the GitHub app mounts) and the pick — on GitHub once HQ
- * mounts the asked repository, from the card's sheet or anywhere else, or in Mate on its press,
- * once HQ follows a GitHub repository or leaves its follow to an owner or admin — only the pick reaches the engine. What the person picked here is kept in memory by the request,
- * so the card folds at once and stays folded until the engine's record says so too.
+ * An origin question as the conversation draws it: the engine's records of the requests it stands
+ * for — one per address at a time (`originAskPlaces`): a Mate with several dev services from one
+ * repository asks once for each —, the application HQ places the Mate in (whose repositories the
+ * GitHub app mounts) and the pick — on GitHub once HQ mounts every asked repository, from the
+ * card's sheet or anywhere else, or in Mate on its press, once HQ follows each GitHub repository
+ * or leaves its follow to an owner or admin — only the pick reaches the engine, for every ask
+ * still open. What the person picked here is kept in memory by the card's first request, so the
+ * card folds at once and stays folded until the engine's records say so too.
  */
 import {
   isAtomCommandInterrupted,
@@ -27,12 +30,13 @@ import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { OriginAskCard } from "./OriginAskCard";
 import {
-  type OriginAsk,
+  type OriginAskOfRequest,
   type OriginAskSaid,
   originAskAnswer,
   originAskFace,
-  originAskFromKey,
-  originAskKey,
+  originAskGroup,
+  originAsksFromKey,
+  originAsksKey,
   keepInMate,
   originAskOf,
   originConnected,
@@ -49,43 +53,48 @@ const say = (requestId: string, said: OriginAskSaid | null) =>
   });
 
 export function OriginAskCardContainer({
-  requestId,
+  requestIds,
   environmentId,
   threadRef,
 }: {
-  readonly requestId: string;
+  readonly requestIds: ReadonlyArray<string>;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
 }) {
   // As a string, so a change elsewhere in the thread draws nothing here.
-  const askKey = useThreadDetail(
+  const requests = requestIds.join("\n");
+  const asksKey = useThreadDetail(
     threadRef,
     useMemo(
       () => (detail: { readonly activities?: unknown } | null) =>
-        originAskKey(
-          originAskOf(detail?.activities as Parameters<typeof originAskOf>[0], requestId),
+        originAsksKey(
+          requests
+            .split("\n")
+            .map((requestId) =>
+              originAskOf(detail?.activities as Parameters<typeof originAskOf>[0], requestId),
+            ),
         ),
-      [requestId],
+      [requests],
     ),
   );
-  const ask = useMemo(() => originAskFromKey(askKey), [askKey]);
-  if (ask === null || environmentId === null || threadRef === null) return null;
-  return (
-    <AskCard ask={ask} environmentId={environmentId} requestId={requestId} threadRef={threadRef} />
-  );
+  const asks = useMemo(() => originAsksFromKey(asksKey), [asksKey]);
+  if (asks.length === 0 || environmentId === null || threadRef === null) return null;
+  return <AskCard asks={asks} environmentId={environmentId} threadRef={threadRef} />;
 }
 
 function AskCard({
-  ask,
+  asks,
   environmentId,
-  requestId,
   threadRef,
 }: {
-  readonly ask: OriginAsk;
+  readonly asks: ReadonlyArray<OriginAskOfRequest>;
   readonly environmentId: EnvironmentId;
-  readonly requestId: string;
   readonly threadRef: ScopedThreadRef;
 }) {
+  const group = useMemo(() => originAskGroup(asks), [asks]);
+  const { ask, open, repos: asked } = group;
+  // The card's memory of the pick: its first request's.
+  const requestId = asks[0]?.requestId ?? "";
   const mate = useKnownMate(environmentId);
   const location = useMateOfEnvironment(environmentId);
   const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
@@ -109,16 +118,20 @@ function AskCard({
       // The sheet's production and HQ's record both answer connected: the engine hears it once.
       if (useOriginAskSaid.getState()[requestId] === outcome) return null;
       say(requestId, outcome);
-      const result = await answerOriginAsk({
-        environmentId,
-        input: { threadId: threadRef.threadId, requestId, outcome },
-      });
-      if (result._tag === "Success" || isAtomCommandInterrupted(result)) return null;
-      say(requestId, null);
-      const error = squashAtomCommandFailure(result);
-      return error instanceof Error ? error.message : "The Mate did not take the answer.";
+      // Every ask the card stands for that is still open hears the one pick.
+      for (const each of open) {
+        const result = await answerOriginAsk({
+          environmentId,
+          input: { threadId: threadRef.threadId, requestId: each, outcome },
+        });
+        if (result._tag === "Success" || isAtomCommandInterrupted(result)) continue;
+        say(requestId, null);
+        const error = squashAtomCommandFailure(result);
+        return error instanceof Error ? error.message : "The Mate did not take the answer.";
+      }
+      return null;
     },
-    [answerOriginAsk, environmentId, requestId, threadRef.threadId],
+    [answerOriginAsk, environmentId, open, requestId, threadRef.threadId],
   );
   const onAnswer = useCallback(
     (outcome: OriginAskSaid): Promise<string | null> =>
@@ -133,7 +146,8 @@ function AskCard({
                 ? undefined
                 : async (url) => {
                     try {
-                      await follow(ask.repo, url);
+                      // Each repository the asks name follows the one address.
+                      for (const repo of asked) await follow(repo, url);
                       return null;
                     } catch (cause) {
                       return cause instanceof OperationStopped
@@ -143,9 +157,11 @@ function AskCard({
                   },
             () => tell(outcome),
           ),
-    [ask.repo, ask.url, follow, offer.kind, tell],
+    [ask.url, asked, follow, offer.kind, tell],
   );
-  const connected = originConnected(ask, repos);
+  const connected = group.connected(repos);
+  // The repositories HQ does not mount yet: the sheet speaks of the first, and mounts them all.
+  const unmounted = asked.filter((repo) => !originConnected({ url: ask.url, repo }, repos));
   // HQ mounting the asked repository, from the sheet or anywhere else, answers once here.
   const due = originAskAnswer(ask.state, said, connected);
   const answered = useRef(false);
@@ -156,7 +172,7 @@ function AskCard({
   }, [due, onAnswer]);
   return (
     <OriginAskCard
-      ask={ask}
+      ask={unmounted[0] === undefined ? ask : { ...ask, repo: unmounted[0] }}
       github={
         appId === null
           ? undefined
@@ -168,7 +184,8 @@ function AskCard({
               onMount: async (repository) => {
                 if (viaApp === undefined) return "HQ doesn't let you connect a repository here.";
                 try {
-                  await viaApp(ask.repo, repository);
+                  // Each repository the asks name, through the app, to the one GitHub repository.
+                  for (const repo of unmounted) await viaApp(repo, repository);
                   return null;
                 } catch (cause) {
                   return cause instanceof OperationStopped

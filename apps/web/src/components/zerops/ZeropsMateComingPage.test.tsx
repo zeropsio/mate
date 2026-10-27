@@ -132,6 +132,8 @@ const app = vi.hoisted(() => ({
   threads: [] as Array<unknown>,
   projects: [] as Array<unknown>,
   told: undefined as { readonly subject: string; readonly threadKey?: string } | undefined,
+  /** The main chat HQ names for each Mate, by its project. */
+  toldMain: {} as Record<string, ScopedThreadRef | undefined>,
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
@@ -181,6 +183,7 @@ vi.mock("~/zerops/useHqMateRefusal", () => ({
 vi.mock("~/zerops/useMenuMateReadings", () => ({
   useToldActivity: () => app.told,
   useLastKnownMateWords: () => undefined,
+  useHqMainChats: () => (projectId: string) => app.toldMain[projectId],
 }));
 
 vi.mock("@tanstack/react-router", () => ({
@@ -533,6 +536,7 @@ beforeEach(() => {
   app.projects = [];
   app.link = { key: undefined, environmentId: undefined, reachability: null };
   app.told = undefined;
+  app.toldMain = {};
   app.creations = [];
   app.registration = { attempt: 0, state: "waiting" };
   app.processes = [];
@@ -884,6 +888,47 @@ describe("a Mate's own view while its link is made", () => {
     });
     // An existing Mate's hand-over is not a new Mate's stand-up.
     expect(app.handingOver).not.toHaveBeenCalled();
+  });
+
+  // The owner, 2026-10-27: a Mate's own address opened Nova's and Milo's conversations once the
+  // Mate had one. This page keeps a Mate's conversations current only while it is open: one
+  // started elsewhere is HQ's to name.
+  it("hands over to its own main chat as HQ names it where this page lacks it, never another Mate's", async () => {
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    const NOVA = EnvironmentId.make("env-nova");
+    app.threads = [{ ...MAIN, id: ThreadId.make("thread-nova"), environmentId: NOVA }];
+    app.toldMain = {
+      [PROJECT]: { environmentId: ENV_QUINN, threadId: ThreadId.make("thread-told") },
+      "beviro-nova": { environmentId: NOVA, threadId: ThreadId.make("thread-nova") },
+    };
+    openView();
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENV_QUINN, threadId: "thread-told" },
+      replace: true,
+    });
+    expect(app.openMate).not.toHaveBeenCalled();
+  });
+
+  it("never hands over to a chat HQ names outside the environment its own link opens", async () => {
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    } satisfies MateLink;
+    app.toldMain = {
+      [PROJECT]: { environmentId: EnvironmentId.make("env-nova"), threadId: ThreadId.make("t") },
+    };
+    openView();
+    await act(async () => vi.advanceTimersByTime(0));
+
+    expect(app.navigate).not.toHaveBeenCalled();
   });
 });
 
