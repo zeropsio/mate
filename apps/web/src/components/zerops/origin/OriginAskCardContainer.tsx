@@ -32,6 +32,7 @@ import { OriginAskCard } from "./OriginAskCard";
 import {
   type OriginAskOfRequest,
   type OriginAskSaid,
+  originAnswerSettled,
   originAskAnswer,
   originAskFace,
   originAskGroup,
@@ -125,8 +126,10 @@ function AskCard({
           input: { threadId: threadRef.threadId, requestId: each, outcome },
         });
         if (result._tag === "Success" || isAtomCommandInterrupted(result)) continue;
-        say(requestId, null);
         const error = squashAtomCommandFailure(result);
+        // Settled by its Mate (or answered) meanwhile: nothing left to tell it.
+        if (originAnswerSettled(error)) continue;
+        say(requestId, null);
         return error instanceof Error ? error.message : "The Mate did not take the answer.";
       }
       return null;

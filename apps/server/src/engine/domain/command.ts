@@ -118,8 +118,9 @@ export type ProviderSignal =
   | {
       /**
        * zcp said an origin the person was asked about needs their pick no more: its address
-       * already is an origin in HQ (`connected`), or the agent withdrew the ask (`withdrawn`) — of
-       * the one repository `repo` names, else of every repository asked about the address.
+       * already is an origin in HQ for the repository `repo` asked about (`connected`), or the
+       * agent withdrew the ask (`withdrawn`) — of the one repository `repo` names, else of every
+       * repository asked about the address.
        */
       readonly kind: "origin-settled";
       readonly url: string;

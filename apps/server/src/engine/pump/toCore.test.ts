@@ -451,7 +451,7 @@ describe("the pump's mapping", () => {
       kind: "origin-settled",
       url: "https://github.com/acme/kiln",
       how: "connected",
-      repo: "kiln",
+      repo: "apidev",
     });
   });
 

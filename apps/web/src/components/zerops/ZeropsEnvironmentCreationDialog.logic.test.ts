@@ -624,6 +624,17 @@ describe("newMateDoor — whether the project takes another Mate, and why not", 
       },
     },
     {
+      // Cleo composes it again from main by itself: the person only looks.
+      case: "no recipe, Cleo's change conflicting while Cleo redoes it: the change, to see",
+      input: { recipe: "absent", change: { number: 11, mate: "Cleo", redone: true } },
+      door: {
+        kind: "closed",
+        reason:
+          "Beviro's setup for new Mates is waiting in Cleo's change, which Cleo is redoing from main. New Mates can join once it lands.",
+        action: { kind: "change", label: "See the change", number: 11 },
+      },
+    },
+    {
       case: "no recipe, a change open by a Mate no longer there: the change",
       input: { recipe: "absent", mates: [CLEO, JUNO], change: { number: 12, mate: undefined } },
       door: {
@@ -836,6 +847,19 @@ describe("newMateRecipeChange — the change the recipe waits in", () => {
           change({ repository: "appdev", kind: "code", number: 4, title: "Add a due date" }),
           change(),
         ],
+      },
+      found: { number: 11, mate: "Cleo" },
+    },
+    {
+      case: "Cleo's proposal conflicting with main, which Cleo redoes",
+      flow: { changesKnown: true, pullRequests: [change({ mergeability: "conflicting" })] },
+      found: { number: 11, mate: "Cleo", redone: true },
+    },
+    {
+      case: "a conflicting proposal whose Mate is gone, which nobody redoes",
+      flow: {
+        changesKnown: true,
+        pullRequests: [change({ mergeability: "conflicting", mateGone: true })],
       },
       found: { number: 11, mate: "Cleo" },
     },

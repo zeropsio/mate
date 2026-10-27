@@ -540,6 +540,7 @@ export {
   flowVerbKey,
   flowVerbLabel,
   isRecipeProposal,
+  recipeProposalRedone,
   pullRequestLineWith,
   pullRequestsByMate,
   agentLastSpokeAt,

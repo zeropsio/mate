@@ -134,14 +134,24 @@ export interface FlowPullRequest {
 
 /**
  * Whether a change asks for the person's review at all: it is no draft, and no Mate's automatic
- * proposal of the recipe's missing tiers (`isRecipeProposal`) — zcp makes that one at every start
- * of its Mate, unasked, and Core lands it by itself; one left open is a race its Mate proposes
- * again, never the person's to judge.
+ * proposal of the recipe's missing tiers its Mate redoes from main (`recipeProposalRedone`).
  */
 export function changeAsksForReview(
-  pull: Pick<FlowPullRequest, "ready" | "kind" | "title">,
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
 ): boolean {
-  return pull.ready !== false && !isRecipeProposal(pull);
+  return pull.ready !== false && !recipeProposalRedone(pull);
+}
+
+/**
+ * A Mate's automatic proposal of the recipe's missing tiers (`isRecipeProposal`) that conflicts
+ * with main: zcp composes it again from main by itself, and Core lands it or closes it, so nobody
+ * is asked. One that stays open otherwise is one Core refused — it judges a recipe change once, on
+ * its push — and only a person lands it; one whose Mate is gone nobody redoes.
+ */
+export function recipeProposalRedone(
+  pull: Pick<FlowPullRequest, "kind" | "title" | "mergeability" | "mateGone">,
+): boolean {
+  return isRecipeProposal(pull) && pull.mergeability === "conflicting" && pull.mateGone !== true;
 }
 
 /** A change's Mate as its Review reads it: whether it works now, in any of its chats. */
@@ -156,7 +166,7 @@ export interface MateRunFacts {
  * still move: none asks for review until it rests.
  */
 export function changeShowsReview(
-  pull: Pick<FlowPullRequest, "ready" | "kind" | "title">,
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
   mate: MateRunFacts | undefined,
 ): boolean {
   return changeAsksForReview(pull) && mate?.working !== true;
@@ -604,13 +614,12 @@ export function changeState(pull: {
   if (pull.mateGone === true) return { word: "Mate gone", tone: "attention" };
   const blocked = pullRequestBlocked(pull);
   if (blocked !== null) {
-    return {
-      word: blocked.word.charAt(0).toLocaleUpperCase() + blocked.word.slice(1),
-      tone: blocked.tone,
-    };
+    const word = blocked.word.charAt(0).toLocaleUpperCase() + blocked.word.slice(1);
+    // Its Mate composes it again from main: nobody else has to.
+    return recipeProposalRedone(pull)
+      ? { word: `${word} · its Mate redoes it`, tone: "off" }
+      : { word, tone: blocked.tone };
   }
-  // Core lands it by itself: nobody's merge.
-  if (isRecipeProposal(pull)) return { word: "Lands by itself", tone: "off" };
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   return { word: "Ready to merge", tone: "off" };

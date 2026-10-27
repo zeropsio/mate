@@ -93,14 +93,15 @@ const stillAsked = (state: ConversationState) =>
 describe("decide: an origin ask the person no longer needs to answer", () => {
   it.each([
     [
-      "zcp answers that its address already is an origin in HQ: every ask naming that address",
-      settledOrigin(KILN, "connected", "kiln"),
-      [],
+      // zcp told the agent the person's pick would come for webdev: that ask waits for its own word.
+      "zcp answers, asked again for apidev, that its address already is an origin in HQ: apidev's ask",
+      settledOrigin(KILN, "connected", "apidev"),
+      ["webdev"],
     ],
     [
       "zcp answers so for the address written another way",
-      settledOrigin("https://github.com/ACME/kiln.git", "connected", "kiln"),
-      [],
+      settledOrigin("https://github.com/ACME/kiln.git", "connected", "apidev"),
+      ["webdev"],
     ],
     ["the Mate withdraws the address: every ask naming it", settledOrigin(KILN, "withdrawn"), []],
     [
@@ -110,7 +111,7 @@ describe("decide: an origin ask the person no longer needs to answer", () => {
     ],
     [
       "zcp answers that another address already is an origin: none",
-      settledOrigin("https://github.com/fxck/other", "connected", "other"),
+      settledOrigin("https://github.com/fxck/other", "connected", "apidev"),
       ["apidev", "webdev"],
     ],
   ])(

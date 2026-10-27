@@ -57,9 +57,14 @@ describe("a zcp call that asks the person to connect an origin", () => {
 describe("a zcp call that says an origin ask needs the person no more", () => {
   it.each([
     [
-      "already connected: the address is the origin of a repository in HQ",
+      "already connected: the asked repository's ask, whichever repository holds the address",
       call({ connected: { origin: { url: URL, repo: "appdev" }, repo: "app" } }),
-      { url: URL, how: "connected", repo: "app" },
+      { url: URL, how: "connected", repo: "appdev" },
+    ],
+    [
+      "already connected, naming no asked repository",
+      call({ connected: { origin: { url: URL }, repo: "app" } }),
+      null,
     ],
     [
       "withdrawn for one repository",

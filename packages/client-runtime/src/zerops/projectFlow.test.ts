@@ -41,7 +41,7 @@ const FEN = "9lSt5lFxQ1mQ3v8b7c2d1e";
 
 /** Vera's open `appdev #4` as the flow carries it. */
 /** A code change, as the rules that read only a change's state are given it. */
-const CODE = { kind: "code", title: "Fix the cart" } as const;
+const CODE = { kind: "code", title: "Fix the cart", mergeability: "mergeable" } as const;
 
 function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -1044,34 +1044,48 @@ describe("a Mate's proposal of the group's recipe", () => {
   });
 
   // zcp proposes the tiers main lacks at every start of its Mate, unasked; Core lands it by itself
-  // (it only adds files). Left open, it is HQ's race or its Mate's to propose again, never the
-  // person's to judge. A recipe change that edits a tier still asks the person.
+  // when it only adds files, judging it once, on its push. One that conflicts with main its Mate
+  // composes again from main (zcp's reconcile on a conflicting proposal): nobody is asked. One
+  // that stays open otherwise Core refused, and only a person lands it; one whose Mate is gone
+  // nothing will land.
   it.each([
-    {
-      case: "zcp's proposal of the tiers main lacks asks nobody for review",
-      title: "Mate: the group's import files",
-      mergeability: "mergeable",
-      asks: false,
-      word: "Lands by itself",
-    },
     {
       case: "zcp's proposal that conflicts with main asks nobody for review",
       title: "Mate: the group's import files",
       mergeability: "conflicting",
+      mateGone: undefined,
       asks: false,
-      word: "Conflicts with main",
+      word: "Conflicts with main · its Mate redoes it",
     },
     {
-      case: "a Mate's proposal of one service in the recipe asks the person",
-      title: "Mate: api in the group recipe",
+      case: "zcp's proposal Core left open, nothing stopping its merge, asks the person",
+      title: "Mate: the group's import files",
       mergeability: "mergeable",
+      mateGone: undefined,
       asks: true,
       word: "Ready to merge",
     },
-  ] as const)("$case", ({ title, mergeability, asks, word }) => {
+    {
+      case: "zcp's proposal whose Mate is gone asks the person",
+      title: "Mate: the group's import files",
+      mergeability: "conflicting",
+      mateGone: true,
+      asks: true,
+      word: "Mate gone",
+    },
+    {
+      case: "a Mate's proposal of one service in the recipe that conflicts asks the person",
+      title: "Mate: api in the group recipe",
+      mergeability: "conflicting",
+      mateGone: undefined,
+      asks: true,
+      word: "Conflicts with main",
+    },
+  ] as const)("$case", ({ title, mergeability, mateGone, asks, word }) => {
     const pull = {
       ...row({ repository: "group", kind: "recipe", number: 11, title }),
       mergeability,
+      ...(mateGone === undefined ? {} : { mateGone }),
     };
     expect(changeAsksForReview(pull)).toBe(asks);
     expect(changeShowsReview(pull, undefined)).toBe(asks);
