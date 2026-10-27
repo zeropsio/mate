@@ -76,6 +76,10 @@ export function makeMateUpdateExecutor<E>(options: {
                     ...(value.restartAttempt === undefined
                       ? {}
                       : { restartAttempt: value.restartAttempt }),
+                    ...(value.restartTarget === undefined
+                      ? {}
+                      : { restartTarget: value.restartTarget }),
+                    ...(value.bootId === undefined ? {} : { bootId: value.bootId }),
                   },
                 }
               : { kind: "refused", reason: value.error },

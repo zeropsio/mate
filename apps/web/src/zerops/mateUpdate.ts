@@ -23,7 +23,11 @@ export function mateUpdateLine(
   }
   // The Mate's own restart, while one is asked for: what it waits on, or why it did not happen.
   const restart = update.restart;
-  if (restart?.phase !== undefined) {
+  // zcp's own update under way outranks a restart that already settled as postponed.
+  const updating = ["staging", "draining", "switching", "verifying"].includes(
+    update.automatic?.phase ?? "",
+  );
+  if (restart?.phase !== undefined && !(restart.phase === "postponed" && updating)) {
     const text =
       restart.phase === "draining"
         ? "Update ready; waiting for your work to finish"

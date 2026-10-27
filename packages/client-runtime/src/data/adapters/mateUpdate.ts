@@ -8,6 +8,7 @@ import {
 import * as Clock from "effect/Clock";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
@@ -22,12 +23,14 @@ import { STREAM_POLICY, type StreamEvent } from "../streamMachine.ts";
 import { makeOperations } from "../operations/coordinator.ts";
 import { makeMateUpdateExecutor } from "../operations/executors/mateUpdate.ts";
 import {
-  updateOutcome,
+  updateAnswer,
   updateServer,
+  updateVerdict,
   type MateRestartTarget,
   type UpdateServer,
 } from "../operations/mateUpdate.ts";
-import { operationResult } from "../model.ts";
+import type { Settlement } from "../operations/kind.ts";
+import { CONTAINER_CAPS_MS } from "../../zerops/environments/containerMachine.ts";
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isUpdateError = Schema.is(ZeropsMateUpdateError);
@@ -91,8 +94,23 @@ export function makeMateUpdates(options: {
   readonly isCurrent: () => boolean;
   readonly demand?: (environmentId: EnvironmentId) => () => void;
   readonly makeId: () => string;
+  /**
+   * Runs `run` after `ms`, answering a cancel: how long a Mate back from its restart may leave
+   * its reading unable to say before the press reads unconfirmed. A timer unless a test says.
+   */
+  readonly after?: (ms: number, run: () => void) => () => void;
 }): MateUpdateHost {
   const { store, wire } = options;
+  const after =
+    options.after ??
+    ((ms: number, run: () => void) => {
+      const wait = Effect.runFork(Effect.sleep(ms).pipe(Effect.andThen(Effect.sync(run))));
+      return () => {
+        Effect.runFork(Fiber.interrupt(wait));
+      };
+    });
+  // The press waiting on a reading that can say, by its request: the wait's cancel.
+  const unconfirmed = new Map<string, () => void>();
   let closed = false;
   const current = () => !closed && options.isCurrent();
   const signal = (scope: ReturnType<typeof updateAvailabilityScope>, event: StreamEvent) =>
@@ -144,31 +162,63 @@ export function makeMateUpdates(options: {
       record.submission !== "uncertain-unasked"
     )
       return;
-    const end = updateOutcome(
-      record.intent,
-      server,
-      operationResult(record, "mate-update")?.restartAttempt,
+    const answer = record.receipt === null ? undefined : updateAnswer(record.receipt);
+    const verdict = updateVerdict(record.intent, server, answer);
+    if (verdict === null) return;
+    if (verdict === "unconfirmed") {
+      // Back, but its reading cannot say yet: bounded by the restart's own wait, never forever.
+      if (!unconfirmed.has(record.requestId))
+        unconfirmed.set(
+          record.requestId,
+          after(CONTAINER_CAPS_MS.restarting, () => {
+            unconfirmed.delete(record.requestId);
+            const now = store.state().operations.get(record.requestId);
+            if (now?.receipt !== null && now?.receipt.outcome.kind !== "pending") return;
+            settle(record.requestId, server!.serverVersion, answer?.target, {
+              kind: "failed",
+              reason: "This Mate came back, but couldn't confirm the update.",
+            });
+          }),
+        );
+      return;
+    }
+    unconfirmed.get(record.requestId)?.();
+    unconfirmed.delete(record.requestId);
+    settle(
+      record.requestId,
+      server!.serverVersion,
+      answer?.target ?? record.intent.restart,
+      verdict,
     );
-    if (end === null) return;
+  };
+  const settle = (
+    requestId: string,
+    version: string,
+    target: MateRestartTarget | undefined,
+    end: Settlement,
+  ) =>
     store.dispatch({
       kind: "operation-receipt",
       receipt: {
-        requestId: record.requestId,
-        operationId: record.requestId,
+        requestId,
+        operationId: requestId,
         executor: "mate",
         affected: [],
         handles: [],
         acceptance: {
           kind: "accepted",
-          result: { alreadyCurrent: false, version: server!.serverVersion },
+          result: {
+            alreadyCurrent: false,
+            version,
+            ...(target === undefined ? {} : { restartTarget: target }),
+          },
         },
         outcome:
           end.kind === "failed"
             ? { kind: "failed", evidence: end.reason }
-            : { kind: "succeeded", evidence: `Mate returned on ${server!.serverVersion}.` },
+            : { kind: "succeeded", evidence: `Mate returned on ${version}.` },
       },
     });
-  };
   const demands = new Map<string, () => void>();
   const stop = store.subscribe(() => {
     const reads = readsOfState(store.state());
@@ -225,6 +275,9 @@ export function makeMateUpdates(options: {
             bootId: server.bootId,
             to,
             ...(restart === undefined ? {} : { restart }),
+            ...(server.update?.restart?.startedAt === undefined
+              ? {}
+              : { seenRestart: server.update.restart.startedAt }),
           },
           requestId,
         ),
@@ -304,6 +357,8 @@ export function makeMateUpdates(options: {
     close() {
       closed = true;
       stop();
+      for (const cancel of unconfirmed.values()) cancel();
+      unconfirmed.clear();
       for (const release of demands.values()) release();
       demands.clear();
     },
