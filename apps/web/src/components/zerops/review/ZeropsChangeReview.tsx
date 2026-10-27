@@ -45,7 +45,7 @@ import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { useOpenReview, type ReviewTarget } from "~/zerops/review";
+import { reviewTargetKey, useOpenReview, type ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
@@ -219,7 +219,10 @@ export function ZeropsChangeReview({
     );
   }
   return (
+    // Keyed by the change, so a page whose address moves to another change starts that review
+    // from its own state: nothing pressed on the one before carries over.
     <ChangeReviewData
+      key={reviewTargetKey(target)}
       reviewOffers={reviewOffers}
       flow={flow}
       hqAddress={flows.hqAddress}
