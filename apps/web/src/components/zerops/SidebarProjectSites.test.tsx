@@ -24,6 +24,16 @@ import {
   type SitesMate,
 } from "./SidebarProjectSites";
 
+/** Every request a part's "Ask <Mate> to start it" wrote. */
+const asked = vi.hoisted(() => [] as Array<readonly unknown[]>);
+vi.mock("~/zerops/useAskMate", () => ({
+  useAskMate:
+    () =>
+    (...args: unknown[]) => {
+      asked.push(args);
+    },
+}));
+
 vi.mock("~/zerops/accountForge", () => ({
   useStopDeploymentDemand: () => {},
   useStopDeployments: () => new Map(),
@@ -168,6 +178,7 @@ const unmounts: Array<() => void> = [];
 afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
   lifecycles.clear();
+  asked.length = 0;
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   useAddressesSheet.getState().close();
@@ -263,7 +274,7 @@ describe("the project's addresses", () => {
     expect(surface("sidebar-project-sites-popover")).not.toBeNull();
     expect(listed()).toEqual([
       ["Production", ["https://quill.example.com", "https://api.quill.example.com"]],
-      ["stage", ["https://stage.quill.example.app"]],
+      ["Main", ["https://stage.quill.example.app"]],
       ["Nell", ["https://quill-nell.example.app"]],
       ["Odo", ["https://quill-odo.example.app"]],
     ]);
@@ -473,6 +484,13 @@ const KARA_LEASES = [
   held("embedderpool-5", "gone", { state: "lost" }),
 ];
 
+/** Each part row of the open popover's works: what it says, and the preview it opens. */
+const parts = () =>
+  surfaces("sidebar-project-sites-part").map((row) => ({
+    text: row.textContent,
+    href: row.querySelector("a")?.getAttribute("href") ?? row.getAttribute("href"),
+  }));
+
 /** The words of the open popover's Kara section. */
 const karaSays = () =>
   document.querySelector<HTMLElement>('[data-sites-section="mate:quill-kara"]')?.textContent ?? "";
@@ -504,11 +522,15 @@ describe("a Mate's dev pools", () => {
       mates: [kara("env-kara:thread-kara")],
     });
     await press(surface("sidebar-project-sites"));
-    expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
-    const preview = surfaces("sidebar-project-sites-link").find(
-      (link) => link.getAttribute("href") === EMBEDDER_URL,
-    );
-    expect(preview?.textContent).toBe("Embedderembedderpool-c2e4-8101.prg1.zerops.app");
+    expect(listed()).toEqual([
+      ["Main", ["https://kara-stage.example.app"]],
+      ["Kara", []],
+    ]);
+    expect(parts()).toEqual([
+      { text: "Embedderrunningembedderpool-c2e4-8101.prg1.zerops.app", href: EMBEDDER_URL },
+      { text: "HQpausedAsk Kara to start it", href: null },
+      { text: "HQ", href: null },
+    ]);
     for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
     expect(
       surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,
@@ -552,7 +574,43 @@ describe("a Mate's dev pools", () => {
       container.remove();
     });
     await press(document.querySelector<HTMLElement>("[data-trigger]"));
-    expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
+    expect(parts().map((part) => part.href)).toEqual([EMBEDDER_URL, null, null]);
+  });
+
+  it('A part not running offers "Ask <Mate> to start it", which fills the composer and doesn\'t send', async () => {
+    lifecycles.set("env-kara:thread-asks", KARA_LEASES);
+    await mount({
+      production: undefined,
+      stages: undefined,
+      line: undefined,
+      mates: [kara("env-kara:thread-asks")],
+    });
+    await press(surface("sidebar-project-sites"));
+    const ask = [...document.querySelectorAll<HTMLElement>("button")].find(
+      (button) => button.textContent === "Ask Kara to start it",
+    );
+    await press(ask ?? null);
+    expect(asked).toEqual([
+      [
+        "quill-kara",
+        "Start the HQ preview.",
+        { send: false, branch: "feat-x", repositoryUrl: undefined },
+      ],
+    ]);
+    expect(surface("sidebar-project-sites-popover"), "the Sites close for the composer").toBeNull();
+  });
+
+  it("offers no start to a person who does not operate the Mate", async () => {
+    lifecycles.set("env-kara:thread-colleague", KARA_LEASES);
+    await mount({
+      production: undefined,
+      stages: undefined,
+      line: undefined,
+      mates: [{ ...kara("env-kara:thread-colleague"), mine: false, owner: owner("Pia Lund") }],
+    });
+    await press(surface("sidebar-project-sites"));
+    expect(parts().map((part) => part.text)).toContain("HQpaused");
+    expect(document.body.textContent).not.toContain("to start it");
   });
 
   it("the globe never says there is no address while a Mate's pools hold workspaces not read yet", async () => {
@@ -681,7 +739,7 @@ describe("the addresses sheet's doors", () => {
 
   it.each([
     ["Production", "quill-production"],
-    ["stage", "quill-stage"],
+    ["Main", "quill-stage"],
     ["Nell", "quill-nell"],
   ])(
     "Manage on %s's head opens the addresses sheet for its project and closes the popover",
@@ -713,7 +771,7 @@ describe("the addresses sheet's doors", () => {
     await press(surface("sidebar-project-sites"));
     expect(sectionOf("Production")).toBeDefined();
     expect(manageIn("Production")).toBeNull();
-    expect(manageIn("stage")).not.toBeNull();
+    expect(manageIn("Main")).not.toBeNull();
   });
 
   it("offers no Manage outside an account, where no sheet can read a place", async () => {

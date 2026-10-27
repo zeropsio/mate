@@ -700,6 +700,7 @@ interface ProjectShared {
         readonly line: HeadingLineInput | undefined;
         readonly production: boolean;
         readonly stages: boolean;
+        readonly changes: NonNullable<ProjectSitesInput["changes"]>;
       }
     | undefined;
   readonly sites: ProjectSitesInput | undefined;
@@ -1779,6 +1780,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             line,
             production: production !== undefined,
             stages: stagesMenu !== undefined,
+            // What each Mate's work is, by its changes on the branches it holds leases on.
+            changes: [...(flow?.pullRequests ?? []), ...(flow?.merged ?? [])].map((change) => ({
+              mateProjectId: change.mateProjectId,
+              branch: change.branch,
+              repositoryUrl: change.repositoryUrl,
+              number: change.number,
+              title: change.title,
+            })),
           });
     const sites: ProjectSitesInput | undefined =
       sitesRead === undefined
@@ -1799,6 +1808,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               onAskToFix,
               onOpenStop: refs.openStop,
               onOpenPage: refs.openPage,
+              changes: sitesRead.changes,
             };
     const mateIds = everyOrdered.map(({ item }) => item.project.id);
     projectShared.set(id, {

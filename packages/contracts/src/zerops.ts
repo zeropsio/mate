@@ -73,6 +73,8 @@ export const ZeropsStageRef = Schema.Struct({
   hostname: Schema.String,
   /** Absent while zcp has not resolved the stage's setup. */
   setup: Schema.optional(Schema.String),
+  /** The application part the stage serves ("box"), as its leases name it; absent from older zcp. */
+  part: Schema.optional(Schema.String),
 });
 export type ZeropsStageRef = typeof ZeropsStageRef.Type;
 
@@ -342,6 +344,15 @@ export const ZeropsLease = Schema.Struct({
    * this call, never none running; a server this build cannot read is dropped, not the lease.
    */
   devServers: Schema.optional(ForwardCompatibleArray(ZeropsDevServer)),
+  /**
+   * When zcp last read the lease's dev servers (RFC 3339): from zcp's release that sends their last
+   * read on every call, where a newer read is told from an older one. Absent from an older zcp.
+   */
+  devServersReadAt: Schema.optional(Schema.String),
+  /** The application part the lease serves ("web"); absent where zcp names none. */
+  part: Schema.optional(Schema.String),
+  /** The hostname of that part's stage, which runs what is merged; absent where zcp names none. */
+  stage: Schema.optional(Schema.String),
   /**
    * What zcp read of the lease's checkout and preview, and what a release would lose there — only
    * on a `zerops_lease` call that read them (`action=status`). Absent means not read in this call,
