@@ -90,9 +90,9 @@ import {
 } from "../components/zerops/ZeropsChangeFaceDialog.logic";
 import { ZeropsDeleteMateDialog } from "../components/zerops/ZeropsDeleteMateDialog";
 import {
-  applicationDeletionTarget,
   applicationHoldings,
   deleteApplicationWords,
+  lastMateDeletionTarget,
   type DeleteApplicationTarget,
 } from "../components/zerops/ZeropsDeleteApplicationDialog.logic";
 import { useDeleteApplicationDialog } from "./deleteApplicationDialog";
@@ -397,16 +397,20 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const mates = entry.environments.filter(({ item }) => hasMate(item));
       if (mates.length !== 1 || mates[0]!.item.project.id !== candidate.project.id)
         return undefined;
-      return applicationDeletionTarget({
-        groupId: entry.group.groupId,
-        name: entry.group.name,
-        environments: entry.environments.map(({ role, item }) => ({
-          role,
-          project: item.project,
-        })),
-      });
+      const app =
+        hqStructure.orgId === activeOrganization?.id
+          ? hqStructure.structure?.apps.find(({ id }) => id === groupId)
+          : undefined;
+      return lastMateDeletionTarget(
+        entry.environments.map(({ item }) => item.project),
+        {
+          id: entry.group.groupId,
+          name: entry.group.name,
+          ...(app?.environments === undefined ? {} : { environments: app.environments }),
+        },
+      );
     },
-    [groupTree.groups, orgOffer],
+    [activeOrganization?.id, groupTree.groups, hqStructure, orgOffer],
   );
   /**
    * Where a Mate may be moved, as HQ answered when the move opened (`moveTo`) and as it offers its

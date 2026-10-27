@@ -7,7 +7,12 @@
  * stage that does not go stops the deletion there. Its production is never deleted: HQ lets go of
  * it, and the person deletes it in Zerops. Nothing on GitHub is touched.
  */
-import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
+import {
+  deriveCanonicalGroups,
+  type CanonicalGroup,
+  type CanonicalGroupsOptions,
+  type ZeropsProject,
+} from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface DeleteApplicationTarget {
@@ -92,6 +97,21 @@ export function groupDeletionTarget(
           : undefined,
     })),
   });
+}
+
+/**
+ * What deleting a Mate's project with its last Mate takes, from the Zerops projects listed in it
+ * and HQ's record of it (its environments, where HQ told them): its group as the menu and the
+ * projects page hold it, so a production on a Git branch is listed as staying there too.
+ */
+export function lastMateDeletionTarget(
+  projects: ReadonlyArray<ZeropsProject>,
+  app: NonNullable<CanonicalGroupsOptions["apps"]>[number],
+): DeleteApplicationTarget {
+  const group = deriveCanonicalGroups(projects, { order: "name", apps: [app] }).groups.find(
+    ({ groupId }) => groupId === app.id,
+  );
+  return groupDeletionTarget(group ?? { groupId: app.id, name: app.name, environments: [] });
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */
