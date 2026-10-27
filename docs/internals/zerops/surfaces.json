@@ -981,6 +981,7 @@
         "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
         "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
         "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
+        "apps/web/src/components/zerops/operation/BatchServiceRows.tsx",
         "apps/web/src/components/zerops/operation/PipelineStepList.tsx",
         "packages/client-runtime/src/zerops/activity/pipelineReadout.ts",
         "packages/client-runtime/src/zerops/activityResult.ts",
