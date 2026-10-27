@@ -40,6 +40,9 @@ const VERA = "tsXR3xnURPSvsy4zp1EaYA";
 const FEN = "9lSt5lFxQ1mQ3v8b7c2d1e";
 
 /** Vera's open `appdev #4` as the flow carries it. */
+/** A code change, as the rules that read only a change's state are given it. */
+const CODE = { kind: "code", title: "Fix the cart" } as const;
+
 function row(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
     repository: "appdev",
@@ -809,10 +812,10 @@ describe("pullRequestMergeLine", () => {
 describe("changeState", () => {
   it("answers every row in one register, opening as a sentence does", () => {
     const words = [
-      changeState({ number: 1, mergeability: "mergeable" }),
-      changeState({ number: 2, mergeability: "conflicting" }),
-      changeState({ number: 3, mergeability: "checking" }),
-      changeState({ number: 4, mergeability: "empty" }),
+      changeState({ ...CODE, number: 1, mergeability: "mergeable" }),
+      changeState({ ...CODE, number: 2, mergeability: "conflicting" }),
+      changeState({ ...CODE, number: 3, mergeability: "checking" }),
+      changeState({ ...CODE, number: 4, mergeability: "empty" }),
     ].map((state) => state?.word);
     expect(words).toEqual([
       "Ready to merge",
@@ -835,7 +838,7 @@ describe("changeState", () => {
     ["a described change", { mergeability: "mergeable", ready: true }, "Ready to merge"],
     ["a change from an HQ that knows no drafts", { mergeability: "mergeable" }, "Ready to merge"],
   ] as const)("names %s", (_case, pull, word) => {
-    expect(changeState({ number: 1, ...pull })?.word).toBe(word);
+    expect(changeState({ ...CODE, number: 1, ...pull })?.word).toBe(word);
   });
 
   // Its Mate gone, nobody carries it on: a person closes it or hands it to another Mate.
@@ -846,7 +849,7 @@ describe("changeState", () => {
   ] as const)(
     "says an open change whose Mate is gone is so before anything else, %s",
     (_case, pull) => {
-      expect(changeState({ number: 1, mateGone: true, ...pull })).toEqual({
+      expect(changeState({ ...CODE, number: 1, mateGone: true, ...pull })).toEqual({
         word: "Mate gone",
         tone: "attention",
       });
@@ -854,12 +857,14 @@ describe("changeState", () => {
   );
 
   it("carries the tone that means the word", () => {
-    expect(changeState({ number: 4, mergeability: "conflicting" })?.tone).toBe("attention");
-    expect(changeState({ number: 4, mergeability: "checking" })?.tone).toBe("busy");
+    expect(changeState({ ...CODE, number: 4, mergeability: "conflicting" })?.tone).toBe(
+      "attention",
+    );
+    expect(changeState({ ...CODE, number: 4, mergeability: "checking" })?.tone).toBe("busy");
   });
 
   it("names a change nothing stops rather than leaving the column blank: grey, not green", () => {
-    expect(changeState({ number: 1, mergeability: "mergeable" })).toEqual({
+    expect(changeState({ ...CODE, number: 1, mergeability: "mergeable" })).toEqual({
       word: "Ready to merge",
       tone: "off",
     });
@@ -1166,7 +1171,7 @@ describe("changeShowsReview — one rule for every list a change stands in", () 
     },
     { case: "a draft, its Mate at work", ready: false, mate: { working: true }, shows: false },
   ])("$case: $shows", ({ ready, mate, shows }) => {
-    expect(changeShowsReview({ ready }, mate)).toBe(shows);
+    expect(changeShowsReview({ ...CODE, ready }, mate)).toBe(shows);
   });
 });
 
