@@ -16,6 +16,7 @@ import {
   type SitesLease,
   type SitesMateFacts,
   type SitesSection,
+  type SitesWork,
 } from "./SidebarProjectSites.logic";
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
@@ -289,6 +290,9 @@ const mate = (over: Partial<SitesMateFacts> & { readonly name: string }): SitesM
   controlPlane: "zcp",
   pools: undefined,
   leases: undefined,
+  stageParts: undefined,
+  conversations: undefined,
+  changes: [],
   ...over,
 });
 
@@ -313,8 +317,8 @@ const server = (status: string, url?: string): ZeropsDevServer => ({
 const slots = (pool: string) =>
   [3001, 3002, 3003].map((port) => route(pool, `${pool}-${String(port)}.example.app`, port));
 
-/** A Mate's dev pools' previews as its section lists them: each part's name, host and role. */
-const previewRows = (facts: SitesMateFacts) => {
+/** The works the section of a Mate alone lists; none where it has no section. */
+const worksOf = (facts: SitesMateFacts): ReadonlyArray<SitesWork> => {
   const [section] = projectSitesSections({
     production: undefined,
     productionUnread: false,
@@ -323,10 +327,16 @@ const previewRows = (facts: SitesMateFacts) => {
     placeRoutes: (place) => place.routes,
     mates: [facts],
   });
-  return (section?.links ?? [])
-    .filter((link) => link.key.startsWith("preview:"))
-    .map((link) => [link.service, link.host, link.role ?? "no role"].join(" | "));
+  return section?.kind === "mate" ? section.works : [];
 };
+
+/** A Mate's dev pools' previews as its section lists them: each part's name and host. */
+const previewRows = (facts: SitesMateFacts) =>
+  worksOf(facts).flatMap((work) =>
+    work.parts.flatMap((part) =>
+      part.host === undefined ? [] : [[part.name, part.host, "no role"].join(" | ")],
+    ),
+  );
 
 describe("a Mate's dev pools", () => {
   it("lists a part's preview once, by the part's name, never its pool's per-port addresses", () => {
@@ -398,7 +408,7 @@ describe("a Mate's dev pools", () => {
           ],
         }),
       ),
-    ).toEqual(["Api | apipool-1.example.app | no role", "Pool | pool-2.example.app | no role"]);
+    ).toEqual(["API | apipool-1.example.app | no role", "Pool | pool-2.example.app | no role"]);
   });
 
   it("lists nothing of a pool with no lease, and a service that is no pool keeps its addresses", () => {
@@ -437,6 +447,191 @@ describe("a Mate's dev pools", () => {
     });
     expect(mateLinks(kara)).toEqual([]);
     expect(previewRows(kara)).toEqual(["Web | webpool-3-1df2-3000.example.app | no role"]);
+  });
+});
+
+describe("the project's Sites, by what each section represents", () => {
+  const conversation = (alias: string, title: string, branch: string | null = "feat-x") => ({
+    key: `env-kara:thread-${alias}`,
+    title,
+    lease: { alias, pool: alias.slice(0, alias.lastIndexOf("-")), branch },
+  });
+  const change = (branch: string, number: number, title: string) => ({
+    mateProjectId: "p-kara",
+    branch,
+    repositoryUrl: undefined,
+    number,
+    title,
+  });
+
+  it("Main lists each part's stage link by its part's name", () => {
+    const sections = projectSitesSections({
+      production: undefined,
+      productionUnread: false,
+      stages: { stops: [stop({ name: "stage", routes: [route("app", "app-stage.example.app")] })] },
+      unreadStages: [],
+      placeRoutes: (place) => place.routes,
+      mates: [
+        mate({
+          name: "Kara",
+          routes: [
+            route("boxstage", "boxstage.example.app"),
+            route("hqstage", "hqstage.example.app"),
+            route("webstage", "webstage.example.app"),
+            route("webdev", "webdev.example.app"),
+          ],
+          hostnames: ["boxstage", "hqstage", "webdev", "webstage"],
+          pools: ["boxpool"],
+          leases: [lease("boxpool-2", { part: "box", stage: "boxstage" })],
+          stageParts: { webstage: "web" },
+        }),
+      ],
+    });
+    const main = sections.find((section) => section.title === "Main");
+    expect(main?.links?.map((link) => [link.service, link.host])).toEqual([
+      ["App", "app-stage.example.app"],
+      ["Box", "boxstage.example.app"],
+      ["HQ", "hqstage.example.app"],
+      ["Web", "webstage.example.app"],
+    ]);
+    expect(
+      sections.find((section) => section.kind === "mate")?.links?.map((link) => link.host),
+      "the Mate keeps its own dev, never a stage",
+    ).toEqual(["webdev.example.app"]);
+    expect(
+      projectSitesSections({
+        production: undefined,
+        productionUnread: false,
+        stages: undefined,
+        unreadStages: [],
+        placeRoutes: (place) => place.routes,
+        mates: [mate({ name: "Kara", routes: [route("apistage", "apistage.example.app")] })],
+      }).map((section) => [section.title, section.links?.map((link) => link.service)]),
+      "with no stage of its own, Main still lists the Mates' stages",
+    ).toEqual([["Main", ["API"]]]);
+  });
+
+  it("A Mate's work is headed by its change's title, else its conversation's title, else \"Work in progress\", never its branch", () => {
+    const works = worksOf(
+      mate({
+        name: "Kara",
+        pools: ["boxpool", "hqpool", "webpool"],
+        leases: [
+          lease("boxpool-2", { branch: "checkout-rework" }),
+          lease("hqpool-2", { branch: "checkout-rework" }),
+          lease("webpool-4", { branch: "fix-login" }),
+          lease("webpool-5", { branch: "spike" }),
+        ],
+        conversations: [
+          conversation("webpool-4", "Fix the login redirect", "fix-login"),
+          conversation("boxpool-2", "Checkout chat", "checkout-rework"),
+        ],
+        changes: [change("checkout-rework", 2, "Rework the checkout flow")],
+      }),
+    );
+    expect(works.map((work) => [work.title, work.parts.map((part) => part.name)])).toEqual([
+      ["Fix the login redirect", ["Web"]],
+      ["Rework the checkout flow · #2", ["Box", "HQ"]],
+      ["Work in progress", ["Web"]],
+    ]);
+    for (const work of works) {
+      expect(work.title).not.toMatch(/checkout-rework|fix-login|spike|pool/u);
+    }
+    expect(works[1]?.tooltip, "the branch and aliases, only in the tooltip").toBe(
+      "Branch checkout-rework · boxpool-2, hqpool-2",
+    );
+  });
+
+  it.each<{
+    readonly title: string;
+    readonly given: Partial<SitesLease>;
+    readonly status: string | undefined;
+    readonly host: string | undefined;
+  }>([
+    {
+      title: "running, opening its preview",
+      given: { devServers: [server("running", "https://web-4.example.app")] },
+      status: "running",
+      host: "web-4.example.app",
+    },
+    {
+      title: "starting",
+      given: { devServers: [server("starting", "https://web-4.example.app")] },
+      status: "starting",
+      host: "web-4.example.app",
+    },
+    {
+      title: "crashed, a failed start",
+      given: { devServers: [server("crashed", "https://web-4.example.app")] },
+      status: "crashed",
+      host: "web-4.example.app",
+    },
+    {
+      title: "not running, where its server stopped",
+      given: { devServers: [server("stopped", "https://web-4.example.app")] },
+      status: "not running",
+      host: undefined,
+    },
+    {
+      title: "not running, where the read found no server",
+      given: { devServers: [] },
+      status: "not running",
+      host: undefined,
+    },
+    {
+      title: "paused, while its lease is parked",
+      given: { state: "parked", devServers: [server("running", "https://web-4.example.app")] },
+      status: "paused",
+      host: undefined,
+    },
+    { title: "nothing, before any read", given: {}, status: undefined, host: undefined },
+  ])("Each part shows its preview with its status: $title", ({ given, status, host }) => {
+    const [part] = worksOf(
+      mate({ name: "Kara", pools: ["webpool"], leases: [lease("webpool-4", given)] }),
+    ).flatMap((work) => work.parts);
+    expect([part?.status, part?.host]).toEqual([status, host]);
+  });
+
+  it("A part not running offers to start it, by a request written for the Mate", () => {
+    const works = worksOf(
+      mate({
+        name: "Kara",
+        pools: ["webpool", "boxpool"],
+        leases: [
+          lease("webpool-4", { branch: "checkout-rework", devServers: [server("stopped")] }),
+          lease("boxpool-4", {
+            branch: "checkout-rework",
+            devServers: [server("running", "https://box-4.example.app")],
+          }),
+          lease("webpool-5", { branch: "spike", devServers: [server("crashed")] }),
+        ],
+        changes: [change("checkout-rework", 2, "Rework the checkout flow")],
+      }),
+    );
+    expect(
+      works.flatMap((work) => work.parts.map((part) => [part.name, part.start?.request])),
+    ).toEqual([
+      ["Box", undefined],
+      ["Web", "Start the Web preview for “Rework the checkout flow”."],
+      ["Web", "Start the Web preview."],
+    ]);
+    expect(works[0]?.parts[1]?.start?.branch).toBe("checkout-rework");
+  });
+
+  it("A Mate with nothing is left out", () => {
+    expect(
+      projectSitesSections({
+        production: undefined,
+        productionUnread: false,
+        stages: undefined,
+        unreadStages: [],
+        placeRoutes: (place) => place.routes,
+        mates: [
+          mate({ name: "Kara", routes: [], pools: ["webpool"], leases: [] }),
+          mate({ name: "Nell", routes: [route("appstage", "nell-stage.example.app")] }),
+        ],
+      }).map((section) => section.title),
+    ).toEqual(["Main"]);
   });
 });
 
@@ -625,7 +820,12 @@ describe("the project's addresses", () => {
       ],
     });
     const [kara] = sections;
-    expect(kara?.links?.map((link) => [link.service, link.host])).toEqual([
+    expect(
+      kara?.kind === "mate"
+        ? kara.works.flatMap((work) => work.parts.map((part) => [part.name, part.host]))
+        : [],
+    ).toEqual([
+      ["HQ", undefined],
       ["Web", "webpool-3001.example.app"],
     ]);
     expect(sitesLinkCount(sections)).toBe(1);
@@ -794,8 +994,11 @@ describe("the addresses filter", () => {
       filterSites(withPools, "embedder").map((section) => [
         section.key,
         section.links?.map((link) => link.host),
+        section.kind === "mate"
+          ? section.works.flatMap((work) => work.parts.map((part) => part.host))
+          : [],
       ]),
-    ).toEqual([["mate:p-kara", ["embedderpool-4.example.app"]]]);
+    ).toEqual([["mate:p-kara", [], ["embedderpool-4.example.app"]]]);
   });
 });
 
