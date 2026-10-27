@@ -83,6 +83,8 @@ export interface PoolPair {
   readonly stages: ReadonlyArray<{
     readonly hostname: string;
     readonly setup?: string | undefined;
+    /** The application part the pair serves ("box"), where zcp names it. */
+    readonly part?: string | undefined;
   }>;
 }
 
@@ -133,6 +135,11 @@ export interface ServicePairsInput {
   readonly proposal?: string | undefined;
   /** The pairs zcp's envelope keys by a dev pool (`poolPairsIn`); a pool the services do not list pairs nothing. */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
+  /**
+   * The dev pools among the services, by hostname: a stage zcp keys by no pool pairs, by its stem,
+   * with the pool of that stem (`apistage` with `apipool`), as a zcp from before pool pairs left it.
+   */
+  readonly pools?: ReadonlyArray<string> | undefined;
 }
 
 const STAGE_SUFFIX = "stage";
@@ -186,10 +193,6 @@ const withoutSuffix = (hostname: string, suffix: string): string =>
  * a person sees only the part and its preview.
  */
 export const poolPartName = (pool: string): string => partName(withoutSuffix(pool, POOL_SUFFIX));
-
-/** The part a stage serves, by its hostname with `stage` left off: `boxstage` is Box. */
-export const stagePartName = (stage: string): string =>
-  partName(withoutSuffix(stage, STAGE_SUFFIX));
 
 interface Declared {
   readonly dev: string;
@@ -257,6 +260,7 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
   ];
   // A pool the project no longer holds pairs nothing; the first link naming a stage wins.
   const held = new Set(input.services.map((service) => service.hostname));
+  const pools = new Set(input.pools ?? []);
   const linked = new Map<string, Declared>();
   for (const { pool, stages } of input.poolPairs ?? []) {
     if (!held.has(pool)) continue;
@@ -278,6 +282,9 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
       return { dev: link.dev, preview: { hostname, setup: link.setup, source: "envelope" } };
     if (declared || !isStageHostname(hostname)) return undefined;
     const stem = hostname.slice(0, -STAGE_SUFFIX.length);
+    const pool = `${stem}${POOL_SUFFIX}`;
+    if (pools.has(pool) && held.has(pool))
+      return { dev: pool, preview: { hostname, setup: undefined, source: "stem" } };
     const dev = [`${stem}${DEV_SUFFIX}`, stem].find((candidate) => beside(hostname, candidate));
     return dev === undefined
       ? undefined
