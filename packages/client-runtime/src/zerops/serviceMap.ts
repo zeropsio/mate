@@ -30,7 +30,12 @@
  * A folded stage row carries no position of its own — it is nested under
  * its dev partner and follows it automatically.
  */
-import type { ZeropsDevServer, ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
+import type {
+  ZeropsDevServer,
+  ZeropsLifecycle,
+  ZeropsStandIn,
+  ZeropsStateEnvelope,
+} from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
@@ -533,6 +538,15 @@ const productionOf = (
   const snapshot = lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname);
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
+
+/** What zcp holds a dev service in place for, as its snapshot says; none while the lifecycle is not known. */
+export const standInOf = (
+  hostname: string,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ZeropsStandIn | undefined =>
+  lifecycle?.state === "known"
+    ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.standIn
+    : undefined;
 
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (

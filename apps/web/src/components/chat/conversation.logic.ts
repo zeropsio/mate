@@ -2231,6 +2231,8 @@ export interface IncidentModel {
   readonly tone: IncidentTone;
   /** When the incident began: its first failure. */
   readonly appearedAt: string;
+  /** What zcp held the service in place for, as the call that found it said (a stand-in). */
+  readonly standIn?: { readonly for: string };
 }
 
 /** What a dev-server call found: running, not running, or nothing (still running, another kind). */
@@ -2339,6 +2341,7 @@ export function standingIncidents(stretch: Stretch): IncidentModel[] {
         ],
         tone: failed ? "failed" : "attention",
         appearedAt: operation.settledAt ?? operation.anchorAt,
+        ...(operation.standIn === undefined ? {} : { standIn: operation.standIn }),
       },
     ];
   });
@@ -2360,11 +2363,36 @@ const AT_REST_WORDS: Readonly<Record<string, string>> = {
   STOPPED: "stopped",
 };
 
-type ServiceStatus = { readonly hostname: string; readonly status: string };
+/** A service as the platform and zcp state it now: its status, and what zcp holds it for, if anything. */
+export type ServiceStatus = {
+  readonly hostname: string;
+  readonly status: string;
+  readonly standIn?: { readonly for: string };
+};
 
 /** Why nothing is meant to run on a service now, by its status; undefined where something is. */
 function atRestWords(status: string): string | undefined {
   return AT_REST_WORDS[status.replace(/^SERVICE_/u, "")];
+}
+
+/** What a stand-in is held for, in words, by what zcp names; a reason this build has no words for, as named. */
+const STAND_IN_WORDS: Readonly<Record<string, string>> = {
+  "pool-migrate": "moving onto dev pools",
+};
+
+function standInWords(standIn: { readonly for: string }): string {
+  return STAND_IN_WORDS[standIn.for] ?? `held for ${standIn.for}`;
+}
+
+/** The services the topology lists, each with what zcp holds it for; undefined while unread. */
+export function servicesWithStandIns(
+  services: ReadonlyArray<{ readonly hostname: string; readonly status: string }> | undefined,
+  standInOf: (hostname: string) => { readonly for: string } | undefined,
+): ReadonlyArray<ServiceStatus> | undefined {
+  return services?.map(({ hostname, status }) => {
+    const standIn = standInOf(hostname);
+    return { hostname, status, ...(standIn === undefined ? {} : { standIn }) };
+  });
 }
 
 /**
@@ -2383,7 +2411,14 @@ export function incidentsAtRest(
   return incidents.flatMap((incident) => {
     const service = services.find((one) => one.hostname === incident.hostname);
     if (service === undefined) return [];
-    const words = incident.tone === "attention" ? atRestWords(service.status) : undefined;
+    // A stand-in zcp holds is never a fault, whatever the platform says of it.
+    const standIn = service.standIn ?? incident.standIn;
+    const words =
+      standIn !== undefined && incident.tone !== "ok"
+        ? standInWords(standIn)
+        : incident.tone === "attention"
+          ? atRestWords(service.status)
+          : undefined;
     return [words === undefined ? incident : { ...incident, tone: "rest", phases: [words] }];
   });
 }
@@ -2392,15 +2427,22 @@ export function incidentsAtRest(
  * The run's record of a dev server found not running, in its own words; its
  * colour says whether it still needs anyone: amber only on a service the
  * platform says is meant to run — never while its state is unread, once the
- * service is gone, or while it holds nothing or is stopped.
+ * service is gone, or while it holds nothing or is stopped. A stand-in zcp
+ * holds is never amber nor red, whatever the platform says of it.
  */
 export function incidentToneNow(
   incident: IncidentModel,
   services: ReadonlyArray<ServiceStatus> | undefined,
 ): IncidentModel {
+  const service = services?.find((one) => one.hostname === incident.hostname);
+  if (
+    (incident.tone === "attention" || incident.tone === "failed") &&
+    (service?.standIn ?? incident.standIn) !== undefined
+  ) {
+    return { ...incident, tone: "rest" };
+  }
   if (incident.tone !== "attention") return incident;
-  const status = services?.find((one) => one.hostname === incident.hostname)?.status;
-  return status === undefined || atRestWords(status) !== undefined
+  return service === undefined || atRestWords(service.status) !== undefined
     ? { ...incident, tone: "rest" }
     : incident;
 }
@@ -2414,7 +2456,13 @@ export function incidentToneNow(
 export function stretchIncidents(stretch: Stretch): IncidentModel[] {
   const byHost = new Map<
     string,
-    { phases: string[]; tone: IncidentTone; appearedAt: string; key: string }
+    {
+      phases: string[];
+      tone: IncidentTone;
+      appearedAt: string;
+      key: string;
+      standIn?: { readonly for: string };
+    }
   >();
   for (const operation of stretchOperations(stretch)) {
     if (operation.kind !== "devServer") continue;
@@ -2428,10 +2476,12 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
         phases: [devServerFailurePhrase(operation)],
         tone: "attention",
         appearedAt: operation.settledAt ?? operation.anchorAt,
+        ...(operation.standIn === undefined ? {} : { standIn: operation.standIn }),
       });
       continue;
     }
     if (operation.phase === "running") continue;
+    if (operation.standIn !== undefined) incident.standIn = operation.standIn;
     const action = devServerAction(operation);
     if (running === true) {
       if (action === "restart") incident.phases.push("restarted");
@@ -2451,6 +2501,7 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
     phases: dedupeAdjacent(incident.phases),
     tone: incident.tone,
     appearedAt: incident.appearedAt,
+    ...(incident.standIn === undefined ? {} : { standIn: incident.standIn }),
   }));
 }
 

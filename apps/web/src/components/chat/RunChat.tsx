@@ -113,7 +113,8 @@ import {
   useOperationCard,
   type OperationCardRegions,
 } from "../../zerops/activity/useOperationCard";
-import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -127,6 +128,7 @@ import {
   type BrokeOff,
   type BrowserStripModel,
   incidentToneNow,
+  servicesWithStandIns,
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
@@ -2344,7 +2346,14 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
 function IncidentMark({ incident }: { readonly incident: IncidentModel }) {
   const ctx = use(TimelineRowCtx);
   const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
-  const tone = incidentToneNow(incident, topology?.services).tone;
+  const lifecycle = useZeropsLifecycle(
+    ctx.activeThreadEnvironmentId,
+    ctx.threadRef?.threadId ?? null,
+  );
+  const tone = incidentToneNow(
+    incident,
+    servicesWithStandIns(topology?.services, (hostname) => standInOf(hostname, lifecycle)),
+  ).tone;
   return (
     <ActivityIcon
       aria-hidden="true"

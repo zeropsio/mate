@@ -198,6 +198,7 @@ function buildStandaloneOperation(
     ...(fields.batch !== undefined ? { batch: fields.batch } : {}),
     ...(fields.strategy !== undefined ? { strategy: fields.strategy } : {}),
     ...(fields.refused !== undefined ? { refused: fields.refused } : {}),
+    ...(fields.standIn !== undefined ? { standIn: fields.standIn } : {}),
     ...(fields.pullRequest !== undefined ? { pullRequest: fields.pullRequest } : {}),
     ...(fields.resultStatus !== undefined ? { resultStatus: fields.resultStatus } : {}),
     hasResult: fields.hasResult,

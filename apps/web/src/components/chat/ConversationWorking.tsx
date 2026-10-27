@@ -40,10 +40,12 @@ import {
   formatWorkDuration,
   incidentsAtRest,
   incidentsStanding,
+  servicesWithStandIns,
   isGitPushOnly,
   type IncidentModel,
 } from "./conversation.logic";
-import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import {
   detailLines,
   importLines,
@@ -664,6 +666,11 @@ function Instruments({
   useLayoutEffect(() => onDrawn?.());
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
+  // zcp's word on what it holds in place, beside the platform's status.
+  const lifecycle = useZeropsLifecycle(
+    incidents.length === 0 ? null : environmentId,
+    threadRef?.threadId ?? null,
+  );
   const standing = incidentsAtRest(
     incidentsStanding(
       incidents,
@@ -673,7 +680,7 @@ function Instruments({
           .map((service) => service.hostname),
       ),
     ),
-    topology?.services,
+    servicesWithStandIns(topology?.services, (hostname) => standInOf(hostname, lifecycle)),
   );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;
