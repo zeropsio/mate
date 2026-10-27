@@ -264,15 +264,17 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       update: needsRestart,
     };
     const html = render();
-    expect(html).toContain("zcp 9.226.0 available");
+    expect(html).toContain("Zerops Control Plane 9.226.0 available");
     expect(html).toContain('aria-label="Update: zcp 9.226.0 is out; only a restart installs it"');
     expect(menuAction("update").label).toBe("Update");
     verbs.check.mockResolvedValue(needsRestart);
     verbs.confirm.mockResolvedValue(true);
     menuAction("update").onSelect();
     await vi.waitFor(() => expect(verbs.update).toHaveBeenCalledTimes(1));
-    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to zcp 9\.226\.0\?\n/);
-    expect(verbs.update).toHaveBeenCalledWith("zcp 9.226.0", { zcp: "9.226.0" });
+    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(
+      /^Update Nova to Zerops Control Plane 9\.226\.0\?\n/,
+    );
+    expect(verbs.update).toHaveBeenCalledWith("Zerops Control Plane 9.226.0", { zcp: "9.226.0" });
   });
 
   // The owner's open Mate read "zcp 9.226.0 available" beside "Up to date" and no Update: the

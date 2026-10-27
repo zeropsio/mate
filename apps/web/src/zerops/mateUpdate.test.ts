@@ -248,13 +248,16 @@ describe("a Mate that only a restart gets current", () => {
     {
       name: "zcp behind alone",
       update: base,
-      expected: { text: "Server 0.15.200 · zcp 9.226.0 available", tone: "attention" },
+      expected: {
+        text: "Server 0.15.200 · Zerops Control Plane 9.226.0 available",
+        tone: "attention",
+      },
     },
     {
       name: "zcp behind beside a newer mate",
       update: { ...base, latest: "0.15.201", available: true },
       expected: {
-        text: "Server 0.15.200 · 0.15.201 available · zcp 9.226.0 available",
+        text: "Server 0.15.200 · 0.15.201 available · Zerops Control Plane 9.226.0 available",
         tone: "attention",
       },
     },
@@ -274,11 +277,15 @@ describe("a Mate that only a restart gets current", () => {
 
   it.each([
     ["draining", undefined, "Update ready; waiting for your work to finish"],
-    ["restarting", undefined, "Restarting to update zcp — your conversations are safe"],
+    [
+      "restarting",
+      undefined,
+      "Restarting to update Zerops Control Plane — your conversations are safe",
+    ],
     [
       "postponed",
-      "this zcp can't restart its Mate yet",
-      "Update postponed; this zcp can't restart its Mate yet",
+      "this Zerops Control Plane can't restart its Mate yet",
+      "Update postponed; this Zerops Control Plane can't restart its Mate yet",
     ],
   ] as const)("a restart %s says so on the line", (phase, reason, text) => {
     expect(
@@ -294,21 +301,21 @@ describe("a Mate that only a restart gets current", () => {
 
   it("the question names zcp, and says the container restarts once the work is done", () => {
     expect(mateUpdateQuestion("Nova", null, { zcp: "9.226.0" })).toBe(
-      "Update Nova to zcp 9.226.0?\nNova finishes the work it's doing first, its helpers' too, then its container restarts to install it, which takes a few minutes. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
+      "Update Nova to Zerops Control Plane 9.226.0?\nNova finishes the work it's doing first, its helpers' too, then its container restarts to install it, which takes a few minutes. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
     );
     expect(mateUpdateQuestion("Nova", "0.15.201", { zcp: "9.226.0" }).split("\n")[0]).toBe(
-      "Update Nova to 0.15.201 and zcp 9.226.0?",
+      "Update Nova to 0.15.201 and Zerops Control Plane 9.226.0?",
     );
   });
 
   it.each([
     {
       state: { phase: "updated", to: null, zcp: "9.226.0" } as const,
-      text: "Updated zcp to 9.226.0",
+      text: "Updated Zerops Control Plane to 9.226.0",
     },
     {
       state: { phase: "updated", to: "0.15.201", zcp: "9.226.0" } as const,
-      text: "Updated to 0.15.201 and zcp 9.226.0",
+      text: "Updated to 0.15.201 and Zerops Control Plane 9.226.0",
     },
   ])("a finished restart says what moved: $text", ({ state, text }) => {
     expect(mateUpdateStatus(state)?.text).toBe(text);

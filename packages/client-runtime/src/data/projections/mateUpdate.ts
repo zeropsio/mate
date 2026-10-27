@@ -10,7 +10,8 @@ import { operationProgress } from "./operation.ts";
 export type MateUpdateState =
   | { readonly phase: "idle" | "checking" | "already-current" }
   | { readonly phase: "updating"; readonly to: string }
-  | { readonly phase: "updated"; readonly to: string }
+  /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */
+  | { readonly phase: "updated"; readonly to: string | null; readonly zcp?: string }
   | { readonly phase: "failed"; readonly message: string };
 export interface MateUpdateRead {
   readonly state: MateUpdateState;
@@ -54,6 +55,16 @@ export const mateUpdate: Projection<string, MateUpdateRead> = {
                       "The update did not take."),
               },
             };
+          const restart = record.intent.restart;
+          if (restart !== undefined)
+            return {
+              checked: undefined,
+              state: {
+                phase: "updated",
+                to: restart.mate ?? null,
+                ...(restart.zcp === undefined ? {} : { zcp: restart.zcp }),
+              },
+            };
           return {
             checked: undefined,
             state:
@@ -91,7 +102,11 @@ export const mateUpdate: Projection<string, MateUpdateRead> = {
       checked,
       state:
         checked !== undefined &&
-        (checked === null || (checked.latest !== "" && checked.available !== true))
+        (checked === null ||
+          (checked.latest !== "" &&
+            checked.available !== true &&
+            // zcp behind is no update of the mate's, and still one to take.
+            checked.restart?.needed !== true))
           ? { phase: "already-current" }
           : { phase: "idle" },
     };

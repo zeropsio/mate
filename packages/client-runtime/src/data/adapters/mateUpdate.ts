@@ -21,7 +21,13 @@ import { readsOfState, type AccountStore } from "../store.ts";
 import { STREAM_POLICY, type StreamEvent } from "../streamMachine.ts";
 import { makeOperations } from "../operations/coordinator.ts";
 import { makeMateUpdateExecutor } from "../operations/executors/mateUpdate.ts";
-import { updateOutcome, updateServer, type UpdateServer } from "../operations/mateUpdate.ts";
+import {
+  updateOutcome,
+  updateServer,
+  type MateRestartTarget,
+  type UpdateServer,
+} from "../operations/mateUpdate.ts";
+import { operationResult } from "../model.ts";
 
 const isAuthorizationError = Schema.is(EnvironmentAuthorizationError);
 const isUpdateError = Schema.is(ZeropsMateUpdateError);
@@ -70,8 +76,8 @@ export interface MateUpdateHost {
     server: UpdateServer,
     to: string,
     containerKey: string | null,
-    /** The press found that only a container restart gets the Mate current. */
-    restart?: boolean,
+    /** The press found that only a container restart gets the Mate current, and what it installs. */
+    restart?: MateRestartTarget,
   ) => Promise<void>;
   readonly check: (
     environmentId: EnvironmentId,
@@ -138,7 +144,11 @@ export function makeMateUpdates(options: {
       record.submission !== "uncertain-unasked"
     )
       return;
-    const end = updateOutcome(record.intent, server);
+    const end = updateOutcome(
+      record.intent,
+      server,
+      operationResult(record, "mate-update")?.restartAttempt,
+    );
     if (end === null) return;
     store.dispatch({
       kind: "operation-receipt",
@@ -214,7 +224,7 @@ export function makeMateUpdates(options: {
             from: server.serverVersion,
             bootId: server.bootId,
             to,
-            ...(restart === true ? { restart: true } : {}),
+            ...(restart === undefined ? {} : { restart }),
           },
           requestId,
         ),

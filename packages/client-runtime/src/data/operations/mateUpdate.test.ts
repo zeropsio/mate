@@ -88,7 +88,10 @@ describe("Mate update evidence", () => {
         name: "the next boot with zcp still behind did not take",
         server: { serverVersion: "1", bootId: "new", update: zcp(true) },
         attempt: "restart-1",
-        expected: { kind: "failed", reason: "The restart didn't install zcp 9.226.0." },
+        expected: {
+          kind: "failed",
+          reason: "The restart didn't install Zerops Control Plane 9.226.0.",
+        },
       },
     ])("$name", ({ server, attempt, expected }) => {
       expect(updateOutcome(restart, server, attempt)).toEqual(expected);
@@ -99,7 +102,11 @@ describe("Mate update evidence", () => {
         updateOutcome(both, { serverVersion: "2", bootId: "new", update: zcp(false) }),
       ).toEqual({ kind: "succeeded" });
       expect(
-        updateOutcome(both, { serverVersion: "1", bootId: "new", update: zcp(false) }),
+        updateOutcome(both, {
+          serverVersion: "1",
+          bootId: "new",
+          update: { ...zcp(false), latest: "2", available: true },
+        }),
       ).toEqual({ kind: "failed", reason: "The restart didn't install mate 2." });
     });
   });

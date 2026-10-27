@@ -28,7 +28,7 @@ export function mateUpdateLine(
       restart.phase === "draining"
         ? "Update ready; waiting for your work to finish"
         : restart.phase === "restarting"
-          ? `Restarting to update${update.zcp?.behind === true ? " zcp" : ""} — your conversations are safe`
+          ? `Restarting to update${update.zcp?.behind === true ? " Zerops Control Plane" : ""} — your conversations are safe`
           : `Update postponed; ${restart.reason ?? "the restart did not happen"}`;
     return { text, tone: "default" };
   }
@@ -57,7 +57,9 @@ export function mateUpdateLine(
   }
   const available = [
     ...(update.available ? [`${update.latest} available`] : []),
-    ...(update.zcp?.behind === true ? [`zcp ${update.zcp.latest} available`] : []),
+    ...(update.zcp?.behind === true && update.zcp.latest !== ""
+      ? [`Zerops Control Plane ${update.zcp.latest} available`]
+      : []),
   ];
   if (available.length === 0) {
     return { text: `Server ${update.installed}`, tone: "default" };
@@ -82,7 +84,8 @@ export type MateUpdateState =
       readonly overdue?: true;
     }
   | { readonly phase: "already-current" }
-  | { readonly phase: "updated"; readonly to: string }
+  /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */
+  | { readonly phase: "updated"; readonly to: string | null; readonly zcp?: string }
   | { readonly phase: "failed"; readonly message: string };
 
 export interface MateUpdateStatus {
@@ -110,7 +113,15 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
         tone: "quiet",
       };
     case "updated":
-      return { text: `Updated to ${state.to}`, tone: "quiet" };
+      return {
+        text:
+          state.zcp === undefined
+            ? `Updated to ${state.to ?? NEWEST_MATE_VERSION}`
+            : state.to === null
+              ? `Updated Zerops Control Plane to ${state.zcp}`
+              : `Updated to ${state.to} and Zerops Control Plane ${state.zcp}`,
+        tone: "quiet",
+      };
     case "already-current":
       return { text: "Up to date", tone: "quiet" };
     case "failed":
@@ -157,8 +168,8 @@ export function mateUpdateQuestion(
     restart?.zcp === undefined
       ? (latest ?? NEWEST_MATE_VERSION)
       : latest === null
-        ? `zcp ${restart.zcp}`
-        : `${latest} and zcp ${restart.zcp}`;
+        ? `Zerops Control Plane ${restart.zcp}`
+        : `${latest} and Zerops Control Plane ${restart.zcp}`;
   const how =
     restart === undefined
       ? "then restarts on the new version, which takes about a minute"

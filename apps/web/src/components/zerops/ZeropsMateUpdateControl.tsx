@@ -86,8 +86,16 @@ export function ZeropsMateUpdateControl({
         if (!yes) return;
         // A restart for zcp alone says the zcp it installs while it runs.
         const to =
-          latest ?? (restart?.zcp === undefined ? NEWEST_MATE_VERSION : `zcp ${restart.zcp}`);
-        update(to, restart !== undefined);
+          latest ??
+          (restart?.zcp === undefined
+            ? NEWEST_MATE_VERSION
+            : `Zerops Control Plane ${restart.zcp}`);
+        update(
+          to,
+          restart === undefined
+            ? undefined
+            : { ...restart, ...(latest === null ? {} : { mate: latest }) },
+        );
       });
     },
     [mateName, update],

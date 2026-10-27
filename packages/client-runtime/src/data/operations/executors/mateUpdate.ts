@@ -73,6 +73,9 @@ export function makeMateUpdateExecutor<E>(options: {
                       value.action === "none" && value.started !== true
                         ? value.serverVersion
                         : null,
+                    ...(value.restartAttempt === undefined
+                      ? {}
+                      : { restartAttempt: value.restartAttempt }),
                   },
                 }
               : { kind: "refused", reason: value.error },
