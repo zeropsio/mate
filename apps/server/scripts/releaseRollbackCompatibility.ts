@@ -4,7 +4,6 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import * as NodePath from "node:path";
 import { parse as parseYaml } from "yaml";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -101,6 +100,16 @@ const COMPATIBLE_FILES: ReadonlySet<string> = new Set([
   "zerops.yml",
 ]);
 
+/** A `link:` target resolved against its importer directory, as the lockfile's importer id. */
+const resolveLink = (from: string, target: string): string =>
+  [...from.split("/"), ...target.split("/")]
+    .reduce<Array<string>>((resolved, segment) => {
+      if (segment === "..") resolved.pop();
+      else if (segment !== "." && segment !== "") resolved.push(segment);
+      return resolved;
+    }, [])
+    .join("/");
+
 const isTest = (path: string): boolean => /\.test\.tsx?$/u.test(path);
 
 /** The first path outside the allowlist, or undefined. The lockfile is judged separately. */
@@ -155,9 +164,7 @@ const serverRuntimeClosure = (lock: string): string | undefined => {
       for (const [name, entry] of Object.entries(section ?? {})) {
         const version = entry?.version ?? "";
         if (version.startsWith("link:")) {
-          pushImporter(
-            NodePath.posix.normalize(NodePath.posix.join(from, version.slice("link:".length))),
-          );
+          pushImporter(resolveLink(from, version.slice("link:".length)));
         } else if (!linkedOnly) {
           queue.push(`${name}@${version}`);
         }

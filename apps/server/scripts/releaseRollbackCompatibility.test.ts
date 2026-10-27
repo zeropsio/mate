@@ -1,5 +1,3 @@
-import * as NodeFS from "node:fs";
-import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -333,21 +331,31 @@ snapshots:
 });
 
 describe("the allowlisted HQ wire modules stay free of stored state", () => {
-  const root = NodePath.resolve(import.meta.dirname, "../../..");
-  const sourcesUnder = (dir: string): ReadonlyArray<string> =>
-    NodeFS.readdirSync(NodePath.join(root, dir), { withFileTypes: true, recursive: true })
-      .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name) && !isTestName(entry.name))
-      .map((entry) => NodePath.join(entry.parentPath, entry.name));
-  const isTestName = (name: string) => /\.test\.tsx?$/u.test(name);
-  const importsOf = (file: string): ReadonlyArray<string> =>
-    [...NodeFS.readFileSync(file, "utf8").matchAll(/from "([^"]+)"/gu)].map((match) => match[1]!);
+  const sources = Effect.fnUntraced(function* (dir: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const files = yield* fs.readDirectory(path.join(root, dir), { recursive: true });
+    return yield* Effect.forEach(
+      files.filter((file) => /\.tsx?$/u.test(file) && !/\.test\.tsx?$/u.test(file)),
+      (file) =>
+        fs.readFileString(path.join(root, dir, file)).pipe(
+          Effect.map((text) => ({
+            file: `${dir}/${file}`,
+            imports: [...text.matchAll(/from "([^"]+)"/gu)].map((match) => match[1]!),
+          })),
+        ),
+      { concurrency: 16 },
+    );
+  });
+  const hqModules = Effect.map(sources("packages/shared/src"), (files) =>
+    files.filter(({ file }) => /\/hq[^/]*$|\/hqGitBrowse\//u.test(file)),
+  );
 
-  it("an hq module imports only schemas, never a persistence or filesystem module", () => {
-    const shared = NodePath.join(root, "packages/shared/src");
-    const offenders = sourcesUnder("packages/shared/src")
-      .filter((file) => NodePath.basename(file).startsWith("hq") || file.includes("/hqGitBrowse/"))
-      .flatMap((file) =>
-        importsOf(file)
+  it.effect("an hq module imports only schemas, never a persistence or filesystem module", () =>
+    Effect.gen(function* () {
+      const offenders = (yield* hqModules).flatMap(({ file, imports }) =>
+        imports
           .filter(
             (specifier) =>
               !/^effect(\/|$)/u.test(specifier) &&
@@ -356,30 +364,41 @@ describe("the allowlisted HQ wire modules stay free of stored state", () => {
                 specifier,
               ),
           )
-          .map((specifier) => `${NodePath.relative(shared, file)} imports ${specifier}`),
+          .map((specifier) => `${file} imports ${specifier}`),
       );
-    expect(offenders).toEqual([]);
-  });
+      expect((yield* hqModules).length).toBeGreaterThan(20);
+      expect(offenders).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 
-  it("the server reaches an hq module only from zerops/, which is never allowlisted", () => {
-    const server = NodePath.join(root, "apps/server/src");
-    const importers = sourcesUnder("apps/server/src")
-      .filter((file) => importsOf(file).some((specifier) => /shared\/hq/u.test(specifier)))
-      .map((file) => NodePath.relative(server, file))
-      .filter((file) => !file.startsWith("zerops/"));
-    expect(importers).toEqual([]);
-  });
+  it.effect("the server reaches an hq module only from zerops/, which is never allowlisted", () =>
+    Effect.gen(function* () {
+      const importers = (yield* sources("apps/server/src"))
+        .filter(({ imports }) => imports.some((specifier) => /shared\/hq/u.test(specifier)))
+        .map(({ file }) => file)
+        .filter((file) => !file.startsWith("apps/server/src/zerops/"));
+      expect(importers).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 
-  it("no server or shared file imports a package the allowlist trusts as client-only", () => {
-    const importers = [
-      ...sourcesUnder("apps/server/src"),
-      ...sourcesUnder("packages/shared/src"),
-      ...sourcesUnder("packages/contracts/src"),
-    ].filter((file) =>
-      importsOf(file).some(
-        (s) => s.startsWith("@t3tools/hq-git") || s.startsWith("@t3tools/client-runtime"),
-      ),
-    );
-    expect(importers.map((file) => NodePath.relative(root, file))).toEqual([]);
-  });
+  it.effect("no server, shared or contracts file imports a package the allowlist trusts", () =>
+    Effect.gen(function* () {
+      const all = (yield* Effect.all([
+        sources("apps/server/src"),
+        sources("packages/shared/src"),
+        sources("packages/contracts/src"),
+      ])).flat();
+      expect(
+        all
+          .filter(({ imports }) =>
+            imports.some(
+              (specifier) =>
+                specifier.startsWith("@t3tools/hq-git") ||
+                specifier.startsWith("@t3tools/client-runtime"),
+            ),
+          )
+          .map(({ file }) => file),
+      ).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });
