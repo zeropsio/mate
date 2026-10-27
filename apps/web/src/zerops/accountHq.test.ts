@@ -346,9 +346,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   };
 
   const sharedApi = (client: ZeropsApiClient) => {
-    const hq = configuredHq();
-    if (hq === undefined) throw new Error("This build names no HQ.");
-    return accountHqApi(client, "org-1", hq);
+    return accountHqApi(client, "org-1", configuredHq());
   };
 
   it("A web built with an HQ origin signs in to that HQ", async () => {
@@ -372,6 +370,37 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     expect(official?.address).toBe(SHARED);
     await official?.api.structure();
     expect(paths).toEqual([`${SHARED}/api/door`, `${SHARED}/api/structure`]);
+    await act(async () => {
+      tree?.unmount();
+    });
+  });
+
+  it("keeps the official HQ effect identity when the anchor still names the same address and API", async () => {
+    const { client } = person("OWNER");
+    const session = {
+      client,
+      activeOrganization: { id: "org-1" },
+    } as unknown as ZeropsSessionValue;
+    const seen: Array<ReturnType<typeof useOfficialHq>> = [];
+    function Probe() {
+      seen.push(useOfficialHq());
+      return null;
+    }
+    let tree: ReturnType<typeof create> | undefined;
+    await act(async () => {
+      tree = create(
+        createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
+      );
+    });
+    const first = seen.find((hq) => hq !== null);
+    expect(first).toBeDefined();
+    await act(async () => {
+      tree?.update(
+        createElement(ZeropsSessionContext.Provider, { value: session }, createElement(Probe)),
+      );
+    });
+    expect(configuredHq()).toBe(configuredHq());
+    expect(seen.filter((hq) => hq !== null).every((hq) => hq === first)).toBe(true);
     await act(async () => {
       tree?.unmount();
     });

@@ -137,8 +137,6 @@ describe("menuRowsAtom", () => {
 
   it.each([
     { case: "the HQ verdict undecided", verdict: "pending", drawn: false },
-    { case: "no official HQ", verdict: "none", drawn: true },
-    { case: "the member list unreadable", verdict: "unreadable", drawn: true },
     {
       case: "an official HQ's first read under way",
       verdict: "official",

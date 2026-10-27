@@ -12,7 +12,6 @@
  * persisted server-side.
  */
 
-import { readProjectProcesses, type ActivityProcess } from "./activity/dto.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
@@ -872,62 +871,6 @@ export interface ZeropsPortRoutingWrite {
   /** `WHITELIST`: only the ranges may connect; `BLACKLIST` with none: everyone may. */
   readonly firewallPolicy: "WHITELIST" | "BLACKLIST";
   readonly firewallIpRanges: ReadonlyArray<string>;
-}
-
-/** A routing of a project's own domains (`GET /project/{id}/public-http-routing`). */
-export interface ZeropsPublicHttpRouting {
-  readonly id: string;
-  /** Whether it is in place as it reads, or waits for the project's routings to be synced. */
-  readonly isSynced: boolean;
-  readonly domains: ReadonlyArray<{
-    readonly domainName: string;
-    /** The certificate's state: `ACTIVE` once the domain serves over HTTPS. */
-    readonly sslStatus: string | undefined;
-    /** Why the certificate could not be installed, where the platform says. */
-    readonly sslError: string | undefined;
-  }>;
-}
-
-const textOf = (value: unknown): string | undefined =>
-  typeof value === "string" && value.length > 0 ? value : undefined;
-
-export function publicHttpRoutingsOf(
-  items: ReadonlyArray<unknown>,
-): ReadonlyArray<ZeropsPublicHttpRouting> {
-  return items.flatMap((item): ReadonlyArray<ZeropsPublicHttpRouting> => {
-    if (typeof item !== "object" || item === null) return [];
-    const { id, isSynced, domains } = item as {
-      readonly id?: unknown;
-      readonly isSynced?: unknown;
-      readonly domains?: unknown;
-    };
-    const routingId = textOf(id);
-    if (routingId === undefined) return [];
-    return [
-      {
-        id: routingId,
-        isSynced: isSynced === true,
-        domains: (Array.isArray(domains) ? domains : []).flatMap((domain: unknown) => {
-          if (typeof domain !== "object" || domain === null) return [];
-          const { domainName, sslStatus, sslCertificateInstallationError } = domain as {
-            readonly domainName?: unknown;
-            readonly sslStatus?: unknown;
-            readonly sslCertificateInstallationError?: unknown;
-          };
-          const name = textOf(domainName);
-          return name === undefined
-            ? []
-            : [
-                {
-                  domainName: name,
-                  sslStatus: textOf(sslStatus),
-                  sslError: textOf(sslCertificateInstallationError),
-                },
-              ];
-        }),
-      },
-    ];
-  });
 }
 
 /**
@@ -2264,50 +2207,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Reads HQ's append-only birth journal directly from its project env file.
-   * Expose only this plain metadata, never unrelated env values.
-   */
-  async readProjectBirthEnv(projectId: string): Promise<ReadonlyMap<string, string>> {
-    const response = await this.#request<{ readonly envFile: string }>(
-      `/project/${projectId}/env-file`,
-      {},
-      { operationKind: "read" },
-    );
-    const entries = new Map<string, string>();
-    for (const line of response.envFile.split("\n")) {
-      const match = /^(MATE_HQ_BIRTH_[A-Za-z0-9_]+)="((?:[^"\\]|\\.)*)"$/u.exec(line);
-      if (match?.[1] === undefined || match[2] === undefined) continue;
-      const escapes: Readonly<Record<string, string>> = { n: "\n", r: "\r", t: "\t" };
-      entries.set(
-        match[1],
-        match[2].replace(/\\(.)/gu, (_, char: string) => escapes[char] ?? char),
-      );
-    }
-    return entries;
-  }
-
-  /**
-   * A create-once slot: project env keys are unique case-insensitively. Never update or delete
-   * a birth slot. The process id is retained by the journal; it is not an env entry id.
-   */
-  async createProjectEnv(
-    projectId: string,
-    key: string,
-    content: string,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string }> {
-    const response = await this.#request<{ readonly id: string }>(
-      `/project/${projectId}/env`,
-      { method: "POST", body: JSON.stringify({ key, content, sensitive: false }) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    return { processId: response.id };
-  }
-
-  /**
    * `POST /project/search` for one project, for its `envList` alone.
    *
    * The only read that carries project variables **with their entry ids**, and
@@ -2639,59 +2538,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The names of a service's own variables — never a value: whether a
-   * variable the app wrote is there, as HQ's birth reads its own token's
-   * (`hq/birth.ts`).
-   */
-  async listServiceVariableNames(
-    serviceId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<string>> {
-    return (await this.#serviceEnv(serviceId, signal)).map((entry) => entry.key);
-  }
-
-  /**
-   * Whether a service holds the variable `key` — its presence, never its value or any other
-   * variable: one key searched (`POST /user-data/search`); a sensitive value answers `REDACTED`.
-   */
-  async hasServiceVariable(
-    input: { readonly clientId: string; readonly serviceId: string; readonly key: string },
-    signal?: AbortSignal,
-  ): Promise<boolean> {
-    const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-      "/user-data/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          search: [
-            { name: "clientId", operator: "eq", value: input.clientId },
-            { name: "serviceStackId", operator: "eq", value: input.serviceId },
-            { name: "key", operator: "eq", value: input.key },
-          ],
-          sort: [],
-          limit: 1,
-        }),
-      },
-    );
-    return (found.items ?? []).length > 0;
-  }
-
-  /** `POST /service-stack/{id}/user-data` — one sensitive variable on a service, written once. */
-  async writeServiceSecret(
-    input: {
-      readonly clientId: string;
-      readonly serviceId: string;
-      readonly key: string;
-      readonly content: string;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#writeServiceEnvOnce({ ...input, sensitive: true }, signal, beforeWrite);
-  }
-
-  /**
    * `POST /service-stack/{id}/user-data`.
    *
    * A create the platform refuses is checked rather than swallowed: the only
@@ -2977,27 +2823,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /project/{id}/public-http-routing` — the project's routings of its own domains, each
-   * domain with its certificate's state (`sslStatus`: `WAITING_FOR_DNS`, `ACTIVE`, …).
-   */
-  async listPublicHttpRoutings(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ZeropsPublicHttpRouting>> {
-    const response = await this.#request<{
-      readonly list?: ReadonlyArray<unknown>;
-      readonly items?: ReadonlyArray<unknown>;
-    }>(
-      `/project/${projectId}/public-http-routing`,
-      { signal: signal ?? null },
-      {
-        operationKind: "read",
-      },
-    );
-    return publicHttpRoutingsOf(response.list ?? response.items ?? []);
-  }
-
-  /**
    * `POST /project/{id}/public-http-routing` — routes the domains to the locations, with SSL. It
    * serves nothing until the project's routings are synced (`syncPublicHttpRouting`).
    */
@@ -3226,29 +3051,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `GET /project/{id}/process` — the project's newest twenty processes, each with its app version
-   * and why it failed: what HQ's update reads of its `hq` service's deploys (`hq/update.ts`).
-   */
-  async listProjectProcesses(
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ActivityProcess>> {
-    const document = await this.#request<unknown>(
-      `/project/${projectId}/process?limit=20`,
-      { signal: signal ?? null },
-      { operationKind: "read" },
-    );
-    const processes = readProjectProcesses(document);
-    if (processes === undefined) {
-      throw new ZeropsApiError(
-        "Zerops answered the project's processes in an unknown shape.",
-        "unexpected",
-      );
-    }
-    return processes;
-  }
-
-  /**
    * `PUT /service-stack/{id}/start` with the user's own token — starts a
    * STOPPED service (a zcp container included). Answers the start's process id.
    */
@@ -3353,88 +3155,6 @@ export class ZeropsApiClient {
       { signal: signal ?? null },
     );
     return body.items ?? [];
-  }
-
-  /**
-   * `POST /service-stack/{id}/app-version` — the first of the three calls a deploy through the API
-   * is (then {@link uploadAppVersionArchive} and {@link buildAndDeployAppVersion}). A version exists
-   * whether or not its answer arrives, so a lost answer is `uncertain`.
-   */
-  async createAppVersion(
-    serviceId: string,
-    name: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly id: string }> {
-    const response = await this.#request<{ readonly id?: string }>(
-      `/service-stack/${serviceId}/app-version`,
-      { method: "POST", signal: signal ?? null, body: JSON.stringify({ name }) },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.id) {
-      throw new ZeropsApiError(
-        "Zerops accepted the app version but did not return its id, so it cannot be deployed.",
-        "uncertain",
-      );
-    }
-    return { id: response.id };
-  }
-
-  /** `PUT /app-version/{id}/upload` — the code's `tar.gz`, as raw bytes; it answers no body. */
-  async uploadAppVersionArchive(
-    appVersionId: string,
-    archive: Uint8Array<ArrayBuffer>,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    await this.#request(
-      `/app-version/${appVersionId}/upload`,
-      {
-        method: "PUT",
-        signal: signal ?? AbortSignal.timeout(APP_VERSION_UPLOAD_TIMEOUT_MS),
-        headers: { "Content-Type": "application/octet-stream" },
-        body: archive,
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        ignoreAnswer: true,
-      },
-    );
-  }
-
-  /**
-   * `PUT /app-version/{id}/build-and-deploy` — builds the uploaded code with `zeropsYaml`'s
-   * `setup` entry and deploys it; the answer is the process that does so.
-   */
-  async buildAndDeployAppVersion(
-    appVersionId: string,
-    input: { readonly zeropsYaml: string; readonly setup: string },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly processId: string }> {
-    const response = await this.#request<{ readonly id?: string }>(
-      `/app-version/${appVersionId}/build-and-deploy`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify({ zeropsYaml: input.zeropsYaml, zeropsYamlSetup: input.setup }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    if (!response.id) {
-      throw new ZeropsApiError(
-        "Zerops accepted the deploy but did not return its process, so it cannot be followed.",
-        "uncertain",
-      );
-    }
-    return { processId: response.id };
   }
 
   /**

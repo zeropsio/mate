@@ -510,16 +510,10 @@ describe("an account's HQ", () => {
       });
       const verdict = () => registry.get(store.data.project(hqVerdict, "org-a"));
       // Said before its organization is shown: held once it is.
-      account.showHq({ orgId: "org-a", verdict: "none" });
+      account.showHq({ orgId: "org-a", wire: hqFixtureWire().wire });
       expect(verdict()).toBe("pending");
       account.show("org-a");
-      expect(verdict()).toBe("none");
-      account.showHq({ orgId: "org-a", verdict: "pending" });
-      expect(verdict()).toBe("pending");
-      account.showHq({ orgId: "org-a", wire: hqFixtureWire().wire });
       expect(verdict()).toBe("official");
-      account.showHq({ orgId: "org-a", verdict: "unreadable" });
-      expect(verdict()).toBe("unreadable");
       account.stop();
     }),
   );

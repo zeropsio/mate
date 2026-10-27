@@ -1036,11 +1036,6 @@ export function makeHqApi(input: {
   /** The instant, for the renewal of a session; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
-  /**
-   * Waits until a write may be sent to this HQ, or fails it before anything is sent: the page may
-   * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
-   */
-  readonly beforeWrite?: () => Promise<void>;
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
   /**
@@ -1181,7 +1176,6 @@ export function makeHqApi(input: {
     init: RequestInit = {},
     write = false,
   ): Promise<Response> => {
-    if (write) await input.beforeWrite?.();
     let renewed = false;
     for (;;) {
       const held = session ?? restore() ?? enter();

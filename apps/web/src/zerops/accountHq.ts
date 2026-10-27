@@ -103,7 +103,7 @@ export type HqStanding =
   | { readonly kind: "unknown" }
   /**
    * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
-   * everything keeps using it. `build` the Core it runs (`hq/update.ts`) and `parts` how they
+   * everything keeps using it. `build` the Core it runs and `parts` how they
    * stand, as its stream or its health says them; each absent while neither has yet.
    */
   | {

@@ -604,7 +604,6 @@ export {
   type GitOverviewRepository,
 } from "./gitOverview.ts";
 export {
-  onlyTheseCanAddAProject,
   FINISH_MATE_SETUP_VERB,
   finishMateSetupScope,
   finishMateSetupVerb,

@@ -63,7 +63,7 @@ import { releaseGateOf, useOfferReading } from "./appOffers";
 import { useHqAppDetailHold, useHqAppRecipes, useHqAppReleases } from "./useHqAppDetail";
 import { useReleaseComparisons } from "./useReleaseComparisons";
 import { useProjection, useProjectsServices } from "./ZeropsAccountData";
-import { useZeropsSession, useZeropsSessionOptional } from "./ZeropsSessionProvider";
+import { useZeropsSession } from "./ZeropsSessionProvider";
 
 export type {
   CanonicalProjectFlow as ZeropsProjectFlow,

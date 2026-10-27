@@ -31,7 +31,7 @@ const fault = (outcome: "transient" | "definitive-refusal"): AccountInput => ({
 describe("hqVerdict", () => {
   it.each([
     { name: "nothing proved yet", state: emptyAccount, verdict: "pending" },
-    ...(["pending", "official", "none", "unreadable"] as const).map((verdict) => ({
+    ...(["pending", "official"] as const).map((verdict) => ({
       name: `the source answered ${verdict}`,
       state: apply(emptyAccount, answer(verdict)),
       verdict,
@@ -76,7 +76,7 @@ describe("hqVerdict", () => {
     },
     {
       name: "an older answer cannot replace the newer one",
-      state: apply(emptyAccount, answer("official", 2), answer("none", 1)),
+      state: apply(emptyAccount, answer("official", 2), answer("pending", 1)),
       verdict: "official",
     },
   ])("$name", ({ state, verdict }) => {

@@ -178,7 +178,6 @@ import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { appTasksWaitingAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
-import { mayBearHq } from "@t3tools/shared/zeropsRoles";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import {
   projectFolded,
@@ -633,8 +632,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
-const ignoreUpdateState = (_state: boolean) => {};
-
 /**
  * Memoised: the menu above it redraws on every event of a streaming Mate's chat, and its props —
  * the Mates, their activity, the verbs — stand while what they say does.
@@ -740,7 +737,6 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
-  const session = useZeropsSessionOptional();
   const accountOrgId = useAccountOrgId();
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).

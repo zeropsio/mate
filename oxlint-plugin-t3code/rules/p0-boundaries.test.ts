@@ -109,15 +109,6 @@ describe("sanctioned source boundaries retain their counterexamples", () => {
     }
   }
 
-  const members = retired("apps/web/src/zerops/useZeropsMateOwners.ts");
-  members.valid(
-    "members facade uses the shared family and projection",
-    `export function useZeropsOrganizationMembersRead() { demandDetail({ family: "organizationMembers" }); return useProjection(organizationMembers, key); }`,
-  );
-  members.invalid(
-    "members facade cannot subscribe to a second member cache",
-    `export function useZeropsOrganizationMembersRead() { return client.listOrganizationMembers(org); }`,
-  );
   const lease = retired("apps/web/src/zerops/matePress.ts");
   lease.invalid(
     "an app-owned press lease stays retired even when it renews and ends",
