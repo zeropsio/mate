@@ -1170,6 +1170,62 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
   });
 });
 
+describe("ZeropsOperationCard — a batch deploy names every service it deploys", () => {
+  it("each service is a row of its own: its name, its own steps", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-rows",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const step = (id: string, state: "done" | "running" | "queued") => ({
+      id,
+      label: id,
+      state,
+      stateLabel: state,
+    });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "running",
+          stateLabel: "Running",
+          steps: [step("Build container", "done"), step("Build", "running")],
+        },
+        {
+          name: "web",
+          state: "queued",
+          stateLabel: "Waiting",
+          steps: [step("Build container", "queued"), step("Build", "queued")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const rows = [...html.matchAll(/data-zerops-batch-service="([^"]+)"/g)].map((m) => m[1]);
+    expect(rows).toEqual(["api", "web"]);
+    const states = (name: string) =>
+      [
+        ...(html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.matchAll(/data-zerops-process-state="([^"]+)"/g) ?? []),
+      ].map((m) => m[1]);
+    expect({ api: states("api"), web: states("web") }).toEqual({
+      api: ["done", "running"],
+      web: ["queued", "queued"],
+    });
+  });
+});
+
 describe("ZeropsOperationCard — a running card's header always says what it is doing", () => {
   it.each([
     { toolName: "zerops_browser", input: { url: "https://app.example.com/" }, word: "Checking" },
