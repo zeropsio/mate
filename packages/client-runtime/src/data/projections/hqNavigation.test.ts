@@ -76,7 +76,7 @@ const rows: ReadonlyArray<Row> = [
     family: "hqStatus",
     id: ORG,
     revision,
-    value: { official: "ok", parts: { quarantined: [] } },
+    value: { parts: { quarantined: [] } },
   },
   {
     family: "hqApp",
@@ -606,7 +606,6 @@ describe("hqPersonFacts", () => {
 describe("hqStatus", () => {
   it("is how HQ stands as its navigation says it, apart from the organization's record", () => {
     expect(hqStatus.derive(readsOfState(read), ORG)).toEqual({
-      official: "ok",
       parts: { quarantined: [] },
     });
     expect(hqStatus.derive(readsOfState(emptyAccount), ORG)).toBeNull();

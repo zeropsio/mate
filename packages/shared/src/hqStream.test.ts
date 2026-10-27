@@ -46,8 +46,7 @@ it.each([{ type: "retry" }, { type: "retry", scopes: [{ kind: "navigation" }] }]
 );
 
 it("status is a separate small navigation fact", () => {
-  expect(readStatus({ official: null, parts: { db: "up" } })).toEqual({
-    official: null,
+  expect(readStatus({ parts: { db: "up" } })).toEqual({
     parts: { db: "up" },
   });
 });

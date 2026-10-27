@@ -7,7 +7,6 @@ import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import { hqLifecycleScope, lifecycleReceipt } from "../families/hqLifecycle.ts";
 import type { MateAttention } from "@t3tools/contracts";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
-import type { HqOfficialVerdict } from "@t3tools/shared/hqStream";
 
 import { canonicalEnvironmentsOf } from "../../zerops/hq/environments.ts";
 import type { HqStructure, CanonicalHqStructure } from "../../zerops/hq/client.ts";
@@ -47,7 +46,6 @@ export interface SeededHq {
   >;
   /** HQ's presses, each held for `heldForMs` from HQ's read. */
   readonly presses?: Readonly<Record<string, HqPressValue>>;
-  readonly official?: HqOfficialVerdict | null;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;
   readonly person?: HqPersonFacts;
@@ -164,7 +162,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
       id: orgId,
       revision,
       value: {
-        official: seed.official === undefined ? "ok" : seed.official,
         parts: { quarantined: [] },
       },
     },
