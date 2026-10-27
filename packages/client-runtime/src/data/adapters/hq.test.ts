@@ -616,27 +616,6 @@ describe("hqNavigationLink", () => {
     }),
   );
 
-  it.effect("keeps grouping when an older HQ omits a newer fact and reports the upgrade", () =>
-    Effect.gen(function* () {
-      const store = makeAccountStore(AtomRegistry.make());
-      const fixture = hqFixtureWire();
-      const { fiber } = yield* run(store, fixture);
-      const { releaseOffer: _offer, ...olderApp } = app("shop", "Shop", ["ada"]);
-      yield* fixture.send(
-        navigation("scope-reset", 1, [
-          { key: "app:shop", value: olderApp },
-          { key: "project:ada", value: project("ada", "shop") },
-        ]),
-      );
-      yield* fixture.send(ready(1));
-      yield* settle;
-      const view = hqNavigation.derive(readsOfState(store.state()), ORG);
-      expect(view.structure?.apps[0]?.projects[0]?.name).toBe("ada");
-      expect(view).toMatchObject({ updateRequired: true });
-      yield* Fiber.interrupt(fiber);
-    }),
-  );
-
   it.effect("subscribes the navigation on open and is live once HQ's catchup ends", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

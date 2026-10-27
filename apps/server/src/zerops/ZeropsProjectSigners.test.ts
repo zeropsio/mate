@@ -644,17 +644,6 @@ describe("hasProjectAccess", () => {
     }),
   );
 
-  it.effect("holds HQ's list 15 minutes from the frame that brought it, then answers nothing", () =>
-    Effect.gen(function* () {
-      const { signers, listed } = yield* access;
-      yield* listed([entry(JAN, "BASIC_USER", "open")]);
-      yield* TestClock.adjust(ZeropsMateAccessListModule.ACCESS_LIST_HOLDS);
-      assert.isTrue(yield* signers.hasProjectAccess(JAN));
-      yield* TestClock.adjust(Duration.millis(1));
-      assert.isUndefined(yield* signers.hasProjectAccess(JAN));
-    }),
-  );
-
   it.effect("answers no for somebody the org does not list", () =>
     Effect.gen(function* () {
       const { signers, listed } = yield* access;

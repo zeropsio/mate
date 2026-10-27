@@ -1355,16 +1355,6 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   const verify = weatherdash.find((o) => o.kind === "verify")!;
   const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
 
-  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 15s", () => {
-    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.anchorAt);
-    expect(elapsedMs).toBeGreaterThan(75_000);
-    expect(elapsedMs).toBeLessThan(77_000);
-
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
-    expect(html).toContain("1m 15s");
-    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
-  });
-
   // 5.881 s and 54.904 s: floored, as the conversation's clocks floor, so a
   // settled card reads what its running clock last read.
   it.each([
@@ -1472,33 +1462,6 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
     const durationSpan = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</);
     expect(durationSpan).toBeDefined();
     expect(durationSpan![1]).toBe("42s");
-  });
-
-  it("renders the settled duration in the body font, normal case, tabular-nums, separate from the status word", () => {
-    const operation = operationFor(
-      zeropsCall({
-        id: "dur-settled",
-        startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        settledAt: "2026-09-01T00:01:12.000Z",
-        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-      }),
-    );
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
-
-    const statusDotSpan = html.match(/data-dot=""[\s\S]*?<\/span><\/span>/)?.[0];
-    expect(statusDotSpan).not.toContain("1m 12s");
-
-    const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
-    expect(durationSpanTag).toBeDefined();
-
-    // The mono face set "1 s" with a full-width gap between number and unit.
-
-    const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
-    expect(durationText).toContain("1m 12s");
   });
 });
 

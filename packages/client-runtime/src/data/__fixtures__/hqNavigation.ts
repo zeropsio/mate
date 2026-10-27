@@ -153,7 +153,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
       value: {
         can: structure?.can ?? {},
         unheld: structure?.unheld ?? {},
-        tools: structure?.tools ?? [],
         build: "",
       },
     },

@@ -290,11 +290,7 @@ function updateNote(input: HqCardInput): string | null {
 function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardView["state"] {
   const { standing } = input;
   // A rolling deploy: HQ serves on its Core until the new one answers.
-  if (
-    input.admin &&
-    input.updating &&
-    (standing.kind === "healthy" || standing.kind === "unchecked")
-  ) {
+  if (input.admin && input.updating && standing.kind === "healthy") {
     return { kind: "updating", tone: "busy", word: "Updating" };
   }
   switch (standing.kind) {
@@ -308,8 +304,6 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
       };
     case "refused":
       return { kind: "down", tone: "failed", word: "Refused your sign-in" };
-    case "unchecked":
-      return { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" };
     case "healthy":
       // Running, the glossary's word for healthy, to everybody (design system copy glossary).
       if (!input.admin) return { kind: "healthy", tone: "ok", word: "Running" };
@@ -326,14 +320,13 @@ function headline(input: HqCardInput, troubles: ReadonlyArray<string>): HqCardVi
 
 export function hqCardView(input: HqCardInput): HqCardView {
   const { admin, standing } = input;
-  const serving = admin && (standing.kind === "healthy" || standing.kind === "unchecked");
+  const serving = admin && standing.kind === "healthy";
   // The Core it runs, once HQ's stream or its health has named it.
   const build = serving ? standing.build : undefined;
   const update = readState(input.update);
   const healthTroubles = admin
     ? [
-        ...((standing.kind === "healthy" || standing.kind === "unchecked") &&
-        standing.parts !== undefined
+        ...(standing.kind === "healthy" && standing.parts !== undefined
           ? partsTroubles(standing.parts, input.structure)
           : []),
         ...servicesTroubles(input.services),

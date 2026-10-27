@@ -14,9 +14,8 @@ import { captureAccountLifetime } from "./accountLifetime";
  *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
  *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
- * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
- *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
- *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
+ * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves. An HQ
+ *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  * - **Its Core:** the shared production HQ deploys from mate-hq's `scripts/deploy-hq.ts`.
  *   This build retains legacy Core under `hq-core/` (`apps/hq/scripts/pack-core.ts`)
  *   for the per-org birth and update paths.
@@ -29,7 +28,6 @@ import {
   sharedHq,
   type HqApi,
   type HqEndpoint,
-  type HqHealth,
   type HqParts,
   type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
@@ -266,19 +264,6 @@ export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
 }
 
 /**
- * HQ's structure socket, as this browser opens it. Messages reach the shared client directly;
- * its pong is sent before liveness callbacks, with no timer or React scheduling in between.
- * Close codes pass through so the stream owner distinguishes rotation, going-away and refusal.
- */
-/**
- * Whether HQ's health says it is not the organization's official HQ: its anchor is gone, names
- * another, or its own credentials are wrong — never merely a standby, or a Zerops it cannot check.
- */
-export function saysNotOfficial(health: HqHealth): boolean {
-  return health.kind === "not-ready" && health.official !== "ok" && health.official !== "unknown";
-}
-
-/**
  * A write waits until the member list names `hq`: the page may read the HQ whose session the
  * account kept before it verified it, but writes nothing there. One it names not refuses the
  * write; trust ending without a verdict (the list refused for good, the session refused) fails it
@@ -398,12 +383,11 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
-   * everything keeps using it. `build` the Core it runs (`hq/update.ts`) and `parts` how they
-   * stand, as its stream or its health says them; each absent while neither has yet.
+   * Serving as the official HQ. `build` the Core it runs (`hq/update.ts`) and `parts` how they
+   * stand, as its stream says them; each absent while it has not yet.
    */
   | {
-      readonly kind: "healthy" | "unchecked";
+      readonly kind: "healthy";
       readonly build?: string;
       readonly parts?: HqParts;
     }
@@ -414,12 +398,6 @@ export type HqStanding =
    * began; the menu's outage line carries HQ's own reason.
    */
   | { readonly kind: "refused" };
-
-/** The standing a health read leaves: an outage keeps the time it began. */
-export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") return health;
-  return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
-}
 
 /** The birth's own input beside its record: the API Core reads. */
 export function hqBirthSite(client: ZeropsApiClient): {

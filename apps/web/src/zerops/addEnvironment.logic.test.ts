@@ -135,15 +135,6 @@ it("HQ's Git target verb reaches the shared Add gate without a recipe", () => {
   ).toEqual({ stage: true, production: true });
 });
 
-it("An old HQ still offers its Zerops doors and no Git target authority", () => {
-  expect(
-    environmentOffersOf(
-      { add_stage: { allow: true }, add_production: { allow: true } },
-      { current: true, unavailableSince: null },
-    ),
-  ).toEqual({ stage: true, production: true });
-});
-
 describe("where Add stage's sheet opens", () => {
   it.each([
     { from: "/group/g-snap/flow", groupId: "g-snap", inPlace: true },

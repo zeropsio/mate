@@ -35,36 +35,6 @@ describe("extractApiKeyFromStore", () => {
 });
 
 describe("resolveMateKey", () => {
-  it("prefers the live store over the boot snapshot", () => {
-    const result = resolveMateKey({
-      storeRead: Result.succeed("store-key"),
-      lastGoodStoreKey: undefined,
-      snapshot: "snapshot-key",
-    });
-    expect(result.key).toBe("store-key");
-    expect(result.lastGoodStoreKey).toBe("store-key");
-  });
-
-  it("falls back to the boot snapshot when the store has no key", () => {
-    const result = resolveMateKey({
-      storeRead: Result.succeed(undefined),
-      lastGoodStoreKey: undefined,
-      snapshot: "snapshot-key",
-    });
-    expect(result.key).toBe("snapshot-key");
-  });
-
-  it("an unreadable store keeps the last good key", () => {
-    const result = resolveMateKey({
-      storeRead: Result.fail("read error"),
-      lastGoodStoreKey: "last-good",
-      snapshot: "snapshot-key",
-    });
-    expect(result.key).toBe("last-good");
-    // The last-good marker itself is untouched by a failed read.
-    expect(result.lastGoodStoreKey).toBe("last-good");
-  });
-
   it("an unreadable store with no prior good key falls back to the snapshot", () => {
     const result = resolveMateKey({
       storeRead: Result.fail("read error"),

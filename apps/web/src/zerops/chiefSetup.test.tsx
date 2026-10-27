@@ -85,7 +85,7 @@ vi.mock("../components/zerops/ZeropsMateComingPage", () => ({
   MateComingHeader: () => null,
   ZeropsMateComingPage: () => null,
 }));
-vi.mock("@effect/atom-react", () => ({ useAtomValue: () => ({ kind: "unchecked" }) }));
+vi.mock("@effect/atom-react", () => ({ useAtomValue: () => ({ kind: "unknown" }) }));
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { useChiefSetupRunner } from "./chiefSetup";

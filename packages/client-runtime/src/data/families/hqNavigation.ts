@@ -28,12 +28,11 @@ import type { ScopeKey } from "../model.ts";
 import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-/** The organization's own record: its offers, its tools, and the Core its HQ runs. */
+/** The organization's own record: its offers and the Core its HQ runs. */
 export interface HqOrganizationValue {
   readonly can: HqOffers;
   /** Each project HQ holds nowhere the reader reads, by id, with what it offers of it. */
   readonly unheld: Readonly<Record<string, HqOffers>>;
-  readonly tools: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Core HQ runs. */
   readonly build: string;
   /**
@@ -112,7 +111,6 @@ declare module "../model.ts" {
 const Organization = Schema.Struct({
   can: HqOffers,
   unheld: Schema.Record(Schema.String, HqOffers),
-  tools: Schema.Array(Schema.Struct({ projectId: Schema.String, kind: Schema.Literal("gitea") })),
   build: Schema.String,
 });
 

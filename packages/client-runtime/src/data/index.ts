@@ -347,7 +347,7 @@ export { readsOfState } from "./store.ts";
 export { streamOf } from "./reducer.ts";
 export { classifyHqCall } from "./adapters/hqWire.ts";
 
-export { makeBrowserHqApi, readAccountHqHealth } from "./adapters/hqBrowser.ts";
+export { makeBrowserHqApi } from "./adapters/hqBrowser.ts";
 
 export {
   lifecycleRemainders,

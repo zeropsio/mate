@@ -44,7 +44,7 @@
  *   budget was reached before HQ heard the Mate take it) stops its runs as a stop does, and the
  *   Mate says nothing of it, no longer its own; HQ handing it again, it takes it again in the same
  *   conversation. One it never took leaves nothing to keep.
- * - **Limits** (`MateTask.limits`, else `DEFAULT_TASK_LIMITS`): the minutes its runs took, never
+ * - **Limits** (`MateTask.limits`, kept in the ledger; `DEFAULT_TASK_LIMITS` for a task it never kept them of): the minutes its runs took, never
  *   the time it waited between them, and the cost its turns reported at each turn's end and, for
  *   a turn still at work, as it runs (OpenCode tells it at each model call's end, so a task
  *   ends at most a call or two past its limit); reaching either stops its runs, mid-turn too,
@@ -239,7 +239,7 @@ export const taskQuestionOf = (
   };
 };
 
-/** What a task from an HQ that names no limits may spend: an hour of work, no cost limit. */
+/** What a task whose limits the Mate never kept may spend: an hour of work, no cost limit. */
 export const DEFAULT_TASK_LIMITS: MateTaskLimits = { minutes: 60, costUsd: null };
 
 const MINUTE_MS = 60_000;
@@ -1038,7 +1038,7 @@ export const make = Effect.gen(function* () {
       // Taken before and past its limits (its last turn's cost came in as HQ put it back in
       // line): handed again, it starts nothing, and says why.
       if (held !== undefined && kept !== undefined && (yield* ranIn(task.id, held))) {
-        const limits = task.limits ?? kept.limits ?? DEFAULT_TASK_LIMITS;
+        const { limits } = task;
         const reached =
           kept.limitHit ??
           reachedLimit(
@@ -1104,7 +1104,7 @@ export const make = Effect.gen(function* () {
       }
       // Its limits kept before its first run can start, so the run is held to them from the start.
       const { limits } = task;
-      if (limits !== undefined) yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
+      yield* ledger.update(task.id, (kept) => ({ ...kept, limits }));
       // Its commits by the organization's app's bot, set before its run can commit; a working copy
       // that keeps its author never stops the task, and its report says where.
       const author = task.commitAuthor;
