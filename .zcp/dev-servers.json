@@ -1,0 +1,14 @@
+{
+  "version": 1,
+  "previewPortBase": 5740,
+  "prepare": "CI=true pnpm install --frozen-lockfile --prefer-offline --filter \"@t3tools/web...\" </dev/null",
+  "servers": [
+    {
+      "name": "web",
+      "port": 5733,
+      "healthPath": "/",
+      "command": "T3CODE_BUNDLED_DEV=1 node_modules/.bin/vp dev --host 0.0.0.0",
+      "cwd": "apps/web"
+    }
+  ]
+}
