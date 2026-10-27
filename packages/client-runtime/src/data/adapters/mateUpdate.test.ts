@@ -13,6 +13,9 @@ import type * as RpcSession from "../../rpc/session.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { mateUpdate, mateUpdateStates } from "../projections/mateUpdate.ts";
 import { makeMateUpdates, makeMateUpdateWire } from "./mateUpdate.ts";
+import { mateLinkScope, type MateLinkValue } from "../families/mateLink.ts";
+import { initialContainer } from "../../zerops/environments/containerMachine.ts";
+import { initialEnvironment } from "../../zerops/environments/environmentMachine.ts";
 
 const env = EnvironmentId.make("one");
 const other = EnvironmentId.make("two");
@@ -442,6 +445,71 @@ describe("an Update that only a container restart answers", () => {
       phase: "failed",
       message: "This Mate came back, but couldn't confirm the update.",
     });
+    host.close();
+  });
+  // The store's reading of the Mate is a snapshot written on probe; the live line may say less.
+  it("a lost answer never settles on an older restart the store still holds", async () => {
+    const { store, host, read } = setup({
+      wire: {
+        update: () => Effect.fail(new Error("socket closed")),
+        check: () => Effect.succeed(behind),
+      },
+    });
+    const older = {
+      ...behind,
+      restart: {
+        needed: true,
+        phase: "postponed" as const,
+        reason: "not inside a container",
+        attempt: "restart-1",
+        startedAt: "2026-10-27T10:00:00.000Z",
+      },
+    };
+    const link: MateLinkValue = {
+      key: "project:service",
+      projectId: "project",
+      orgId: "org",
+      origin: "https://mate.example",
+      shown: true,
+      watched: true,
+      environment: initialEnvironment({ record: env }),
+      container: {
+        ...initialContainer(),
+        reading: {
+          sentAt: { wall: 1, mono: 1 },
+          reading: {
+            kind: "ready",
+            projectId: "project",
+            initAt: null,
+            descriptor: {
+              environmentId: env,
+              serverVersion: "1",
+              update: older,
+              identity: "ok",
+              identityCheckedAt: null,
+            },
+          },
+        },
+      },
+    };
+    store.dispatch({
+      kind: "rows",
+      scope: mateLinkScope("project"),
+      generation: 0,
+      method: "read",
+      via: "mate-direct",
+      rows: [
+        {
+          family: "mateLink",
+          id: link.key,
+          value: link,
+          revision: { kind: "mate-link", sequence: 1 },
+        },
+      ],
+    });
+    // The live line no longer carries a restart: the fallback took its place.
+    await host.update(env, { ...server, update: behind }, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state.phase).toBe("updating");
     host.close();
   });
 });

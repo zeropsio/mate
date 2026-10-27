@@ -556,27 +556,50 @@ describe("a Mate that only a restart gets current", () => {
 
   it.effect("an interrupted press leaves the next press free", () =>
     Effect.gen(function* () {
-      let versions = 0;
-      const { cli } = zcp({
-        status: () => BEHIND,
-        // The first press never hears zcp's version: it is interrupted while it waits.
-        asksVersion: Effect.suspend(() =>
-          versions++ === 0 ? Effect.never : Effect.succeed(ZCP_SELF_RESTART_SINCE),
-        ),
-      });
+      const version = yield* Deferred.make<string | undefined>();
+      const { cli } = zcp({ status: () => BEHIND, asksVersion: Deferred.await(version) });
       const idle = yield* Deferred.make<boolean>();
       const service = yield* make({
         cli,
         isZeropsEnvironment: true,
         restart: drainUntil(idle).ports({ value: undefined }),
       });
+      // The first press is interrupted while zcp's version is read: the restart goes on.
       const first = yield* service.restart.pipe(Effect.forkChild);
       yield* Effect.yieldNow;
       yield* Fiber.interrupt(first);
-      yield* service.restart;
-      expect(versions).toBe(2);
+      yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
+      const next = yield* service.restart;
+      expect(next.started).toBe(true);
       expect((yield* service.current)?.restart?.phase).toBe("draining");
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "a press joined to one interrupted while zcp's version is read still gets its restart",
+    () =>
+      Effect.gen(function* () {
+        const version = yield* Deferred.make<string | undefined>();
+        const { cli } = zcp({ status: () => BEHIND, asksVersion: Deferred.await(version) });
+        const idle = yield* Deferred.make<boolean>();
+        const service = yield* make({
+          cli,
+          isZeropsEnvironment: true,
+          restart: drainUntil(idle).ports({ value: undefined }),
+        });
+        const first = yield* service.restart.pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        const joined = yield* service.restart.pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* Fiber.interrupt(first);
+        yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
+        const answer = yield* Fiber.join(joined);
+        expect(answer.started).toBe(true);
+        expect((yield* service.current)?.restart).toMatchObject({
+          phase: "draining",
+          attempt: answer.started ? answer.attempt : undefined,
+        });
+      }).pipe(Effect.scoped),
   );
 
   it.effect(
@@ -649,7 +672,12 @@ describe("a Mate that only a restart gets current", () => {
         // The restart for this reading is spent: the next reading takes the Mate's own update.
         yield* service.refresh;
         expect(asked).toEqual(["self restart", "mate update --automatic"]);
-        expect((yield* service.current)?.restart?.phase).toBeUndefined();
+        // Its attempt stays on the line for the press that waits on it; zcp's own update phase
+        // outranks it where the line is drawn.
+        expect((yield* service.current)?.restart).toMatchObject({
+          phase: "postponed",
+          attempt: "restart-1",
+        });
       }).pipe(Effect.scoped),
   );
 

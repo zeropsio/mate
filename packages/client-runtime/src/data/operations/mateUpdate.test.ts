@@ -182,6 +182,45 @@ describe("Mate update evidence", () => {
         updateOutcome(seen, { serverVersion: "1", bootId: "new", update: line({ zcp: current }) }),
       ).toEqual({ kind: "succeeded" });
     });
+    it("a lost answer never settles on a restart that started no later than the one seen at the press", () => {
+      // The press recorded the later of the live line's and the store's restart: restart-1 at t1.
+      const seen = { ...restart, seenRestart: "t1" };
+      const plain = { ...pressed, seenRestart: "t1" };
+      const older = { serverVersion: "1", bootId: "old", update: postponed("restart-1", "t1") };
+      expect(updateVerdict(seen, older)).toBeNull();
+      expect(updateVerdict(plain, older)).toBeNull();
+    });
+    it.each([
+      {
+        name: "a line that no longer needs a restart",
+        update: line({ zcp: current, restart: { needed: false } }),
+        expected: { kind: "failed", reason: "The restart didn't happen; Update to try again." },
+      },
+      {
+        name: "a later restart on the line",
+        update: line({
+          zcp: behind,
+          restart: { needed: true, phase: "draining", attempt: "restart-2", startedAt: "t2" },
+        }),
+        expected: { kind: "failed", reason: "The restart didn't happen; Update to try again." },
+      },
+      {
+        name: "the line as it was before the press",
+        update: line({ zcp: behind, restart: { needed: true } }),
+        expected: null,
+      },
+    ])(
+      "an answered press whose restart is gone from the line, on $name",
+      ({ update, expected }) => {
+        expect(
+          updateOutcome(
+            restart,
+            { serverVersion: "1", bootId: "old", update },
+            { ...answered, startedAt: "t1" },
+          ),
+        ).toEqual(expected);
+      },
+    );
     it("a press answered during a reboot waits for the boot after the one that answered", () => {
       const during = { ...answered, bootId: "mid" };
       expect(

@@ -223,6 +223,7 @@ describe("Update on a Mate that only a restart gets current", () => {
         started: true,
         restartAttempt: "restart-1",
         restartTarget: { zcp: "9.226.0" },
+        restartStartedAt: "2026-10-27T10:00:00.000Z",
         bootId: "boot-1",
         serverVersion: "0.15.200",
       },
