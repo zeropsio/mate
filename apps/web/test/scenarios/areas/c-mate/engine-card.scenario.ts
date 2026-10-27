@@ -170,14 +170,17 @@ const largestStep = (frames: ReadonlyArray<Frame>, of: (frame: Frame) => number 
 
 /**
  * The person's run that leaves a command waiting in the background, ended with `answer` (or with
- * no words), its job ended since.
+ * no words), its job ended since. The person watches it run before it ends, as on a loaded runner
+ * where its events arrive frames apart: the card folds from the height they watched.
  */
 const jobRun = (
+  page: import("puppeteer-core").Page,
   chat: ReturnType<typeof mateChat>,
   provider: Effect.Success<typeof realLongConversation>["provider"],
   answer: string | null,
 ) =>
   Effect.gen(function* () {
+    const watched = yield* Deferred.make<void>();
     yield* provider.turn([
       {
         kind: "event",
@@ -211,11 +214,21 @@ const jobRun = (
           },
         },
       },
+      { kind: "wait", until: watched },
       ...(answer === null ? [] : [{ kind: "say" as const, text: answer }]),
     ]);
     yield* chat.when.send("Start the wait in the background");
     const native = yield* provider.received;
     expect(native.input.input).toBe("Start the wait in the background");
+    yield* Effect.promise(() =>
+      page.waitForFunction(
+        () =>
+          [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset.runLive ===
+          "",
+        { polling: "raf" },
+      ),
+    );
+    yield* Deferred.succeed(watched, undefined);
     // Its run over, the card is done; the conversation's bottom says the command still runs.
     yield* chat.then.text("Still working in the background");
     yield* provider.event(native.threadId, {
@@ -232,15 +245,18 @@ const jobRun = (
     return native;
   });
 
-/** The last card folds as its wait ends; the page is still once it has. */
+/**
+ * The last card folds as its wait ends; the page is still once it has. Its mark says folded in the
+ * commit the card folds, while the card still eases to its line and the list glides to its end
+ * after it: the wake is traced from the still page, never over that ease's tail.
+ */
 const foldedCard = (page: import("puppeteer-core").Page) =>
   Effect.promise(() =>
-    page.waitForFunction(
-      () =>
+    waitForStillFrames(page, {
+      phaseStarted: () =>
         [...document.querySelectorAll<HTMLElement>("[data-run-chat]")].at(-1)?.dataset.runFold ===
         "folded",
-      { polling: "raf" },
-    ),
+    }),
   );
 
 const longConversation = Effect.gen(function* () {
@@ -266,7 +282,7 @@ describe("C: an engine Mate's run card in a live conversation", () => {
         const { s, chat, provider } = yield* realLongConversation;
         yield* underLoad(s.page);
         // The run ends with no answer: the run the job's end wakes is the same card's to go on in.
-        const run = yield* jobRun(chat, provider, null);
+        const run = yield* jobRun(s.page, chat, provider, null);
         yield* foldedCard(s.page);
         yield* trace(s.page, "Start the wait in the background");
         yield* provider.event(run.threadId, {
