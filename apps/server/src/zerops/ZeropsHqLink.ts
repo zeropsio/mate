@@ -147,6 +147,8 @@ export type HqStanding =
 
 /** The close code HQ supersedes a link with: the Mate's own newer link took over. */
 const SUPERSEDED = 4409;
+/** `1001` and `1012`: HQ is going away or restarting (a rolling deploy); the Mate relinks to its other container. */
+const PLANNED_HANDOVER: ReadonlyArray<number> = [1001, 1012];
 
 const decodeClosed = Schema.decodeUnknownOption(MateLinkClosed);
 
@@ -364,6 +366,7 @@ export const makeZeropsHqLink = (
         ...(Option.isSome(gitFingerprint) ? { gitFingerprint: gitFingerprint.value } : {}),
       });
       const keyChanged = yield* Deferred.make<LinkClose>();
+      let sentKey: string | undefined;
       const keyRefusals = options.keyRefusal
         ? Stream.runForEach(options.keyRefusal.changes, (notice) =>
             Effect.gen(function* () {
@@ -376,10 +379,11 @@ export const makeZeropsHqLink = (
               // An old request cannot accuse a newer link's key.
               if (notice.refusedKey !== key || notice.currentKey !== key) return;
               yield* Effect.sync(() => {
-                if (reportedKey === key) return;
+                if (reportedKey === key || sentKey === key) return;
                 try {
                   socket.send(encodeUp({ type: "key-refused" }));
-                  reportedKey = key;
+                  // Delivered only once HQ speaks after it: a send on a closing link is lost.
+                  sentKey = key;
                 } catch {
                   // A failed send is still owed on the next link.
                 }
@@ -488,6 +492,7 @@ export const makeZeropsHqLink = (
           case "ping":
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
           case "state":
+            if (sentKey !== undefined) reportedKey = sentKey;
             return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
@@ -641,11 +646,13 @@ export const makeZeropsHqLink = (
           }
           const refused = refusalOf(close);
           if (refused !== undefined) yield* Ref.set(refusal, refused);
-          // Only a link that stayed up, or one the Mate's own newer link superseded, resets the
-          // wait; one HQ closes at once is a failure too.
+          // Only a link that stayed up, one the Mate's own newer link superseded, or one HQ handed
+          // over on purpose resets the wait; one HQ closes at once is a failure too.
           const lived = (yield* Clock.currentTimeMillis) - began;
-          attempt =
-            close?.code === SUPERSEDED || (ran.opened && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
+          const planned =
+            close?.code === SUPERSEDED ||
+            (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
+          attempt = planned || (ran.opened && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);

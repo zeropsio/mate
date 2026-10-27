@@ -48,6 +48,22 @@ class Socket implements LinkSocket {
     for (const listener of this.listeners.get("open") ?? [])
       listener({ data: undefined, code: 1006, reason: "" });
   }
+  hearState() {
+    const mate = {
+      projectId: "P_MATE",
+      name: "Ada",
+      face: "face-1",
+      standupRequestedBy: "owner",
+      closedOff: true,
+      signers: {},
+      appId: null,
+      appName: null,
+      changes: [],
+      chief: null,
+    };
+    for (const listener of this.listeners.get("message") ?? [])
+      listener({ data: JSON.stringify({ type: "state", mate }), code: 1006, reason: "" });
+  }
   disconnect() {
     for (const listener of this.listeners.get("close") ?? [])
       listener({ data: undefined, code: 1006, reason: "" });
@@ -154,6 +170,32 @@ it.effect.each([
     ]);
     assert.equal(next.closed, false);
     assert.equal(sockets.length, 2);
+  }).pipe(Effect.scoped),
+);
+
+it.effect.each([
+  {
+    title: "a key refusal whose send was lost on a closing link is reported again on the next link",
+    delivered: false,
+  },
+  { title: "a key refusal HQ's next state follows is not reported again", delivered: true },
+])("$title", ({ delivered }) =>
+  Effect.gen(function* () {
+    const { reader, sockets, connected } = yield* rig();
+    yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
+    yield* TestClock.adjust(Duration.zero);
+    assert.equal(sockets[0]!.sent.length, 2);
+    if (delivered) sockets[0]!.hearState();
+    sockets[0]!.disconnect();
+    yield* TestClock.adjust(Duration.millis(30));
+    yield* TestClock.adjust(Duration.zero);
+    const next = yield* Queue.take(connected);
+    next.open();
+    yield* TestClock.adjust(Duration.zero);
+    assert.equal(
+      next.sent.filter((frame) => (frame as { type: string }).type === "key-refused").length,
+      delivered ? 0 : 1,
+    );
   }).pipe(Effect.scoped),
 );
 
