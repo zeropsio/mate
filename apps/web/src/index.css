@@ -5670,37 +5670,32 @@ code {
   white-space: nowrap;
 }
 
-.zerops-sites-role {
-  flex: none;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 5px;
-  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
-  color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
+/* A Mate's part: its name, then its dev and its stage in fixed columns, so every row's sides align
+   under each other; on the names' edge, as its addresses are. */
+.zerops-sites-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 88px 44px;
+  column-gap: 8px;
+  align-items: center;
+  padding: 6px 38px 6px 36px;
 }
 
-.zerops-sites-role[data-tone="red"] {
-  color: var(--zerops-status-failed-text);
+.zerops-sites-pair > .zerops-sites-service {
+  max-width: none;
 }
 
-/* A piece of a Mate's work: its heading on the names' edge, hugging the parts under it; pieces sit
-   apart by more than three times that gap. */
-.zerops-sites-work {
-  margin-top: 8px;
-}
-
-.zerops-sites-workhead {
-  overflow: hidden;
-  padding: 6px 10px 0 36px;
-  color: var(--muted-foreground);
+.zerops-sites-side {
+  display: flex;
+  gap: 8px;
+  min-width: 0;
   font-size: 12px;
-  font-weight: 500;
   line-height: 16px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* A side with no address: its label, muted, its tooltip saying why. */
+.zerops-sites-off {
+  color: var(--muted-foreground);
+  cursor: default;
 }
 
 .zerops-sites-host {

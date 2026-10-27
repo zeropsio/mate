@@ -10,9 +10,10 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * A place's section is what its chip's menu said (`ChipMenu`): its state, what went wrong, the fix
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
- * is its own project's addresses, its dev and its pair's preview named, and its dev pools' parts'
- * previews, each by the part's name — read from a conversation of the Mate (`useMatesLeases`). Each address
- * is listed once, opens in a new tab, and copies from its row (`c`, ⌘C, or the button its hover
+ * is one row per part — its name, then its dev and its stage side by side, each a link with its
+ * host in its tooltip; a pool's dev is each workspace zcp holds on it, read from a conversation of
+ * the Mate (`useMatesLeases`) — then its other addresses. Each address is listed once, opens in a
+ * new tab, and copies from its row or its link (`c`, ⌘C, or the button an address row's hover
  * shows).
  *
  * What it says is `SidebarProjectSites.logic.ts`'s; this draws it.
@@ -51,6 +52,7 @@ import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 
+import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -69,6 +71,8 @@ import {
   sitesLinkCount,
   type SitesLink,
   type SitesMateFacts,
+  type SitesPair,
+  type SitesSide,
   type SitesStatus,
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
@@ -120,7 +124,7 @@ const FLASH_MS = 1_200;
 
 const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
 
-/** A Mate as its section is read, with zcp's leases where a conversation of it read them. */
+/** A Mate as its section is read, with zcp's leases and pool pairs where a conversation of it read them. */
 const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
@@ -129,7 +133,8 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   hostnames: mate.candidate.services?.hostnames,
   controlPlane: mate.candidate.service?.name,
   pools: mate.candidate.services?.pools,
-  leases: leases[mate.candidate.project.id],
+  leases: leases[mate.candidate.project.id]?.leases,
+  poolPairs: leases[mate.candidate.project.id]?.poolPairs,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -629,6 +634,10 @@ export function SitesPanel({
                     projectId={section.projectId}
                     title={section.title}
                   />
+                  <SitesPairs
+                    onCopy={copy}
+                    pairs={filtering ? (shown?.kind === "mate" ? shown.pairs : []) : section.pairs}
+                  />
                   {body}
                   {filtering || manage === undefined ? null : (
                     <ManageRow manage={manage} name={section.title} projectId={section.projectId} />
@@ -976,6 +985,85 @@ function CopyButton({
   );
 }
 
+/**
+ * A Mate's parts, one row each: the part's name, then its dev and its stage in fixed columns, so
+ * the rows align. Each side with an address is a link that opens in a new tab, its host (and any
+ * other port's) in its tooltip, and copies on `c` or ⌘C; one without says why in its tooltip.
+ */
+function SitesPairs({
+  pairs,
+  onCopy,
+}: {
+  readonly pairs: ReadonlyArray<SitesPair>;
+  readonly onCopy: (link: CopiedLink) => void;
+}) {
+  return pairs.map((pair) => (
+    <div
+      className="zerops-sites-pair"
+      data-zerops-surface="sidebar-project-sites-pair"
+      key={pair.key}
+    >
+      <span className="zerops-sites-service">{pair.name}</span>
+      <span className="zerops-sites-side" data-side="dev">
+        {pair.dev.map((side) => (
+          <PairSide key={side.key} onCopy={onCopy} side={side} />
+        ))}
+      </span>
+      <span className="zerops-sites-side" data-side="stage">
+        {pair.stage.map((side) => (
+          <PairSide key={side.key} onCopy={onCopy} side={side} />
+        ))}
+      </span>
+    </div>
+  ));
+}
+
+/** One side of a part: a link to its address, or its label muted, saying why it has none. */
+function PairSide({
+  side,
+  onCopy,
+}: {
+  readonly side: SitesSide;
+  readonly onCopy: (link: CopiedLink) => void;
+}) {
+  const { url } = side;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          url === undefined ? (
+            <span className="zerops-sites-off" data-zerops-surface="sidebar-project-sites-side" />
+          ) : (
+            <InlineButton
+              render={
+                <a
+                  data-sites-nav=""
+                  data-zerops-surface="sidebar-project-sites-side"
+                  href={url}
+                  onKeyDown={(event) => {
+                    copyOnKey(event, () => {
+                      onCopy({ key: side.key, url });
+                    });
+                  }}
+                  rel="noreferrer"
+                  target="_blank"
+                />
+              }
+            />
+          )
+        }
+      >
+        {side.label}
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {url === undefined
+          ? side.why
+          : [side.host, ...side.more].map((host) => <div key={host}>{host}</div>)}
+      </TooltipPopup>
+    </Tooltip>
+  );
+}
+
 /** A section's links: each opens in a new tab, and copies from its row. */
 function SitesLinks({
   links,
@@ -1023,7 +1111,6 @@ function SitesLinks({
               <span className="zerops-envpop-port">:{link.port}</span>
             )}
           </span>
-          {link.role === undefined ? null : <span className="zerops-sites-role">{link.role}</span>}
           <span className="zerops-sites-host">{link.host}</span>
           <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
         </a>

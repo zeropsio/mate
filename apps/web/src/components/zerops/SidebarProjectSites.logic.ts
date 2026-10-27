@@ -3,11 +3,11 @@
  * and the addresses its globe opens — production's, each stage's, then every Mate's, each address
  * once.
  *
- * A Mate's dev pool lists each part's preview, never its ports: a pool declares a port per
- * container slot, each with a subdomain whether or not a container holds it, so its routes say
- * nothing of whose an address is. Each lease zcp holds with a preview to open lists that preview
- * by the part's name (`poolPartName`), as any other address — never the lease, its container,
- * branch or holder: a person never manages leases.
+ * Sites is addresses: the places a person opens to follow along. Shared environments keep their
+ * own sections. Under each Mate, one row per part, its pair side by side: the part's name, its dev
+ * (the dev service's own address, or for a dev pool each workspace zcp holds on it, by the preview
+ * zcp read there) and its stage; then the Mate's other addresses. A pool's per-slot routes are
+ * never a workspace's address, and no work, status or lease shows.
  *
  * The tag says one thing, the highest of: production down; an environment that did not come up;
  * the newest release failed while the old one serves; a release going out or production
@@ -17,7 +17,12 @@
  * Pure: no clock of its own, no platform globals.
  */
 import { comingLine, placeAddresses, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { poolPartName, servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
+import {
+  partName,
+  poolPartName,
+  servicePairs,
+  type PoolPair,
+} from "@t3tools/client-runtime/zerops/servicePairs";
 import { isZeropsLeaseHeld, type ZeropsLease } from "@t3tools/contracts";
 
 import {
@@ -174,21 +179,46 @@ export function projectSitesStatus(input: {
   return undefined;
 }
 
-/** What an address is to a Mate's person: the dev they work on, or the preview of a pair. */
-export type SitesLinkRole = "dev" | "preview";
-
-/** One address in the popover: its service (and port where it has a second), what it is, where. */
+/** One address in the popover: its service (and port where it has a second), where. */
 export interface SitesLink {
   readonly key: string;
   readonly service: string;
   readonly port: number | undefined;
-  readonly role: SitesLinkRole | undefined;
   readonly host: string;
   readonly url: string;
 }
 
 /** A lease zcp holds on one of a Mate's dev pools, as its envelope names it (`leases[]`). */
-export type SitesLease = Pick<ZeropsLease, "alias" | "pool" | "state" | "devServers">;
+export type SitesLease = Pick<ZeropsLease, "alias" | "pool" | "state" | "devServers" | "part">;
+
+/** One side of a part's pair, as its row shows it: its address, or why it has none. */
+export interface SitesSide {
+  readonly key: string;
+  /** `dev`, `dev 2` for a pool's second workspace, `stage`. */
+  readonly label: string;
+  /** Its address; absent where it has none, and `why` says why. */
+  readonly url: string | undefined;
+  readonly host: string | undefined;
+  /** Its other ports' hosts, which its tooltip lists after its own. */
+  readonly more: ReadonlyArray<string>;
+  /** `not running`, `paused`, `no address yet`: only where it has no address. */
+  readonly why: string | undefined;
+}
+
+/** A part of a Mate's application: its name, and its pair's dev and stage side by side. */
+export interface SitesPair {
+  readonly key: string;
+  readonly name: string;
+  /** Its dev side: the dev service's address, or each workspace zcp holds on its pool; none for a pool with none. */
+  readonly dev: ReadonlyArray<SitesSide>;
+  readonly stage: ReadonlyArray<SitesSide>;
+}
+
+/** A Mate's addresses: its parts' pairs, then its other addresses. */
+export interface SitesMateAddresses {
+  readonly pairs: ReadonlyArray<SitesPair>;
+  readonly links: ReadonlyArray<SitesLink>;
+}
 
 /** A Mate of the project, as its addresses are read. */
 export interface SitesMateFacts {
@@ -210,15 +240,15 @@ export interface SitesMateFacts {
    * Mate; `undefined` while none is read, never none.
    */
   readonly leases: ReadonlyArray<SitesLease> | undefined;
+  /** The pairs its envelope keys by a dev pool, the part each serves among them; none unread. */
+  readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
 }
-
-const ROLE_ORDER: ReadonlyArray<SitesLinkRole | undefined> = ["dev", "preview", undefined];
 
 /** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
 const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.endsWith("dev");
 
 /**
- * Whether a Sites list reads a Mate's leases: only a dev pool's previews come from them, so a
+ * Whether a Sites list reads a Mate's leases: only a dev pool's workspaces come from them, so a
  * Mate whose services listing names no pool (or is not read yet) holds no lifecycle feed open.
  */
 export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
@@ -228,73 +258,140 @@ export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
 const poolsOf = (mate: SitesMateFacts): ReadonlySet<string> =>
   new Set([...(mate.pools ?? []), ...(mate.leases ?? []).map((lease) => lease.pool)]);
 
+const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
+
+/** A pool's part, by name: the part zcp names for its leases or its pair, else the pool's stem. */
+const poolName = (mate: SitesMateFacts, pool: string): string => {
+  const part =
+    (mate.leases ?? []).find((lease) => lease.pool === pool && lease.part !== undefined)?.part ??
+    mate.poolPairs?.find((pair) => pair.pool === pool)?.stages.find((stage) => stage.part)?.part;
+  return part === undefined ? poolPartName(pool) : partName(part);
+};
+
+/** Why a server zcp read has no address to open: it ended, or it has none yet. */
+const ENDED: ReadonlySet<string> = new Set(["stopped", "crashed"]);
+
 /**
- * A Mate's own addresses, each with what it is: its dev, the preview its pair's stage half serves
- * (`servicePairs`), then any other public service by its name alone. Never the control
- * plane, and never a dev pool's (`poolPreviews` lists those). `undefined` while its routes are
- * unread — never none before the answer.
+ * A pool's dev side: one per workspace zcp holds on it (held or parked), in alias order — `dev`,
+ * `dev 2` — each by the preview zcp last read there. One without an address says why: paused while
+ * parked, not running once its server ended, no address yet otherwise. None for a pool zcp holds
+ * nothing on: a pool's own slot routes balance over every container, so they are nobody's
+ * workspace.
  */
-export function mateLinks(mate: SitesMateFacts): ReadonlyArray<SitesLink> | undefined {
+function poolDevs(mate: SitesMateFacts, pool: string): ReadonlyArray<SitesSide> {
+  return (mate.leases ?? [])
+    .filter((lease) => lease.pool === pool && isZeropsLeaseHeld(lease.state))
+    .toSorted((left, right) => left.alias.localeCompare(right.alias, "en", { numeric: true }))
+    .map((lease, index): SitesSide => {
+      const label = index === 0 ? "dev" : `dev ${String(index + 1)}`;
+      const servers = lease.devServers ?? [];
+      const preview = servers.find(
+        (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
+      );
+      // Where zcp reads no preview, a slot's own route could stand in once slots map to ports.
+      const url = lease.state === "parked" ? undefined : preview?.url;
+      if (url !== undefined)
+        return {
+          key: `dev:${lease.alias}`,
+          label,
+          url,
+          host: hostOf(url),
+          more: [],
+          why: undefined,
+        };
+      const why =
+        lease.state === "parked"
+          ? "paused"
+          : servers.some((server) => ENDED.has(server.status))
+            ? "not running"
+            : "no address yet";
+      return { key: `dev:${lease.alias}`, label, url: undefined, host: undefined, more: [], why };
+    });
+}
+
+/**
+ * A Mate's addresses: one row per part, its pair (`servicePairs`) side by side — the dev, then the
+ * stage — and a dev with no stage yet a part all the same; then every other public service by its
+ * name alone. A plain dev's side is its own address; a pool's is each workspace zcp holds on it
+ * (`poolDevs`), never the pool's routes. A side with several web ports opens the first and lists
+ * the rest in its tooltip. Never the control plane. `undefined` while its routes are unread —
+ * never none before the answer.
+ */
+export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
   const pools = poolsOf(mate);
   const routes = mate.routes.filter(
     (route) => route.service !== mate.controlPlane && !pools.has(route.service),
   );
   // Routes and list are read separately: a routed service is held even before the list shows it.
-  const held = [...new Set([...(mate.hostnames ?? []), ...routes.map((route) => route.service)])];
-  const { devOf } = servicePairs({ services: held.map((hostname) => ({ hostname })) });
-  // A pair's dev half is its dev where the pair has a preview to show.
-  const devs = new Set(
-    routes.flatMap((route) => {
-      const dev = devOf.get(route.service);
-      return dev === undefined ? [] : [dev];
-    }),
-  );
-  const roleOf = (service: string): SitesLinkRole | undefined => {
-    if (devOf.has(service)) return "preview";
-    return devs.has(service) || isDevHostname(service) ? "dev" : undefined;
+  const held = [
+    ...new Set([...(mate.hostnames ?? []), ...routes.map((route) => route.service), ...pools]),
+  ];
+  const { pairs } = servicePairs({
+    services: held.map((hostname) => ({ hostname })),
+    poolPairs: mate.poolPairs,
+    pools: [...pools],
+  });
+  const entries = routeMenuEntries(routes);
+  const sideOf = (service: string, label: string): ReadonlyArray<SitesSide> => {
+    const [first, ...rest] = entries.filter((entry) => entry.service === service);
+    return first === undefined
+      ? []
+      : [
+          {
+            key: first.key,
+            label,
+            url: first.url,
+            host: first.host,
+            more: rest.map((entry) => entry.host),
+            why: undefined,
+          },
+        ];
   };
-  return routeMenuEntries(routes)
-    .map((entry) => ({ ...entry, role: roleOf(entry.service) }))
-    .toSorted((left, right) => ROLE_ORDER.indexOf(left.role) - ROLE_ORDER.indexOf(right.role));
-}
-
-const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
-
-/**
- * A Mate's dev pools' previews: for each lease zcp holds, the preview its dev server serves (the
- * first zcp read with a web address), named by the part its pool serves. A parked lease's container
- * is stopped and serves nothing; a lease with no preview yet, a free slot and a lease zcp no
- * longer holds list nothing. None while the leases are not read.
- */
-function poolPreviews(mate: SitesMateFacts): ReadonlyArray<SitesLink> {
-  return (mate.leases ?? [])
-    .filter((lease) => isZeropsLeaseHeld(lease.state) && lease.state !== "parked")
-    .flatMap((lease): ReadonlyArray<SitesLink> => {
-      const preview = (lease.devServers ?? []).find(
-        (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
-      );
-      if (preview?.url === undefined) return [];
-      return [
-        {
-          key: `preview:${lease.alias}`,
-          service: poolPartName(lease.pool),
-          port: undefined,
-          role: undefined,
-          host: hostOf(preview.url),
-          url: preview.url,
-        },
-      ];
-    })
-    .toSorted(
-      (left, right) =>
-        left.service.localeCompare(right.service, "en") ||
-        left.key.localeCompare(right.key, "en", { numeric: true }),
+  const devSide = (hostname: string) =>
+    pools.has(hostname) ? poolDevs(mate, hostname) : sideOf(hostname, "dev");
+  const nameOf = (hostname: string, stem: string) =>
+    pools.has(hostname) ? poolName(mate, hostname) : partName(stem);
+  const used = new Set<string>();
+  const rows: Array<SitesPair> = [];
+  for (const pair of pairs) {
+    used.add(pair.dev);
+    for (const preview of pair.previews) used.add(preview.hostname);
+    const stage = pair.previews.flatMap((preview, index) =>
+      sideOf(preview.hostname, index === 0 ? "stage" : `stage ${String(index + 1)}`),
     );
+    const dev = devSide(pair.dev);
+    if (dev.length + stage.length > 0)
+      rows.push({ key: `pair:${pair.dev}`, name: nameOf(pair.dev, pair.name), dev, stage });
+  }
+  for (const hostname of held) {
+    if (used.has(hostname) || !(pools.has(hostname) || isDevHostname(hostname))) continue;
+    used.add(hostname);
+    const dev = devSide(hostname);
+    if (dev.length > 0)
+      rows.push({
+        key: `pair:${hostname}`,
+        name: nameOf(hostname, hostname.slice(0, -"dev".length)),
+        dev,
+        stage: [],
+      });
+  }
+  return {
+    pairs: rows.toSorted((left, right) => left.name.localeCompare(right.name, "en")),
+    links: entries
+      .filter((entry) => !used.has(entry.service))
+      .map(({ key, service, port, host, url }) => ({ key, service, port, host, url })),
+  };
 }
 
 const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<SitesLink> =>
-  routeMenuEntries(routes).map((entry) => ({ ...entry, role: undefined }));
+  routeMenuEntries(routes).map(({ key, service, port, host, url }) => ({
+    key,
+    service,
+    port,
+    host,
+    url,
+  }));
 
 /** One section of the popover: a place with its state, or a Mate. */
 export type SitesSection =
@@ -314,8 +411,10 @@ export type SitesSection =
       readonly title: string;
       readonly projectId: string;
       readonly owner: string | undefined;
-      /** `undefined` while unread. */
+      /** Its other addresses; `undefined` while unread. */
       readonly links: ReadonlyArray<SitesLink> | undefined;
+      /** Its parts, each with its dev and its stage. */
+      readonly pairs: ReadonlyArray<SitesPair>;
     };
 
 /**
@@ -365,11 +464,11 @@ export function projectSitesSections(input: {
       input.unreadStages.map((name) => unread(name, "stage"))),
   ];
   const mates = input.mates.flatMap((mate): ReadonlyArray<SitesSection> => {
-    const links = mateLinks(mate);
-    // Its parts' previews first, then its own addresses; while those are unread, it reads.
-    const previews = once(poolPreviews(mate));
-    const kept = links === undefined ? undefined : [...previews, ...once(links)];
-    if (kept !== undefined && kept.length === 0) return [];
+    const addresses = mateLinks(mate);
+    // Its parts, then its other addresses; while those are unread, it reads.
+    const kept = addresses === undefined ? undefined : once(addresses.links);
+    const pairs = addresses?.pairs ?? [];
+    if (kept !== undefined && kept.length === 0 && pairs.length === 0) return [];
     return [
       {
         kind: "mate",
@@ -378,15 +477,28 @@ export function projectSitesSections(input: {
         projectId: mate.projectId,
         owner: mate.owner,
         links: kept,
+        pairs,
       },
     ];
   });
   return [...places, ...mates];
 }
 
-/** How many rows the sections list: every address, each part's preview among them. */
+/** How many addresses the sections list: every address, and each side of a part that has one. */
 export function sitesLinkCount(sections: ReadonlyArray<SitesSection>): number {
-  return sections.reduce((count, section) => count + (section.links?.length ?? 0), 0);
+  return sections.reduce(
+    (count, section) =>
+      count +
+      (section.links?.length ?? 0) +
+      (section.kind === "mate"
+        ? section.pairs.reduce(
+            (sides, pair) =>
+              sides + [...pair.dev, ...pair.stage].filter((side) => side.url !== undefined).length,
+            0,
+          )
+        : 0),
+    0,
+  );
 }
 
 /**
@@ -404,9 +516,9 @@ export function sitesHoldNothing(
 }
 
 /**
- * The sections a filter leaves: the addresses whose service, role, host, section or owner holds
- * every word of it (a part's preview by the part's name); a section left
- * with nothing hides. An empty filter keeps everything.
+ * The sections a filter leaves: the addresses whose service, host, section or owner holds every
+ * word of it, and the parts whose name, sides or hosts do; a section left with nothing hides. An
+ * empty filter keeps everything.
  */
 export function filterSites(
   sections: ReadonlyArray<SitesSection>,
@@ -423,10 +535,15 @@ export function filterSites(
         .toLocaleLowerCase();
       return words.every((word) => said.includes(word));
     };
-    const links = (section.links ?? []).filter((link) =>
-      holds([link.service, link.role, link.host]),
+    const links = (section.links ?? []).filter((link) => holds([link.service, link.host]));
+    if (section.kind === "place") return links.length === 0 ? [] : [{ ...section, links }];
+    const pairs = section.pairs.filter((pair) =>
+      holds([
+        pair.name,
+        ...[...pair.dev, ...pair.stage].flatMap((side) => [side.label, side.host]),
+      ]),
     );
-    return links.length === 0 ? [] : [{ ...section, links }];
+    return links.length === 0 && pairs.length === 0 ? [] : [{ ...section, links, pairs }];
   });
 }
 

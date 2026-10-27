@@ -578,19 +578,6 @@ export const lifecycleLeases = (
 ): ReadonlyArray<ZeropsLease> | undefined =>
   lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
 
-/** The part each stage serves by the stage's hostname, as the envelope's pool pairs name it (`stages[].part`). */
-export const lifecycleStageParts = (
-  lifecycle: Known<ZeropsLifecycle> | undefined,
-): Readonly<Record<string, string>> =>
-  Object.fromEntries(
-    (lifecycle?.state === "known" ? (lifecycle.value.envelope?.services ?? []) : []).flatMap(
-      (service) =>
-        (service.stages ?? []).flatMap((stage) =>
-          stage.part === undefined ? [] : [[stage.hostname, stage.part] as const],
-        ),
-    ),
-  );
-
 /**
  * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its repository and
  * branch its lifecycle last read zcp holding, its own first; the bound one alone while the
