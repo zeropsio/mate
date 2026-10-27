@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { ANSWER, TITLE, journey, sampled, type Sample } from "./pageJourney.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof journey>>["s"];
@@ -43,7 +43,7 @@ const settled = (s: Scenario) =>
   );
 
 describe("C: a page the Mate publishes", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a page the Mate publishes draws inline above its answer, and reaches no network",
       () =>
@@ -83,7 +83,7 @@ describe("C: a page the Mate publishes", () => {
   // Milo, 2026-10-10: every page closed itself 0.4 s after it landed live, saying it had tried to
   // open something else, with no navigation at all: the run settling around it reloaded its frame.
   describe("Decision: only the page's own navigation takes it down.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       it.effect(
         "a page published during a live run is still open 3 s after its run settles and folds",
         () =>
@@ -245,7 +245,7 @@ describe("C: a page the Mate publishes", () => {
   });
 
   describe("Decision: a page that navigates its own frame is not the page the Mate published.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       const LOGIN = "https://example.com/login";
       for (const trick of [
         { how: "by script", script: `location.href=${JSON.stringify(LOGIN)};` },
@@ -321,7 +321,7 @@ describe("C: a page the Mate publishes", () => {
   });
 
   describe("Decision: geometry relations only; no style pins.", () => {
-    it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    scenarioSuite((it) => {
       for (const shape of [
         {
           title: "a published page stands at its full height in the run, like the answer it is",

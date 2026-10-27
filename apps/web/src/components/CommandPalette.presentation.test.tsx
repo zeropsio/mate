@@ -75,7 +75,6 @@ vi.mock("../routes/-environmentTargets", () => ({
 vi.mock("../zerops/useHqMatesRead", () => ({
   useHqMatesRead: () => ({ organizationId: "org", settled: true }),
 }));
-vi.mock("../zerops/hqGate", () => ({ useHqGate: () => ({ gate: { kind: "open" } }) }));
 vi.mock("../uiStateStore", () => ({
   useUiStateStore: (select: (store: unknown) => unknown) =>
     select({ projectOrder: [], threadLastVisitedAtById: {} }),

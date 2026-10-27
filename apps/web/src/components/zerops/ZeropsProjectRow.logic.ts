@@ -41,11 +41,9 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
-  HQ_PROJECT_NAME,
   type HqMateOfferStates,
   type HqPresses,
   type CanonicalHqStructure,
-  type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
@@ -346,21 +344,19 @@ export function mateSetupOffered(role: ZeropsEnvironmentRole | undefined): boole
 
 /**
  * What says a project is its person's own — evidence the caller gathers once for the page: HQ's
- * records, its anchor and this tab's own presses (`plainZeropsProject`).
+ * records and this tab's own presses (`plainZeropsProject`).
  */
 export interface PlainProjectEvidence {
   /** Every project HQ holds any record of (`hqRecordedProjects`), a press's included. */
   readonly hqRecords: ReadonlySet<string>;
-  /** The project the organization's official HQ anchor names: the HQ carries no record of itself. */
-  readonly hqAnchors: ReadonlySet<string>;
   /** The projects this tab is making or finishing. */
   readonly local: ReadonlySet<string>;
 }
 
 /**
  * An existing plain Zerops project, on HQ's word (security review 1, 11; ADR 0002, HQ holds the
- * structure): no Mate, no place in HQ and no record of it there at all, not the organization's HQ
- * by its anchor or its name, and not one this tab is making. A project's tags and its age decide
+ * structure): no Mate, no place in HQ and no record of it there at all, and not one this tab is
+ * making. A project's tags and its age decide
  * nothing. Anything nothing can tell apart — HQ's structure not known — is not plain.
  */
 export function plainZeropsProject(
@@ -370,34 +366,29 @@ export function plainZeropsProject(
   if (evidence === undefined) return false;
   return (
     project.hq === undefined &&
-    project.name !== HQ_PROJECT_NAME &&
     !evidence.hqRecords.has(project.id) &&
-    !evidence.hqAnchors.has(project.id) &&
     !evidence.local.has(project.id)
   );
 }
 
 /**
- * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, or the
- * organization has no official HQ — with none, or an unclear one, nothing is plain. A press HQ holds
- * a record of, running elsewhere or stopped, is its Mate being made: never plain.
+ * The page's evidence for `plainZeropsProject`: none while HQ's structure is not known, so nothing is
+ * plain then. A press HQ holds a record of, running elsewhere or stopped, is its Mate being made: never plain.
  */
 export function plainEvidenceOf(input: {
   readonly hqKnown: boolean;
   readonly structure: CanonicalHqStructure | null;
   /** Each press HQ holds a record of, by project (`hq_press`); none before HQ said. */
   readonly presses: Readonly<Record<string, unknown>> | null;
-  readonly hq: OfficialHq;
   /** The projects this tab is making or finishing. */
   readonly local: Iterable<string>;
 }): PlainProjectEvidence | undefined {
-  if (!input.hqKnown || input.structure === null || input.hq.kind !== "official") return undefined;
+  if (!input.hqKnown || input.structure === null) return undefined;
   return {
     hqRecords: new Set([
       ...hqRecordedProjects(input.structure),
       ...Object.keys(input.presses ?? {}),
     ]),
-    hqAnchors: new Set([input.hq.projectId]),
     local: new Set(input.local),
   };
 }

@@ -201,7 +201,7 @@ import { useZeropsMateOwners } from "../zerops/useZeropsMateOwners";
 import { useZeropsSession } from "../zerops/ZeropsSessionProvider";
 import { AccountVoiceLine } from "./zerops/AccountVoiceLine";
 import { useListingPatience } from "../zerops/useListingPatience";
-import { hqOutage, useHqServiceUrl } from "../zerops/hqNavigation";
+import { hqOutage } from "../zerops/hqNavigation";
 import { useAccountDataOptional } from "../zerops/ZeropsAccountData";
 import { useNowMs } from "../zerops/useNowMs";
 import { SidebarProjectTree } from "./sidebar/SidebarProjectTree";
@@ -228,7 +228,6 @@ import { overviewHeadline } from "./zerops/SidebarOverview.logic";
 import { useChiefSetupLine } from "~/zerops/chiefSetup";
 import { useOwnChief } from "~/zerops/ownChief";
 import { chiefTopShown } from "./zerops/chief/chiefTop.logic";
-import { useAccountHq } from "~/zerops/accountHq";
 import { SidebarChiefPlace } from "./zerops/chief/SidebarChiefRow";
 import { SidebarChiefTop } from "./zerops/chief/SidebarChiefTop";
 import { SidebarRail, useRailTiles } from "./zerops/SidebarRail";
@@ -1433,7 +1432,6 @@ export default function Sidebar() {
     timestampFormat,
     zeropsNowMs,
   );
-  const hqServiceUrl = useHqServiceUrl();
   const zeropsRetry = useAccountDataOptional()?.retry;
   const projectGroupingSettings = useClientSettings(selectProjectGroupingSettings);
   const { archiveThread } = useThreadActions();
@@ -1982,13 +1980,9 @@ export default function Sidebar() {
     [askMateToFix, isMobile, setOpenMobile],
   );
   // The menu's top row is the person's Chief: its conversation once it is listed, else the Chief
-  // page, where it is set up. An organization without an HQ holds no Chief: its top is the mark.
+  // page, where it is set up.
   const mateDirectory = useAtomValue(shownHqMateDirectoryAtom);
   const zeropsChiefPageOpen = useLocation({ select: (location) => location.pathname === "/chief" });
-  const zeropsAccountHq = useAccountHq(zeropsSession.activeOrganization?.id ?? undefined);
-  const zeropsHoldsChief = !(
-    zeropsAccountHq.status === "ready" && zeropsAccountHq.hq.kind === "none"
-  );
   const openChiefPage = useCallback(() => {
     if (isMobile) setOpenMobile(false);
     void router.navigate({ to: "/chief" });
@@ -2741,7 +2735,6 @@ export default function Sidebar() {
   // holds the mark, with what waits on the person beside it (`SidebarChiefPlace`).
   const zeropsChiefShown =
     zeropsSignedIn &&
-    zeropsHoldsChief &&
     chiefTopShown({
       own: zeropsChief === undefined ? ownChief : zeropsChief.project.id,
       setup: chiefSetupLine,
@@ -2827,7 +2820,7 @@ export default function Sidebar() {
       <SidebarChromeHeader
         brand={
           zeropsChiefTop(false) ??
-          (zeropsSignedIn && zeropsHoldsChief ? (
+          (zeropsSignedIn ? (
             // The Chief's place while there is none: the mark, and what waits on the person.
             <SidebarChiefPlace
               waiting={
@@ -2842,8 +2835,7 @@ export default function Sidebar() {
         status={
           zeropsHqOutage === null ? undefined : (
             <SidebarHqStatus
-              compact={zeropsSignedIn && zeropsHoldsChief}
-              serviceUrl={hqServiceUrl}
+              compact={zeropsSignedIn}
               kind={zeropsHqOutage.kind}
               line={zeropsHqOutage.line}
               onAgain={zeropsHqOutage.again ? zeropsRetry : undefined}

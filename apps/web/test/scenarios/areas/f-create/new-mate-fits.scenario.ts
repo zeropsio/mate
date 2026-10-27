@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { ElementHandle } from "puppeteer-core";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { definePerson } from "../../fakes/zeropsWorld.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { creation } from "./dsl.ts";
@@ -55,7 +55,7 @@ const newProjectPlace = (page: Parameters<typeof creation>[0]["page"]) =>
   });
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The owner's org listed fourteen people under "Who can work with this Mate": the form could
     // not shrink, its panel never scrolled, and Add stood below the window — a press there landed
     // outside the dialog and closed it, so no Mate was ever added.

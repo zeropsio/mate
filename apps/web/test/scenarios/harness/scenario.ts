@@ -11,15 +11,8 @@ import { MINIMUM_MATE_SERVER_VERSION } from "../../../../../packages/client-runt
 import { STREAM_POLICY } from "../../../../../packages/client-runtime/src/data/streamMachine.ts";
 import { HqAttentionScopeValue } from "@t3tools/shared/hqStream";
 import { MateLinkUp, MateOverview } from "@t3tools/shared/mateLink";
-import {
-  seedCoreWorld,
-  sessionFor,
-  enrollMate,
-  untilHealth,
-  ticketFor,
-} from "../../../../hq/test/harness/runningCore.ts";
-import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
-import { overviewOf, digest } from "../../../../hq/test/harness/overviews.ts";
+import { seedCoreWorld, ticketFor } from "./coreSeed.ts";
+import { overviewOf, digest } from "./overviews.ts";
 import { definePerson, projectRoles, type PersonOptions } from "../fakes/zeropsWorld.ts";
 import { ZeropsFake } from "../fakes/zerops.ts";
 import { startGithubFake } from "../fakes/github.ts";
@@ -156,7 +149,6 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     { baseUrl: `${api.origin}/api/rest/public`, world, github },
     options.hq,
   );
-  if (core.kind === "in-process") yield* untilHealth(core.call, "active");
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,
@@ -164,19 +156,16 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     name: "Scenario personal access token",
   });
   zerops.people.set("personal", "owner");
-  const external = core.kind === "external";
-  const owner = external
-    ? yield* core
-        .call("POST", "/api/door", {
-          body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
-        })
-        .pipe(
-          Effect.map((response) => {
-            expect(response.status, JSON.stringify(response.body)).toBe(200);
-            return (response.body as { session: string }).session;
-          }),
-        )
-    : yield* sessionFor(core.call, "door-owner");
+  const owner = yield* core
+    .call("POST", "/api/door", {
+      body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
+    })
+    .pipe(
+      Effect.map((response) => {
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+        return (response.body as { session: string }).session;
+      }),
+    );
   const mates = new Map<string, MateFake>();
   const realMates = new Map<string, RealMate>();
   if (real)
@@ -194,34 +183,23 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     "https://hqzone.prg1-zerops.zone": hq.origin,
   };
   const linkMate = Effect.fn("scenarios.linkMate")(function* (name: string, credential?: string) {
-    if (external) {
-      const link = yield* core.socket("/api/mate/link");
-      yield* link.send({
-        type: "hello",
-        key: `mate-key-${name}`,
-        serviceId: `service-${name}`,
-        origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
-      });
-      return link;
-    }
-    const issued = credential ?? (yield* enrollMate(core.call, core.fake, name));
-    const { ticket } = (yield* core.call("POST", "/api/mate/link-ticket", {
-      headers: { authorization: `Mate ${issued}` },
-    })).body as { ticket: string };
-    return yield* core.socket(`/api/mate/link?ticket=${ticket}`);
+    const link = yield* core.socket("/api/mate/link");
+    yield* link.send({
+      type: "hello",
+      key: `mate-key-${name}`,
+      serviceId: `service-${name}`,
+      origin: `https://zcp-${name.toLowerCase()}-8080.prg1.zerops.app`,
+    });
+    return link;
   });
-  const mateAuthorization = (credential: string) =>
-    external ? `Project ${credential}` : `Mate ${credential}`;
-  const mateClone = (credential: string, appId: string, repo: string, dir: string) =>
-    external
-      ? [
-          "clone",
-          "-c",
-          `http.extraHeader=Authorization: Project ${credential}`,
-          `${core.origin}/git/ORG/${appId}/${repo}.git`,
-          dir,
-        ]
-      : ["clone", remoteOf(core.origin, credential, appId, repo), dir];
+  const mateAuthorization = (credential: string) => `Project ${credential}`;
+  const mateClone = (credential: string, appId: string, repo: string, dir: string) => [
+    "clone",
+    "-c",
+    `http.extraHeader=Authorization: Project ${credential}`,
+    `${core.origin}/git/ORG/${appId}/${repo}.git`,
+    dir,
+  ];
   const drivers = {
     hq,
     linkMate,
@@ -292,32 +270,19 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     });
   };
   const enroll = Effect.fn("scenarios.given.enroll")(function* (name: string, inApp?: string) {
-    if (external) {
-      const appId = inApp ? yield* app(inApp) : undefined;
-      const response = yield* core.call(
-        "POST",
-        appId ? `/api/apps/${appId}/projects` : "/api/mates",
-        {
-          session: owner,
-          body: appId
-            ? { projectId: name, kind: "mate", mate: { face: "face-1" } }
-            : { projectId: name, face: "face-1" },
-        },
-      );
-      expect(response.status, JSON.stringify(response.body)).toBe(201);
-      return `mate-key-${name}`;
-    }
-    if (inApp) {
-      const placed = yield* mateInApp(core.call, core.fake, owner, name, inApp, appIds);
-      appIds.set(inApp, placed.appId);
-      return placed.credential;
-    }
-    const created = yield* core.call("POST", "/api/mates", {
-      session: owner,
-      body: { projectId: name, face: "face-1" },
-    });
-    expect(created.status).toBe(201);
-    return yield* enrollMate(core.call, core.fake, name);
+    const appId = inApp ? yield* app(inApp) : undefined;
+    const response = yield* core.call(
+      "POST",
+      appId ? `/api/apps/${appId}/projects` : "/api/mates",
+      {
+        session: owner,
+        body: appId
+          ? { projectId: name, kind: "mate", mate: { face: "face-1" } }
+          : { projectId: name, face: "face-1" },
+      },
+    );
+    expect(response.status, JSON.stringify(response.body)).toBe(201);
+    return `mate-key-${name}`;
   });
   const seedProjectKey = (name: string) => {
     const key = `mate-key-${name}`;
@@ -361,7 +326,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         zeropsApiBaseUrl: `${zerops.origin}/api/rest/public`,
         zeropsApiToken: key,
         publicOrigin,
-        ...(external ? { allowedOrigins: [web.origin] } : {}),
+        allowedOrigins: [web.origin],
         ...(credential ? { hq: { origin: core.origin, credential } } : {}),
         now: () => zerops.clock.currentTimeMillis(),
         drivers: [provider.driver],
@@ -447,7 +412,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     yield* Effect.promise(() => web.setRoutes());
     putMateService(name);
     if (options.registered === false) return;
-    if (external) seedProjectKey(name);
+    seedProjectKey(name);
     const credential = yield* enroll(name, options.app);
     const link = yield* linkMate(name, credential);
     drivers.links.set(name, link);

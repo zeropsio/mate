@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
 import { describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installSignIn, slowMemberList } from "./fake.ts";
 import {
@@ -24,7 +24,7 @@ const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = f
   return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
 });
 describe("A: sign-in, session and organizations", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Catches a successful Zerops hand-over leaving the user at the door or without their menu, or
     // reloading the document to get there.
     it.effect("hand-over opens the account's menu", () =>
@@ -75,25 +75,17 @@ describe("A: sign-in, session and organizations", () => {
           const first = mints();
           expect(first, "The first load enters HQ's door once").toBe(1);
           for (let load = 0; load < 2; load++) {
-            const reads = (s.drivers.zerops.requests.get("GET /client/ORG/user/list") ?? 0) + 1;
             yield* account(s.page).reload;
             yield* s.then.menu.row(load === 0 ? "Shop" : "Shop 0").appears();
-            // Only a discovered HQ needs the browser's member list to verify it. A configured
-            // HQ skips that read; an endpoint-wide wait would catch its periodic reconcile.
-            if (s.drivers.core.kind === "in-process")
-              yield* Effect.promise(() =>
-                s.drivers.zerops.waitForRequest("GET /client/ORG/user/list", reads),
-              );
             // The application keeps its id: the colleague renames it by its first name each time.
             yield* s.when.hq.colleague.renamesProject("Shop", `Shop ${load}`);
             yield* s.then.menu.row(`Shop ${load}`).appears();
-            if (s.drivers.core.kind === "external")
-              expect(
-                s.drivers.zerops.requestsByCredential
-                  .get("personal")
-                  ?.get("GET /client/ORG/user/list") ?? 0,
-                "ASSERTION: a configured HQ needs no browser member-list verification",
-              ).toBe(0);
+            expect(
+              s.drivers.zerops.requestsByCredential
+                .get("personal")
+                ?.get("GET /client/ORG/user/list") ?? 0,
+              "ASSERTION: the shared HQ needs no browser member-list verification",
+            ).toBe(0);
           }
           expect(mints(), "Two reloads mint no further door token").toBe(first);
           yield* s.then.noExternalNetwork;
@@ -108,7 +100,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* signInOrganization(s);
         yield* s.then.menu.row("Shop").appears();
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
+        yield* account(s.page).needsAdministrator;
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* account(s.page).selectOrganization("ACME");
         yield* s.then.menu.row("Shop").appears();
@@ -123,11 +115,11 @@ describe("A: sign-in, session and organizations", () => {
         yield* organizations(s);
         yield* signInOrganization(s);
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
+        yield* account(s.page).needsAdministrator;
         const retainedAuthorization = yield* unchangedHandovers(s);
         yield* account(s.page).reload;
         yield* account(s.page).showsOrganization("Second");
-        yield* account(s.page).needsAdministrator(s.drivers.core.kind);
+        yield* account(s.page).needsAdministrator;
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* retainedAuthorization();
         yield* s.then.noExternalNetwork;

@@ -11,7 +11,6 @@ export {
   type SeededProjectPeople,
   type SeededProjectPerson,
 } from "./hqProjectPeople.ts";
-export { seedHqVerdict } from "./hqVerdict.ts";
 export {
   engineCardPagingOfRecords,
   engineShellOfRecords,

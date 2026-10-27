@@ -7,7 +7,7 @@ import * as Schedule from "effect/Schedule";
 import * as Schema from "effect/Schema";
 import { expect } from "@effect/vitest";
 import { HqNavigationJob } from "@t3tools/shared/hqStream";
-import { ticketFor } from "../../../../../hq/test/harness/runningCore.ts";
+import { ticketFor } from "../../harness/coreSeed.ts";
 import type { Page } from "puppeteer-core";
 import type { environmentFixture } from "./fake.ts";
 import { endBuild } from "../../fakes/e-env/builds.ts";

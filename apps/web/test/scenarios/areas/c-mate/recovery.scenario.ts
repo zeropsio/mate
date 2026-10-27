@@ -1,8 +1,9 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import type { HTTPRequest } from "puppeteer-core";
 
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
-import { rendered } from "../../harness/completedHttp.ts";
+import { completedHttp } from "../../harness/completedHttp.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea, reportContainer } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
@@ -25,7 +26,7 @@ const setup = () =>
   });
 
 describe("C: source failures keep the conversation", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a stopped container offers Start beside retained history",
       () =>
@@ -57,15 +58,38 @@ describe("C: source failures keep the conversation", () => {
           wire.disconnect();
           wire.run("active-run", "interrupted");
           // The client reconnects after its first backoff rung; on the scenario clock that wait
-          // passes only when advanced, a rung at a time until the stale Stop control is gone.
+          // passes only when advanced. The attempt it starts asks HQ for a ticket, then runs on
+          // its own deadlines (the admission's unclaimed ticket, 1 s): from that ask the clock
+          // holds until the stale Stop control is gone, so no advance expires them under it.
           yield* Effect.promise(async () => {
             const stop = '::-p-aria([name="Stop generation"][role="button"])';
-            for (let look = 0; look < 40; look++) {
-              await rendered(s.page);
-              if (!(await s.page.$(stop))) return;
-              await s.clock.advance(FIRST_RECONNECT_RUNG_MS);
+            const returned = () => s.page.waitForSelector(stop, { hidden: true });
+            let asked = false;
+            const ticket = (request: HTTPRequest) => {
+              if (
+                request.method() === "POST" &&
+                /^\/api\/mates\/[^/]+\/ticket$/.test(new URL(request.url()).pathname)
+              )
+                asked = true;
+            };
+            const http = completedHttp(s.page);
+            s.page.on("request", ticket);
+            try {
+              for (let rung = 0; !asked; rung++) {
+                if (rung === 40)
+                  throw new Error("Wren asked for no ticket over 40 reconnect rungs");
+                await s.clock.advanceStepped(FIRST_RECONNECT_RUNG_MS, {
+                  settle: async () => {
+                    await http();
+                    if (asked) await returned();
+                  },
+                });
+              }
+              await returned();
+            } finally {
+              s.page.off("request", ticket);
+              http.close();
             }
-            throw new Error("Stop generation stayed after 40 reconnect rungs");
           });
           yield* chat.then.once("The existing conversation is still here");
           yield* chat.then.draft("Keep this draft through the interruption");

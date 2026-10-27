@@ -12,7 +12,7 @@
  * rows a person sees, whether *Add Mate* is offered) and a Mate's door (open, listed or hidden for
  * the project it runs in). `zeropsRoles.fixtures.json` holds the cases; it is the only copy since
  * the broker and its Go twin went (ADR 0004). What else a person may do — the structure, a Mate's
- * credential — is HQ's `can` (`apps/hq/src/permissions.ts`), over the same normalisation, and HQ
+ * credential — is HQ's `can` (`mate-hq apps/hq/src/permissions.ts`), over the same normalisation, and HQ
  * streams its decisions to the client (`hqOffers.ts`).
  *
  * Pure: no clock, no network, no platform types.

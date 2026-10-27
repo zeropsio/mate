@@ -202,7 +202,7 @@ import { useEnableRoute } from "~/zerops/useEnableRoute";
 import { useMateActions } from "~/zerops/useMateActions";
 import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
 import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -227,7 +227,6 @@ import {
 import {
   overviewKeeps,
   parseProjectsSearch,
-  withoutOfficialHq,
   shownUngrouped,
   type OverviewShow,
   type ProjectsSearch,
@@ -415,17 +414,12 @@ export function hasNoZeropsProject(input: {
    * invitation in that gap is the flash the roster then takes back.
    */
   readonly creationPending?: boolean;
-  /** The organization's official HQ's project (`withoutOfficialHq`), where the anchor names it. */
-  readonly hqProjectId?: string | undefined;
 }): boolean {
   if (input.creationPending === true) return false;
-  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`). Nor is HQ's
-  // own project: an organization holding only HQ has nothing of its own to start in yet.
+  // A tool is not a project: the tree lists it apart (`partitionZeropsToolProjects`).
   return listsNoProject(
     input.listing,
-    (candidate) =>
-      readZeropsToolKind(candidate.project) === undefined &&
-      candidate.project.id !== input.hqProjectId,
+    (candidate) => readZeropsToolKind(candidate.project) === undefined,
   );
 }
 
@@ -1048,11 +1042,9 @@ export function ZeropsProjectsContent({
 
   /** A press of the organization on show: the page is not empty while one is on its way. */
   const activeBirths = presses.some((press) => press.organizationId === activeOrganization?.id);
-  const accountHq = useAccountHq(activeOrganization?.id);
   const noProjectYet = hasNoZeropsProject({
     listing,
     creationPending: activeBirths,
-    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
   // What the viewer's role makes and reaches here: an empty first screen says it (`firstRunWords`).
   const capabilities = usePlatformCapabilities(null);
@@ -1078,9 +1070,8 @@ export function ZeropsProjectsContent({
     );
   };
 
-  // The organization's HQ, where the registry lives: its project is no project of the page's.
   // What says a project is its person's own, for Set up Mate on it (`plainEvidenceOf`): HQ's
-  // records of every kind, its presses, its anchor, and what this tab is making. None while HQ's
+  // records of every kind, its presses, and what this tab is making. None while HQ's
   // structure is not known, so nothing is plain then.
   const knownStructure = hqStructure.structure;
   const hqPresses = hqStructure.read === "unread" ? null : hqStructure.presses;
@@ -1090,13 +1081,12 @@ export function ZeropsProjectsContent({
         hqKnown,
         structure: knownStructure,
         presses: hqPresses,
-        hq: accountHq.hq,
         local: [
           ...presses.map((press) => press.projectId),
           ...made.flatMap((birth) => (birth.projectId === null ? [] : [birth.projectId])),
         ],
       }),
-    [accountHq.hq, hqKnown, hqPresses, knownStructure, made, presses],
+    [hqKnown, hqPresses, knownStructure, made, presses],
   );
 
   const rowInput = (
@@ -1155,7 +1145,7 @@ export function ZeropsProjectsContent({
                 group.environments.flatMap(({ item }) => (item === undefined ? [] : [{ item }])),
               );
         if (!isCurrent()) return;
-        const hq = officialHq(accountHq);
+        const hq = configuredHq();
         // What it registers, by the rule Finish setup registers by, before its container: in the
         // application HQ or the press this tab holds places it in, under that face (F6b);
         // a new Mate in no application only where neither does.
@@ -1212,7 +1202,6 @@ export function ZeropsProjectsContent({
       }
     },
     [
-      accountHq,
       activeOrganization,
       mateOffersOf,
       candidates,
@@ -2013,12 +2002,12 @@ export function ZeropsProjectsContent({
       // The pool made its container.
       container: null,
       registration: null,
-      hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
+      hq: configuredHq(),
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
     });
-  }, [accountHq, clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
+  }, [clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 
   // Every group's flow, from the one derivation the thread and the left menu
   // read too (`groupFlow`): what each step holds and the one next step.
@@ -2601,7 +2590,7 @@ export function ZeropsProjectsContent({
   // merge or a release the project flow refused included — one at a time.
   const trouble = toolError ?? route.trouble ?? verbs.trouble;
   const ungroupedRows = shownUngrouped(
-    withoutOfficialHq(groupTree.ungrouped, accountHq.hq).map((candidate) => ({
+    groupTree.ungrouped.map((candidate) => ({
       item: candidate,
       action: deriveZeropsRowAction(rowInput(candidate)).kind,
     })),
@@ -2938,13 +2927,11 @@ export function ZeropsProjectsPage({ inPanel = false }: { readonly inPanel?: boo
   // over nothing frames emptiness as a failed list.
   const presses = useMatePresses();
   const made = useCreations();
-  const accountHq = useAccountHq(activeOrganization?.id);
   const firstRun = hasNoZeropsProject({
     listing,
     creationPending: [...presses, ...made].some(
       (birth) => birth.organizationId === activeOrganization?.id,
     ),
-    hqProjectId: accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined,
   });
 
   return (

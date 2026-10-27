@@ -43,6 +43,13 @@ const runtimeDeclaration = (encoded: string): string | undefined => {
 };
 
 /**
+ * `packages/shared` hq* modules, nested directories included, are HQ wire schemas versioned by
+ * HQ. The persistence guard test checks every path under this prefix: free of persistence
+ * imports and reachable only from `zerops/`.
+ */
+export const HQ_WIRE_MODULES = "packages/shared/src/hq";
+
+/**
  * Paths proved not to touch stored state, the updater or the zcp seam. The rule is an
  * allowlist: a path that matches nothing here makes the release manual, so a directory or
  * package added later fails closed until someone verifies it and lists it with its reason.
@@ -55,17 +62,14 @@ const COMPATIBLE_PREFIXES: ReadonlyArray<readonly [prefix: string, reason: strin
   ["apps/desktop/", "not part of the released server"],
   ["apps/mobile/", "not part of the released server"],
   ["docs/", "prose"],
-  ["apps/hq/", "HQ Core deploys on its own; the Mate artifact does not contain it"],
+  ["apps/hq/", "deleted; neither was in the Mate artifact"],
   [".github/workflows/ci.yml", "verification only"],
   [".github/workflows/signal.yml", "verification only"],
   [".github/ISSUE_TEMPLATE/", "prose"],
   ["oxlint-plugin-t3code/", "lint rules"],
-  [
-    "scripts/",
-    "repository tooling; the released artifact's pack and manifest are apps/server/scripts",
-  ],
+  ["scripts/", "repository tooling, except the ARTIFACT_FILES below"],
   ["packages/client-runtime/", "client-only; no server file imports it"],
-  ["packages/hq-git/", "HQ-side git; no server file imports it"],
+  ["packages/hq-git/", "deleted; neither was in the Mate artifact"],
   ["apps/server/src/git/", "repository operations; writes a temporary body file"],
   ["apps/server/src/sourceControl/", "clones into user-chosen workspace directories"],
   ["apps/server/src/textGeneration/", "one-shot generation; temporary isolated provider profiles"],
@@ -80,10 +84,18 @@ const COMPATIBLE_PREFIXES: ReadonlyArray<readonly [prefix: string, reason: strin
   ["apps/server/src/workspace/", "reads and writes the user's workspace files only"],
   ["apps/server/src/testUtils/", "test tooling"],
   ["apps/server/src/testing/", "test tooling"],
-  // `packages/shared` hq* modules are HQ wire schemas, versioned by HQ. The persistence guard
-  // test keeps them free of persistence imports and reachable only from `zerops/`.
-  ["packages/shared/src/hq", "HQ wire schemas, not stored by the Mate"],
+  [HQ_WIRE_MODULES, "HQ wire schemas, not stored by the Mate"],
 ];
+
+/** Files under an allowlisted prefix that still shape the released artifact. */
+const ARTIFACT_FILES: ReadonlySet<string> = new Set([
+  // What the pack inlines, and what the release manifest leaves for npm to resolve.
+  "scripts/lib/cli-external-packages.ts",
+  // The versions `catalog:` resolves to in the release manifest.
+  "scripts/lib/resolve-catalog.ts",
+  // The `define` constants baked into dist/bin.mjs.
+  "scripts/lib/public-config.ts",
+]);
 
 /**
  * Single files whose change cannot alter what the previous release reads back. The server
@@ -118,8 +130,9 @@ const unlistedPath = (paths: ReadonlyArray<string>): string | undefined =>
     (path) =>
       path !== "pnpm-lock.yaml" &&
       !isTest(path) &&
-      !COMPATIBLE_FILES.has(path) &&
-      !COMPATIBLE_PREFIXES.some(([prefix]) => path.startsWith(prefix)),
+      (ARTIFACT_FILES.has(path) ||
+        (!COMPATIBLE_FILES.has(path) &&
+          !COMPATIBLE_PREFIXES.some(([prefix]) => path.startsWith(prefix)))),
   );
 
 interface LockImporter {
@@ -138,8 +151,9 @@ type LockSnapshots = Record<
 /**
  * The lockfile restricted to what the server bundle resolves: the `apps/server` production
  * dependencies, those of every workspace package it links (the bundle inlines them with their
- * own dependencies), and all transitive snapshots. Tooling-only changes leave it identical; an
- * unreadable lockfile has none.
+ * own dependencies), and all transitive snapshots. An app is never inlined: the server links
+ * `@t3tools/web` only to build the bundle it serves, so web-only bumps stay out. Tooling-only
+ * changes leave it identical; an unreadable lockfile has none.
  */
 const serverRuntimeClosure = (lock: string): string | undefined => {
   try {
@@ -164,7 +178,8 @@ const serverRuntimeClosure = (lock: string): string | undefined => {
       for (const [name, entry] of Object.entries(section ?? {})) {
         const version = entry?.version ?? "";
         if (version.startsWith("link:")) {
-          pushImporter(resolveLink(from, version.slice("link:".length)));
+          const linked = resolveLink(from, version.slice("link:".length));
+          if (!linked.startsWith("apps/")) pushImporter(linked);
         } else if (!linkedOnly) {
           queue.push(`${name}@${version}`);
         }

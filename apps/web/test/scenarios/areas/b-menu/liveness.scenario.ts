@@ -1,10 +1,10 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { menuScenario } from "./dsl.ts";
 
 describe("B: menu liveness", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Placement updates in both tabs while the Mate's conversation keeps its identity and history.
     it.effect("moving an open Mate updates both tabs without losing its conversation", () =>
       Effect.gen(function* () {

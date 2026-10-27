@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import {
   environmentIdentityWire,
   type EnvironmentWire,
@@ -146,7 +146,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
 });
 
 describe("B: environment identity compatibility", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "Current HQ omits redundant environment identity while navigation, late jobs, reload and recovery retain their values.",
       () => compatibility("current"),

@@ -1,8 +1,8 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import type { Page } from "puppeteer-core";
 import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { CHUNKS_WARMED, SETTLE_MS } from "../../../../src/lib/appChunks.ts";
 import { installArea, mergeFor } from "./fake.ts";
@@ -29,7 +29,7 @@ const setup = Effect.gen(function* () {
 });
 
 describe("D: change review, comments and merge", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "opens the menu change with its description and files",
       () =>
@@ -153,7 +153,7 @@ describe("D: change review, comments and merge", () => {
 });
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // 2026-10-20, the owner on a narrow window: "these buttons are bit unfortunately positioned".
     // The row wrapped where it ran out of room, leaving Merge alone under the other two.
     it.effect(

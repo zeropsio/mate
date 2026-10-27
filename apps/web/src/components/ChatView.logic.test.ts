@@ -32,6 +32,7 @@ import { environmentThreadDetails } from "../state/threads";
 import type { Thread, ThreadShell } from "../types";
 import { deriveProviderInstanceEntries, NO_PROVIDER_MODEL_SELECTION } from "../providerInstances";
 import {
+  compactionAnswered,
   projectScriptKeybindingWrites,
   MAX_HIDDEN_MOUNTED_TERMINAL_THREADS,
   buildExpiredTerminalContextToastCopy,
@@ -1751,6 +1752,40 @@ describe("hasServerAcknowledgedLocalDispatch", () => {
         latestTurnStartFailureId: "turn-start-failure-new",
       }),
     ).toBe(true);
+  });
+});
+
+describe("a person's /compact", () => {
+  const request = { id: MessageId.make("compact-1"), createdAt: "2026-03-29T00:05:00.000Z" };
+  const condensed = (createdAt: string, payload: unknown = {}) => ({
+    id: EventId.make(`condensed-${createdAt}`),
+    tone: "info" as const,
+    kind: "context-compaction",
+    summary: "Context compacted",
+    payload,
+    turnId: null,
+    createdAt,
+  });
+
+  it.each([
+    [
+      "is answered by the engine's condense landing after it, naming no request",
+      [condensed("2026-03-29T00:06:00.000Z")],
+      true,
+    ],
+    [
+      "is answered by a condense recorded for it by its request",
+      [condensed("2026-03-29T00:06:00.000Z", { requestId: "compact-1" })],
+      true,
+    ],
+    [
+      "is not answered by a condense from before it was sent",
+      [condensed("2026-03-29T00:04:00.000Z")],
+      false,
+    ],
+    ["is not answered while nothing has condensed", [], false],
+  ] as const)("%s", (_case, activities, answered) => {
+    expect(compactionAnswered(makeThread({ activities: [...activities] }), request)).toBe(answered);
   });
 });
 

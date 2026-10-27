@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { READING_PROJECTS_LINE } from "../../../../src/zerops/waitLine.logic.ts";
 import { menuScenario } from "./dsl.ts";
 
@@ -91,7 +91,7 @@ function recordMenuFrames() {
 }
 
 describe("B: menu reload", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a menu closed to the rail comes back as the rail after a reload, from its first frame",
       () =>
@@ -167,7 +167,7 @@ const LONG_HISTORY = Array.from(
 );
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "a reload of a Mate's conversation waits with the Mate's opening alone, and its first frame stands where it stays",
       () =>

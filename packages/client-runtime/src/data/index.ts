@@ -282,18 +282,12 @@ export {
   shownHqAppChangesAtom,
   shownHqPersonFactsAtom,
   shownHqStatusAtom,
-  shownHqVerdictAtom,
   mateOfEnvironmentAtom,
   NO_MATE_LINKS,
   shownMateLinksAtom,
   type AccountReads,
 } from "./reads.ts";
 
-export {
-  hqBirthProgress,
-  hqBirthRequestId,
-  type HqBirthProgress,
-} from "./projections/hqBirthProgress.ts";
 export {
   mateRegistration,
   registrationRequestId,
@@ -305,7 +299,6 @@ export {
   type HqMateOwner,
   type HqProjectPeople,
 } from "./projections/hqProjectPeople.ts";
-export type { HqVerdict } from "./families/hqVerdict.ts";
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
 

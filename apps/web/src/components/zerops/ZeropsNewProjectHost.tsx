@@ -59,7 +59,7 @@ import {
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { configuredHq } from "~/zerops/accountHq";
 import { beginCreation } from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useRunNewProject } from "~/zerops/useRunNewProject";
@@ -141,11 +141,9 @@ function NewProjectDialog() {
   const [creating, setCreating] = useState(false);
 
   // HQ offers application creation to the people Zerops allows to create projects.
-  const accountHq = useAccountHq(activeOrganization?.id);
   const { at } = useHqOffers();
   const addProject = resolveAddProjectVerb({
     offer: useOrgOffers()("create_app"),
-    admins: accountHq.admins,
     at,
   });
   const canCreate = addProject.offered;
@@ -245,7 +243,7 @@ function NewProjectDialog() {
     const birthId = ask.birthId;
     beginCreation({
       ask,
-      hq: officialHq(accountHq),
+      hq: configuredHq(),
       now: Date.now(),
       run: runNewProject,
     });

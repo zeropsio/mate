@@ -51,7 +51,6 @@ import { ZeropsNewProjectHost } from "../components/zerops/ZeropsNewProjectHost"
 import { ChiefSetupHost } from "../components/zerops/chief/ChiefSetupHost";
 import { AddressesSheetHost } from "../components/zerops/addresses/AddressesSheetContainer";
 import { ZeropsDeleteApplicationHost } from "../components/zerops/ZeropsDeleteApplicationDialog";
-import { ZeropsHqGate } from "../components/zerops/ZeropsHqGate";
 import { Button } from "../components/ui/button";
 import {
   AnchoredToastProvider,
@@ -100,8 +99,6 @@ import { MateLinkStage } from "../components/zerops/MateLinkStage";
 import { RouteStandIn } from "../components/zerops/RouteStandIn";
 import { resolveThreadRouteRef } from "../threadRoutes";
 import { RouteGateView } from "./-routeGate";
-import { useHqGate } from "../zerops/hqGate";
-import { HQ_BORN_HERE, useHqBornHere } from "../zerops/useHqBornHere";
 import { staleChunkRecovery } from "../lib/staleChunk";
 import { installMateDiagnostics } from "~/zerops/diagnostics";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
@@ -190,10 +187,6 @@ function SignedInRootRouteView() {
         : EnvironmentId.make(routeEnvironmentId),
   );
   const gate = selectRouteGate(gateInputs.target);
-  const { gate: hqGate } = useHqGate(pathname);
-  // HQ's setup this page watched finish stays on screen until the menu has read the new HQ: the
-  // product takes over in one piece, never through a blank page while the new HQ starts answering.
-  const hqBornHere = useHqBornHere();
   // The link's one voice (`mateVoice`): the banner over a mounted conversation, the stage where
   // none can show yet; the Mate by its own name, never its container's host.
   const routeEnvironment =
@@ -293,64 +286,50 @@ function SignedInRootRouteView() {
         <CommandPalette>
           <AppSidebarLayout status={<RecoveryOutcomeStatus />}>
             <ConversationOpeningProvider>
-              {/* The organization's gate (ADR 0001): no product without its HQ. */}
-              {hqGate.kind !== "open" ? (
-                <ZeropsHqGate gate={hqGate} />
-              ) : hqBornHere ? (
-                <ZeropsHqGate gate={HQ_BORN_HERE} />
-              ) : (
-                <RouteGateView
-                  gate={gate}
-                  phrase={gatePhrase}
-                  projectId={projectUnavailable ? null : gateInputs.projectId}
-                  recoveryPhrase={recoveryPhrase}
-                  projectUnavailable={projectUnavailable}
-                  conversation={
-                    projectUnavailable
-                      ? { kind: "suppressed", reason: "access-denied" }
-                      : conversation
-                  }
-                  voice={voice}
-                  stage={
-                    gate.kind === "wait" ||
-                    (gate.kind === "unavailable" && gate.reachability !== null) ? (
-                      <MateLinkStage
-                        readPending={!routeDetailHeld}
-                        threadKey={
-                          routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
-                        }
-                        composer={
-                          routeThreadRef === null ? null : (
-                            <RouteStandIn threadRef={routeThreadRef} />
-                          )
-                        }
-                        environmentId={routeEnvironment}
-                        projectId={gateInputs.projectId}
-                        voice={voice.surface === "none" ? SILENT_STAGE : voice}
-                      />
-                    ) : null
-                  }
-                >
-                  <Outlet />
-                </RouteGateView>
-              )}
+              <RouteGateView
+                gate={gate}
+                phrase={gatePhrase}
+                projectId={projectUnavailable ? null : gateInputs.projectId}
+                recoveryPhrase={recoveryPhrase}
+                projectUnavailable={projectUnavailable}
+                conversation={
+                  projectUnavailable
+                    ? { kind: "suppressed", reason: "access-denied" }
+                    : conversation
+                }
+                voice={voice}
+                stage={
+                  gate.kind === "wait" ||
+                  (gate.kind === "unavailable" && gate.reachability !== null) ? (
+                    <MateLinkStage
+                      readPending={!routeDetailHeld}
+                      threadKey={
+                        routeThreadRef === null ? undefined : scopedThreadKey(routeThreadRef)
+                      }
+                      composer={
+                        routeThreadRef === null ? null : <RouteStandIn threadRef={routeThreadRef} />
+                      }
+                      environmentId={routeEnvironment}
+                      projectId={gateInputs.projectId}
+                      voice={voice.surface === "none" ? SILENT_STAGE : voice}
+                    />
+                  ) : null
+                }
+              >
+                <Outlet />
+              </RouteGateView>
             </ConversationOpeningProvider>
           </AppSidebarLayout>
           {/* The New Mate dialog over whatever is on screen — every "Add a Mate" asks here — and a
             new Mate's hand-over to its conversation; the New project dialog, of its family, the
             same way for every "New project"; a place's addresses, wherever a door opens them; a
-            project's Delete; Put it live, its sheet and its runs.
-            None behind the organization's gate. */}
-          {hqGate.kind === "open" ? (
-            <>
-              <ZeropsNewMateHost />
-              <ZeropsNewProjectHost />
-              <ChiefSetupHost />
-              <AddressesSheetHost />
-              <ZeropsDeleteApplicationHost />
-              <PutLiveHost />
-            </>
-          ) : null}
+            project's Delete; Put it live, its sheet and its runs. */}
+          <ZeropsNewMateHost />
+          <ZeropsNewProjectHost />
+          <ChiefSetupHost />
+          <AddressesSheetHost />
+          <ZeropsDeleteApplicationHost />
+          <PutLiveHost />
         </CommandPalette>
       </ZeropsReviewProvider>
     </AgentAdmissionComposition>

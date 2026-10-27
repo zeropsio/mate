@@ -472,6 +472,7 @@ import {
   deriveComposerSendState,
   projectScriptKeybindingWrites,
   hasEnvironmentReconnectWarningGraceElapsed,
+  compactionAnswered,
   latestTurnStartFailureId,
   scheduleEnvironmentReconnectWarning,
   hasServerAcknowledgedLocalDispatch,
@@ -2969,12 +2970,7 @@ function ConversationView(props: ChatViewProps) {
         pendingCompactionMessage.createdAt === activeLatestTurn.requestedAt));
   const compactionSettled =
     pendingCompactionMessage !== undefined &&
-    (latestTurnStartFailureId(activeThread, pendingCompactionMessage.id) !== null ||
-      activeThread?.activities.some((activity) => {
-        if (activity.kind !== "context-compaction") return false;
-        const payload = activity.payload as { readonly requestId?: unknown } | null | undefined;
-        return payload?.requestId === pendingCompactionMessage.id;
-      }));
+    compactionAnswered(activeThread, pendingCompactionMessage);
   const isCompacting =
     (isSendBusy || phase === "connecting" || phase === "running") &&
     compactRequestIsActive &&

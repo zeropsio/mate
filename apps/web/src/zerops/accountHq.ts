@@ -1,329 +1,56 @@
 import { captureAccountLifetime } from "./accountLifetime";
 /**
- * The organization's HQ, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
+ * The HQ this build names, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
  * - **Which HQ:** the one this build names (`VITE_HQ_ORIGIN`, {@link configuredHq}), shared by every
- *   organization: no member list is read for it and no HQ is born. Without one, the legacy per-org
- *   path reads the HQ its anchor names in the org's member list (`findOfficialHq`), with
- *   the person's own token — never a project's name or tag, which anybody who can create a
- *   project could copy. The verdict — that HQ, or that there is none — is held in this page's
- *   memory (`hqVerdict.ts`), and a reader while it holds one reads no member list.
- * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named for its
- *   project (`mate-door:<hqProjectId>:<nonce>`), or `mate-door:hq:<nonce>` for the configured one,
- *   deleted once the door takes it — one a try was
- *   not served with is presented again on the next, while young, and mints nothing. One API per account, org and
- *   HQ for the account's lifetime; its session is kept across loads as the Mates' are
+ *   organization: no member list is read for it and no HQ is born.
+ * - **Through its door:** HQ's API answers a session HQ issued for a throwaway named
+ *   `mate-door:hq:<nonce>`, deleted once the door takes it — one a try was not served with is
+ *   presented again on the next, while young, and mints nothing. One API per account, org and HQ
+ *   for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
  * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves. An HQ
  *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
- * - **Its Core:** the shared production HQ deploys from mate-hq's `scripts/deploy-hq.ts`.
- *   This build retains legacy Core under `hq-core/` (`apps/hq/scripts/pack-core.ts`)
- *   for the per-org birth and update paths.
  */
 import {
-  findOfficialHq,
-  HqError,
-  HQ_NOT_OPEN,
-  ownersAndAdmins,
   sharedHq,
   type HqApi,
   type HqEndpoint,
   type HqParts,
-  type OfficialHq,
 } from "@t3tools/client-runtime/zerops/hq";
 import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
-import { organizationMembers } from "@t3tools/client-runtime/data";
-import type { AtomRegistry } from "effect/reactivity";
-import type { ZeropsApiClient, ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
-import { useCallback, useContext, useEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import { useMemo } from "react";
 
-import { onAccountLifetimeClose } from "./accountLifetime";
-import {
-  forgetNoHqVerdict,
-  keepHqVerdict,
-  keepNoHqVerdict,
-  noHq,
-  useHqVerdict,
-  subscribeHqVerdicts,
-  verdictNames,
-  type HqVerdictOwner,
-} from "./hqVerdict";
-import { endHqSession, keptHqSessions } from "./keptSessions";
-import { useZeropsOrganizationMembersRead } from "./useZeropsMateOwners";
-import { useAccountDataOptional, type AccountData } from "./accountData";
-import { ZeropsDataContext } from "./zeropsDataContext";
+import { keptHqSessions } from "./keptSessions";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
-
-export interface AccountHq {
-  /**
-   * `ready` once the member list was read, or while this page holds the verdict: only then is
-   * `none` an answer to act on.
-   */
-  readonly status: "idle" | "loading" | "ready" | "failed";
-  readonly hq: OfficialHq;
-  /** The org's owners and admins: who sets an HQ up, and whom everybody else asks. */
-  readonly admins: ReadonlyArray<ZeropsOrganizationMember>;
-  /**
-   * Reads the member list again, a held verdict of no official HQ forgotten — after a birth minted
-   * the anchor.
-   */
-  readonly reread: () => void;
-}
 
 /**
  * The HQ this build names (`VITE_HQ_ORIGIN`): clients take HQ's origin from their configuration
- * (mate-hq `spec/protocol.md` Conventions "Origin"). Unset, the legacy per-org path reads its anchor.
+ * (mate-hq `spec/protocol.md` Conventions "Origin"). The one object for an origin, so it keys
+ * memos.
  */
-export function configuredHq(): HqEndpoint | undefined {
-  const origin = import.meta.env.VITE_HQ_ORIGIN?.trim();
-  return origin ? sharedHq(origin) : undefined;
-}
-
-const isConfiguredHq = (hq: HqEndpoint): boolean => {
-  const configured = configuredHq();
-  return configured?.projectId === hq.projectId && configured.address === hq.address;
-};
-
-/**
- * The organization's HQ: the one this build names; else as this page holds it, or as its member
- * list names it.
- */
-export function useAccountHq(clientId: string | undefined): AccountHq {
-  const configured = useMemo(configuredHq, []);
-  const data = useContext(ZeropsDataContext);
-  const owner = useMemo<HqVerdictOwner | undefined>(
-    () =>
-      data === null || clientId === undefined
-        ? undefined
-        : { account: data.scope.account, clientId },
-    [clientId, data],
-  );
-  const kept = useHqVerdict(owner);
-  const { members, status, settled, refusedForGood } = useZeropsOrganizationMembersRead({
-    clientId,
-    enabled: clientId !== undefined && kept === undefined && configured === undefined,
-  });
-  const named = useMemo(() => findOfficialHq(members), [members]);
-  // The HQ whose session the account kept: verified official when the session was minted, so
-  // the page goes to it while the member list verifies it behind.
-  const keptKey = () => (clientId === undefined ? undefined : keptHqOf(clientId));
-  const trustedKey = useSyncExternalStore(subscribeKeptHq, keptKey, keptKey);
-  const trusted = useMemo(() => endpointOf(trustedKey), [trustedKey]);
-  // What a read of the member list settles is this page's verdict from then on: the official
-  // HQ it names, or that it names none — never a list being read again. A kept HQ it does not
-  // name is dropped with its session.
-  useEffect(() => {
-    if (owner === undefined || !settled) return;
-    if (named.kind === "official") keepHqVerdict(owner, named);
-    if (named.kind === "none") keepNoHqVerdict(owner);
-    if (
-      trusted !== undefined &&
-      !(
-        named.kind === "official" &&
-        named.projectId === trusted.projectId &&
-        named.address === trusted.address
-      )
-    )
-      forgetKeptHq(owner.clientId, trusted);
-  }, [named, owner, settled, trusted]);
-  // A member list refused for good verifies nothing: the kept HQ is trusted no more here.
-  useEffect(() => {
-    if (clientId !== undefined && kept === undefined && refusedForGood && trusted !== undefined)
-      distrustKeptHq(clientId);
-  }, [clientId, kept, refusedForGood, trusted]);
-  const hq = useMemo<OfficialHq>(
-    () =>
-      configured !== undefined
-        ? { kind: "official", ...configured }
-        : kept !== undefined
-          ? noHq(kept)
-            ? { kind: "none" }
-            : { kind: "official", projectId: kept.projectId, address: kept.address }
-          : !settled && trusted !== undefined
-            ? { kind: "official", ...trusted }
-            : named,
-    [configured, kept, named, settled, trusted],
-  );
-  const admins = useMemo(() => ownersAndAdmins(members), [members]);
-  const account = useAccountDataOptional();
-  const revalidate = account?.revalidate;
-  const retryDetail = account?.retryDetail;
-  // A verdict this page held and forgot — its HQ said it is not the official one — says the list it
-  // was read from is old: the member list is read again, whenever it was read this session.
-  const heldVerdict = useRef(kept !== undefined);
-  useEffect(() => {
-    const held = kept !== undefined;
-    if (heldVerdict.current && !held && clientId !== undefined)
-      revalidate?.({ family: "organizationMembers", ownerId: clientId });
-    heldVerdict.current = held;
-  }, [clientId, kept, revalidate]);
-  const reread = useCallback(() => {
-    if (owner === undefined) return;
-    const members = { family: "organizationMembers", ownerId: owner.clientId } as const;
-    // Our own write made the list old; the person's again also lifts a refusal.
-    revalidate?.(members);
-    retryDetail?.(members);
-    forgetNoHqVerdict(owner);
-  }, [owner, retryDetail, revalidate]);
-  return {
-    status:
-      configured !== undefined || kept !== undefined || (!settled && trusted !== undefined)
-        ? "ready"
-        : status,
-    hq,
-    admins,
-    reread,
-  };
+let named: HqEndpoint | undefined;
+export function configuredHq(): HqEndpoint {
+  const origin = import.meta.env.VITE_HQ_ORIGIN.trim();
+  const hq = sharedHq(origin);
+  if (named?.address !== hq.address) named = hq;
+  return named;
 }
 
 /** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
 const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
 
-/** Who hears that a kept HQ session was forgotten here: the HQ it named is trusted no more. */
-const keptHqListeners = new Set<() => void>();
-/** The organizations whose member list this page could not read: their kept HQ is not trusted. */
-const distrusted = new Set<string>();
-onAccountLifetimeClose(() => distrusted.clear());
-const distrustKeptHq = (clientId: string) => {
-  distrusted.add(clientId);
-  for (const listener of keptHqListeners) listener();
-};
-const subscribeKeptHq = (listener: () => void) => {
-  keptHqListeners.add(listener);
-  return () => keptHqListeners.delete(listener);
-};
-const forgetKeptHqSession = (key: string, token: string) => {
-  keptHqSessions.forget(key, token);
-  for (const listener of keptHqListeners) listener();
-};
-
-/**
- * The one HQ the account keeps a live session for in the organization `clientId`, as
- * `<projectId>:<address>`; none where it keeps none, or sessions of more than one HQ.
- */
-function keptHqOf(clientId: string): string | undefined {
-  if (distrusted.has(clientId)) return undefined;
-  const prefix = `${clientId}:`;
-  const found = new Set(
-    keptHqSessions
-      .keys()
-      .filter((key) => key.startsWith(prefix) && !key.includes(":displaced:"))
-      .map((key) => key.slice(prefix.length)),
-  );
-  return found.size === 1 ? [...found][0] : undefined;
-}
-
-/** The HQ a `<projectId>:<address>` names; the address holds `:` itself. */
-function endpointOf(named: string | undefined): HqEndpoint | undefined {
-  const split = named?.indexOf(":") ?? -1;
-  return named === undefined || split <= 0
-    ? undefined
-    : { projectId: named.slice(0, split), address: named.slice(split + 1) };
-}
-
-/**
- * Forgets the session the account kept for `hq`, which the member list does not name, and revokes
- * it at the HQ that issued it.
- */
-function forgetKeptHq(clientId: string, hq: HqEndpoint): void {
-  const key = keptHqKey(clientId, hq);
-  const session = keptHqSessions.read(key);
-  if (session === null) return;
-  forgetKeptHqSession(key, session.token);
-  endHqSession(session);
-}
-
-/** The official HQ from the account's current member fact, refreshed for this birth attempt. */
-export async function readOfficialHqNow(
-  account: AccountData,
-  registry: AtomRegistry.AtomRegistry,
-  clientId: string,
-): Promise<OfficialHq> {
-  const orgId = account.orgId;
-  if (orgId === null) throw new Error("No organization is observed for this account.");
-  const demand = { family: "organizationMembers", ownerId: clientId } as const;
-  account.revalidate(demand);
-  if (!(await account.readDetail(demand))) {
-    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
-  }
-  const read = registry.get(account.data.project(organizationMembers, { orgId, clientId }));
-  if (read.status !== "ready")
-    throw new Error("Couldn't verify this organization's official HQ from Zerops.");
-  return findOfficialHq(read.members);
-}
-
-/**
- * The organization's HQ, for a write in the product: the product opens only over an official HQ
- * (`hqGate.ts`), so this is that HQ; anywhere else it is a mistake, and throws.
- */
-export function officialHq(accountHq: Pick<AccountHq, "hq">): HqEndpoint {
-  if (accountHq.hq.kind !== "official") {
-    throw new Error(HQ_NOT_OPEN);
-  }
-  return accountHq.hq;
-}
-
-/**
- * A write waits until the member list names `hq`: the page may read the HQ whose session the
- * account kept before it verified it, but writes nothing there. One it names not refuses the
- * write; trust ending without a verdict (the list refused for good, the session refused) fails it
- * as not yet checked.
- */
-function writeChecked(clientId: string, hq: HqEndpoint): Promise<void> {
-  return new Promise<void>((resolve, reject) => {
-    const trustedKey = `${hq.projectId}:${hq.address}`;
-    const settle = () => {
-      const named = verdictNames(clientId, hq);
-      if (named === undefined && keptHqOf(clientId) === trustedKey) return;
-      unhear();
-      if (named === true) resolve();
-      else reject(named === false ? notOfficial() : unverified());
-    };
-    const unheard = [subscribeHqVerdicts(settle), subscribeKeptHq(settle)];
-    const unhear = () => {
-      for (const stop of unheard) stop();
-    };
-    settle();
-  });
-}
-
-const unverified = () =>
-  new HqError({
-    kind: "unavailable",
-    code: "hq_unverified",
-    message: "Mate is still checking this organization's HQ.",
-  });
-
-const notOfficial = () =>
-  new HqError({
-    kind: "refused",
-    code: "hq_not_official",
-    message: "This HQ is no longer the organization's official HQ.",
-  });
-
-/**
- * A door is entered only into an HQ the member list named: a kept HQ not yet verified behind is
- * still being checked (try again shortly), and one it named not is refused.
- */
-async function doorChecked(clientId: string, hq: HqEndpoint): Promise<void> {
-  const named = verdictNames(clientId, hq);
-  if (named === true) return;
-  throw named === undefined ? unverified() : notOfficial();
-}
-
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else signed in
- * with the person's Zerops access token on the first call. A door is entered only into an HQ the
- * member list named. The HQ this build names is no member list's to verify: its door and writes
- * wait for none, and an organization it has not started is started by its Owner's or Admin's
- * sign-in.
+ * with the person's Zerops access token on the first call. An organization HQ has not started is
+ * started by its Owner's or Admin's sign-in.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
-  const configured = isConfiguredHq(hq);
   const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
   const active = captureAccountLifetime();
-  const api = makeBrowserHqApi({
+  return makeBrowserHqApi({
     address: hq.address,
     kept: {
       read: () => {
@@ -343,47 +70,37 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         if (displaced !== null)
           keptHqSessions.keep(`${keptKey}:displaced:${displaced.token}`, displaced);
       },
-      forget: (token) => forgetKeptHqSession(keptKey, token),
+      forget: (token) => keptHqSessions.forget(keptKey, token),
     },
-    beforeWrite: () => (configured ? Promise.resolve() : writeChecked(clientId, hq)),
-    isCurrent: () => active() && (configured || verdictNames(clientId, hq) === true),
-    accessToken: (refused) =>
-      (configured ? Promise.resolve() : doorChecked(clientId, hq)).then(() => accessToken(refused)),
+    isCurrent: active,
+    accessToken,
     orgId: clientId,
     startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });
-  return api;
 }
 
 /**
- * The official HQ of the organization in view, as the person reaches it: its address and its API;
- * `null` until its anchor is resolved, with no organization open, and outside a Zerops session.
+ * The HQ of the organization in view, as the person reaches it: its address and its API; `null`
+ * with no organization open, and outside a Zerops session.
  */
 export function useOfficialHq(): { readonly address: string; readonly api: HqApi } | null {
   const session = useZeropsSessionOptional();
   const client = session?.client;
   const clientId = session?.activeOrganization?.id;
-  const { hq } = useAccountHq(clientId);
-  const projectId = hq.kind === "official" ? hq.projectId : null;
-  const address = hq.kind === "official" ? hq.address : null;
+  const hq = configuredHq();
   const api = useMemo(
     () =>
-      client === undefined || clientId === undefined || projectId === null || address === null
-        ? null
-        : accountHqApi(client, clientId, { projectId, address }),
-    [client, clientId, projectId, address],
+      client === undefined || clientId === undefined ? null : accountHqApi(client, clientId, hq),
+    [client, clientId, hq],
   );
-  return useMemo(
-    () => (address === null || api === null ? null : { address, api }),
-    [address, api],
-  );
+  return useMemo(() => (api === null ? null : { address: hq.address, api }), [api, hq]);
 }
 
 /** Where an HQ stands, as its stream last said it (`hqStandingAtom`). */
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * Serving as the official HQ. `build` the Core it runs (`hq/update.ts`) and `parts` how they
+   * Serving as the official HQ. `build` the Core it runs and `parts` how they
    * stand, as its stream says them; each absent while it has not yet.
    */
   | {
@@ -398,19 +115,3 @@ export type HqStanding =
    * began; the menu's outage line carries HQ's own reason.
    */
   | { readonly kind: "refused" };
-
-/** The birth's own input beside its record: the API Core reads. */
-export function hqBirthSite(client: ZeropsApiClient): {
-  readonly zeropsApi: string;
-} {
-  return {
-    zeropsApi: `${client.baseUrl}/api/rest/public`,
-  };
-}
-
-export {
-  readBundledCore,
-  readCarriedCore,
-  readCarriedCoreBuild,
-  useCarriedCoreBuild,
-} from "./bundledCore";

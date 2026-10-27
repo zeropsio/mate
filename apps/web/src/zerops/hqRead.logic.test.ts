@@ -37,7 +37,6 @@ describe("an unread HQ project's words", () => {
 describe("the active organization's HQ navigation settlement", () => {
   const base = {
     organizationId: "org-a",
-    accountHq: { status: "ready", hq: { kind: "official" } },
     navigation: {
       orgId: "org-a",
       read: "reading",
@@ -49,14 +48,6 @@ describe("the active organization's HQ navigation settlement", () => {
   } as const;
   it.each([
     ["HQ has not answered", {}, false],
-    [
-      "member list still loading",
-      { accountHq: { status: "loading", hq: { kind: "none" } } },
-      false,
-    ],
-    ["member list not started", { accountHq: { status: "idle", hq: { kind: "none" } } }, false],
-    ["definitely no HQ", { accountHq: { status: "ready", hq: { kind: "none" } } }, true],
-    ["member read failed", { accountHq: { status: "failed", hq: { kind: "none" } } }, true],
     ["HQ's catchup ended", { navigation: { ...base.navigation, read: "read", live: true } }, true],
     [
       "HQ stream failed before its catchup",

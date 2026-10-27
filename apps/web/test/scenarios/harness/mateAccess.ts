@@ -9,67 +9,60 @@ import {
   RECIPE_TIER_PATHS,
   type RecipeTier,
 } from "@t3tools/shared/hqRecipe";
-import { gitClient } from "../../../../hq/test/harness/gitClient.ts";
-import { mateInApp, remoteOf } from "../../../../hq/test/harness/mates.ts";
-import { stateBecomes } from "../../../../hq/test/harness/recipe.ts";
-import { sessionFor } from "../../../../hq/test/harness/runningCore.ts";
+import { gitClient } from "./gitClient.ts";
+import { stateBecomes } from "./recipe.ts";
 import type { ScenarioCore } from "./hqCore.ts";
 
 type Git = Effect.Success<typeof gitClient>;
 
 /**
- * A person's HQ session, through the door the scenario's Core serves: the real Core takes the
- * person's Zerops access token (`definePerson` keeps it as `personal-<name>`), the embedded one
- * a hand-over token the fixture minted (`door-<name>`).
+ * A person's HQ session, through the door the scenario's Core serves: it takes the person's Zerops
+ * access token (`definePerson` keeps it as `personal-<name>`).
  */
 export const personDoor = (core: ScenarioCore, person: string, orgKey?: string) =>
-  core.kind === "external"
-    ? core
-        .call("POST", "/api/door", {
-          body: {
-            accessToken: person === "owner" ? "personal" : `personal-${person}`,
-            orgId: "ORG",
-            ...(orgKey === undefined ? {} : { orgKey }),
-          },
-        })
-        .pipe(
-          Effect.map((response) => {
-            expect(response.status, JSON.stringify(response.body)).toBe(200);
-            return (response.body as { session: string }).session;
-          }),
-        )
-    : sessionFor(core.call, `door-${person}`);
+  core
+    .call("POST", "/api/door", {
+      body: {
+        accessToken: person === "owner" ? "personal" : `personal-${person}`,
+        orgId: "ORG",
+        ...(orgKey === undefined ? {} : { orgKey }),
+      },
+    })
+    .pipe(
+      Effect.map((response) => {
+        expect(response.status, JSON.stringify(response.body)).toBe(200);
+        return (response.body as { session: string }).session;
+      }),
+    );
 
 /**
- * How a Mate reaches HQ over HTTP and Git, from what `given.project` returned for it: the real
- * Core takes the project key (`Project <key>`, also as Git's `http.extraHeader`) and serves Git
- * under the organisation; the embedded Core takes its enrolled credential.
+ * How a Mate reaches HQ over HTTP and Git, from what `given.project` returned for it: the Core
+ * takes the project key (`Project <key>`, also as Git's `http.extraHeader`) and serves Git under
+ * the organisation.
  */
 export function mateAccess(core: ScenarioCore, owner: string, credential: string) {
-  const external = core.kind === "external";
-  const headers = { authorization: external ? `Project ${credential}` : `Mate ${credential}` };
+  const headers = { authorization: `Project ${credential}` };
   /** The repository's address as HQ hands it out (`url`), which a recipe's `buildFromGit` names. */
-  const url = (appId: string, repo: string) =>
-    `${core.origin}/git/${external ? "ORG/" : ""}${appId}/${repo}.git`;
-  const remote = (appId: string, repo: string) =>
-    external ? url(appId, repo) : remoteOf(core.origin, credential, appId, repo);
+  const url = (appId: string, repo: string) => `${core.origin}/git/ORG/${appId}/${repo}.git`;
   return {
     headers,
     url,
-    /** The application's repository `name`, made if new; the real Core makes it for a person. */
+    /** The application's repository `name`, made if new. */
     repo: Effect.fn("scenarios.mateAccess.repo")(function* (appId: string, name: string) {
-      const made = external
-        ? yield* core.call("POST", `/api/apps/${appId}/repos`, { session: owner, body: { name } })
-        : yield* core.call("POST", "/api/mate/repos", { headers, body: { name } });
+      const made = yield* core.call("POST", `/api/apps/${appId}/repos`, {
+        session: owner,
+        body: { name },
+      });
       expect([200, 201], JSON.stringify(made.body)).toContain(made.status);
     }),
     /** `git clone` of the repository into `dir` (under the client's directory), as the Mate. */
     clone: (git: Git, appId: string, repo: string, dir: string, options: string[] = []) =>
       git.checked([
         "clone",
-        ...(external ? ["-c", `http.extraHeader=Authorization: ${headers.authorization}`] : []),
+        "-c",
+        `http.extraHeader=Authorization: ${headers.authorization}`,
         ...options,
-        remote(appId, repo),
+        url(appId, repo),
         dir,
       ]),
   };
@@ -77,7 +70,7 @@ export function mateAccess(core: ScenarioCore, owner: string, credential: string
 
 /**
  * The owner places `projectId` as a Mate in the application `appName`, made once per name in
- * `appIds`; the embedded Core also enrolls it. The real Core links a Mate by its project key.
+ * `appIds`. The Core links a Mate by its project key.
  */
 export const placeMate = Effect.fn("scenarios.placeMate")(function* (
   core: ScenarioCore,
@@ -86,8 +79,6 @@ export const placeMate = Effect.fn("scenarios.placeMate")(function* (
   appName: string,
   appIds: Map<string, string>,
 ) {
-  if (core.kind !== "external")
-    return (yield* mateInApp(core.call, core.fake, owner, projectId, appName, appIds)).appId;
   let appId = appIds.get(appName);
   if (appId === undefined) {
     const app = yield* core.call("POST", "/api/apps", { session: owner, body: { name: appName } });

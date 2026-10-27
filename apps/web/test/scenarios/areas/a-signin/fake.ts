@@ -57,14 +57,9 @@ export async function endSessionCheck(
   }
 }
 
-/**
- * The Core's next session and role recheck of every socket: the real Core's comes when its wait
- * clock passes the recheck period; the embedded Core's runs on its own short period.
- */
+/** The Core's next session and role recheck of every socket: it comes when its wait clock passes the recheck period. */
 export const coreRechecks = (drivers: ScenarioDrivers) =>
-  drivers.core.kind === "external"
-    ? Effect.runPromise(drivers.core.clock.advance(drivers.core.periods.streamRecheck))
-    : Promise.resolve();
+  Effect.runPromise(drivers.core.clock.advance(drivers.core.periods.streamRecheck));
 
 /**
  * The Core's next recheck, kept by every one of the browser's sockets in `links`: both rechecks of
@@ -76,7 +71,6 @@ export const everySocketRechecked = (
   links: ReadonlyMap<WebSocket, WebSocket>,
 ) => {
   const core = drivers.core;
-  if (core.kind !== "external") return Promise.resolve();
   const open = [...links.keys()];
   if (open.length === 0) throw new Error("No socket of the browser reaches the Core");
   const rechecks = (waits: ReadonlyArray<number>) =>

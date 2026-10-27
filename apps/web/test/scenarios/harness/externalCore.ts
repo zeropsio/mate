@@ -10,8 +10,8 @@ import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { WebSocket } from "ws";
-import { makeHttpCall } from "../../../../hq/test/harness/httpCall.ts";
-import type { FakeWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import { makeHttpCall } from "./httpCall.ts";
+import type { FakeWorld } from "./fakeWorld.ts";
 import { deadline } from "./http.ts";
 
 type Message = { readonly type: string; readonly [field: string]: unknown };

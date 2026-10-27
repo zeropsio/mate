@@ -1,6 +1,6 @@
 /**
- * The organization's HQ as the account observes it (ADR 0002): once the member list names its
- * official HQ (`useAccountHq`), the account's data layer opens HQ's scope stream to it
+ * The organization's HQ as the account observes it (ADR 0002): the account's data layer opens the
+ * scope stream of the HQ this build names (`configuredHq`) to it
  * (`@t3tools/client-runtime/data`); every surface reads HQ's navigation from the store's
  * projections. What the menu says while HQ does not answer is said here.
  *
@@ -14,11 +14,9 @@ import type { TimestampFormat } from "@t3tools/contracts/settings";
 import { useEffect, useMemo } from "react";
 
 import { formatDayAwareTimestamp } from "../timestampFormat";
-import { HQ_SERVICE, hqZeropsProject } from "@t3tools/client-runtime/zerops/hq";
-import { serviceDashboardUrl } from "@t3tools/client-runtime/zerops/serviceMap";
-import { accountHqApi, useAccountHq } from "./accountHq";
+import { accountHqApi, configuredHq } from "./accountHq";
 import { holdHqWrites } from "./hqWrites";
-import { useAccountDataOptional, useProjectServices } from "./ZeropsAccountData";
+import { useAccountDataOptional } from "./ZeropsAccountData";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** How the menu says HQ's standing: `null` while it answers, or before anything is known. */
@@ -83,16 +81,11 @@ export function ZeropsHqNavigation(): null {
   const { activeOrganization, client, status } = useZeropsSession();
   const showHq = useAccountDataOptional()?.showHq;
   const organizationId = status === "signed-in" ? activeOrganization?.id : undefined;
-  const accountHq = useAccountHq(organizationId);
-  const hqProjectId = accountHq.hq.kind === "official" ? accountHq.hq.projectId : undefined;
-  const hqAddress = accountHq.hq.kind === "official" ? accountHq.hq.address : undefined;
+  const hq = configuredHq();
 
   const api = useMemo(
-    () =>
-      organizationId === undefined || hqProjectId === undefined || hqAddress === undefined
-        ? null
-        : accountHqApi(client, organizationId, { projectId: hqProjectId, address: hqAddress }),
-    [client, hqAddress, hqProjectId, organizationId],
+    () => (organizationId === undefined ? null : accountHqApi(client, organizationId, hq)),
+    [client, hq, organizationId],
   );
   const wire = useMemo(() => (api === null ? null : makeHqWire(api)), [api]);
   // The account's operations write to the HQ it observes, and to none once it observes none.
@@ -100,27 +93,17 @@ export function ZeropsHqNavigation(): null {
     () =>
       organizationId === undefined || api === null
         ? undefined
-        : holdHqWrites(organizationId, api, hqProjectId ?? null),
-    [api, organizationId, hqProjectId],
+        : holdHqWrites(organizationId, api, hq.projectId),
+    [api, hq, organizationId],
   );
-  // A new wire for the same organization's HQ moves the link to it; the link stops only once no
-  // HQ is named, or with this mount. Without one, the account holds its verdict: none, the member
-  // list unreadable, or not decided yet.
-  const verdict =
-    accountHq.status === "failed"
-      ? "unreadable"
-      : accountHq.status === "ready" && accountHq.hq.kind !== "official"
-        ? "none"
-        : "pending";
+  // A new wire for the same organization's HQ moves the link to it; the link stops with this mount.
   useEffect(() => {
     showHq?.(
-      organizationId === undefined
+      organizationId === undefined || wire === null
         ? null
-        : wire === null
-          ? { orgId: organizationId, verdict }
-          : { orgId: organizationId, wire, ownerId: JSON.stringify([hqProjectId, hqAddress]) },
+        : { orgId: organizationId, wire, ownerId: JSON.stringify([hq.projectId, hq.address]) },
     );
-  }, [organizationId, showHq, verdict, wire, hqProjectId, hqAddress]);
+  }, [organizationId, showHq, wire, hq]);
   useEffect(
     () => () => {
       void showHq?.(null);
@@ -129,13 +112,4 @@ export function ZeropsHqNavigation(): null {
   );
 
   return null;
-}
-
-/** The official HQ's Core service, from the account's existing service facts. */
-export function useHqServiceUrl(): string | undefined {
-  const orgId = useZeropsSession().activeOrganization?.id;
-  const hq = useAccountHq(orgId).hq;
-  const { services } = useProjectServices(hqZeropsProject(hq) ?? null);
-  const service = services?.find((entry) => entry.name === HQ_SERVICE && entry.isSystem !== true);
-  return service === undefined ? undefined : serviceDashboardUrl(service.id);
 }

@@ -1,8 +1,8 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { resizeMenu } from "../../harness/browser.ts";
 import { transportGate } from "../../harness/transportGate.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
@@ -37,7 +37,7 @@ function recordCardFrames(cardAt: string) {
 }
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // The onboarding run, every role: a card's first frame said "No changes yet" and had no
     // History; 40 ms later its released change came and Project Mates moved 56 to 106 px down.
     it.effect(

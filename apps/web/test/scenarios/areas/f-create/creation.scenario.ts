@@ -1,14 +1,14 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
 import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     for (const [role, tag] of [
       ["stage", "stage"],
       ["production", "prod"],

@@ -6,7 +6,6 @@ import * as NodeURL from "node:url";
 // Full partition sizes stay fixed when a blame run selects only one shard.
 export const blameMatrices = {
   test_scripts: [1].map((shard) => ({ shard, total: 1 })),
-  test_hq: [1].map((shard) => ({ shard, total: 1 })),
   test_client_runtime: [1].map((shard) => ({ shard, total: 1 })),
   test_web: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
   test_server: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
@@ -21,7 +20,6 @@ const jobNames = {
   test: "Test",
   test_packages: "Test Packages",
   test_scripts: "Test Scripts",
-  test_hq: "Test HQ",
   test_client_runtime: "Test Client Runtime",
   test_web: "Test Web",
   test_server: "Test Server",
@@ -66,11 +64,9 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     // These are execution dependencies or summary contexts, not extra test suites.
     if (
       selected.has("test") &&
-      !["test_packages", "test_scripts", "test_hq", "test_client_runtime"].some((job) =>
-        selected.has(job),
-      )
+      !["test_packages", "test_scripts", "test_client_runtime"].some((job) => selected.has(job))
     ) {
-      for (const job of ["test_packages", "test_scripts", "test_hq", "test_client_runtime"]) {
+      for (const job of ["test_packages", "test_scripts", "test_client_runtime"]) {
         selected.add(job);
         if (job in blameMatrices) matrices[job] = { include: blameMatrices[job as MatrixJob] };
       }

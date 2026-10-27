@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea as installChat } from "../c-mate/fake.ts";
 import { mateChat } from "../c-mate/dsl.ts";
@@ -9,7 +9,7 @@ import { installMutations } from "./fake.ts";
 import { mutations, originalMateRemains } from "./dsl.ts";
 
 describe("Lifecycle: Move", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Catches own Move losing the active conversation/question, duplicating placement in another tab, or taking a sibling/source change with it.
     it.effect(
       "own Move keeps the conversation and source repository change while both tabs converge",

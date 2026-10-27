@@ -1,10 +1,10 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea, reportContainer } from "./fake.ts";
@@ -24,7 +24,7 @@ describe("owner-reported layout regressions", () => {
   // Cyd: delayed HQ app detail inserted an old landing above the painted final answer,
   // dropping its words 79 px before the end follower glided back. The source stays unchanged.
 
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("the Chief's first message and composer enter the conversation without a jump", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
@@ -206,7 +206,7 @@ describe("owner-reported layout regressions", () => {
 
   describe("Decision: geometry relations only; no style pins.", () => {
     describe("Decision: recovery results float as toasts; the docked footer is clear above the card.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         it.effect(
           "a real Mate's recovery action stays fully inside its toast and the viewport",
           () =>
@@ -562,7 +562,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: the composer is its own group; the conversation's end stands clear of it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Owner, 2026-10-10: "last message way too close to composer" (a person's message 18 px
         // above the card), and "in some cases, at least previously, some stuff went even into the
         // composer (like working card when it had helpers etc)". A question the run waits on is
@@ -731,7 +731,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: an ask never moves the conversation, and never hides its end: the person scrolls clear of it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Owner, 2026-10-10: the question in the composer covered the last 120–180 px of the run's
         // card, the agent's last words with it, and no scroll brought them out from under it.
         const asks: ReadonlyArray<{
@@ -877,7 +877,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: what the agent asks opens with the conversation's end in sight above it.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         // Engine final run, C1 and C9 (light and dark): the question and the secret drawer opened
         // over the person's message and the run's card, and only a scroll brought them out.
         const asks: ReadonlyArray<{
@@ -985,7 +985,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         /**
          * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer, its
          * last-known line quoting `lastWords`. Where its box and its painted card end, against the
@@ -1123,7 +1123,7 @@ describe("owner-reported layout regressions", () => {
     });
 
     describe("Decision: restore pre-regression behaviour; no test weakened; titles kept.", () => {
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         for (const state of ["plain", "review"] as const)
           it.effect(
             `the last row ends above the docked composer and history never paints below it (${state})`,
@@ -1255,7 +1255,7 @@ describe("owner-reported layout regressions", () => {
           }),
         );
 
-      it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+      scenarioSuite((it) => {
         const LONG =
           "Live stress test 4D: what number is in this picture? Then open example.com in the browser, take a screenshot of the page and describe its layout in twenty lines: the background, the column, the icon at the top, each paragraph and the language it is written in, and the link at the end.";
 

@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installBudget } from "./fake.ts";
 import { budgets } from "./dsl.ts";
@@ -14,7 +14,7 @@ const names = ["Ada", "Bea", "Cara", "Dora"];
 const REGISTRATIONS = 12;
 
 describe("H: hosted client budgets", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // App detail scales with the cards in view (the owner, 2026-10-11, asked each card for its
     // "quick history of latest PRs"): applications nobody can see add no history reads.
     it.effect(

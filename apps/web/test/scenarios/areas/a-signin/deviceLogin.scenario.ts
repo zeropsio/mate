@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { beforeAll, describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { deviceLoginDist } from "../../harness/deviceLoginBundle.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installSignIn, sensitiveSharedValue } from "./fake.ts";
@@ -14,7 +14,7 @@ describe("A: sign-in through the Zerops window", () => {
   beforeAll(async () => {
     dist = await deviceLoginDist();
   });
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Catches an approval in the Zerops window leaving the person at the door, or the window
     // asked without the popup display it closes itself by.
     it.effect("sign-in through Zerops opens the account", () =>
@@ -44,20 +44,16 @@ describe("A: sign-in through the Zerops window", () => {
         expect(consent.searchParams.get("intent")).toBe("register");
         expect(consent.searchParams.get("display")).toBe("popup");
         yield* Effect.promise(async () => {
-          // A configured HQ starts the owner's organization at sign-in; a discovered HQ
-          // still asks its owner to set one up before the first project.
+          // The shared HQ starts the owner's organization at sign-in.
           await s.page.waitForFunction(
-            () =>
-              document.body.innerText.includes("Set up HQ for Newcomer") ||
-              document.querySelector('[data-zerops-surface="first-run"]') !== null,
+            () => document.querySelector('[data-zerops-surface="first-run"]') !== null,
             { polling: "raf" },
           );
-          const configured = s.drivers.core.kind === "external";
           expect(
             await s.page.evaluate(() => document.body.innerText),
             "ASSERTION: sign-up opens the new account's onboarding",
-          ).toContain(configured ? "Start a project" : "Set up HQ for Newcomer");
-          if (configured) await s.page.locator('::-p-aria(New project[role="button"])').wait();
+          ).toContain("Start a project");
+          await s.page.locator('::-p-aria(New project[role="button"])').wait();
         });
         yield* account(s.page).showsPerson("newcomer");
         yield* account(s.page).showsOrganization("Newcomer");

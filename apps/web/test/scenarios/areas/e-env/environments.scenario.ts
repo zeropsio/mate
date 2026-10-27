@@ -1,16 +1,16 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
 import { addGitEnvironment, environmentActions, environmentJobs, gitEnvironments } from "./dsl.ts";
 
 const decodeHqFrame = Schema.decodeSync(Schema.fromJsonString(HqStreamMessage));
 
 describe("E: stage, production, release and rollback", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "A Git environment arriving after first paint renders without a project and its mounted removal returns an HQ receipt",
       () =>

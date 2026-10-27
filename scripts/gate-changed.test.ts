@@ -412,9 +412,6 @@ beforeAll(() => {
       "apps/web/package.json",
       "apps/server/src",
       "apps/server/package.json",
-      "apps/hq/src",
-      "apps/hq/test",
-      "apps/hq/package.json",
       "packages",
       "scripts",
       "oxlint-plugin-t3code/rules",
@@ -605,7 +602,6 @@ it.each([
           "@t3tools/scripts",
           "@t3tools/shared",
           "@t3tools/client-runtime",
-          "@t3tools/hq",
           "@t3tools/web",
           "@t3tools/desktop",
           "@t3tools/mobile",
@@ -1938,10 +1934,6 @@ it.each([
   [
     "packages/client-runtime/src/zerops/hq/client.ts",
     "oxlint-plugin-t3code/rules/no-remote-io-outside-data-layer.test.ts",
-  ],
-  [
-    "apps/hq/src/environmentNavigation.ts",
-    "test/scenarios/areas/b-menu/environmentIdentity.scenario.ts",
   ],
 ])("the gate lists the real consumer of a changed repository input (%s)", (input, consumer) => {
   const file = NodePath.join(repositoryFixture, input);

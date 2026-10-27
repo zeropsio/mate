@@ -31,8 +31,8 @@ export async function buildScenarioBundle(bundle: ScenarioBundle = "handover") {
   };
   delete buildEnv.VITE_HTTP_URL;
   delete buildEnv.VITE_WS_URL;
-  // The ticket client uses the configured HQ; this origin already routes to the scenario's Core.
-  if (process.env.MATE_HQ_TEST_COMMAND) buildEnv.VITE_HQ_ORIGIN = "https://hqzone.prg1-zerops.zone";
+  // The client names its HQ at build time; this origin routes to the scenario's Core.
+  buildEnv.VITE_HQ_ORIGIN = "https://hqzone.prg1-zerops.zone";
   const started = performance.now();
   let built = false;
   const dist = await cachedBundle(root, buildEnv, async (dist) => {

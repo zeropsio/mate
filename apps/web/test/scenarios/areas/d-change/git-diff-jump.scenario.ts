@@ -1,17 +1,17 @@
 // @effect-diagnostics nodeBuiltinImport:off -- the commit is written into a scratch clone.
+import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { gitClient } from "../../../../../hq/test/harness/gitClient.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
+import { gitClient } from "../../harness/gitClient.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
 const lines = (count: number, tag: string) =>
   Array.from({ length: count }, (_, i) => `${tag} line ${String(i)}\n`).join("");
 
 describe("Git browser diff", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("A jump to a file lands that file at the top, after any long file", () =>
       Effect.gen(function* () {
         const s = yield* createScenario();

@@ -1,10 +1,10 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
 describe("foundation: the real hosted client", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Catches a missing menu row after a Zerops-only colleague addition, without waiting for HQ.
     it.effect("B: Zerops-only project appears in the menu without HQ", () =>
       Effect.gen(function* () {

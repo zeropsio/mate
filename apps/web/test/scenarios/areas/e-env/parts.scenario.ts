@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { ChangeReceiptPart } from "@t3tools/shared/hqChanges";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "../d-change/fake.ts";
 import { changeFixture, review } from "../d-change/dsl.ts";
@@ -9,7 +9,7 @@ import { changeFixture, review } from "../d-change/dsl.ts";
 const OLDER = "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678";
 
 describe("E: an application of several parts", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "A change review lists each part's preview from its receipt, one stale and one failed, and still offers Merge",
       () =>

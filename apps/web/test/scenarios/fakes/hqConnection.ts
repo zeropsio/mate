@@ -105,10 +105,6 @@ export async function hqConnection(coreOrigin: string) {
   );
   return {
     ...server,
-    /** A replacement Core process behind the same public origin. */
-    replaceCore(origin: string) {
-      coreOrigin = origin;
-    },
     links,
     counters,
     requests,

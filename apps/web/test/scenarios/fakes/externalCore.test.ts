@@ -8,7 +8,7 @@ import * as NodePath from "node:path";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
-import { emptyWorld } from "../../../../hq/test/harness/zeropsFake.ts";
+import { emptyWorld } from "../harness/fakeWorld.ts";
 import { startExternalCore } from "../harness/externalCore.ts";
 import { serve } from "../harness/http.ts";
 

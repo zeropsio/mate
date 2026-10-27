@@ -20,7 +20,6 @@ it.each([
     path: "apps/server/src/server.ts",
     rebuild: false,
   },
-  { title: "reuses the bundle after an HQ-only edit", path: "apps/hq/src/core.ts", rebuild: false },
   {
     title: "reuses the bundle after a docs edit",
     path: "docs/operations/example.md",

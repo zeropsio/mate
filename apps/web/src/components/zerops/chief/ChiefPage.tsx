@@ -6,16 +6,11 @@
  * that stopped says why over *Try again*, and once it is set up the page is the Chief's own view
  * while its container comes up (`ZeropsMateComingPage`), which hands over to its conversation.
  */
-import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
 import { useOwnChief } from "~/zerops/ownChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
-import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { hqBehind } from "~/components/zerops/ZeropsHqUpdate.logic";
-import { useAtomValue } from "@effect/atom-react";
-import { hqStandingAtom } from "~/state/zerops";
 
 import { Button } from "../../ui/button";
 import { ArrivalSwap } from "../ArrivalSwap";
@@ -39,27 +34,8 @@ const CHIEF_DRAWN = {
 export function ChiefPage() {
   const own = useOwnChief();
   const { setup, startedAtMs } = useChiefSetup();
-  const { activeOrganization } = useZeropsSession();
-  const orgId = activeOrganization?.id;
-  const accountHq = useAccountHq(orgId);
   const create = useOrgOffers()("create_app");
-  // An HQ on an older Core than this app's records no Chief: its update comes first.
-  const standing = useAtomValue(hqStandingAtom);
-  const carried = useCarriedCoreBuild();
-  const answering = standing.kind === "healthy" ? standing.build : undefined;
-  const view = chiefPageView({
-    own,
-    setup,
-    hq:
-      accountHq.hq.kind === "official"
-        ? hqBehind({ hq: accountHq.hq, answering, carried })
-          ? "behind"
-          : "official"
-        : accountHq.status === "ready"
-          ? "none"
-          : "reading",
-    mayCreate: create.kind !== "refused",
-  });
+  const view = chiefPageView({ own, setup, mayCreate: create.kind !== "refused" });
   if (view.kind === "coming")
     return <ZeropsMateComingPage key={view.projectId} projectId={view.projectId} />;
   return (

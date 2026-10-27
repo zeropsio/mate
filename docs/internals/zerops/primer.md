@@ -2,8 +2,8 @@
 
 - A **Mate** is a coding environment in a Zerops project: its code, coding agents and durable work.
 - A **Zerops project** groups services on the platform. It is distinct from an application.
-- **HQ** is the shared authority for applications, repositories, changes and deployments, with
-  one tenant per organization. **Core** is the service that carries that authority.
+- **HQ** is the shared authority for applications, repositories, changes and deployments, one
+  service for every organization (mate-hq).
 - An **application** groups related repositories and environments in HQ.
 - An **environment** is a place an application's code runs. A Mate is for development, **stage**
   follows merged work, and **production** runs a release. A Mate's **preview** is its development

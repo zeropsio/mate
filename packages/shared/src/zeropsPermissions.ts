@@ -1,5 +1,5 @@
 /**
- * The wire contract of HQ's permission rule (`can`, `apps/hq/src/permissions.ts`, which HQ alone
+ * The wire contract of HQ's permission rule (`can`, `mate-hq apps/hq/src/permissions.ts`, which HQ alone
  * runs): every reason a refusal names, and a decision's shape. HQ answers a refused write with its
  * reason, and streams what it offers each reader as decisions (`hqOffers.ts`); the client words
  * each reason (`hq/refusals.ts`) and decides none.

@@ -35,7 +35,7 @@ import { useContext, useEffect, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
-import { officialHq, useAccountHq } from "~/zerops/accountHq";
+import { configuredHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
 import { beginCreation, refuseAddHere, runOnce } from "~/zerops/creations";
@@ -136,7 +136,6 @@ function NewMateDialog({
   readonly again?: NewMateAgain | undefined;
 }) {
   const { activeOrganization } = useZeropsSession();
-  const accountHq = useAccountHq(activeOrganization?.id);
   const { listing } = useZeropsCandidates();
   const candidates = useMemo(() => heldCandidates(listing).rows, [listing]);
   // A Mate's name must be new on the account, not just in the project: it is what the left menu
@@ -246,7 +245,7 @@ function NewMateDialog({
           ...(choice.automated === true ? { automated: true as const } : {}),
         },
       },
-      hq: officialHq(accountHq),
+      hq: configuredHq(),
       now: Date.now(),
       run: (held) =>
         void runOnce(id, () =>

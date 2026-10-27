@@ -14,7 +14,6 @@ import {
   listedProjectAtom,
   projectGoneAtom,
   shownHqMatesAnsweredAtom,
-  shownHqVerdictAtom,
   shownProjectsAtom,
 } from "@t3tools/client-runtime/data";
 import { placedMenuRows, placedNames } from "@t3tools/client-runtime/zerops/hq";
@@ -57,7 +56,6 @@ export function menuRowsAtom<Row extends CandidateRow>(
       !menuSourcesSettled({
         projects: listing,
         hq: navigation,
-        verdict: get(shownHqVerdictAtom),
         matesAnswered: get(shownHqMatesAnsweredAtom),
         waitedOut: standing.waitedOut,
       })

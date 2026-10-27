@@ -184,24 +184,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     paths: ["apps/web/src/zerops/activity/useOperationCard.ts"],
   },
   {
-    token: "options.pollEvery ?? Duration.seconds(10)",
-    family: "running work/processes",
-    reason: "the deploy rollout polls on its own clock; the source's stream drives the state",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
-    token: "followFor",
-    family: "running work/processes",
-    reason: "a deploy outcome decided by the clock; only the source settles an operation",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
-    token: "untakenAfter",
-    family: "running work/processes",
-    reason: "a deploy outcome decided by the clock; only the source settles an operation",
-    paths: ["apps/hq/src/deploys.ts"],
-  },
-  {
     token: "UNREACHABLE_GRACE_MS",
     family: "running work/processes",
     reason:
@@ -500,12 +482,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     ],
   },
   {
-    token: "const appReads: Record<string, AppRead>",
-    family: "HQ structure/apps",
-    reason: "every app's detail is hydrated before the first snapshot; read on open",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
     token: "event.appReads === null",
     family: "HQ structure/apps",
     reason: "null-means-delete in HQ data overwrites whole apps; events carry what changed",
@@ -521,32 +497,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "STRUCTURE_SEGMENT_LIFETIME",
     family: "HQ structure/apps",
     reason: "HQ sends a full structure snapshot every 100 s segment; it streams changes",
-  },
-  {
-    token: "structureTick",
-    family: "HQ structure/apps",
-    reason:
-      "HQ recomputes the whole view per subscriber on every tick; it computes once per change",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
-    token: "Stream.tick(recheck)",
-    family: "HQ structure/apps",
-    reason:
-      "HQ recomputes the whole view per subscriber on every tick; it computes once per change",
-    paths: ["apps/hq/src/stream.ts"],
-  },
-  {
-    token: "moveOffers",
-    family: "HQ structure/apps",
-    reason: "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    paths: ["apps/hq/src/offers.ts", "apps/hq/src/structure.ts"],
-  },
-  {
-    token: "moveTo: moveOffers(",
-    family: "HQ structure/apps",
-    reason: "HQ enumerates every Mate-by-app move offer up front; ask when the dialog opens",
-    paths: ["apps/hq/src/structure.ts"],
   },
   {
     token: "mate:zerops:composer-top-memory",
@@ -761,10 +711,7 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms))",
     family: "operations",
     reason: "the HQ update panel sleeps between its own polls; the operation's stream drives it",
-    paths: [
-      "apps/web/src/components/zerops/ZeropsHqUpdate.tsx",
-      "apps/web/src/zerops/accountHq.ts",
-    ],
+    paths: ["apps/web/src/zerops/accountHq.ts"],
   },
   {
     token: "zeropsAgentActivityOf(",
@@ -816,18 +763,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "member names and Mate owners come from the member list; HQ sends them finished",
   },
   {
-    token: "client.listOrganizationMembers(clientId)",
-    family: "permissions/members",
-    reason: "the client lists organization members for permissions; HQ computes them",
-    paths: ["apps/web/src/components/zerops/ZeropsHqGate.tsx"],
-  },
-  {
-    token: "bear(false)",
-    family: "permissions/members",
-    reason: "the client lists organization members for permissions; HQ computes them",
-    paths: ["apps/web/src/components/zerops/ZeropsHqGate.tsx"],
-  },
-  {
     token: "denialConfirmationDelayMs",
     family: "permissions/members",
     reason: "a 403 is confirmed after a delay; a definitive refusal stands",
@@ -841,11 +776,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     token: "retryRefusedHydrations",
     family: "permissions/members",
     reason: "refused reads are retried on every grant round; a definitive refusal is not retried",
-  },
-  {
-    token: "useZeropsOrganizationMembersRead",
-    family: "permissions/members",
-    reason: "the client reads organization members for owners and admins; HQ sends them finished",
   },
   {
     token: "useZeropsOrganizationMembers(",

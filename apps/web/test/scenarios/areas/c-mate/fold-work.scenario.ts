@@ -1,3 +1,4 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
@@ -12,7 +13,6 @@ import {
   type EngineConversationFrame,
 } from "@t3tools/contracts";
 import type { ScriptedStep } from "../../../../../server/integration/scriptedProviderDriver.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
 // Native OpenCode tool facts; the production SPI and engine derive their visible work.
@@ -79,7 +79,7 @@ type Trace = { active: boolean; frames: Frame[]; sample: () => void };
 
 // Real list, RunChat and foldWork; include intermediate frames starting before settlement.
 describe("Decision: one owner per concern as the report's table assigns; no new state model.", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     for (const mode of [
       "following",
       "wheel",

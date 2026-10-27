@@ -17,7 +17,6 @@ import {
   type ResentInvitation,
   type SampledRead,
 } from "@t3tools/client-runtime/data";
-import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo } from "react";
 
@@ -27,7 +26,6 @@ import {
   useDetailDemand,
   useProjection,
 } from "~/zerops/accountData";
-import { useAccountHq } from "~/zerops/accountHq";
 import { useAccountOperationsOptional, type AccountOperations } from "~/zerops/accountOperations";
 import { isChief } from "~/zerops/chief";
 import { invitedNames } from "~/zerops/invitationMemory";
@@ -91,9 +89,6 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
   );
 
   const roster = useAtomValue(shownProjectsAtom).projects;
-  // The Headquarters project holds HQ's own credentials: no one is ever given it here.
-  const { hq: officialHq } = useAccountHq(clientId ?? undefined);
-  const hq = useMemo(() => hqProjectsOf(officialHq), [officialHq]);
   const hqProjectPeople = useAtomValue(shownHqProjectPeopleAtom);
   const viewerUserId = session?.user?.id ?? null;
   const viewer = useAccountDataOptional()?.viewer;
@@ -144,9 +139,8 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
         groups: registry.groups,
         roster,
         chiefs: new Set(roster.filter((project) => isChief(project)).map(({ id }) => id)),
-        hq,
       }),
-    [hq, registry, roster],
+    [registry, roster],
   );
 
   // What an invitation gives: each Mate project whole, as its People section gives it.
@@ -156,9 +150,8 @@ export function useTeam(grantsOf?: ReadonlyArray<string>) {
         groups: registry.groups,
         roster,
         chiefs: new Set(roster.filter((project) => isChief(project)).map(({ id }) => id)),
-        hq,
       }),
-    [hq, registry, roster],
+    [registry, roster],
   );
 
   const operations = useAccountOperationsOptional();

@@ -7,7 +7,7 @@
  * repository; on a task, the task's one change. HQ checks every body it reads with these schemas;
  * zcp reads this file as the spec.
  *
- * **The Mate's side**, `Authorization: Mate <credential>` (`apps/hq/src/mateCredentials.ts`), always
+ * **The Mate's side**, `Authorization: Mate <credential>` (`mate-hq apps/hq/src/mateCredentials.ts`), always
  * within the application HQ holds the Mate in (`mate` or `devstage`):
  *
  * - `POST /api/mate/repos` {@link EnsureRepoRequest} → {@link HqRepo};
@@ -66,7 +66,7 @@ import * as Schema from "effect/Schema";
 import { HqPullRequest } from "./hqGithub.ts";
 import { HqDirectGitTarget, HqGitBranch, HqTargetTimestamp } from "./hqEnvironment.ts";
 
-/** An id the git layer takes for an application or a repository (`@t3tools/hq-git`, mirrored). */
+/** An id the git layer takes for an application or a repository (mate-hq `hq-git`, mirrored). */
 const ID = "[A-Za-z0-9][A-Za-z0-9_-]{0,127}";
 
 /** A change's title, at most this many characters (code points: zcp counts runes). */
@@ -647,7 +647,7 @@ export const ChangeCommit = Schema.Struct({
 });
 export type ChangeCommit = typeof ChangeCommit.Type;
 
-/** How many commits a comparison names at most: the git layer's bound on a log (`@t3tools/hq-git`). */
+/** How many commits a comparison names at most: the git layer's bound on a log (mate-hq `hq-git`). */
 export const COMPARE_COMMITS_MAX = 100;
 
 /**

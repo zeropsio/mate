@@ -1,9 +1,9 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { type MateResourceHealth } from "@t3tools/contracts";
 import { MateLinkUp } from "@t3tools/shared/mateLink";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
@@ -21,7 +21,7 @@ const quiet: MateResourceHealth = {
 };
 
 describe("Approved Mate health placement", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "Decision: notices live in the composer dock only; no Restart Mate or health on faces or overview",
       () =>

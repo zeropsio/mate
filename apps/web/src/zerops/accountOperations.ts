@@ -35,7 +35,6 @@ import { createContext, useContext } from "react";
 
 import { randomUUID } from "~/lib/utils";
 
-import { readCarriedCore } from "./bundledCore";
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -133,8 +132,6 @@ export function accountOperations(
         nowMs: () => Date.now(),
         makeId: randomUUID,
         run: (intent, options) => run(intent, options),
-        // The Core this build carries, read from its own bundle once HQ's update runs.
-        hqCore: readCarriedCore,
         ...(locks === undefined ? {} : { locks }),
       }),
     },

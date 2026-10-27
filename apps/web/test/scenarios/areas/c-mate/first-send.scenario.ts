@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 
@@ -11,7 +11,7 @@ interface SendFrame {
 }
 
 describe("owner-reported layout regressions", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Seen on a first prompt (run 2): the sent message faded out with the draft and faded back in
     // with its conversation, as if it had been thrown away and sent again.
     it.effect(

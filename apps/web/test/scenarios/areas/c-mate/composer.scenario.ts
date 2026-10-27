@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { installArea } from "./fake.ts";
@@ -8,7 +8,7 @@ import { ownerViewport } from "./ownerViewport.ts";
 import { mateChat } from "./dsl.ts";
 
 describe("C: agent selection and contextual drafts", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // What waits for review moved from the composer to the conversation's header (the owner,
     // 2026-10-13: "add it somewhere to the app bar in detail"): the same pill for the Mate's owner
     // and for a colleague reading along, with Review for anyone who may review.
