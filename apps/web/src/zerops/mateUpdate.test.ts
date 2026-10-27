@@ -233,3 +233,111 @@ describe("mateUpdateStatusBeside", () => {
     ]);
   });
 });
+
+describe("a Mate that only a restart gets current", () => {
+  const base = {
+    installed: "0.15.200",
+    latest: "0.15.200",
+    available: false,
+    checkedAt: "now",
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+  };
+
+  it.each([
+    {
+      name: "zcp behind alone",
+      update: base,
+      expected: {
+        text: "Server 0.15.200 · Zerops Control Plane 9.226.0 available",
+        tone: "attention",
+      },
+    },
+    {
+      name: "zcp behind beside a newer mate",
+      update: { ...base, latest: "0.15.201", available: true },
+      expected: {
+        text: "Server 0.15.200 · 0.15.201 available · Zerops Control Plane 9.226.0 available",
+        tone: "attention",
+      },
+    },
+    {
+      name: "zcp behind with no version named",
+      update: { ...base, zcp: { installed: "9.225.0", latest: "", behind: true } },
+      expected: { text: "Server 0.15.200", tone: "default" },
+    },
+    {
+      name: "zcp current",
+      update: { ...base, zcp: { installed: "9.226.0", latest: "9.226.0", behind: false } },
+      expected: { text: "Server 0.15.200", tone: "default" },
+    },
+  ] as const)("the update line names the zcp version available: $name", ({ update, expected }) => {
+    expect(mateUpdateLine(update, "0.15.200")).toEqual(expected);
+  });
+
+  it.each([
+    ["draining", undefined, "Update ready; waiting for your work to finish"],
+    [
+      "restarting",
+      undefined,
+      "Restarting to update Zerops Control Plane — your conversations are safe",
+    ],
+    [
+      "postponed",
+      "this Zerops Control Plane can't restart its Mate yet",
+      "Update postponed; this Zerops Control Plane can't restart its Mate yet",
+    ],
+  ] as const)("a restart %s says so on the line", (phase, reason, text) => {
+    expect(
+      mateUpdateLine(
+        {
+          ...base,
+          restart: { ...base.restart, phase, ...(reason === undefined ? {} : { reason }) },
+        },
+        "0.15.200",
+      ),
+    ).toEqual({ text, tone: "default" });
+  });
+
+  it("the question names zcp, and says the container restarts once the work is done", () => {
+    expect(mateUpdateQuestion("Nova", null, { zcp: "9.226.0" })).toBe(
+      "Update Nova to Zerops Control Plane 9.226.0?\nNova finishes the work it's doing first, its helpers' too, then its container restarts to install it, which takes a few minutes. Its conversations stay. If that work isn't done within 10 minutes, Nova doesn't update and keeps working.",
+    );
+    expect(mateUpdateQuestion("Nova", "0.15.201", { zcp: "9.226.0" }).split("\n")[0]).toBe(
+      "Update Nova to 0.15.201 and Zerops Control Plane 9.226.0?",
+    );
+  });
+
+  it.each([
+    {
+      state: { phase: "updated", to: null, zcp: "9.226.0" } as const,
+      text: "Updated Zerops Control Plane to 9.226.0",
+    },
+    {
+      state: { phase: "updated", to: "0.15.201", zcp: "9.226.0" } as const,
+      text: "Updated to 0.15.201 and Zerops Control Plane 9.226.0",
+    },
+  ])("a finished restart says what moved: $text", ({ state, text }) => {
+    expect(mateUpdateStatus(state)?.text).toBe(text);
+  });
+
+  it("a postponed restart gives way to the Mate's own update draining after it", () => {
+    expect(
+      mateUpdateLine(
+        {
+          ...base,
+          latest: "0.15.201",
+          available: true,
+          automatic: {
+            protocol: 1,
+            rollbackCompatible: true,
+            phase: "draining",
+            runningVersion: "0.15.200",
+          },
+          restart: { needed: true, phase: "postponed", reason: "not inside a container" },
+        },
+        "0.15.200",
+      ),
+    ).toEqual({ text: "Update ready; waiting for your work to finish", tone: "default" });
+  });
+});

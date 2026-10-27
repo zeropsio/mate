@@ -21,6 +21,21 @@ export function mateUpdateLine(
   if (update === undefined) {
     return { text: `Server ${serverVersion}`, tone: "default" };
   }
+  // The Mate's own restart, while one is asked for: what it waits on, or why it did not happen.
+  const restart = update.restart;
+  // zcp's own update under way outranks a restart that already settled as postponed.
+  const updating = ["staging", "draining", "switching", "verifying"].includes(
+    update.automatic?.phase ?? "",
+  );
+  if (restart?.phase !== undefined && !(restart.phase === "postponed" && updating)) {
+    const text =
+      restart.phase === "draining"
+        ? "Update ready; waiting for your work to finish"
+        : restart.phase === "restarting"
+          ? `Restarting to update${update.zcp?.behind === true ? " Zerops Control Plane" : ""} — your conversations are safe`
+          : `Update postponed; ${restart.reason ?? "the restart did not happen"}`;
+    return { text, tone: "default" };
+  }
   // A settled attempt speaks only while its version is the one installed: a later update (a
   // manual one) leaves the updater's record behind, and its version is not what runs now.
   const automatic =
@@ -44,11 +59,17 @@ export function mateUpdateLine(
                 : undefined;
     if (text !== undefined) return { text, tone: "default" };
   }
-  if (!update.available) {
+  const available = [
+    ...(update.available ? [`${update.latest} available`] : []),
+    ...(update.zcp?.behind === true && update.zcp.latest !== ""
+      ? [`Zerops Control Plane ${update.zcp.latest} available`]
+      : []),
+  ];
+  if (available.length === 0) {
     return { text: `Server ${update.installed}`, tone: "default" };
   }
   return {
-    text: `Server ${update.installed} · ${update.latest} available`,
+    text: `Server ${update.installed} · ${available.join(" · ")}`,
     tone: "attention",
   };
 }
@@ -67,7 +88,8 @@ export type MateUpdateState =
       readonly overdue?: true;
     }
   | { readonly phase: "already-current" }
-  | { readonly phase: "updated"; readonly to: string }
+  /** `to` null: only zcp moved (`zcp`), the mate stayed on its version. */
+  | { readonly phase: "updated"; readonly to: string | null; readonly zcp?: string }
   | { readonly phase: "failed"; readonly message: string };
 
 export interface MateUpdateStatus {
@@ -95,7 +117,15 @@ export function mateUpdateStatus(state: MateUpdateState | undefined): MateUpdate
         tone: "quiet",
       };
     case "updated":
-      return { text: `Updated to ${state.to}`, tone: "quiet" };
+      return {
+        text:
+          state.zcp === undefined
+            ? `Updated to ${state.to ?? NEWEST_MATE_VERSION}`
+            : state.to === null
+              ? `Updated Zerops Control Plane to ${state.zcp}`
+              : `Updated to ${state.to} and Zerops Control Plane ${state.zcp}`,
+        tone: "quiet",
+      };
     case "already-current":
       return { text: "Up to date", tone: "quiet" };
     case "failed":
@@ -130,10 +160,26 @@ export const NEWEST_MATE_VERSION = "the newest version";
  * The line ending in "?" is the dialog's title. `latest` is the version a
  * check just found; null where none could say (`NEWEST_MATE_VERSION`).
  */
-export function mateUpdateQuestion(mateName: string | undefined, latest: string | null): string {
+export function mateUpdateQuestion(
+  mateName: string | undefined,
+  latest: string | null,
+  /** Only a container restart gets the Mate current; `zcp` is the version it installs. */
+  restart?: { readonly zcp?: string | undefined },
+): string {
   const who = mateName ?? "It";
+  const name = mateName ?? "this Mate";
+  const target =
+    restart?.zcp === undefined
+      ? (latest ?? NEWEST_MATE_VERSION)
+      : latest === null
+        ? `Zerops Control Plane ${restart.zcp}`
+        : `${latest} and Zerops Control Plane ${restart.zcp}`;
+  const how =
+    restart === undefined
+      ? "then restarts on the new version, which takes about a minute"
+      : "then its container restarts to install it, which takes a few minutes";
   return [
-    `Update ${mateName ?? "this Mate"} to ${latest ?? NEWEST_MATE_VERSION}?`,
-    `${who} finishes the work it's doing first, its helpers' too, then restarts on the new version, which takes about a minute. Its conversations stay. If that work isn't done within ${MATE_UPDATE_DRAIN_MINUTES} minutes, ${mateName ?? "it"} doesn't update and keeps working.`,
+    `Update ${name} to ${target}?`,
+    `${who} finishes the work it's doing first, its helpers' too, ${how}. Its conversations stay. If that work isn't done within ${MATE_UPDATE_DRAIN_MINUTES} minutes, ${mateName ?? "it"} doesn't update and keeps working.`,
   ].join("\n");
 }

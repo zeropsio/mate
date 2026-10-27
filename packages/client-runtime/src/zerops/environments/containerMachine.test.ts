@@ -812,4 +812,24 @@ describe("when a server's automatic update is under way", () => {
     expect(automaticUpdateFrom(undefined)).toBeNull();
     expect(automaticUpdateFrom(null)).toBeNull();
   });
+
+  it.each([
+    ["draining", "0.15.200"],
+    ["restarting", "0.15.200"],
+    ["postponed", null],
+  ] as const)(
+    "a Mate restarting its container to update zcp, %s, is under way from %s: its drop is the update",
+    (phase, from) => {
+      expect(
+        automaticUpdateFrom({
+          installed: "0.15.200",
+          latest: "0.15.200",
+          available: false,
+          checkedAt: "2026-10-27T10:00:00Z",
+          zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+          restart: { needed: true, phase },
+        }),
+      ).toBe(from);
+    },
+  );
 });

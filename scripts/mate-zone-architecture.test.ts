@@ -1576,7 +1576,7 @@ const CREW_DIR = "apps/server/src/zerops/crew";
 const CREW_WIRING_FILES: ReadonlySet<string> = new Set([
   // The engine's workspace port, which reads a crewmate's workspace off the crew's directory.
   "apps/server/src/zerops/engineAdapters.ts",
-  "apps/server/src/zerops/mateUpdateHttp.ts",
+  "apps/server/src/zerops/mateUpdateDrainLive.ts",
   "apps/server/src/ws.ts",
   "apps/server/src/zerops/zeropsFeedsLayer.ts",
   "apps/server/src/zerops/ZeropsFixtureFeeds.ts",
@@ -1649,7 +1649,7 @@ const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
 ]);
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engineSessionDirectory.ts",
-  "apps/server/src/zerops/mateUpdateHttp.ts",
+  "apps/server/src/zerops/mateUpdateDrainLive.ts",
   "apps/server/src/zerops/ZeropsMateUpdate.ts",
   "apps/server/src/serverRuntimeStartup.ts",
   "apps/server/src/ws.ts",
@@ -2029,7 +2029,7 @@ it.layer(NodeServices.layer)("mate zone architecture", (it) => {
     () =>
       Effect.gen(function* () {
         const root = yield* makeRepoFixture({
-          "apps/server/src/zerops/mateUpdateHttp.ts":
+          "apps/server/src/zerops/mateUpdateDrainLive.ts":
             'import { MateEngine } from "../engine/MateEngine.ts";\nimport { CrewEngine } from "./crew/CrewEngine.ts";\n',
           "apps/server/src/zerops/ZeropsMateUpdate.ts":
             'import { MateEngine } from "../engine/MateEngine.ts";\n',

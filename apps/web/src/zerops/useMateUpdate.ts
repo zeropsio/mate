@@ -7,6 +7,7 @@ import {
   mateUpdate,
   mateUpdateStates,
   type AccountStore,
+  type MateRestartTarget,
   type MateUpdateHost,
 } from "@t3tools/client-runtime/data";
 import type {
@@ -26,12 +27,17 @@ import { useEnvironmentContainer } from "./zeropsContainers";
 import { currentAccountEnvironments } from "./accountEnvironments";
 import type { MateUpdateState } from "./mateUpdate";
 
-export type MateServer = Pick<ExecutionEnvironmentDescriptor, "serverVersion" | "bootId">;
+export type MateServer = Pick<
+  ExecutionEnvironmentDescriptor,
+  "serverVersion" | "bootId" | "update"
+>;
 export interface MateUpdate {
   readonly state: MateUpdateState;
   readonly checked: ExecutionEnvironmentUpdate | null | undefined;
   readonly notice?: string | undefined;
-  readonly update: (to: string) => void;
+  /** `restart`: the press found that only a container restart gets the Mate current, and what
+      it installs. */
+  readonly update: (to: string, restart?: MateRestartTarget) => void;
   readonly check: () => Promise<ExecutionEnvironmentUpdate | null | undefined>;
 }
 const registryAtom = connectionAtomRuntime.atom(
@@ -82,17 +88,19 @@ export function useMateUpdate(environmentId: EnvironmentId, server: MateServer |
   );
   const version = server?.serverVersion;
   const boot = server?.bootId;
+  // The live line too: a restart press settles on its own attempt postponed.
+  const line = server?.update;
   useEffect(() => {
     host?.observe(
       environmentId,
-      version === undefined ? null : { serverVersion: version, bootId: boot },
+      version === undefined ? null : { serverVersion: version, bootId: boot, update: line },
     );
-  }, [host, environmentId, version, boot]);
+  }, [host, environmentId, version, boot, line]);
   return {
     ...read,
-    update: (to) => {
+    update: (to, restart) => {
       if (host !== null && server !== null)
-        void host.update(environmentId, server, to, container.key);
+        void host.update(environmentId, server, to, container.key, restart);
     },
     check: () => host?.check(environmentId) ?? Promise.resolve(undefined),
   };

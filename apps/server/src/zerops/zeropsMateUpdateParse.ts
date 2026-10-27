@@ -11,7 +11,8 @@
  */
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
-import { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+import { ExecutionEnvironmentUpdate, ExecutionEnvironmentZcp } from "@t3tools/contracts";
+import { zcpVersionText } from "./zcpVersion.ts";
 
 export interface MateStatusResult {
   readonly installed: string;
@@ -21,6 +22,12 @@ export interface MateStatusResult {
   readonly checkedAt: string;
   readonly error?: string | undefined;
   readonly updater?: ExecutionEnvironmentUpdate["automatic"] | undefined;
+  /** zcp's own reading of itself; an older zcp sends none. */
+  readonly zcp?: ExecutionEnvironmentUpdate["zcp"] | undefined;
+  /** Only a container restart gets this Mate current (zcp behind, or a mate before protocol 1). */
+  readonly restartNeeded?: boolean | undefined;
+  /** zcp's one line saying why a restart is needed. */
+  readonly why?: string | undefined;
 }
 
 const RawMateStatusResult = Schema.Struct({
@@ -31,9 +38,14 @@ const RawMateStatusResult = Schema.Struct({
   checkedAt: Schema.String,
   error: Schema.optional(Schema.String),
   updater: ExecutionEnvironmentUpdate.fields.automatic,
+  // Read on its own below: a reading of zcp this server cannot read never costs the mate status.
+  zcp: Schema.optional(Schema.Unknown),
+  restartNeeded: Schema.optional(Schema.Boolean),
+  why: Schema.optional(Schema.String),
 });
 
 const decodeMateStatusResult = Schema.decodeUnknownOption(RawMateStatusResult);
+const decodeZcpReading = Schema.decodeUnknownOption(ExecutionEnvironmentZcp);
 
 /** The result of a `mate status` run, or undefined when the text is not one. Never throws. */
 export const parseMateStatusOutput = (text: string): MateStatusResult | undefined => {
@@ -43,7 +55,21 @@ export const parseMateStatusOutput = (text: string): MateStatusResult | undefine
   } catch {
     return undefined;
   }
-  return Option.getOrUndefined(decodeMateStatusResult(parsed));
+  const status = Option.getOrUndefined(decodeMateStatusResult(parsed));
+  if (status === undefined) return undefined;
+  const { zcp, ...rest } = status;
+  const reading = zcp === undefined ? undefined : Option.getOrUndefined(decodeZcpReading(zcp));
+  return reading === undefined
+    ? rest
+    : {
+        ...rest,
+        // zcp writes `v9.226.0`; the app reads and says `9.226.0`.
+        zcp: {
+          ...reading,
+          installed: zcpVersionText(reading.installed),
+          latest: zcpVersionText(reading.latest),
+        },
+      };
 };
 
 export const MateUpdateAction = Schema.Literals(["none", "installed", "updated"]);

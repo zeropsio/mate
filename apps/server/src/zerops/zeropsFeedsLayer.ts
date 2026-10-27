@@ -200,10 +200,20 @@ const ZeropsCrewLive = crewLayer.pipe(
  */
 const ZeropsMateAttentionLive = ZeropsMateAttentionModule.layer.pipe(Layer.provide(MateEngineLive));
 
-/** The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. */
+/**
+ * The Mate's update line (spec-mate §2.9): read by the descriptor and followed by the link. Its
+ * restart drains the same owners zcp's drain route reads: the crew and the agent logins are the
+ * instances the branches below build (memoized by reference).
+ */
 const ZeropsMateUpdateLive = ZeropsMateUpdateModule.layer.pipe(
   Layer.provide(MateEngineLive),
   Layer.provide(mateAutoUpdatePolicyLayer),
+  Layer.provide(ZeropsCrewLive),
+  Layer.provide(ZeropsAgentLoginModule.layer),
+  Layer.provide(ZeropsAgentAuthLive),
+  Layer.provide(ZeropsLoginsLive),
+  Layer.provide(ZeropsProjectSignersModule.layer),
+  Layer.provide(providerInstancesLayer),
   Layer.provideMerge(ZeropsCliModule.layer),
 );
 

@@ -1,4 +1,12 @@
+import {
+  makeAccountStore,
+  makeMateUpdates,
+  mateUpdate,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
 import { EnvironmentId } from "@t3tools/contracts";
+import * as Effect from "effect/Effect";
+import { AtomRegistry } from "effect/reactivity";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -19,6 +27,8 @@ const environmentState = vi.hoisted(() => ({
           readonly latest: string;
           readonly available: boolean;
           readonly checkedAt: string;
+          readonly zcp?: { installed: string; latest: string; behind: boolean };
+          readonly restart?: { needed: boolean; why?: string };
         };
       },
 }));
@@ -238,6 +248,76 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
       expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(/^Update Nova to the newest version\?\n/);
     },
   );
+
+  it("a Mate only a restart gets current offers the same Update, saying zcp's why, and restarts once asked", async () => {
+    const needsRestart = {
+      installed: "0.8.0",
+      latest: "0.8.0",
+      available: false,
+      checkedAt: "now",
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+    };
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: needsRestart,
+    };
+    const html = render();
+    expect(html).toContain("Zerops Control Plane 9.226.0 available");
+    expect(html).toContain('aria-label="Update: zcp 9.226.0 is out; only a restart installs it"');
+    expect(menuAction("update").label).toBe("Update");
+    verbs.check.mockResolvedValue(needsRestart);
+    verbs.confirm.mockResolvedValue(true);
+    menuAction("update").onSelect();
+    await vi.waitFor(() => expect(verbs.update).toHaveBeenCalledTimes(1));
+    expect(verbs.confirm.mock.calls[0]?.[0]).toMatch(
+      /^Update Nova to Zerops Control Plane 9\.226\.0\?\n/,
+    );
+    expect(verbs.update).toHaveBeenCalledWith("Zerops Control Plane 9.226.0", { zcp: "9.226.0" });
+  });
+
+  // The owner's open Mate read "zcp 9.226.0 available" beside "Up to date" and no Update: the
+  // account's projection called a line with no newer mate current.
+  it("a Mate only a restart gets current keeps its Update through the account's own reading", async () => {
+    const needsRestart = {
+      installed: "0.8.0",
+      latest: "0.8.0",
+      available: false,
+      checkedAt: "now",
+      automatic: {
+        protocol: 1 as const,
+        rollbackCompatible: true,
+        phase: "idle" as const,
+        runningVersion: "0.8.0",
+      },
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out" },
+    };
+    const store = makeAccountStore(AtomRegistry.make());
+    const host = makeMateUpdates({
+      store,
+      wire: {
+        update: () => Effect.die("not pressed"),
+        check: () => Effect.succeed(needsRestart),
+      },
+      isCurrent: () => true,
+      makeId: () => "request-1",
+    });
+    await host.check(ENVIRONMENT_ID);
+    const projected = mateUpdate.derive(readsOfState(store.state()), ENVIRONMENT_ID);
+    host.close();
+    mateUpdateState.state = projected.state;
+    mateUpdateState.checked = projected.checked;
+    environmentState.environment = {
+      serverVersion: "0.8.0",
+      capabilities: { mateUpdate: true, mateUpdateCheck: true },
+      update: needsRestart,
+    };
+    const html = render();
+    expect(html).not.toContain("Up to date");
+    expect(html).toContain('aria-label="Update: zcp 9.226.0 is out"');
+  });
 
   it("a check that finds nothing newer asks nothing: the Mate is up to date", async () => {
     environmentState.environment = {
