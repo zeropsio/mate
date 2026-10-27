@@ -50,6 +50,31 @@ describe("hqAppDetailFamily", () => {
     expect(hq.keyOf(`shop/${key}`, owner)).toBe(key);
     expect(hq.decode(raw, key)).toMatchObject({ kind, value: raw });
   });
+  it.each([
+    { raw: { state: "pending" } },
+    { raw: { state: "known", changes: [{ repo: "api", number: 3, title: "Add a page" }] } },
+  ])("the release's recorded changes decode from $raw", ({ raw }) => {
+    expect(hq.decode(raw, "releaseChanges")).toEqual({ kind: "releaseChanges", value: raw });
+  });
+  it("reads a release's recorded changes that HQ said malformed as not known", () => {
+    expect(hq.decode({ state: "known" }, "releaseChanges")).toBeNull();
+  });
+  it.each([
+    { raw: { count: 0, commits: [], summaryRead: "pending" } },
+    {
+      raw: {
+        count: 2,
+        commits: [
+          { repo: "api", sha: "a", subject: "s", authorName: "T", at: "2026-10-13T00:00:00Z" },
+        ],
+      },
+    },
+  ])("the commits outside a release's changes decode from $raw", ({ raw }) => {
+    expect(hq.decode(raw, "releaseOutside")).toEqual({ kind: "releaseOutside", value: raw });
+  });
+  it("reads commits outside changes that HQ said malformed as not known", () => {
+    expect(hq.decode({ count: 1 }, "releaseOutside")).toBeNull();
+  });
   it("accepted Git release keeps its exact attachment, repository roster and shas", () => {
     const value = {
       ...release,

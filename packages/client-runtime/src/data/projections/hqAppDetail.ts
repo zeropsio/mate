@@ -6,6 +6,7 @@
  *
  * @module data/projections/hqAppDetail
  */
+import type { HqAppDetailFields } from "@t3tools/shared/hqStream";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import type { Release } from "@t3tools/shared/hqRelease";
@@ -34,6 +35,10 @@ export interface HqAppDetailRead extends Omit<ScopeFreshness, "complete"> {
   readonly releases: ReadonlyArray<Release> | undefined;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
   readonly changes: ReadonlyArray<HqChange> | undefined;
+  /** What a release would put live now; absent where HQ does not say it (an older HQ). */
+  readonly releaseChanges?: HqReleaseChanges | undefined;
+  /** The commits a release carries outside changes; absent where HQ does not say it. */
+  readonly releaseOutside?: HqReleaseOutside | undefined;
   /** Each tier HQ said; a tier it did not say is absent from here, never "no recipe". */
   readonly recipes: HqAppRecipes;
   /** Where the application's read stands: not asked for, its first catchup under way, or read. */
@@ -48,6 +53,10 @@ export interface HqAppFailure {
   readonly message: string;
 }
 
+export type HqReleaseChanges = (typeof HqAppDetailFields)["releaseChanges"]["Type"];
+
+export type HqReleaseOutside = (typeof HqAppDetailFields)["releaseOutside"]["Type"];
+
 export interface HqAppKey {
   readonly orgId: string;
   readonly appId: string;
@@ -59,6 +68,12 @@ const reposOf = (value: HqAppDetailValue | undefined): ReadonlyArray<RepoListEnt
   value?.kind === "repos" ? value.value : undefined;
 const changesOf = (value: HqAppDetailValue | undefined): ReadonlyArray<HqChange> | undefined =>
   value?.kind === "changes" ? value.value : undefined;
+
+const releaseChangesOf = (value: HqAppDetailValue | undefined): HqReleaseChanges | undefined =>
+  value?.kind === "releaseChanges" ? value.value : undefined;
+
+const releaseOutsideOf = (value: HqAppDetailValue | undefined): HqReleaseOutside | undefined =>
+  value?.kind === "releaseOutside" ? value.value : undefined;
 
 const tierOf = (value: HqAppDetailValue | undefined) =>
   value?.kind === "recipe" ? value.value : undefined;
@@ -111,6 +126,8 @@ export const hqAppDetail: Projection<HqAppKey, HqAppDetailRead> = {
       releases: releasesOf(records.get("releases")),
       repos: reposOf(records.get("repos")),
       changes: changesOf(records.get("changes")),
+      releaseChanges: releaseChangesOf(records.get("releaseChanges")),
+      releaseOutside: releaseOutsideOf(records.get("releaseOutside")),
       recipes,
       read: complete
         ? "read"

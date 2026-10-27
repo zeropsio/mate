@@ -10,6 +10,7 @@ import {
   AttachmentResponse,
   ChangeDetailResponse,
   ChangeListResponse,
+  ChangeMetadataResponse,
   ChangesMessage,
   ChangesSnapshot,
   CommentListResponse,
@@ -714,4 +715,44 @@ it("Direct-target verbs travel through the existing open offers without a second
       }),
     ).toEqual({ kind: "refused", reason: "not_writer" });
   }
+});
+
+describe("hqChanges — a change's metadata", () => {
+  const CHANGE = decodeChange({
+    appId: APP,
+    repo: "appdev",
+    number: 7,
+    mateProjectId: "p1",
+    title: "t",
+    body: "",
+    state: "open",
+    head: "a".repeat(40),
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-02T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-10-02T09:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+  });
+  const decode = Schema.decodeUnknownSync(ChangeMetadataResponse);
+
+  it("reads from an HQ that records no review", () => {
+    expect(decode({ change: CHANGE }).review).toBeUndefined();
+  });
+
+  it("carries the files, merge base and conflicts HQ recorded", () => {
+    const review = {
+      mergeBase: "b".repeat(40),
+      files: [{ path: "a.ts", added: 1, deleted: 0, binary: false, status: "A" as const }],
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: null,
+      commitsTruncated: false,
+    };
+    expect(decode({ change: CHANGE, review }).review).toEqual(review);
+  });
 });

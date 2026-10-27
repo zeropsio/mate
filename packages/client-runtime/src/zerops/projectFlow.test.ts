@@ -1039,70 +1039,73 @@ describe("a Mate's proposal of the group's recipe", () => {
 });
 
 // e2e 2026-10-03 (t8 A22): B's change, merged with production on v0.1.0, said "it's on main": HQ
-// had not compared main again, and the release listed nothing yet.
+// had not read main again, and the release offer counted nothing yet. The count is HQ's offer
+// (`releaseOffer.summary`); the review adds only the change it merged itself, while the offer in
+// hand was read before that merge.
 describe("waitingForProduction: how many changes wait for production once one merged", () => {
-  const MERGE = "a".repeat(40);
-  const EARLIER = "b".repeat(40);
-  const merged = (mergedAt: string, mergeCommitSha: string | undefined = MERGE) => ({
-    merged: true,
-    mergedAt,
-    mergeCommitSha,
-  });
+  const offer = (changeCount: number) => ({ changeCount, total: changeCount });
   it.each([
     {
       name: "the change just merged, before HQ lists it",
-      listed: [],
-      change: merged("2026-10-03T09:26:00Z"),
-      liveSince: "2026-10-03T07:40:00Z",
+      summary: offer(0),
+      mergedAhead: true,
       count: 1,
     },
     {
       name: "the change beside the ones listed before it",
-      listed: [{ sha: EARLIER }],
-      change: merged("2026-10-03T09:26:00Z"),
-      liveSince: "2026-10-03T07:40:00Z",
+      summary: offer(1),
+      mergedAhead: true,
       count: 2,
     },
     {
       name: "the change once HQ lists it: counted once",
-      listed: [{ sha: MERGE }, { sha: EARLIER }],
-      change: merged("2026-10-03T09:26:00Z"),
-      liveSince: "2026-10-03T07:40:00Z",
+      summary: offer(2),
+      mergedAhead: false,
       count: 2,
     },
     {
       name: "the change with no release production runs",
-      listed: [],
-      change: merged("2026-10-03T04:52:00Z"),
-      liveSince: undefined,
+      summary: offer(0),
+      mergedAhead: true,
       count: 1,
     },
     {
       name: "a change merged before the release production runs: there already",
-      listed: [],
-      change: merged("2026-10-03T07:00:00Z"),
-      liveSince: "2026-10-03T07:40:00Z",
+      summary: offer(0),
+      mergedAhead: false,
       count: 0,
     },
     {
       name: "a change not merged: what the release lists",
-      listed: [{ sha: EARLIER }],
-      change: { merged: false, mergedAt: undefined, mergeCommitSha: undefined },
-      liveSince: "2026-10-03T07:40:00Z",
+      summary: offer(1),
+      mergedAhead: false,
       count: 1,
     },
-  ])("$name", ({ listed, change, liveSince, count }) => {
-    expect(waitingForProduction({ listed, change, liveSince })).toBe(count);
+  ])("$name", ({ summary, mergedAhead, count }) => {
+    expect(waitingForProduction({ summary, pending: false, mergedAhead })).toBe(count);
   });
 
-  // live gate 2026-10-21 (D6): the count read "27", then "1" a second later.
+  it("counts the commits of an offer that counts no changes", () => {
+    expect(
+      waitingForProduction({ summary: { total: 2 }, pending: false, mergedAhead: false }),
+    ).toBe(2);
+  });
+
+  // live gate 2026-10-21 (D6): the count read "27", then "1" a second later. HQ sends a zero
+  // summary with `summaryRead: "pending"` while it has not read the offer.
   it("says no count while what the release carries is not compared yet", () => {
     expect(
       waitingForProduction({
-        listed: undefined,
-        change: merged("2026-10-03T09:26:00Z"),
-        liveSince: "2026-10-03T07:40:00Z",
+        summary: { changeCount: 0, total: 0 },
+        pending: true,
+        mergedAhead: true,
       }),
+    ).toBeUndefined();
+  });
+
+  it("says no count where navigation sent no offer", () => {
+    expect(
+      waitingForProduction({ summary: undefined, pending: false, mergedAhead: true }),
     ).toBeUndefined();
   });
 });

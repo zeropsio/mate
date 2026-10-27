@@ -215,10 +215,7 @@ function PutLiveDriver({ run }: { readonly run: PutLiveRun }) {
   });
   // Production gets the project's people at their level there, as a stage added from it does.
   const people = useDraftPeople(run.groupId, "production");
-  const flow = useProjectFlows(
-    useMemo(() => [run.groupId], [run.groupId]),
-    { compare: true },
-  ).flows.get(run.groupId);
+  const flow = useProjectFlows(useMemo(() => [run.groupId], [run.groupId])).flows.get(run.groupId);
   // Its wait for the release is bounded: the run is read again once its patience runs out, even
   // where nothing else changes.
   const deadline = putLiveDeadline(run);

@@ -21,6 +21,9 @@ import {
   cannotTellWhatRuns,
   type GroupFlowAddress,
   servicesDeploying,
+  carriedByRecords,
+  outsideMoved,
+  carriedMoved,
   changesCountWords,
   holdReleaseFacts,
   movedCommits,
@@ -35,6 +38,7 @@ import {
   releaseWhereWords,
   releaseVersionSuggestions,
   reviewAge,
+  rollbackFromHistories,
   rollbackOnItsWay,
   rollbackReads,
   rollbackReview,
@@ -44,6 +48,7 @@ import {
   stageRead,
   stageStandings,
   type CompareRead,
+  type Moved,
   type ProductionRun,
   type ReleaseEntry,
   type ReleaseFacts,
@@ -62,7 +67,8 @@ import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
-import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
+import { useHqAppDetail } from "~/zerops/useHqAppDetail";
+import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
@@ -82,6 +88,7 @@ import {
   releaseChangeRows,
   releaseHeading,
   releaseLine,
+  outsideCommitsWords,
   productionCode,
   reviewKindLine,
   rollbackListNote,
@@ -106,8 +113,10 @@ import { GitBrowserLink, gitCodeLink } from "../gitBrowser/GitBrowserLink";
 
 type ReleaseTarget = Extract<ReviewTarget, { readonly kind: "release" | "rollback" }>;
 
-/** The review shows what a release would put live: it compares it while drawn. */
+/** A release the review lists from what HQ recorded; an HQ that records none is compared instead. */
 const COMPARED = { compare: true } as const;
+/** What production runs and builds from, read from the store; nothing is compared. */
+const PLANNED = { plan: true } as const;
 
 export function ZeropsReleaseReview({
   target,
@@ -118,12 +127,15 @@ export function ZeropsReleaseReview({
   readonly titleId: string;
   readonly onClose: () => void;
 }) {
-  // What a release lists and compares is its application's detail: held while it is drawn.
-  useHqAppDetailHold([target.groupId]);
-  // What production runs and what a release would put live, compared while the review is drawn.
+  // What a release lists is its application's detail: held while it is drawn.
+  const detail = useHqAppDetail(target.groupId);
+  // A read detail without the release's recorded changes is an HQ that does not record them: its
+  // release is compared, as before. Otherwise nothing is compared on opening.
+  const legacy =
+    target.kind === "release" && detail.read === "read" && detail.releaseChanges === undefined;
   const { flows } = useProjectFlows(
     useMemo(() => [target.groupId], [target.groupId]),
-    COMPARED,
+    legacy ? COMPARED : PLANNED,
   );
   const flow = flows.get(target.groupId);
   const name = useGroupName(target.groupId);
@@ -154,7 +166,9 @@ export function ZeropsReleaseReview({
       onClose={onClose}
       review={(onOpenChange, shownTitleId) => (
         <ReleaseData
+          detail={detail}
           flow={flow}
+          legacy={legacy}
           name={name}
           onClose={onClose}
           onOpenChange={onOpenChange}
@@ -170,6 +184,7 @@ export function ZeropsReleaseReview({
       onClose={onClose}
       review={(onOpenChange, shownTitleId) => (
         <RollbackData
+          detail={detail}
           flow={flow}
           name={name}
           onClose={onClose}
@@ -255,13 +270,18 @@ function reviewRowsOf(
 }
 
 function ReleaseData({
+  detail,
   flow,
+  legacy,
   name,
   titleId,
   onClose,
   onOpenChange,
 }: {
+  readonly detail: HqAppDetailRead;
   readonly flow: ZeropsProjectFlow;
+  /** HQ records no changes for a release: what goes out is compared, as before. */
+  readonly legacy: boolean;
   readonly name: string | undefined;
   readonly titleId: string | undefined;
   readonly onClose: () => void;
@@ -298,6 +318,26 @@ function ReleaseData({
   });
   const clockMs = useSecondsNowMs(follows.ticking);
 
+  // What goes out is what HQ recorded the release carries, with its changes' Mates from the
+  // change list: nothing is read from a repository to open the review.
+  const carried = useMemo(
+    () =>
+      legacy || detail.releaseChanges === undefined || detail.changes === undefined
+        ? undefined
+        : carriedByRecords({
+            carried: detail.releaseChanges,
+            known: detail.changes,
+            repositories: flow.release.repositories,
+          }),
+    [detail.changes, detail.releaseChanges, flow.release.repositories, legacy],
+  );
+  const contents = legacy
+    ? flow.release.contents
+    : carried?.state === "known"
+      ? carried.moved
+      : NO_MOVED;
+  const contentsKnown = legacy ? flow.release.contentsKnown : carried?.state === "known";
+
   const mainStage = mainStageOf(flow);
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   // Production's Zerops project, where it is one: a Git destination has no addresses here.
@@ -322,7 +362,7 @@ function ReleaseData({
         tag,
         live: flow.releases.find((entry) => entry.standing === "live")?.tag,
         releases: flow.releases,
-        contents: flow.release.contents,
+        contents,
         comparison: flow.release.comparison,
         productionServices: production?.services.map((entry) => entry.hostname) ?? [],
       }),
@@ -370,6 +410,39 @@ function ReleaseData({
     mateNames,
     now,
     ages: false,
+  });
+  const outsideRecorded = useMemo<RecordedOutside | undefined>(() => {
+    const stored = legacy ? undefined : detail.releaseOutside;
+    if (stored === undefined) return undefined;
+    return stored.summaryRead === "pending"
+      ? { state: "pending" }
+      : {
+          state: "known",
+          count: stored.count,
+          moved: outsideMoved({
+            commits: stored.commits,
+            repositories: flow.release.repositories,
+          }),
+        };
+  }, [detail.releaseOutside, flow.release.repositories, legacy]);
+  const outside = useOutsideCommits({
+    flow,
+    recorded: outsideRecorded,
+    // The count is the offer's commits less the changes the release carries: known when both are.
+    count:
+      legacy || carried?.state !== "known" || flow.release.summary === undefined
+        ? undefined
+        : flow.release.summaryRead === "pending"
+          ? undefined
+          : {
+              total: Math.max(0, flow.release.summary.total - rows.length),
+              atLeast: flow.release.summary.atLeast,
+            },
+    stage,
+    mainHeads,
+    mates,
+    mateNames,
+    now,
   });
   // A failed release is anybody's to fix: the person's own Mate in the project, the one they
   // used last (S6, `fixMates.ts`).
@@ -424,6 +497,7 @@ function ReleaseData({
               check: check !== undefined && check.of === checked ? check.why : undefined,
             }
       }
+      changesPending={!contentsKnown}
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
       gate={flow.release.gate}
@@ -460,6 +534,7 @@ function ReleaseData({
         void release();
       }}
       outcome={outcome}
+      outside={outside}
       press={press}
       productionMoved={productionMoved}
       replaces={facts.replaces}
@@ -478,6 +553,144 @@ function ReleaseData({
       where={facts.where}
     />
   );
+}
+
+const NO_MOVED: ReadonlyArray<Moved> = [];
+
+/** The count of commits outside changes, with Show commits to list them. */
+function OutsideCommitsList({
+  outside,
+  appId,
+  onOpen,
+}: {
+  readonly outside: OutsideCommits;
+  readonly appId: string | undefined;
+  readonly onOpen: ((row: ReviewReleaseRow) => void) | undefined;
+}) {
+  const { list } = outside;
+  if (list.state === "pending") {
+    return <p className="rv-note">Commits outside changes: not known yet.</p>;
+  }
+  return (
+    <>
+      <p className="rv-note">
+        {outsideCommitsWords(outside.count, outside.atLeast)}
+        {list.state === "closed" ? (
+          <>
+            {" · "}
+            <Button onClick={list.onShow} size="sm" variant="link">
+              Show commits
+            </Button>
+          </>
+        ) : null}
+      </p>
+      {list.state === "reading" ? <p className="rv-note">Comparing in HQ…</p> : null}
+      {list.state === "failed" ? (
+        <ZeropsReadFailure action="Compare again" reason={list.reason} again={list.again} />
+      ) : null}
+      {list.state === "known" ? (
+        <ReviewReleaseRows appId={appId} onOpen={onOpen} rows={list.rows} />
+      ) : null}
+      {list.state === "known" && list.rows.length < outside.count ? (
+        <p className="rv-note">{`The newest ${String(list.rows.length)} are shown.`}</p>
+      ) : null}
+    </>
+  );
+}
+const NO_APP_IDS: ReadonlyArray<string> = [];
+
+/** The commits a release carries that no change landed: how many, and their list once asked for. */
+export interface OutsideCommits {
+  readonly count: number;
+  readonly atLeast: boolean;
+  readonly list:
+    | { readonly state: "closed"; readonly onShow: () => void }
+    | { readonly state: "pending" }
+    | { readonly state: "reading" }
+    | {
+        readonly state: "failed";
+        readonly reason: string;
+        readonly again?: (() => void) | undefined;
+      }
+    | { readonly state: "known"; readonly rows: ReadonlyArray<ReviewReleaseRow> };
+}
+
+/** The commits outside changes as HQ stored them: not known yet, or their number and newest. */
+type RecordedOutside =
+  | { readonly state: "pending" }
+  | { readonly state: "known"; readonly count: number; readonly moved: ReadonlyArray<Moved> };
+
+/**
+ * The commits outside changes come from what HQ stored when it has stored them: the person's ask
+ * only unfolds them. An HQ that stores none counts them from the offer, and compares the release,
+ * so reads its repositories, only once the person asks to see them.
+ */
+function useOutsideCommits({
+  flow,
+  recorded,
+  count,
+  stage,
+  mainHeads,
+  mates,
+  mateNames,
+  now,
+}: {
+  readonly flow: ZeropsProjectFlow;
+  readonly recorded: RecordedOutside | undefined;
+  readonly count: { readonly total: number; readonly atLeast: boolean } | undefined;
+  readonly stage: ReturnType<typeof stageStandings> | undefined;
+  readonly mainHeads: ReadonlyMap<string, string>;
+  readonly mates: ReadonlyMap<string, ZeropsReviewMate>;
+  readonly mateNames: ReadonlyMap<string, string> | undefined;
+  readonly now: number;
+}): OutsideCommits | undefined {
+  const [asked, setAsked] = useState(false);
+  const [unfolded, setUnfolded] = useState(false);
+  const { flows } = useProjectFlows(
+    useMemo(() => (asked ? [flow.groupId] : NO_APP_IDS), [asked, flow.groupId]),
+    asked ? COMPARED : undefined,
+  );
+  if (recorded?.state === "pending") {
+    return { count: 0, atLeast: false, list: { state: "pending" } };
+  }
+  if (recorded?.state === "known") {
+    if (recorded.count === 0) return undefined;
+    return {
+      count: recorded.count,
+      atLeast: false,
+      list: unfolded
+        ? {
+            state: "known",
+            rows: reviewRowsOf(
+              releaseChangeRows({
+                moved: recorded.moved,
+                marks: releaseStageMarks({ contents: recorded.moved }, stage, mainHeads),
+              }),
+              { mates, mateNames, now, ages: false },
+            ),
+          }
+        : { state: "closed", onShow: () => setUnfolded(true) },
+    };
+  }
+  if (count === undefined || (count.total === 0 && !count.atLeast)) return undefined;
+  const compared = flows.get(flow.groupId)?.release;
+  const list: OutsideCommits["list"] = !asked
+    ? { state: "closed", onShow: () => setAsked(true) }
+    : compared?.comparisonFailure !== undefined
+      ? { state: "failed", ...compared.comparisonFailure }
+      : compared === undefined || !compared.contentsKnown
+        ? { state: "reading" }
+        : {
+            state: "known",
+            rows: reviewRowsOf(
+              releaseChangeRows({
+                moved: compared.contents,
+                marks: releaseStageMarks({ contents: compared.contents }, stage, mainHeads),
+              }).filter((row) => row.change === undefined),
+              { mates, mateNames, now, ages: false },
+            ),
+          };
+  return { count: count.total, atLeast: count.atLeast, list };
 }
 
 /** When the newest of these services' deploys went live: since when the stage runs what it runs. */
@@ -502,6 +715,10 @@ function newestLive(
 export interface ReleaseReviewViewProps {
   readonly git?: ZeropsProjectFlow["release"]["git"];
   readonly onReplaceToken?: (() => void) | undefined;
+  /** HQ has not said what the release carries: no count, no list — "not known yet". */
+  readonly changesPending?: boolean | undefined;
+  /** The commits no change landed, once the offer counts them. */
+  readonly outside?: OutsideCommits | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
     | undefined;
@@ -584,16 +801,20 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const inWords =
     props.replaces.kind === "first" && !changing && checkedVersion?.error === undefined;
   // What goes out is still compared: how many is not said until it is known.
-  const comparing = offered && !props.gate.allowed && props.gate.reason === RELEASE_CHECKING;
+  const comparing =
+    offered &&
+    (props.changesPending === true ||
+      (!props.gate.allowed && props.gate.reason === RELEASE_CHECKING));
   const model = releaseReview({
     tag,
     git: props.git,
     gate: props.gate,
     permission: props.permission,
-    changes: rows.length,
-    onStage: props.hasStage
-      ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
-      : undefined,
+    changes: props.changesPending === true ? undefined : rows.length,
+    onStage:
+      props.hasStage && props.changesPending !== true
+        ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
+        : undefined,
     services: props.services,
     replaces: props.replaces,
     outcome: props.outcome,
@@ -635,9 +856,10 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     changes: comparing ? undefined : rows.length,
     stage: props.hasStage ? props.stage?.name : undefined,
     since: sinceWords(props.stage?.at, props.now),
-    onStage: props.hasStage
-      ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
-      : undefined,
+    onStage:
+      props.hasStage && !comparing
+        ? { total: rows.length, running: rows.filter((row) => row.stage === "on-stage").length }
+        : undefined,
     live,
   });
   // Pressed, the head says where it stands once — its title and its step's clock — never the
@@ -779,13 +1001,27 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
       {props.comparisonFailure === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />
       )}
-      {props.git !== undefined && rows.length === 0 ? null : rows.length === 0 &&
+      {props.git !== undefined &&
+      rows.length === 0 &&
+      props.outside === undefined ? null : rows.length === 0 &&
+        props.outside === undefined &&
+        props.changesPending !== true &&
         untold.length === 0 &&
         untoldDeploying.length === 0 &&
         (answer !== undefined || props.where.length === 0) ? null : (
         <ReviewSection title="What goes out">
           {rows.length === 0 ? null : (
             <ReviewReleaseRows appId={props.appId} onOpen={props.onOpenChange} rows={rows} />
+          )}
+          {props.changesPending === true && offered ? (
+            <p className="rv-note">Not known yet.</p>
+          ) : null}
+          {props.outside === undefined ? null : (
+            <OutsideCommitsList
+              appId={props.appId}
+              onOpen={props.onOpenChange}
+              outside={props.outside}
+            />
           )}
           {props.git !== undefined || untoldDeploying.length === 0 ? null : (
             <p className="rv-note">{servicesDeploying(untoldDeploying)}.</p>
@@ -899,6 +1135,8 @@ export type RollbackList =
       readonly atLeast: boolean;
     }
   | { readonly state: "reading" }
+  /** HQ recorded no membership for a release in between: compared only if the person asks. */
+  | { readonly state: "unrecorded"; readonly compare?: (() => void) | undefined }
   | {
       readonly state: "failed";
       readonly reason: string;
@@ -930,6 +1168,8 @@ function useRollbackLists(
   entries: ReadonlyArray<ReleaseEntry> | undefined,
   runs: ReadonlyMap<string, ProductionRun> | undefined,
   repositories: ReadonlyMap<string, string> | undefined,
+  /** Whether the person asked for the comparison: none is made before. */
+  asked: boolean,
 ): RollbackLists {
   const reads = useMemo(
     () =>
@@ -940,8 +1180,10 @@ function useRollbackLists(
   );
   const asks = useMemo(
     () =>
-      reads === undefined ? NO_ASKS : new Map([[groupId, [...reads.leaving, ...reads.comingBack]]]),
-    [groupId, reads],
+      reads === undefined || !asked
+        ? NO_ASKS
+        : new Map([[groupId, [...reads.leaving, ...reads.comingBack]]]),
+    [asked, groupId, reads],
   );
   const compares = useReleaseComparisons(asks);
   return useMemo(() => {
@@ -963,6 +1205,7 @@ function useRollbackLists(
 }
 
 function RollbackData({
+  detail,
   flow,
   name,
   tag,
@@ -970,6 +1213,7 @@ function RollbackData({
   onClose,
   onOpenChange,
 }: {
+  readonly detail: HqAppDetailRead;
   readonly flow: ZeropsProjectFlow;
   readonly name: string | undefined;
   readonly tag: string;
@@ -1035,9 +1279,43 @@ function RollbackData({
   if (keep !== held) setHeld(keep);
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const { repositories } = flow.release;
-  const lists = useRollbackLists(flow.groupId, earlier?.entries, runs, repositories);
-  const listOf = (moved: ComparedCommits): RollbackList =>
-    moved.state !== "known"
+  // What leaves and what comes back is what the releases in between recorded they carried; a
+  // repository is compared only for a side no release recorded, and only once the person asks.
+  const liveTag = flow.releases.find((entry) => entry.standing === "live")?.tag;
+  const recorded = useMemo(
+    () =>
+      detail.releases === undefined
+        ? undefined
+        : rollbackFromHistories({ releases: detail.releases, live: liveTag, target: tag }),
+    [detail.releases, liveTag, tag],
+  );
+  const [compareAsked, setCompareAsked] = useState(false);
+  const lists = useRollbackLists(flow.groupId, earlier?.entries, runs, repositories, compareAsked);
+  const compareUnrecorded =
+    earlier === undefined
+      ? undefined
+      : () => {
+          setCompareAsked(true);
+        };
+  const listOf = (side: "leaving" | "comingBack"): RollbackList => {
+    const told = recorded?.[side];
+    if (told?.state === "known" && detail.changes !== undefined) {
+      return {
+        state: "known",
+        rows: reviewRowsOf(
+          releaseChangeRows({
+            moved: carriedMoved({ changes: told.changes, known: detail.changes, repositories }),
+            marks: NO_MARKS,
+          }),
+          { mates, mateNames, now, ages: true },
+        ),
+        count: told.changes.length,
+        atLeast: false,
+      };
+    }
+    if (!compareAsked) return { state: "unrecorded", compare: compareUnrecorded };
+    const moved = lists[side];
+    return moved.state !== "known"
       ? moved
       : {
           state: "known",
@@ -1049,6 +1327,7 @@ function RollbackData({
           }),
           ...movedCount(moved.moved),
         };
+  };
   // A roll back that hasn't landed is anybody's to look into, as a release's (S6, `fixMates.ts`).
   const production = flow.environmentInputs.find((entry) => entry.tier === "production");
   const [fixer] = useFixMates({
@@ -1069,9 +1348,9 @@ function RollbackData({
   };
   return (
     <RollbackReviewView
-      comingBack={listOf(lists.comingBack)}
+      comingBack={listOf("comingBack")}
       fixer={fixer?.name}
-      leaving={listOf(lists.leaving)}
+      leaving={listOf("leaving")}
       line={earlier?.line}
       live={(keep ?? current).live}
       // Rolling back is a release: HQ's rule for releasing decides, whatever else holds Release
@@ -1180,7 +1459,17 @@ function RollbackListSection({
           again={list.again}
         />
       ) : (
-        <p className="rv-note">{rollbackListNote(side, list)}</p>
+        <p className="rv-note">
+          {rollbackListNote(side, list)}
+          {list.state === "unrecorded" && list.compare !== undefined ? (
+            <>
+              {" · "}
+              <Button onClick={list.compare} size="sm" variant="link">
+                Compare
+              </Button>
+            </>
+          ) : null}
+        </p>
       )}
       {children}
     </ReviewSection>

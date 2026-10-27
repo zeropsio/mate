@@ -238,17 +238,26 @@ describe("E: stage, production, release and rollback", () => {
           yield* Effect.promise(async () => installChangeTransport(f.s.drivers));
           yield* Effect.promise(() => f.s.web.setRoutes());
           const frames = hqFramesFor(f.s.drivers);
-          const earlier = yield* f.merge();
+          yield* f.merge();
           yield* a.when.finish("stage");
           yield* f.release("v0.1.0");
           yield* a.when.finish("production");
-          yield* f.merge("Improve the storefront");
+          const later = yield* f.merge("Improve the storefront");
           yield* a.when.finish("stage");
           yield* f.release("v0.1.1");
           yield* a.when.finish("production");
+          // A roll back in the line makes the releases' recorded histories no account of what
+          // moves, so this one's lists are read from the repositories, when the person asks.
           yield* f.s.given.signedIn;
           yield* a.when.open("production");
           yield* a.then.rowShows("v0.1.1", "Live");
+          yield* a.when.rollBack("v0.1.0");
+          yield* a.when.click("Roll back to v0.1.0");
+          yield* a.when.finish("production");
+          yield* a.then.text("Rolled back to v0.1.0");
+          yield* a.when.click("Close");
+          yield* a.then.reviewClosed;
+          yield* a.then.rowShows("v0.1.2", "Live");
           frames.hold((frame) => decodeHqFrame(frame).type === "compare");
           const submissions: string[] = [];
           f.s.page.on("request", (request) => {
@@ -258,11 +267,12 @@ describe("E: stage, production, release and rollback", () => {
             )
               submissions.push(request.url());
           });
-          yield* a.when.rollBack("v0.1.0");
-          yield* Effect.promise(() => frames.received());
+          yield* a.when.rollBack("v0.1.1");
+          yield* a.then.text("Not known yet.", '[role="dialog"]');
+          yield* a.when.click("Compare");
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
-            f.s.page.locator('::-p-aria(Roll back to v0.1.0[role="button"])').waitHandle(),
+            f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
           );
           expect(
             yield* Effect.promise(() =>
@@ -270,33 +280,53 @@ describe("E: stage, production, release and rollback", () => {
             ),
           ).toBe(true);
           expect(submissions).toHaveLength(0);
+          // The press was held behind a comparison HQ was really asked for, not behind a note.
+          yield* Effect.promise(async () => {
+            let stop: ReturnType<typeof setTimeout> | undefined;
+            try {
+              await Promise.race([
+                frames.received(),
+                new Promise<never>((_, reject) => {
+                  stop = setTimeout(async () => {
+                    reject(
+                      new Error(
+                        `No compare frame was held\n${await f.s.page.evaluate(() => document.body.innerText)}`,
+                      ),
+                    );
+                  }, 30_000);
+                }),
+              ]);
+            } finally {
+              clearTimeout(stop);
+            }
+          });
           frames.resume();
-          yield* a.when.click("Roll back to v0.1.0");
+          yield* a.when.click("Roll back to v0.1.1");
           const process = yield* a.deployment("production");
           expect(submissions).toHaveLength(1);
-          // The rollback is release v0.1.2 of the earlier commit, and its build is that release's job.
+          // The rollback is release v0.1.3 of the earlier commit, and its build is that release's job.
           const releases = (yield* f.s.drivers.core.call("GET", `/api/apps/${f.appId}/releases`, {
             session: f.s.owner,
           })).body as {
             releases: { tag: string; rollbackOf: string | null; entries: { sha: string }[] }[];
           };
-          expect(releases.releases.filter((release) => release.tag === "v0.1.2")).toEqual([
+          expect(releases.releases.filter((release) => release.tag === "v0.1.3")).toEqual([
             expect.objectContaining({
-              rollbackOf: "v0.1.0",
-              entries: [expect.objectContaining({ sha: earlier })],
+              rollbackOf: "v0.1.1",
+              entries: [expect.objectContaining({ sha: later })],
             }),
           ]);
           const jobs = yield* environmentJobs(f, "production", (jobs) =>
             jobs.some((job) => job.processId === process.id),
           );
           expect(jobs.filter((job) => job.processId === process.id)).toEqual([
-            expect.objectContaining({ cause: "release", sha: earlier, processId: process.id }),
+            expect.objectContaining({ cause: "release", sha: later, processId: process.id }),
           ]);
           yield* a.when.finish("production");
-          yield* a.then.text("Rolled back to v0.1.0");
+          yield* a.then.text("Rolled back to v0.1.1");
           yield* a.when.click("Close");
-          yield* a.then.rowShows("v0.1.2", "Live");
-          yield* a.then.rowShows("v0.1.2", earlier.slice(0, 7));
+          yield* a.then.rowShows("v0.1.3", "Live");
+          yield* a.then.rowShows("v0.1.3", later.slice(0, 7));
           yield* f.s.then.noExternalNetwork;
         }),
       90_000,

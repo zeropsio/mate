@@ -1003,8 +1003,8 @@ export interface ReleaseReviewInput {
   readonly gate: ReleaseGate;
   /** HQ's offer to this person, its refusal in words (`can`'s `release`); `undefined` unsaid. */
   readonly permission: ReleaseGate | undefined;
-  /** How many changes go out. */
-  readonly changes: number;
+  /** How many changes go out; `undefined` while HQ has not said — never a count of none. */
+  readonly changes: number | undefined;
   /** How many of them the stage that follows `main` runs; `undefined` with no such stage. */
   readonly onStage: { readonly total: number; readonly running: number } | undefined;
   /** The production services that redeploy. */
@@ -1059,7 +1059,9 @@ function stageWhy(input: ReleaseReviewInput): string {
     input.replaces.kind === "release" ? `since ${input.replaces.tag}` : "since the last release";
   const onStage = input.onStage;
   if (onStage === undefined || onStage.total === 0) {
-    return `${count(input.changes, "change", "changes")} merged ${since}`;
+    return input.changes === undefined
+      ? `What merged ${since} is not known yet`
+      : `${count(input.changes, "change", "changes")} merged ${since}`;
   }
   if (onStage.running >= onStage.total) {
     const all =
@@ -1097,7 +1099,7 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
         : replaces.kind === "release"
           ? `replaces ${replaces.tag}`
           : "replaces what production runs",
-      count(input.changes, "change", "changes"),
+      ...(input.changes === undefined ? [] : [count(input.changes, "change", "changes")]),
     ],
     ifWrong:
       back === undefined
@@ -1142,7 +1144,7 @@ function gitReleaseReview(
         ? `after ${input.replaces.tag}`
         : "after the last hand-over",
     count(included.length, "repository", "repositories"),
-    count(input.changes, "change", "changes"),
+    ...(input.changes === undefined ? [] : [count(input.changes, "change", "changes")]),
   ];
   const facts = { meta, repositories, ifWrong: undefined };
   if (!offered) {
@@ -1190,7 +1192,9 @@ function gitReleaseReview(
       tone: ready ? "ok" : "attention",
       title: ready ? "Ready to release" : "Can't release now",
       why: ready
-        ? count(input.changes, "change", "changes") + " merged since the last release"
+        ? input.changes === undefined
+          ? "What merged since the last release is not known yet"
+          : count(input.changes, "change", "changes") + " merged since the last release"
         : (!input.gate.allowed
             ? input.gate.reason
             : git.delivery?.release.allowed !== true
@@ -1308,7 +1312,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
         state: "release-blocked",
         tone: "busy",
         title: "Checking what goes out",
-        why: "Comparing in HQ",
+        why: "Waiting on HQ",
         fix: undefined,
       },
       consequence: RELEASE_TAKES,
@@ -1409,8 +1413,8 @@ function supersededModel(input: {
 export interface RollbackReviewInput {
   /** The two comparisons drawn in this review; confirmation waits for pending reads. */
   readonly comparisons: {
-    readonly leaving: MovedCommits["state"];
-    readonly comingBack: MovedCommits["state"];
+    readonly leaving: MovedCommits["state"] | "unrecorded";
+    readonly comingBack: MovedCommits["state"] | "unrecorded";
   };
   /** The earlier release it goes back to. */
   readonly tag: string;

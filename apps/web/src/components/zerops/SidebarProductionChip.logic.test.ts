@@ -272,6 +272,14 @@ describe("productionChip — production's chip: the word, its tone, its state in
     expect(chipFace(drawn!)).toEqual({ tone, label: "prod", words });
   });
 
+  it("draws no count of waiting changes from the zero of a release offer HQ has not read", () => {
+    expect(chip(productionChip(input({ waiting: 0 })))).toEqual({
+      label: "prod",
+      state: "ok",
+      version: "v0.1.44",
+    });
+  });
+
   it("draws no production chip where the project has no production", () => {
     expect(productionChip(input({ production: { kind: "absent" } }))).toEqual({ kind: "none" });
   });

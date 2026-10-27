@@ -1761,7 +1761,8 @@ export function ZeropsProjectsContent({
   const groupDeploys = projectFlow.flows;
   // A production just added is the intent to release (P7): the application whose production came
   // up waits here until HQ holds it and the gate says whether its first release is the person's to
-  // review, which then opens by itself (`creationHandoff`). Its release is compared meanwhile.
+  // review, which then opens by itself (`creationHandoff`). The gate is the release offer's: nothing
+  // is compared meanwhile.
   const [handoffTo, rememberReleaseIntent] = useState<{
     readonly orgId: string;
     readonly groupId: string;
@@ -1769,7 +1770,6 @@ export function ZeropsProjectsContent({
   } | null>(null);
   const handoffFlows = useProjectFlows(
     useMemo(() => (handoffTo === null ? [] : [handoffTo.groupId]), [handoffTo]),
-    { compare: true },
   ).flows;
   useEffect(() => {
     if (handoffTo === null) return;

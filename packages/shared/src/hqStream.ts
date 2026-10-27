@@ -489,6 +489,12 @@ export const HqNavigationReleaseOffer = Schema.Struct({
     more: Schema.Int,
     atLeast: Schema.Boolean,
   }),
+  /**
+   * Present, as "pending", while `summary` is not known: the offer's inputs moved and HQ has not
+   * read the candidate again, or Git could not read it. `summary` then counts nothing. Absent where
+   * `summary` is the read count, and from older servers.
+   */
+  summaryRead: Schema.optionalKey(Schema.Literal("pending")),
   gate: HqDecision,
   releaseTarget: Schema.optionalKey(HqReleaseTarget),
   inFlight: Schema.NullOr(Schema.String),
@@ -576,6 +582,33 @@ export const HqAppDetailFields = {
   "recipe:stage": RecipeTierResponse,
   "recipe:production": RecipeTierResponse,
   changes: Schema.Array(HqChange),
+  /** Every change a release would put live now; `pending` while HQ has not recorded them. */
+  releaseChanges: Schema.Union([
+    Schema.Struct({ state: Schema.Literal("pending") }),
+    Schema.Struct({
+      state: Schema.Literal("known"),
+      changes: Schema.Array(
+        Schema.Struct({ repo: Schema.String, number: Schema.Int, title: Schema.String }),
+      ),
+    }),
+  ]),
+  /**
+   * The commits a release would carry that no change landed: their number and the newest few.
+   * `summaryRead: "pending"` while HQ has not read them (count 0, no commits).
+   */
+  releaseOutside: Schema.Struct({
+    count: Schema.Int,
+    commits: Schema.Array(
+      Schema.Struct({
+        repo: Schema.String,
+        sha: Schema.String,
+        subject: Schema.String,
+        authorName: Schema.String,
+        at: Schema.String,
+      }),
+    ),
+    summaryRead: Schema.optionalKey(Schema.Literal("pending")),
+  }),
 };
 
 export const HqAttentionScopeValue = Schema.Struct({

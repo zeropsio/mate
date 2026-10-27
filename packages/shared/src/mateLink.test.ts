@@ -452,6 +452,13 @@ describe("the keys model's link", () => {
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
       { type: "hello", key: "zcp-key", serviceId: "S_ZCP", origin: "https://mate.zerops.app" },
+      {
+        type: "hello",
+        key: "zcp-key",
+        serviceId: "S_ZCP",
+        origin: "https://mate.zerops.app",
+        gitFingerprint: "a".repeat(64),
+      },
       { type: "pong" },
       { type: "ticket-ack", ticket: "tk-1" },
       { type: "key-refused" },

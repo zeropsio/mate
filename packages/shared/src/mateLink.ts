@@ -505,6 +505,8 @@ export const KeyLinkUp = Schema.Union([
     serviceId: Schema.String,
     /** The Mate's public origin, `https://host`: HQ hands it to a client that asks for a ticket. */
     origin: Schema.String.check(Schema.isMinLength(1)),
+    /** What the Git credential the Mate holds is, never its secret: HQ keeps a live one this names. */
+    gitFingerprint: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),

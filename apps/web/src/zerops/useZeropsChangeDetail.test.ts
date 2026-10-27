@@ -1,4 +1,8 @@
-import type { ChangeDetailResponse, ChangeLink } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeLink,
+  ChangeMetadataResponse,
+} from "@t3tools/shared/hqChanges";
 import { act, createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -21,6 +25,8 @@ const hq = vi.hoisted(() => ({
   answers: [] as Array<"detail" | "failed">,
   reads: [] as Array<string>,
   snapshots: [] as Array<unknown>,
+  /** What HQ recorded of the change with its verdict; none: an HQ that records no review. */
+  review: undefined as unknown,
 }));
 
 const DETAIL = {
@@ -86,8 +92,13 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
     seen.push(useZeropsChangeDetail(request));
     return null;
   }
-  const account = reviewAccount(({ link, snapshot }) =>
-    official.api.change(link, undefined, snapshot),
+  const account = reviewAccount(
+    ({ link, snapshot }) => official.api.change(link, undefined, snapshot),
+    async () =>
+      ({
+        change: DETAIL.change,
+        ...(hq.review === undefined ? {} : { review: hq.review }),
+      }) as ChangeMetadataResponse,
   );
   const root = createRoot(document.createElement("div") as unknown as Element);
   for (const request of requests) {
@@ -119,6 +130,7 @@ describe("useZeropsChangeDetail", () => {
     hq.answers = [];
     hq.reads = [];
     hq.snapshots = [];
+    hq.review = undefined;
     vi.unstubAllGlobals();
   });
 
@@ -160,6 +172,47 @@ describe("useZeropsChangeDetail", () => {
       probe.latest().retry();
     });
     expect(hq.reads).toHaveLength(2);
+    await probe.unmount();
+  });
+
+  it("The change review opens without waiting for HQ's detail", async () => {
+    hq.review = {
+      mergeBase: MAIN,
+      files: [{ path: "src/a.ts", added: 3, deleted: 1, binary: false }],
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: [],
+      commitsTruncated: false,
+    };
+    const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
+    expect(probe.latest().readout).toMatchObject({
+      kind: "read",
+      value: { files: [{ path: "src/a.ts", additions: 3, deletions: 1 }], diffBase: MAIN },
+    });
+    expect(probe.latest().showFiles).toBeUndefined();
+    expect(hq.reads).toEqual([]);
+    await probe.unmount();
+  });
+
+  it("Files not recorded yet read not known yet, and a press reads them once", async () => {
+    hq.answers = ["detail"];
+    hq.review = {
+      mergeBase: MAIN,
+      files: null,
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: null,
+      commitsTruncated: false,
+    };
+    const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }]);
+    expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: false } });
+    expect(hq.reads).toEqual([]);
+    await act(async () => {
+      probe.latest().showFiles?.();
+    });
+    expect(probe.latest().readout).toMatchObject({ kind: "read", value: { filesKnown: true } });
+    expect(probe.latest().showFiles).toBeUndefined();
+    expect(hq.reads).toEqual(["g1/appdev#2"]);
     await probe.unmount();
   });
 

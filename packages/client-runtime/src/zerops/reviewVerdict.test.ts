@@ -571,6 +571,11 @@ describe("releaseReview", () => {
       { state: "release-ready", why: "1 change merged since v0.1.56" },
     ],
     [
+      "release ready, what merged not known yet: never a count of none",
+      { onStage: undefined, changes: undefined },
+      { state: "release-ready", why: "What merged since v0.1.56 is not known yet" },
+    ],
+    [
       "not a releaser, in HQ's words for who may",
       { gate: NOT_A_RELEASER, permission: NOT_A_RELEASER },
       {

@@ -650,28 +650,23 @@ export function releaseContentsCommits<Commit extends { readonly sha: string }>(
 }
 
 /**
- * How many changes wait for production, said from a merged change's review: what the release
- * carries (`listed`, `releaseContentsCommits`), and the change itself where that does not list it
- * yet — HQ compares `main` again after a merge, and until it has, the change just merged waits no
- * less (t8 A22: "1 change now waits for production"). A change merged before the release
- * production runs is in production already; one not merged waits for nothing. No count while the
- * release is not compared yet (`listed` undefined): a count from no answer would change under the
- * person's eyes.
+ * How many changes wait for production, said from a merged change's review: what HQ's release
+ * offer counts (its changes where it counts them, else its commits), and the change this review
+ * just merged where the offer in hand was read before that merge. A change merged earlier is in
+ * what the offer counts. No count while HQ has not read the offer (`pending`, or no offer): a
+ * pending offer counts nothing, and a count from no answer would change under the person's eyes
+ * (D6: "27", then "1").
  */
 export function waitingForProduction(input: {
-  readonly listed: ReadonlyArray<{ readonly sha: string }> | undefined;
-  readonly change: Pick<FlowPullRequest, "merged" | "mergedAt" | "mergeCommitSha">;
-  /** When the release production runs was tagged; `undefined` where it runs none. */
-  readonly liveSince: string | undefined;
+  readonly summary: Pick<ReleaseContentsSummary, "changeCount" | "total"> | undefined;
+  /** HQ sent `summaryRead: "pending"`: the offer is not read, whatever `summary` holds. */
+  readonly pending: boolean;
+  /** This review merged the change and the offer in hand was read before that. */
+  readonly mergedAhead: boolean;
 }): number | undefined {
-  const { change, listed, liveSince } = input;
-  if (listed === undefined) return undefined;
-  const merge = change.mergeCommitSha?.toLowerCase();
-  const listsIt = merge !== undefined && listed.some(({ sha }) => sha.toLowerCase() === merge);
-  const sinceLive =
-    liveSince === undefined ||
-    (change.mergedAt !== undefined && Date.parse(change.mergedAt) > Date.parse(liveSince));
-  return listed.length + (change.merged && sinceLive && !listsIt ? 1 : 0);
+  const { summary, pending, mergedAhead } = input;
+  if (summary === undefined || pending) return undefined;
+  return (summary.changeCount ?? summary.total) + (mergedAhead ? 1 : 0);
 }
 
 /**

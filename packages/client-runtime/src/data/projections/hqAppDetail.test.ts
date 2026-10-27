@@ -157,6 +157,35 @@ describe("hqAppDetail", () => {
     });
   });
 
+  it("reads the release's recorded changes as HQ said them, pending included, and absent from an older HQ", () => {
+    const carried = apply(demanded, [
+      deliver([
+        row("releaseChanges", {
+          kind: "releaseChanges",
+          value: { state: "known", changes: [{ repo: "api", number: 3, title: "Add cart" }] },
+        }),
+      ]),
+    ]);
+    const pending = apply(demanded, [
+      deliver([row("releaseChanges", { kind: "releaseChanges", value: { state: "pending" } })]),
+    ]);
+    expect(detail(carried).releaseChanges).toEqual({
+      state: "known",
+      changes: [{ repo: "api", number: 3, title: "Add cart" }],
+    });
+    expect(detail(pending).releaseChanges).toEqual({ state: "pending" });
+    expect(detail(read).releaseChanges).toBeUndefined();
+  });
+
+  it("reads the commits outside a release's changes as HQ said them, and absent from an older HQ", () => {
+    const value = { count: 0, commits: [], summaryRead: "pending" } as const;
+    const outside = apply(demanded, [
+      deliver([row("releaseOutside", { kind: "releaseOutside", value })]),
+    ]);
+    expect(detail(outside).releaseOutside).toEqual(value);
+    expect(detail(read).releaseOutside).toBeUndefined();
+  });
+
   it("keeps what it read through an outage and a refusal", () => {
     const { releases, repos, changes, recipes } = detail(read);
     expect(detail(down)).toMatchObject({ releases, repos, changes, recipes });

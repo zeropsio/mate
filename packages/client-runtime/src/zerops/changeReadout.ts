@@ -11,7 +11,12 @@
  *
  * @module changeReadout
  */
-import type { ChangeDetailResponse, ChangeFile } from "@t3tools/shared/hqChanges";
+import type {
+  ChangeDetailResponse,
+  ChangeFile,
+  ChangeReview,
+  HqChange,
+} from "@t3tools/shared/hqChanges";
 
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
 import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
@@ -19,7 +24,8 @@ import { parseChangeDiff, type ChangeDiffFile } from "./changeDiff.ts";
 /** A file it changes, as its row draws it. */
 export interface ChangeReadoutFile {
   readonly path: string;
-  readonly status: "added" | "deleted" | "modified";
+  /** `unknown` where HQ has not recorded it: the row draws no letter, never a guessed one. */
+  readonly status: "added" | "deleted" | "modified" | "unknown";
   readonly additions: number;
   readonly deletions: number;
 }
@@ -33,12 +39,23 @@ export interface ChangeReadoutCommit {
 
 export interface ChangeReadout {
   readonly files: ReadonlyArray<ChangeReadoutFile>;
+  /** Whether `files` is the change's files: false where HQ has not recorded them yet. */
+  readonly filesKnown: boolean;
+  /**
+   * The merge base a file's diff is read from when the person unfolds it; `null` where `diff`
+   * already holds them.
+   */
+  readonly diffBase: string | null;
   /** HQ read only so many of its files. */
   readonly filesCut: boolean;
   /** Each file's diff, by its path. */
   readonly diff: ReadonlyMap<string, ChangeDiffFile>;
   /** Newest first. */
   readonly commits: ReadonlyArray<ChangeReadoutCommit>;
+  /** Whether `commits` is the change's commits: false where HQ has not recorded them yet. */
+  readonly commitsKnown: boolean;
+  /** Only the newest commits are held. */
+  readonly commitsCut: boolean;
   readonly mergeability: MergeabilityKind;
   /** The files it conflicts with `main` in; none named for a change that shares no history. */
   readonly conflict: ReadonlyArray<string>;
@@ -62,6 +79,8 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     if (read !== undefined) diff.set(file.path, read);
   }
   return {
+    filesKnown: true,
+    diffBase: null,
     files: detail.files.map((file) => ({
       path: file.path,
       status: statusOf(file),
@@ -71,9 +90,42 @@ export function changeReadout(detail: ChangeDetailResponse): ChangeReadout {
     filesCut: detail.filesTruncated,
     diff,
     commits: detail.commits.map(({ sha, subject, at }) => ({ sha, subject, at })),
+    commitsKnown: true,
+    commitsCut: detail.commitsTruncated,
     mergeability: mergeabilityKindOf(detail.mergeability.kind),
     conflict: detail.mergeability.kind === "conflict" ? detail.mergeability.paths : [],
     behind:
       detail.mainHead !== null && detail.mergeBase !== null && detail.mainHead !== detail.mergeBase,
+  };
+}
+
+const recordedStatus: Record<string, ChangeReadoutFile["status"]> = {
+  A: "added",
+  M: "modified",
+  D: "deleted",
+  T: "modified",
+};
+
+/**
+ * A change's review as HQ recorded it with the merge verdict: its files, sizes and commits, no diffs. A file's status is as HQ recorded it, else unknown.
+ */
+export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): ChangeReadout {
+  return {
+    filesKnown: review.files !== null,
+    diffBase: review.mergeBase,
+    files: (review.files ?? []).map((file) => ({
+      path: file.path,
+      status: recordedStatus[file.status ?? "?"] ?? "unknown",
+      additions: file.added ?? 0,
+      deletions: file.deleted ?? 0,
+    })),
+    filesCut: review.filesTruncated,
+    diff: new Map(),
+    commits: (review.commits ?? []).map(({ sha, subject, at }) => ({ sha, subject, at })),
+    commitsKnown: review.commits !== null,
+    commitsCut: review.commitsTruncated,
+    mergeability: mergeabilityKindOf(change.mergeability),
+    conflict: review.conflictPaths,
+    behind: change.behind,
   };
 }
