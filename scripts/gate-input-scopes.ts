@@ -21,3 +21,9 @@ export const runtimeCycleSourceRoots = [
 ];
 
 export const retainedTestFile = /(?:\.test\.tsx?|\.scenario\.ts)$/u;
+
+// Test and scenario code whose time must come from the harness or scenario clock.
+export const testClockFile = (path: string): boolean =>
+  !path.startsWith(".repos/") &&
+  /(?:\.test\.ts|\.scenario\.ts)$|(?:^|\/)test\/scenarios\/.+\.ts$/u.test(path);
+export const testClockLedger = "scripts/test-clock-exceptions.json";
