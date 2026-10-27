@@ -671,6 +671,7 @@ export class MateEngineFake {
     const ordinal = [...this.items.values()].filter((item) => item.runId === run).length + 1;
     const id = `${run}/i/${ordinal}`;
     const seq = this.next();
+    const at = this.stamp(seq);
     this.items.set(
       id,
       decodeItem({
@@ -679,7 +680,13 @@ export class MateEngineFake {
         runId: run,
         seq,
         rev: seq,
-        at: this.stamp(seq),
+        at,
+        // A call recorded already over ended as it was recorded, on the clock that stamped its
+        // start: an end read from another clock first can fall a millisecond before it, and a
+        // call that ends before it starts keys its row at its end rather than its start.
+        ...(body.kind === "call" && body.state !== "running" && !("endedAt" in body)
+          ? { endedAt: at }
+          : {}),
         ...body,
       }),
     );
