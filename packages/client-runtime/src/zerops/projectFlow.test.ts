@@ -8,6 +8,7 @@ import { mateProjectOfBranch, mateProjectOfLogin } from "./mateIdentity.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
   changeKindTag,
+  changeAsksForReview,
   changeShowsReview,
   changeState,
   pullRequestMergeLine,
@@ -1035,6 +1036,41 @@ describe("a Mate's proposal of the group's recipe", () => {
   ])("tells $case", ({ repository, title, proposal }) => {
     const kind = repository === "group" ? "recipe" : "code";
     expect(isRecipeProposal(row({ repository, kind, number: 11, title }))).toBe(proposal);
+  });
+
+  // zcp proposes the tiers main lacks at every start of its Mate, unasked; Core lands it by itself
+  // (it only adds files). Left open, it is HQ's race or its Mate's to propose again, never the
+  // person's to judge. A recipe change that edits a tier still asks the person.
+  it.each([
+    {
+      case: "zcp's proposal of the tiers main lacks asks nobody for review",
+      title: "Mate: the group's import files",
+      mergeability: "mergeable",
+      asks: false,
+      word: "Lands by itself",
+    },
+    {
+      case: "zcp's proposal that conflicts with main asks nobody for review",
+      title: "Mate: the group's import files",
+      mergeability: "conflicting",
+      asks: false,
+      word: "Conflicts with main",
+    },
+    {
+      case: "a Mate's proposal of one service in the recipe asks the person",
+      title: "Mate: api in the group recipe",
+      mergeability: "mergeable",
+      asks: true,
+      word: "Ready to merge",
+    },
+  ] as const)("$case", ({ title, mergeability, asks, word }) => {
+    const pull = {
+      ...row({ repository: "group", kind: "recipe", number: 11, title }),
+      mergeability,
+    };
+    expect(changeAsksForReview(pull)).toBe(asks);
+    expect(changeShowsReview(pull, undefined)).toBe(asks);
+    expect(changeState(pull)?.word).toBe(word);
   });
 });
 
