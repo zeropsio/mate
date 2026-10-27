@@ -27,8 +27,9 @@ jobs:
   prepare:
     name: CI promotion
     runs-on: ubuntu-latest
-    # Past main's worst full run (7.6 min): a kh-next run may wait for it.
-    timeout-minutes: 9
+    # Past main's worst full run (7.6 min), which a kh-next run may wait for, and State Smoke's
+    # plan: the shards of run 40547693697 each took up to 7 min to select a 700-path diff.
+    timeout-minutes: 16
     permissions:
       actions: read
       contents: read
@@ -40,7 +41,8 @@ jobs:
       test_client_runtime: ${{ steps.blame.outputs.test_client_runtime }}
       test_web: ${{ steps.blame.outputs.test_web }}
       test_server: ${{ steps.blame.outputs.test_server }}
-      state_smoke: ${{ steps.blame.outputs.state_smoke }}
+      state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
+      state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
     steps:
       - name: Checkout CI selector
         uses: actions/checkout@v6
@@ -145,6 +147,57 @@ jobs:
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified: ${skip}"
 
+      # State Smoke's affected selection is computed once here; its size sets the shard count.
+      - name: Checkout for State Smoke's plan
+        if: &plans_state_smoke steps.verdict.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          sparse-checkout: |
+            /*
+            !/.repos/
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Vite+
+        if: *plans_state_smoke
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version-file: package.json
+          cache: false
+          run-install: false
+
+      - name: Resolve store path
+        if: *plans_state_smoke
+        id: paths
+        shell: bash
+        run: &store_path |
+          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
+          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+
+      - name: Restore pnpm store
+        if: *plans_state_smoke
+        uses: actions/cache/restore@v4
+        with: &pnpm_store
+          path: ${{ steps.paths.outputs.store }}
+          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          restore-keys: |
+            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+
+      - name: Install dependencies
+        if: *plans_state_smoke
+        env: &verified_lockfile
+          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
+          PNPM_CONFIG_TRUST_LOCKFILE: "true"
+        run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
+
+      - name: Plan State Smoke shards
+        if: *plans_state_smoke
+        id: state_smoke_plan
+        env:
+          MATE_SCENARIO_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
+          MATE_STATE_SMOKE_SHARDS: ${{ steps.blame.outputs.state_smoke_shards }}
+        run: node scripts/state-smoke.ts --plan --base "$MATE_SCENARIO_BASE" --shards "$MATE_STATE_SMOKE_SHARDS"
+
   cache:
     name: Check cache (${{ matrix.os }})
     needs: prepare
@@ -177,18 +230,12 @@ jobs:
       - name: Resolve store path
         id: paths
         shell: bash
-        run: &store_path |
-          echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
-          echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
+        run: *store_path
 
       - name: Restore pnpm store
         id: store
         uses: actions/cache/restore@v4
-        with: &pnpm_store
-          path: ${{ steps.paths.outputs.store }}
-          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
-          restore-keys: |
-            vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
+        with: *pnpm_store
 
       - name: Restore pnpm metadata
         if: runner.os == 'Linux'
@@ -581,10 +628,8 @@ jobs:
         with: *pnpm_store
 
       - name: Install dependencies
-        env: &verified_lockfile
-          PNPM_CONFIG_FROZEN_LOCKFILE: "true"
-          PNPM_CONFIG_TRUST_LOCKFILE: "true"
-        run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
+        env: *verified_lockfile
+        run: *hosted_dependencies
 
       - name: Install mate-hq and its services
         working-directory: mate-hq
@@ -606,10 +651,10 @@ jobs:
       - name: Certify sign-in, fixed smoke and affected scenarios
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-          MATE_SCENARIO_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
+          MATE_STATE_SMOKE_SELECTION: ${{ needs.prepare.outputs.state_smoke_selection }}
         run: |
           vp run test:browser
-          node scripts/state-smoke.ts --base "$MATE_SCENARIO_BASE" --shard ${{ matrix.shard }}/${{ matrix.total }}
+          node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.

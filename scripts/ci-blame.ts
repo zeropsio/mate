@@ -9,7 +9,6 @@ export const blameMatrices = {
   test_client_runtime: [1].map((shard) => ({ shard, total: 1 })),
   test_web: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
   test_server: [1, 2, 3].map((shard) => ({ shard, total: 3 })),
-  state_smoke: [1, 2, 3, 4, 5, 6, 7, 8].map((shard) => ({ shard, total: 8 })),
 };
 const jobNames = {
   check: "Check",
@@ -30,6 +29,19 @@ const jobNames = {
 };
 export const checkJobIds = ["check", "check_guards", "check_types", "check_build"] as const;
 type MatrixJob = keyof typeof blameMatrices;
+const stateSmokeContext = /^State Smoke ([1-9]\d*)$/u;
+
+/** State Smoke's shard count follows its scenario selection; blame keeps the requested shards of it. */
+export function stateSmokeMatrix(total: number, requested: "all" | ReadonlyArray<number>) {
+  const missing = requested === "all" ? [] : requested.filter((shard) => shard > total);
+  if (missing.length)
+    throw new Error(`State Smoke ${missing.join(", ")} does not exist: this commit has ${total}`);
+  return {
+    include: Array.from({ length: total }, (_, index) => ({ shard: index + 1, total })).filter(
+      ({ shard }) => requested === "all" || requested.includes(shard),
+    ),
+  };
+}
 
 export function blameSelection(ref: string, manifest: string | undefined) {
   const bisect = ref.startsWith("refs/heads/kh-bisect/");
@@ -51,6 +63,13 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   for (const [job, name] of Object.entries(jobNames)) {
     if (!narrowed || requested.has(name)) selected.add(job);
   }
+  const stateSmokeShards = narrowed
+    ? [...requested].flatMap((name) => {
+        const shard = stateSmokeContext.exec(name)?.[1];
+        return shard ? [Number(shard)] : [];
+      })
+    : ("all" as const);
+  if (stateSmokeShards !== "all" && stateSmokeShards.length) selected.add("state_smoke");
   for (const [job, rows] of Object.entries(blameMatrices)) {
     const name = jobNames[job as MatrixJob];
     const include = rows.filter((row) => {
@@ -80,7 +99,7 @@ export function blameSelection(ref: string, manifest: string | undefined) {
     if (requested.size && !selected.size)
       throw new Error("No known failed CI job in .ci-blame-jobs");
   }
-  return { narrowed, selected: [...selected], matrices };
+  return { narrowed, selected: [...selected], matrices, stateSmokeShards };
 }
 
 if (
@@ -90,7 +109,11 @@ if (
   const path = ".ci-blame-jobs";
   const manifest = NodeFS.existsSync(path) ? NodeFS.readFileSync(path, "utf8") : undefined;
   const selection = blameSelection(process.env.GITHUB_REF ?? "", manifest);
-  const outputs = [`jobs=${JSON.stringify(selection.selected)}`, `blame=${selection.narrowed}`];
+  const outputs = [
+    `jobs=${JSON.stringify(selection.selected)}`,
+    `blame=${selection.narrowed}`,
+    `state_smoke_shards=${JSON.stringify(selection.stateSmokeShards)}`,
+  ];
   for (const [job, matrix] of Object.entries(selection.matrices))
     outputs.push(`${job}=${JSON.stringify(matrix)}`);
   NodeFS.appendFileSync(process.env.GITHUB_OUTPUT!, outputs.join("\n") + "\n");
