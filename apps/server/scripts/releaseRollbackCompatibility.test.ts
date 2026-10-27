@@ -1,3 +1,5 @@
+import * as nodeFs from "node:fs";
+import * as nodePath from "node:path";
 import { describe, expect, it } from "@effect/vitest";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import * as Effect from "effect/Effect";
@@ -6,6 +8,7 @@ import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
+  rollbackBlocker,
   rollbackCompatibility,
   readRollbackCompatibility,
 } from "./releaseRollbackCompatibility.ts";
@@ -191,11 +194,9 @@ describe("a release may update automatically only inside its proved rollback ran
   it.each(
     Array.from(
       [
-        "apps/server/src/ws.ts",
         "apps/server/src/git/GitManager.ts",
         "apps/server/src/textGeneration/CodexTextGeneration.ts",
         "apps/server/src/engine/store/EngineStore.test.ts",
-        "packages/effect-acp/src/client.ts",
         "packages/hq-git/src/index.ts",
         "packages/shared/src/hqStream.ts",
         "package.json",
@@ -224,6 +225,11 @@ describe("a release may update automatically only inside its proved rollback ran
         "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
         "apps/server/src/environment/ServerEnvironment.ts",
         "apps/server/src/cli/config.ts",
+        "apps/server/src/ws.ts",
+        "apps/server/src/server.ts",
+        "apps/server/src/serverRuntimeStartup.ts",
+        "apps/server/src/spi/ProviderUpdateSafety.ts",
+        "packages/effect-acp/src/client.ts",
       ],
       (changedPath) => ({
         title: `requires confirmation when ${changedPath} adds a migration, a stored schema or a seam change`,
@@ -235,8 +241,27 @@ describe("a release may update automatically only inside its proved rollback ran
       rollbackCompatible: false,
     });
   });
+  it.each([
+    "apps/server/src/newdir/Store.ts",
+    "apps/server/src/newTopLevelStore.ts",
+    "packages/new-pkg/src/index.ts",
+    ".github/workflows/release.yml",
+  ])("requires confirmation for %s, a path the rule has never seen", (changedPath) => {
+    expect(rollbackBlocker({ ...evidence, changedPaths: [changedPath] })).toContain(changedPath);
+  });
+  it.each([
+    ["the update protocol changed", { currentProtocol: 2 }],
+    ["the runtime declaration changed", { previousPackage: "broken" }],
+    ["not an ancestor", { ancestor: false }],
+  ] as const)("names the cause when %s", (cause, patch) => {
+    expect(rollbackBlocker({ ...evidence, ...patch }), cause).toBeTruthy();
+  });
   describe("a changed lockfile counts only when the server's runtime dependencies moved", () => {
-    const lock = (options: { readonly runtime: string; readonly dev: string }) => `
+    const lock = (options: {
+      readonly runtime: string;
+      readonly dev: string;
+      readonly bundled?: string;
+    }) => `
 lockfileVersion: '9.0'
 importers:
   .:
@@ -250,10 +275,20 @@ importers:
         specifier: 4.0.1
         version: 4.0.1
     devDependencies:
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
       vitest:
         specifier: ^1
         version: ${options.dev}
+  packages/shared:
+    dependencies:
+      jose:
+        specifier: ^6
+        version: ${options.bundled ?? "6.0.0"}
 snapshots:
+  jose@6.0.0: {}
+  jose@6.0.1: {}
   effect@4.0.1:
     dependencies:
       leaf: ${options.runtime}
@@ -279,6 +314,13 @@ snapshots:
         rollbackCompatible: false,
       });
     });
+    it("requires confirmation when a dependency of a bundled workspace package changes", () => {
+      expect(
+        rollbackCompatibility(
+          changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", bundled: "6.0.1" })),
+        ),
+      ).toEqual({ rollbackCompatible: false });
+    });
     it("requires confirmation when the lockfile cannot be read", () => {
       expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({
         rollbackCompatible: false,
@@ -287,5 +329,58 @@ snapshots:
         rollbackCompatible: false,
       });
     });
+  });
+});
+
+describe("the allowlisted HQ wire modules stay free of stored state", () => {
+  const root = nodePath.resolve(import.meta.dirname, "../../..");
+  const sourcesUnder = (dir: string): ReadonlyArray<string> =>
+    nodeFs
+      .readdirSync(nodePath.join(root, dir), { withFileTypes: true, recursive: true })
+      .filter((entry) => entry.isFile() && /\.tsx?$/u.test(entry.name) && !isTestName(entry.name))
+      .map((entry) => nodePath.join(entry.parentPath, entry.name));
+  const isTestName = (name: string) => /\.test\.tsx?$/u.test(name);
+  const importsOf = (file: string): ReadonlyArray<string> =>
+    [...nodeFs.readFileSync(file, "utf8").matchAll(/from "([^"]+)"/gu)].map((match) => match[1]!);
+
+  it("an hq module imports only schemas, never a persistence or filesystem module", () => {
+    const shared = nodePath.join(root, "packages/shared/src");
+    const offenders = sourcesUnder("packages/shared/src")
+      .filter((file) => nodePath.basename(file).startsWith("hq") || file.includes("/hqGitBrowse/"))
+      .flatMap((file) =>
+        importsOf(file)
+          .filter(
+            (specifier) =>
+              !/^effect(\/|$)/u.test(specifier) &&
+              specifier !== "@t3tools/contracts" &&
+              !/^\.\.?\/(hq|common|mateLink|zeropsPermissions|log|agentUsage|commit)/u.test(
+                specifier,
+              ),
+          )
+          .map((specifier) => `${nodePath.relative(shared, file)} imports ${specifier}`),
+      );
+    expect(offenders).toEqual([]);
+  });
+
+  it("the server reaches an hq module only from zerops/, which is never allowlisted", () => {
+    const server = nodePath.join(root, "apps/server/src");
+    const importers = sourcesUnder("apps/server/src")
+      .filter((file) => importsOf(file).some((specifier) => /shared\/hq/u.test(specifier)))
+      .map((file) => nodePath.relative(server, file))
+      .filter((file) => !file.startsWith("zerops/"));
+    expect(importers).toEqual([]);
+  });
+
+  it("no server or shared file imports a package the allowlist trusts as client-only", () => {
+    const importers = [
+      ...sourcesUnder("apps/server/src"),
+      ...sourcesUnder("packages/shared/src"),
+      ...sourcesUnder("packages/contracts/src"),
+    ].filter((file) =>
+      importsOf(file).some(
+        (s) => s.startsWith("@t3tools/hq-git") || s.startsWith("@t3tools/client-runtime"),
+      ),
+    );
+    expect(importers.map((file) => nodePath.relative(root, file))).toEqual([]);
   });
 });

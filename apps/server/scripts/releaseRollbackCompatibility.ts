@@ -4,6 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
+import { posix } from "node:path";
 import { parse as parseYaml } from "yaml";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -42,76 +43,80 @@ const runtimeDeclaration = (encoded: string): string | undefined => {
       );
 };
 
-const SERVER_SRC = "apps/server/src/";
-
 /**
- * What the previous release must still read back, as path globs. Anything not named here is
- * server behaviour that leaves the stored state, the updater and the zcp seam untouched.
- * A directory whose persistence is unproven stays listed: unsure means manual.
+ * Paths proved not to touch stored state, the updater or the zcp seam. The rule is an
+ * allowlist: a path that matches nothing here makes the release manual, so a directory or
+ * package added later fails closed until someone verifies it and lists it with its reason.
+ * Verification per entry: no `SqlClient`, secret store or state-dir write in the directory
+ * (grep `writeFile|appendFile|makeDirectory|rename|SqlClient|SecretStore|stateDir`), and what it
+ * writes lives in a user workspace or a temporary directory.
  */
-const PERSISTED_PREFIXES: ReadonlyArray<string> = [
-  // SQLite schema, migrations, projections (V1 `orchestration/` projects into them).
-  `${SERVER_SRC}persistence/`,
-  `${SERVER_SRC}orchestration/`,
-  // The event-sourced engine: its store and migrations, what `decide`/`evolve` mean by an
-  // event, the effect outbox, wakes, imported history.
-  `${SERVER_SRC}engine/`,
-  // Provider resume cursors, session runtime and credential files.
-  `${SERVER_SRC}provider/`,
-  // Files under the state dir: secrets, sessions, assets, terminal history, usage outbox.
-  `${SERVER_SRC}auth/`,
-  `${SERVER_SRC}assets/`,
-  `${SERVER_SRC}terminal/`,
-  `${SERVER_SRC}usage/`,
-  // Updater: drain, admission, native resume.
-  `${SERVER_SRC}update/`,
-  // The zcp seam (spec-mate §2.8): flags C-2, descriptor C-4, Git credential C-7, boot, HQ link.
-  `${SERVER_SRC}cli/`,
-  `${SERVER_SRC}cloud/`,
-  `${SERVER_SRC}environment/`,
-  `${SERVER_SRC}zerops/`,
-  // The released artifact itself (C-1): pack and manifest.
-  "apps/server/scripts/",
-  // Contracts compose the stored engine, orchestration and settings schemas across many files.
-  "packages/contracts/",
+const COMPATIBLE_PREFIXES: ReadonlyArray<readonly [prefix: string, reason: string]> = [
+  ["apps/web/", "the hosted client; the Mate only serves its bundle"],
+  ["apps/desktop/", "not part of the released server"],
+  ["apps/mobile/", "not part of the released server"],
+  ["docs/", "prose"],
+  ["apps/hq/", "HQ Core deploys on its own; the Mate artifact does not contain it"],
+  [".github/workflows/ci.yml", "verification only"],
+  [".github/workflows/signal.yml", "verification only"],
+  [".github/ISSUE_TEMPLATE/", "prose"],
+  ["oxlint-plugin-t3code/", "lint rules"],
+  [
+    "scripts/",
+    "repository tooling; the released artifact's pack and manifest are apps/server/scripts",
+  ],
+  ["packages/client-runtime/", "client-only; no server file imports it"],
+  ["packages/hq-git/", "HQ-side git; no server file imports it"],
+  ["apps/server/src/git/", "repository operations; writes a temporary body file"],
+  ["apps/server/src/sourceControl/", "clones into user-chosen workspace directories"],
+  ["apps/server/src/textGeneration/", "one-shot generation; temporary isolated provider profiles"],
+  ["apps/server/src/project/", "setup scripts; reads settings and projections"],
+  ["apps/server/src/review/", "review service; reads"],
+  ["apps/server/src/observability/", "tracing and heap snapshots; no stored format"],
+  ["apps/server/src/diagnostics/", "reads"],
+  ["apps/server/src/resourceTelemetry/", "in-memory samples"],
+  ["apps/server/src/background/", "reads settings; no stored format"],
+  ["apps/server/src/stream/", "stream helpers"],
+  ["apps/server/src/utils/", "pure helpers"],
+  ["apps/server/src/workspace/", "reads and writes the user's workspace files only"],
+  ["apps/server/src/testUtils/", "test tooling"],
+  ["apps/server/src/testing/", "test tooling"],
+  // `packages/shared` hq* modules are HQ wire schemas, versioned by HQ. The persistence guard
+  // test keeps them free of persistence imports and reachable only from `zerops/`.
+  ["packages/shared/src/hq", "HQ wire schemas, not stored by the Mate"],
 ];
 
-const PERSISTED_FILES: ReadonlySet<string> = new Set(
-  [
-    "atomicWrite.ts",
-    "attachmentPaths.ts",
-    "attachmentStore.ts",
-    "bin.ts",
-    "config.ts",
-    "entrypoint.ts",
-    "http.ts",
-    "httpCors.ts",
-    "keybindings.ts",
-    "mateUpdateBoot.ts",
-    "RpcUpdateAdmission.ts",
-    "serverRuntimeState.ts",
-    "serverSettings.ts",
-    "uploadsFolder.ts",
-  ].map((name) => `${SERVER_SRC}${name}`),
-);
-
 /**
- * The HQ wire formats in `packages/shared` are versioned by HQ, not stored by the Mate; every
- * other shared file may define a stored format and stays listed.
+ * Single files whose change cannot alter what the previous release reads back. The server
+ * manifest's runtime declaration and the update protocol are compared separately; dependencies
+ * are judged by the lockfile closure below.
  */
-const isHqWireModule = (path: string): boolean =>
-  /^packages\/shared\/src\/hq[A-Za-z]*(\.ts|\/)/u.test(path);
+const COMPATIBLE_FILES: ReadonlySet<string> = new Set([
+  "package.json",
+  "pnpm-workspace.yaml",
+  "apps/server/package.json",
+  "apps/server/update-protocol.json",
+  "README.md",
+  ".github/pull_request_template.md",
+  "zerops.yml",
+]);
 
 const isTest = (path: string): boolean => /\.test\.tsx?$/u.test(path);
 
-const touchesPersistedSurface = (path: string): boolean => {
-  if (isTest(path) || path === "pnpm-lock.yaml") return false;
-  if (PERSISTED_FILES.has(path)) return true;
-  if (PERSISTED_PREFIXES.some((prefix) => path.startsWith(prefix))) return true;
-  return path.startsWith("packages/shared/") && !isHqWireModule(path);
-};
+/** The first path outside the allowlist, or undefined. The lockfile is judged separately. */
+const unlistedPath = (paths: ReadonlyArray<string>): string | undefined =>
+  paths.find(
+    (path) =>
+      path !== "pnpm-lock.yaml" &&
+      !isTest(path) &&
+      !COMPATIBLE_FILES.has(path) &&
+      !COMPATIBLE_PREFIXES.some(([prefix]) => path.startsWith(prefix)),
+  );
 
-type LockSection = Record<string, { readonly version?: string } | undefined>;
+interface LockImporter {
+  readonly dependencies?: Record<string, { readonly version?: string } | undefined>;
+  readonly devDependencies?: Record<string, { readonly version?: string } | undefined>;
+}
 type LockSnapshots = Record<
   string,
   | {
@@ -122,23 +127,44 @@ type LockSnapshots = Record<
 >;
 
 /**
- * The lockfile restricted to what the server bundle and release manifest resolve: the
- * `apps/server` production dependencies and their transitive snapshots. Dev-only changes leave
- * it identical; an unreadable lockfile has none.
+ * The lockfile restricted to what the server bundle resolves: the `apps/server` production
+ * dependencies, those of every workspace package it links (the bundle inlines them with their
+ * own dependencies), and all transitive snapshots. Tooling-only changes leave it identical; an
+ * unreadable lockfile has none.
  */
 const serverRuntimeClosure = (lock: string): string | undefined => {
   try {
     const parsed = parseYaml(lock) as {
-      importers?: Record<string, { dependencies?: LockSection } | undefined>;
+      importers?: Record<string, LockImporter | undefined>;
       snapshots?: LockSnapshots;
     };
-    const direct = parsed.importers?.["apps/server"]?.dependencies;
-    if (direct === undefined || parsed.snapshots === undefined) return undefined;
+    const { importers, snapshots } = parsed;
+    if (importers?.["apps/server"] === undefined || snapshots === undefined) return undefined;
     const visited = new Map<string, unknown>();
-    const queue = Object.entries(direct).map(([name, entry]) => `${name}@${entry?.version}`);
+    const seenImporters = new Set<string>();
+    const queue: Array<string> = [];
+    const pushImporter = (id: string) => {
+      if (seenImporters.has(id)) return;
+      seenImporters.add(id);
+      const importer = importers[id];
+      if (importer === undefined) throw new Error(`unknown importer ${id}`);
+      visit(id, importer.dependencies, false);
+      visit(id, importer.devDependencies, true);
+    };
+    const visit = (from: string, section: LockImporter["dependencies"], linkedOnly: boolean) => {
+      for (const [name, entry] of Object.entries(section ?? {})) {
+        const version = entry?.version ?? "";
+        if (version.startsWith("link:")) {
+          pushImporter(posix.normalize(posix.join(from, version.slice("link:".length))));
+        } else if (!linkedOnly) {
+          queue.push(`${name}@${version}`);
+        }
+      }
+    };
+    pushImporter("apps/server");
     for (let key = queue.pop(); key !== undefined; key = queue.pop()) {
       if (visited.has(key)) continue;
-      const snapshot = parsed.snapshots[key];
+      const snapshot = snapshots[key];
       visited.set(key, snapshot ?? null);
       for (const [name, version] of Object.entries({
         ...snapshot?.dependencies,
@@ -152,49 +178,52 @@ const serverRuntimeClosure = (lock: string): string | undefined => {
   }
 };
 
-/** The first changed path that makes the release manual, for the release log. */
-export function firstRollbackBlocker(evidence: RollbackEvidence): string | undefined {
-  const persisted = evidence.changedPaths.find(touchesPersistedSurface);
-  if (persisted !== undefined) return persisted;
-  if (!evidence.changedPaths.includes("pnpm-lock.yaml")) return undefined;
-  const previous = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.previous);
-  const current = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.current);
-  return previous !== undefined && previous === current ? undefined : "pnpm-lock.yaml";
-}
-
 /**
- * A release is rollback-compatible from the previous stable unless it adds a migration, changes
- * a stored event or projection schema, changes the runtime declaration or protocol, or changes
- * the zcp seam. The stored and seam surfaces are the path globs above; a changed lockfile counts
- * only when the server's runtime dependency closure moved. When unsure the rule stays manual.
+ * Why the release needs an attended update, or undefined when it may update automatically.
+ * A release is rollback-compatible from the previous stable only when every changed path is on
+ * the allowlist, the server's runtime dependency closure did not move, and the runtime
+ * declaration and update protocol are unchanged. Anything unproven is a blocker.
  */
-export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompatibility {
+export function rollbackBlocker(evidence: RollbackEvidence): string | undefined {
   const from = evidence.previousTag.startsWith("v") ? evidence.previousTag.slice(1) : "";
-  if (
-    !stableVersion.test(from) ||
-    !stableVersion.test(evidence.candidateVersion) ||
-    compareSemverVersions(from, evidence.candidateVersion) >= 0 ||
-    !evidence.ancestor ||
-    evidence.previousProtocol !== 1 ||
-    evidence.currentProtocol !== 1
-  ) {
-    return MANUAL;
-  }
+  if (!stableVersion.test(from))
+    return `previous tag ${evidence.previousTag} is not a stable release`;
+  if (!stableVersion.test(evidence.candidateVersion))
+    return `candidate ${evidence.candidateVersion} is not a stable version`;
+  if (compareSemverVersions(from, evidence.candidateVersion) >= 0)
+    return `candidate ${evidence.candidateVersion} does not follow ${evidence.previousTag}`;
+  if (!evidence.ancestor) return `${evidence.previousTag} is not an ancestor of the candidate`;
+  if (evidence.previousProtocol !== 1 || evidence.currentProtocol !== 1)
+    return "the update protocol changed or is unreadable";
   const previousRuntime = runtimeDeclaration(evidence.previousPackage);
   if (
     previousRuntime === undefined ||
     previousRuntime !== runtimeDeclaration(evidence.currentPackage)
   )
-    return MANUAL;
-  return firstRollbackBlocker(evidence) === undefined
-    ? { rollbackCompatible: true, compatibleFrom: from }
+    return "the server's runtime declaration changed or is unreadable";
+  const unlisted = unlistedPath(evidence.changedPaths);
+  if (unlisted !== undefined) return `${unlisted} is not proved free of stored or seam state`;
+  if (!evidence.changedPaths.includes("pnpm-lock.yaml")) return undefined;
+  const previous = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.previous);
+  const current = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.current);
+  return previous !== undefined && previous === current
+    ? undefined
+    : "pnpm-lock.yaml moved the server's runtime dependencies or cannot be compared";
+}
+
+export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompatibility {
+  return rollbackBlocker(evidence) === undefined
+    ? { rollbackCompatible: true, compatibleFrom: evidence.previousTag.slice(1) }
     : MANUAL;
 }
 
 /** A failed or incomplete git probe never stamps permission into a release. */
 export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
   function* (previousTag: string, candidateVersion: string, cwd?: string) {
-    if (!previousTag.startsWith("v") || !stableVersion.test(previousTag.slice(1))) return MANUAL;
+    const manual = (reason: string) =>
+      Effect.logInfo(`[release] manual update: ${reason}`).pipe(Effect.as(MANUAL));
+    if (!previousTag.startsWith("v") || !stableVersion.test(previousTag.slice(1)))
+      return yield* manual(`previous tag ${previousTag} is not a stable release`);
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
       const child = yield* spawner.spawn(ChildProcess.make("git", args, { stderr: "ignore", cwd }));
@@ -206,24 +235,21 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
     }, Effect.scoped);
     const previousSource = yield* readReleaseSource(previousTag, git);
     const currentSource = yield* readReleaseSource("HEAD", git);
-    if (previousSource === undefined || currentSource === undefined) return MANUAL;
+    if (previousSource === undefined || currentSource === undefined)
+      return yield* manual(`the release source of ${previousTag} or HEAD cannot be read`);
     const ancestor = yield* git(["merge-base", "--is-ancestor", previousSource, currentSource]);
-    if (ancestor.code !== 0) return MANUAL;
-    const previousProtocol = yield* git([
-      "show",
-      `${previousTag}:apps/server/update-protocol.json`,
-    ]);
-    const currentProtocol = yield* git(["show", "HEAD:apps/server/update-protocol.json"]);
-    const previousPackage = yield* git(["show", `${previousTag}:apps/server/package.json`]);
-    const currentPackage = yield* git(["show", "HEAD:apps/server/package.json"]);
-    const changed = yield* git(["diff", "--no-renames", "--name-only", "-z", previousTag, "HEAD"]);
-    if (
-      [previousProtocol, currentProtocol, previousPackage, currentPackage, changed].some(
-        (read) => read.code !== 0,
-      )
-    )
-      return MANUAL;
-    const changedPaths = changed.output.split("\0").filter(Boolean);
+    if (ancestor.code !== 0)
+      return yield* manual(`${previousTag} is not an ancestor of the candidate`);
+    const reads = {
+      previousProtocol: yield* git(["show", `${previousTag}:apps/server/update-protocol.json`]),
+      currentProtocol: yield* git(["show", "HEAD:apps/server/update-protocol.json"]),
+      previousPackage: yield* git(["show", `${previousTag}:apps/server/package.json`]),
+      currentPackage: yield* git(["show", "HEAD:apps/server/package.json"]),
+      changed: yield* git(["diff", "--no-renames", "--name-only", "-z", previousTag, "HEAD"]),
+    };
+    const failed = Object.entries(reads).find(([, read]) => read.code !== 0);
+    if (failed !== undefined) return yield* manual(`git could not read ${failed[0]}`);
+    const changedPaths = reads.changed.output.split("\0").filter(Boolean);
     const lockChanged = changedPaths.includes("pnpm-lock.yaml");
     const previousLock = lockChanged
       ? yield* git(["show", `${previousTag}:pnpm-lock.yaml`])
@@ -233,25 +259,21 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
       previousTag,
       candidateVersion,
       ancestor: true,
-      previousProtocol: Option.getOrUndefined(decodeProtocol(previousProtocol.output))?.protocol,
-      currentProtocol: Option.getOrUndefined(decodeProtocol(currentProtocol.output))?.protocol,
-      previousPackage: previousPackage.output,
-      currentPackage: currentPackage.output,
+      previousProtocol: Option.getOrUndefined(decodeProtocol(reads.previousProtocol.output))
+        ?.protocol,
+      currentProtocol: Option.getOrUndefined(decodeProtocol(reads.currentProtocol.output))
+        ?.protocol,
+      previousPackage: reads.previousPackage.output,
+      currentPackage: reads.currentPackage.output,
       changedPaths,
       ...(previousLock?.code === 0 && currentLock?.code === 0
         ? { lockfiles: { previous: previousLock.output, current: currentLock.output } }
         : {}),
     };
-    const verdict = rollbackCompatibility(evidence);
-    if (!verdict.rollbackCompatible) {
-      const blocker = firstRollbackBlocker(evidence);
-      yield* Effect.logInfo(
-        blocker === undefined
-          ? `[release] manual update: ${previousTag} → ${candidateVersion} changes the runtime declaration or protocol`
-          : `[release] manual update: ${blocker} changes what ${previousTag} must read back`,
-      );
-    }
-    return verdict;
+    const blocker = rollbackBlocker(evidence);
+    return blocker === undefined
+      ? rollbackCompatibility(evidence)
+      : yield* manual(`${previousTag} → ${candidateVersion}: ${blocker}`);
   },
   Effect.orElseSucceed(() => MANUAL),
 );
