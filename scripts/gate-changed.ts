@@ -4,7 +4,13 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
-import { guardScopePaths, runtimeCycleSourceRoots, retainedTestFile } from "./gate-input-scopes.ts";
+import {
+  guardScopePaths,
+  runtimeCycleSourceRoots,
+  retainedTestFile,
+  testClockFile,
+  testClockLedger,
+} from "./gate-input-scopes.ts";
 import { fileReadInputs, hasFileReads } from "./gate-file-inputs.ts";
 import { staleDependencies } from "./gate-installed-dependencies.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
@@ -1059,6 +1065,14 @@ function stageHashes(
             ),
           );
           baseline = ["scripts/runtime-cycles.json", "scripts/check-runtime-cycles.ts"];
+        } else if (stage.name === "test clock ratchet") {
+          // The check reads its scanned files, never their imports.
+          files = [
+            ...inputs.inputFiles(["scripts/check-test-clock.ts"], inventory),
+            testClockLedger,
+            ...(stage.args.length === 3 ? inventory.filter(testClockFile) : files),
+          ];
+          baseline = [testClockLedger];
         } else if (stage.name === "test sentence retention") {
           files.push(...laneTests);
           baseline = laneTests;
@@ -1072,7 +1086,8 @@ function stageHashes(
             .sort()
             .join("\n");
         }
-        if (stage.name !== "check touched files") files = inputs.inputFiles(files, inventory);
+        if (stage.name !== "check touched files" && stage.name !== "test clock ratchet")
+          files = inputs.inputFiles(files, inventory);
         const command = {
           ...stage,
           args: stage.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
@@ -1293,6 +1308,17 @@ export function selectGateSteps(
     command: "node",
     args: ["scripts/check-test-sentences.ts", "--base", comparison],
   });
+  const clockFiles = paths.filter(testClockFile);
+  // A ledger or check edit scans every test file; otherwise only the touched ones.
+  const clockScan = paths.some((path) =>
+    [testClockLedger, "scripts/check-test-clock.ts"].includes(path),
+  );
+  if (clockScan || clockFiles.length)
+    steps.push({
+      name: "test clock ratchet",
+      command: "node",
+      args: ["scripts/check-test-clock.ts", "--base", comparison, ...(clockScan ? [] : clockFiles)],
+    });
   if (existing.length)
     steps.push({
       name: "check touched files",
