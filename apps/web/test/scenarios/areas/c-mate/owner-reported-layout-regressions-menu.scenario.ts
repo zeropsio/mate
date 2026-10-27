@@ -265,6 +265,120 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: opening a menu row brings what it opened into view.", () => {
+      describe("B: a project opened in a long list", () => {
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          it.effect(
+            "the last project's Mates come into view when it opens; one already in view leaves the list where it is",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                for (let index = 0; index < 24; index++) {
+                  const name = `Project${String(index).padStart(2, "0")}`;
+                  yield* s.given.project(name, {
+                    app: name,
+                    kind: "stage",
+                    environmentName: "stage",
+                  });
+                }
+                for (const [app, mates] of [
+                  ["Alpha Titan", ["Ada", "Bea"]],
+                  ["Zulu Titan", ["Cy", "Di"]],
+                ] as const) {
+                  for (const name of mates) yield* s.given.project(name, { mate: true, app });
+                }
+                yield* s.given.signedIn;
+                yield* s.colleague.reports("Ada", {
+                  latestUserMessageAt: "2026-10-27T00:00:00Z",
+                  updatedAt: "2026-10-27T00:00:00Z",
+                });
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const seen = yield* Effect.promise(async () => {
+                  await s.page.waitForFunction(
+                    () => document.querySelectorAll("section[data-zerops-group]").length === 26,
+                  );
+                  // The list's own scroller, and the two projects that open: the first of them
+                  // and the last, as the menu lists them.
+                  const handles = await s.page.evaluateHandle(() => {
+                    const viewport = document
+                      .querySelector('[data-sidebar="content"]')!
+                      .closest<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+                    const headings = [
+                      ...document.querySelectorAll<HTMLElement>(
+                        '[data-zerops-surface="sidebar-project"][aria-expanded]',
+                      ),
+                    ];
+                    return [viewport, headings[0]!, headings[headings.length - 1]!];
+                  });
+                  const [viewport, first, last] = (await handles.getProperties()).values();
+                  const state = (heading: typeof first) =>
+                    s.page.evaluate(
+                      (scroller, element) => {
+                        const view = scroller.getBoundingClientRect();
+                        const rows = element
+                          .closest("section[data-zerops-group]")!
+                          .querySelector("[data-zerops-kids] [data-zerops-row]");
+                        const mate = rows?.getBoundingClientRect();
+                        return {
+                          open: element.getAttribute("aria-expanded") === "true",
+                          scrollTop: scroller.scrollTop,
+                          headingTop: element.getBoundingClientRect().top - view.top,
+                          headingBottom: view.bottom - element.getBoundingClientRect().bottom,
+                          mateTop: mate === undefined ? null : mate.top - view.top,
+                          mateBottom: mate === undefined ? null : view.bottom - mate.bottom,
+                        };
+                      },
+                      viewport as never,
+                      heading as never,
+                    );
+                  const press = async (heading: typeof first) => {
+                    await (heading.asElement() as import("puppeteer-core").ElementHandle).click();
+                    await waitForStillFrames(s.page);
+                  };
+                  const before = await state(first);
+                  await press(first);
+                  const inView = await state(first);
+                  await s.page.evaluate((scroller) => {
+                    (scroller as HTMLElement).scrollTop = (scroller as HTMLElement).scrollHeight;
+                  }, viewport as never);
+                  await waitForStillFrames(s.page);
+                  const atEnd = await state(last);
+                  await press(last);
+                  const brought = await state(last);
+                  return { before, inView, atEnd, brought };
+                });
+                expect(
+                  seen.before.headingBottom,
+                  `ASSERTION: the first project stands in view before it opens: ${JSON.stringify(seen)}`,
+                ).toBeGreaterThan(0);
+                expect(
+                  seen.inView.scrollTop,
+                  `ASSERTION: a project whose Mates fit in view opens without moving the list: ${JSON.stringify(seen)}`,
+                ).toBe(seen.before.scrollTop);
+                expect(
+                  seen.atEnd.open,
+                  `ASSERTION: the last project is folded at the list's end: ${JSON.stringify(seen)}`,
+                ).toBe(false);
+                expect(
+                  seen.brought.mateTop,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${JSON.stringify(seen)}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.mateBottom,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${JSON.stringify(seen)}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.headingTop,
+                  `ASSERTION: its heading stays in view above them: ${JSON.stringify(seen)}`,
+                ).toBeGreaterThanOrEqual(0);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
+
     describe("Decision: an overview card is as tall as what it holds.", () => {
       describe("B: overview cards", () => {
         it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {

@@ -258,6 +258,7 @@ import {
   menuDrawsLoadingRows,
   slackAfterScroll,
   slackForFold,
+  unfoldScroll,
   type PendingLanding,
 } from "./SidebarProjects.logic";
 import {
@@ -2038,6 +2039,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             {row}
             <SidebarProjectFold
               motion={fold}
+              onOpened={bringUnfoldedIntoView}
               onSettled={() => {
                 settleFold(id);
               }}
@@ -2398,6 +2400,24 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
   }
   const page = element.ownerDocument.scrollingElement;
   return page instanceof HTMLElement ? page : null;
+}
+
+/**
+ * A group just opened at the list's end lands its Mates below the view: scrolled up to them, as
+ * the menu scrolls elsewhere (smooth, unless motion is reduced); where they already stand in view
+ * the list stays (`unfoldScroll`).
+ */
+function bringUnfoldedIntoView(rows: HTMLElement): void {
+  const scroller = scrollingAncestor(rows);
+  const group = rows.closest("[data-zerops-group]");
+  if (scroller === null || group === null) return;
+  const by = unfoldScroll({
+    view: scroller.getBoundingClientRect(),
+    unit: { top: group.getBoundingClientRect().top, bottom: rows.getBoundingClientRect().bottom },
+  });
+  if (by === 0) return;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  scroller.scrollBy({ top: by, behavior: still ? "auto" : "smooth" });
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */
