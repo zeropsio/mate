@@ -285,9 +285,12 @@ describe("B: environment identity compatibility", () => {
           );
           wire.set("refused");
           yield* s.when.hq.colleague.renamesProject("Shop", "Shop refused");
+          // The refused name is the receipt that the revision reached the tab: a resumed cursor sends
+          // only what differs from the last frame, so renaming back counts only from this name.
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () =>
+                document.body.innerText.includes("Shop refused") &&
                 document.querySelector("main")?.textContent?.includes("identity fixture refused"),
               { polling: "raf" },
             ),
