@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  onlyTheseCanAddAProject,
   resolveAddProjectVerb,
   finishMateSetupScope,
   finishMateSetupVerb,
@@ -32,10 +31,9 @@ describe("who may add a project: whom HQ offers making an application", () => {
     // right, writing the registry is not.
     const verb = resolveAddProjectVerb({
       offer: { kind: "refused", reason: "not_structure_writer" },
-      admins: [{ id: "cu-9", user: { fullName: "Jan Novák" } }],
       at,
     });
-    expect(verb).toEqual({ offered: false, reason: "Only Jan Novák adds a project." });
+    expect(verb).toEqual({ offered: false, reason: "Only an owner or admin adds a project." });
   });
 
   it.each([
@@ -43,33 +41,6 @@ describe("who may add a project: whom HQ offers making an application", () => {
     [{ kind: "unavailable", since: 5 } as const, "HQ unavailable since @5."],
   ])("offers it neither before HQ has said nor while it does not answer: %j", (offer, reason) => {
     expect(resolveAddProjectVerb({ offer, at })).toEqual({ offered: false, reason });
-  });
-
-  it.each([
-    { admins: [], expected: "Only an owner or admin adds a project." },
-    {
-      admins: [{ id: "a", user: { fullName: "Jan" } }],
-      expected: "Only Jan adds a project.",
-    },
-    {
-      admins: [
-        { id: "a", user: { fullName: "Jan" } },
-        { id: "b", user: { email: "eva@acme.test" } },
-      ],
-      expected: "Only Jan and eva@acme.test add a project.",
-    },
-    {
-      admins: [
-        { id: "a", user: { fullName: "Jan" } },
-        { id: "b", user: { fullName: "Eva" } },
-        { id: "c", user: { fullName: "Petr" } },
-      ],
-      expected: "Only Jan, Eva and Petr add a project.",
-    },
-    // A name nobody can be read for is better absent than guessed at.
-    { admins: [{ id: "a" }], expected: "Only an owner or admin adds a project." },
-  ])("names who can: $expected", ({ admins, expected }) => {
-    expect(onlyTheseCanAddAProject(admins)).toBe(expected);
   });
 });
 

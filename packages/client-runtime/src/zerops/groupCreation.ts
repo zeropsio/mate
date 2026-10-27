@@ -21,7 +21,6 @@ import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 import { hqOfferWords } from "./hq/refusals.ts";
 import type { ZeropsRegistry } from "./hq/registry.ts";
-import { mateMemberName, type MateOwnerCandidate } from "./mateAccess.ts";
 
 /** A verb is either offered, or refused in words that name who can do it. */
 export type GroupVerb =
@@ -37,8 +36,6 @@ const OFFERED: GroupVerb = { offered: true };
  */
 export function resolveAddProjectVerb(input: {
   readonly offer: HqOfferState;
-  /** The org's owners and admins, for the refusal that names them. */
-  readonly admins?: ReadonlyArray<MateOwnerCandidate> | undefined;
   /** Words a wall time, for since when HQ does not answer. */
   readonly at: (ms: number) => string;
 }): GroupVerb {
@@ -48,7 +45,7 @@ export function resolveAddProjectVerb(input: {
       offered: false,
       reason:
         input.offer.reason === "not_structure_writer"
-          ? onlyTheseCanAddAProject(input.admins ?? [])
+          ? ONLY_ADMINS_ADD_A_PROJECT
           : hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
     };
   }
@@ -58,22 +55,8 @@ export function resolveAddProjectVerb(input: {
   };
 }
 
-/**
- * The one line a member sees in place of the verb.
- *
- * Names them when the member list can be read for names, because "ask an owner"
- * with no owner to ask is the kind of sentence that sends somebody to support.
- * With no names it says the same thing without pretending to know who.
- */
-export function onlyTheseCanAddAProject(admins: ReadonlyArray<MateOwnerCandidate>): string {
-  const names = admins
-    .map((admin) => mateMemberName(admin))
-    .filter((name): name is string => name !== undefined);
-  if (names.length === 0) return "Only an owner or admin adds a project.";
-  if (names.length === 1) return `Only ${names[0]} adds a project.`;
-  const last = names.at(-1);
-  return `Only ${names.slice(0, -1).join(", ")} and ${last} add a project.`;
-}
+/** The one line a member sees in place of the verb. */
+const ONLY_ADMINS_ADD_A_PROJECT = "Only an owner or admin adds a project.";
 
 /**
  * Whether HQ holds a Mate in one of its applications yet (guide 4.2).
