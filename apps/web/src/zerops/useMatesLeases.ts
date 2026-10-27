@@ -11,7 +11,7 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { lifecycleLeases } from "@t3tools/client-runtime/zerops";
+import { lifecycleLeases } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 

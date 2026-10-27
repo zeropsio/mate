@@ -143,6 +143,21 @@ const pairName = (dev: string): string =>
     ? dev.slice(0, -DEV_SUFFIX.length)
     : dev;
 
+const POOL_SUFFIX = "pool";
+
+/**
+ * The part of the application a dev pool serves, as a person reads it: the pool's hostname with
+ * `pool` left off, its first letter capital — `embedderpool` is Embedder. A pool's leases are
+ * zcp's business; a person sees only the part and its preview.
+ */
+export const poolPartName = (pool: string): string => {
+  const part =
+    pool.length > POOL_SUFFIX.length && pool.endsWith(POOL_SUFFIX)
+      ? pool.slice(0, -POOL_SUFFIX.length)
+      : pool;
+  return part.charAt(0).toLocaleUpperCase("en") + part.slice(1);
+};
+
 interface Declared {
   readonly dev: string;
   readonly setup: string | undefined;
