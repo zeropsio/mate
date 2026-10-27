@@ -870,6 +870,28 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
+  it.effect.each([{ code: 1012 }, { code: 1001 }])(
+    "a link closed by HQ with $code relinks after the first delay however long it lived, and never escalates",
+    ({ code }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets, link } = yield* rig({ reconnectDelaysMs: [100, 1_000, 10_000] });
+          const first = yield* opened(sockets, 0);
+          first.closeWith(code);
+          yield* TestClock.adjust(Duration.millis(130));
+          const second = yield* opened(sockets, 1);
+          second.closeWith(code);
+          // The second container of a rolling deploy: a short-lived link, still the shortest wait.
+          yield* TestClock.adjust(Duration.millis(130));
+          const third = yield* opened(sockets, 2);
+          third.closeWith(code);
+          yield* TestClock.adjust(Duration.millis(130));
+          assert.lengthOf(sockets, 4);
+          assert.notProperty(yield* link.standing, "refusal");
+        }),
+      ),
+  );
+
   it.effect("sends the whole overview first on every link it opens", () =>
     Effect.scoped(
       Effect.gen(function* () {

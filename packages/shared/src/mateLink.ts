@@ -572,11 +572,11 @@ export const KeyNotAdmitted = Schema.Literals([
 ]);
 export type KeyNotAdmitted = typeof KeyNotAdmitted.Type;
 
-/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1007` malformed, `1009` too big, `1011` unreadable. */
+/** How HQ closes a link: `4409` superseded, `4408` silence, `1001` going away, `1012` service restart, `1007` malformed, `1009` too big, `1011` unreadable. */
 export const MateLinkClosed = Schema.Union([
   Schema.Struct({ code: Schema.Literal(4401), reason: Schema.Literal("key_refused") }),
   Schema.Struct({ code: Schema.Literal(4403), reason: KeyNotAdmitted }),
-  Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 4408, 4409]) }),
+  Schema.Struct({ code: Schema.Literals([1001, 1007, 1009, 1011, 1012, 4408, 4409]) }),
 ]);
 export type MateLinkClosed = typeof MateLinkClosed.Type;
 
