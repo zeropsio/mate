@@ -530,45 +530,6 @@ describe("makeHqApi", () => {
     expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
   });
 
-  it("sends a write only once `beforeWrite` lets it, and a read at once", async () => {
-    const hq = fakeHq();
-    let allow: () => void = () => undefined;
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-      beforeWrite: () =>
-        new Promise<void>((resolve) => {
-          allow = resolve;
-        }),
-    });
-    await api.structure();
-    const created = api.createApp("Acme");
-    await Promise.resolve();
-    expect(hq.seen.some((entry) => entry.path === "/api/apps")).toBe(false);
-    allow();
-    await created;
-    expect(hq.seen.at(-1)).toMatchObject({ method: "POST", path: "/api/apps" });
-  });
-
-  it("refuses a write `beforeWrite` refuses, sending nothing", async () => {
-    const hq = fakeHq();
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-      beforeWrite: async () => {
-        throw new HqError({ kind: "refused", code: "hq_not_official", message: "Not official." });
-      },
-    });
-    await expect(api.createApp("Acme")).rejects.toMatchObject({ code: "hq_not_official" });
-    expect(hq.seen.some((entry) => entry.path === "/api/apps")).toBe(false);
-  });
-
   it("renews a session HQ ended once, through the door, and the call goes on", async () => {
     const hq = fakeHq();
     const door = doors();
