@@ -6,6 +6,8 @@ import { act } from "react";
 import { create, type ReactTestInstance, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
+
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 
 import { ZeropsDeleteApplicationHost } from "../ZeropsDeleteApplicationDialog";
@@ -43,7 +45,12 @@ vi.mock("~/zerops/hqAppWrite", () => ({
   },
 }));
 
-const GROUP = { groupId: "app-1", name: "mono-rig", environments: [], pending: [] };
+const GROUP = {
+  groupId: "app-1",
+  name: "mono-rig",
+  environments: [] as unknown as CanonicalGroup["environments"],
+  pending: [],
+};
 
 const mounted: ReactTestRenderer[] = [];
 afterEach(() => {
@@ -61,8 +68,9 @@ const host = (tree: ReactTestRenderer, match: (node: ReactTestInstance) => boole
 function onlyAction(
   contents: { readonly empty: boolean; readonly deletingProjectIds: ReadonlyArray<string> },
   openEmpty: () => void = () => {},
+  group: Parameters<typeof projectDeleteActions>[0]["group"] = GROUP,
 ): ZeropsMenuAction {
-  const actions = projectDeleteActions({ group: GROUP, offer: "allowed", contents, openEmpty });
+  const actions = projectDeleteActions({ group, offer: "allowed", contents, openEmpty });
   expect(actions).toHaveLength(1);
   return actions[0] as ZeropsMenuAction;
 }
@@ -103,6 +111,33 @@ describe("Delete, on the projects page", () => {
       { kind: "delete-app", orgId: "org-1", appId: "app-1", withCode: true },
     ]);
     expect(useDeleteApplicationDialog.getState().request).toBeNull();
+  });
+
+  it("lists a project's real stage as going and its productions, a Git branch among them, as staying", () => {
+    const group = {
+      ...GROUP,
+      environments: [
+        { kind: "project", role: "stage", project: { id: "P_STAGE", name: "mono-stage" } },
+        { kind: "project", role: "prod", project: { id: "P_PROD", name: "mono-prod" } },
+        {
+          kind: "managed",
+          role: "prod",
+          project: undefined,
+          target: { kind: "git", branch: "release" },
+        },
+      ] as unknown as CanonicalGroup["environments"],
+    };
+    let tree: ReactTestRenderer | undefined;
+    act(() => {
+      tree = create(<ZeropsDeleteApplicationHost />);
+    });
+    mounted.push(tree!);
+    act(() => onlyAction({ empty: false, deletingProjectIds: [] }, () => {}, group).onSelect());
+
+    const form = textOf(host(tree!, (node) => node.type === "form"));
+    expect(form).toContain("Stage mono-stage, with everything in it");
+    expect(form).toContain("Production mono-prod.");
+    expect(form).toContain("Production on Git branch release.");
   });
 
   it("keeps the plain Delete for a project HQ says holds nothing", () => {

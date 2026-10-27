@@ -7,6 +7,7 @@
  * stage that does not go stops the deletion there. Its production is never deleted: HQ lets go of
  * it, and the person deletes it in Zerops. Nothing on GitHub is touched.
  */
+import type { CanonicalGroup } from "@t3tools/client-runtime/zerops";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 
 export interface DeleteApplicationTarget {
@@ -15,13 +16,37 @@ export interface DeleteApplicationTarget {
   readonly name: string;
   /** Its stages' Zerops projects, deleted before HQ deletes the project. */
   readonly stages: ReadonlyArray<{ readonly projectId: string; readonly name: string }>;
-  /** Its productions' Zerops projects, which stay. */
-  readonly productions: ReadonlyArray<{ readonly name: string }>;
+  /** Its productions, which stay: a Zerops project, or a Git `branch` that has none. */
+  readonly productions: ReadonlyArray<{ readonly name: string; readonly branch?: string }>;
+}
+
+/**
+ * Whether a project's *Delete* is offered, on the menu and the projects page alike: a project with
+ * no Mate in it (its Mates deleted, or a stage or a production alone), to whoever writes the
+ * structure (`delete_app`).
+ */
+export function projectDeleteOffered(input: {
+  readonly withoutMate: boolean;
+  readonly mayDelete: boolean;
+}): boolean {
+  return input.withoutMate && input.mayDelete;
+}
+
+/** Whether a group holds no Mate, listed or coming: a dev place is a Mate's. */
+export function groupWithoutMate(group: {
+  readonly environments: ReadonlyArray<{ readonly role: string | undefined }>;
+  readonly pending: ReadonlyArray<{ readonly kind: string }>;
+}): boolean {
+  return (
+    !group.environments.some(({ role }) => role === "dev" || role === "devstage") &&
+    !group.pending.some(({ kind }) => kind === "mate")
+  );
 }
 
 /**
  * What deleting a project takes, from its group: its stages' Zerops projects to delete, its
- * productions' to keep. An environment with no Zerops project (a git branch) has none to delete.
+ * productions to keep. An environment with no Zerops project (a Git `branch`) has none to delete;
+ * a production on one is listed as staying.
  */
 export function applicationDeletionTarget(group: {
   readonly groupId: string;
@@ -29,6 +54,7 @@ export function applicationDeletionTarget(group: {
   readonly environments: ReadonlyArray<{
     readonly role: string | undefined;
     readonly project: { readonly id: string; readonly name: string } | undefined;
+    readonly branch?: string | undefined;
   }>;
 }): DeleteApplicationTarget {
   const projectsOf = (role: string) =>
@@ -39,8 +65,33 @@ export function applicationDeletionTarget(group: {
     appId: group.groupId,
     name: group.name,
     stages: projectsOf("stage"),
-    productions: projectsOf("prod").map(({ name }) => ({ name })),
+    productions: [
+      ...projectsOf("prod").map(({ name }) => ({ name })),
+      ...group.environments.flatMap(({ project, role, branch }) =>
+        role === "prod" && project === undefined && branch !== undefined
+          ? [{ name: branch, branch }]
+          : [],
+      ),
+    ],
   };
+}
+
+/** `applicationDeletionTarget` of a group as the menu and the projects page hold it. */
+export function groupDeletionTarget(
+  group: Pick<CanonicalGroup, "groupId" | "name" | "environments">,
+): DeleteApplicationTarget {
+  return applicationDeletionTarget({
+    groupId: group.groupId,
+    name: group.name,
+    environments: group.environments.map((environment) => ({
+      role: environment.role,
+      project: environment.project,
+      branch:
+        environment.kind === "managed" && environment.target.kind === "git"
+          ? environment.target.branch
+          : undefined,
+    })),
+  });
 }
 
 /** What HQ holds of the project: its repositories by name, and how many changes are open. */
@@ -110,9 +161,10 @@ export function deleteApplicationWords(
     title: `Delete ${target.name}?`,
     goes,
     stays: [
-      ...target.productions.map(
-        (production) =>
-          `Production ${production.name}. Delete it in Zerops if you no longer need it.`,
+      ...target.productions.map((production) =>
+        production.branch === undefined
+          ? `Production ${production.name}. Delete it in Zerops if you no longer need it.`
+          : `Production on Git branch ${production.branch}. Nothing to delete in Zerops.`,
       ),
       "Anything on GitHub",
     ],

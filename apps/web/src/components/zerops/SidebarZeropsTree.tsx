@@ -3,7 +3,7 @@ import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data
 import { useAutomatedKey } from "~/zerops/useAutomationSettings";
 import { useAddMateOffer, useOrgOffers } from "../../zerops/useHqOffers";
 import { useDeleteApplicationDialog } from "../../zerops/deleteApplicationDialog";
-import { applicationDeletionTarget } from "./ZeropsDeleteApplicationDialog.logic";
+import { groupDeletionTarget, projectDeleteOffered } from "./ZeropsDeleteApplicationDialog.logic";
 import { useNewMateGate } from "../../zerops/useNewMateGates";
 import { showProjectParts } from "~/zerops/projectPartsShown";
 import { environmentDoorLabel } from "~/zerops/putLive.logic";
@@ -2085,17 +2085,17 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       collapsed: fold?.open === false,
       onToggle: fold?.toggle,
       startMate: withoutMate,
-      onDelete:
-        withoutMate && orgOffer("delete_app").kind === "allowed"
-          ? {
-              name: group.name,
-              act: () => {
-                useDeleteApplicationDialog
-                  .getState()
-                  .open({ target: applicationDeletionTarget(group) });
-              },
-            }
-          : undefined,
+      onDelete: projectDeleteOffered({
+        withoutMate,
+        mayDelete: orgOffer("delete_app").kind === "allowed",
+      })
+        ? {
+            name: group.name,
+            act: () => {
+              useDeleteApplicationDialog.getState().open({ target: groupDeletionTarget(group) });
+            },
+          }
+        : undefined,
       onAddMate:
         addMateOffer(group.groupId).kind === "allowed"
           ? () => {
