@@ -50,7 +50,15 @@ import type { ZeropsMateOwner } from "~/zerops/useZeropsMateOwners";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
+import {
+  useMatesBoundConversations,
+  type MatesBoundConversations,
+} from "~/zerops/useMatesBoundConversations";
+import { useNowMs } from "~/zerops/useNowMs";
+import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+import { workspaceActivity } from "@t3tools/client-runtime/zerops";
 
+import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -74,6 +82,7 @@ import {
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
 import { StopReadAgain } from "./StopReadAgain";
+import { ZeropsWorkspaceRelease } from "./ZeropsWorkspaceRelease";
 
 /** One of the project's Mates, as its section and the fix list it. */
 export interface SitesMate extends ChipMate {
@@ -121,8 +130,16 @@ const FLASH_MS = 1_200;
 
 const firstName = (name: string) => name.trim().split(/\s+/u)[0] ?? name;
 
-/** A Mate as its section is read, with zcp's leases where a conversation of it read them. */
-const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => ({
+/**
+ * A Mate as its section is read, with zcp's leases where a conversation of it read them, and its
+ * conversations bound to a lease, which say who holds each one.
+ */
+const factsOf = (
+  mate: SitesMate,
+  leases: MatesLeases = {},
+  conversations: MatesBoundConversations = {},
+  here?: string,
+): SitesMateFacts => ({
   projectId: mate.candidate.project.id,
   name: mate.name,
   owner: mate.owner === undefined || mate.owner.isViewer ? undefined : firstName(mate.owner.name),
@@ -131,6 +148,8 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   controlPlane: mate.candidate.service?.name,
   pools: mate.candidate.services?.pools,
   leases: leases[mate.candidate.project.id],
+  conversations: conversations[mate.candidate.project.id],
+  here,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -394,6 +413,7 @@ export function SitesPanel({
   onAskToFix,
   onOpenStop,
   onClose,
+  here,
 }: {
   readonly production: ProjectSitesInput["production"];
   readonly stages: ProjectSitesInput["stages"];
@@ -409,6 +429,8 @@ export function SitesPanel({
   readonly onOpenStop: ProjectSitesInput["onOpenStop"];
   /** Closes the popover, as a door to elsewhere opens. */
   readonly onClose: () => void;
+  /** The conversation the person is in, by scoped key: the header's; none from the menu. */
+  readonly here?: string | undefined;
 }) {
   const [openedAt] = useState(Date.now);
   // A place's addresses sheet, opened from its head (or to add a domain) as the popover closes.
@@ -429,11 +451,12 @@ export function SitesPanel({
     () => new Map(),
   );
   // Each Mate's dev pools list its workspaces, as a conversation of the Mate read zcp's leases.
-  const leases = useMatesLeases(
-    mates
-      .filter((mate) => readsLeases(factsOf(mate)))
-      .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey })),
-  );
+  const leasing = mates
+    .filter((mate) => readsLeases(factsOf(mate)))
+    .map((mate) => ({ projectId: mate.candidate.project.id, threadKey: mate.threadKey }));
+  const leases = useMatesLeases(leasing);
+  // And which of the Mate's chats holds each, from its conversations' bindings.
+  const holders = useMatesBoundConversations(leasing);
   const sections = projectSitesSections({
     production: prod,
     productionUnread: prod === undefined && line?.production !== undefined,
@@ -441,7 +464,7 @@ export function SitesPanel({
     unreadStages: stg === undefined ? (line?.stages.map((stage) => stage.name) ?? []) : [],
     placeRoutes: (stop) =>
       (stop.projectId === undefined ? undefined : bound.get(stop.projectId)) ?? stop.routes,
-    mates: mates.map((mate) => factsOf(mate, leases)),
+    mates: mates.map((mate) => factsOf(mate, leases, holders, here)),
   });
   const filtering = query.trim() !== "";
   const kept = new Map(filterSites(sections, query).map((section) => [section.key, section]));
@@ -631,7 +654,10 @@ export function SitesPanel({
                     title={section.title}
                   />
                   <SitesWorkspaces
+                    asker={faces.get(section.projectId)}
                     copied={copied}
+                    here={here}
+                    onClose={onClose}
                     onCopy={copy}
                     workspaces={
                       filtering
@@ -989,27 +1015,40 @@ function CopyButton({
 }
 
 /**
- * A Mate's dev pools' workspaces, one row per lease: its state's dot in the head's mark column, its
- * name and alias, its state's word, and — while it has a preview to open — the preview, which opens
- * in a new tab and copies from its row like an address.
+ * A Mate's dev pools' workspaces, one row per lease. Its first line: its state's dot in the head's
+ * mark column, its pool by name with its branch and alias muted beside, its preview's word, and —
+ * while it has a preview to open — the preview, which opens in a new tab and copies from its row
+ * like an address. Its second line hugs the first: which chat holds it and what a release would
+ * lose there, when it was last active, and its Release, which asks first in the row's place.
  */
 function SitesWorkspaces({
   workspaces,
   copied,
   onCopy,
+  asker,
+  here,
+  onClose,
 }: {
   readonly workspaces: ReadonlyArray<SitesWorkspace>;
   readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
+  /** The Mate: only its own person is offered a Release. */
+  readonly asker: SitesMate | undefined;
+  /** The conversation the person is in, by scoped key, where a Release is asked. */
+  readonly here: string | undefined;
+  /** Closes the popover once a release request is on its way. */
+  readonly onClose: () => void;
 }) {
+  const [asking, setAsking] = useState<string | undefined>(undefined);
+  // A Release is asked in the conversation the person is in, else the Mate's last visited one.
+  const askIn = asker?.mine === true ? (here ?? asker.threadKey) : undefined;
+  const target = askIn === undefined ? null : parseScopedThreadKey(askIn);
   return workspaces.map((workspace) => {
     const said = (
       <>
         <EnvDot dot={workspace.dot} />
         <span className="zerops-sites-service">{workspace.name}</span>
-        {workspace.alias === undefined ? null : (
-          <span className="zerops-sites-alias">{workspace.alias}</span>
-        )}
+        <span className="zerops-sites-detail">{workspace.detail}</span>
         <span
           className="zerops-sites-role"
           data-tone={workspace.dot === "failed" ? "red" : undefined}
@@ -1019,42 +1058,114 @@ function SitesWorkspaces({
       </>
     );
     const { url, host } = workspace;
-    if (url === undefined || host === undefined) {
-      return (
+    const copyThis = () => {
+      if (url !== undefined) onCopy({ key: workspace.key, url });
+    };
+    const done = copied === workspace.key;
+    const head =
+      url === undefined || host === undefined ? (
         <div
           className="zerops-sites-link zerops-sites-workspace"
           data-zerops-surface="sidebar-project-sites-workspace"
-          key={workspace.key}
         >
           {said}
         </div>
+      ) : (
+        <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined}>
+          <a
+            className="zerops-sites-link zerops-sites-workspace"
+            data-sites-nav=""
+            data-zerops-surface="sidebar-project-sites-workspace"
+            href={url}
+            onKeyDown={(event) => {
+              copyOnKey(event, copyThis);
+            }}
+            rel="noreferrer"
+            target="_blank"
+          >
+            {said}
+            <span className="zerops-sites-host">{host}</span>
+            <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+          </a>
+          <CopyButton done={done} host={host} onCopy={copyThis} />
+        </div>
       );
-    }
-    const copyThis = () => {
-      onCopy({ key: workspace.key, url });
-    };
-    const done = copied === workspace.key;
     return (
-      <div className="zerops-sites-linkrow" data-copied={done ? "" : undefined} key={workspace.key}>
-        <a
-          className="zerops-sites-link zerops-sites-workspace"
-          data-sites-nav=""
-          data-zerops-surface="sidebar-project-sites-workspace"
-          href={url}
-          onKeyDown={(event) => {
-            copyOnKey(event, copyThis);
-          }}
-          rel="noreferrer"
-          target="_blank"
-        >
-          {said}
-          <span className="zerops-sites-host">{host}</span>
-          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
-        </a>
-        <CopyButton done={done} host={host} onCopy={copyThis} />
+      <div data-zerops-workspace={workspace.alias} key={workspace.key}>
+        {head}
+        <WorkspaceHold
+          onRelease={
+            target === null
+              ? undefined
+              : () => {
+                  setAsking(workspace.key);
+                }
+          }
+          workspace={workspace}
+        />
+        {workspace.notAnswering === undefined ? null : (
+          <p className="zerops-sites-why">{workspace.notAnswering}</p>
+        )}
+        {asking !== workspace.key || target === null ? null : (
+          <div className="zerops-sites-ask">
+            <ZeropsWorkspaceRelease
+              bound={workspace.holder === askIn}
+              environmentId={target.environmentId}
+              latestTurn={workspace.lastTurn}
+              lease={workspace.lease}
+              onDismiss={() => {
+                setAsking(undefined);
+              }}
+              onDone={onClose}
+              threadId={target.threadId}
+            />
+          </div>
+        )}
       </div>
     );
   });
+}
+
+/**
+ * A workspace's second line: which chat holds it and what a release would lose there, then — at
+ * its end — when it was last active (`idle` first once nothing happened for 24 h) and its Release.
+ * Its own clock, so the minute's tick draws this line alone.
+ */
+function WorkspaceHold({
+  workspace,
+  onRelease,
+}: {
+  readonly workspace: SitesWorkspace;
+  /** Asks first; absent for a person who only reads along. */
+  readonly onRelease: (() => void) | undefined;
+}) {
+  const activity = workspaceActivity({
+    lease: workspace.read,
+    lastTurn: workspace.lastTurn,
+    now: useNowMs(),
+  });
+  const held = [workspace.held, activity?.unsaved].filter((part) => part !== undefined);
+  if (held.length === 0 && activity === undefined && onRelease === undefined) return null;
+  return (
+    <div className="zerops-sites-hold">
+      <span className="zerops-sites-held">{held.join(" · ")}</span>
+      {activity === undefined ? null : (
+        <span className="zerops-sites-ago">
+          {activity.idle ? `idle · ${activity.ago}` : activity.ago}
+        </span>
+      )}
+      {onRelease === undefined ? null : (
+        <InlineButton
+          aria-label={`Release workspace ${workspace.alias}`}
+          data-zerops-workspace-release=""
+          onClick={onRelease}
+          tone="muted"
+        >
+          Release
+        </InlineButton>
+      )}
+    </div>
+  );
 }
 
 /** A section's links: each opens in a new tab, and copies from its row. */
@@ -1174,6 +1285,7 @@ export function HeaderSites({
             <SitesPanel
               focusSection={undefined}
               groupId={sites.groupId}
+              here={threadKey}
               line={line}
               mates={mates}
               onAskToFix={

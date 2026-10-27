@@ -5683,7 +5683,8 @@ code {
 }
 
 /* A workspace of a Mate's dev pool: its state's dot in the place mark's column (centred on it,
-   18px in, as the doors' icons are), its alias beside its name, a crash's word in red. */
+   18px in, as the doors' icons are), its pool whole, its branch and alias muted beside and cut
+   short first, a crash's word in red. */
 .zerops-sites-workspace {
   position: relative;
 }
@@ -5694,9 +5695,65 @@ code {
   translate: -50% 0;
 }
 
-.zerops-sites-alias {
-  flex: none;
+.zerops-sites-workspace > .zerops-sites-service {
+  max-width: none;
+}
+
+/* The preview's host gives way before the branch: it opens from the whole row anyway. */
+.zerops-sites-workspace > .zerops-sites-host {
+  flex-basis: 0;
+}
+
+.zerops-sites-detail {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
   color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Its second line hugs the first, on the names' edge: who holds it and what a release would
+   lose, then at its end when it was last active and its Release. Workspaces sit apart by the
+   rows' own padding, several times this line's gap. */
+.zerops-sites-hold {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  margin-top: -4px;
+  padding: 0 10px 6px 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.zerops-sites-held {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zerops-sites-ago {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.zerops-sites-why {
+  margin-top: -4px;
+  padding: 0 10px 6px 36px;
+  color: var(--zerops-status-failed-text);
+  font-size: 12px;
+  line-height: 16px;
+}
+
+/* A Release's question takes its place under the row it asks about. */
+.zerops-sites-ask {
+  margin: 0 4px 8px 26px;
+  padding: 10px;
+  border-radius: 9px;
+  background-color: var(--muted);
 }
 
 .zerops-sites-role[data-tone="red"] {

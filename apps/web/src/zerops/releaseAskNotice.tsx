@@ -3,9 +3,9 @@
  * notice naming the workspace, with what is known of it, that stays until the person answers.
  * Release sends the bound conversation's agent the request (`onRelease`); Not now, or closing it,
  * sends nothing. The archive is done before it shows, and no timer answers it or takes it away
- * (zcp `docs/spec-mate.md` §0 rule 4). Like the chip's question, it asks only while the
- * conversation's last read of zcp's leases still holds the bound lease, when it shows and when
- * Release is pressed: a lease that ended may be another conversation's by then.
+ * (zcp `docs/spec-mate.md` §0 rule 4). Like a workspace's Release in the Mate's Sites, it asks
+ * only while the conversation's last read of zcp's leases still holds the bound lease, when it
+ * shows and when Release is pressed: a lease that ended may be another conversation's by then.
  */
 import { ZEROPS_RELEASE_QUESTION, zeropsReleaseAsk } from "@t3tools/client-runtime/zerops";
 import type {
