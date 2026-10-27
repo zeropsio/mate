@@ -6,6 +6,7 @@ import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
+  HQ_WIRE_MODULES,
   rollbackBlocker,
   rollbackCompatibility,
   readRollbackCompatibility,
@@ -241,6 +242,19 @@ describe("a release may update automatically only inside its proved rollback ran
     });
   });
   it.each([
+    "scripts/lib/cli-external-packages.ts",
+    "scripts/lib/resolve-catalog.ts",
+    "scripts/lib/public-config.ts",
+  ])(
+    "requires confirmation when %s, which shapes the released artifact, changes",
+    (changedPath) => {
+      expect(rollbackBlocker({ ...evidence, changedPaths: [changedPath] })).toContain(changedPath);
+      expect(
+        rollbackCompatibility({ ...evidence, changedPaths: ["scripts/gate-changed.ts"] }),
+      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+    },
+  );
+  it.each([
     "apps/server/src/newdir/Store.ts",
     "apps/server/src/newTopLevelStore.ts",
     "packages/new-pkg/src/index.ts",
@@ -260,6 +274,7 @@ describe("a release may update automatically only inside its proved rollback ran
       readonly runtime: string;
       readonly dev: string;
       readonly bundled?: string;
+      readonly web?: string;
     }) => `
 lockfileVersion: '9.0'
 importers:
@@ -277,9 +292,20 @@ importers:
       '@t3tools/shared':
         specifier: workspace:*
         version: link:../../packages/shared
+      '@t3tools/web':
+        specifier: workspace:*
+        version: link:../web
       vitest:
         specifier: ^1
         version: ${options.dev}
+  apps/web:
+    dependencies:
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      react:
+        specifier: ^19
+        version: ${options.web ?? "19.0.0"}
   packages/shared:
     dependencies:
       jose:
@@ -288,6 +314,8 @@ importers:
 snapshots:
   jose@6.0.0: {}
   jose@6.0.1: {}
+  react@19.0.0: {}
+  react@19.0.1: {}
   effect@4.0.1:
     dependencies:
       leaf: ${options.runtime}
@@ -320,6 +348,11 @@ snapshots:
         ),
       ).toEqual({ rollbackCompatible: false });
     });
+    it("allows a lockfile change that moves only the web client's dependencies", () => {
+      expect(
+        rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", web: "19.0.1" }))),
+      ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+    });
     it("requires confirmation when the lockfile cannot be read", () => {
       expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({
         rollbackCompatible: false,
@@ -349,13 +382,12 @@ describe("the allowlisted HQ wire modules stay free of stored state", () => {
       { concurrency: 16 },
     );
   });
-  const hqModules = Effect.map(sources("packages/shared/src"), (files) =>
-    files.filter(({ file }) => /\/hq[^/]*$|\/hqGitBrowse\//u.test(file)),
-  );
-
-  it.effect("an hq module imports only schemas, never a persistence or filesystem module", () =>
-    Effect.gen(function* () {
-      const offenders = (yield* hqModules).flatMap(({ file, imports }) =>
+  const hqOffenders = (
+    files: ReadonlyArray<{ readonly file: string; readonly imports: ReadonlyArray<string> }>,
+  ) =>
+    files
+      .filter(({ file }) => file.startsWith(HQ_WIRE_MODULES))
+      .flatMap(({ file, imports }) =>
         imports
           .filter(
             (specifier) =>
@@ -367,10 +399,30 @@ describe("the allowlisted HQ wire modules stay free of stored state", () => {
           )
           .map((specifier) => `${file} imports ${specifier}`),
       );
-      expect((yield* hqModules).length).toBeGreaterThan(20);
-      expect(offenders).toEqual([]);
+
+  it.effect("an hq module imports only schemas, never a persistence or filesystem module", () =>
+    Effect.gen(function* () {
+      const shared = yield* sources("packages/shared/src");
+      expect(shared.filter(({ file }) => file.startsWith(HQ_WIRE_MODULES)).length).toBeGreaterThan(
+        20,
+      );
+      expect(hqOffenders(shared)).toEqual([]);
     }).pipe(Effect.provide(NodeServices.layer)),
   );
+
+  it.each([
+    "packages/shared/src/hqStream.ts",
+    "packages/shared/src/hqGitBrowse/tree.ts",
+    "packages/shared/src/hqStore/nested/index.ts",
+  ])("the hq guard checks %s, a path the hq allowlist entry admits", (file) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [file] })).toEqual({
+      rollbackCompatible: true,
+      compatibleFrom: "0.15.0",
+    });
+    expect(hqOffenders([{ file, imports: ["../persistence/Store.ts"] }])).toEqual([
+      `${file} imports ../persistence/Store.ts`,
+    ]);
+  });
 
   it.effect("the server reaches an hq module only from zerops/, which is never allowlisted", () =>
     Effect.gen(function* () {
