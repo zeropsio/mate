@@ -52,6 +52,31 @@ it.each(["main", "kh-next", "wt/keys", "kh-bisect/keys", "kh-bisect/org-switch",
   },
 );
 
+it("Signal's scenarios run against the mate-hq test HQ that State Smoke's run against", () => {
+  const read = (file: string) =>
+    parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows", file), "utf8"));
+  const ci = read("ci.yml");
+  const signal = read("signal.yml");
+  const command = ci.jobs.state_smoke.env.MATE_HQ_TEST_COMMAND;
+  expect(command).toContain("mate-hq/scripts/test-hq.ts");
+  expect(signal.env.MATE_HQ_TEST_COMMAND).toBe(command);
+  const stateSmoke = (name: string) =>
+    ci.jobs.state_smoke.steps.find((step: { name: string }) => step.name === name);
+  for (const job of ["chat_scenarios", "classify"]) {
+    const steps: { name: string }[] = signal.jobs[job].steps;
+    const step = (name: string) => steps.find((each) => each.name === name);
+    expect(step("Require the mate-hq deploy key"), job).toMatchObject({
+      env: stateSmoke("Require the mate-hq deploy key").env,
+    });
+    expect(step("Install mate-hq and its services"), job).toEqual(
+      stateSmoke("Install mate-hq and its services"),
+    );
+    expect(step("Checkout mate-hq"), job).toMatchObject({
+      with: { ...stateSmoke("Checkout mate-hq").with, ref: "main" },
+    });
+  }
+});
+
 it("CI runs lint, guards, types and builds in parallel without losing the release verdict", () => {
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
@@ -498,6 +523,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         needs: string | string[];
         strategy?: { "fail-fast": boolean; matrix: { include: { command: string }[] } };
         steps: {
+          name?: string;
           uses?: string;
           if?: string;
           run?: string;
@@ -545,6 +571,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         !step.run.includes("$GITHUB_OUTPUT") &&
         !step.run.startsWith("vp install ") &&
         !step.run.startsWith("vp run test:browser") &&
+        step.name !== "Require the mate-hq deploy key" &&
         step.if !== "needs.prepare.outputs.skip == 'true'",
     ),
   ).toEqual([
