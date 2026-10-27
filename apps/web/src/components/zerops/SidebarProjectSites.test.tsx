@@ -1,12 +1,12 @@
 // @vitest-environment happy-dom
-import { ZEROPS_RELEASE_QUESTION, type ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
+import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
 import type { Known } from "@t3tools/client-runtime/zerops/knowledge";
 import { EnvironmentId, type ZeropsLease, type ZeropsLifecycle } from "@t3tools/contracts";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { Atom } from "effect/reactivity";
 import { act, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import type { FixProblem } from "~/zerops/fixRequest";
@@ -23,34 +23,6 @@ import {
   type ProjectSitesInput,
   type SitesMate,
 } from "./SidebarProjectSites";
-
-/** The Mates' conversations bound to a lease, by the Mate's project; every release request sent. */
-const boundary = vi.hoisted(() => ({
-  conversations: {} as Record<string, ReadonlyArray<unknown> | undefined>,
-  requestRelease: vi.fn<(input: Record<string, unknown>) => Promise<unknown>>(),
-}));
-vi.mock("~/zerops/useMatesBoundConversations", () => ({
-  useMatesBoundConversations: () => boundary.conversations,
-}));
-vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW }));
-vi.mock("~/zerops/useZeropsReleaseRequest", () => ({
-  useZeropsReleaseRequest: () => boundary.requestRelease,
-}));
-vi.mock("~/state/entities", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("~/state/entities")>()),
-  useThreadShell: () => ({
-    id: "thread-open",
-    modelSelection: { instanceId: "codex", model: "gpt-5.4" },
-    runtimeMode: "full-access",
-    interactionMode: "default",
-    archivedAt: null,
-  }),
-}));
-vi.mock("~/hooks/useThreadActions", () => ({
-  useThreadActions: () => ({
-    unarchiveThread: async () => ({ _tag: "Success", value: undefined }),
-  }),
-}));
 
 vi.mock("~/zerops/accountForge", () => ({
   useStopDeploymentDemand: () => {},
@@ -95,9 +67,6 @@ vi.mock("~/zerops/feeds", async (importOriginal) => {
     },
   };
 });
-
-const NOW = Date.parse("2026-10-25T12:00:00Z");
-const hoursAgo = (hours: number) => new Date(NOW - hours * 3_600_000).toISOString();
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
   service,
@@ -199,8 +168,6 @@ const unmounts: Array<() => void> = [];
 afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
   lifecycles.clear();
-  boundary.conversations = {};
-  boundary.requestRelease.mockReset();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
   useAddressesSheet.getState().close();
@@ -464,39 +431,71 @@ const held = (alias: string, branch: string, over: Partial<ZeropsLease> = {}) =>
 /** Kara, whose project holds two dev pools of three slots each and a stage. */
 const kara = (threadKey: string | undefined) =>
   mate("Kara", {
-    routes: [...slots("webpool"), ...slots("hqpool"), route("appstage", "kara-stage.example.app")],
-    services: { hostnames: ["appstage", "hqpool", "webpool"], pools: ["hqpool", "webpool"] },
+    routes: [
+      ...slots("embedderpool"),
+      ...slots("hqpool"),
+      route("appstage", "kara-stage.example.app"),
+    ],
+    services: {
+      hostnames: ["appstage", "embedderpool", "hqpool"],
+      pools: ["embedderpool", "hqpool"],
+    },
     threadKey,
   });
 
-/** The leases of Kara's two branches: one running its preview, one parked, one with none yet. */
+const EMBEDDER_URL = "https://embedderpool-c2e4-8101.prg1.zerops.app";
+
+/**
+ * The leases of Kara's two branches, as a status call read them: one running its preview, one
+ * parked, one with none yet, one ended — each with what a release would lose there.
+ */
 const KARA_LEASES = [
-  held("webpool-3", "feat-x", {
+  held("embedderpool-3", "feat-x", {
     devServers: [
       {
         name: "web",
-        port: 3000,
-        url: "https://webpool-3001.quill.example.app",
+        port: 8101,
+        url: EMBEDDER_URL,
         status: "running",
         readAt: "2026-10-25T09:00:00Z",
       },
     ],
+    activity: {
+      lastChangeAt: "2026-10-25T08:30:00Z",
+      previewOpenConns: 0,
+      acquiredAt: "2026-10-25T08:00:00Z",
+      readAt: "2026-10-25T09:00:00Z",
+    },
+    unsaved: { fileCount: 2, unpushedCommits: 1 },
   }),
   held("hqpool-3", "feat-x", { state: "parked" }),
   held("hqpool-4", "feat-y"),
-  held("webpool-5", "gone", { state: "lost" }),
+  held("embedderpool-5", "gone", { state: "lost" }),
 ];
 
-/** Each workspace row of the open popover, as it reads. */
-const workspaceRows = () =>
-  surfaces("sidebar-project-sites-workspace").map((row) => ({
-    text: row.textContent,
-    href: row.getAttribute("href"),
-    dot: row.querySelector("[data-dot]")?.getAttribute("data-dot"),
-  }));
+/** The words of the open popover's Kara section. */
+const karaSays = () =>
+  document.querySelector<HTMLElement>('[data-sites-section="mate:quill-kara"]')?.textContent ?? "";
+
+/** What a person must never be shown of a workspace: zcp's lease, its container, its holder. */
+const WORKSPACE_WORDS = [
+  "pool ·",
+  "embedderpool-3",
+  "hqpool",
+  "feat-x",
+  "parked",
+  "no preview yet",
+  "Held",
+  "this chat",
+  "unpushed",
+  "uncommitted",
+  "last active",
+  "idle",
+  "Release",
+];
 
 describe("a Mate's dev pools", () => {
-  it("list one row per held or parked lease, named by its pool and branch, with its state and its preview, never the pool's per-port addresses", async () => {
+  it("a Mate's Sites list each part's preview by the part's name, and nothing about its workspace", async () => {
     lifecycles.set("env-kara:thread-kara", KARA_LEASES);
     await mount({
       production: undefined,
@@ -505,19 +504,15 @@ describe("a Mate's dev pools", () => {
       mates: [kara("env-kara:thread-kara")],
     });
     await press(surface("sidebar-project-sites"));
-    expect(workspaceRows()).toEqual([
-      { text: "hqpoolfeat-x · hqpool-3parked", href: null, dot: "hollow" },
-      { text: "hqpoolfeat-y · hqpool-4no preview yet", href: null, dot: "off" },
-      {
-        text: "webpoolfeat-x · webpool-3runningwebpool-3001.quill.example.app",
-        href: "https://webpool-3001.quill.example.app",
-        dot: "ok",
-      },
-    ]);
-    expect(listed()).toEqual([["Kara", ["https://kara-stage.example.app"]]]);
+    expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
+    const preview = surfaces("sidebar-project-sites-link").find(
+      (link) => link.getAttribute("href") === EMBEDDER_URL,
+    );
+    expect(preview?.textContent).toBe("Embedderembedderpool-c2e4-8101.prg1.zerops.app");
+    for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
     expect(
       surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,
-    ).toBe("4 addresses");
+    ).toBe("2 addresses");
   });
 
   it("the header's Sites read the Mate's workspaces from the conversation it is in", async () => {
@@ -557,12 +552,7 @@ describe("a Mate's dev pools", () => {
       container.remove();
     });
     await press(document.querySelector<HTMLElement>("[data-trigger]"));
-    expect(workspaceRows().map((row) => row.href)).toEqual([
-      null,
-      null,
-      "https://webpool-3001.quill.example.app",
-    ]);
-    expect(listed()).toEqual([["Kara", ["https://kara-stage.example.app"]]]);
+    expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
   });
 
   it("the globe never says there is no address while a Mate's pools hold workspaces not read yet", async () => {
@@ -581,73 +571,9 @@ describe("a Mate's dev pools", () => {
   });
 });
 
-/** Kara's leases as a status call read them: the one this chat holds, a helper's parked one. */
-const KARA_READ = [
-  held("webpool-3", "feat-x", {
-    acquiredAt: hoursAgo(72),
-    activity: {
-      lastChangeAt: hoursAgo(3),
-      previewOpenConns: 0,
-      acquiredAt: hoursAgo(72),
-      readAt: hoursAgo(1),
-    },
-    unsaved: { fileCount: 2, unpushedCommits: 1 },
-  }),
-  held("webpool-5", "b-red", {
-    state: "parked",
-    acquiredAt: hoursAgo(80),
-    activity: {
-      lastChangeAt: hoursAgo(50),
-      previewOpenConns: 0,
-      acquiredAt: hoursAgo(80),
-      readAt: hoursAgo(1),
-    },
-    unsaved: { fileCount: 0, unpushedCommits: 0 },
-  }),
-  held("apipool-2", "c-green", { notAnswering: "at its process limit: nothing new starts in it" }),
-];
-const turnAt = (at: string) => ({
-  turnId: "turn-1",
-  state: "completed",
-  requestedAt: at,
-  startedAt: at,
-  completedAt: at,
-  assistantMessageId: null,
-});
-/** Kara's conversations bound to a lease: the open one holds `webpool-3`, "Red button" `webpool-5`. */
-const KARA_CONVERSATIONS = [
-  {
-    key: "env-kara:thread-open",
-    title: "Login fix",
-    lease: { alias: "webpool-3", pool: "webpool", branch: "feat-x" },
-    lastTurn: turnAt(hoursAgo(5)),
-  },
-  {
-    key: "env-kara:thread-red",
-    title: "Red button",
-    lease: { alias: "webpool-5", pool: "webpool", branch: "b-red" },
-    lastTurn: turnAt(hoursAgo(60)),
-  },
-];
-
-/** Each opening's own conversation: a Sites list keeps what it read of one for the page's life. */
-let opening = 0;
-/** The conversation the header's Sites last opened in, by scoped key. */
-let here = "";
-
-/** The header's Sites of Kara's conversation, the one bound to `webpool-3`, opened. */
-async function openHeaderSites(
-  leases: ReadonlyArray<unknown> = KARA_READ,
-  over: { readonly mine?: boolean } = {},
-) {
-  opening += 1;
-  here = `env-kara:thread-open-${String(opening)}`;
-  lifecycles.set(here, leases);
-  boundary.conversations = {
-    "quill-kara": KARA_CONVERSATIONS.map((conversation) =>
-      conversation.key === "env-kara:thread-open" ? { ...conversation, key: here } : conversation,
-    ),
-  };
+/** The header's Sites of Kara's conversation, opened. */
+async function openHeaderSites() {
+  lifecycles.set("env-kara:thread-asks", KARA_LEASES);
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -657,13 +583,7 @@ async function openHeaderSites(
     projectName: "Quillmark",
     production: undefined,
     stages: undefined,
-    mates: [
-      mate("Kara", {
-        mine: over.mine ?? true,
-        routes: [...slots("webpool"), ...slots("apipool")],
-        services: { hostnames: ["apipool", "webpool"], pools: ["apipool", "webpool"] },
-      }),
-    ],
+    mates: [kara(undefined)],
     prodChip: undefined,
     stageChip: undefined,
     line: undefined,
@@ -675,7 +595,7 @@ async function openHeaderSites(
       <HeaderSites
         mateProjectId="quill-kara"
         sites={sites}
-        threadKey={here}
+        threadKey="env-kara:thread-asks"
         trigger={<button data-trigger="" type="button" />}
       >
         Sites
@@ -691,142 +611,26 @@ async function openHeaderSites(
   await press(document.querySelector<HTMLElement>("[data-trigger]"));
 }
 
-/** A workspace's row by its alias, as it reads. */
-const workspace = (alias: string) =>
-  document.querySelector<HTMLElement>(`[data-zerops-workspace="${alias}"]`);
-const releaseOf = (alias: string) =>
-  workspace(alias)?.querySelector<HTMLElement>("[data-zerops-workspace-release]") ?? null;
-const questionButton = (words: string) =>
-  [...document.querySelectorAll<HTMLElement>("[data-zerops-release-question] button")].find(
-    (button) => button.textContent === words,
-  ) ?? null;
-
-describe("a Mate's workspaces in its Sites", () => {
-  beforeEach(() => {
-    boundary.requestRelease.mockResolvedValue({ _tag: "Success", value: undefined });
-  });
-
-  it("The list names each of the Mate's workspaces with its state, last activity and unsaved work, marks the bound one, and offers each its own Release", async () => {
+// Aleš, 2026-10-27: a person never manages leases; releasing one is the Mate's own tool.
+describe("a Mate's workspaces", () => {
+  it("no surface offers a person a workspace's Release", async () => {
     await openHeaderSites();
-    const rows = [...document.querySelectorAll<HTMLElement>("[data-zerops-workspace]")];
-    expect(
-      rows.map((row) => row.dataset["zeropsWorkspace"]),
-      "by pool, then branch",
-    ).toEqual(["apipool-2", "webpool-5", "webpool-3"]);
-    for (const said of [
-      "webpool",
-      "feat-x · webpool-3",
-      "Held by this chat",
-      "1 unpushed · 2 uncommitted",
-      "3 h ago",
-    ]) {
-      expect(workspace("webpool-3")?.textContent, said).toContain(said);
-    }
-    for (const said of [
-      "webpool",
-      "b-red · webpool-5",
-      "parked",
-      "Held by “Red button”",
-      "all pushed",
-    ]) {
-      expect(workspace("webpool-5")?.textContent, said).toContain(said);
-    }
-    for (const said of ["apipool", "not answering", "Held by no chat", "at its process limit"]) {
-      expect(workspace("apipool-2")?.textContent, said).toContain(said);
-    }
-    for (const alias of ["apipool-2", "webpool-5", "webpool-3"]) {
-      expect(releaseOf(alias)?.textContent).toBe("Release");
-    }
-  });
-
-  it("A conversation bound to a lease shows when its workspace was last active and what a release would lose", async () => {
-    await openHeaderSites();
-    const row = workspace("webpool-3")?.textContent ?? "";
-    expect(row).toContain("3 h ago");
-    expect(row).toContain("1 unpushed · 2 uncommitted");
-  });
-
-  it("A workspace nothing happened in for 24 h is labelled idle", async () => {
-    await openHeaderSites();
-    expect(workspace("webpool-5")?.textContent).toContain("idle · 2 d ago");
-    expect(workspace("webpool-3")?.textContent).not.toContain("idle");
-  });
-
-  it("A conversation's last turn dates its workspace before zcp read it, and nothing shows with neither", async () => {
-    // Leases a call read with no acquire and no activity: only a turn can date them.
-    await openHeaderSites([
-      held("webpool-3", "feat-x", { acquiredAt: undefined }),
-      held("webpool-6", "feat-z", { acquiredAt: undefined }),
-    ]);
-    expect(workspace("webpool-3")?.textContent, "the bound one's turn").toContain("5 h ago");
-    expect(workspace("webpool-6")?.textContent, "no turn, no read").not.toMatch(/ago|just now/u);
-  });
-
-  it("A workspace's row offers Release, which asks before anything is sent", async () => {
-    await openHeaderSites();
-    expect(document.querySelector("[data-zerops-release-question]")).toBeNull();
-    await press(releaseOf("webpool-5"));
-    const question = document.querySelector("[data-zerops-release-question]");
-    expect(question?.textContent).toContain(ZEROPS_RELEASE_QUESTION("webpool-5"));
-    expect(boundary.requestRelease, "nothing is sent before the answer").not.toHaveBeenCalled();
-  });
-
-  it("asks first, then asks the Mate's conversation to release that workspace", async () => {
-    await openHeaderSites();
-    await press(releaseOf("webpool-5"));
-    await press(questionButton("Release"));
-    expect(boundary.requestRelease).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({
-        alias: "webpool-5",
-        bound: false,
-        threadRef: { environmentId: "env-kara", threadId: here.slice("env-kara:".length) },
-        archived: false,
-      }),
-    );
-    expect(
-      surface("chat-header-sites"),
-      "the Sites close once the request is on its way",
-    ).toBeNull();
-  });
-
-  it("asks about the workspace this chat holds as its own, with its last turn", async () => {
-    await openHeaderSites([held("webpool-3", "feat-x", { acquiredAt: undefined })]);
-    await press(releaseOf("webpool-3"));
-    expect(document.querySelector("[data-zerops-release-question]")?.textContent).toContain(
-      "last active 5 h ago",
-    );
-    await press(questionButton("Release"));
-    expect(boundary.requestRelease).toHaveBeenCalledExactlyOnceWith(
-      expect.objectContaining({ alias: "webpool-3", bound: true }),
-    );
-  });
-
-  it("goes back to the list on Not now, having sent nothing", async () => {
-    await openHeaderSites();
-    await press(releaseOf("webpool-5"));
-    await press(questionButton("Not now"));
-    expect(document.querySelector("[data-zerops-release-question]")).toBeNull();
-    expect(releaseOf("webpool-5")).not.toBeNull();
-    expect(boundary.requestRelease).not.toHaveBeenCalled();
-  });
-
-  it("A person who only reads along sees the workspaces but is offered no Release", async () => {
-    await openHeaderSites(KARA_READ, { mine: false });
-    expect(workspace("webpool-5")).not.toBeNull();
-    expect(document.querySelector("[data-zerops-workspace-release]")).toBeNull();
-  });
-
-  it("Every Release is named by the workspace it releases", async () => {
-    await openHeaderSites();
-    expect(
-      [...document.querySelectorAll("[data-zerops-workspace-release]")].map((button) =>
-        button.getAttribute("aria-label"),
-      ),
-    ).toEqual([
-      "Release workspace apipool-2",
-      "Release workspace webpool-5",
-      "Release workspace webpool-3",
-    ]);
+    const buttons = () =>
+      [...document.querySelectorAll("button")].map(
+        (button) => `${button.textContent ?? ""} ${button.getAttribute("aria-label") ?? ""}`,
+      );
+    expect(buttons().filter((said) => /release/iu.test(said))).toEqual([]);
+    for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
+    // And the menu's globe, which opens the same Sites from the project's row.
+    lifecycles.set("env-kara:thread-kara", KARA_LEASES);
+    await mount({
+      production: undefined,
+      stages: undefined,
+      line: undefined,
+      mates: [kara("env-kara:thread-kara")],
+    });
+    await press(surface("sidebar-project-sites"));
+    expect(buttons().filter((said) => /release/iu.test(said))).toEqual([]);
   });
 });
 
