@@ -1053,6 +1053,8 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   restartTarget: Schema.optional(
     Schema.Struct({ zcp: Schema.optional(Schema.String), mate: Schema.optional(Schema.String) }),
   ),
+  /** When that restart started, by the server's clock: its line's `update.restart.startedAt`. */
+  restartStartedAt: Schema.optional(Schema.String),
   /** The boot of the server that answered: a reboot is judged against it. */
   bootId: Schema.optional(Schema.String),
   serverVersion: Schema.String,

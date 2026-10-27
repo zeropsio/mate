@@ -693,11 +693,12 @@ describe("a Mate that only a restart gets current", () => {
       });
       const first = yield* service.restart.pipe(Effect.forkChild);
       yield* Effect.yieldNow;
-      const second = yield* service.restart;
+      const second = yield* service.restart.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
       yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
       const answer = yield* Fiber.join(first);
       expect(answer.started).toBe(true);
-      expect(second).toEqual(answer);
+      expect(yield* Fiber.join(second)).toEqual(answer);
     }).pipe(Effect.scoped),
   );
 

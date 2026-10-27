@@ -18,6 +18,7 @@
  */
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -247,17 +248,11 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           attempt,
           startedAt,
         });
-      }).pipe(
-        Effect.ensuring(
-          Effect.sync(() => {
-            restartUnderWay = false;
-            currentStart = undefined;
-          }),
-        ),
-      );
-    // The restart under way, as a press that joins it is answered: set in the same step as
-    // `restartUnderWay`, before anything yields.
-    let currentStart: Extract<MateRestartStart, { started: true }> | undefined;
+      });
+    // The restart under way, as every press answers it: set in the same step as
+    // `restartUnderWay`, before anything yields. Its own fiber runs it, so no press's interrupt
+    // can drop an attempt another press joined.
+    let currentAnswer: Deferred.Deferred<MateRestartStart> | undefined;
     const startRestart = (
       status: MateStatusResult,
       automatic: boolean,
@@ -269,18 +264,17 @@ export const make = (options: ZeropsMateUpdateOptions) =>
             reason: "this Mate can't restart itself here",
           } as const);
         // A second press joins the restart under way, as that restart.
-        if (restartUnderWay && currentStart !== undefined) return Effect.succeed(currentStart);
+        if (restartUnderWay && currentAnswer !== undefined) return Deferred.await(currentAnswer);
         restartUnderWay = true;
+        const answer = Deferred.makeUnsafe<MateRestartStart>();
+        currentAnswer = answer;
         const start = {
           started: true,
           attempt: `restart-${++attempts}`,
           target: restartTarget(status),
           startedAt: DateTime.formatIso(now),
         } as const;
-        currentStart = start;
-        // Reset unless the attempt was forked: an interrupted press never holds the next one.
-        let forked = false;
-        return Effect.gen(function* () {
+        const run = Effect.gen(function* () {
           // An older zcp is never asked: it does not know the verb.
           if (!zcpAtLeast(yield* options.cli.version, ZCP_SELF_RESTART_SINCE)) {
             yield* setProgress({
@@ -289,30 +283,34 @@ export const make = (options: ZeropsMateUpdateOptions) =>
               attempt: start.attempt,
               startedAt: start.startedAt,
             });
-            return { started: false, reason: SELF_RESTART_TOO_OLD } as const;
+            yield* Deferred.succeed(answer, {
+              started: false,
+              reason: SELF_RESTART_TOO_OLD,
+            });
+            return;
           }
-          // Draining, as this attempt, before the press is answered.
+          // Draining, as this attempt, before any press is answered.
           yield* setProgress({
             phase: "draining",
             attempt: start.attempt,
             startedAt: start.startedAt,
           });
-          yield* Effect.forkIn(
-            attemptRestart(restartPorts, automatic, restartReading(status), start),
-            scope,
-          );
-          forked = true;
-          return start;
+          yield* Deferred.succeed(answer, start);
+          yield* attemptRestart(restartPorts, automatic, restartReading(status), start);
         }).pipe(
+          // Whatever ends it, every press waiting on it is answered and the next one is free.
           Effect.ensuring(
-            Effect.sync(() => {
-              if (!forked) {
-                restartUnderWay = false;
-                currentStart = undefined;
-              }
+            Effect.gen(function* () {
+              restartUnderWay = false;
+              currentAnswer = undefined;
+              yield* Deferred.succeed(answer, {
+                started: false,
+                reason: "the restart didn't start",
+              });
             }),
           ),
         );
+        return Effect.forkIn(run, scope).pipe(Effect.andThen(Deferred.await(answer)));
       });
     const restart: Effect.Effect<MateRestartStart> = Effect.suspend(() =>
       reading?.restartNeeded === true
@@ -391,8 +389,9 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           })
         )
           return;
-        // A restart postponed earlier says nothing over the Mate's own update that follows it.
-        if (!restartUnderWay && progress?.phase === "postponed") {
+        // A restart postponed earlier says nothing over the Mate's own update that follows it,
+        // unless a press waits on its attempt: the line lets zcp's own phase outrank it.
+        if (!restartUnderWay && progress?.phase === "postponed" && progress.attempt === undefined) {
           progress = undefined;
           yield* SubscriptionRef.set(state, line());
         }

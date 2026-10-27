@@ -158,6 +158,7 @@ export const runZeropsMateUpdate = (
             started: true,
             restartAttempt: start.attempt,
             restartTarget: start.target,
+            restartStartedAt: start.startedAt,
             ...boot,
             serverVersion,
           }
