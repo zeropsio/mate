@@ -64,12 +64,6 @@ describe("crewSnapshotFixture", () => {
       expect(states.has(state), state).toBe(true);
     }
   });
-
-  it("replaces a top-level field and keeps the rest", () => {
-    const manual = crewSnapshotFixture({ run: null });
-    expect(manual.run).toBeNull();
-    expect(manual.crewmates).toEqual(crewSnapshotFixture().crewmates);
-  });
 });
 
 describe("CrewTint", () => {

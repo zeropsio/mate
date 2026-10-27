@@ -100,8 +100,27 @@ describe("owner-reported layout regressions", () => {
             return state;
           }, playbackRate),
         );
+        // The conversation's route changes when the Mate's first frame naming the question reaches
+        // the page. Held there, the draft keeps its route until its message has been sampled
+        // fully faded in; the slowed fade's length against the Mate's speed would race otherwise.
+        const promotion = mate.gate.holdFrames(
+          (frame) => !frame.isBinary && Buffer.from(frame.bytes).toString().includes(question),
+        );
+        yield* Effect.addFinalizer(() => Effect.sync(promotion.release));
         yield* s.when.conversation.sends(question);
         expect((yield* mate.provider.received).input.input).toBe(question);
+        yield* Effect.promise(() =>
+          s.page.waitForFunction(
+            (state) =>
+              state.frames.some(
+                (frame) =>
+                  frame.path.includes("/draft/") && frame.opacity === 1 && frame.message !== null,
+              ),
+            { polling: "raf" },
+            trace,
+          ),
+        );
+        promotion.release();
         // The answer is real server data arriving after the saved conversation's first paint.
         yield* Effect.promise(() =>
           s.page.waitForFunction(

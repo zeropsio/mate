@@ -8,7 +8,7 @@ import {
   HQ_WRITE_UNCERTAIN,
   HqError,
   makeHqApi,
-  readHqHealth,
+  readHqParts,
   type HqApi,
   type OpenHqSocket,
 } from "./client.ts";
@@ -688,11 +688,6 @@ describe("makeHqApi", () => {
         message: "Only an owner or admin of the organization can do this.",
       },
     ],
-    [
-      "a standby is unavailable",
-      json(503, { code: "not_active" }),
-      { kind: "unavailable", code: "not_active" },
-    ],
     // The owner, 2026-10-05: a write HQ refused because Zerops did not answer its roles wrote
     // nothing — it is no write that may have landed, and says to try again.
     [
@@ -911,43 +906,8 @@ describe("Git token refusals", () => {
   });
 });
 
-describe("readHqHealth", () => {
-  it.each<[string, Response | "throw", Awaited<ReturnType<typeof readHqHealth>>]>([
-    [
-      "the official HQ leading",
-      json(200, { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" }),
-      { kind: "healthy", build: "b1", parts: { db: "up", quarantined: [] } },
-    ],
-    [
-      // Inside HQ's grace (`official.ts`): it leads and serves, Zerops just does not answer its check.
-      "the official HQ leading, its check of Zerops unanswered",
-      json(200, { state: "active", official: "unknown", db: "up", epoch: 8, build: "b1" }),
-      { kind: "unchecked", build: "b1", parts: { db: "up", quarantined: [] } },
-    ],
-    [
-      "a standby that is not the official HQ yet",
-      json(200, { state: "standby", official: "anchor_missing", db: "up", epoch: 0, build: "b1" }),
-      { kind: "not-ready", state: "standby", official: "anchor_missing" },
-    ],
-    [
-      "a Core that cannot serve",
-      json(503, { state: "starting", official: "unknown", db: "down", epoch: 0, build: "b1" }),
-      { kind: "not-ready", state: "starting", official: "unknown" },
-    ],
-    ["nothing answering", "throw", { kind: "unreachable" }],
-    ["something else answering", new Response("<html>", { status: 502 }), { kind: "unreachable" }],
-  ])("%s", async (_name, answer, expected) => {
-    const fetch = async (input: string) => {
-      expect(input).toBe(`${ADDRESS}/health`);
-      if (answer === "throw") throw new TypeError("Failed to fetch");
-      return answer;
-    };
-    await expect(readHqHealth(fetch, `${ADDRESS}/`)).resolves.toEqual(expected);
-  });
-});
-
-describe("readHqHealth — how HQ's parts stand", () => {
-  const leading = { state: "active", official: "ok", db: "up", epoch: 8, build: "b1" };
+describe("readHqParts — how HQ's parts stand", () => {
+  const leading = { db: "up" };
   it.each<[string, Record<string, unknown>, unknown]>([
     [
       "its newest backup, its key and its database",
@@ -1024,13 +984,8 @@ describe("readHqHealth — how HQ's parts stand", () => {
       { db: "maybe", backup: { state: "ok", set: "latest" }, keys: "rotated", quarantined: "x" },
       { quarantined: [] },
     ],
-  ])("%s", async (_name, body, parts) => {
-    const fetch = async () => json(200, { ...leading, ...body });
-    await expect(readHqHealth(fetch, ADDRESS)).resolves.toEqual({
-      kind: "healthy",
-      build: "b1",
-      parts,
-    });
+  ])("%s", (_name, body, parts) => {
+    expect(readHqParts({ ...leading, ...body })).toEqual(parts);
   });
 });
 
@@ -2517,7 +2472,6 @@ describe("makeHqApi — a Mate's ticket", () => {
     [403, { code: "forbidden", reason: "not_mate_opener" }, "refused", "forbidden"],
     [404, { code: "mate_not_found" }, "refused", "mate_not_found"],
     [409, { code: "mate_not_connected" }, "refused", "mate_not_connected"],
-    [503, { code: "not_active" }, "unavailable", "not_active"],
   ])("HQ's %i refusal of a ticket is told as its own kind", async (status, body, kind, code) => {
     const { api } = ticketApi(json(status, body));
 

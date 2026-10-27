@@ -84,6 +84,23 @@ function roomTheViewNeeds(scroll: ScrollRoom, natural: number): number {
   return Math.max(0, scroll.scrollTop + scroll.clientHeight - natural);
 }
 
+/** A box's vertical edges, in the page's coordinates. */
+export interface Span {
+  readonly top: number;
+  readonly bottom: number;
+}
+
+/**
+ * How far the list scrolls down for a group just opened: its heading and Mates (`unit`) brought
+ * above the view's end (`view`), never so far that the heading leaves the view's top. Nothing
+ * where they already stand in view, or where the heading is already above it.
+ */
+export function unfoldScroll(input: { readonly view: Span; readonly unit: Span }): number {
+  const hanging = input.unit.bottom - input.view.bottom;
+  const headingRoom = input.unit.top - input.view.top;
+  return Math.max(0, Math.min(hanging, headingRoom));
+}
+
 /** What the menu's reveal of the open Mate has seen (`openMateReveal`). */
 export interface MateReveal {
   /** The open conversation it is for: the route's Mate, as the route names it. */

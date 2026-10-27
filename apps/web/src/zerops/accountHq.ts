@@ -9,15 +9,13 @@ import { captureAccountLifetime } from "./accountLifetime";
  *   presented again on the next, while young, and mints nothing. One API per account, org and HQ
  *   for the account's lifetime; its session is kept across loads as the Mates' are
  *   (`keptSessions.ts`, audit K7), so a load with a live one passes no door.
- * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves, and
- *   after it failed, `/health` read once per failed attempt while the tab is visible. An HQ that
- *   stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
+ * - **Whether it answers:** its structure stream (`hqStructure.ts`): healthy while it serves. An HQ
+ *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  */
 import {
   sharedHq,
   type HqApi,
   type HqEndpoint,
-  type HqHealth,
   type HqParts,
 } from "@t3tools/client-runtime/zerops/hq";
 import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
@@ -102,12 +100,11 @@ export function useOfficialHq(): { readonly address: string; readonly api: HqApi
 export type HqStanding =
   | { readonly kind: "unknown" }
   /**
-   * Serving as the official HQ — `unchecked` while it cannot check Zerops right now: no outage,
-   * everything keeps using it. `build` the Core it runs and `parts` how they
-   * stand, as its stream or its health says them; each absent while neither has yet.
+   * Serving as the official HQ. `build` the Core it runs and `parts` how they
+   * stand, as its stream says them; each absent while it has not yet.
    */
   | {
-      readonly kind: "healthy" | "unchecked";
+      readonly kind: "healthy";
       readonly build?: string;
       readonly parts?: HqParts;
     }
@@ -118,9 +115,3 @@ export type HqStanding =
    * began; the menu's outage line carries HQ's own reason.
    */
   | { readonly kind: "refused" };
-
-/** The standing a health read leaves: an outage keeps the time it began. */
-export function nextHqStanding(previous: HqStanding, health: HqHealth, nowMs: number): HqStanding {
-  if (health.kind === "healthy" || health.kind === "unchecked") return health;
-  return previous.kind === "unavailable" ? previous : { kind: "unavailable", since: nowMs };
-}

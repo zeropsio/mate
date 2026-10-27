@@ -6,6 +6,7 @@ import * as Path from "effect/Path";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
 import {
+  rollbackBlocker,
   rollbackCompatibility,
   readRollbackCompatibility,
 } from "./releaseRollbackCompatibility.ts";
@@ -188,4 +189,211 @@ describe("a release may update automatically only inside its proved rollback ran
       rollbackCompatible: false,
     });
   });
+  it.each(
+    Array.from(
+      [
+        "apps/server/src/git/GitManager.ts",
+        "apps/server/src/textGeneration/CodexTextGeneration.ts",
+        "apps/server/src/engine/store/EngineStore.test.ts",
+        "packages/shared/src/hqStream.ts",
+        "package.json",
+        "pnpm-workspace.yaml",
+      ],
+      (changedPath) => ({
+        title: `allows a release that changes ${changedPath} and no stored or seam state`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: true,
+      compatibleFrom: "0.15.0",
+    });
+  });
+  it.each(
+    Array.from(
+      [
+        "apps/server/src/persistence/Migrations/064_Next.ts",
+        "apps/server/src/persistence/Migrations.ts",
+        "apps/server/src/engine/store/Migrations/0014_Next.ts",
+        "packages/contracts/src/settings.ts",
+        "packages/contracts/src/orchestration.ts",
+        "apps/server/src/serverSettings.ts",
+        "apps/server/src/zerops/ZeropsGitCredentialFile.ts",
+        "apps/server/src/environment/ServerEnvironment.ts",
+        "apps/server/src/cli/config.ts",
+        "apps/server/src/ws.ts",
+        "apps/server/src/server.ts",
+        "apps/server/src/serverRuntimeStartup.ts",
+        "apps/server/src/spi/ProviderUpdateSafety.ts",
+        "packages/effect-acp/src/client.ts",
+      ],
+      (changedPath) => ({
+        title: `requires confirmation when ${changedPath} adds a migration, a stored schema or a seam change`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: false,
+    });
+  });
+  it.each([
+    "apps/server/src/newdir/Store.ts",
+    "apps/server/src/newTopLevelStore.ts",
+    "packages/new-pkg/src/index.ts",
+    ".github/workflows/release.yml",
+  ])("requires confirmation for %s, a path the rule has never seen", (changedPath) => {
+    expect(rollbackBlocker({ ...evidence, changedPaths: [changedPath] })).toContain(changedPath);
+  });
+  it.each([
+    ["the update protocol changed", { currentProtocol: 2 }],
+    ["the runtime declaration changed", { previousPackage: "broken" }],
+    ["not an ancestor", { ancestor: false }],
+  ] as const)("names the cause when %s", (cause, patch) => {
+    expect(rollbackBlocker({ ...evidence, ...patch }), cause).toBeTruthy();
+  });
+  describe("a changed lockfile counts only when the server's runtime dependencies moved", () => {
+    const lock = (options: {
+      readonly runtime: string;
+      readonly dev: string;
+      readonly bundled?: string;
+    }) => `
+lockfileVersion: '9.0'
+importers:
+  .:
+    devDependencies:
+      vitest:
+        specifier: ^1
+        version: ${options.dev}
+  apps/server:
+    dependencies:
+      effect:
+        specifier: 4.0.1
+        version: 4.0.1
+    devDependencies:
+      '@t3tools/shared':
+        specifier: workspace:*
+        version: link:../../packages/shared
+      vitest:
+        specifier: ^1
+        version: ${options.dev}
+  packages/shared:
+    dependencies:
+      jose:
+        specifier: ^6
+        version: ${options.bundled ?? "6.0.0"}
+snapshots:
+  jose@6.0.0: {}
+  jose@6.0.1: {}
+  effect@4.0.1:
+    dependencies:
+      leaf: ${options.runtime}
+  leaf@1.0.0: {}
+  leaf@1.0.1: {}
+  vitest@1.0.0: {}
+  vitest@1.0.1: {}
+`;
+    const base = lock({ runtime: "1.0.0", dev: "1.0.0" });
+    const changedLock = (current: string | undefined) => ({
+      ...evidence,
+      changedPaths: ["pnpm-lock.yaml"],
+      ...(current === undefined ? {} : { lockfiles: { previous: base, current } }),
+    });
+    it("allows a dev-only lockfile change", () => {
+      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.1" })))).toEqual({
+        rollbackCompatible: true,
+        compatibleFrom: "0.15.0",
+      });
+    });
+    it("requires confirmation when a transitive runtime dependency changes", () => {
+      expect(rollbackCompatibility(changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" })))).toEqual({
+        rollbackCompatible: false,
+      });
+    });
+    it("requires confirmation when a dependency of a bundled workspace package changes", () => {
+      expect(
+        rollbackCompatibility(
+          changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", bundled: "6.0.1" })),
+        ),
+      ).toEqual({ rollbackCompatible: false });
+    });
+    it("requires confirmation when the lockfile cannot be read", () => {
+      expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({
+        rollbackCompatible: false,
+      });
+      expect(rollbackCompatibility(changedLock(undefined))).toEqual({
+        rollbackCompatible: false,
+      });
+    });
+  });
+});
+
+describe("the allowlisted HQ wire modules stay free of stored state", () => {
+  const sources = Effect.fnUntraced(function* (dir: string) {
+    const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
+    const root = path.resolve(import.meta.dirname, "../../..");
+    const files = yield* fs.readDirectory(path.join(root, dir), { recursive: true });
+    return yield* Effect.forEach(
+      files.filter((file) => /\.tsx?$/u.test(file) && !/\.test\.tsx?$/u.test(file)),
+      (file) =>
+        fs.readFileString(path.join(root, dir, file)).pipe(
+          Effect.map((text) => ({
+            file: `${dir}/${file}`,
+            imports: [...text.matchAll(/from "([^"]+)"/gu)].map((match) => match[1]!),
+          })),
+        ),
+      { concurrency: 16 },
+    );
+  });
+  const hqModules = Effect.map(sources("packages/shared/src"), (files) =>
+    files.filter(({ file }) => /\/hq[^/]*$|\/hqGitBrowse\//u.test(file)),
+  );
+
+  it.effect("an hq module imports only schemas, never a persistence or filesystem module", () =>
+    Effect.gen(function* () {
+      const offenders = (yield* hqModules).flatMap(({ file, imports }) =>
+        imports
+          .filter(
+            (specifier) =>
+              !/^effect(\/|$)/u.test(specifier) &&
+              specifier !== "@t3tools/contracts" &&
+              !/^\.\.?\/(hq|common|mateLink|zeropsPermissions|log|agentUsage|commit)/u.test(
+                specifier,
+              ),
+          )
+          .map((specifier) => `${file} imports ${specifier}`),
+      );
+      expect((yield* hqModules).length).toBeGreaterThan(20);
+      expect(offenders).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("the server reaches an hq module only from zerops/, which is never allowlisted", () =>
+    Effect.gen(function* () {
+      const importers = (yield* sources("apps/server/src"))
+        .filter(({ imports }) => imports.some((specifier) => /shared\/hq/u.test(specifier)))
+        .map(({ file }) => file)
+        .filter((file) => !file.startsWith("apps/server/src/zerops/"));
+      expect(importers).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
+
+  it.effect("no server, shared or contracts file imports a package the allowlist trusts", () =>
+    Effect.gen(function* () {
+      const all = (yield* Effect.all([
+        sources("apps/server/src"),
+        sources("packages/shared/src"),
+        sources("packages/contracts/src"),
+      ])).flat();
+      expect(
+        all
+          .filter(({ imports }) =>
+            imports.some((specifier) => specifier.startsWith("@t3tools/client-runtime")),
+          )
+          .map(({ file }) => file),
+      ).toEqual([]);
+    }).pipe(Effect.provide(NodeServices.layer)),
+  );
 });

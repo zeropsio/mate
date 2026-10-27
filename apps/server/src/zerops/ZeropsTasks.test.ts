@@ -55,6 +55,7 @@ const task = (id: string, number = 42): MateTask => ({
     author: "nova",
   },
   body: "Add two teas, reload: the cart is empty.",
+  limits: { minutes: 60, costUsd: null },
 });
 
 /** The organization's GitHub app's bot, as HQ names a task's commit author. */
@@ -1616,16 +1617,6 @@ describe("a task stops at its limits", () => {
         conversationId: id,
         detail: "It reached its 30-minute limit.",
       });
-    }),
-  );
-
-  it.effect("a task from an HQ that sets no limits stops after 60 minutes of work", () =>
-    Effect.gen(function* () {
-      const { delivered, id, sent } = yield* working("task-1");
-      yield* TestClock.adjust("60 minutes");
-      yield* settle;
-      assert.deepStrictEqual(stopsOf(delivered), [RunId.make(`${id}/r/1`)]);
-      assert.strictEqual(sent.at(-1)?.detail, "It reached its 60-minute limit.");
     }),
   );
 

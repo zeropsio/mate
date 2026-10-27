@@ -16,8 +16,6 @@ import { readThreadShell } from "../state/entities";
 import { useUiStateStore } from "../uiStateStore";
 import { buildThreadRouteParams, resolveThreadRouteRef } from "../threadRoutes";
 import { useMateCommand } from "../zerops/accountEnvironments";
-import { showZeropsReleaseAsk } from "../zerops/releaseAskNotice";
-import { useZeropsReleaseRequest } from "../zerops/useZeropsReleaseRequest";
 import { showUndoToast } from "./showUndoToast";
 import * as ThreadUndo from "./threadUndo";
 
@@ -41,7 +39,6 @@ export function useThreadActions() {
     reportFailure: false,
   });
   const markThreadVisited = useUiStateStore((state) => state.markThreadVisited);
-  const requestRelease = useZeropsReleaseRequest();
   const router = useRouter();
   const handleNewThread = useNewThreadHandler();
   // Keep a ref so archiveThread can call handleNewThread without appearing in
@@ -140,39 +137,6 @@ export function useThreadActions() {
         undo: () => unarchiveThread(threadRef, { navigate: shouldNavigateToDraft }),
         failureTitle: "Failed to undo archive",
       });
-      // Bound to a lease zcp still holds: ask whether to release its workspace too. The archive is
-      // done; only the person's Release sends anything, and it brings the conversation back first.
-      const lease = thread.lease;
-      if (lease != null) {
-        showZeropsReleaseAsk({
-          environmentId: threadRef.environmentId,
-          threadId: threadRef.threadId,
-          lease,
-          latestTurn: thread.latestTurn,
-          onRelease: () =>
-            requestRelease({
-              threadRef,
-              conversation: thread,
-              alias: lease.alias,
-              archived: true,
-              // Back, then opened so the person sees the request and its answer: the request goes
-              // once the conversation is back, whether or not it could be opened.
-              unarchive: async () => {
-                const back = await unarchiveThread(threadRef);
-                if (back._tag === "Success") {
-                  await settlePromise(() =>
-                    router.navigate({
-                      to: "/$environmentId/$threadId",
-                      params: buildThreadRouteParams(threadRef),
-                    }),
-                  );
-                }
-                return back;
-              },
-            }),
-        });
-      }
-
       if (shouldNavigateToDraft) {
         const navigationResult = await settlePromise(() =>
           // Fresh: the archived thread may still read as the Mate's one
@@ -193,9 +157,7 @@ export function useThreadActions() {
       archiveThreadMutation,
       getCurrentRouteThreadRef,
       markThreadVisited,
-      requestRelease,
       resolveThreadTarget,
-      router,
       unarchiveThread,
     ],
   );

@@ -5623,6 +5623,7 @@ code {
 }
 
 .zerops-sites-linkrow:hover > .zerops-sites-link,
+.zerops-sites-side > .zerops-sites-link:hover,
 .zerops-sites-link:focus-visible {
   background-color: var(--accent);
   color: var(--foreground);
@@ -5670,37 +5671,45 @@ code {
   white-space: nowrap;
 }
 
-.zerops-sites-role {
-  flex: none;
-  height: 16px;
-  padding: 0 5px;
-  border-radius: 5px;
-  background-color: color-mix(in oklab, var(--card-foreground) 7%, transparent);
+/* A Mate's part: its name, then its dev and its stage in fixed columns, so every row's sides align
+   under each other; on the names' edge, as its addresses are. Each column fits "dev 2 ↗". */
+.zerops-sites-pair {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 64px 64px;
+  column-gap: 4px;
+  align-items: center;
+  padding: 4px 38px 4px 36px;
+}
+
+.zerops-sites-pair > .zerops-sites-service {
+  max-width: none;
+}
+
+/* A side's links, a pool's several workspaces one under another. */
+.zerops-sites-side {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+}
+
+/* A side that opens: the address row's link, compact — its label in the row's text, the ↗ after. */
+.zerops-sites-side > .zerops-sites-link {
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
+.zerops-sites-side > .zerops-sites-link > .zerops-sites-arrow {
   color: var(--muted-foreground);
-  font-size: 11px;
-  font-weight: 500;
-  line-height: 16px;
 }
 
-/* A workspace of a Mate's dev pool: its state's dot in the place mark's column (centred on it,
-   18px in, as the doors' icons are), its alias beside its name, a crash's word in red. */
-.zerops-sites-workspace {
-  position: relative;
-}
-
-.zerops-sites-workspace > .zerops-envdot {
-  position: absolute;
-  inset-inline-start: 18px;
-  translate: -50% 0;
-}
-
-.zerops-sites-alias {
-  flex: none;
+/* A side with no address: its label, muted, with no ↗ — nothing to open — its tooltip saying why. */
+.zerops-sites-off {
+  padding: 2px 6px;
   color: var(--muted-foreground);
-}
-
-.zerops-sites-role[data-tone="red"] {
-  color: var(--zerops-status-failed-text);
+  cursor: default;
 }
 
 .zerops-sites-host {
@@ -10229,12 +10238,15 @@ button.run-bar:focus-visible {
   vertical-align: top;
   border-radius: 10px;
 }
+/* Laid over the picture it stands in for, it never takes the pointer: a press reaches the
+   picture (and a zoomed viewer's pan) even after the underlay has faded out. */
 .asset-image-underlay {
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
   object-fit: contain;
+  pointer-events: none;
 }
 .asset-image-frame > img {
   transition: opacity 140ms ease-out;

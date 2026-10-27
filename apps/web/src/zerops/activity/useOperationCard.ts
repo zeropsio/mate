@@ -17,14 +17,18 @@ import { type BuildLogQuery } from "@t3tools/client-runtime/zerops/activity/buil
 import type {
   Observation,
   ObservationState,
+  ObservedService,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import {
   type ObservedStep,
+  PIPELINE_SLOTS,
   observedProcessStep,
   observedSteps,
 } from "@t3tools/client-runtime/zerops/activity/observedSteps";
 import {
   type PipelineReadout,
+  type PipelineSpokenState,
+  type PipelineTone,
   readPipeline,
 } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import { frameImageSrc } from "@t3tools/client-runtime/zerops/browserStream";
@@ -48,6 +52,8 @@ import type {
   LiveBrowserFrame,
   ObservedRegion,
 } from "../../components/zerops/ZeropsOperationCard";
+import type { BatchServiceRow } from "../../components/zerops/operation/BatchServiceRows";
+import type { ProcessStep } from "../../components/zerops/primitives";
 import { useMateBrowserCallFrame } from "../browserStreamLinks.tsx";
 import { useSecondsNowMs } from "../useNowMs.ts";
 import { useZeropsTopology } from "../useZeropsFeeds.ts";
@@ -191,6 +197,8 @@ export interface ObservedStepsRegion {
   readonly provenance: string;
   /** Present iff the observation names a build to show a log for. */
   readonly buildLogQuery?: BuildLogQuery;
+  /** A batch deploy's: each service's own pipeline, as the store holds it. */
+  readonly services?: ReadonlyArray<ObservedService>;
 }
 
 /**
@@ -276,6 +284,7 @@ export function deriveObservedStepsRegion(
       chips: observation.chips.map(observedProcessStep),
       provenance,
       ...(observation.buildLog === undefined ? {} : { buildLogQuery: observation.buildLog }),
+      ...(observation.services === undefined ? {} : { services: observation.services }),
     };
     if (kind === "deploy") {
       return {
@@ -292,15 +301,22 @@ export function deriveObservedStepsRegion(
   };
 
   const held = state.kind === "off" ? undefined : state.observation;
+  // A batch's services stand whatever its step source holds.
+  const holdsNothing = (observation: Observation) =>
+    observation.pipeline === undefined &&
+    observation.chips.length === 0 &&
+    (observation.services?.length ?? 0) === 0;
   if (phase !== "running") {
-    if (held === undefined || (held.pipeline === undefined && held.chips.length === 0))
-      return undefined;
+    if (held === undefined || holdsNothing(held)) return undefined;
     if (state.kind === "observing" || held.outcome !== undefined) return regionOf(held, "");
-    const { pipeline: _midRun, ...kept } = held;
-    return kept.chips.length === 0 && kept.buildLog === undefined ? undefined : regionOf(kept, "");
+    const { pipeline: _midRun, services, ...kept } = held;
+    // Its services keep their names, never their mid-run steps.
+    const settled = services?.map(({ pipeline: _steps, ...service }) => service) ?? [];
+    const named: Observation = settled.length === 0 ? kept : { ...kept, services: settled };
+    return holdsNothing(named) && named.buildLog === undefined ? undefined : regionOf(named, "");
   }
 
-  if (held === undefined || (held.pipeline === undefined && held.chips.length === 0)) {
+  if (held === undefined || holdsNothing(held)) {
     // Nothing held, and the feed catching up: it says so, never blank.
     return feedNotObserving(state)
       ? { steps: [], chips: [], provenance: "Zerops isn't answering" }
@@ -362,8 +378,111 @@ export interface OperationCardRegions {
   readonly live?: boolean;
   /** `browser` only: the latest live frame, kept across the running→done transition. */
   readonly liveFrame?: LiveBrowserFrame;
-  /** A batch deploy only: the service its card shows — the one building, else one that failed, else the last that ended. */
-  readonly service?: string;
+}
+
+/** A row's state, as a single deploy's headline reads its version. */
+const ROW_STATE: Readonly<Record<PipelineTone, Pick<BatchServiceRow, "state" | "stateLabel">>> = {
+  waiting: { state: "waiting", stateLabel: "Waiting" },
+  running: { state: "running", stateLabel: "Deploying" },
+  finished: { state: "done", stateLabel: "Deployed" },
+  failed: { state: "failed", stateLabel: "Failed" },
+  cancelled: { state: "cancelled", stateLabel: "Cancelled" },
+};
+
+/** A pipeline step as a segment: a cancelled step holds its slot unlit, saying so. */
+const SEGMENT: Readonly<Record<PipelineSpokenState, Pick<ProcessStep, "state" | "stateLabel">>> = {
+  waiting: { state: "queued", stateLabel: "Waiting" },
+  running: { state: "running", stateLabel: "Running" },
+  activating: { state: "running", stateLabel: "Activating" },
+  finished: { state: "done", stateLabel: "Done" },
+  failed: { state: "failed", stateLabel: "Failed" },
+  cancelled: { state: "queued", stateLabel: "Cancelled" },
+};
+
+/** The five slots, none reported on: every row's grid before its version is read. */
+const WAITING_SLOTS: ReadonlyArray<ProcessStep> = PIPELINE_SLOTS.map((slot) => ({
+  ...slot,
+  ...SEGMENT.waiting,
+}));
+
+/**
+ * One service's version as its row: read the way a single deploy's card reads
+ * it (`readPipeline`), its steps on the five slots in order — a stage this
+ * pipeline has not is an empty slot, so every row's steps share one grid. A
+ * version the platform refused or cancelled before a step showed says so with
+ * no steps. Undefined for a version the reading has no word for yet.
+ */
+function versionRow(
+  name: string,
+  pipeline: NonNullable<ObservedService["pipeline"]>,
+  nowMs: number,
+): BatchServiceRow | undefined {
+  const readout = readPipeline(pipeline.appVersion, {
+    nowMs,
+    ...(pipeline.startedAt === undefined ? {} : { actionStartedAt: pipeline.startedAt }),
+  });
+  const state = ROW_STATE[readout.status.tone];
+  if (readout.calculating) return { name, ...state, steps: WAITING_SLOTS };
+  if (readout.steps.length > 0) {
+    const steps = PIPELINE_SLOTS.map((slot): ProcessStep | null => {
+      const step = readout.steps.find((one) => one.id === slot.id);
+      return step === undefined
+        ? null
+        : {
+            ...slot,
+            ...SEGMENT[step.state],
+            ...(step.durationMs === undefined ? {} : { durationMs: step.durationMs }),
+          };
+    });
+    return { name, ...state, steps };
+  }
+  return state.state === "failed" || state.state === "cancelled"
+    ? { name, ...state, steps: [] }
+    : undefined;
+}
+
+const OUTCOME_ROW: Readonly<
+  Record<NonNullable<ObservedService["outcome"]>, Pick<BatchServiceRow, "state" | "stateLabel">>
+> = {
+  finished: ROW_STATE.finished,
+  failed: ROW_STATE.failed,
+  cancelled: ROW_STATE.cancelled,
+};
+
+/**
+ * A batch deploy's card, one row per service it deploys, in its call's order
+ * and named by it, from the call's start: its own version as the store holds
+ * it, read against `nowMs`; else how its process ended; else, while the batch
+ * runs, five waiting slots — so a row keeps its height as they fill; else how
+ * its call ended. Undefined for any other operation.
+ */
+export function batchServiceRows(
+  operation: ZeropsOperation,
+  services: ReadonlyArray<ObservedService> | undefined,
+  topology: ZeropsTopologyView | undefined,
+  nowMs: number,
+): ReadonlyArray<BatchServiceRow> | undefined {
+  if (operation.kind !== "deploy" || operation.batch !== true) return undefined;
+  return operation.steps.map((step): BatchServiceRow => {
+    const name = step.label;
+    const serviceId = topology?.services.find((one) => one.hostname === name)?.serviceId;
+    const observed =
+      serviceId === undefined
+        ? undefined
+        : services?.find((one) => one.serviceIds.includes(serviceId));
+    const read =
+      observed?.pipeline === undefined ? undefined : versionRow(name, observed.pipeline, nowMs);
+    if (read !== undefined) return read;
+    if (observed?.outcome !== undefined)
+      return { name, ...OUTCOME_ROW[observed.outcome], steps: [] };
+    if (operation.phase === "running") return { name, ...ROW_STATE.waiting, steps: WAITING_SLOTS };
+    return {
+      name,
+      state: step.state === "queued" ? "waiting" : step.state,
+      stateLabel: step.stateLabel,
+      steps: [],
+    };
+  });
 }
 
 /** A batch's service the observation's step source names, by the client's topology view. */
@@ -480,7 +599,6 @@ export function useOperationCard(
           },
         }),
 
-    ...(service === undefined ? {} : { service }),
     ...(devServerUrl === undefined ? {} : { devServerUrl }),
     ...(browserScreenshot === undefined ? {} : { browserScreenshot }),
     ...(subjectHost === undefined ? {} : { subjectHost }),
@@ -500,14 +618,19 @@ export function useOperationCard(
         topology,
       ),
     ) ?? (target !== null && !running && settledRead === "failed" ? UNREAD_REGION : undefined);
+  const services = batchServiceRows(operation, region?.services, topology, nowMs);
   if (region === undefined) {
-    return fields;
+    // A batch's rows stand from its call's start, named by its own targets.
+    return services === undefined
+      ? fields
+      : { observed: { steps: [], chips: [], provenance: "", services }, ...fields };
   }
   const observed = {
     steps: region.steps,
     chips: region.chips,
     provenance: region.provenance,
     ...(region.pipeline === undefined ? {} : { pipeline: region.pipeline }),
+    ...(services === undefined ? {} : { services }),
   };
   // The log is drawn as soon as the card knows the build: a running one's
   // newest lines' room and a settled one's way to it stand before its lines

@@ -1,7 +1,7 @@
 /**
  * The organization as HQ's navigation says it, for the surfaces that place projects: its
- * applications with the projects HQ places in each, the Mates it holds in none, its offers and
- * tools, the presses it holds, the people its records name, and how its HQ stands — each read from
+ * applications with the projects HQ places in each, the Mates it holds in none, its offers, the
+ * presses it holds, the people its records name, and how its HQ stands — each read from
  * the store's facts and the navigation's own streams. A record HQ removed, or withheld from the
  * reader, is in none of it. An application's detail (releases, recipes, changes) and its
  * environments are no part of the navigation.
@@ -147,9 +147,7 @@ function structureOf(
     listed(read, "placement", placementsScope(orgId)).map(({ id, value }) => [id, value]),
   );
   return {
-    ...(organization === null
-      ? {}
-      : { can: organization.can, unheld: organization.unheld, tools: organization.tools }),
+    ...(organization === null ? {} : { can: organization.can, unheld: organization.unheld }),
     apps: listed(read, "hqApp", hqAppsScope(orgId)).map(({ id, value: app }) => ({
       id,
       name: app.name ?? "Unknown",

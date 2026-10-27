@@ -35,12 +35,6 @@ describe("hqCardView — the headline", () => {
       { standing: { kind: "refused" } },
       { kind: "down", tone: "failed", word: "Refused your sign-in" },
     ],
-    // Serving inside HQ's grace: no outage, but not all is well either.
-    [
-      "HQ serving while it cannot check Zerops",
-      { standing: { kind: "unchecked", build: RUNS, parts: { quarantined: [] } } },
-      { kind: "degraded", tone: "attention", word: "Can't check Zerops right now" },
-    ],
     [
       "an admin's HQ with something wrong",
       { standing: { kind: "healthy", build: RUNS, parts: { db: "down", quarantined: [] } } },

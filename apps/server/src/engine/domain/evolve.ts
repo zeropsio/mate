@@ -554,6 +554,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return { ...state, lease: event.lease };
     case "LeaseUnbound":
       return state.lease?.alias === event.alias ? { ...state, lease: null } : state;
+    case "LeaseReleaseSettled":
+      // A receipt only: a release that went unbinds the conversation by its own `LeaseUnbound`.
+      return state;
     case "EffectRequested": {
       const counted =
         event.kind === "session.open"

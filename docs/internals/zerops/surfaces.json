@@ -889,10 +889,7 @@
       "title": "Mate arrival",
       "components": [
         "apps/web/src/components/zerops/ZeropsMateEmptyState.tsx",
-        "packages/client-runtime/src/zerops/strip.ts",
-        "apps/web/src/components/zerops/ZeropsWorkspaceChip.tsx",
-        "packages/client-runtime/src/zerops/workspaceChip.ts",
-        "apps/web/src/zerops/releaseAskNotice.tsx"
+        "packages/client-runtime/src/zerops/strip.ts"
       ],
       "entryPoints": [
         {
@@ -919,26 +916,6 @@
         {
           "action": "Close Zerops panel",
           "reverse": "Open Zerops panel"
-        },
-        {
-          "action": "Ask to release a bound workspace",
-          "reverse": "Not now"
-        },
-        {
-          "action": "Not now",
-          "reverse": "Ask to release a bound workspace"
-        },
-        {
-          "action": "Open the Mate's workspaces",
-          "reverse": "Close the Mate's workspaces"
-        },
-        {
-          "action": "Close the Mate's workspaces",
-          "reverse": "Open the Mate's workspaces"
-        },
-        {
-          "action": "Ask to release one of the Mate's workspaces",
-          "reverse": "Not now"
         }
       ],
       "docs": {
@@ -947,9 +924,6 @@
       "tests": [
         "apps/web/src/components/zerops/showcaseScenes.render.test.tsx",
         "packages/client-runtime/src/zerops/strip.test.ts",
-        "apps/web/src/components/zerops/ZeropsWorkspaceChip.test.tsx",
-        "apps/web/src/components/zerops/ZeropsWorkspaceChip.release.test.tsx",
-        "packages/client-runtime/src/zerops/workspaceChip.test.ts",
         "apps/web/src/hooks/useThreadActions.undo.test.ts",
         "packages/client-runtime/src/zerops/showcaseScenes.contract.test.ts"
       ],
@@ -1006,6 +980,7 @@
         "apps/web/src/components/zerops/operation/OperationSubjectLine.tsx",
         "apps/web/src/components/zerops/operation/ExplanationBlock.tsx",
         "apps/web/src/components/zerops/operation/OperationStepRow.tsx",
+        "apps/web/src/components/zerops/operation/BatchServiceRows.tsx",
         "apps/web/src/components/zerops/operation/PipelineStepList.tsx",
         "packages/client-runtime/src/zerops/activity/pipelineReadout.ts",
         "packages/client-runtime/src/zerops/activityResult.ts",

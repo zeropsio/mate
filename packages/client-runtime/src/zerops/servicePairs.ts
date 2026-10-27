@@ -83,6 +83,8 @@ export interface PoolPair {
   readonly stages: ReadonlyArray<{
     readonly hostname: string;
     readonly setup?: string | undefined;
+    /** The application part the pair serves ("box"), where zcp names it. */
+    readonly part?: string | undefined;
   }>;
 }
 
@@ -133,6 +135,11 @@ export interface ServicePairsInput {
   readonly proposal?: string | undefined;
   /** The pairs zcp's envelope keys by a dev pool (`poolPairsIn`); a pool the services do not list pairs nothing. */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
+  /**
+   * The dev pools among the services, by hostname: a stage zcp keys by no pool pairs, by its stem,
+   * with the pool of that stem (`apistage` with `apipool`), as a zcp from before pool pairs left it.
+   */
+  readonly pools?: ReadonlyArray<string> | undefined;
 }
 
 const STAGE_SUFFIX = "stage";
@@ -142,6 +149,50 @@ const pairName = (dev: string): string =>
   dev.length > DEV_SUFFIX.length && dev.endsWith(DEV_SUFFIX)
     ? dev.slice(0, -DEV_SUFFIX.length)
     : dev;
+
+const POOL_SUFFIX = "pool";
+
+/** Parts whose names are acronyms people write in capitals. */
+const ACRONYMS = new Set([
+  "ai",
+  "api",
+  "cdn",
+  "cms",
+  "crm",
+  "db",
+  "erp",
+  "gql",
+  "hq",
+  "llm",
+  "ml",
+  "rpc",
+  "sso",
+  "ui",
+  "ux",
+]);
+
+/**
+ * A part's name as a person reads it: `web` is Web, an acronym (`api`, `hq`, or a short name with
+ * no vowel) is written in capitals — API, HQ.
+ */
+export const partName = (part: string): string => {
+  const lower = part.toLocaleLowerCase("en");
+  if (ACRONYMS.has(lower) || (lower.length <= 4 && !/[aeiouy]/u.test(lower)))
+    return lower.toLocaleUpperCase("en");
+  return part.charAt(0).toLocaleUpperCase("en") + part.slice(1);
+};
+
+const withoutSuffix = (hostname: string, suffix: string): string =>
+  hostname.length > suffix.length && hostname.endsWith(suffix)
+    ? hostname.slice(0, -suffix.length)
+    : hostname;
+
+/**
+ * The part of the application a dev pool serves, as a person reads it: the pool's hostname with
+ * `pool` left off (`partName`) — `embedderpool` is Embedder. A pool's leases are zcp's business;
+ * a person sees only the part and its preview.
+ */
+export const poolPartName = (pool: string): string => partName(withoutSuffix(pool, POOL_SUFFIX));
 
 interface Declared {
   readonly dev: string;
@@ -209,6 +260,7 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
   ];
   // A pool the project no longer holds pairs nothing; the first link naming a stage wins.
   const held = new Set(input.services.map((service) => service.hostname));
+  const pools = new Set(input.pools ?? []);
   const linked = new Map<string, Declared>();
   for (const { pool, stages } of input.poolPairs ?? []) {
     if (!held.has(pool)) continue;
@@ -230,6 +282,9 @@ export function servicePairs(input: ServicePairsInput): ServicePairing {
       return { dev: link.dev, preview: { hostname, setup: link.setup, source: "envelope" } };
     if (declared || !isStageHostname(hostname)) return undefined;
     const stem = hostname.slice(0, -STAGE_SUFFIX.length);
+    const pool = `${stem}${POOL_SUFFIX}`;
+    if (pools.has(pool) && held.has(pool))
+      return { dev: pool, preview: { hostname, setup: undefined, source: "stem" } };
     const dev = [`${stem}${DEV_SUFFIX}`, stem].find((candidate) => beside(hostname, candidate));
     return dev === undefined
       ? undefined

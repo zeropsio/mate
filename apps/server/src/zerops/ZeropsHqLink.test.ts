@@ -15,6 +15,7 @@ import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/m
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -637,6 +638,7 @@ describe("ZeropsHqLink", () => {
             author: null,
           },
           body: "",
+          limits: { minutes: 60, costUsd: null },
         };
         // Told before HQ's state, it is held until the Mate knows whether it is automated.
         socket.hear({ type: "task", task });
@@ -709,6 +711,7 @@ describe("ZeropsHqLink", () => {
               author: null,
             },
             body: "",
+            limits: { minutes: 60, costUsd: null },
           },
         });
         yield* until(() => (taken.length > 0 ? taken : undefined));
@@ -717,6 +720,61 @@ describe("ZeropsHqLink", () => {
         assert.isFalse(socket.sent.some((message) => message.type === "task-state"));
       }),
     ),
+  );
+
+  it.live(
+    "A task frame the Mate cannot decode is logged with the decode error and answered to HQ as a failed task, never dropped silently",
+    () => {
+      const logged: Array<string> = [];
+      const logger = Logger.make(({ message }) => void logged.push(JSON.stringify(message)));
+      return Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets, until, taken } = yield* rig({ everyMs: 10 });
+          const socket = yield* until(() => sockets[0]);
+          socket.emit("open");
+          socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+          // A task this Mate cannot read: its limits allow no minutes.
+          socket.hear({
+            type: "task",
+            task: {
+              id: "task-1",
+              source: {
+                kind: "github-issue",
+                repo: "acme/tea-shop",
+                number: 42,
+                url: "https://github.com/acme/tea-shop/issues/42",
+                title: "The cart forgets its teas",
+                author: null,
+              },
+              body: "",
+              limits: { minutes: 0, costUsd: null },
+            },
+          });
+          const reports = yield* until(() => {
+            const found = socket.sent.filter((message) => message.type === "task-state");
+            return found.length >= 2 ? found : undefined;
+          }).pipe(Effect.timeoutOption(Duration.seconds(2)));
+          assert.sameDeepMembers(
+            Option.getOrElse(reports, () => []),
+            [
+              { type: "task-state", report: { taskId: "task-0", state: "done" } },
+              {
+                type: "task-state",
+                report: {
+                  taskId: "task-1",
+                  state: "failed",
+                  detail: "This Mate could not read the task as HQ sent it.",
+                },
+              },
+            ],
+          );
+          assert.deepStrictEqual(taken, []);
+          const warning = logged.find((line) => line.includes("could not read a task"));
+          assert.include(warning, "task-1");
+          assert.include(warning, "minutes");
+        }),
+      ).pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+    },
   );
 
   it.live("keeps HQ's state with the application and the changes it carries", () =>

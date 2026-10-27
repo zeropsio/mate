@@ -209,3 +209,21 @@ it("the selected original shows its retained preview before viewport observation
   expect(renderer.root.findByProps({ "aria-hidden": true }).props.src).toBe("blob:preview");
   act(() => renderer.unmount());
 });
+
+it("a picture's preview laid over its original never starts a drag of its own, so a zoomed picture pans", () => {
+  (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+  const src = mateImageSource({
+    environmentId: EnvironmentId.make("mate"),
+    resource: {
+      _tag: "workspace-file",
+      threadId: ThreadId.make("thread"),
+      path: "mate-asset:shot",
+    },
+  });
+  let renderer!: ReturnType<typeof create>;
+  act(() => {
+    renderer = create(<AssetImage src={src} original draggable={false} width={640} height={400} />);
+  });
+  expect(renderer.root.findByProps({ "aria-hidden": true }).props.draggable).toBe(false);
+  act(() => renderer.unmount());
+});

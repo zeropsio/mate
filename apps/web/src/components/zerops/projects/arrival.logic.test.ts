@@ -63,7 +63,7 @@ describe("the first minute after an invitation", () => {
   });
 
   it.each([{ roleCode: "OWNER" }, { roleCode: "ADMIN" }])(
-    "Where an older HQ keeps no first sign-in, an Owner or an Admin is not welcomed: a new browser is no arrival",
+    "Where HQ gives no word on a first sign-in, an Owner or an Admin is not welcomed: a new browser is no arrival",
     (viewer) => {
       expect(
         arrivalWelcome({

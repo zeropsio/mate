@@ -213,6 +213,7 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
     ...(phase === "failed" && decoded.document?.code === "INVALID_PARAMETER"
       ? { refused: true as const }
       : {}),
+    ...(card?.standIn === undefined ? {} : { standIn: card.standIn }),
     hasResult: decoded.document !== undefined,
   };
 }

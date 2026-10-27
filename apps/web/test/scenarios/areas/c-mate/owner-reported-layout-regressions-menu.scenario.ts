@@ -265,6 +265,127 @@ describe("owner-reported layout regressions", () => {
       });
     });
 
+    describe("Decision: opening a menu row brings what it opened into view.", () => {
+      describe("B: a project opened in a long list", () => {
+        it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+          it.effect(
+            "the last project's Mates come into view when it opens; one already in view leaves the list where it is",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                for (let index = 0; index < 24; index++) {
+                  const name = `Project${String(index).padStart(2, "0")}`;
+                  yield* s.given.project(name, {
+                    app: name,
+                    kind: "stage",
+                    environmentName: "stage",
+                  });
+                }
+                for (const [app, mates] of [
+                  ["Alpha Titan", ["Ada", "Bea"]],
+                  ["Zulu Titan", ["Cy", "Di"]],
+                ] as const) {
+                  for (const name of mates) yield* s.given.project(name, { mate: true, app });
+                }
+                yield* s.given.signedIn;
+                yield* s.colleague.reports("Ada", {
+                  latestUserMessageAt: "2026-10-27T00:00:00Z",
+                  updatedAt: "2026-10-27T00:00:00Z",
+                });
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const seen = yield* Effect.promise(async () => {
+                  await s.page.waitForFunction(
+                    () => document.querySelectorAll("section[data-zerops-group]").length === 26,
+                  );
+                  // The two projects that open: the first of them and the last, as the menu lists
+                  // them; the list's own scroller holds both.
+                  const headings = '[data-zerops-surface="sidebar-project"][aria-expanded]';
+                  const state = (at: number) =>
+                    s.page.evaluate(
+                      (selector, index) => {
+                        const all = [...document.querySelectorAll<HTMLElement>(selector)];
+                        const heading = all.at(index)!;
+                        const scroller = heading.closest<HTMLElement>(
+                          '[data-slot="scroll-area-viewport"]',
+                        )!;
+                        const view = scroller.getBoundingClientRect();
+                        const box = heading.getBoundingClientRect();
+                        const mate = heading
+                          .closest("section[data-zerops-group]")!
+                          .querySelector("[data-zerops-kids] [data-zerops-row]")
+                          ?.getBoundingClientRect();
+                        return {
+                          open: heading.getAttribute("aria-expanded") === "true",
+                          scrollTop: scroller.scrollTop,
+                          headingTop: box.top - view.top,
+                          headingBottom: view.bottom - box.bottom,
+                          mateTop: mate === undefined ? -1 : mate.top - view.top,
+                          mateBottom: mate === undefined ? -1 : view.bottom - mate.bottom,
+                        };
+                      },
+                      headings,
+                      at,
+                    );
+                  const press = async (at: number) => {
+                    const all = await s.page.$$(headings);
+                    await all.at(at)!.click();
+                    await waitForStillFrames(s.page);
+                  };
+                  const before = await state(0);
+                  await press(0);
+                  const inView = await state(0);
+                  await s.page.evaluate(() => {
+                    const scroller = document
+                      .querySelector('[data-sidebar="content"]')!
+                      .closest<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+                    scroller.scrollTop = scroller.scrollHeight;
+                  });
+                  await waitForStillFrames(s.page);
+                  const atEnd = await state(-1);
+                  await press(-1);
+                  const brought = await state(-1);
+                  return { before, inView, atEnd, brought };
+                });
+                const said = Object.entries(seen)
+                  .map(([name, at]) =>
+                    [
+                      name,
+                      ...Object.entries(at).map(([key, value]) => `${key}=${String(value)}`),
+                    ].join(" "),
+                  )
+                  .join("; ");
+                expect(
+                  seen.before.headingBottom,
+                  `ASSERTION: the first project stands in view before it opens: ${said}`,
+                ).toBeGreaterThan(0);
+                expect(
+                  seen.inView.scrollTop,
+                  `ASSERTION: a project whose Mates fit in view opens without moving the list: ${said}`,
+                ).toBe(seen.before.scrollTop);
+                expect(
+                  seen.atEnd.open,
+                  `ASSERTION: the last project is folded at the list's end: ${said}`,
+                ).toBe(false);
+                expect(
+                  seen.brought.mateTop,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.mateBottom,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                expect(
+                  seen.brought.headingTop,
+                  `ASSERTION: its heading stays in view above them: ${said}`,
+                ).toBeGreaterThanOrEqual(0);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
+
     describe("Decision: an overview card is as tall as what it holds.", () => {
       describe("B: overview cards", () => {
         scenarioSuite((it) => {

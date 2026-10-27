@@ -1,7 +1,8 @@
 /**
  * The Mate engine's ports, implemented for Zerops: a run is admitted by
  * `ZeropsTurnAdmission.admitRun` (D6), the restart is read by
- * `ZeropsRestartRead` and worded as V1 words it, and the agent works in the
+ * `ZeropsRestartRead` and worded as V1 words it, an archived conversation's branch goes back
+ * to its pool through `zcp lease release` (`ZeropsCli`), and the agent works in the
  * server's own directory, or a crewmate where its crew says; the providers' usage reaches it from
  * the provider registry everywhere. Outside Zerops nothing is gated and nothing is read.
  *
@@ -25,6 +26,7 @@ import {
 import { serverHandedOverResume } from "../engineSessionDirectory.ts";
 import {
   AgentWorkspace,
+  LeaseRelease,
   MessagePictures,
   PicturesRefused,
   ProviderUsageFeed,
@@ -36,6 +38,7 @@ import {
 } from "../engine/ports.ts";
 import { ProviderInstances, layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import { CrewWorkspaceDirectory } from "./crew/engine/CrewWorkspaceDirectory.ts";
+import { ZeropsCli } from "./ZeropsCli.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
 import { restartCause, ZeropsRestartRead } from "./ZeropsRestartRead.ts";
@@ -221,8 +224,15 @@ export const engineAdaptersOpen = Layer.mergeAll(
   noRestartEvidence,
 );
 
+/** An archived conversation's branch goes back to its pool through the container's zcp. */
+export const zeropsLeaseRelease = Layer.effect(
+  LeaseRelease,
+  Effect.map(ZeropsCli, (cli) => LeaseRelease.of({ release: cli.leaseRelease })),
+);
+
 const zeropsAdapters = Layer.mergeAll(
   zeropsRunAdmission,
+  zeropsLeaseRelease,
   Layer.effect(
     RestartEvidence,
     Effect.map(ZeropsRestartRead, (reader) =>

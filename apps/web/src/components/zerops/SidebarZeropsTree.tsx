@@ -236,6 +236,7 @@ import {
   groupLead,
   groupMateOrder,
   groupRowPress,
+  heldOrder,
   projectRowKey,
   projectRowKind,
 } from "./SidebarProjectRow.logic";
@@ -255,6 +256,7 @@ import {
   menuDrawsLoadingRows,
   slackAfterScroll,
   slackForFold,
+  unfoldScroll,
   type PendingLanding,
 } from "./SidebarProjects.logic";
 import {
@@ -927,6 +929,54 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // written after each render, not during it.
   const mateOrder = useRef<ReadonlyArray<string>>([]);
   const jumpIndex = useRef<SidebarJumpIndex>(EMPTY_JUMP_INDEX);
+  // While the pointer is over the list, a project's Mates keep the places they were drawn in
+  // (`heldOrder`): a press lands on the row it was aimed at. The order they wait for is drawn once
+  // the pointer leaves.
+  const pointerOver = useRef(false);
+  const drawnOrders = useRef(new Map<string, ReadonlyArray<string>>());
+  const orderWaits = useRef(false);
+  const [, drawWaitingOrder] = useState(0);
+  // Over the list is what its own boxes hold. A row's menu or the Sites popover is the list's
+  // own but drawn elsewhere: closed by a click outside, the list never hears the pointer leave.
+  // So while held, and only then, the page's next pointerover outside the list lets go.
+  const [holdOrder] = useState(() => {
+    const release = () => {
+      window.removeEventListener("pointerover", seen, true);
+      if (!pointerOver.current) return;
+      pointerOver.current = false;
+      if (!orderWaits.current) return;
+      orderWaits.current = false;
+      drawWaitingOrder((draws) => draws + 1);
+    };
+    const seen = (event: Event) => {
+      const tree = treeRef.current;
+      if (tree !== null && event.target instanceof Node && tree.contains(event.target)) return;
+      release();
+    };
+    return {
+      hold: () => {
+        if (pointerOver.current) return;
+        pointerOver.current = true;
+        window.addEventListener("pointerover", seen, { capture: true, passive: true });
+      },
+      release,
+      stop: () => {
+        window.removeEventListener("pointerover", seen, true);
+      },
+    };
+  });
+  useEffect(() => holdOrder.stop, [holdOrder]);
+  const inPlace = <R extends { readonly key: string }>(
+    list: string,
+    rows: ReadonlyArray<R>,
+  ): ReadonlyArray<R> => {
+    const next = rows.map((row) => row.key);
+    const shown = heldOrder(drawnOrders.current.get(list) ?? [], next, pointerOver.current);
+    drawnOrders.current.set(list, shown);
+    if (shown === next) return rows;
+    orderWaits.current = true;
+    return shown.flatMap((key) => rows.find((row) => row.key === key) ?? []);
+  };
   useEffect(() => {
     useSidebarReveal.getState().setMateOrder(mateOrder.current);
     useSidebarJump.getState().publish(jumpIndex.current);
@@ -1805,12 +1855,21 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     const order = ordered.map((entry) => entry.projectId);
 
     if (group === undefined) {
-      // Mates in no project: each its own row, its name alone.
+      // Mates in no project: each its own row, its name alone, numbered and walked as drawn.
+      const rows = inPlace(
+        id,
+        ordered.map(({ item }) => ({
+          key: item.key,
+          mate: item.project.id,
+          draw: () => mateRow(item, "alone"),
+        })),
+      );
+      const drawnOrder = rows.map((row) => row.mate);
       return {
-        drawn: order,
-        order,
+        drawn: drawnOrder,
+        order: drawnOrder,
         folds: false,
-        render: () => <>{ordered.map(({ item }) => mateRow(item, "alone"))}</>,
+        render: () => <>{rows.map((row) => row.draw())}</>,
       };
     }
     if (kind === "solo") {
@@ -2003,9 +2062,38 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // folded away. A fragment either way, so the row keeps its node — and the focus of the press
     // that folded it.
     const kidsDrawn = open || fold === "closing";
+    // The viewer's Mates first, those they are making after their listed ones and before
+    // colleagues': a Mate made here is the viewer's from its press, so its row stands where its
+    // listed row will, and never leaps over the others. Held in place only while open: a folded
+    // project's rows are on no screen, and it opens in its order now.
+    const kidRows = [
+      ...ordered
+        .filter((entry) => entry.mine)
+        .map(({ item }) => ({
+          key: item.key,
+          mate: item.project.id as string | undefined,
+          draw: () => mateRow(item, "kid"),
+        })),
+      ...coming.map((member) => ({
+        key: `coming:${member.projectId}`,
+        mate: undefined,
+        draw: () => comingRow(member, "kid"),
+      })),
+      ...ordered
+        .filter((entry) => !entry.mine)
+        .map(({ item }) => ({
+          key: item.key,
+          mate: item.project.id as string | undefined,
+          draw: () => mateRow(item, "kid"),
+        })),
+    ];
+    if (!open) drawnOrders.current.delete(id);
+    const kids = open ? inPlace(id, kidRows) : kidRows;
+    // Numbered (⌥1–9) and walked ("the next one that waits") in the order drawn.
+    const drawnOrder = kids.flatMap((row) => (row.mate === undefined ? [] : [row.mate]));
     return {
-      drawn: open ? order : [],
-      order,
+      drawn: open ? drawnOrder : [],
+      order: drawnOrder,
       folds: true,
       render: () =>
         !kidsDrawn ? (
@@ -2024,17 +2112,13 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             {row}
             <SidebarProjectFold
               motion={fold}
+              onOpened={bringUnfoldedIntoView}
               onSettled={() => {
                 settleFold(id);
               }}
               open={open}
             >
-              {/* The viewer's Mates first, those they are making after their listed ones and
-                  before colleagues': a Mate made here is the viewer's from its press, so its row
-                  stands where its listed row will, and never leaps over the others. */}
-              {ordered.filter((entry) => entry.mine).map(({ item }) => mateRow(item, "kid"))}
-              {coming.map((member) => comingRow(member, "kid"))}
-              {ordered.filter((entry) => !entry.mine).map(({ item }) => mateRow(item, "kid"))}
+              {kids.map((row) => row.draw())}
             </SidebarProjectFold>
           </RowMarks.Provider>
         ),
@@ -2260,6 +2344,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       // selected band stands behind every row.
       className={cn("relative isolate flex flex-col gap-1.5 pt-4", className)}
       data-zerops-surface="sidebar-environments"
+      onPointerEnter={holdOrder.hold}
+      onPointerLeave={holdOrder.release}
       ref={treeRef}
     >
       {structureView.updateRequired ? (
@@ -2370,6 +2456,24 @@ function scrollingAncestor(element: HTMLElement | null): HTMLElement | null {
   }
   const page = element.ownerDocument.scrollingElement;
   return page instanceof HTMLElement ? page : null;
+}
+
+/**
+ * A group just opened at the list's end lands its Mates below the view: scrolled up to them, as
+ * the menu scrolls elsewhere (smooth, unless motion is reduced); where they already stand in view
+ * the list stays (`unfoldScroll`).
+ */
+function bringUnfoldedIntoView(rows: HTMLElement): void {
+  const scroller = scrollingAncestor(rows);
+  const group = rows.closest("[data-zerops-group]");
+  if (scroller === null || group === null) return;
+  const by = unfoldScroll({
+    view: scroller.getBoundingClientRect(),
+    unit: { top: group.getBoundingClientRect().top, bottom: rows.getBoundingClientRect().bottom },
+  });
+  if (by === 0) return;
+  const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  scroller.scrollBy({ top: by, behavior: still ? "auto" : "smooth" });
 }
 
 /** The listing's notice (`candidatesNotice`) with its one affordance, at the menu's left edge. */

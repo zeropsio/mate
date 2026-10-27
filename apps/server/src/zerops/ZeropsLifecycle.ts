@@ -158,10 +158,35 @@ const withLastDevServers = (
 /** Whether zcp read the lease's checkout for this activity: one with no `readAt` says only why not. */
 const readCheckout = (activity: ZeropsLease["activity"]): boolean => activity?.readAt !== undefined;
 
+const stampMs = (at: string | undefined): number => {
+  const parsed = at === undefined ? Number.NaN : Date.parse(at);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+};
+
+/**
+ * The newer of two reads of a lease's dev servers: this call's where it read them and the last
+ * read did not, the last where this call did not; where both did, the one zcp stamped later
+ * (`devServersReadAt`), one with no stamp older than one with it, and this call's on a tie.
+ */
+const newerServersRead = (
+  lease: ZeropsLease,
+  last: ZeropsLease,
+): Pick<ZeropsLease, "devServers" | "devServersReadAt"> => {
+  const take = (from: ZeropsLease) => ({
+    devServers: from.devServers,
+    devServersReadAt: from.devServersReadAt,
+  });
+  if (lease.devServers === undefined) return take(last);
+  if (last.devServers === undefined) return take(lease);
+  return stampMs(last.devServersReadAt) > stampMs(lease.devServersReadAt)
+    ? take(last)
+    : take(lease);
+};
+
 /**
  * What a lease keeps of its last read where this call did not read it: the dev servers last read
  * on it where this call did not read its supervisor (only a `zerops_dev_server` call for its alias
- * does), and what zcp last read of its checkout — its activity and unsaved work — where this call
+ * does), or where the read this call carries is older (`newerServersRead`), and what zcp last read of its checkout — its activity and unsaved work — where this call
  * did not (only `zerops_lease action=status` does; one that could not read a lease says why and
  * clears nothing). A read of the checkout is one whole: a newer one replaces both, so unsaved work
  * it could not read is not known rather than an older read's beside newer activity. Every read is
@@ -169,7 +194,8 @@ const readCheckout = (activity: ZeropsLease["activity"]): boolean => activity?.r
  */
 const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
   if (lease.acquiredAt !== last.acquiredAt) return lease;
-  const devServers = lease.devServers ?? last.devServers;
+  const servers = newerServersRead(lease, last);
+  const devServers = servers.devServers;
   const newer = readCheckout(lease.activity);
   const activity = newer
     ? lease.activity
@@ -180,6 +206,9 @@ const withLastRead = (lease: ZeropsLease, last: ZeropsLease): ZeropsLease => {
   return {
     ...lease,
     ...(devServers === undefined ? {} : { devServers }),
+    ...(servers.devServersReadAt === undefined
+      ? {}
+      : { devServersReadAt: servers.devServersReadAt }),
     ...(activity === undefined ? {} : { activity }),
     ...(unsaved === undefined ? {} : { unsaved }),
   };

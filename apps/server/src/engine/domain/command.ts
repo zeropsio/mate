@@ -116,6 +116,18 @@ export type ProviderSignal =
       readonly scope: Extract<RequestAsk, { readonly kind: "vault" }>["scope"];
     }
   | {
+      /**
+       * zcp said an origin the person was asked about needs their pick no more: its address
+       * already is an origin in HQ for the repository `repo` asked about (`connected`), or the
+       * agent withdrew the ask (`withdrawn`) — of the one repository `repo` names, else of every
+       * repository asked about the address.
+       */
+      readonly kind: "origin-settled";
+      readonly url: string;
+      readonly how: "connected" | "withdrawn";
+      readonly repo?: string;
+    }
+  | {
       readonly kind: "turn-ended";
       readonly turn: TurnHandle;
       readonly outcome: TurnOutcome;
@@ -370,7 +382,8 @@ export type ImportedRecord = Extract<
  * run's admission, a history import). Another owner kind names its own (the crew's `git/<handle>`,
  * `check/<handle>`, `deliver/<handle>`, `host/<host>`).
  */
-export type ConversationLane = "turn" | "control" | "close" | "side";
+/** `workspace`: work on the pool's side (`lease.release`), run by the Mate-wide fibers. */
+export type ConversationLane = "turn" | "control" | "close" | "side" | "workspace";
 export type EffectLane = ConversationLane | (string & {});
 /** Boot cuts a process-bound effect (its process is gone) and requeues a replay-safe one. */
 export type EffectClass = "process-bound" | "replay-safe";

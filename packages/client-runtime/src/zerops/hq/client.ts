@@ -19,8 +19,8 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  * Bearer` and renews before it ends with the same request and a current token, keeping its id.
  * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
  *
- * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or is not
- * serving (`503 not_active`, a standby or an HQ that is not the official one), `refused` when it
+ * Every failure is an {@link HqError}: `unavailable` when HQ could not be reached or does not
+ * answer, `refused` when it
  * answered no — with HQ's own code and words — and `uncertain` when a write's answer was lost and
  * what HQ holds, read back at once, does not show it made.
  *
@@ -272,7 +272,7 @@ export class HqError extends Error {
    * `uncertain` when a write was sent and its answer lost — HQ may have made it.
    */
   readonly kind: "unavailable" | "refused" | "uncertain";
-  /** HQ's code (`forbidden`, `conflict`, `not_active`, …), or `network`. */
+  /** HQ's code (`forbidden`, `conflict`, …), or `network`. */
   readonly code: string;
   /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
   readonly reason: string | undefined;
@@ -699,18 +699,13 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
 
 /**
  * HQ's answer as the call's outcome. A write HQ failed on its way (`5xx`) may have landed — but
- * for a Core that does not lead (`not_active`), and one refused because Zerops did not answer its
- * roles (`zerops_unanswered`): neither writes anything.
+ * for one refused because Zerops did not answer its roles (`zerops_unanswered`), which writes
+ * nothing.
  */
 async function answered(response: Response, write: boolean, gitSetup = false): Promise<Response> {
   if (response.ok) return response;
   const error = await errorOf(response, gitSetup);
-  if (
-    write &&
-    response.status >= 500 &&
-    error.code !== "not_active" &&
-    error.code !== WROTE_NOTHING_ZEROPS
-  ) {
+  if (write && response.status >= 500 && error.code !== WROTE_NOTHING_ZEROPS) {
     throw uncertain();
   }
   throw error;
@@ -841,19 +836,6 @@ const changePath = ({ appId, repo, number }: ChangeLink): string =>
   `/api/apps/${encodeURIComponent(appId)}/changes/${encodeURIComponent(repo)}/${String(number)}`;
 
 /**
- * What HQ's `/health` says (`mate-hq apps/hq/src/health.ts`): `healthy` while it leads as the official
- * HQ; `unchecked` while it leads but cannot check Zerops right now — HQ's grace keeps it the
- * official HQ for ten minutes past its last answer (`mate-hq apps/hq/src/official.ts`), and it serves
- * meanwhile; `not-ready` while it answers as anything else — a standby, an HQ whose anchor is
- * missing; `unreachable` while nothing answers as Core does.
- */
-export type HqHealth =
-  | { readonly kind: "healthy"; readonly build: string; readonly parts: HqParts }
-  | { readonly kind: "unchecked"; readonly build: string; readonly parts: HqParts }
-  | { readonly kind: "not-ready"; readonly state: string; readonly official: string }
-  | { readonly kind: "unreachable" };
-
-/**
  * How HQ's parts stand while it serves, as its health reports them (`mate-hq apps/hq/src/health.ts`):
  * `db` its database's answer to a fresh probe, `quarantined` the repositories it withholds until
  * they converge (`<appId>/<repo>`), `backup` its newest set's outcome, `keys` where its key for
@@ -975,32 +957,6 @@ export function readHqParts(body: Record<string, unknown>): HqParts {
       ? { keys: body.keys as HqKeys }
       : {}),
   };
-}
-
-export async function readHqHealth(
-  fetch: FetchImplementation,
-  address: string,
-  signal?: AbortSignal,
-): Promise<HqHealth> {
-  try {
-    const response = await fetch(`${address.replace(/\/+$/u, "")}/health`, {
-      cache: "no-store",
-      signal: signal ?? AbortSignal.timeout(CALL_TIMEOUT_MS),
-    });
-    const body = (await response.json()) as Record<string, unknown>;
-    if (typeof body.state !== "string" || typeof body.official !== "string") {
-      return { kind: "unreachable" };
-    }
-    const build = typeof body.build === "string" ? body.build : "";
-    if (response.ok && body.state === "active" && body.official === "ok") {
-      return { kind: "healthy", build, parts: readHqParts(body) };
-    }
-    return response.ok && body.state === "active" && body.official === "unknown"
-      ? { kind: "unchecked", build, parts: readHqParts(body) }
-      : { kind: "not-ready", state: body.state, official: body.official };
-  } catch {
-    return { kind: "unreachable" };
-  }
 }
 
 /** A browse read's address; what HQ refuses as invalid is refused here, as HQ words it, unsent. */

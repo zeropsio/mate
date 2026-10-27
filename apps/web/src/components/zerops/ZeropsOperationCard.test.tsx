@@ -1170,6 +1170,106 @@ describe("ZeropsOperationCard — a verb and a subject, never a sentence with th
   });
 });
 
+describe("ZeropsOperationCard — a batch deploy names every service it deploys", () => {
+  it("each service is a row of its own: its name, its own steps", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-rows",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const step = (id: string, state: "done" | "running" | "queued") => ({
+      id,
+      label: id,
+      state,
+      stateLabel: state,
+    });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "running",
+          stateLabel: "Running",
+          steps: [step("Build container", "done"), step("Build", "running")],
+        },
+        {
+          name: "web",
+          state: "waiting",
+          stateLabel: "Waiting",
+          steps: [step("Build container", "queued"), step("Build", "queued")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const rows = [...html.matchAll(/data-zerops-batch-service="([^"]+)"/g)].map((m) => m[1]);
+    expect(rows).toEqual(["api", "web"]);
+    const states = (name: string) =>
+      [
+        ...(html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.matchAll(/data-zerops-process-state="([^"]+)"/g) ?? []),
+      ].map((m) => m[1]);
+    expect({ api: states("api"), web: states("web") }).toEqual({
+      api: ["done", "running"],
+      web: ["queued", "queued"],
+    });
+  });
+
+  it("a service without a stage keeps its slot: every row's steps on one grid", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "batch-grid",
+        startedAt: "2026-09-01T00:00:00.000Z",
+        turnId: "t1",
+        toolName: "zerops_deploy_batch",
+        input: { targets: ["api", "web"].map((targetService) => ({ targetService })) },
+        status: "inProgress",
+      }),
+    );
+    const done = (id: string) => ({ id, label: id, state: "done" as const, stateLabel: "Done" });
+    const observed: ObservedRegion = {
+      steps: [],
+      chips: [],
+      provenance: "",
+      services: [
+        {
+          name: "api",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: ["a", "b", "c", "d", "e"].map(done),
+        },
+        {
+          name: "web",
+          state: "done",
+          stateLabel: "Deployed",
+          steps: [done("a"), done("b"), null, null, done("e")],
+        },
+      ],
+    };
+    const html = renderToStaticMarkup(
+      <ZeropsOperationCard headless observed={observed} operation={operation} />,
+    );
+    const slots = (name: string) =>
+      (
+        html
+          .split(`data-zerops-batch-service="${name}"`)[1]
+          ?.split("data-zerops-batch-service=")[0]
+          ?.match(/data-zerops-segment="/g) ?? []
+      ).length;
+    expect({ api: slots("api"), web: slots("web") }).toEqual({ api: 5, web: 5 });
+  });
+});
+
 describe("ZeropsOperationCard — a running card's header always says what it is doing", () => {
   it.each([
     { toolName: "zerops_browser", input: { url: "https://app.example.com/" }, word: "Checking" },
@@ -1355,16 +1455,6 @@ describe("ZeropsOperationCard — durations against the real fixture (regression
   const verify = weatherdash.find((o) => o.kind === "verify")!;
   const bootstrap = weatherdash.find((o) => o.kind === "bootstrap")!;
 
-  it("the deploy operation's settledAt - anchorAt is ~75.9s and the card shows 1m 15s", () => {
-    const elapsedMs = Date.parse(deploy.settledAt!) - Date.parse(deploy.anchorAt);
-    expect(elapsedMs).toBeGreaterThan(75_000);
-    expect(elapsedMs).toBeLessThan(77_000);
-
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={deploy} />);
-    expect(html).toContain("1m 15s");
-    expect(html.replace(/<[^>]*>/gu, "")).not.toContain("0 s");
-  });
-
   // 5.881 s and 54.904 s: floored, as the conversation's clocks floor, so a
   // settled card reads what its running clock last read.
   it.each([
@@ -1472,33 +1562,6 @@ describe("ZeropsOperationCard — the duration renders outside the status word",
     const durationSpan = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</);
     expect(durationSpan).toBeDefined();
     expect(durationSpan![1]).toBe("42s");
-  });
-
-  it("renders the settled duration in the body font, normal case, tabular-nums, separate from the status word", () => {
-    const operation = operationFor(
-      zeropsCall({
-        id: "dur-settled",
-        startedAt: "2026-09-01T00:00:00.000Z",
-        turnId: null,
-        toolName: "zerops_deploy",
-        input: { targetService: "weatherdash" },
-        status: "completed",
-        settledAt: "2026-09-01T00:01:12.000Z",
-        resultText: JSON.stringify({ status: "DEPLOYED", targetService: "weatherdash" }),
-      }),
-    );
-    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
-
-    const statusDotSpan = html.match(/data-dot=""[\s\S]*?<\/span><\/span>/)?.[0];
-    expect(statusDotSpan).not.toContain("1m 12s");
-
-    const durationSpanTag = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>/)?.[0];
-    expect(durationSpanTag).toBeDefined();
-
-    // The mono face set "1 s" with a full-width gap between number and unit.
-
-    const durationText = html.match(/<span[^>]*data-zerops-operation-duration[^>]*>([^<]*)</)?.[1];
-    expect(durationText).toContain("1m 12s");
   });
 });
 

@@ -70,7 +70,7 @@ const rows: ReadonlyArray<Row> = [
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: { can: {}, unheld: {}, tools: [], build: "b1" },
+    value: { can: {}, unheld: {}, build: "b1" },
   },
   {
     family: "hqStatus",

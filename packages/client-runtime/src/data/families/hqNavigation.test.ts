@@ -177,7 +177,7 @@ it.each([[], { refused: "Changes are private" }])(
 );
 
 describe("the organization's record, as its reader reads it", () => {
-  const organization = { can: {}, unheld: {}, tools: [], build: "0.15.80" };
+  const organization = { can: {}, unheld: {}, build: "0.15.80" };
   const decode = (raw: unknown) =>
     hqOrganizationFamily.hq!.decode(raw, "org", { orgId: "org", ownerId: null });
   it.each([
@@ -199,6 +199,12 @@ describe("the organization's record, as its reader reads it", () => {
   ])("$sentence", ({ viewer, read }) => {
     expect(decode(viewer === undefined ? organization : { ...organization, viewer })).toEqual(
       read === undefined ? organization : { ...organization, viewer: read },
+    );
+  });
+
+  it("A record that still carries a tools list is read without it", () => {
+    expect(decode({ ...organization, tools: [{ projectId: "p1", kind: "gitea" }] })).toEqual(
+      organization,
     );
   });
 });

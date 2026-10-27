@@ -30,7 +30,13 @@
  * A folded stage row carries no position of its own — it is nested under
  * its dev partner and follows it automatically.
  */
-import type { ZeropsDevServer, ZeropsLifecycle, ZeropsStateEnvelope } from "@t3tools/contracts";
+import type {
+  ZeropsDevServer,
+  ZeropsLease,
+  ZeropsLifecycle,
+  ZeropsStandIn,
+  ZeropsStateEnvelope,
+} from "@t3tools/contracts";
 
 import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
@@ -534,6 +540,15 @@ const productionOf = (
   return (snapshot?.feedsProduction ?? []).map(parseZeropsProductionLaunch);
 };
 
+/** What zcp holds a dev service in place for, as its snapshot says; none while the lifecycle is not known. */
+export const standInOf = (
+  hostname: string,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ZeropsStandIn | undefined =>
+  lifecycle?.state === "known"
+    ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.standIn
+    : undefined;
+
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (
   hostname: string,
@@ -552,6 +567,16 @@ export const leaseDevServersOf = (
   lifecycle: Known<ZeropsLifecycle> | undefined,
 ): ReadonlyArray<ZeropsDevServer> | undefined =>
   lifecycle?.state === "known" ? leaseDevServersIn(alias, lifecycle.value.envelope) : undefined;
+
+/**
+ * The Mate's leases as one of its conversations' lifecycles last read them (`leases[]` on the
+ * lifecycle's envelope); `undefined` while it is not read, or before that conversation made a
+ * Zerops call: not read, never none.
+ */
+export const lifecycleLeases = (
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): ReadonlyArray<ZeropsLease> | undefined =>
+  lifecycle?.state === "known" ? lifecycle.value.envelope?.leases : undefined;
 
 /**
  * The leases a thread bound to `lease` reads (`threadLeases`): every lease of its repository and

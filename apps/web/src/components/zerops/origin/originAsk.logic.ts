@@ -246,8 +246,9 @@ export function originAsksFromKey(key: string): ReadonlyArray<OriginAskOfRequest
 /**
  * One card for the asks it stands for (`originAskPlaces`): the question its first ask put, the
  * first why any gave, open while any is; the asks its answer goes to — those still open — and the
- * HQ repositories they name, each wired to the one address. Kept on GitHub once HQ mounts every
- * one of them through the GitHub app.
+ * HQ repositories they name, each wired to the one address: an ask closed already, answered or
+ * settled by its Mate, names none. Kept on GitHub once HQ mounts every one of them through the
+ * GitHub app.
  */
 export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
   readonly ask: OriginAsk;
@@ -257,12 +258,13 @@ export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
 } {
   const [first] = asks;
   const url = first?.url ?? "";
-  const open = asks.filter((ask) => ask.state === "open").map((ask) => ask.requestId);
-  const repos = [...new Set(asks.map((ask) => ask.repo))];
+  const live = asks.filter((ask) => ask.state === "open");
+  const open = live.map((ask) => ask.requestId);
+  const repos = [...new Set(live.map((ask) => ask.repo))];
   return {
     ask: {
       url,
-      repo: first?.repo ?? "",
+      repo: live[0]?.repo ?? first?.repo ?? "",
       reason: asks.find((ask) => ask.reason !== null)?.reason ?? null,
       state: open.length > 0 ? "open" : (first?.state ?? "closed"),
     },
@@ -271,4 +273,17 @@ export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
     connected: (listed) =>
       repos.length > 0 && repos.every((repo) => originConnected({ url, repo }, listed)),
   };
+}
+
+/**
+ * Whether the engine refused the person's pick for an ask it holds open no more
+ * (`unknown-request`): its Mate settled it, or it was answered elsewhere. The pick stands, and the
+ * card's other asks still hear it.
+ */
+export function originAnswerSettled(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { readonly code?: unknown }).code === "unknown-request"
+  );
 }

@@ -269,6 +269,67 @@ describe("observe — the three-state observation layer", () => {
 // read: a step read as running stays running under "Deployed" otherwise, and
 // a settled row opened after a reload, or in another window, opens onto
 // nothing (pass 36).
+describe("observe — a batch deploy's services", () => {
+  it("each service it names has its own pipeline and outcome", () => {
+    const building = process({
+      id: "p-api",
+      serviceStackIds: ["svc-api"],
+      appVersion: {
+        id: "av-api",
+        status: "BUILDING",
+        build: { pipelineStart: "2026-09-02T10:00:01.000Z" },
+      },
+    });
+    const deployed = process({
+      id: "p-web",
+      serviceStackIds: ["svc-web"],
+      status: "FINISHED",
+      appVersion: {
+        id: "av-web",
+        status: "ACTIVE",
+        build: {
+          pipelineStart: "2026-09-02T10:00:01.000Z",
+          pipelineFinish: "2026-09-02T10:01:00.000Z",
+        },
+        activationDate: "2026-09-02T10:01:00.000Z",
+      },
+    });
+    // Refused before its build ran: a version with no step to show, still its own.
+    const refused = process({
+      id: "p-geo",
+      serviceStackIds: ["svc-geo"],
+      status: "FAILED",
+      appVersion: { id: "av-geo", status: "BUILD_VALIDATION_FAILED" },
+    });
+    // Its kickoff failed: no version at all, its process says how it ended.
+    const unstarted = process({ id: "p-edge", serviceStackIds: ["svc-edge"], status: "FAILED" });
+    const state = observe(
+      baseInput({
+        attribution: {
+          stepSource: building,
+          services: [building, deployed, refused, unstarted],
+          chips: [],
+          projectMismatch: false,
+        },
+      }),
+      NOW,
+    );
+    const services = state.kind === "off" ? undefined : state.observation.services;
+    expect(
+      services?.map((one) => ({
+        serviceIds: one.serviceIds,
+        version: one.pipeline?.appVersion.id,
+        outcome: one.outcome,
+      })),
+    ).toEqual([
+      { serviceIds: ["svc-api"], version: "av-api", outcome: undefined },
+      { serviceIds: ["svc-web"], version: "av-web", outcome: "finished" },
+      { serviceIds: ["svc-geo"], version: "av-geo", outcome: undefined },
+      { serviceIds: ["svc-edge"], version: undefined, outcome: "failed" },
+    ]);
+  });
+});
+
 describe("operationReadCeilingMs — how long after its start a card reads its operation", () => {
   const CEILING = 30 * 60 * 1000;
   it.each([

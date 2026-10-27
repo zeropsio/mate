@@ -424,11 +424,14 @@ function serviceRow(
     };
   }
   const ok = service.tone === "ok";
+  // Not running where nothing is meant to run — stopped, holding nothing — says so, never amber.
+  const atRest =
+    service.tone === "attention" && status !== null && NOT_RUNNING_STATUSES.has(status);
   return {
     ...base,
     group: ok ? "running" : "waiting",
     mark: "dot",
-    tone: service.tone,
+    tone: atRest ? "muted" : service.tone,
     words: service.word,
     sub: null,
     ...checkedOf(ok ? checkedLine(pages) : null),

@@ -1,30 +1,38 @@
 /**
  * zcp's leases for each Mate a Sites list shows, as a conversation of that Mate last read them
- * (`leases[]` on its lifecycle's envelope). zcp keeps one set for the whole Mate, and every
- * conversation's lifecycle carries it as the latest Zerops call read it, whichever conversation
- * made it — so the Mate's conversation the person last visited (`threadKey`) is enough.
+ * (`leases[]` on its lifecycle's envelope), and the pairs it keys by a dev pool (`poolPairsOf`: each
+ * pool's stages, with the part they serve). zcp keeps one set for the whole Mate, and every conversation's lifecycle
+ * carries it as the latest Zerops call read it, whichever conversation made it — so the Mate's
+ * conversation the person last visited (`threadKey`) is enough.
  *
  * A Mate with no such conversation, whose lifecycle is not read yet, or whose conversation has
- * made no Zerops call reads `undefined`: not read, never none. The lifecycles are demanded only
- * while a list that shows them is drawn, and the answer keeps one value while the leases stay the
- * same, so a Zerops call that changes nothing of them draws nothing again.
+ * made no Zerops call reads `undefined` leases: not read, never none. The lifecycles are demanded
+ * only while a list that shows them is drawn, and the answer keeps one value while the leases stay
+ * the same, so a Zerops call that changes nothing of them draws nothing again.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { lifecycleLeases } from "@t3tools/client-runtime/zerops";
+import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
 import { zeropsFeeds } from "./feeds";
 
-/** Each Mate's leases by its Zerops project; a Mate whose leases are not read is absent or `undefined`. */
-export type MatesLeases = Readonly<Record<string, ReadonlyArray<ZeropsLease> | undefined>>;
+/** A Mate's leases as read, and the pairs its envelope keys by a dev pool. */
+export interface MateLeasesRead {
+  readonly leases: ReadonlyArray<ZeropsLease> | undefined;
+  readonly poolPairs: ReadonlyArray<PoolPair>;
+}
+
+/** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
+export type MatesLeases = Readonly<Record<string, MateLeasesRead | undefined>>;
 
 const matesLeasesAtom = Atom.family((key: string) => {
   const threads = JSON.parse(key) as ReadonlyArray<readonly [projectId: string, threadKey: string]>;
   return Atom.make((get): MatesLeases => {
-    const read: Record<string, ReadonlyArray<ZeropsLease> | undefined> = {};
+    const read: Record<string, MateLeasesRead | undefined> = {};
     for (const [projectId, threadKey] of threads) {
       const thread = parseScopedThreadKey(threadKey);
       if (thread === null) continue;
@@ -34,7 +42,10 @@ const matesLeasesAtom = Atom.family((key: string) => {
           input: { threadId: thread.threadId },
         }),
       );
-      read[projectId] = lifecycleLeases(lifecycle);
+      read[projectId] = {
+        leases: lifecycleLeases(lifecycle),
+        poolPairs: poolPairsOf(lifecycle),
+      };
     }
     return read;
   }).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:sites-leases"));

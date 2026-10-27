@@ -5,13 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { classifyHqCall } from "@t3tools/client-runtime/data";
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
-import {
-  accountHqApi,
-  configuredHq,
-  nextHqStanding,
-  useOfficialHq,
-  type HqStanding,
-} from "./accountHq";
+import { accountHqApi, configuredHq, useOfficialHq, type HqStanding } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { hqOutage } from "./hqNavigation";
 import { keptHqSessions } from "./keptSessions";
@@ -28,86 +22,6 @@ const reconciled = (assertion: () => void) =>
     { timeout: 5_000 },
   );
 
-describe("nextHqStanding", () => {
-  const parts = { quarantined: [] };
-  const healthy = { kind: "healthy", build: "b1", parts } as const;
-  const down = { kind: "unreachable" } as const;
-  const unchecked = { kind: "unchecked", build: "b1", parts } as const;
-  it.each<[string, HqStanding, Parameters<typeof nextHqStanding>[1], HqStanding]>([
-    [
-      "a first answer as the official HQ",
-      { kind: "unknown" },
-      healthy,
-      { kind: "healthy", build: "b1", parts },
-    ],
-    [
-      "a first read that fails: unavailable from now",
-      { kind: "unknown" },
-      down,
-      { kind: "unavailable", since: 5_000 },
-    ],
-    [
-      "an outage keeps the time it began",
-      { kind: "unavailable", since: 1_000 },
-      { kind: "not-ready", state: "standby", official: "unknown" },
-      { kind: "unavailable", since: 1_000 },
-    ],
-    [
-      "HQ back",
-      { kind: "unavailable", since: 1_000 },
-      healthy,
-      { kind: "healthy", build: "b1", parts },
-    ],
-    // An HQ that serves but cannot check Zerops right now is no outage: everything keeps using it.
-    [
-      "an HQ that cannot check Zerops",
-      { kind: "healthy", build: "b1", parts },
-      unchecked,
-      { kind: "unchecked", build: "b1", parts },
-    ],
-    [
-      "an HQ answering again, Zerops still unchecked",
-      { kind: "unavailable", since: 1_000 },
-      unchecked,
-      { kind: "unchecked", build: "b1", parts },
-    ],
-    [
-      "an unchecked HQ that stops answering: unavailable from now",
-      { kind: "unchecked", build: "b1", parts },
-      down,
-      { kind: "unavailable", since: 5_000 },
-    ],
-    // The build it runs, as its health says it, so an offered update costs no read of its own.
-    [
-      "a new build answering",
-      { kind: "healthy", build: "b1", parts },
-      { kind: "healthy", build: "b2", parts },
-      { kind: "healthy", build: "b2", parts },
-    ],
-    // How its parts stand, as its newest answer reports them: no read of their own.
-    [
-      "a backup that failed since the last answer",
-      {
-        kind: "healthy",
-        build: "b1",
-        parts: { quarantined: [], backup: { state: "ok", takenAt: 1 } },
-      },
-      {
-        kind: "healthy",
-        build: "b1",
-        parts: { quarantined: [], backup: { state: "failed", reason: "store" } },
-      },
-      {
-        kind: "healthy",
-        build: "b1",
-        parts: { quarantined: [], backup: { state: "failed", reason: "store" } },
-      },
-    ],
-  ])("%s", (_name, previous, health, expected) => {
-    expect(nextHqStanding(previous, health, 5_000)).toEqual(expected);
-  });
-});
-
 // Audit K7: HQ's session lived in a tab's memory only, so every load paid a throwaway's mint and
 // delete through HQ's door, and a sign-out left the session HQ issued valid for its 12 hours.
 describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () => {
@@ -121,8 +35,8 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
   }>;
   /** How long a session HQ issues from now on lasts. */
   let lifetimeMs: number;
-  /** How many door calls from now on HQ answers it is not serving, before it admits. */
-  let notServing: number;
+  /** How many door calls from now on HQ answers 503, before it admits. */
+  let unanswered: number;
   /** The throwaways each door call presented, in order. */
   let presented: Array<unknown>;
   let stored: Map<string, string>;
@@ -135,7 +49,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     run += 1;
     calls = [];
     lifetimeMs = 12 * HOUR_MS;
-    notServing = 0;
+    unanswered = 0;
     presented = [];
     stored = new Map();
     let issued = 0;
@@ -158,9 +72,9 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
         presented.push(
           (JSON.parse(String(init?.body)) as { readonly accessToken: unknown }).accessToken,
         );
-        if (notServing > 0) {
-          notServing -= 1;
-          return Response.json({ code: "not_active" }, { status: 503 });
+        if (unanswered > 0) {
+          unanswered -= 1;
+          return Response.json({ code: "zerops_unanswered" }, { status: 503 });
         }
         return Response.json({
           session: issuedSession(++issued),
@@ -229,8 +143,8 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
   });
 
-  it("a door HQ is not serving is tried again with the access token, minting nothing", async () => {
-    notServing = 1;
+  it("a door that answers 503 is tried again with the access token, minting nothing", async () => {
+    unanswered = 1;
     const first = load();
     const api = accountHqApi(first.client, "org-1", HQ);
     await expect(api.structure()).rejects.toMatchObject({ kind: "unavailable" });
