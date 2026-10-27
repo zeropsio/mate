@@ -2389,15 +2389,13 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       return;
     }
     case "origin-settled": {
-      // zcp found the asked address already an origin in HQ — it would ask none of its
-      // repositories now — or the agent withdrew the ask. The agent knows already: no word
-      // reaches it.
+      // zcp found the asked address already an origin in HQ for the repository that call asked
+      // about, or the agent withdrew the ask of one repository, or of every repository asked
+      // about the address. The agent knows already: no word reaches it.
       const { url, repo } = signal;
       settleOrigins(
         b,
-        (asked) =>
-          sameOriginAddress(asked.url, url) &&
-          (signal.how === "connected" || repo === undefined || asked.repo === repo),
+        (asked) => sameOriginAddress(asked.url, url) && (repo === undefined || asked.repo === repo),
       );
       return;
     }
