@@ -10,12 +10,14 @@ function Slot(props: {
   readonly live: ReadonlyArray<string>;
   readonly record: ReadonlyArray<string>;
   readonly final?: boolean;
+  readonly syncing?: boolean;
   readonly onChange?: () => void;
 }) {
   const slot = useLiveSlot({
     live: props.live,
     record: props.record,
     final: props.final ?? false,
+    syncing: props.syncing ?? false,
     ...(props.onChange ? { onChange: props.onChange } : {}),
   });
   return <>{[...slotHolds(slot)].join(",")}</>;
@@ -73,4 +75,58 @@ describe("useLiveSlot — as drawn", () => {
     });
     expect(renderer.toJSON()).toBeNull();
   });
+
+  // k27 item 5: a page in a background tab wakes its timers once a second at best, then once a
+  // minute; a Mate working meanwhile left a backlog the card replayed one line at a time.
+  it("shows at once what a turn did while the page was out of sight, as the person looks again", () => {
+    const page = pageVisibility();
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<Slot live={["step:a"]} record={["step:a"]} />);
+    });
+    act(() => page.set("hidden"));
+    const record = ["step:a", "step:b", "step:c", "step:d", "step:e"];
+    act(() => {
+      renderer.update(<Slot live={["step:f"]} record={record} />);
+    });
+    act(() => page.set("visible"));
+    expect(renderer.toJSON()).toBe("step:f");
+  });
+
+  // k27 item 5: switched away, a working Mate's kept conversation went on queueing what arrived;
+  // switched back, what had not yet drained played one at a time.
+  it("a conversation opened mid-turn shows every event already received at once", () => {
+    let renderer!: ReactTestRenderer;
+    act(() => {
+      renderer = create(<Slot syncing live={["step:a"]} record={[]} />);
+    });
+    act(() => {
+      renderer.update(
+        <Slot syncing live={["step:e"]} record={["step:a", "step:b", "step:c", "step:d"]} />,
+      );
+    });
+    act(() => {
+      renderer.update(<Slot live={["step:e"]} record={["step:a", "step:b", "step:c", "step:d"]} />);
+    });
+    expect(renderer.toJSON()).toBe("step:e");
+  });
 });
+
+/** A page whose visibility the test sets, heard as a browser tells it. */
+function pageVisibility() {
+  let state: DocumentVisibilityState = "visible";
+  const heard = new Set<() => void>();
+  vi.stubGlobal("document", {
+    get visibilityState() {
+      return state;
+    },
+    addEventListener: (_: string, listener: () => void) => heard.add(listener),
+    removeEventListener: (_: string, listener: () => void) => heard.delete(listener),
+  });
+  return {
+    set(next: DocumentVisibilityState) {
+      state = next;
+      for (const listener of heard) listener();
+    },
+  };
+}
