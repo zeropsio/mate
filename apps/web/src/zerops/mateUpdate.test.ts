@@ -320,4 +320,24 @@ describe("a Mate that only a restart gets current", () => {
   ])("a finished restart says what moved: $text", ({ state, text }) => {
     expect(mateUpdateStatus(state)?.text).toBe(text);
   });
+
+  it("a postponed restart gives way to the Mate's own update draining after it", () => {
+    expect(
+      mateUpdateLine(
+        {
+          ...base,
+          latest: "0.15.201",
+          available: true,
+          automatic: {
+            protocol: 1,
+            rollbackCompatible: true,
+            phase: "draining",
+            runningVersion: "0.15.200",
+          },
+          restart: { needed: true, phase: "postponed", reason: "not inside a container" },
+        },
+        "0.15.200",
+      ),
+    ).toEqual({ text: "Update ready; waiting for your work to finish", tone: "default" });
+  });
 });

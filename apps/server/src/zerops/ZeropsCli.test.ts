@@ -198,7 +198,7 @@ describe("ZeropsCli.selfRestart", () => {
   it.effect.each([
     {
       name: "a restart the platform refused reads refused, in zcp's words",
-      script: `process.stdout.write('{"error":"the project token may not restart zcp"}'); process.exit(1)`,
+      script: `process.stdout.write('{"error":"the project token may not restart zcp","refused":true}'); process.exit(1)`,
       reason: "the project token may not restart zcp",
     },
     {
@@ -219,6 +219,23 @@ describe("ZeropsCli.selfRestart", () => {
         (cli) => cli.selfRestart,
       );
       expect(result).toEqual({ outcome: "refused", reason });
+    }),
+  );
+
+  // zcp says `error` for any failure of its restart call, a timeout included: only `refused`
+  // says the platform will not restart it.
+  it.effect("an error zcp does not call a refusal reads uncertain, in zcp's words", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        restart(
+          `process.stdout.write('{"error":"the platform refused the restart: context deadline exceeded"}'); process.exit(1)`,
+        ),
+        (cli) => cli.selfRestart,
+      );
+      expect(result).toEqual({
+        outcome: "uncertain",
+        reason: "the platform refused the restart: context deadline exceeded",
+      });
     }),
   );
 

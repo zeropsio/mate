@@ -181,6 +181,23 @@ describe("runZeropsMateUpdate", () => {
   );
 });
 
+describe("the answer to Update names the server that gave it", () => {
+  it.effect("a mate update's answer carries the answering server's boot", () =>
+    Effect.gen(function* () {
+      const result = yield* runZeropsMateUpdate({
+        zeropsCli: stubMateUpdate(
+          Effect.succeed({ action: "none", restarted: false, started: true }),
+        ),
+        zeropsMateUpdate: stubMateUpdateService(),
+        isZeropsEnvironment: true,
+        serverVersion: "0.15.200",
+        bootId: "boot-1",
+      });
+      expect(result).toMatchObject({ started: true, bootId: "boot-1" });
+    }),
+  );
+});
+
 describe("Update on a Mate that only a restart gets current", () => {
   const NEEDS_RESTART = {
     installed: "0.15.200",
@@ -194,12 +211,19 @@ describe("Update on a Mate that only a restart gets current", () => {
   it.effect.each([
     {
       name: "starts the restart instead of a mate update",
-      restart: { started: true, attempt: "restart-1" },
+      restart: {
+        started: true,
+        attempt: "restart-1",
+        target: { zcp: "9.226.0" },
+        startedAt: "2026-10-27T10:00:00.000Z",
+      },
       expected: {
         action: "none",
         restarted: false,
         started: true,
         restartAttempt: "restart-1",
+        restartTarget: { zcp: "9.226.0" },
+        bootId: "boot-1",
         serverVersion: "0.15.200",
       },
     },
@@ -210,6 +234,7 @@ describe("Update on a Mate that only a restart gets current", () => {
         action: "none",
         restarted: false,
         error: "this Zerops Control Plane can't restart its Mate yet",
+        bootId: "boot-1",
         serverVersion: "0.15.200",
       },
     },
@@ -231,6 +256,7 @@ describe("Update on a Mate that only a restart gets current", () => {
         ),
         isZeropsEnvironment: true,
         serverVersion: "0.15.200",
+        bootId: "boot-1",
       });
       expect(result).toEqual(expected);
       expect(mateUpdates).toBe(0);

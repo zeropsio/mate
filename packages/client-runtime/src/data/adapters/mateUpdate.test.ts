@@ -347,6 +347,8 @@ describe("an Update that only a container restart answers", () => {
     restarted: false,
     started: true,
     restartAttempt: "restart-1",
+    restartTarget: { zcp: "9.226.0" },
+    bootId: "old",
     serverVersion: "1",
   };
   const behind = {
@@ -398,6 +400,48 @@ describe("an Update that only a container restart answers", () => {
       },
     });
     expect(read().state).toEqual({ phase: "updated", to: null, zcp: "9.226.0" });
+    host.close();
+  });
+  it("a press that read no update first still says what its restart moved", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "the newest version", null);
+    host.observe(env, {
+      serverVersion: "1",
+      bootId: "new",
+      update: {
+        ...behind,
+        zcp: { installed: "9.226.0", latest: "9.226.0", behind: false },
+        restart: { needed: false },
+      },
+    });
+    expect(read().state).toEqual({ phase: "updated", to: null, zcp: "9.226.0" });
+    host.close();
+  });
+  it("a Mate back from its restart that cannot say what it runs is unconfirmed once the wait ends", async () => {
+    const waits: Array<() => void> = [];
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+      after: (_ms, run) => {
+        waits.push(run);
+        return () => {};
+      },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    const unknown = {
+      serverVersion: "1",
+      bootId: "new",
+      update: { ...behind, zcp: { installed: "9.225.0", latest: "", behind: false } },
+    };
+    host.observe(env, unknown);
+    expect(read().state.phase).toBe("updating");
+    expect(waits).toHaveLength(1);
+    waits[0]!();
+    expect(read().state).toEqual({
+      phase: "failed",
+      message: "This Mate came back, but couldn't confirm the update.",
+    });
     host.close();
   });
 });
