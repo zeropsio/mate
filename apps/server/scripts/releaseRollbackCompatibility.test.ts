@@ -241,6 +241,44 @@ describe("a release may update automatically only inside its proved rollback ran
       rollbackCompatible: false,
     });
   });
+  it.each(
+    Array.from(
+      [
+        "AGENTS.md",
+        "CLAUDE.md",
+        "README.md",
+        "CONTRIBUTING.md",
+        "MERGE.md",
+        "docs/internals/zerops/fork.md",
+        "infra/relay/README.md",
+        ".claude/agents/scout.md",
+      ],
+      (changedPath) => ({
+        title: `allows a release that changes ${changedPath}, a repository document outside the Mate artifact`,
+        changedPath,
+      }),
+    ),
+  )("$title", ({ changedPath }) => {
+    expect(rollbackCompatibility({ ...evidence, changedPaths: [changedPath] })).toEqual({
+      rollbackCompatible: true,
+      compatibleFrom: "0.15.0",
+    });
+  });
+  it("names every blocking path of a manual release, up to twenty, and counts the rest", () => {
+    const blocking = Array.from(
+      { length: 25 },
+      (_, index) => `packages/new-pkg/src/file${index}.ts`,
+    );
+    const blocker = rollbackBlocker({
+      ...evidence,
+      changedPaths: ["AGENTS.md", ...blocking, "apps/web/src/main.tsx"],
+    });
+    for (const path of blocking.slice(0, 20)) expect(blocker).toContain(path);
+    expect(blocker).not.toContain("file20.ts");
+    expect(blocker).toContain("and 5 more");
+    expect(blocker).not.toContain("AGENTS.md");
+    expect(blocker).not.toContain("apps/web/");
+  });
   it.each([
     "scripts/lib/cli-external-packages.ts",
     "scripts/lib/resolve-catalog.ts",
@@ -352,6 +390,14 @@ snapshots:
       expect(
         rollbackCompatibility(changedLock(lock({ runtime: "1.0.0", dev: "1.0.0", web: "19.0.1" }))),
       ).toEqual({ rollbackCompatible: true, compatibleFrom: "0.15.0" });
+    });
+    it("names a moved lockfile beside the other blocking paths", () => {
+      const blocker = rollbackBlocker({
+        ...changedLock(lock({ runtime: "1.0.1", dev: "1.0.0" })),
+        changedPaths: ["packages/new-pkg/src/index.ts", "pnpm-lock.yaml"],
+      });
+      expect(blocker).toContain("packages/new-pkg/src/index.ts");
+      expect(blocker).toContain("pnpm-lock.yaml");
     });
     it("requires confirmation when the lockfile cannot be read", () => {
       expect(rollbackCompatibility(changedLock("not: [a lockfile"))).toEqual({

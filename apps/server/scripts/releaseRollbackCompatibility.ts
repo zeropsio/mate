@@ -61,7 +61,8 @@ const COMPATIBLE_PREFIXES: ReadonlyArray<readonly [prefix: string, reason: strin
   ["apps/web/", "the hosted client; the Mate only serves its bundle"],
   ["apps/desktop/", "not part of the released server"],
   ["apps/mobile/", "not part of the released server"],
-  ["docs/", "prose"],
+  ["docs/", "repository documents; not in the Mate artifact"],
+  [".claude/", "agent instructions; not in the Mate artifact"],
   ["apps/hq/", "deleted; neither was in the Mate artifact"],
   [".github/workflows/ci.yml", "verification only"],
   [".github/workflows/signal.yml", "verification only"],
@@ -107,7 +108,6 @@ const COMPATIBLE_FILES: ReadonlySet<string> = new Set([
   "pnpm-workspace.yaml",
   "apps/server/package.json",
   "apps/server/update-protocol.json",
-  "README.md",
   ".github/pull_request_template.md",
   "zerops.yml",
 ]);
@@ -124,16 +124,26 @@ const resolveLink = (from: string, target: string): string =>
 
 const isTest = (path: string): boolean => /\.test\.tsx?$/u.test(path);
 
-/** The first path outside the allowlist, or undefined. The lockfile is judged separately. */
-const unlistedPath = (paths: ReadonlyArray<string>): string | undefined =>
-  paths.find(
+/**
+ * Markdown at the repository root (AGENTS.md, CLAUDE.md, README.md, CONTRIBUTING.md, …) and any
+ * README: repository documents, not in the Mate artifact, which packs only `dist`.
+ */
+const isRepositoryDocument = (path: string): boolean =>
+  (!path.includes("/") && path.endsWith(".md")) || /(^|\/)README[^/]*$/u.test(path);
+
+/** Paths outside the allowlist. The lockfile is judged separately. */
+const unlistedPaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> =>
+  paths.filter(
     (path) =>
       path !== "pnpm-lock.yaml" &&
       !isTest(path) &&
       (ARTIFACT_FILES.has(path) ||
         (!COMPATIBLE_FILES.has(path) &&
+          !isRepositoryDocument(path) &&
           !COMPATIBLE_PREFIXES.some(([prefix]) => path.startsWith(prefix)))),
   );
+
+const NAMED_BLOCKERS = 20;
 
 interface LockImporter {
   readonly dependencies?: Record<string, { readonly version?: string } | undefined>;
@@ -225,14 +235,22 @@ export function rollbackBlocker(evidence: RollbackEvidence): string | undefined 
     previousRuntime !== runtimeDeclaration(evidence.currentPackage)
   )
     return "the server's runtime declaration changed or is unreadable";
-  const unlisted = unlistedPath(evidence.changedPaths);
-  if (unlisted !== undefined) return `${unlisted} is not proved free of stored or seam state`;
-  if (!evidence.changedPaths.includes("pnpm-lock.yaml")) return undefined;
   const previous = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.previous);
   const current = evidence.lockfiles && serverRuntimeClosure(evidence.lockfiles.current);
-  return previous !== undefined && previous === current
-    ? undefined
-    : "pnpm-lock.yaml moved the server's runtime dependencies or cannot be compared";
+  const lockMoved =
+    evidence.changedPaths.includes("pnpm-lock.yaml") &&
+    (previous === undefined || previous !== current);
+  const blocking = [
+    ...unlistedPaths(evidence.changedPaths),
+    ...(lockMoved
+      ? ["pnpm-lock.yaml (the server's runtime dependencies moved or cannot be compared)"]
+      : []),
+  ];
+  if (blocking.length === 0) return undefined;
+  const more = blocking.length - NAMED_BLOCKERS;
+  return `${blocking.length} changed path(s) not proved free of stored or seam state: ${blocking
+    .slice(0, NAMED_BLOCKERS)
+    .join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
 }
 
 export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompatibility {
