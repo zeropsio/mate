@@ -89,6 +89,7 @@ export {
   type CanonicalGroup,
   type CanonicalGroupEnvironment,
   type CanonicalGroupTree,
+  type CanonicalGroupsOptions,
   deriveZeropsGroups,
   formatMateFace,
   generateZeropsGroupId,

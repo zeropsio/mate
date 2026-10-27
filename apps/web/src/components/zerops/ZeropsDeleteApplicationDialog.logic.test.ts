@@ -1,3 +1,5 @@
+import { HqEnvironmentId } from "@t3tools/contracts";
+import type { ZeropsProject } from "@t3tools/client-runtime/zerops";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -6,6 +8,7 @@ import {
   deleteApplication,
   deleteApplicationWords,
   groupWithoutMate,
+  lastMateDeletionTarget,
   projectDeleteOffered,
   type DeleteApplicationTarget,
 } from "./ZeropsDeleteApplicationDialog.logic";
@@ -103,6 +106,49 @@ describe("applicationDeletionTarget — what deleting a project takes, from its 
           { role: "prod", project: undefined },
         ],
       }),
+    ).toEqual({
+      appId: "app-1",
+      name: "shop",
+      stages: [{ projectId: "P_STAGE", name: "shop-stage" }],
+      productions: [{ name: "main", branch: "main" }],
+    });
+  });
+});
+
+describe("lastMateDeletionTarget — what deleting a project with its last Mate takes", () => {
+  const placed = (id: string, name: string, kind: "mate" | "stage"): ZeropsProject => ({
+    id,
+    name,
+    status: "ACTIVE",
+    tagList: [],
+    hq: { appId: "app-1", appName: "shop", kind, mate: null },
+  });
+
+  it("Deleting a project's last Mate lists a Git production as staying, as the other two delete dialogs do", () => {
+    expect(
+      lastMateDeletionTarget(
+        [placed("P_MATE", "Fen", "mate"), placed("P_STAGE", "shop-stage", "stage")],
+        {
+          id: "app-1",
+          name: "shop",
+          environments: [
+            {
+              id: HqEnvironmentId.make("git-production"),
+              target: { kind: "git", branch: "main", delivery: "direct" },
+              tier: "production",
+              name: "Production",
+              sources: ["release"],
+              order: 1,
+              keyHeld: false,
+              keyInvalid: false,
+              can: {},
+              birth: null,
+              release: null,
+              jobs: [],
+            },
+          ],
+        },
+      ),
     ).toEqual({
       appId: "app-1",
       name: "shop",
