@@ -14,6 +14,9 @@ permissions:
   actions: read
 
 env:
+  # Scenarios run against the test HQ of zeropsio/mate-hq (private), read with a deploy key, as
+  # CI's State Smoke does. The bundle build reads it too: an external HQ changes the bundle's HQ origin.
+  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
   PNPM_CONFIG_FETCH_RETRIES: "2"
   PNPM_CONFIG_FETCH_TIMEOUT: "60000"
   PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
@@ -109,6 +112,16 @@ jobs:
             report: non-c-3
             command: node scripts/signal.ts shard non-c 3/3
     steps:
+      - &require_hq_key
+        name: Require the mate-hq deploy key
+        env:
+          MATE_HQ_DEPLOY_KEY: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MATE_HQ_DEPLOY_KEY" ]; then
+            echo "::error::Secret MATE_HQ_DEPLOY_KEY is absent (fork pull requests get no secrets). The scenarios need the test HQ from zeropsio/mate-hq and fail without it."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -116,6 +129,17 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      # Every z3 branch tests the maintained multitenant HQ.
+      - &checkout_hq
+        name: Checkout mate-hq
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: main
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+          submodules: true
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -144,6 +168,15 @@ jobs:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
         run: *hosted_dependencies
+
+      - &install_hq
+        name: Install mate-hq and its services
+        working-directory: mate-hq
+        env: *verified_lockfile
+        run: |
+          vp install --frozen-lockfile
+          scripts/ci-install-object-store.sh
+          scripts/ci-install-postgres.sh
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
@@ -183,6 +216,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
+      - *require_hq_key
+
       - name: Checkout
         uses: actions/checkout@v6
         with:
@@ -190,6 +225,8 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
+
+      - *checkout_hq
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -216,6 +253,8 @@ jobs:
       - name: Install dependencies
         env: *verified_lockfile
         run: *hosted_dependencies
+
+      - *install_hq
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
