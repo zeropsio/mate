@@ -78,9 +78,6 @@ export interface HqWire {
   readonly open: (
     socketCreated: Effect.Effect<void>,
   ) => Effect.Effect<HqSegment, StreamFault, Scope.Scope>;
-  readonly change?: (
-    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
-  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
   readonly metadata?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeMetadataResponse, StreamFault>;
@@ -714,9 +711,6 @@ export function hqNavigationLink(options: {
         commits: (request) =>
           wire.commits?.(request) ??
           Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read change history." }),
-        change: (request) =>
-          wire.change?.(request) ??
-          Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }),
         orgId,
         store,
         signal,

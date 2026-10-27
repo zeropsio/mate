@@ -1435,27 +1435,10 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     // HQ counts what was said on it, with the change.
     comments: 2,
   } as const;
-  const DETAIL = {
-    change: CHANGE,
-    mainHead: "b".repeat(40),
-    mergeBase: "b".repeat(40),
-    mergeability: { kind: "clean" },
-    files: [
-      {
-        path: "server/status.ts",
-        added: 12,
-        deleted: 1,
-        hunks: "@@ -1 +1,12 @@",
-        binary: false,
-        truncated: false,
-      },
-    ],
-    filesTruncated: false,
-    commits: [
-      { sha: SHA, subject: "Add the page", authorName: "Vera", at: "2026-10-02T09:01:00Z" },
-    ],
-    commitsTruncated: false,
-  } as const;
+  const MAIN_HEAD = "b".repeat(40);
+  const COMMITS = [
+    { sha: SHA, subject: "Add the page", authorName: "Vera", at: "2026-10-02T09:01:00Z" },
+  ];
   /** What HQ recorded of the change when it last moved. */
   const REVIEW = {
     mergeBase: "b".repeat(40),
@@ -1504,44 +1487,39 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
   it("Explicit change history reads commits for the displayed head and main without requesting patches.", async () => {
     const commits = {
       change: CHANGE,
-      mainHead: DETAIL.mainHead,
-      commits: DETAIL.commits,
+      mainHead: MAIN_HEAD,
+      commits: COMMITS,
       commitsTruncated: false,
     };
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3/commits" ? json(200, commits) : undefined,
     );
-    const snapshot = { expectedHead: SHA, expectedMain: DETAIL.mainHead };
+    const snapshot = { expectedHead: SHA, expectedMain: MAIN_HEAD };
     await expect(hqApi.changeCommits(LINK, undefined, snapshot)).resolves.toEqual(commits);
     expect(hq.seen.filter((request) => request.path.includes("/changes/"))).toEqual([
       expect.objectContaining({
         path: "/api/apps/app-1/changes/app/3/commits",
         method: "GET",
-        search: `?expectedHead=${SHA}&expectedMain=${DETAIL.mainHead}`,
+        search: `?expectedHead=${SHA}&expectedMain=${MAIN_HEAD}`,
       }),
     ]);
   });
 
   it("reads a change with what its review reads, as the person", async () => {
     const { hq, api: hqApi } = api((seen) =>
-      seen.path === "/api/apps/app-1/changes/app/3" ? json(200, DETAIL) : undefined,
+      seen.path === "/api/apps/app-1/changes/app/3/metadata"
+        ? json(200, { change: CHANGE, review: REVIEW })
+        : undefined,
     );
-    await expect(hqApi.change(LINK)).resolves.toEqual(DETAIL);
+    await expect(hqApi.changeMetadata(LINK)).resolves.toEqual({ change: CHANGE, review: REVIEW });
     expect(hq.seen.at(-1)).toMatchObject({ method: "GET", authorization: "Bearer session-1" });
   });
 
-  it("asks HQ for the head and main displayed in the review", async () => {
-    const { hq, api: hqApi } = api(() => json(200, DETAIL));
-    const snapshot = { expectedHead: "a".repeat(40), expectedMain: "b".repeat(40) };
-    await hqApi.change(LINK, undefined, snapshot);
-    expect(hq.seen.at(-1)?.search).toBe(
-      `?expectedHead=${snapshot.expectedHead}&expectedMain=${snapshot.expectedMain}`,
-    );
-  });
-
   it("refuses an answer this version of Mate cannot read, rather than drawing half of it", async () => {
-    const { api: hqApi } = api(() => json(200, { ...DETAIL, mergeability: { kind: "maybe" } }));
-    await expect(hqApi.change(LINK)).rejects.toMatchObject({
+    const { api: hqApi } = api(() =>
+      json(200, { change: { ...CHANGE, mergeability: "maybe" }, review: REVIEW }),
+    );
+    await expect(hqApi.changeMetadata(LINK)).rejects.toMatchObject({
       kind: "refused",
       code: "unreadable",
     });
@@ -1551,7 +1529,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     const { api: hqApi } = api(() =>
       json(404, { code: "change_not_found", reason: "change_not_found" }),
     );
-    await expect(hqApi.change(LINK)).rejects.toMatchObject({
+    await expect(hqApi.changeMetadata(LINK)).rejects.toMatchObject({
       kind: "refused",
       code: "change_not_found",
       message: "HQ has no such change.",
@@ -1907,7 +1885,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     const { api: hqApi } = api((seen) => {
       if (seen.path.endsWith("/merge")) throw new TypeError("Failed to fetch");
       return seen.path === "/api/apps/app-1/changes/app/3/metadata"
-        ? json(200, { change: DETAIL.change, review: REVIEW })
+        ? json(200, { change: CHANGE, review: REVIEW })
         : undefined;
     });
     await expect(hqApi.mergeChange(LINK, SHA)).rejects.toMatchObject({

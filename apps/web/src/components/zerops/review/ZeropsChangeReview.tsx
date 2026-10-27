@@ -2,8 +2,9 @@
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
  * Its row comes from the flow the moment it opens, with the change's description; what the flow
- * does not carry is HQ's detail of it, read as it opens (`useZeropsChangeDetail`): its files with
- * their diffs, the commits it squashes, how it merges and whether `main` moved on under it. The run
+ * does not carry is what HQ recorded of it, read as it opens (`useZeropsChangeDetail`): its files
+ * and their sizes, the commits it squashes, how it merges and whether `main` moved on under it; a
+ * file's diff is read when the person unfolds it. The run
  * that made it is its Mate's newest answer linking it: what it said stands in for a description
  * nobody wrote.
  *
@@ -543,7 +544,7 @@ export interface ChangeReviewViewProps {
     readonly shape?: MateShapeId | undefined;
     readonly mine: boolean;
   };
-  /** HQ's detail of it: its files and diffs, its commits, how it merges. */
+  /** What HQ recorded of it: its files and their sizes, its commits, how it merges. */
   readonly readout: ReadoutPart<ChangeReadout>;
   /** What was said on it, and the way to say something back. */
   readonly comments: ChangeDiscussion;
@@ -596,16 +597,11 @@ export interface ChangeReviewViewProps {
   readonly titleId?: string | undefined;
   /** Files whose diff stands open from the start — the harness's. */
   readonly initiallyOpen?: ReadonlyArray<string> | undefined;
-  /**
-   * Where a file's diff is read from its repository when the person unfolds it (the recorded
-   * review carries none); absent, the readout holds them.
-   */
-  readonly fileDiffs?:
-    | {
-        readonly diffOf: (path: string) => ReviewDiffState;
-        readonly ask: (path: string) => void;
-      }
-    | undefined;
+  /** Where a file's diff is read from its repository when the person unfolds it. */
+  readonly fileDiffs: {
+    readonly diffOf: (path: string) => ReviewDiffState;
+    readonly ask: (path: string) => void;
+  };
   /** For a change whose files were never recorded: reads them from its repository on a press. */
   readonly showFiles?: (() => void) | undefined;
   /**
@@ -637,8 +633,6 @@ export interface ChangeReviewViewProps {
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
-  // Recorded diffs come with the readout; where they are left for later a file's is read on unfold.
-  const laterDiffs = read?.diffBase != null ? props.fileDiffs : undefined;
   const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     props.commits ??
     (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
@@ -648,8 +642,8 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     stage: props.environments.some((entry) => entry.tier === "stage"),
   };
   const model = changeReview({
-    // How it merges, and whether `main` moved on under it, are its record's until HQ's detail of it
-    // is read, and the detail's after.
+    // How it merges, and whether `main` moved on under it, are the flow's until HQ's record of it
+    // is read, and the record's after.
     pull:
       read === undefined
         ? pull
@@ -692,15 +686,15 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     additions: read?.files.reduce((sum, file) => sum + file.additions, 0),
     deletions: read?.files.reduce((sum, file) => sum + file.deletions, 0),
   });
-  // A file missing from what HQ read lies past where its read stopped.
+  // With no merge base recorded there is nothing to read a file's diff from.
   const diffOf = (path: string): ReviewDiffState =>
-    laterDiffs !== undefined
-      ? laterDiffs.diffOf(path)
-      : readout.kind === "read"
-        ? { kind: "read", file: readout.value.diff.get(path), cut: readout.value.filesCut }
-        : readout.kind === "failed"
-          ? { kind: "failed", reason: readout.reason }
-          : { kind: "reading" };
+    read !== undefined
+      ? read.diffBase === null
+        ? { kind: "read", file: undefined, cut: read.filesCut }
+        : props.fileDiffs.diffOf(path)
+      : readout.kind === "failed"
+        ? { kind: "failed", reason: readout.reason }
+        : { kind: "reading" };
   const mine = mate.mine ? mate : undefined;
   const [questionClosed, setQuestionClosed] = useState(false);
   const answer = useReviewDeploys(press);
@@ -949,7 +943,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           notRecorded={
             read !== undefined && !read.filesKnown ? { onShow: props.showFiles } : undefined
           }
-          onOpen={laterDiffs?.ask}
+          onOpen={read?.diffBase == null ? undefined : props.fileDiffs.ask}
           onRetry={props.onRetry}
         />
       </ReviewSection>

@@ -4,14 +4,14 @@
  * a code change still hands over to the release production waits for.
  */
 import {
-  changeReadout,
   changeReadoutOfRecord,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
 import type {
-  ChangeFile,
   ChangeMetadataResponse,
+  ChangeReview,
+  RecordedChangeFile,
   ChangeReceiptPart,
   HqChange,
 } from "@t3tools/shared/hqChanges";
@@ -106,7 +106,7 @@ vi.mock("@tanstack/react-router", async (actual) => ({
   ...(await actual<typeof import("@tanstack/react-router")>()),
   useRouter: () => ({ navigate: async () => {} }),
 }));
-/** What HQ's detail of the change answers. */
+/** What HQ recorded of the change, as the review reads it. */
 const detail = vi.hoisted(() => ({ readout: { kind: "reading" } as unknown }));
 vi.mock("~/zerops/useZeropsChangeDetail", async () => ({
   ...(await vi.importActual<typeof import("~/zerops/useZeropsChangeDetail")>(
@@ -207,13 +207,22 @@ function merged(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
 const recipe = merged({ repository: "group", kind: "recipe", line: "#7" });
 
 const MAIN = "a".repeat(40);
-const changed = (path: string): ChangeFile => ({
+const changed = (path: string): RecordedChangeFile => ({
   path,
   added: 6,
   deleted: 0,
-  hunks: "",
   binary: false,
-  truncated: false,
+});
+
+/** What HQ recorded of a change, `over` it: a merge base, no conflict, no commits. */
+const review = (over: Partial<ChangeReview> = {}): ChangeReview => ({
+  mergeBase: MAIN,
+  files: [],
+  filesTruncated: false,
+  conflictPaths: [],
+  commits: [],
+  commitsTruncated: false,
+  ...over,
 });
 
 /** Everything HQ's rule offers a developer of the application. */
@@ -230,7 +239,7 @@ const DEVELOPS: ZeropsChangeOffers = {
 /** The review of `pull` in a project with a stage and a production two changes behind `main`. */
 function render(
   pull: ChangeReviewViewProps["pull"],
-  files: ReadonlyArray<ChangeFile>,
+  files: ReadonlyArray<RecordedChangeFile>,
   over: Partial<ChangeReviewViewProps> = {},
 ): string {
   const props: ChangeReviewViewProps = {
@@ -238,17 +247,12 @@ function render(
     mate: { name: "Wren", tint: undefined, mine: false },
     readout: {
       kind: "read",
-      value: changeReadout({
-        change: {} as HqChange,
-        mainHead: MAIN,
-        mergeBase: MAIN,
-        mergeability: { kind: "clean" },
-        files,
-        filesTruncated: false,
-        commits: [],
-        commitsTruncated: false,
-      }),
+      value: changeReadoutOfRecord(
+        { mergeability: "clean", behind: false } as HqChange,
+        review({ files }),
+      ),
     },
+    fileDiffs: { diffOf: () => ({ kind: "reading" }), ask: noop },
     comments: {
       state: { kind: "read", comments: [] },
       say: async () => null,
@@ -512,21 +516,17 @@ describe("ChangeReviewView: an open change", () => {
     const html = render(open, [], {
       readout: {
         kind: "read",
-        value: changeReadout({
-          change: {} as HqChange,
-          mainHead: MAIN,
-          mergeBase: MAIN,
-          mergeability: { kind: "empty" },
-          files: [],
-          filesTruncated: false,
-          commits: Array.from({ length: 20 }, (_, i) => ({
-            sha: String(i),
-            subject: "Already landed",
-            authorName: "Wren",
-            at: new Date(NOW).toISOString(),
-          })),
-          commitsTruncated: false,
-        }),
+        value: changeReadoutOfRecord(
+          { mergeability: "empty", behind: false } as HqChange,
+          review({
+            commits: Array.from({ length: 20 }, (_, i) => ({
+              sha: String(i),
+              subject: "Already landed",
+              authorName: "Wren",
+              at: new Date(NOW).toISOString(),
+            })),
+          }),
+        ),
       },
     });
     expect(textOf(html)).toContain("Nothing to merge main already has all of it");
@@ -811,19 +811,10 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       press(button);
     });
 
-  /** HQ's detail of API_CHANGE, read: Merge waits for it. */
+  /** What HQ recorded of API_CHANGE, read: Merge waits for it. */
   const READ_DETAIL = {
     kind: "read",
-    value: changeReadout({
-      change: API_CHANGE,
-      mainHead: MAIN,
-      mergeBase: MAIN,
-      mergeability: { kind: "clean" },
-      files: [changed("src/api.ts")],
-      filesTruncated: false,
-      commits: [],
-      commitsTruncated: false,
-    }),
+    value: changeReadoutOfRecord(API_CHANGE, review({ files: [changed("src/api.ts")] })),
   };
 
   it.each([
@@ -1192,11 +1183,11 @@ describe("ChangeReviewView: its code in the Git browser", () => {
       .filter((link) => link.getAttribute("href")?.startsWith("/git?") === true)
       .map((link) => [link.textContent?.replace(/\s+/gu, " ").trim(), link.getAttribute("href")]);
   };
-  const deletes = (path: string): ChangeFile => ({
+  const deletes = (path: string): RecordedChangeFile => ({
     ...changed(path),
     added: 0,
     deleted: 3,
-    hunks: `diff --git a/${path} b/${path}\ndeleted file mode 100644\n--- a/${path}\n+++ /dev/null\n@@ -1,3 +0,0 @@\n-a\n-b\n-c`,
+    status: "D",
   });
 
   it("an open change browses its files at its head", () => {

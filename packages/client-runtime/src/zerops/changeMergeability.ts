@@ -1,18 +1,14 @@
 /**
  * Whether a change merges into `main`, in the four words every surface keys its answer on — the
  * Git tab, a change's row, the review, the next step. HQ is the authority: a change's record says
- * it as HQ last judged it (`MergeabilityKind` in `@t3tools/shared/hqChanges`), and its detail as it
- * is now (`Mergeability`). Nothing here recomputes whether a branch merges, it only names what HQ
- * said.
+ * it as HQ last judged it (`MergeabilityKind` in `@t3tools/shared/hqChanges`). Nothing here
+ * recomputes whether a branch merges, it only names what HQ said.
  *
  * Pure (rule R1).
  *
  * @module changeMergeability
  */
-import type {
-  Mergeability,
-  MergeabilityKind as HqMergeabilityKind,
-} from "@t3tools/shared/hqChanges";
+import type { MergeabilityKind as HqMergeabilityKind } from "@t3tools/shared/hqChanges";
 
 /**
  * - `checking`: not said yet;
@@ -22,10 +18,8 @@ import type {
  */
 export type MergeabilityKind = "checking" | "mergeable" | "conflicting" | "empty";
 
-/** HQ's word on a change, from its record or its detail, in those words. */
-export function mergeabilityKindOf(
-  kind: HqMergeabilityKind | Mergeability["kind"],
-): MergeabilityKind {
+/** HQ's word on a change, from its record, in those words. */
+export function mergeabilityKindOf(kind: HqMergeabilityKind): MergeabilityKind {
   switch (kind) {
     case "unknown":
       return "checking";
@@ -36,7 +30,6 @@ export function mergeabilityKindOf(
       return "conflicting";
     case "empty":
     case "already_merged":
-    case "no_change":
       return "empty";
   }
 }

@@ -28,7 +28,6 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
  */
 import {
   attachmentPath,
-  ChangeDetailResponse,
   ChangeMetadataResponse,
   ChangeCommitsResponse,
   type ChangeDetailQuery,
@@ -545,12 +544,6 @@ export interface HqApi {
     params: GitBrowseParams<R>,
     signal?: AbortSignal,
   ) => Promise<Blob>;
-  /** A Mate's change with what its review reads (`GET /api/apps/:appId/changes/:repo/:n`). */
-  readonly change: (
-    link: ChangeLink,
-    signal?: AbortSignal,
-    snapshot?: ChangeDetailQuery,
-  ) => Promise<ChangeDetailResponse>;
   /** Reads database metadata without opening Git. */
   readonly changeMetadata: (
     link: ChangeLink,
@@ -790,7 +783,6 @@ const unreadable = () =>
     message: "HQ answered in a form this version of Mate does not read.",
   });
 
-const readChangeDetail = decoded(ChangeDetailResponse);
 const readChangeMetadata = decoded(ChangeMetadataResponse);
 const readChangeCommits = decoded(ChangeCommitsResponse);
 const readIntakeView = decoded(HqIntakeView);
@@ -1280,19 +1272,6 @@ export function makeHqApi(input: {
   // Only a lost release/rollback write answer needs this direct confirmation, never a load.
   const releasesOf = async (appId: string) =>
     (await readReleases(await authorized(releasesPath(appId)))).releases;
-  const changeOf = async (
-    link: ChangeLink,
-    signal?: AbortSignal,
-    snapshot: ChangeDetailQuery = {},
-  ) => {
-    const search = new URLSearchParams(snapshot).toString();
-    return readChangeDetail(
-      await authorized(
-        `${changePath(link)}${search === "" ? "" : `?${search}`}`,
-        signal === undefined ? {} : { signal },
-      ),
-    );
-  };
   /** The change as HQ holds it, if it is in `state`; its record, never its diff. */
   const changeIn = async (link: ChangeLink, state: HqChange["state"]) => {
     const { change } = await readChangeMetadata(await authorized(`${changePath(link)}/metadata`));
@@ -1508,7 +1487,6 @@ export function makeHqApi(input: {
           );
         },
       ),
-    change: changeOf,
     changeMetadata: async (link, signal) =>
       readChangeMetadata(
         await authorized(`${changePath(link)}/metadata`, signal === undefined ? {} : { signal }),

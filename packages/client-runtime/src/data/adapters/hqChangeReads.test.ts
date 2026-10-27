@@ -2,18 +2,18 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import type { ChangeDetailResponse, ChangeReview } from "@t3tools/shared/hqChanges";
+import type { ChangeMetadataResponse } from "@t3tools/shared/hqChanges";
 import { hqFixtureWire } from "../__fixtures__/hqWire.ts";
-import { changeReadOwner, changeReadScope } from "../families/hqChangeRead.ts";
+import { changeReadOwner } from "../families/hqChangeRead.ts";
+import { changeMetadataScope } from "../families/hqChangeMetadata.ts";
 import { hqChangeMetadata } from "../projections/hqChangeMetadata.ts";
 import { hqChangeCommits } from "../projections/hqChangeCommits.ts";
-import { hqChangeRead } from "../projections/hqChangeRead.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { streamOf } from "../reducer.ts";
 import { superviseLink } from "../supervisor.ts";
 import { hqNavigationLink, type HqWire } from "./hq.ts";
 
-const DETAIL: ChangeDetailResponse = {
+const RECORD: ChangeMetadataResponse = {
   change: {
     appId: "app",
     repo: "repo",
@@ -34,26 +34,19 @@ const DETAIL: ChangeDetailResponse = {
     ready: true,
     comments: 0,
   },
-  mainHead: "a".repeat(40),
-  mergeBase: "a".repeat(40),
-  mergeability: { kind: "clean" },
-  files: [],
-  filesTruncated: false,
-  commits: [],
-  commitsTruncated: false,
-};
-const REVIEW: ChangeReview = {
-  mergeBase: "a".repeat(40),
-  files: [],
-  filesTruncated: false,
-  conflictPaths: [],
-  commits: [],
-  commitsTruncated: false,
+  review: {
+    mergeBase: "a".repeat(40),
+    files: [],
+    filesTruncated: false,
+    conflictPaths: [],
+    commits: [],
+    commitsTruncated: false,
+  },
 };
 const request = { link: { appId: "app", repo: "repo", number: 1 } };
 const owner = changeReadOwner(request);
 const key = { orgId: "org", owner };
-const scope = changeReadScope(key.orgId, owner);
+const scope = changeMetadataScope(key.orgId, owner);
 const until = (store: AccountStore, ready: () => boolean) =>
   Effect.callback<void>((resume) => {
     const check = () => {
@@ -77,11 +70,11 @@ describe("HQ review read on the account's shared link", () => {
         const wire: HqWire = {
           open: (created) =>
             fixture.wire.open(created).pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
-          change: () =>
+          metadata: () =>
             Effect.suspend(() => {
               reads += 1;
               return accepted
-                ? Effect.succeed(DETAIL)
+                ? Effect.succeed(RECORD)
                 : Effect.fail({
                     outcome:
                       answer === "refusal"
@@ -92,7 +85,7 @@ describe("HQ review read on the account's shared link", () => {
             }),
         };
         const link = hqNavigationLink({ orgId: "org", store, wire });
-        const release = link.demandDetail({ family: "hqChangeRead", ownerId: owner });
+        const release = link.demandDetail({ family: "hqChangeMetadata", ownerId: owner });
         const supervisor = yield* superviseLink({ ...link, store, repairSession: Effect.void });
         yield* Effect.forkScoped(supervisor.run);
         yield* Deferred.await(opened);
@@ -103,27 +96,27 @@ describe("HQ review read on the account's shared link", () => {
             streamOf(store.state(), scope).phase ===
             (accepted ? "live" : answer === "refusal" ? "refused" : "recovering"),
         );
-        expect(hqChangeRead.derive(readsOfState(store.state()), key).kind).toBe(
+        expect(hqChangeMetadata.derive(readsOfState(store.state()), key).kind).toBe(
           accepted ? "read" : answer === "refusal" ? "refused" : "unavailable",
         );
         expect(reads).toBe(1);
         if (!accepted) {
           release();
-          const held = link.demandDetail({ family: "hqChangeRead", ownerId: owner });
+          const held = link.demandDetail({ family: "hqChangeMetadata", ownerId: owner });
           expect(reads).toBe(1);
           accepted = true;
-          link.retryDetail({ family: "hqChangeRead", ownerId: owner });
+          link.retryDetail({ family: "hqChangeMetadata", ownerId: owner });
           yield* until(
             store,
-            () => hqChangeRead.derive(readsOfState(store.state()), key).kind === "read",
+            () => hqChangeMetadata.derive(readsOfState(store.state()), key).kind === "read",
           );
           expect(reads).toBe(2);
           held();
         } else {
           store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "parent-lost" } });
-          expect(hqChangeRead.derive(readsOfState(store.state()), key)).toEqual({
+          expect(hqChangeMetadata.derive(readsOfState(store.state()), key)).toEqual({
             kind: "read",
-            detail: DETAIL,
+            detail: RECORD,
           });
           release();
         }
@@ -137,36 +130,24 @@ describe("HQ review read on the account's shared link", () => {
         const store = makeAccountStore(AtomRegistry.make());
         const fixture = hqFixtureWire();
         const opened = yield* Deferred.make<void>();
-        let reviewReads = 0;
         const requests: Array<unknown> = [];
-        const answer =
-          purpose === "metadata"
-            ? { change: DETAIL.change, review: REVIEW }
-            : {
-                change: DETAIL.change,
-                mainHead: DETAIL.mainHead,
-                commits: DETAIL.commits,
-                commitsTruncated: false,
-              };
+        const commits = {
+          change: RECORD.change,
+          mainHead: "a".repeat(40),
+          commits: [],
+          commitsTruncated: false,
+        };
+        const answer = purpose === "metadata" ? RECORD : commits;
         const wire: HqWire = {
           open: (created) =>
             fixture.wire.open(created).pipe(Effect.tap(() => Deferred.succeed(opened, undefined))),
-          change: () => {
-            reviewReads += 1;
-            return Effect.succeed(DETAIL);
-          },
           metadata: (request) => {
             requests.push(request);
-            return Effect.succeed({ change: DETAIL.change, review: REVIEW });
+            return Effect.succeed(RECORD);
           },
           commits: (request) => {
             requests.push(request);
-            return Effect.succeed({
-              change: DETAIL.change,
-              mainHead: DETAIL.mainHead,
-              commits: DETAIL.commits,
-              commitsTruncated: false,
-            });
+            return Effect.succeed(commits);
           },
         };
         const link = hqNavigationLink({ orgId: "org", store, wire });
@@ -186,7 +167,6 @@ describe("HQ review read on the account's shared link", () => {
           detail: answer,
         });
         expect(requests).toEqual([request]);
-        expect(reviewReads).toBe(0);
         release();
         link.stop();
       }).pipe(Effect.scoped),
@@ -194,6 +174,6 @@ describe("HQ review read on the account's shared link", () => {
   it("does not invent an empty review from partial coverage", () => {
     const store = makeAccountStore(AtomRegistry.make());
     store.dispatch({ kind: "baseline-begin", scope, generation: 0 });
-    expect(hqChangeRead.derive(readsOfState(store.state()), key)).toEqual({ kind: "reading" });
+    expect(hqChangeMetadata.derive(readsOfState(store.state()), key)).toEqual({ kind: "reading" });
   });
 });

@@ -14,12 +14,19 @@
  */
 import { rasterContentType, type RasterContentType } from "@t3tools/shared/hqAttachments";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
-import { type ChangeBranch, type GitError, type HqGit, type Repo, validRef } from "@t3tools/hq-git";
+import {
+  type ChangeBranch,
+  type GitError,
+  type HqGit,
+  type Mergeability,
+  type Repo,
+  validRef,
+} from "@t3tools/hq-git";
 import {
   type AttachmentResponse,
   ATTACHMENT_MAX_BYTES,
   ChangeReceipt,
-  type ChangeDetailResponse,
+  type ChangeCommit,
   type ChangeDetailQuery,
   type ChangesSnapshot,
   COMPARE_COMMITS_MAX,
@@ -74,6 +81,28 @@ import { Roles, confirmingRefusal, decidedFresh } from "./roles.ts";
 import { addRollout } from "./rollouts.ts";
 import { squashesOnMain } from "./squashes.ts";
 import type { ZeropsError } from "./zerops/api.ts";
+
+/**
+ * `GET /api/apps/:appId/changes/:repo/:n` of this retained HQ Core: the change with every file's
+ * patch and its commits. The hosted client reads a change's recorded review (`/metadata`) instead.
+ */
+interface ChangeDetailResponse {
+  readonly change: HqChange;
+  readonly mainHead: string | null;
+  readonly mergeBase: string | null;
+  readonly mergeability: Mergeability;
+  readonly files: ReadonlyArray<{
+    readonly path: string;
+    readonly added: number | null;
+    readonly deleted: number | null;
+    readonly hunks: string;
+    readonly binary: boolean;
+    readonly truncated: boolean;
+  }>;
+  readonly filesTruncated: boolean;
+  readonly commits: ReadonlyArray<ChangeCommit>;
+  readonly commitsTruncated: boolean;
+}
 
 export class ChangeRefused extends Schema.TaggedError<ChangeRefused>()("ChangeRefused", {
   code: Schema.Literals([

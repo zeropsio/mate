@@ -506,7 +506,6 @@ export {
 } from "./releaseFacts.ts";
 export { formatRunClock } from "./runClock.ts";
 export {
-  changeReadout,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
   type ChangeReadout,

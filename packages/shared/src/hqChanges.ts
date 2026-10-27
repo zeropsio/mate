@@ -30,7 +30,8 @@
  * - HQ socket `compare` (`appId`, `repo`, {@link CompareQuery}) → {@link CompareResponse}: the
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
- * - `GET /api/apps/:appId/changes/:repo/:n` → {@link ChangeDetailResponse};
+ * - `GET /api/apps/:appId/changes/:repo/:n/metadata` → {@link ChangeMetadataResponse}; `GET …/commits`
+ *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
  *   {@link HqChangeComment};
  * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
@@ -106,8 +107,8 @@ export type ChangeState = typeof ChangeState.Type;
 const Instant = Schema.String;
 
 /**
- * Whether a change merges into `main`, as its record keeps it ({@link Mergeability} without the
- * conflict's paths): `unknown` until HQ has judged it.
+ * Whether a change merges into `main`, as its record keeps it: `unknown` until HQ has judged it;
+ * a conflict's files are in its recorded review.
  */
 export const MergeabilityKind = Schema.Literals([
   "clean",
@@ -580,31 +581,6 @@ export const CHANGE_LIST_SETTLED = 20;
 export const ChangeListResponse = Schema.Struct({ changes: Schema.Array(HqChange) });
 export type ChangeListResponse = typeof ChangeListResponse.Type;
 
-/** Whether a change merges into `main` now, as the git layer judges it (`@t3tools/hq-git`). */
-export const Mergeability = Schema.Union([
-  Schema.Struct({ kind: Schema.Literal("clean") }),
-  Schema.Struct({ kind: Schema.Literal("conflict"), paths: Schema.Array(Schema.String) }),
-  /**
-   * `empty`: it would change nothing on `main`; `already_merged`; `no_change`: nothing was pushed
-   * to it; `unrelated`: it shares no history with `main`.
-   */
-  Schema.Struct({ kind: Schema.Literals(["empty", "already_merged", "no_change", "unrelated"]) }),
-]);
-export type Mergeability = typeof Mergeability.Type;
-
-/** A file the change touches against its merge base with `main`: its counts and its patch. */
-export const ChangeFile = Schema.Struct({
-  path: Schema.String,
-  /** Lines added and deleted; none for a binary file. */
-  added: Schema.NullOr(Schema.Number),
-  deleted: Schema.NullOr(Schema.Number),
-  hunks: Schema.String,
-  binary: Schema.Boolean,
-  /** Whether `hunks` was cut at the read's bound. */
-  truncated: Schema.Boolean,
-});
-export type ChangeFile = typeof ChangeFile.Type;
-
 /** A commit on the change and not on `main`. */
 export const ChangeCommit = Schema.Struct({
   sha: Sha,
@@ -667,29 +643,12 @@ export const CompareResponse = Schema.Struct({
 });
 export type CompareResponse = typeof CompareResponse.Type;
 
-/**
- * `GET /api/apps/:appId/changes/:repo/:n`: the change and what its review reads — `main`'s head and
- * the change's merge base with it (behind when they differ), its mergeability, its files with their
- * patches, and its commits, newest first. Reads are bounded; a `…Truncated` flag says one was cut.
- */
+/** The change's head and `main` as the person was shown them: what a read of its commits asks at. */
 export const ChangeDetailQuery = Schema.Struct({
   expectedHead: Schema.optionalKey(Sha),
   expectedMain: Schema.optionalKey(Sha),
 });
 export type ChangeDetailQuery = typeof ChangeDetailQuery.Type;
-
-export const ChangeDetailResponse = Schema.Struct({
-  change: HqChange,
-  mainHead: Schema.NullOr(Sha),
-  /** None while the change has no head. */
-  mergeBase: Schema.NullOr(Sha),
-  mergeability: Mergeability,
-  files: Schema.Array(ChangeFile),
-  filesTruncated: Schema.Boolean,
-  commits: Schema.Array(ChangeCommit),
-  commitsTruncated: Schema.Boolean,
-});
-export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
 
 /** A file a change delivers as HQ recorded it, with its line counts and no patch. */
 export const RecordedChangeFile = Schema.Struct({

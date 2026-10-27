@@ -42,7 +42,7 @@ export function classifyHqCall(cause: unknown): StreamFault {
 
 export function makeHqWire(
   api: Pick<HqApi, "openScopeSocket"> &
-    Partial<Pick<HqApi, "changeAttachment" | "change" | "changeMetadata" | "changeCommits">>,
+    Partial<Pick<HqApi, "changeAttachment" | "changeMetadata" | "changeCommits">>,
 ): HqWire {
   return {
     ...(api.changeAttachment === undefined
@@ -52,18 +52,6 @@ export function makeHqWire(
             Effect.tryPromise({
               try: (signal) => api.changeAttachment!(link, signal),
               catch: classifyHqCall,
-            }),
-        }),
-    ...(api.change === undefined
-      ? {}
-      : {
-          change: (request: import("../families/hqChangeRead.ts").ChangeReadRequest) =>
-            Effect.tryPromise({
-              try: (signal) => api.change!(request.link, signal, request.snapshot),
-              catch: (cause) => ({
-                ...classifyHqCall(cause),
-                ...(cause instanceof HqError && cause.status === 404 ? { code: "not_found" } : {}),
-              }),
             }),
         }),
     ...(api.changeMetadata === undefined

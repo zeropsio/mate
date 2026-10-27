@@ -1,4 +1,4 @@
-/** A change's commits, separate from its full review contents. */
+/** A change's commits, read from its repository on the person's press. */
 import { ChangeCommitsResponse } from "@t3tools/shared/hqChanges";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";

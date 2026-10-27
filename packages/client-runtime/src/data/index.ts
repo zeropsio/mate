@@ -327,13 +327,7 @@ export {
 
 export { platformInventory, type PlatformInventory } from "./projections/platformInventory.ts";
 
-export { hqChangeRead, type HqChangeRead } from "./projections/hqChangeRead.ts";
-export {
-  changeReadOwner,
-  changeReadId,
-  changeReadRequest,
-  changeReadScope,
-} from "./families/hqChangeRead.ts";
+export { changeReadOwner, changeReadId, changeReadRequest } from "./families/hqChangeRead.ts";
 
 export { moveRemainder, type MoveRemainder } from "./projections/moveRemainder.ts";
 export type { MoveProjectIntent } from "./operations/moveProject.ts";

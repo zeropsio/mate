@@ -8,7 +8,6 @@ import {
   CHANGE_TITLE_MAX,
   COMMENT_BODY_MAX,
   AttachmentResponse,
-  ChangeDetailResponse,
   ChangeListResponse,
   ChangeMetadataResponse,
   ChangesMessage,
@@ -256,29 +255,6 @@ describe("hqChanges — the wire", () => {
     expect(read(schema as Schema.Codec<unknown, unknown>, value)).toBe(expected);
   });
 
-  const detail = (patch: Record<string, unknown> = {}) => ({
-    change: change(),
-    mainHead: SHA,
-    mergeBase: SHA,
-    mergeability: { kind: "clean" },
-    files: [
-      {
-        path: "src/login.ts",
-        added: 40,
-        deleted: 0,
-        hunks: "@@ -0,0 +1,40 @@",
-        binary: false,
-        truncated: false,
-      },
-      { path: "logo.png", added: null, deleted: null, hunks: "", binary: true, truncated: false },
-    ],
-    filesTruncated: false,
-    commits: [
-      { sha: SHA, subject: "Add a login page", authorName: "Ada", at: "2026-10-02T10:00:00Z" },
-    ],
-    commitsTruncated: false,
-    ...patch,
-  });
   const landed = {
     sha: "b".repeat(40),
     subject: "Add a login page (#7)",
@@ -298,31 +274,6 @@ describe("hqChanges — the wire", () => {
       ChangeListResponse,
       { changes: [change(), change({ number: 6 })] },
       "Success",
-    ],
-    ["a change's detail", ChangeDetailResponse, detail(), "Success"],
-    [
-      "a change in conflict",
-      ChangeDetailResponse,
-      detail({ mergeability: { kind: "conflict", paths: ["src/app.ts"] } }),
-      "Success",
-    ],
-    [
-      "a change with no push yet",
-      ChangeDetailResponse,
-      detail({
-        mainHead: SHA,
-        mergeBase: null,
-        mergeability: { kind: "no_change" },
-        files: [],
-        commits: [],
-      }),
-      "Success",
-    ],
-    [
-      "a mergeability this build does not know",
-      ChangeDetailResponse,
-      detail({ mergeability: { kind: "maybe" } }),
-      "Failure",
     ],
     ["a change's comments", CommentListResponse, { comments: [comment("Looks good")] }, "Success"],
     [

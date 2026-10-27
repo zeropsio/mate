@@ -3,8 +3,9 @@
  * the app runs, with made-up reads. Fixtures only — no route imports this module.
  */
 import {
-  changeReadout,
+  changeReadoutOfRecord,
   changeRemarks,
+  parseChangeDiff,
   releaseVersionField,
   type ChangeReadout,
   type FlowPullRequest,
@@ -15,10 +16,9 @@ import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 import type { CrewTask } from "@t3tools/contracts";
 import type {
   ChangeCommit,
-  ChangeDetailResponse,
-  ChangeFile,
   HqChange,
   HqChangeComment,
+  RecordedChangeFile,
 } from "@t3tools/shared/hqChanges";
 import { useEffect, useState, type ReactNode } from "react";
 
@@ -44,6 +44,7 @@ import {
 import type { ChangeDiscussion } from "~/zerops/useChangeDiscussion";
 import type { ZeropsChangeOffers } from "~/zerops/useChangeOffers";
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
+import type { ReviewDiffState } from "~/components/zerops/review/ZeropsReviewSurface";
 
 import { RegistryContext } from "@effect/atom-react";
 import {
@@ -53,10 +54,20 @@ import {
   harnessDescription,
 } from "./reviewHarnessPictures";
 
-function ChangeReviewView(props: ChangeReviewViewProps) {
+/** Each made-up readout's diffs, by path: what unfolding a file reads from its repository. */
+const DIFFS = new WeakMap<ChangeReadout, ReadonlyMap<string, ReviewDiffState>>();
+const NO_DIFF: ReviewDiffState = { kind: "read", file: undefined, cut: false };
+
+function ChangeReviewView(props: Omit<ChangeReviewViewProps, "fileDiffs">) {
+  const { readout } = props;
+  const diffs = readout.kind === "read" ? DIFFS.get(readout.value) : undefined;
   return (
     <RegistryContext value={HARNESS_PICTURE_REGISTRY}>
-      <ProjectedChangeReviewView appId="beviro" {...props} />
+      <ProjectedChangeReviewView
+        appId="beviro"
+        fileDiffs={{ diffOf: (path) => diffs?.get(path) ?? NO_DIFF, ask: noop }}
+        {...props}
+      />
     </RegistryContext>
   );
 }
@@ -97,25 +108,33 @@ const DIFF = [
   "+22",
 ].join("\n");
 
+/** The files HQ recorded of a change, and each one's diff as unfolding it reads it. */
+interface HarnessFiles {
+  readonly files: ReadonlyArray<RecordedChangeFile>;
+  readonly diffs: ReadonlyMap<string, ReviewDiffState>;
+}
+
 /**
- * A `git diff` of several files as HQ hands it over: one patch per file, with the lines it adds
- * and deletes. Where HQ's read stopped (`cutAt`), that file's patch is cut, and the ones after it
- * were not read.
+ * A `git diff` of several files, one patch per file, with the lines it adds and deletes. From
+ * `cutAt` on, a file's diff is too long to read here.
  */
 function hqFiles(
   diff: string,
   counts: ReadonlyArray<readonly [path: string, added: number, deleted: number]>,
   cutAt?: number,
-): ReadonlyArray<ChangeFile> {
+): HarnessFiles {
   const patches = diff.split(/\n(?=diff --git )/u);
-  return counts.map(([path, added, deleted], index) => ({
-    path,
-    added,
-    deleted,
-    hunks: cutAt !== undefined && index > cutAt ? "" : (patches[index] ?? ""),
-    binary: false,
-    truncated: cutAt !== undefined && index >= cutAt,
-  }));
+  return {
+    files: counts.map(([path, added, deleted]) => ({ path, added, deleted, binary: false })),
+    diffs: new Map(
+      counts.map(([path], index) => [
+        path,
+        cutAt !== undefined && index >= cutAt
+          ? { kind: "read", file: undefined, cut: true }
+          : { kind: "read", file: parseChangeDiff(patches[index] ?? "").get(path), cut: false },
+      ]),
+    ),
+  };
 }
 
 const FILES = hqFiles(DIFF, [
@@ -128,9 +147,8 @@ const WORDS =
   "Adds a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.";
 
 const HEAD = "b21d904cb21d904cb21d904cb21d904cb21d904c";
-/** `main` as the change was cut from it, and `main` two changes later. */
+/** `main` as the change was cut from it. */
 const BASE = "ba5e000ba5e000ba5e000ba5e000ba5e000ba5e";
-const MAIN_NOW = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
 
 function pull(over: Partial<FlowPullRequest> = {}): FlowPullRequest {
   return {
@@ -205,22 +223,32 @@ const CHANGE: HqChange = {
   comments: 0,
 };
 
-/** HQ's detail of the change, `over` it, as its review reads it (`changeReadout`). */
-function detail(over: Partial<ChangeDetailResponse> = {}): ReadoutPart<ChangeReadout> {
-  return {
-    kind: "read",
-    value: changeReadout({
-      change: CHANGE,
-      mainHead: BASE,
+/** What HQ recorded of the change, `over` it, as its review reads it (`changeReadoutOfRecord`). */
+function detail(
+  over: {
+    readonly mergeability?: HqChange["mergeability"];
+    readonly conflictPaths?: ReadonlyArray<string>;
+    /** `main` moved on past where the change was cut from it. */
+    readonly behind?: boolean;
+    readonly files?: HarnessFiles;
+    readonly filesTruncated?: boolean;
+    readonly commits?: ReadonlyArray<ChangeCommit>;
+  } = {},
+): ReadoutPart<ChangeReadout> {
+  const files = over.files ?? FILES;
+  const value = changeReadoutOfRecord(
+    { ...CHANGE, mergeability: over.mergeability ?? "clean", behind: over.behind ?? false },
+    {
       mergeBase: BASE,
-      mergeability: { kind: "clean" },
-      files: FILES,
-      filesTruncated: false,
-      commits: commits(3),
+      files: files.files,
+      filesTruncated: over.filesTruncated ?? false,
+      conflictPaths: over.conflictPaths ?? [],
+      commits: over.commits ?? commits(3),
       commitsTruncated: false,
-      ...over,
-    }),
-  };
+    },
+  );
+  DIFFS.set(value, files.diffs);
+  return { kind: "read", value };
 }
 
 const READ = detail();
@@ -325,22 +353,13 @@ const NONE_OPEN: ReadonlyArray<string> = [];
 const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
-/** A change whose diff was too long to read whole: a lockfile first, the read stopping after. */
+/** A change with a long diff: a lockfile read whole, and files after it too long to read here. */
 const LONG_DIFF = [
   "diff --git a/pnpm-lock.yaml b/pnpm-lock.yaml",
   "--- a/pnpm-lock.yaml",
   "+++ b/pnpm-lock.yaml",
   "@@ -1,0 +1,2600 @@",
   ...Array.from({ length: 2_600 }, (_, index) => `+  /pkg-${String(index)}@1.0.0: {}`),
-  "diff --git a/src/server/index.ts b/src/server/index.ts",
-  "--- a/src/server/index.ts",
-  "+++ b/src/server/index.ts",
-  '@@ -10,7 +10,8 @@ import { web } from "./routes/web";',
-  ' import { health } from "./routes/health";',
-  '+import { status } from "./routes/status";',
-  " ",
-  " const app = new Hono();",
-  ' app.route("/he',
 ].join("\n");
 const LONG = detail({
   files: hqFiles(
@@ -446,7 +465,7 @@ const UNUSED_TIERS = ["1 — Remote (CDE)", "2 — Local"];
 /** The two recipes a stage and a production are made from. */
 const MADE_FROM_TIERS = ["3 — Stage", "4 — Small Production"];
 
-/** HQ's detail, still on its way: what the flow knew paints, the rest holds its room. */
+/** HQ's record, still on its way: what the flow knew paints, the rest holds its room. */
 const READING = { kind: "reading" } as const;
 const UNREAD = { kind: "failed", reason: "HQ is not answering right now." } as const;
 
@@ -467,7 +486,7 @@ function Change({
   hand,
 }: {
   readonly over?: Partial<FlowPullRequest>;
-  /** HQ's detail of it, where it is not the one every state shares. */
+  /** What HQ recorded of it, where it is not the one every state shares. */
   readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
   readonly run?: { readonly words: string | undefined; readonly reading: boolean };
@@ -980,7 +999,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "behind-clean",
     label: "Behind main, still merges",
-    node: <Change readout={detail({ mainHead: MAIN_NOW })} />,
+    node: <Change readout={detail({ behind: true })} />,
   },
   {
     id: "conflict",
@@ -988,8 +1007,9 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: (
       <Change
         readout={detail({
-          mainHead: MAIN_NOW,
-          mergeability: { kind: "conflict", paths: ["src/server/index.ts"] },
+          behind: true,
+          mergeability: "conflict",
+          conflictPaths: ["src/server/index.ts"],
         })}
       />
     ),
@@ -997,16 +1017,12 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "behind",
     label: "Behind main, no longer merges",
-    node: (
-      <Change
-        readout={detail({ mainHead: MAIN_NOW, mergeability: { kind: "conflict", paths: [] } })}
-      />
-    ),
+    node: <Change readout={detail({ behind: true, mergeability: "conflict" })} />,
   },
   {
     id: "empty",
     label: "Nothing in it main does not have",
-    node: <Change readout={detail({ mergeability: { kind: "empty" } })} />,
+    node: <Change readout={detail({ mergeability: "empty" })} />,
   },
   {
     id: "not-offered",

@@ -1,12 +1,11 @@
 /** HQ attachment reads beside the scope socket, using each demanded scope's stream policy. */
-import { changeReadId, changeReadRequest, hqChangeReadFamily } from "../families/hqChangeRead.ts";
+import { changeReadId, changeReadRequest } from "../families/hqChangeRead.ts";
 import type { ChangeReadRequest } from "../families/hqChangeRead.ts";
 import { hqChangeMetadataFamily } from "../families/hqChangeMetadata.ts";
 import { hqChangeCommitsFamily } from "../families/hqChangeCommits.ts";
 import type {
   ChangeMetadataResponse,
   ChangeCommitsResponse,
-  ChangeDetailResponse,
   AttachmentLink,
 } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
@@ -24,9 +23,6 @@ export const makeHqPictureReads = (options: {
   readonly orgId: string;
   readonly store: AccountStore;
   readonly read: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
-  readonly change?: (
-    request: ChangeReadRequest,
-  ) => Effect.Effect<ChangeDetailResponse, StreamFault>;
   readonly metadata?: (
     request: ChangeReadRequest,
   ) => Effect.Effect<ChangeMetadataResponse, StreamFault>;
@@ -48,7 +44,6 @@ export const makeHqPictureReads = (options: {
         scopes.filter((scope) =>
           [
             hqPictureFamily.scope.suffix,
-            hqChangeReadFamily.scope.suffix,
             hqChangeMetadataFamily.scope.suffix,
             hqChangeCommitsFamily.scope.suffix,
           ].includes(scope.split(":")[2]!),
@@ -72,13 +67,11 @@ export const makeHqPictureReads = (options: {
         const owner = scope.split(":").slice(3).join(":");
         const suffix = scope.split(":")[2];
         const spec =
-          suffix === hqChangeReadFamily.scope.suffix
-            ? hqChangeReadFamily
-            : suffix === hqChangeMetadataFamily.scope.suffix
-              ? hqChangeMetadataFamily
-              : suffix === hqChangeCommitsFamily.scope.suffix
-                ? hqChangeCommitsFamily
-                : hqPictureFamily;
+          suffix === hqChangeMetadataFamily.scope.suffix
+            ? hqChangeMetadataFamily
+            : suffix === hqChangeCommitsFamily.scope.suffix
+              ? hqChangeCommitsFamily
+              : hqPictureFamily;
         const isChange = spec !== hqPictureFamily;
         const family = spec.family;
         const link = isChange ? changeReadRequest(owner) : pictureLink(owner);
@@ -108,14 +101,9 @@ export const makeHqPictureReads = (options: {
           continue;
         }
         store.dispatch({ kind: "baseline-begin", scope, generation });
-        const readChange =
-          spec === hqChangeMetadataFamily
-            ? options.metadata
-            : spec === hqChangeCommitsFamily
-              ? options.commits
-              : options.change;
+        const readChange = spec === hqChangeMetadataFamily ? options.metadata : options.commits;
         const request: Effect.Effect<
-          Blob | ChangeMetadataResponse | ChangeCommitsResponse | ChangeDetailResponse,
+          Blob | ChangeMetadataResponse | ChangeCommitsResponse,
           StreamFault
         > = isChange
           ? (readChange?.(link as ChangeReadRequest) ??
@@ -154,9 +142,10 @@ export const makeHqPictureReads = (options: {
                       incarnation: isChange
                         ? [
                             id,
-                            (blob as ChangeDetailResponse).change.updatedAt,
-                            (blob as ChangeDetailResponse).change.head,
-                            (blob as ChangeDetailResponse).mainHead,
+                            (blob as ChangeMetadataResponse | ChangeCommitsResponse).change
+                              .updatedAt,
+                            (blob as ChangeMetadataResponse | ChangeCommitsResponse).change.head,
+                            "mainHead" in blob ? blob.mainHead : null,
                           ].join("/")
                         : id,
                       revision: 0,

@@ -10,8 +10,6 @@ describe("mergeabilityKindOf: HQ's word on whether a change merges, as every sur
     ["unrelated", "conflicting"],
     ["empty", "empty"],
     ["already_merged", "empty"],
-    // The detail's word for a change nothing was pushed to.
-    ["no_change", "empty"],
     // The record's, before HQ has judged it — nothing pushed, or past what a move of main judges.
     ["unknown", "checking"],
   ] as const)("%s reads %s", (kind, word) => {
