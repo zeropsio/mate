@@ -3,7 +3,12 @@
  * carries, as Zerops says it (`@t3tools/client-runtime/zerops/hq` `HqUpdateState`), and the one
  * action it offers.
  */
-import { hqUpdateOffered, type HqUpdateState } from "@t3tools/client-runtime/zerops/hq";
+import {
+  hqUpdateOffered,
+  hqZeropsProject,
+  type HqUpdateState,
+  type OfficialHq,
+} from "@t3tools/client-runtime/zerops/hq";
 
 import type { HqStanding } from "~/zerops/accountHq";
 
@@ -81,6 +86,25 @@ export function hqUpdateWords(state: HqUpdateState, answering: string | undefine
 }
 
 /**
+ * Whether an official HQ answering with `answering` is behind the Core this app carries. Only an
+ * HQ with a Zerops project of its own can be updated from here: the shared HQ is deployed apart,
+ * and its build is not ordered against this app's bundled one — it is never behind.
+ */
+export function hqBehind(input: {
+  readonly hq: Extract<OfficialHq, { readonly kind: "official" }>;
+  readonly answering: string | undefined;
+  readonly carried: string | undefined;
+}): boolean {
+  const { hq, answering, carried } = input;
+  return (
+    hqZeropsProject(hq) !== undefined &&
+    answering !== undefined &&
+    carried !== undefined &&
+    hqUpdateOffered(answering, carried)
+  );
+}
+
+/**
  * What HQ's card offers an owner or an admin beside HQ's health: its update while HQ's stream
  * names an older Core than this app carries, else the way to see that it is up to date — both from
  * data already read. A stream that names no Core leaves it to Zerops: the `hq` service's active
@@ -89,6 +113,8 @@ export function hqUpdateWords(state: HqUpdateState, answering: string | undefine
  */
 export function hqUpdateTrigger(input: {
   readonly admin: boolean;
+  /** HQ has a Zerops project of its own; the shared HQ has none and is never offered an update. */
+  readonly ownProject: boolean;
   readonly standing: HqStanding;
   /** The Core this app carries; `undefined` until read. */
   readonly carried: string | undefined;
@@ -96,7 +122,7 @@ export function hqUpdateTrigger(input: {
   readonly zerops?: HqUpdateState | undefined;
 }): "Update available" | "Up to date" | null {
   const { standing, carried, zerops } = input;
-  if (!input.admin || carried === undefined) return null;
+  if (!input.admin || !input.ownProject || carried === undefined) return null;
   if (standing.kind !== "healthy" && standing.kind !== "unchecked") return null;
   if (standing.build !== undefined) {
     return hqUpdateOffered(standing.build, carried) ? "Update available" : "Up to date";
@@ -144,6 +170,7 @@ export interface HqUpdateMount {
  */
 export function hqUpdateMount(input: {
   readonly admin: boolean;
+  readonly ownProject: boolean;
   readonly standing: HqStanding;
   readonly carried: string | undefined;
   /** Where Zerops says HQ's Core stands, once the opened card read it (`hqUpdateTrigger`). */

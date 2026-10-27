@@ -158,6 +158,7 @@ export function ZeropsHqCard() {
       ? null
       : hqUpdateMount({
           admin,
+          ownProject: true,
           standing,
           carried,
           zerops: update?.kind === "read" ? update.state : undefined,
