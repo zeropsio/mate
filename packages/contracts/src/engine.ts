@@ -1145,6 +1145,40 @@ export const ConversationUnarchived = event("ConversationUnarchived", { by: Prin
 export const LeaseBound = event("LeaseBound", { lease: ThreadLease });
 /** The conversation's lease ended: released, lost, or no longer held. */
 export const LeaseUnbound = event("LeaseUnbound", { alias: LeaseAlias });
+/**
+ * What zcp answered when an archived conversation's branch was given back (`zcp lease release`,
+ * never forced): every lease of the branch released, each kept warm or removed; the branch kept
+ * because a lease of it holds unsaved work, which zcp names; or no release made, in words.
+ */
+export const LeaseReleaseResult = Schema.Union([
+  Schema.Struct({
+    outcome: Schema.Literal("released"),
+    leases: Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
+  }),
+  Schema.Struct({
+    outcome: Schema.Literal("refused"),
+    leases: Schema.Array(
+      Schema.Struct({
+        lease: Schema.String,
+        unsaved: Schema.Struct({
+          files: Schema.Array(Schema.String),
+          commits: Schema.Array(Schema.String),
+        }),
+      }),
+    ),
+  }),
+  Schema.Struct({ outcome: Schema.Literal("failed"), reason: Schema.String }),
+]);
+export type LeaseReleaseResult = typeof LeaseReleaseResult.Type;
+/**
+ * The receipt of the release an archive asked for, of the branch of the lease the conversation was
+ * bound to (`alias`). Only `released` unbinds it; a lease kept stays the conversation's.
+ */
+export const LeaseReleaseSettled = event("LeaseReleaseSettled", {
+  alias: LeaseAlias,
+  branch: TrimmedNonEmptyString,
+  result: LeaseReleaseResult,
+});
 export const EffectRequested = event("EffectRequested", {
   effectId: EffectId,
   kind: Schema.String,
@@ -1277,6 +1311,7 @@ const knownEvents = [
   ConversationUnarchived,
   LeaseBound,
   LeaseUnbound,
+  LeaseReleaseSettled,
   EffectRequested,
   EffectOutcomeRecorded,
   WakeArmed,

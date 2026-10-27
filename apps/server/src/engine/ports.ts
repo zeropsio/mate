@@ -4,7 +4,8 @@
  * restart (`RestartEvidence`), where a conversation's agent works
  * (`AgentWorkspace`), how a call's pictures are claimed (`MessagePictures`), what
  * another instance of a driver left on a thread (`HandedOverResume`) and what each provider
- * reports of its signed-in account's usage (`ProviderUsageFeed`). The engine imports these,
+ * reports of its signed-in account's usage (`ProviderUsageFeed`) and how an archived conversation's
+ * branch goes back to its pool (`LeaseRelease`). The engine imports these,
  * never `zerops/` and no provider file but `ProviderService`;
  * `zerops/engineAdapters.ts` implements them, and outside Zerops they allow
  * and read nothing.
@@ -15,7 +16,7 @@ import * as Context from "effect/Context";
 import * as Data from "effect/Data";
 import type * as Effect from "effect/Effect";
 import type * as Stream from "effect/Stream";
-import type { MateRestart, RunAdmissionRefusal } from "@t3tools/contracts";
+import type { LeaseReleaseResult, MateRestart, RunAdmissionRefusal } from "@t3tools/contracts";
 import type {
   ChatAttachment,
   ConversationId,
@@ -164,3 +165,18 @@ export class ProviderUsageFeed extends Context.Service<
   ProviderUsageFeed,
   { readonly reports: Stream.Stream<ReadonlyArray<InstanceUsage>> }
 >()("t3/engine/ports/ProviderUsageFeed") {}
+
+/**
+ * The pool's side of a lease: an archived conversation's branch given back through zcp
+ * (`zcp lease release`), never forced, so zcp keeps a branch whose leases hold unsaved work. Its
+ * answer is always a result, a release not made included. Absent outside Zerops: nothing releases.
+ */
+export class LeaseRelease extends Context.Service<
+  LeaseRelease,
+  {
+    readonly release: (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }) => Effect.Effect<LeaseReleaseResult>;
+  }
+>()("t3/engine/ports/LeaseRelease") {}

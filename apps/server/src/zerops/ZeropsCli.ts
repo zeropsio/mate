@@ -13,7 +13,9 @@ import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import type { LeaseReleaseResult } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import * as ProcessRunner from "../processRunner.ts";
@@ -32,6 +34,35 @@ const MATE_STATUS_MAX_OUTPUT_BYTES = 64 * 1024;
 /** `mate update` downloads a release and runs npm install — MD-13's staged-then-activated path. */
 const MATE_UPDATE_TIMEOUT = Duration.minutes(5);
 const MATE_UPDATE_MAX_OUTPUT_BYTES = 256 * 1024;
+/**
+ * `lease release` reads each lease's container over ssh for unsaved work (starting a parked one
+ * first) before it releases any: minutes at worst, never an unbounded wait.
+ */
+const LEASE_RELEASE_TIMEOUT = Duration.minutes(3);
+const LEASE_RELEASE_MAX_OUTPUT_BYTES = 256 * 1024;
+/** `lease release`'s exit when a lease of the branch holds unsaved work: nothing was released. */
+const LEASE_RELEASE_REFUSED_EXIT = 3;
+
+const LeaseReleaseAnswer = Schema.Union([
+  Schema.Struct({
+    released: Schema.Array(Schema.Struct({ lease: Schema.String, outcome: Schema.String })),
+  }),
+  Schema.Struct({
+    refused: Schema.Array(
+      Schema.Struct({
+        lease: Schema.String,
+        unsaved: Schema.Struct({
+          files: Schema.Array(Schema.String),
+          commits: Schema.Array(Schema.String),
+        }),
+      }),
+    ),
+  }),
+  Schema.Struct({ error: Schema.String }),
+]);
+const decodeLeaseReleaseAnswer = Schema.decodeUnknownOption(
+  Schema.fromJsonString(LeaseReleaseAnswer),
+);
 
 /**
  * `zcp` is not installed — this is not a Zerops environment. Distinct from
@@ -66,6 +97,8 @@ export interface ZeropsCliOptions {
   readonly baseArgs: ReadonlyArray<string>;
   /** Where zcp resolves its project credentials from — `/var/www` in the container. */
   readonly cwd: string;
+  /** How long `lease release` is waited on; {@link LEASE_RELEASE_TIMEOUT} unless a test says. */
+  readonly leaseReleaseTimeout?: Duration.Input;
 }
 
 export class ZeropsCli extends Context.Service<
@@ -95,6 +128,16 @@ export class ZeropsCli extends Context.Service<
     readonly mateUpdate: (options?: {
       readonly automatic?: boolean;
     }) => Effect.Effect<MateUpdateResult, ZeropsCliError>;
+    /**
+     * Runs `zcp lease release --branch <branch> [--repo <url>] --json`: every lease of the branch
+     * released, never forced — zcp refuses (exit 3) while a lease of it holds uncommitted or
+     * untracked files or commits on no remote branch, and names them. Always a result: a zcp that
+     * fails, is missing, or does not answer in time reads `failed`, in its words.
+     */
+    readonly leaseRelease: (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }) => Effect.Effect<LeaseReleaseResult>;
   }
 >()("t3/zerops/ZeropsCli") {}
 
@@ -215,9 +258,66 @@ export const make = (options: ZeropsCliOptions) =>
           }),
         );
 
+    const leaseReleaseTimeout = options.leaseReleaseTimeout ?? LEASE_RELEASE_TIMEOUT;
+    const leaseRelease = (input: {
+      readonly branch: string;
+      readonly repo?: string;
+    }): Effect.Effect<LeaseReleaseResult> =>
+      processRunner
+        .run({
+          command,
+          args: [
+            ...baseArgs,
+            "lease",
+            "release",
+            "--branch",
+            input.branch,
+            ...(input.repo === undefined ? [] : ["--repo", input.repo]),
+            "--json",
+          ],
+          cwd,
+          timeout: leaseReleaseTimeout,
+          maxOutputBytes: LEASE_RELEASE_MAX_OUTPUT_BYTES,
+          outputMode: "truncate",
+        })
+        .pipe(
+          Effect.map((result): LeaseReleaseResult => {
+            const answer = decodeLeaseReleaseAnswer(result.stdout.trim());
+            if (Option.isSome(answer)) {
+              const read = answer.value;
+              if ("released" in read && result.code === 0) {
+                return { outcome: "released", leases: read.released };
+              }
+              if ("refused" in read && result.code === LEASE_RELEASE_REFUSED_EXIT) {
+                return { outcome: "refused", leases: read.refused };
+              }
+              if ("error" in read) return { outcome: "failed", reason: read.error };
+            }
+            return {
+              outcome: "failed",
+              reason: firstDiagnosticLine(
+                result.stderr,
+                `lease release did not print a result document (exited ${result.code})`,
+              ),
+            };
+          }),
+          Effect.catch((cause) =>
+            Effect.succeed<LeaseReleaseResult>({
+              outcome: "failed",
+              reason:
+                cause._tag === "ProcessTimeoutError"
+                  ? `zcp did not answer the release within ${Duration.toMillis(Duration.fromInputUnsafe(leaseReleaseTimeout)) / 1000} s`
+                  : cause._tag === "ProcessSpawnError"
+                    ? spawnErrorToCliError(command, cause.cause).message
+                    : cause.message,
+            }),
+          ),
+        );
+
     return {
       mateStatus,
       mateUpdate,
+      leaseRelease,
     } satisfies ZeropsCli["Service"];
   });
 

@@ -15,6 +15,7 @@ import * as Context from "effect/Context";
 import type { Conversations } from "../Conversations.ts";
 import { EffectHandlers, handlersOf, type EffectHandler } from "../outbox/EffectWorker.ts";
 import { makeHistoryImport } from "./historyImport.ts";
+import { makeLeaseRelease } from "./leaseRelease.ts";
 import { makeProviderInterrupt } from "./providerInterrupt.ts";
 import { makeProviderRespond } from "./providerRespond.ts";
 import { makeProviderSend } from "./providerSend.ts";
@@ -54,6 +55,7 @@ export const layer = Layer.effect(
             onSome: (value) => contentAssetsAt(value.stateDir),
           }),
       }),
+      yield* makeLeaseRelease,
       ...extra,
     );
   }),

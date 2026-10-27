@@ -246,7 +246,8 @@ describe("ZeropsCli.leaseRelease", () => {
     }),
   );
 
-  it.effect("a release zcp does not answer in time reads failed, and zcp is not waited on", () =>
+  // On the real clock: the bound is a real wait on a real process.
+  it.live("a release zcp does not answer in time reads failed, and zcp is not waited on", () =>
     Effect.gen(function* () {
       const result = yield* run(stubWithin(`setTimeout(() => {}, 10_000)`, 200), (cli) =>
         cli.leaseRelease(branch),

@@ -18,7 +18,9 @@
  */
 import type { MateRestart } from "@t3tools/contracts";
 import * as Cron from "effect/Cron";
+import * as Option from "effect/Option";
 import * as Result from "effect/Result";
+import * as Schema from "effect/Schema";
 import {
   effectId as deriveEffectId,
   itemId as deriveItemId,
@@ -50,6 +52,9 @@ import {
   type UserInputAttachments,
   isCardAsk,
   ItemId,
+  LeaseAlias,
+  LeaseReleaseResult,
+  TrimmedNonEmptyString,
   WORK_ENDED,
 } from "@t3tools/contracts";
 import { changedOptionIds } from "@t3tools/shared/modelOptions";
@@ -155,6 +160,7 @@ export const EFFECT_KINDS = {
   "run.prepare": { lane: "side", class: "replay-safe" },
   "provider.steer": { lane: "turn", class: "process-bound" },
   "history.import": { lane: "side", class: "replay-safe" },
+  "lease.release": { lane: "side", class: "replay-safe" },
 } as const satisfies Record<string, { lane: ConversationLane; class: EffectClass }>;
 export type EngineEffectKind = keyof typeof EFFECT_KINDS;
 
@@ -306,8 +312,9 @@ const handle = (b: StepBuilder, command: Command): void => {
         },
       });
     case "Archive":
-      if (!b.state.archived) b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
-      return;
+      if (b.state.archived) return;
+      b.emit({ _tag: "ConversationArchived", by: b.envelope.principal });
+      return askLeaseRelease(b);
     case "Unarchive":
       if (b.state.archived) b.emit({ _tag: "ConversationUnarchived", by: b.envelope.principal });
       return;
@@ -1843,6 +1850,72 @@ const watchdogFired = (b: StepBuilder, id: RunId | null): void => {
 
 // ── effects ─────────────────────────────────────────────────────────────────────────────────
 
+// ── the workspace on archive ────────────────────────────────────────────────────────────────
+
+/**
+ * Archiving is the person's word that the conversation's work is done: the branch of the lease it
+ * is bound to goes back to its pool. zcp releases it only with nothing unsaved there (it never
+ * forces), so a refusal keeps the binding and nothing is lost. A lease of no branch is kept: zcp
+ * releases a branch, never one container.
+ */
+const askLeaseRelease = (b: StepBuilder): void => {
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  b.effect(
+    "lease.release",
+    `${b.state.conversationId}/lease/${lease.alias}`,
+    b.state.headSeq,
+    null,
+    {
+      alias: lease.alias,
+      branch: lease.branch,
+      ...(lease.repo === undefined ? {} : { repo: lease.repo }),
+    } satisfies LeaseReleasePayload,
+  );
+};
+
+/** What a `lease.release` effect asks: the bound lease, and the branch (and repository) zcp releases. */
+export interface LeaseReleasePayload {
+  readonly alias: string;
+  readonly branch: string;
+  readonly repo?: string;
+}
+
+const decodeLeaseReleaseValue = Schema.decodeUnknownOption(
+  Schema.Struct({ alias: LeaseAlias, branch: TrimmedNonEmptyString, result: LeaseReleaseResult }),
+);
+
+/**
+ * The release's receipt; a release that went unbinds the conversation from the lease it named. An
+ * outcome the handler never gave (the worker gave up on it) is a release not made, of the lease the
+ * conversation is bound to; with none bound, the outcome alone records it.
+ */
+const leaseReleaseSettled = (b: StepBuilder, outcome: EffectOutcome): void => {
+  const value = outcome.kind === "ok" ? decodeLeaseReleaseValue(outcome.value) : Option.none();
+  if (Option.isSome(value)) {
+    const { alias, branch, result } = value.value;
+    b.emit({ _tag: "LeaseReleaseSettled", alias, branch, result });
+    if (result.outcome === "released" && b.state.lease?.alias === alias) {
+      b.emit({ _tag: "LeaseUnbound", alias });
+    }
+    return;
+  }
+  const lease = b.state.lease;
+  if (lease === null || lease.branch === null) return;
+  const reason =
+    outcome.kind === "failed" || outcome.kind === "cut"
+      ? outcome.reason
+      : outcome.kind === "timed-out"
+        ? `zcp did not answer the release within ${Math.round(outcome.after / 1000)} s`
+        : "the release's answer could not be read";
+  b.emit({
+    _tag: "LeaseReleaseSettled",
+    alias: lease.alias,
+    branch: lease.branch,
+    result: { outcome: "failed", reason },
+  });
+};
+
 const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): void => {
   const effect = b.state.effects[id];
   if (effect === undefined) throw new Rejected("unknown-effect");
@@ -1850,6 +1923,7 @@ const effectSettled = (b: StepBuilder, id: EffectId, outcome: EffectOutcome): vo
   const closing = b.state.closing?.effectId === id ? b.state.closing : null;
   b.emit({ _tag: "EffectOutcomeRecorded", effectId: id, kind: effect.kind, outcome });
   if (effect.kind === "history.import") return historySettled(b, id, outcome);
+  if (effect.kind === "lease.release") return leaseReleaseSettled(b, outcome);
   const failure =
     outcome.kind === "ok"
       ? null
