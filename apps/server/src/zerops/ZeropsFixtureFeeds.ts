@@ -489,6 +489,10 @@ const zeropsCliFixtureLayer = () =>
       // A fixture scene's pools are pictures: nothing is released.
       leaseRelease: () =>
         Effect.succeed({ outcome: "failed", reason: "a fixture scene releases nothing" }),
+      selfRestart: Effect.succeed({
+        outcome: "refused",
+        reason: "a fixture scene restarts nothing",
+      }),
     }),
   );
 
@@ -500,6 +504,7 @@ const zeropsMateUpdateFixtureLayer = () =>
       changes: Stream.make(undefined),
       refresh: Effect.void,
       check: Effect.succeed(undefined),
+      restart: Effect.succeed({ started: false, reason: "a fixture scene restarts nothing" }),
     }),
   );
 

@@ -13,6 +13,9 @@ import type * as RpcSession from "../../rpc/session.ts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { mateUpdate, mateUpdateStates } from "../projections/mateUpdate.ts";
 import { makeMateUpdates, makeMateUpdateWire } from "./mateUpdate.ts";
+import { mateLinkScope, type MateLinkValue } from "../families/mateLink.ts";
+import { initialContainer } from "../../zerops/environments/containerMachine.ts";
+import { initialEnvironment } from "../../zerops/environments/environmentMachine.ts";
 
 const env = EnvironmentId.make("one");
 const other = EnvironmentId.make("two");
@@ -339,4 +342,175 @@ describe("an update pressed where its Mate is not connected", () => {
       host.close();
     }),
   );
+});
+
+describe("an Update that only a container restart answers", () => {
+  const started = {
+    action: "none" as const,
+    restarted: false,
+    started: true,
+    restartAttempt: "restart-1",
+    restartTarget: { zcp: "9.226.0" },
+    bootId: "old",
+    serverVersion: "1",
+  };
+  const behind = {
+    installed: "1",
+    latest: "1",
+    available: false,
+    checkedAt: "now",
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restart: { needed: true },
+  };
+  it("a postponed restart frees Update again, saying why, and the next press starts again", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state).toEqual({ phase: "updating", to: "zcp 9.226.0" });
+    host.observe(env, {
+      ...server,
+      update: {
+        ...behind,
+        restart: {
+          needed: true,
+          phase: "postponed",
+          reason: "the container did not restart",
+          attempt: "restart-1",
+        },
+      },
+    });
+    expect(read().state).toEqual({
+      phase: "failed",
+      message: "Update postponed; the container did not restart",
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state).toEqual({ phase: "updating", to: "zcp 9.226.0" });
+    host.close();
+  });
+  it("a finished restart for zcp says zcp's version, never the unchanged mate's", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    host.observe(env, {
+      serverVersion: "1",
+      bootId: "new",
+      update: {
+        ...behind,
+        zcp: { installed: "9.226.0", latest: "9.226.0", behind: false },
+        restart: { needed: false },
+      },
+    });
+    expect(read().state).toEqual({ phase: "updated", to: null, zcp: "9.226.0" });
+    host.close();
+  });
+  it("a press that read no update first still says what its restart moved", async () => {
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+    });
+    await host.update(env, server, "the newest version", null);
+    host.observe(env, {
+      serverVersion: "1",
+      bootId: "new",
+      update: {
+        ...behind,
+        zcp: { installed: "9.226.0", latest: "9.226.0", behind: false },
+        restart: { needed: false },
+      },
+    });
+    expect(read().state).toEqual({ phase: "updated", to: null, zcp: "9.226.0" });
+    host.close();
+  });
+  it("a Mate back from its restart that cannot say what it runs is unconfirmed once the wait ends", async () => {
+    const waits: Array<() => void> = [];
+    const { host, read } = setup({
+      wire: { update: () => Effect.succeed(started), check: () => Effect.succeed(behind) },
+      after: (_ms, run) => {
+        waits.push(run);
+        return () => {};
+      },
+    });
+    await host.update(env, server, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    const unknown = {
+      serverVersion: "1",
+      bootId: "new",
+      update: { ...behind, zcp: { installed: "9.225.0", latest: "", behind: false } },
+    };
+    host.observe(env, unknown);
+    expect(read().state.phase).toBe("updating");
+    expect(waits).toHaveLength(1);
+    waits[0]!();
+    expect(read().state).toEqual({
+      phase: "failed",
+      message: "This Mate came back, but couldn't confirm the update.",
+    });
+    host.close();
+  });
+  // The store's reading of the Mate is a snapshot written on probe; the live line may say less.
+  it("a lost answer never settles on an older restart the store still holds", async () => {
+    const { store, host, read } = setup({
+      wire: {
+        update: () =>
+          Effect.fail(new ZeropsMateUpdateError({ reason: "timed-out", message: "Timed out" })),
+        check: () => Effect.succeed(behind),
+      },
+    });
+    const older = {
+      ...behind,
+      restart: {
+        needed: true,
+        phase: "postponed" as const,
+        reason: "not inside a container",
+        attempt: "restart-1",
+        startedAt: "2026-10-27T10:00:00.000Z",
+      },
+    };
+    const link: MateLinkValue = {
+      key: "project:service",
+      projectId: "project",
+      orgId: "org",
+      origin: "https://mate.example",
+      shown: true,
+      watched: true,
+      environment: initialEnvironment({ record: env }),
+      container: {
+        ...initialContainer(),
+        reading: {
+          sentAt: { wall: 1, mono: 1 },
+          reading: {
+            kind: "ready",
+            projectId: "project",
+            initAt: null,
+            descriptor: {
+              environmentId: env,
+              serverVersion: "1",
+              update: older,
+              identity: "ok",
+              identityCheckedAt: null,
+            },
+          },
+        },
+      },
+    };
+    store.dispatch({
+      kind: "rows",
+      scope: mateLinkScope("project"),
+      generation: 0,
+      method: "read",
+      via: "mate-direct",
+      rows: [
+        {
+          family: "mateLink",
+          id: link.key,
+          value: link,
+          revision: { kind: "mate-link", sequence: 1 },
+        },
+      ],
+    });
+    // The live line no longer carries a restart: the fallback took its place.
+    await host.update(env, { ...server, update: behind }, "zcp 9.226.0", null, { zcp: "9.226.0" });
+    expect(read().state.phase).toBe("updating");
+    host.close();
+  });
 });

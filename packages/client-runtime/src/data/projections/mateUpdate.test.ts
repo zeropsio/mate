@@ -107,4 +107,15 @@ describe("automatic update evidence", () => {
     const update = streamed("", "postponed");
     expect(read(true, update)).toEqual({ checked: update, state: { phase: "idle" } });
   });
+  // zcp always sends its updater record, so the streamed line is the check: a Mate whose zcp is
+  // behind read "Up to date" in place of Update.
+  it("a Mate that only a restart gets current is never up to date", () => {
+    const update: ExecutionEnvironmentUpdate = {
+      ...streamed("1", "idle"),
+      available: false,
+      zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+      restart: { needed: true, why: "zcp 9.226.0 is out" },
+    };
+    expect(read(true, update)).toEqual({ checked: update, state: { phase: "idle" } });
+  });
 });

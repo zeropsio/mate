@@ -7,13 +7,22 @@
  */
 import { describe, expect, it } from "@effect/vitest";
 import * as NodePath from "node:path";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
+import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
-import { ZeropsCliFailed, ZeropsCliNotFound } from "./ZeropsCli.ts";
+import {
+  ZCP_SELF_RESTART_SINCE,
+  ZeropsCliFailed,
+  ZeropsCliNotFound,
+  type SelfRestartResult,
+  type ZeropsCli,
+} from "./ZeropsCli.ts";
 import { make } from "./ZeropsMateUpdate.ts";
 import type { MateStatusResult } from "./zeropsMateUpdateParse.ts";
 
@@ -35,6 +44,7 @@ const stubCli = (
   mateUpdate: () => Effect.die("not used"),
   version: Effect.die("not used"),
   leaseRelease: () => Effect.die("not used"),
+  selfRestart: Effect.die("not used"),
 });
 
 describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {
@@ -261,5 +271,456 @@ describe("ZeropsMateUpdate hears zcp's own reads", () => {
         expect(heard._tag).toBe("Some");
         expect(reads.every((options) => options?.local === true)).toBe(true);
       }).pipe(Effect.scoped),
+  );
+});
+
+describe("a Mate that only a restart gets current", () => {
+  const BEHIND: MateStatusResult = {
+    installed: "0.15.200",
+    latest: "0.15.200",
+    contract: 1,
+    updateAvailable: false,
+    checkedAt: "2026-10-27T00:00:00Z",
+    updater: { protocol: 1, rollbackCompatible: true, phase: "idle", runningVersion: "0.15.200" },
+    zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+    restartNeeded: true,
+    why: "zcp 9.226.0 is out; only a restart installs it",
+  };
+  const policyOn = {
+    current: Effect.succeed(Option.some({ orgId: "org", enabled: true, revision: 1 })),
+    verify: Effect.succeed(Option.some({ orgId: "org", enabled: true, revision: 1 })),
+    changes: Stream.never,
+  };
+
+  /** A zcp that reads `status` and records what else it is asked. */
+  const zcp = (input: {
+    readonly status: () => MateStatusResult;
+    readonly version?: string;
+    readonly asksVersion?: Effect.Effect<string | undefined>;
+    readonly restart?: SelfRestartResult;
+  }) => {
+    const asked: Array<string> = [];
+    const cli: ZeropsCli["Service"] = {
+      mateStatus: () => Effect.sync(input.status),
+      mateUpdate: (options) =>
+        Effect.sync(() => {
+          asked.push(options?.automatic ? "mate update --automatic" : "mate update");
+          return { action: "none", restarted: false, started: true };
+        }),
+      version: input.asksVersion ?? Effect.sync(() => input.version ?? ZCP_SELF_RESTART_SINCE),
+      leaseRelease: () => Effect.die("not used"),
+      selfRestart: Effect.sync(() => {
+        asked.push("self restart");
+        return input.restart ?? { outcome: "accepted", process: "proc-1" };
+      }),
+    };
+    return { cli, asked };
+  };
+
+  /** The drain the automatic updater runs: idle when `idle` resolves, never before. */
+  const drainUntil = (idle: Deferred.Deferred<boolean>) => {
+    const drains: Array<{ readonly automatic: boolean }> = [];
+    let reopened = 0;
+    return {
+      drains,
+      reopened: () => reopened,
+      ports: (marker: { value: string | undefined }) => ({
+        drain: (input: { readonly automatic: boolean }) =>
+          Effect.sync(() => drains.push(input)).pipe(Effect.andThen(Deferred.await(idle))),
+        reopen: Effect.sync(() => {
+          reopened += 1;
+        }),
+        marker: {
+          read: Effect.sync(() => marker.value),
+          write: (key: string) =>
+            Effect.sync(() => {
+              marker.value = key;
+            }),
+        },
+      }),
+    };
+  };
+
+  const phaseOf = (line: ExecutionEnvironmentUpdate | undefined) => line?.restart?.phase;
+  const awaitPhase = (
+    service: { readonly changes: Stream.Stream<ExecutionEnvironmentUpdate | undefined> },
+    phase: string,
+  ) =>
+    service.changes.pipe(
+      Stream.filter((line) => phaseOf(line) === phase),
+      Stream.runHead,
+      Effect.map((head) => {
+        const line = Option.getOrThrow(head);
+        if (line === undefined) throw new Error("no update line");
+        return line;
+      }),
+    );
+
+  it.effect("the update line relays zcp's own reading and why only a restart gets it current", () =>
+    Effect.gen(function* () {
+      const { cli } = zcp({ status: () => BEHIND });
+      const service = yield* make({ cli, isZeropsEnvironment: true });
+      expect(yield* service.current).toMatchObject({
+        zcp: { installed: "9.225.0", latest: "9.226.0", behind: true },
+        restart: { needed: true, why: "zcp 9.226.0 is out; only a restart installs it" },
+      });
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a Mate whose zcp is behind updates by restarting once it is idle", () =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({ status: () => BEHIND });
+      const idle = yield* Deferred.make<boolean>();
+      const drain = drainUntil(idle);
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drain.ports({ value: undefined }),
+      });
+      yield* service.refresh;
+      yield* awaitPhase(service, "draining");
+      yield* Deferred.succeed(idle, true);
+      yield* awaitPhase(service, "restarting");
+      expect(drain.drains).toEqual([{ automatic: true }]);
+      expect(asked).toEqual(["self restart"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a Mate needing a restart never restarts while it works", () =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({ status: () => BEHIND });
+      const idle = yield* Deferred.make<boolean>();
+      const drain = drainUntil(idle);
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drain.ports({ value: undefined }),
+      });
+      yield* service.refresh;
+      yield* awaitPhase(service, "draining");
+      expect(asked).toEqual([]);
+      // Its work outlasts the drain: the Mate stays up, and says why.
+      yield* Deferred.succeed(idle, false);
+      const line = yield* awaitPhase(service, "postponed");
+      expect(asked).toEqual([]);
+      expect(line.restart?.reason).toMatch(/work/);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("one zcp reading restarts the container at most once", () =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({ status: () => BEHIND });
+      const idle = yield* Deferred.make<boolean>();
+      yield* Deferred.succeed(idle, true);
+      const marker = { value: undefined as string | undefined };
+      const first = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drainUntil(idle).ports(marker),
+      });
+      yield* first.refresh;
+      yield* awaitPhase(first, "restarting");
+      yield* first.refresh;
+      yield* first.refresh;
+      // The container came back with zcp still behind: the same reading never restarts it again.
+      const again = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drainUntil(idle).ports(marker),
+      });
+      yield* again.refresh;
+      yield* Effect.yieldNow;
+      expect(asked).toEqual(["self restart"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each([
+    {
+      name: "an older zcp without self restart",
+      version: "9.225.0",
+      restart: undefined,
+      reason: "this Zerops Control Plane can't restart its Mate yet",
+    },
+    {
+      name: "a restart the platform refused",
+      version: undefined,
+      restart: { outcome: "refused", reason: "the project token may not restart zcp" } as const,
+      reason: "the project token may not restart zcp",
+    },
+  ])("$name leaves the update postponed, saying why", ({ version, restart, reason }) =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({
+        status: () => BEHIND,
+        ...(version === undefined ? {} : { version }),
+        ...(restart === undefined ? {} : { restart }),
+      });
+      const idle = yield* Deferred.make<boolean>();
+      yield* Deferred.succeed(idle, true);
+      const drain = drainUntil(idle);
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drain.ports({ value: undefined }),
+      });
+      yield* service.refresh;
+      const line = yield* awaitPhase(service, "postponed");
+      expect(line.restart?.reason).toBe(reason);
+      expect(asked).toEqual(version === undefined ? ["self restart"] : []);
+      // Whatever closed for the restart opens again.
+      expect(drain.reopened()).toBe(drain.drains.length === 0 ? 0 : 1);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a status without the zcp fields updates mate as before", () =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({
+        status: () => ({
+          installed: "0.15.200",
+          latest: "0.15.201",
+          contract: 1,
+          updateAvailable: true,
+          checkedAt: "2026-10-27T00:00:00Z",
+          updater: {
+            protocol: 1,
+            rollbackCompatible: true,
+            phase: "idle",
+            runningVersion: "0.15.200",
+          },
+        }),
+      });
+      const idle = yield* Deferred.make<boolean>();
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drainUntil(idle).ports({ value: undefined }),
+      });
+      yield* service.refresh;
+      expect(asked).toEqual(["mate update --automatic"]);
+      expect((yield* service.current)?.restart).toBeUndefined();
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a person's Update on a Mate needing a restart restarts it once it is idle", () =>
+    Effect.gen(function* () {
+      const { cli, asked } = zcp({ status: () => BEHIND });
+      const idle = yield* Deferred.make<boolean>();
+      const drain = drainUntil(idle);
+      // No organization policy: the person's own press needs none.
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        restart: drain.ports({ value: undefined }),
+      });
+      const press = yield* service.restart;
+      expect(press.started).toBe(true);
+      const attempt = press.started ? press.attempt : undefined;
+      // Draining, as this restart, before the press is answered: the tab never reads an older
+      // attempt's postponed line as this one's.
+      expect((yield* service.current)?.restart).toMatchObject({ phase: "draining", attempt });
+      // Pressed again while it waits: the same restart, not a second one.
+      expect(yield* service.restart).toEqual(press);
+      yield* Deferred.succeed(idle, true);
+      yield* awaitPhase(service, "restarting");
+      expect(drain.drains).toEqual([{ automatic: false }]);
+      expect(asked).toEqual(["self restart"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a spent restart never blocks the Mate's own automatic update", () =>
+    Effect.gen(function* () {
+      const status: MateStatusResult = {
+        ...BEHIND,
+        latest: "0.15.201",
+        updateAvailable: true,
+      };
+      const { cli, asked } = zcp({ status: () => status });
+      const idle = yield* Deferred.make<boolean>();
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        policy: policyOn,
+        restart: drainUntil(idle).ports({
+          value: "zcp 9.225.0 -> 9.226.0; mate 0.15.200",
+        }),
+      });
+      yield* service.refresh;
+      expect(asked).toEqual(["mate update --automatic"]);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("an interrupted press leaves the next press free", () =>
+    Effect.gen(function* () {
+      const version = yield* Deferred.make<string | undefined>();
+      const { cli } = zcp({ status: () => BEHIND, asksVersion: Deferred.await(version) });
+      const idle = yield* Deferred.make<boolean>();
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        restart: drainUntil(idle).ports({ value: undefined }),
+      });
+      // The first press is interrupted while zcp's version is read: the restart goes on.
+      const first = yield* service.restart.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Fiber.interrupt(first);
+      yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
+      const next = yield* service.restart;
+      expect(next.started).toBe(true);
+      expect((yield* service.current)?.restart?.phase).toBe("draining");
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "a press joined to one interrupted while zcp's version is read still gets its restart",
+    () =>
+      Effect.gen(function* () {
+        const version = yield* Deferred.make<string | undefined>();
+        const { cli } = zcp({ status: () => BEHIND, asksVersion: Deferred.await(version) });
+        const idle = yield* Deferred.make<boolean>();
+        const service = yield* make({
+          cli,
+          isZeropsEnvironment: true,
+          restart: drainUntil(idle).ports({ value: undefined }),
+        });
+        const first = yield* service.restart.pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        const joined = yield* service.restart.pipe(Effect.forkChild);
+        yield* Effect.yieldNow;
+        yield* Fiber.interrupt(first);
+        yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
+        const answer = yield* Fiber.join(joined);
+        expect(answer.started).toBe(true);
+        expect((yield* service.current)?.restart).toMatchObject({
+          phase: "draining",
+          attempt: answer.started ? answer.attempt : undefined,
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "an answer zcp did not give keeps the Mate closed through the grace, then says the container did not restart",
+    () =>
+      Effect.gen(function* () {
+        const { cli, asked } = zcp({ status: () => BEHIND, restart: { outcome: "uncertain" } });
+        const idle = yield* Deferred.make<boolean>();
+        yield* Deferred.succeed(idle, true);
+        const drain = drainUntil(idle);
+        const service = yield* make({
+          cli,
+          isZeropsEnvironment: true,
+          restart: { ...drain.ports({ value: undefined }), grace: Duration.minutes(5) },
+        });
+        yield* service.restart;
+        yield* awaitPhase(service, "restarting");
+        expect(asked).toEqual(["self restart"]);
+        expect(drain.reopened()).toBe(0);
+        yield* TestClock.adjust(Duration.minutes(5));
+        const line = yield* awaitPhase(service, "postponed");
+        expect(line.restart?.reason).toBe("the container did not restart");
+        expect(drain.reopened()).toBe(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "an error zcp does not call a refusal holds the Mate closed through the grace, then says zcp's words",
+    () =>
+      Effect.gen(function* () {
+        const reason = "the platform refused the restart: connection reset";
+        const { cli } = zcp({ status: () => BEHIND, restart: { outcome: "uncertain", reason } });
+        const idle = yield* Deferred.make<boolean>();
+        yield* Deferred.succeed(idle, true);
+        const drain = drainUntil(idle);
+        const service = yield* make({
+          cli,
+          isZeropsEnvironment: true,
+          restart: { ...drain.ports({ value: undefined }), grace: Duration.minutes(5) },
+        });
+        yield* service.restart;
+        yield* awaitPhase(service, "restarting");
+        expect(drain.reopened()).toBe(0);
+        yield* TestClock.adjust(Duration.minutes(5));
+        const line = yield* awaitPhase(service, "postponed");
+        expect(line.restart?.reason).toBe(reason);
+        expect(drain.reopened()).toBe(1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "a postponed restart gives way to the Mate's own automatic update that follows it",
+    () =>
+      Effect.gen(function* () {
+        const status: MateStatusResult = { ...BEHIND, latest: "0.15.201", updateAvailable: true };
+        const { cli, asked } = zcp({
+          status: () => status,
+          restart: { outcome: "refused", reason: "not inside a container" },
+        });
+        const idle = yield* Deferred.make<boolean>();
+        yield* Deferred.succeed(idle, true);
+        const service = yield* make({
+          cli,
+          isZeropsEnvironment: true,
+          policy: policyOn,
+          restart: drainUntil(idle).ports({ value: undefined }),
+        });
+        yield* service.refresh;
+        yield* awaitPhase(service, "postponed");
+        // The restart for this reading is spent: the next reading takes the Mate's own update.
+        yield* service.refresh;
+        expect(asked).toEqual(["self restart", "mate update --automatic"]);
+        // Its attempt stays on the line for the press that waits on it; zcp's own update phase
+        // outranks it where the line is drawn.
+        expect((yield* service.current)?.restart).toMatchObject({
+          phase: "postponed",
+          attempt: "restart-1",
+        });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("a second press while the first reads zcp's version joins the first's attempt", () =>
+    Effect.gen(function* () {
+      const version = yield* Deferred.make<string | undefined>();
+      const { cli } = zcp({ status: () => BEHIND, asksVersion: Deferred.await(version) });
+      const idle = yield* Deferred.make<boolean>();
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        restart: drainUntil(idle).ports({ value: undefined }),
+      });
+      const first = yield* service.restart.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      const second = yield* service.restart.pipe(Effect.forkChild);
+      yield* Effect.yieldNow;
+      yield* Deferred.succeed(version, ZCP_SELF_RESTART_SINCE);
+      const answer = yield* Fiber.join(first);
+      expect(answer.started).toBe(true);
+      expect(yield* Fiber.join(second)).toEqual(answer);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("a press says what its restart installs and when it started, on the line too", () =>
+    Effect.gen(function* () {
+      const { cli } = zcp({
+        status: () => ({ ...BEHIND, latest: "0.15.201", updateAvailable: true }),
+      });
+      const idle = yield* Deferred.make<boolean>();
+      const service = yield* make({
+        cli,
+        isZeropsEnvironment: true,
+        restart: drainUntil(idle).ports({ value: undefined }),
+      });
+      const answer = yield* service.restart;
+      expect(answer).toMatchObject({
+        started: true,
+        target: { zcp: "9.226.0", mate: "0.15.201" },
+      });
+      const restart = (yield* service.current)?.restart;
+      expect(restart?.startedAt).toEqual(expect.any(String));
+      expect(answer.started && answer.startedAt).toBe(restart?.startedAt);
+    }).pipe(Effect.scoped),
   );
 });
