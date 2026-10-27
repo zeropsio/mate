@@ -6,6 +6,7 @@ import {
   groupLead,
   groupMateOrder,
   groupRowPress,
+  heldOrder,
   projectRowKey,
   projectRowKind,
   type LeadReading,
@@ -40,6 +41,60 @@ describe("groupMateOrder — the viewer's Mates first, then colleagues', each in
       { projectId: "u1", mine: true, createdAt: undefined, name: "Abe" },
     ]);
     expect(order.map((mate) => mate.projectId)).toEqual(["d1", "u1", "u2"]);
+  });
+});
+
+describe("heldOrder — rows hold their places while the pointer is over the list", () => {
+  it.each([
+    {
+      case: "not held, the list takes its new order",
+      drawn: ["a", "b", "c"],
+      next: ["c", "a", "b"],
+      held: false,
+      shown: ["c", "a", "b"],
+    },
+    {
+      case: "held, a re-ranked row keeps its place",
+      drawn: ["a", "b", "c"],
+      next: ["c", "a", "b"],
+      held: true,
+      shown: ["a", "b", "c"],
+    },
+    {
+      case: "held, a removed row leaves and the rest keep their places",
+      drawn: ["a", "b", "c"],
+      next: ["c", "a"],
+      held: true,
+      shown: ["a", "c"],
+    },
+    {
+      case: "held, an added row comes in after the row it follows in the new order",
+      drawn: ["a", "b", "c"],
+      next: ["c", "a", "d", "b"],
+      held: true,
+      shown: ["a", "d", "b", "c"],
+    },
+    {
+      case: "held, an added row the new order leads with comes in first",
+      drawn: ["a", "b"],
+      next: ["d", "b", "a"],
+      held: true,
+      shown: ["d", "a", "b"],
+    },
+    {
+      case: "held, nothing drawn before: the new order",
+      drawn: [],
+      next: ["b", "a"],
+      held: true,
+      shown: ["b", "a"],
+    },
+  ])("$case", ({ drawn, next, held, shown }) => {
+    expect(heldOrder(drawn, next, held)).toEqual(shown);
+  });
+
+  it("hands back the new order itself where nothing is held back", () => {
+    const next = ["a", "b"];
+    expect(heldOrder(["a", "b"], next, true)).toBe(next);
   });
 });
 
