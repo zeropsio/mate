@@ -23,6 +23,7 @@ import {
   latestFinishedWordsAt,
   messageReceipt,
   namedToolCall,
+  incidentsAtRest,
   incidentsStanding,
   operationLineWords,
   operationUnreturnedWords,
@@ -2152,6 +2153,52 @@ describe("standingIncidents — what the dock under the now line says of a servi
     const incidents = standingIncidents(only!.stretches[0]!);
     expect(incidentsStanding(incidents, new Set(["appdev"]))).toEqual([]);
     expect(incidentsStanding(incidents, new Set(["appstage"]))).toEqual(incidents);
+  });
+
+  // A dev server found not running is a fault only where something is meant
+  // to run: a service holding nothing — a stand-in during a move, one never
+  // deployed — or one stopped reads at rest and says why.
+  it.each([
+    {
+      name: "nothing deployed yet: at rest, saying so",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "READY_TO_DEPLOY",
+      shows: [["appdev", "nothing deployed yet", "rest"]],
+    },
+    {
+      name: "stopped: at rest, saying so",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "STOPPED",
+      shows: [["appdev", "stopped", "rest"]],
+    },
+    {
+      name: "running its version: still a fault",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "ACTIVE",
+      shows: [["appdev", "not running", "attention"]],
+    },
+    {
+      name: "a start that failed on a service holding nothing: still a failure",
+      ops: [dev("s1", 1, "Start", false, { phase: "failed" })],
+      status: "READY_TO_DEPLOY",
+      shows: [["appdev", "start failed", "failed"]],
+    },
+    {
+      name: "before the platform names its state: as it was found",
+      ops: [dev("s1", 1, "Status", false)],
+      status: undefined,
+      shows: [["appdev", "not running", "attention"]],
+    },
+  ])("a service nothing is meant to run on — $name", ({ ops, status, shows }) => {
+    const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+    const services = status === undefined ? [] : [{ hostname: "appdev", status }];
+    expect(
+      incidentsAtRest(standingIncidents(only!.stretches[0]!), services).map((incident) => [
+        incident.hostname,
+        incident.phases.join(" · "),
+        incident.tone,
+      ]),
+    ).toEqual(shows);
   });
 });
 
