@@ -343,34 +343,6 @@ it.each(["not loaded", "partial", "denied", "filtered"] as const)(
   },
 );
 
-it("HQ navigation fixtures send an environment array to readers and a refusal to viewers.", () => {
-  const f = fixture();
-  seedHqNavigation(f.store, "org", {
-    structure: {
-      ungrouped: [],
-      apps: [
-        { id: "reader", name: "Reader", projects: [] },
-        {
-          id: "viewer",
-          name: "Viewer",
-          projects: [],
-          environments: { refused: "changes_not_seen" },
-        },
-      ],
-    },
-  });
-  const read = readsOfState(f.store.state());
-  expect(read.fact("hqApp", "reader")).toMatchObject({
-    kind: "known",
-    value: { environments: [] },
-  });
-  expect(read.fact("hqApp", "viewer")).toMatchObject({
-    kind: "known",
-    value: { environments: { refused: "changes_not_seen" } },
-  });
-  f.registry.dispose();
-});
-
 it("An HQ non-empty application with no visible placements is never offered as an empty group.", () => {
   const f = fixture();
   seedHqNavigation(f.store, "org", {

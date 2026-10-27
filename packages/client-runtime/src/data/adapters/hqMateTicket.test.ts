@@ -77,8 +77,8 @@ describe("mateTicketIssuer", () => {
       reason: "not-found",
     },
     {
-      case: "not_active",
-      error: refusal("unavailable", "not_active"),
+      case: "zerops_unanswered",
+      error: refusal("unavailable", "zerops_unanswered"),
       tag: "ConnectionTransientError",
       reason: "endpoint-unavailable",
     },

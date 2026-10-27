@@ -637,6 +637,7 @@ describe("ZeropsHqLink", () => {
             author: null,
           },
           body: "",
+          limits: { minutes: 60, costUsd: null },
         };
         // Told before HQ's state, it is held until the Mate knows whether it is automated.
         socket.hear({ type: "task", task });
@@ -709,6 +710,7 @@ describe("ZeropsHqLink", () => {
               author: null,
             },
             body: "",
+            limits: { minutes: 60, costUsd: null },
           },
         });
         yield* until(() => (taken.length > 0 ? taken : undefined));

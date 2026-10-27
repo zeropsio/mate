@@ -57,9 +57,7 @@
  * for a change opened on another open change's branch / on `main`, `mate/…` or a full ref,
  * `too_many_open` for a new change of a Mate already holding {@link MATE_OPEN_CHANGES_MAX} open ones
  * in the repository, `400 invalid` for a body these
- * schemas refuse, `413 too_large`. Only the HQ that leads serves any of it: a standby answers `503
- * not_active` with `Retry-After` (two instances overlap through a deploy), which is "try again",
- * never a refusal; so is `503 zerops_unavailable`.
+ * schemas refuse, `413 too_large`. A `503 zerops_unavailable` is "try again", never a refusal.
  *
  * @module hqChanges
  */

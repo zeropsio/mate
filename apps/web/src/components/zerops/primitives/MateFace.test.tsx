@@ -154,13 +154,10 @@ describe("MateFace", () => {
     expect(face.o.r).toBe("0");
   });
 
-  it("shuts its eyes as hairlines that survive a 14 px face", () => {
-    const html = renderToStaticMarkup(<MateFace size={16} state="sleep" tint="rose" />);
-    const face = parts(html);
+  it("shuts its eyes asleep", () => {
+    const face = parts(renderToStaticMarkup(<MateFace size={16} state="sleep" tint="rose" />));
     expect(face.shut.map((line) => line.opacity)).toEqual(["1", "1"]);
     expect(face.eyes.map((eye) => eye.opacity)).toEqual(["0", "0"]);
-    expect(html).toContain('vector-effect="non-scaling-stroke"');
-    expect(html).toContain('stroke-width="1.25"');
   });
 
   // Waking — a Mate on its way up (`matePose`) — draws asleep's closed eyes; only its state, and

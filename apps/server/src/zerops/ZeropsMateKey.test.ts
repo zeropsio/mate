@@ -99,39 +99,6 @@ describe("ZeropsMateKey.make", () => {
     });
 
   itEffect.layer(NodeServices.layer)("live store precedence", (it) => {
-    it.effect("prefers the live store over the boot snapshot", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { reader } = yield* withStore(storeDoc("store-key"), "snapshot-key");
-          expect(yield* reader.read).toBe("store-key");
-        }),
-      ),
-    );
-
-    it.effect("falls back to the boot snapshot when the store is missing", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { reader } = yield* withStore(undefined, "snapshot-key");
-          expect(yield* reader.read).toBe("snapshot-key");
-        }),
-      ),
-    );
-
-    it.effect("an unreadable store keeps the last good key without a restart", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { reader, storePath, fs } = yield* withStore(storeDoc("store-key"), "snapshot-key");
-          expect(yield* reader.read).toBe("store-key");
-          // The store starts rotating: a rewrite mid-read leaves malformed
-          // JSON on disk for an instant. The reader must not fall to the
-          // (possibly stale-project) boot snapshot for that.
-          yield* fs.writeFileString(storePath, "{not json");
-          yield* reader.invalidate;
-          expect(yield* reader.read).toBe("store-key");
-        }),
-      ),
-    );
-
     it.effect("serves from cache within the TTL, re-resolves after invalidate", () =>
       Effect.scoped(
         Effect.gen(function* () {

@@ -1434,9 +1434,9 @@ describe("finishMateSetup — the harden path", () => {
     hq.calls = calls;
     hq.attachFailure = new HqError({
       kind: "unavailable",
-      code: "not_active",
+      code: "zerops_unanswered",
       status: 503,
-      message: "HQ isn't serving right now.",
+      message: "HQ could not check your roles with Zerops.",
     });
     // The first browser's press stops at the one attach HQ answers with 503.
     const pressed = await finishMateSetup({

@@ -123,8 +123,8 @@ export const MateTask = Schema.Struct({
   source: MateTaskSource,
   /** The ask's text (the issue's, the message's, the call's, the schedule's), cut to `MATE_TASK_BODY_MAX`. */
   body: Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX)),
-  /** What it may spend; absent from an older HQ: the Mate's own defaults. */
-  limits: Schema.optionalKey(MateTaskLimits),
+  /** What it may spend. */
+  limits: MateTaskLimits,
   /**
    * Who its commits are by, where its application mirrors to GitHub through the organization's
    * app and HQ knows the app's bot; absent otherwise (a token's mirror, none, GitHub out of reach),
