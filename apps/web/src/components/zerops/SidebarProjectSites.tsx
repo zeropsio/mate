@@ -52,7 +52,6 @@ import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useMatesLeases, type MatesLeases } from "~/zerops/useMatesLeases";
 
-import { InlineButton } from "../ui/button";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { ZeropsMark } from "../ZeropsMark";
 import { MateFace } from "./primitives";
@@ -1018,7 +1017,10 @@ function SitesPairs({
   ));
 }
 
-/** One side of a part: a link to its address, or its label muted, saying why it has none. */
+/**
+ * One side of a part: a link to its address, as an address row opens — its label, then ↗ — or its
+ * label muted with no ↗, its tooltip saying why it has none.
+ */
 function PairSide({
   side,
   onCopy,
@@ -1034,26 +1036,26 @@ function PairSide({
           url === undefined ? (
             <span className="zerops-sites-off" data-zerops-surface="sidebar-project-sites-side" />
           ) : (
-            <InlineButton
-              render={
-                <a
-                  data-sites-nav=""
-                  data-zerops-surface="sidebar-project-sites-side"
-                  href={url}
-                  onKeyDown={(event) => {
-                    copyOnKey(event, () => {
-                      onCopy({ key: side.key, url });
-                    });
-                  }}
-                  rel="noreferrer"
-                  target="_blank"
-                />
-              }
+            <a
+              className="zerops-sites-link"
+              data-sites-nav=""
+              data-zerops-surface="sidebar-project-sites-side"
+              href={url}
+              onKeyDown={(event) => {
+                copyOnKey(event, () => {
+                  onCopy({ key: side.key, url });
+                });
+              }}
+              rel="noreferrer"
+              target="_blank"
             />
           )
         }
       >
         {side.label}
+        {url === undefined ? null : (
+          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+        )}
       </TooltipTrigger>
       <TooltipPopup side="top">
         {url === undefined

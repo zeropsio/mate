@@ -5623,6 +5623,7 @@ code {
 }
 
 .zerops-sites-linkrow:hover > .zerops-sites-link,
+.zerops-sites-side > .zerops-sites-link:hover,
 .zerops-sites-link:focus-visible {
   background-color: var(--accent);
   color: var(--foreground);
@@ -5671,29 +5672,42 @@ code {
 }
 
 /* A Mate's part: its name, then its dev and its stage in fixed columns, so every row's sides align
-   under each other; on the names' edge, as its addresses are. */
+   under each other; on the names' edge, as its addresses are. Each column fits "dev 2 ↗". */
 .zerops-sites-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 88px 44px;
-  column-gap: 8px;
+  grid-template-columns: minmax(0, 1fr) 64px 64px;
+  column-gap: 4px;
   align-items: center;
-  padding: 6px 38px 6px 36px;
+  padding: 4px 38px 4px 36px;
 }
 
 .zerops-sites-pair > .zerops-sites-service {
   max-width: none;
 }
 
+/* A side's links, a pool's several workspaces one under another. */
 .zerops-sites-side {
   display: flex;
-  gap: 8px;
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
-  font-size: 12px;
-  line-height: 16px;
 }
 
-/* A side with no address: its label, muted, its tooltip saying why. */
+/* A side that opens: the address row's link, compact — its label in the row's text, the ↗ after. */
+.zerops-sites-side > .zerops-sites-link {
+  gap: 4px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  color: var(--foreground);
+}
+
+.zerops-sites-side > .zerops-sites-link > .zerops-sites-arrow {
+  color: var(--muted-foreground);
+}
+
+/* A side with no address: its label, muted, with no ↗ — nothing to open — its tooltip saying why. */
 .zerops-sites-off {
+  padding: 2px 6px;
   color: var(--muted-foreground);
   cursor: default;
 }
