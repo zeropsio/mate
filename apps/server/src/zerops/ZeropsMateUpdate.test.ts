@@ -443,7 +443,7 @@ describe("a Mate that only a restart gets current", () => {
       name: "an older zcp without self restart",
       version: "9.225.0",
       restart: undefined,
-      reason: "this zcp can't restart its Mate yet",
+      reason: "this Zerops Control Plane can't restart its Mate yet",
     },
     {
       name: "a restart the platform refused",

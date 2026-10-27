@@ -205,11 +205,11 @@ describe("Update on a Mate that only a restart gets current", () => {
     },
     {
       name: "answers why a restart cannot start",
-      restart: { started: false, reason: "this zcp can't restart its Mate yet" },
+      restart: { started: false, reason: "this Zerops Control Plane can't restart its Mate yet" },
       expected: {
         action: "none",
         restarted: false,
-        error: "this zcp can't restart its Mate yet",
+        error: "this Zerops Control Plane can't restart its Mate yet",
         serverVersion: "0.15.200",
       },
     },

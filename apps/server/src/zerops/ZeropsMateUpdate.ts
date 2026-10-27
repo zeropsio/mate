@@ -318,7 +318,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
             phase: "postponed",
             reason:
               status.zcp?.behind === true
-                ? `a restart was already tried for zcp ${status.zcp.latest}; Update to try again`
+                ? `a restart was already tried for Zerops Control Plane ${status.zcp.latest}; Update to try again`
                 : "a restart was already tried; Update to try again",
           });
         return true;

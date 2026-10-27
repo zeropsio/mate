@@ -204,7 +204,7 @@ describe("ZeropsCli.selfRestart", () => {
     {
       name: "a zcp that cannot be run reads refused: nothing was asked",
       script: undefined,
-      reason: "zcp could not be run",
+      reason: "Zerops Control Plane could not be run",
     },
   ])("$name", ({ script, reason }) =>
     Effect.gen(function* () {

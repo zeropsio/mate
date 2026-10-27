@@ -57,7 +57,7 @@ export const ZCP_SELF_RESTART_SINCE = "9.226.0";
 const SELF_RESTART_TIMEOUT = Duration.seconds(60);
 const SELF_RESTART_MAX_OUTPUT_BYTES = 16 * 1024;
 /** Said for a zcp that cannot restart its Mate: too old, or no verb by that name. */
-export const SELF_RESTART_TOO_OLD = "this zcp can't restart its Mate yet";
+export const SELF_RESTART_TOO_OLD = "this Zerops Control Plane can't restart its Mate yet";
 
 /** `zcp version` prints one line and reads nothing. */
 const VERSION_TIMEOUT = Duration.seconds(15);
@@ -467,7 +467,7 @@ export const make = (options: ZeropsCliOptions) =>
         Effect.catch((cause) =>
           Effect.succeed<SelfRestartResult>(
             cause._tag === "ProcessSpawnError"
-              ? { outcome: "refused", reason: "zcp could not be run" }
+              ? { outcome: "refused", reason: "Zerops Control Plane could not be run" }
               : { outcome: "uncertain" },
           ),
         ),
