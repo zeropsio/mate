@@ -1,8 +1,9 @@
-import { hqUpdateState } from "@t3tools/client-runtime/zerops/hq";
+import { hqUpdateState, sharedHq } from "@t3tools/client-runtime/zerops/hq";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   coreLabel,
+  hqBehind,
   hqUpdateMount,
   hqUpdateTrigger,
   hqUpdateTriggerLabel,
@@ -89,6 +90,13 @@ describe("hqUpdateWords", () => {
 });
 
 describe("hqUpdateTrigger", () => {
+  it("offers the shared HQ no update, whatever build it runs against the one this app carries", () => {
+    const standing = { kind: "healthy", build: OLDER, parts: { quarantined: [] } } as const;
+    expect(hqUpdateTrigger({ admin: true, ownProject: false, standing, carried: CARRIED })).toBe(
+      null,
+    );
+  });
+
   it.each([
     {
       name: "an admin, HQ on an older Core",
@@ -159,7 +167,7 @@ describe("hqUpdateTrigger", () => {
       trigger: null,
     },
   ] as const)("$name", ({ admin, standing, carried, trigger }) => {
-    expect(hqUpdateTrigger({ admin, standing, carried })).toBe(trigger);
+    expect(hqUpdateTrigger({ admin, ownProject: true, standing, carried })).toBe(trigger);
   });
 
   // A stream that names no Core: the running Core is a Zerops fact — the `hq` service's active app
@@ -195,6 +203,7 @@ describe("hqUpdateTrigger", () => {
     expect(
       hqUpdateTrigger({
         admin,
+        ownProject: true,
         standing: { kind: "healthy" },
         carried: CARRIED,
         zerops: read === undefined ? undefined : zerops(read),
@@ -205,6 +214,17 @@ describe("hqUpdateTrigger", () => {
 
 // The rollout, 2026-10-05: an HQ Core update's own switch answered the card's health read 503 once;
 // the card said "Unavailable since …" and the Update dialog the owner followed vanished with it.
+describe("hqBehind", () => {
+  const own = { kind: "official", projectId: "p-hq", address: "https://hq.example" } as const;
+  const shared = sharedHq("https://hq.example");
+  it.each([
+    ["an HQ of the organization's own on an older Core", own, true],
+    ["the shared HQ on an older Core, which nobody of the organization can update", shared, false],
+  ])("%s", (_name, hq, behind) => {
+    expect(hqBehind({ hq, answering: OLDER, carried: CARRIED })).toBe(behind);
+  });
+});
+
 describe("hqUpdateMount — the update control, mounted through HQ's own switch", () => {
   const HEALTHY = { kind: "healthy", build: OLDER, parts: { quarantined: [] } } as const;
   const DOWN = { kind: "unavailable", since: 1 } as const;
@@ -213,13 +233,21 @@ describe("hqUpdateMount — the update control, mounted through HQ's own switch"
   it.each<[string, Parameters<typeof hqUpdateMount>[0], HqUpdateMount | null]>([
     [
       "HQ healthy: what it answers now",
-      { admin: true, standing: HEALTHY, carried: CARRIED, following: false, last: null },
+      {
+        admin: true,
+        ownProject: true,
+        standing: HEALTHY,
+        carried: CARRIED,
+        following: false,
+        last: null,
+      },
       SHOWN,
     ],
     [
       "HQ healthy, its stream naming no Core: as Zerops says it stands",
       {
         admin: true,
+        ownProject: true,
         standing: { kind: "healthy", parts: { quarantined: [] } },
         carried: CARRIED,
         zerops: { kind: "available", running: OLDER, carried: CARRIED },
@@ -230,22 +258,50 @@ describe("hqUpdateMount — the update control, mounted through HQ's own switch"
     ],
     [
       "HQ not answering while the person follows an update: as it was last shown",
-      { admin: true, standing: DOWN, carried: CARRIED, following: true, last: SHOWN },
+      {
+        admin: true,
+        ownProject: true,
+        standing: DOWN,
+        carried: CARRIED,
+        following: true,
+        last: SHOWN,
+      },
       SHOWN,
     ],
     [
       "HQ not answering, nobody following: none",
-      { admin: true, standing: DOWN, carried: CARRIED, following: false, last: SHOWN },
+      {
+        admin: true,
+        ownProject: true,
+        standing: DOWN,
+        carried: CARRIED,
+        following: false,
+        last: SHOWN,
+      },
       null,
     ],
     [
       "HQ not answering, never shown: none",
-      { admin: true, standing: DOWN, carried: CARRIED, following: true, last: null },
+      {
+        admin: true,
+        ownProject: true,
+        standing: DOWN,
+        carried: CARRIED,
+        following: true,
+        last: null,
+      },
       null,
     ],
     [
       "a developer: none",
-      { admin: false, standing: HEALTHY, carried: CARRIED, following: false, last: null },
+      {
+        admin: false,
+        ownProject: true,
+        standing: HEALTHY,
+        carried: CARRIED,
+        following: false,
+        last: null,
+      },
       null,
     ],
   ])("%s", (_, input, expected) => {

@@ -37,19 +37,8 @@ export const hqStreamCloseFailure = (code: number) => {
   return { code: `socket_${code}`, disposition: "transient" } as const;
 };
 
-/** Official HQ verdict carried by the navigation scope's `org` value; null before first check. */
-export type HqOfficialVerdict =
-  | "ok"
-  | "anchor_missing"
-  | "anchor_elsewhere"
-  | "credentials_wrong"
-  | "unknown";
-
 /** A small navigation fact; status ticks do not replace organization or project values. */
 export const HqNavigationStatus = Schema.Struct({
-  official: Schema.NullOr(
-    Schema.Literals(["ok", "anchor_missing", "anchor_elsewhere", "credentials_wrong", "unknown"]),
-  ),
   parts: Schema.Record(Schema.String, Schema.Unknown),
 });
 export type HqNavigationStatus = typeof HqNavigationStatus.Type;

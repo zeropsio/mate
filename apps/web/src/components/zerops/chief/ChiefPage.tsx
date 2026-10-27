@@ -13,7 +13,7 @@ import { useOwnChief } from "~/zerops/ownChief";
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
-import { hqUpdateOffered } from "@t3tools/client-runtime/zerops/hq";
+import { hqBehind } from "~/components/zerops/ZeropsHqUpdate.logic";
 import { useAtomValue } from "@effect/atom-react";
 import { hqStandingAtom } from "~/state/zerops";
 
@@ -53,7 +53,7 @@ export function ChiefPage() {
     setup,
     hq:
       accountHq.hq.kind === "official"
-        ? answering !== undefined && carried !== undefined && hqUpdateOffered(answering, carried)
+        ? hqBehind({ hq: accountHq.hq, answering, carried })
           ? "behind"
           : "official"
         : accountHq.status === "ready"
