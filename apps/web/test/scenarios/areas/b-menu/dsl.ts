@@ -78,6 +78,9 @@ export function openEnvironment(page: Page, appId: string, name: string, id: str
   return Effect.promise(async () => {
     const button = await page.waitForFunction(
       (name) => {
+        // The rows paint beside the card's stand-in; where the column stacks under the card, the
+        // answered card pushes them down, and a click aimed before that lands on the card.
+        if (document.querySelector('main [aria-busy="true"]') !== null) return undefined;
         const section = [...document.querySelectorAll("main section")].find(
           (section) => section.querySelector("h2")?.textContent === "Environments",
         );
