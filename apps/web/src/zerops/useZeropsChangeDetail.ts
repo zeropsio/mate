@@ -40,6 +40,11 @@ export interface ZeropsChangeDetail {
    * person's press. Absent where there is nothing to show.
    */
   readonly showFiles: (() => void) | undefined;
+  /**
+   * For a change HQ recorded with no merge base (it shares no history with `main`): its files'
+   * diffs are read with HQ's detail of it once, when the person unfolds a file. Absent elsewhere.
+   */
+  readonly readDiffs: (() => void) | undefined;
 }
 
 const READING = { kind: "reading" } as const;
@@ -48,8 +53,9 @@ const UNRECORDED = Atom.make<HqChangeMetadata>(READING);
 
 /**
  * A change's review: what HQ recorded when the change last moved (`/metadata`: files, sizes, merge
- * base, verdict) — no repository is read to draw it. An HQ that records no review, or a person who
- * asks for the files of a change that has none recorded, reads HQ's detail of it instead.
+ * base, verdict) — no repository is read to draw it. An HQ that records no review, a person who
+ * asks for the files of a change that has none recorded, or one who unfolds a file of a change
+ * recorded with no merge base to read its diff from, reads HQ's detail of it instead.
  */
 export function useZeropsChangeDetail(
   request: ZeropsChangeDetailRequest | null,
@@ -76,8 +82,11 @@ export function useZeropsChangeDetail(
   );
   const review = recorded.kind === "read" ? recorded.detail.review : undefined;
   const filesAsked = owner !== null && shownFor === owner;
+  // Recorded with no merge base, a file's diff has no base to be read from: HQ's detail holds it.
+  const unrelated = review !== undefined && review.files !== null && review.mergeBase === null;
   const fullWanted =
-    recorded.kind === "read" && (review === undefined || (review.files === null && filesAsked));
+    recorded.kind === "read" &&
+    (review === undefined || ((review.files === null || unrelated) && filesAsked));
   const fullOwner = fullWanted ? owner : null;
   useDetailDemand("hqChangeRead", undefined, fullOwner);
   const full = useProjection(
@@ -121,6 +130,7 @@ export function useZeropsChangeDetail(
     readout,
     retry,
     showFiles: review !== undefined && review.files === null && !filesAsked ? showFiles : undefined,
+    readDiffs: unrelated && !filesAsked ? showFiles : undefined,
   };
 }
 

@@ -502,6 +502,7 @@ function ChangeReviewData({
       onClose={onClose}
       onRetry={detail.retry}
       showFiles={detail.showFiles}
+      readDiffs={detail.readDiffs}
       fileDiffs={fileDiffs}
       commits={readCommits}
       showCommits={commitsUnrecorded && !commitsWanted ? showCommits : undefined}
@@ -641,6 +642,11 @@ export interface ChangeReviewViewProps {
     | undefined;
   /** For a change whose files were never recorded: reads them from its repository on a press. */
   readonly showFiles?: (() => void) | undefined;
+  /**
+   * For a change recorded with no merge base to read a file's diff from: unfolding a file reads
+   * HQ's detail of the change, which holds its diffs.
+   */
+  readonly readDiffs?: (() => void) | undefined;
   /**
    * The commits read from the repository on the person's press, for a change whose commits HQ
    * never recorded; absent, the readout holds them.
@@ -1015,7 +1021,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           notRecorded={
             read !== undefined && !read.filesKnown ? { onShow: props.showFiles } : undefined
           }
-          onOpen={laterDiffs?.ask}
+          onOpen={laterDiffs?.ask ?? props.readDiffs}
           onRetry={props.onRetry}
         />
       </ReviewSection>
