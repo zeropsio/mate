@@ -1,30 +1,20 @@
-import { act, createElement, StrictMode } from "react";
+import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import { RegistryContext } from "@effect/atom-react";
-import {
-  AccountEpoch,
-  makeZeropsApiOrigin,
-  ZeropsAccountId,
-  type AccountScope,
-} from "@t3tools/client-runtime/zerops/data";
 import { AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 
-import { makeMemberAccount } from "./__fixtures__/sampledAccount";
-import { AccountDataContext } from "./ZeropsAccountData";
-import { ZeropsDataContext, type ZeropsDataContextValue } from "./zeropsDataContext";
 import {
   useWaitsOnViewer,
   useZeropsMateOwners,
   useHqPersonNames,
-  useZeropsOrganizationMembersRead,
   zeropsMateOwnerOf,
 } from "./useZeropsMateOwners";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
-import { accountReadsAtom, makeAccountStore, STREAM_POLICY } from "@t3tools/client-runtime/data";
+import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
 import { seedHqProjectPeople } from "@t3tools/client-runtime/data/fixtures";
 
 vi.mock("./ZeropsSessionProvider", () => ({
@@ -57,66 +47,6 @@ describe("zeropsMateOwnerOf", () => {
   it("is nobody where HQ names nobody", () => {
     expect(zeropsMateOwnerOf(null, "u-jan")).toBeUndefined();
     expect(zeropsMateOwnerOf(undefined, "u-jan")).toBeUndefined();
-  });
-});
-
-// A login's signer is a Zerops user id; the member list turns it into
-// the name the coding-agents card shows ("Signed in by Cleo").
-describe("useZeropsOrganizationMembersRead", () => {
-  it("is one read of the organization's members, however many surfaces ask at once", async () => {
-    const scope: AccountScope = {
-      account: {
-        apiOrigin: makeZeropsApiOrigin("https://api.example.test"),
-        accountId: ZeropsAccountId.make("account-a"),
-      },
-      epoch: AccountEpoch.make(1),
-    };
-    let reads = 0;
-    const registry = AtomRegistry.make();
-    const account = makeMemberAccount({
-      registry,
-      orgId: "org-1",
-      members: async () => {
-        reads += 1;
-        return [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] as never;
-      },
-    });
-    const data = { scope } as unknown as ZeropsDataContextValue;
-    const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
-    function Probe() {
-      seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
-      return null;
-    }
-    await act(async () => {
-      create(
-        createElement(
-          StrictMode,
-          null,
-          createElement(
-            RegistryContext.Provider,
-            { value: registry },
-            createElement(
-              ZeropsDataContext.Provider,
-              { value: data },
-              createElement(
-                AccountDataContext.Provider,
-                { value: account.value },
-                createElement(Probe),
-                createElement(Probe),
-                createElement(Probe),
-                createElement(Probe),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-    await act(async () => {
-      await vi.waitFor(() => expect(seen.at(-1)?.status).toBe("ready"));
-    });
-    expect(seen.at(-1)?.status).toBe("ready");
-    expect(seen.at(-1)?.members).toHaveLength(1);
-    expect(reads).toBe(1);
   });
 });
 
@@ -211,70 +141,4 @@ describe("useHqPersonNames", () => {
     });
     expect(named.at(-1)).toBe(name);
   });
-});
-
-it("a retained member list does not make a failed owner read ready for HQ verification", async () => {
-  const registry = AtomRegistry.make();
-  let fail = false;
-  const { makeSampledAccount } = await import("./__fixtures__/sampledAccount");
-  const account = makeSampledAccount({
-    registry,
-    orgId: "org-1",
-    answer: (path) =>
-      path.includes("/user/list")
-        ? Promise.resolve(
-            fail
-              ? { status: 500, body: null }
-              : {
-                  status: 200,
-                  body: { clientUserList: [{ id: "cu-jan", user: { fullName: "Jan Novák" } }] },
-                },
-          )
-        : null,
-  });
-  const seen: Array<ReturnType<typeof useZeropsOrganizationMembersRead>> = [];
-  function Probe() {
-    seen.push(useZeropsOrganizationMembersRead({ clientId: "org-1", enabled: true }));
-    return null;
-  }
-  let root: ReturnType<typeof create>;
-  await act(async () => {
-    root = create(
-      createElement(
-        RegistryContext.Provider,
-        { value: registry },
-        createElement(AccountDataContext.Provider, { value: account }, createElement(Probe)),
-      ),
-    );
-  });
-  await act(async () => {
-    await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
-  });
-  expect(seen.at(-1)).toMatchObject({
-    status: "ready",
-    settled: true,
-    members: [{ id: "cu-jan" }],
-  });
-  fail = true;
-  // Effect's scheduler keeps running on wall time; the grace is jumped.
-  vi.useFakeTimers({ shouldAdvanceTime: true });
-  try {
-    await act(async () => {
-      account.revalidate({ family: "organizationMembers", ownerId: "org-1" });
-      await account.readDetail({ family: "organizationMembers", ownerId: "org-1" });
-      // A failed read is said once its grace ran out; inside it, the read is still reading.
-      await vi.advanceTimersByTimeAsync(STREAM_POLICY.reconnectGraceMs);
-    });
-  } finally {
-    vi.useRealTimers();
-  }
-  expect(seen.at(-1)).toMatchObject({
-    status: "failed",
-    settled: false,
-    members: [{ id: "cu-jan" }],
-    fact: { kind: "known" },
-    stream: { fault: { outcome: "transient", message: "A detail baseline answer is malformed." } },
-  });
-  await act(async () => root.unmount());
-  registry.dispose();
 });

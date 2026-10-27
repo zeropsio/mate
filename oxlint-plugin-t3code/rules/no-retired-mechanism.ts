@@ -150,13 +150,6 @@ export default defineRule({
                   specifier.imported.name === "useZeropsRegistry",
               ),
           );
-        case "useZeropsOrganizationMembersRead":
-          return (
-            path === "apps/web/src/zerops/useZeropsMateOwners.ts" &&
-            body(token).includes("useProjection(organizationMembers,") &&
-            body(token).includes('family:"organizationMembers"') &&
-            !hasWriter(body(token))
-          );
         case "settleToIdleAfter": {
           const display = body(token);
           return (

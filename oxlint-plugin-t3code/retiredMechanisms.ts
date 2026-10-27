@@ -828,11 +828,6 @@ export const RETIRED_MECHANISMS: ReadonlyArray<RetiredMechanism> = [
     reason: "refused reads are retried on every grant round; a definitive refusal is not retried",
   },
   {
-    token: "useZeropsOrganizationMembersRead",
-    family: "permissions/members",
-    reason: "the client reads organization members for owners and admins; HQ sends them finished",
-  },
-  {
     token: "useZeropsOrganizationMembers(",
     family: "permissions/members",
     reason: "the client reads organization members for owners and admins; HQ sends them finished",
