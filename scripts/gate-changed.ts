@@ -4,6 +4,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
 import {
   guardScopePaths,
   runtimeCycleSourceRoots,
@@ -145,16 +146,22 @@ function sourceShape(path: string, text: string): string | undefined {
 }
 
 /** Compare parsed source, preserving syntax and literal content while ignoring comments. */
-export function meaningfulChanges(root: string, base: string, paths: ReadonlyArray<string>) {
+export function meaningfulChanges(
+  root: string,
+  base: string,
+  paths: ReadonlyArray<string>,
+  entries = baseEntries(
+    NodeChildProcess.execFileSync("git", baseTreeArgs(base), {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    }),
+  ),
+) {
   const previous = new Map<string, string>();
-  const tracked = NodeChildProcess.spawnSync("git", ["ls-tree", "-r", "--name-only", "-z", base], {
-    cwd: root,
-    encoding: "utf8",
-    maxBuffer: 64 * 1024 * 1024,
-  });
-  if (tracked.error) throw tracked.error;
-  if (tracked.status !== 0) throw new Error(tracked.stderr);
-  const oldFiles = new Set(tracked.stdout.split("\0"));
+  const oldFiles = new Set(
+    [...entries].filter(([, entry]) => !entry.startsWith("040000 ")).map(([path]) => path),
+  );
   const meaningful = paths.filter((path) => {
     if (documentation(path)) return false;
     if (oldFiles.has(path)) {
@@ -775,28 +782,57 @@ export function comparisonBase(root: string, base: string): string {
   return result.stdout.trim();
 }
 
-export function changedPaths(root: string, base: string): string[] {
-  const git = (args: string[]) => {
-    const result = NodeChildProcess.spawnSync("git", args, {
-      cwd: root,
-      encoding: "utf8",
-      maxBuffer: 64 * 1024 * 1024,
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
-    return result.stdout.split("\0").filter(Boolean);
-  };
-  // merge-base excludes changes made on main after the lane branched; include index, working tree,
-  // untracked additions, deletions and both sides of renames (no rename detection).
-  const ancestor = comparisonBase(root, base);
-  return [
-    ...new Set([
-      ...git(["diff", "--name-only", "--no-renames", "-z", ancestor]),
-      ...git(["ls-files", "--others", "--exclude-standard", "-z"]),
-    ]),
-  ]
+// merge-base excludes changes made on main after the lane branched; include index, working tree,
+// untracked additions, deletions and both sides of renames (no rename detection).
+const laneReads = (ancestor: string) => [
+  ["diff", "--name-only", "--no-renames", "-z", ancestor],
+  ["ls-files", "--others", "--exclude-standard", "-z"],
+];
+
+const lanePaths = (outputs: ReadonlyArray<string>) =>
+  [...new Set(outputs.flatMap((output) => output.split("\0").filter(Boolean)))]
     .filter((path) => path !== ".gate-receipt.json" && path !== ".gate-receipt.json.tmp")
     .sort();
+
+export function changedPaths(root: string, base: string): string[] {
+  const ancestor = comparisonBase(root, base);
+  return lanePaths(
+    laneReads(ancestor).map((args) => {
+      const result = NodeChildProcess.spawnSync("git", args, {
+        cwd: root,
+        encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
+      });
+      if (result.error) throw result.error;
+      if (result.status !== 0) throw new Error(result.stderr || `git ${args.join(" ")} failed`);
+      return result.stdout;
+    }),
+  );
+}
+
+const execFile = NodeUtil.promisify(NodeChildProcess.execFile);
+const readGit = async (root: string, args: ReadonlyArray<string>) =>
+  (await execFile("git", args, { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 }))
+    .stdout;
+
+/** Everything a receipt reads from Git about the lane, read concurrently once per evaluation. */
+async function laneSnapshot(root: string, comparison: string) {
+  const [changes, inventory, log] = await Promise.all([
+    Promise.all(laneReads(comparison).map((args) => readGit(root, args))),
+    readGit(root, ["ls-files", "--cached", "--others", "--exclude-standard", "-z"]),
+    readGit(root, ["log", "--format=%(trailers)", `${comparison}..HEAD`]),
+  ]);
+  return {
+    paths: lanePaths(changes),
+    inventory: inventory
+      .split("\0")
+      .filter((path) => path && !path.startsWith(".gate-receipt.json")),
+    trailers: log
+      .split("\n")
+      .filter((line) => line.startsWith("Drops-test:"))
+      .sort()
+      .join("\n"),
+  };
 }
 
 function workspacePackages(root: string): GatePackage[] {
@@ -877,19 +913,31 @@ interface GateReceipt {
   atRisk: TimeoutRisk[];
 }
 
+const baseTreeArgs = (comparison: string) => ["ls-tree", "-r", "-t", "-z", comparison];
+
+// Every blob and tree entry of the comparison commit by path; the commit is immutable, so one read
+// serves every hash of a gate run.
+function baseEntries(listing: string): ReadonlyMap<string, string> {
+  return new Map(
+    listing
+      .split("\0")
+      .filter(Boolean)
+      .map((entry) => [entry.slice(entry.indexOf("\t") + 1), entry]),
+  );
+}
+
+const baseIdentity = (base: ReadonlyMap<string, string>, paths: ReadonlyArray<string>) =>
+  JSON.stringify(paths.flatMap((path) => base.get(path) ?? []));
+
 // Hash before/after file identities, independent of whether additions are untracked, staged or committed.
 // Only the lane's changed paths participate, so unrelated main changes preserve the receipt on rebase.
-function diffHash(root: string, comparison: string): string {
-  const paths = changedPaths(root, comparison);
+function diffHash(
+  root: string,
+  base: ReadonlyMap<string, string>,
+  paths: ReadonlyArray<string>,
+): string {
   const hash = NodeCrypto.createHash("sha256");
-  if (paths.length)
-    hash.update(
-      NodeChildProcess.execFileSync(
-        "git",
-        ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...paths],
-        { cwd: root, maxBuffer: 64 * 1024 * 1024 },
-      ),
-    );
+  hash.update(baseIdentity(base, paths));
   for (const path of paths) {
     const absolute = NodePath.join(root, path);
     const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
@@ -955,29 +1003,17 @@ function selectionHash(root: string): string {
 function stageHashes(
   root: string,
   comparison: string,
+  base: ReadonlyMap<string, string>,
+  { paths, inventory, trailers: laneTrailers }: Awaited<ReturnType<typeof laneSnapshot>>,
   stages: GateStage[],
   graph: ReturnType<typeof buildGateGraph>,
   selection: string,
 ): Record<string, string> {
-  const inventory = NodeChildProcess.execFileSync(
-    "git",
-    ["ls-files", "--cached", "--others", "--exclude-standard", "-z"],
-    { cwd: root, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
-  )
-    .split("\0")
-    .filter((path) => path && !path.startsWith(".gate-receipt.json"));
   const inputs = graph.related ?? buildRelatedFileGraph(root, []);
   const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
     const hash = NodeCrypto.createHash("sha256");
     const files = [...new Set(paths)].sort();
-    if (baseline.length)
-      hash.update(
-        NodeChildProcess.execFileSync(
-          "git",
-          ["--literal-pathspecs", "ls-tree", "-z", comparison, "--", ...baseline],
-          { cwd: root, maxBuffer: 64 * 1024 * 1024 },
-        ),
-      );
+    hash.update(baseIdentity(base, [...baseline].sort()));
     for (const path of files) {
       const absolute = NodePath.join(root, path);
       const stat = NodeFS.lstatSync(absolute, { throwIfNoEntry: false });
@@ -998,7 +1034,7 @@ function stageHashes(
     }
     return hash.digest("hex");
   };
-  const laneTests = changedPaths(root, comparison).filter((path) => retainedTestFile.test(path));
+  const laneTests = paths.filter((path) => retainedTestFile.test(path));
   return Object.fromEntries(
     stages
       .filter((stage) => !stage.slot)
@@ -1076,15 +1112,7 @@ function stageHashes(
         } else if (stage.name === "test sentence retention") {
           files.push(...laneTests);
           baseline = laneTests;
-          trailers = NodeChildProcess.execFileSync(
-            "git",
-            ["log", "--format=%(trailers)", `${comparison}..HEAD`],
-            { cwd: root, encoding: "utf8" },
-          )
-            .split("\n")
-            .filter((line) => line.startsWith("Drops-test:"))
-            .sort()
-            .join("\n");
+          trailers = laneTrailers;
         }
         if (stage.name !== "check touched files" && stage.name !== "test clock ratchet")
           files = inputs.inputFiles(files, inventory);
@@ -1491,21 +1519,20 @@ export function selectGateSteps(
   return { steps, ownedUnits };
 }
 
-if (import.meta.main) {
-  const root = NodePath.resolve(import.meta.dirname, "..");
-  const args = process.argv.slice(2);
+/** The CLI for one worktree; resolves to the exit status. */
+export async function runGate(root: string, args: ReadonlyArray<string>): Promise<number> {
   if (args.includes("--help")) {
     console.log(
       "Usage: node scripts/gate-changed.ts [--base origin/main] [--list] [--verbose] [--full] [--force] [--with-scenarios] [--scenarios <file...>]\n" +
         "GATE_SLOTS: positive integer, default 3. Machine-wide slots for browser/scenario stages.\n" +
         `Slots: ${gateSlotDirectory()}. Queue waits have no timeout and are reported separately from stage timings.`,
     );
-    process.exit(0);
+    return 0;
   }
   const stale = staleDependencies(root);
   if (stale) {
     console.error(`gate refused: ${stale}`);
-    process.exit(1);
+    return 1;
   }
   const slots = gateSlotCount();
   const verbose = args.includes("--verbose");
@@ -1539,13 +1566,17 @@ if (import.meta.main) {
   }
   validateNamedScenarios(root, namedScenarios);
   const comparison = comparisonBase(root, base);
-  const paths = changedPaths(root, comparison);
+  const [lane, baseTree] = await Promise.all([
+    laneSnapshot(root, comparison),
+    readGit(root, baseTreeArgs(comparison)).then(baseEntries),
+  ]);
+  const paths = lane.paths;
   if (paths.length === 0 && namedScenarios.length === 0) {
     console.log("No changed files; no gates to run.");
-    process.exit(0);
+    return 0;
   }
   const existing = paths.filter((path) => NodeFS.existsSync(NodePath.join(root, path)));
-  const meaningful = meaningfulChanges(root, comparison, paths);
+  const meaningful = meaningfulChanges(root, comparison, paths, baseTree);
   const scenarioPaths = meaningful.paths.filter(browserPath);
   const smokeFiles = scenarioPaths.length ? Object.keys(stateOnlySmoke) : [];
   validateSelectedFiles(root, smokeFiles);
@@ -1592,7 +1623,7 @@ if (import.meta.main) {
     for (const step of steps) console.log(`${step.name}: ${step.command} ${step.args.join(" ")}`);
   } else {
     const receiptPath = NodePath.join(root, ".gate-receipt.json");
-    const hash = diffHash(root, comparison);
+    const hash = diffHash(root, baseTree, paths);
     const selection = selectionHash(root);
     // The ancestor SHA may move on rebase while the lane patch and selected checks stay identical.
     const selectedStages = steps.map((step) => ({
@@ -1600,7 +1631,7 @@ if (import.meta.main) {
       args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
     }));
     const full = args.includes("--full") || args.includes("--force");
-    const fingerprints = stageHashes(root, comparison, steps, graph, selection);
+    const fingerprints = stageHashes(root, comparison, baseTree, lane, steps, graph, selection);
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
     if (
       !full &&
@@ -1608,7 +1639,7 @@ if (import.meta.main) {
       JSON.stringify(previousReceipt?.stageHashes) === JSON.stringify(fingerprints)
     ) {
       console.log(`reused receipt: ${receiptPath} (${hash})`);
-      process.exit(0);
+      return 0;
     }
     const reusable = new Map(
       steps
@@ -1764,14 +1795,16 @@ if (import.meta.main) {
       );
       if (status !== 0) {
         console.error(failureSummary(NodeFS.readFileSync(logPath, "utf8"), logPath));
-        process.exit(status);
+        slot?.release();
+        return status;
       }
     }
     slot?.release();
+    const after = await laneSnapshot(root, comparison);
     if (
-      diffHash(root, comparison) !== hash ||
+      diffHash(root, baseTree, after.paths) !== hash ||
       selectionHash(root) !== selection ||
-      JSON.stringify(stageHashes(root, comparison, steps, graph, selection)) !==
+      JSON.stringify(stageHashes(root, comparison, baseTree, after, steps, graph, selection)) !==
         JSON.stringify(fingerprints)
     )
       throw new Error(
@@ -1782,4 +1815,8 @@ if (import.meta.main) {
     writeReceipt(receiptPath, receipt);
     removeGateLogs(logs);
   }
+  return 0;
 }
+
+if (import.meta.main)
+  process.exit(await runGate(NodePath.resolve(import.meta.dirname, ".."), process.argv.slice(2)));

@@ -21,6 +21,7 @@ import {
   buildGateGraph,
   selectGateSteps,
   stateOnlySmoke,
+  runGate,
 } from "./gate-changed.ts";
 
 const gateRunnerFiles = [
@@ -1136,8 +1137,19 @@ it("named rendering scenarios join changed scenarios once and keep their owning 
 });
 
 // Exercise the gate CLI with observable check commands, rather than testing its cache helpers.
-it("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", () => {
+it("Decision: no check is skipped for changed code; a passing receipt is reused only for an identical diff hash.", async () => {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-receipt-"));
+  // Git's exec path holds the git binary itself; a launcher such as macOS's /usr/bin/git shim
+  // costs more per call than the receipt logic.
+  vi.stubEnv(
+    "PATH",
+    [
+      NodeChildProcess.execFileSync("git", ["--exec-path"], { encoding: "utf8" }).trim(),
+      process.env.PATH,
+    ].join(NodePath.delimiter),
+  );
+  // Browser/scenario slots are machine-wide; the fixture never queues behind real gates.
+  vi.stubEnv("HOME", NodePath.join(root, "node_modules/home"));
   const git = (...args: string[]) => {
     const result = NodeChildProcess.spawnSync("git", args, { cwd: root, encoding: "utf8" });
     if (result.status !== 0) throw new Error(result.stderr);
@@ -1150,10 +1162,6 @@ it("Decision: no check is skipped for changed code; a passing receipt is reused 
         NodePath.join(import.meta.dirname, name),
         NodePath.join(root, "scripts", name),
       );
-    NodeFS.symlinkSync(
-      NodePath.resolve(import.meta.dirname, "node_modules"),
-      NodePath.join(root, "scripts/node_modules"),
-    );
     for (const name of [
       "check-guard-exceptions.ts",
       "check-runtime-cycles.ts",
@@ -1195,25 +1203,34 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     git("commit", "-qm", "base");
     git("branch", "base");
     NodeFS.writeFileSync(NodePath.join(root, "README.md"), "after");
-    const run = (args: string[] = [], fail = false, hqCommand?: string) =>
-      NodeChildProcess.spawnSync(
-        process.execPath,
-        ["scripts/gate-changed.ts", "--base", "base", ...args],
-        {
-          cwd: root,
-          encoding: "utf8",
-          env: {
-            ...process.env,
-            GATE_FIXTURE_FAIL: fail ? "9" : "0",
-            GATE_FIXTURE_HQ_COMMAND_LOG: NodePath.join(root, "node_modules/hq-command.log"),
-            MATE_HQ_TEST_COMMAND: hqCommand,
-            // Dozens of real CLI launches share compilation, never gate results or Git state.
-            NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
-          },
-        },
-      );
+    vi.stubEnv("GATE_FIXTURE_HQ_COMMAND_LOG", NodePath.join(root, "node_modules/hq-command.log"));
+    // The CLI body runs in-process: dozens of Node launches cost more than the receipt logic.
+    const run = async (args: string[] = [], fail = false, hqCommand?: string) => {
+      vi.stubEnv("GATE_FIXTURE_FAIL", fail ? "9" : "0");
+      vi.stubEnv("MATE_HQ_TEST_COMMAND", hqCommand);
+      const stdout: string[] = [];
+      const stderr: string[] = [];
+      const capture =
+        (lines: string[]) =>
+        (...parts: unknown[]) =>
+          void lines.push(parts.join(" "));
+      const log = vi.spyOn(console, "log").mockImplementation(capture(stdout));
+      const error = vi.spyOn(console, "error").mockImplementation(capture(stderr));
+      const write = vi.spyOn(process.stdout, "write").mockImplementation((chunk) => {
+        stdout.push(String(chunk));
+        return true;
+      });
+      try {
+        const status = await runGate(root, ["--base", "base", ...args]);
+        return { status, stdout: stdout.join("\n"), stderr: stderr.join("\n") };
+      } finally {
+        log.mockRestore();
+        error.mockRestore();
+        write.mockRestore();
+      }
+    };
     const checks = () => NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8");
-    const first = run();
+    const first = await run();
     expect(first.status, first.stderr).toBe(0);
     expect(first.stdout.trim().split("\n").length).toBeLessThanOrEqual(15);
     expect(first.stdout).not.toContain("Selection ");
@@ -1224,7 +1241,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "check-test-sentences.ts",
       "vp",
     ]);
-    const second = run();
+    const second = await run();
     expect(second.status, second.stderr).toBe(0);
     expect(second.stdout).toContain("reused receipt");
     expect(checks()).toBe(checked);
@@ -1244,20 +1261,20 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     expect(changedPaths(root, "base")).toEqual(["README.md"]);
     git("add", "README.md");
     git("commit", "-qm", "lane");
-    expect(run().stdout).toContain("reused receipt");
+    expect((await run()).stdout).toContain("reused receipt");
     expect(checks()).toBe(checked);
     // --list is a preview; --force must execute and replace an old passing receipt even on failure.
-    expect(run(["--list"]).stdout).toContain("guard ledgers:");
+    expect((await run(["--list"])).stdout).toContain("guard ledgers:");
     expect(checks()).toBe(checked);
-    const verbose = run(["--verbose", "--force"]);
+    const verbose = await run(["--verbose", "--force"]);
     expect(verbose.status).toBe(0);
     expect(verbose.stdout).toContain("Scenario files: 0; reason: documentation/comments only");
-    const failed = run(["--force"], true);
+    const failed = await run(["--force"], true);
     expect(failed.status).toBe(9);
     expect(failed.stderr).toContain("Full log:");
     expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).results.at(-1).status).toBe(9);
     const checksBeforeRetry = checks();
-    const retried = run();
+    const retried = await run();
     expect(retried.status, retried.stderr).toBe(0);
     expect(retried.stdout).not.toContain("reused receipt");
     expect(
@@ -1265,7 +1282,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "ASSERTION: a gate re-run never repeats stages that passed on unchanged files",
     ).toBe("vp\n");
     const checksBeforeFull = checks();
-    const full = run(["--full"]);
+    const full = await run(["--full"]);
     expect(full.status, full.stderr).toBe(0);
     expect(checks().slice(checksBeforeFull.length).split("\n").filter(Boolean)).toEqual([
       "check-guard-exceptions.ts",
@@ -1273,7 +1290,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       "check-test-sentences.ts",
       "vp",
     ]);
-    expect(run().stdout).toContain("reused receipt");
+    expect((await run()).stdout).toContain("reused receipt");
     // A corrupt or incomplete receipt is evidence to run, never evidence to skip.
     for (const content of [
       "{",
@@ -1281,7 +1298,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       JSON.stringify({ ...receipt, selectedStages: [] }),
     ]) {
       NodeFS.writeFileSync(receiptPath, content);
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain("reused receipt");
     }
@@ -1306,17 +1323,17 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     ]) {
       const before = checks();
       mutate();
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout).not.toContain("reused receipt");
       expect(checks()).not.toBe(before);
-      expect(run().stdout).toContain("reused receipt");
+      expect((await run()).stdout).toContain("reused receipt");
     }
     // Staging and committing additions must preserve the same diff identity as untracked bytes.
     const beforeCommit = checks();
     git("add", "--all", "--", "README.md", "renamed.md", "binary.md", "link.md");
     git("commit", "-qm", "lane additions");
-    expect(run().stdout).toContain("reused receipt");
+    expect((await run()).stdout).toContain("reused receipt");
     expect(checks()).toBe(beforeCommit);
     // An unrelated main change and a clean rebase leave the lane diff and checks identical.
     git("checkout", "-qb", "lane");
@@ -1326,7 +1343,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     git("commit", "-qm", "main moved");
     git("checkout", "-q", "lane");
     git("rebase", "base");
-    expect(run().stdout).toContain("reused receipt");
+    expect((await run()).stdout).toContain("reused receipt");
     expect(checks()).toBe(beforeCommit);
     // Decision: no test deleted or weakened; the receipt never masks a failure.
     // Selection inputs can change on main without changing the lane patch or command list.
@@ -1354,12 +1371,12 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
       git("commit", "-qm", "selection inputs changed");
       git("checkout", "-q", "lane");
       git("rebase", "base");
-      const result = run();
+      const result = await run();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout, `changed selection input: ${path}`).not.toContain("reused receipt");
       expect(checks()).not.toBe(before);
       expect(JSON.parse(NodeFS.readFileSync(receiptPath, "utf8")).selectedStages).toEqual(stages);
-      expect(run().stdout).toContain("reused receipt");
+      expect((await run()).stdout).toContain("reused receipt");
     }
     const scenario = "apps/web/test/scenarios/areas/b-menu/pick.scenario.ts";
     git("checkout", "-q", "base");
@@ -1372,7 +1389,7 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
     NodeFS.mkdirSync(NodePath.join(root, "apps/web/test/scenarios/areas/c-mate"), {
       recursive: true,
     });
-    const explicit = run(["--scenarios", scenario]);
+    const explicit = await run(["--scenarios", scenario]);
     expect(explicit.status, explicit.stderr).toBe(0);
     expect(explicit.stdout).not.toContain("reused receipt");
     expect(explicit.stdout).toContain("ok edited scenario files");
@@ -1388,21 +1405,24 @@ exit "\${GATE_FIXTURE_FAIL:-0}"
         0,
       ),
     );
-    expect(run(["--scenarios", scenario]).stdout).toContain("reused receipt");
+    expect((await run(["--scenarios", scenario])).stdout).toContain("reused receipt");
     const commandLog = NodePath.join(root, "node_modules/hq-command.log");
     for (const hqCommand of ["node /fixtures/hq-a.ts", "node /fixtures/hq-b.ts", undefined]) {
       NodeFS.rmSync(commandLog);
-      const changedHq = run(["--scenarios", scenario], false, hqCommand);
+      const changedHq = await run(["--scenarios", scenario], false, hqCommand);
       expect(changedHq.status, changedHq.stderr).toBe(0);
       expect(
         changedHq.stdout,
         "ASSERTION: changing the HQ test command runs scenarios against the selected backend",
       ).toContain("ok edited scenario files");
       expect(NodeFS.readFileSync(commandLog, "utf8")).toBe(hqCommand ?? "<unset>");
-      expect(run(["--scenarios", scenario], false, hqCommand).stdout).toContain("reused receipt");
+      expect((await run(["--scenarios", scenario], false, hqCommand)).stdout).toContain(
+        "reused receipt",
+      );
     }
-    expect(run().stdout).not.toContain("reused receipt");
+    expect((await run()).stdout).not.toContain("reused receipt");
   } finally {
+    vi.unstubAllEnvs();
     NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });
