@@ -2112,53 +2112,6 @@ describe("ZeropsApiClient.deleteService", () => {
   });
 });
 
-describe("ZeropsApiClient app versions — a deploy through the API", () => {
-  it("creates a version, uploads its archive as bytes and builds it with its zerops.yml", async () => {
-    const uploads: Array<{ readonly contentType: string | null; readonly bytes: number }> = [];
-    const stub = recordingFetch(async (request) => {
-      if (request.url.endsWith("/app-version")) return jsonResponse(200, { id: "av-1" });
-      // The upload answers with no body at all.
-      if (request.url.endsWith("/upload")) return new Response(null, { status: 200 });
-      return jsonResponse(200, { id: "process-1", status: "PENDING" });
-    });
-    const client = new ZeropsApiClient({
-      fetch: async (input, init) => {
-        if (input.endsWith("/upload")) {
-          uploads.push({
-            contentType: new Headers(init?.headers).get("content-type"),
-            bytes: (init?.body as Uint8Array | undefined)?.byteLength ?? 0,
-          });
-        }
-        return stub.fetch(input, init);
-      },
-    });
-    client.restoreSession(SESSION);
-
-    const { id } = await client.createAppVersion("svc-hq", "hq-core");
-    await client.uploadAppVersionArchive(id, new Uint8Array([1, 2, 3]));
-    const deploy = await client.buildAndDeployAppVersion(id, {
-      zeropsYaml: "zerops: []",
-      setup: "hq",
-    });
-
-    expect(deploy).toEqual({ processId: "process-1" });
-    expect(uploads).toEqual([{ contentType: "application/octet-stream", bytes: 3 }]);
-    expect(
-      stub.requests.map((request) => [
-        `${request.method} ${request.url.split("/public")[1]}`,
-        request.body,
-      ]),
-    ).toEqual([
-      ["POST /service-stack/svc-hq/app-version", JSON.stringify({ name: "hq-core" })],
-      ["PUT /app-version/av-1/upload", null],
-      [
-        "PUT /app-version/av-1/build-and-deploy",
-        JSON.stringify({ zeropsYaml: "zerops: []", zeropsYamlSetup: "hq" }),
-      ],
-    ]);
-  });
-});
-
 describe("ZeropsApiClient.listProjectProcesses", () => {
   it("reads a project's newest processes, its app versions and fail reasons with them", async () => {
     const stub = recordingFetch(async () =>
@@ -2688,44 +2641,6 @@ describe("ZeropsApiClient.writeProject — the TagWriter's one PUT", () => {
 });
 
 describe("ZeropsApiClient — a project's public HTTP routing", () => {
-  it("lists each routing with its domains' certificate state", async () => {
-    const stub = recordingFetch(() =>
-      jsonResponse(200, {
-        list: [
-          {
-            id: "r1",
-            sslEnabled: true,
-            isSynced: false,
-            domains: [
-              {
-                domainName: "abc.zerops.app",
-                dnsCheckStatus: "PENDING",
-                sslStatus: "WAITING_FOR_DNS",
-                sslCertificateInstallationError: "dns not ready",
-              },
-            ],
-            locations: [{ path: "/", port: 8080, serviceStackId: "svc-hq" }],
-          },
-        ],
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: stub.fetch });
-    client.restoreSession(SESSION);
-    await expect(client.listPublicHttpRoutings("hq1")).resolves.toEqual([
-      {
-        id: "r1",
-        isSynced: false,
-        domains: [
-          { domainName: "abc.zerops.app", sslStatus: "WAITING_FOR_DNS", sslError: "dns not ready" },
-        ],
-      },
-    ]);
-    expect(stub.requests[0]).toMatchObject({
-      method: "GET",
-      url: expect.stringMatching(/\/project\/hq1\/public-http-routing$/),
-    });
-  });
-
   it("makes one routing, with SSL, and syncs the project's routings as one process", async () => {
     const stub = recordingFetch((request) =>
       request.method === "PUT"
@@ -2796,103 +2711,6 @@ describe("ZeropsApiClient.deleteProject", () => {
       message: "A process is running.",
       code: "projectHasRunningProcess",
     });
-  });
-});
-
-describe("ZeropsApiClient.writeServiceSecret", () => {
-  const refused = () => jsonResponse(500, { error: { code: "internalServerError" } });
-  it.each([
-    {
-      name: "the key there, its sensitive value unreadable: written",
-      items: [{ id: "u1", key: "HQ_ORG_TOKEN", content: "REDACTED" }],
-      written: true,
-    },
-    { name: "the key absent: the refusal stands", items: [], written: false },
-  ])(
-    "reads a refused write back by key, never every variable: $name",
-    async ({ items, written }) => {
-      const http = recordingFetch((request) =>
-        request.method === "POST" && request.url.endsWith("/user-data/search")
-          ? jsonResponse(200, { items })
-          : refused(),
-      );
-      const client = new ZeropsApiClient({ fetch: http.fetch });
-      client.restoreSession(SESSION);
-      const write = client.writeServiceSecret({
-        clientId: "client-1",
-        serviceId: "svc-1",
-        key: "HQ_ORG_TOKEN",
-        content: "secret",
-      });
-      if (written) await expect(write).resolves.toBeUndefined();
-      else await expect(write).rejects.toBeDefined();
-      expect(http.requests.some((request) => request.url.endsWith("/env"))).toBe(false);
-      const search = http.requests.find((request) => request.url.endsWith("/user-data/search"));
-      expect(JSON.parse(search?.body ?? "{}").search).toEqual([
-        { name: "clientId", operator: "eq", value: "client-1" },
-        { name: "serviceStackId", operator: "eq", value: "svc-1" },
-        { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
-      ]);
-    },
-  );
-});
-
-describe("HQ birth project env", () => {
-  it("reads plain journal values directly without the trailing search index", async () => {
-    const http = recordingFetch(() =>
-      jsonResponse(200, {
-        envFile: 'OTHER="REDACTED"\nMATE_HQ_BIRTH_RECORD_0="{\\"version\\":1}"\n',
-      }),
-    );
-    const client = new ZeropsApiClient({ fetch: http.fetch });
-    client.restoreSession(SESSION);
-    expect(await client.readProjectBirthEnv("hq1")).toEqual(
-      new Map([["MATE_HQ_BIRTH_RECORD_0", '{"version":1}']]),
-    );
-    expect(http.requests[0]?.url).toContain("/project/hq1/env-file");
-  });
-
-  it("creates a non-sensitive create-once env slot and keeps its process handle", async () => {
-    const http = recordingFetch(() => jsonResponse(200, { id: "process-env" }));
-    const client = new ZeropsApiClient({ fetch: http.fetch });
-    client.restoreSession(SESSION);
-    expect(await client.createProjectEnv("hq1", "MATE_HQ_BIRTH_CLAIM_0", "claim")).toEqual({
-      processId: "process-env",
-    });
-    expect(http.requests[0]).toMatchObject({
-      method: "POST",
-      body: JSON.stringify({ key: "MATE_HQ_BIRTH_CLAIM_0", content: "claim", sensitive: false }),
-    });
-  });
-});
-
-describe("ZeropsApiClient.hasServiceVariable", () => {
-  it("asks for the one key on the one service, never the service's every variable", async () => {
-    for (const [items, has] of [
-      [[{ key: "HQ_ORG_TOKEN", content: "REDACTED" }], true],
-      [[], false],
-    ] as const) {
-      const stub = recordingFetch(() => jsonResponse(200, { items }));
-      const client = new ZeropsApiClient({ fetch: stub.fetch });
-      client.restoreSession(SESSION);
-      await expect(
-        client.hasServiceVariable({ clientId: "org-1", serviceId: "svc-hq", key: "HQ_ORG_TOKEN" }),
-      ).resolves.toBe(has);
-      expect(stub.requests).toHaveLength(1);
-      expect(stub.requests[0]).toMatchObject({
-        method: "POST",
-        url: expect.stringMatching(/\/user-data\/search$/),
-      });
-      expect(JSON.parse(stub.requests[0]!.body!)).toEqual({
-        search: [
-          { name: "clientId", operator: "eq", value: "org-1" },
-          { name: "serviceStackId", operator: "eq", value: "svc-hq" },
-          { name: "key", operator: "eq", value: "HQ_ORG_TOKEN" },
-        ],
-        sort: [],
-        limit: 1,
-      });
-    }
   });
 });
 

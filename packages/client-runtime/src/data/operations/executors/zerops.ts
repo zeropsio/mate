@@ -71,17 +71,9 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "readProjectEnv"
-  | "readProjectBirthEnv"
   | "listProjectServices"
-  | "createAppVersion"
-  | "uploadAppVersionArchive"
-  | "buildAndDeployAppVersion"
-  | "createProjectEnv"
-  | "hasServiceVariable"
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
-  | "writeServiceSecret"
-  | "listPublicHttpRoutings"
   | "createPublicHttpRouting"
   | "syncPublicHttpRouting"
   | "updatePublicHttpRouting"
@@ -403,12 +395,6 @@ export function makeZeropsExecutor(input: {
           source.importDevelopmentContainer(input, signal, check),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>
           source.hardenMate(orgId, projectId, signal, check, tokenId),
-        createAppVersion: (id, name, signal) => source.createAppVersion(id, name, signal, check),
-        uploadAppVersionArchive: (id, archive, signal) =>
-          source.uploadAppVersionArchive(id, archive, signal, check),
-        buildAndDeployAppVersion: (id, deploy, signal) =>
-          source.buildAndDeployAppVersion(id, deploy, signal, check),
-        createProjectEnv: (id, key, content) => source.createProjectEnv(id, key, content, check),
         addProjectVariable: (id, write) => source.addProjectVariable(id, write, check),
         updateProjectVariable: (id, write) => source.updateProjectVariable(id, write, check),
         removeProjectVariable: (id) => source.removeProjectVariable(id, check),
@@ -418,7 +404,6 @@ export function makeZeropsExecutor(input: {
         mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
         regenerateIntegrationToken: (token, signal) =>
           source.regenerateIntegrationToken(token, signal, check),
-        writeServiceSecret: (input, signal) => source.writeServiceSecret(input, signal, check),
         createPublicHttpRouting: (id, routing, signal) =>
           source.createPublicHttpRouting(id, routing, signal, check),
         syncPublicHttpRouting: (id, signal) => source.syncPublicHttpRouting(id, signal, check),
@@ -442,10 +427,7 @@ export function makeZeropsExecutor(input: {
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         readProjectEnv: (...args) => source.readProjectEnv(...args),
-        readProjectBirthEnv: (...args) => source.readProjectBirthEnv(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
-        hasServiceVariable: (...args) => source.hasServiceVariable(...args),
-        listPublicHttpRoutings: (...args) => source.listPublicHttpRoutings(...args),
         listOrganizationMembers: (...args) => source.listOrganizationMembers(...args),
         readMemberProjectRoles: (...args) => source.readMemberProjectRoles(...args),
         validateOrganizationUser: (orgId, email) =>
