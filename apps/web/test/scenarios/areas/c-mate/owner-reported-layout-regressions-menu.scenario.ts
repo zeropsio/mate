@@ -298,79 +298,86 @@ describe("owner-reported layout regressions", () => {
                   await s.page.waitForFunction(
                     () => document.querySelectorAll("section[data-zerops-group]").length === 26,
                   );
-                  // The list's own scroller, and the two projects that open: the first of them
-                  // and the last, as the menu lists them.
-                  const handles = await s.page.evaluateHandle(() => {
-                    const viewport = document
-                      .querySelector('[data-sidebar="content"]')!
-                      .closest<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
-                    const headings = [
-                      ...document.querySelectorAll<HTMLElement>(
-                        '[data-zerops-surface="sidebar-project"][aria-expanded]',
-                      ),
-                    ];
-                    return [viewport, headings[0]!, headings[headings.length - 1]!];
-                  });
-                  const [viewport, first, last] = (await handles.getProperties()).values();
-                  const state = (heading: typeof first) =>
+                  // The two projects that open: the first of them and the last, as the menu lists
+                  // them; the list's own scroller holds both.
+                  const headings = '[data-zerops-surface="sidebar-project"][aria-expanded]';
+                  const state = (at: number) =>
                     s.page.evaluate(
-                      (scroller, element) => {
+                      (selector, index) => {
+                        const all = [...document.querySelectorAll<HTMLElement>(selector)];
+                        const heading = all.at(index)!;
+                        const scroller = heading.closest<HTMLElement>(
+                          '[data-slot="scroll-area-viewport"]',
+                        )!;
                         const view = scroller.getBoundingClientRect();
-                        const rows = element
+                        const box = heading.getBoundingClientRect();
+                        const mate = heading
                           .closest("section[data-zerops-group]")!
-                          .querySelector("[data-zerops-kids] [data-zerops-row]");
-                        const mate = rows?.getBoundingClientRect();
+                          .querySelector("[data-zerops-kids] [data-zerops-row]")
+                          ?.getBoundingClientRect();
                         return {
-                          open: element.getAttribute("aria-expanded") === "true",
+                          open: heading.getAttribute("aria-expanded") === "true",
                           scrollTop: scroller.scrollTop,
-                          headingTop: element.getBoundingClientRect().top - view.top,
-                          headingBottom: view.bottom - element.getBoundingClientRect().bottom,
-                          mateTop: mate === undefined ? null : mate.top - view.top,
-                          mateBottom: mate === undefined ? null : view.bottom - mate.bottom,
+                          headingTop: box.top - view.top,
+                          headingBottom: view.bottom - box.bottom,
+                          mateTop: mate === undefined ? -1 : mate.top - view.top,
+                          mateBottom: mate === undefined ? -1 : view.bottom - mate.bottom,
                         };
                       },
-                      viewport as never,
-                      heading as never,
+                      headings,
+                      at,
                     );
-                  const press = async (heading: typeof first) => {
-                    await (heading.asElement() as import("puppeteer-core").ElementHandle).click();
+                  const press = async (at: number) => {
+                    const all = await s.page.$$(headings);
+                    await all.at(at)!.click();
                     await waitForStillFrames(s.page);
                   };
-                  const before = await state(first);
-                  await press(first);
-                  const inView = await state(first);
-                  await s.page.evaluate((scroller) => {
-                    (scroller as HTMLElement).scrollTop = (scroller as HTMLElement).scrollHeight;
-                  }, viewport as never);
+                  const before = await state(0);
+                  await press(0);
+                  const inView = await state(0);
+                  await s.page.evaluate(() => {
+                    const scroller = document
+                      .querySelector('[data-sidebar="content"]')!
+                      .closest<HTMLElement>('[data-slot="scroll-area-viewport"]')!;
+                    scroller.scrollTop = scroller.scrollHeight;
+                  });
                   await waitForStillFrames(s.page);
-                  const atEnd = await state(last);
-                  await press(last);
-                  const brought = await state(last);
+                  const atEnd = await state(-1);
+                  await press(-1);
+                  const brought = await state(-1);
                   return { before, inView, atEnd, brought };
                 });
+                const said = Object.entries(seen)
+                  .map(([name, at]) =>
+                    [
+                      name,
+                      ...Object.entries(at).map(([key, value]) => `${key}=${String(value)}`),
+                    ].join(" "),
+                  )
+                  .join("; ");
                 expect(
                   seen.before.headingBottom,
-                  `ASSERTION: the first project stands in view before it opens: ${JSON.stringify(seen)}`,
+                  `ASSERTION: the first project stands in view before it opens: ${said}`,
                 ).toBeGreaterThan(0);
                 expect(
                   seen.inView.scrollTop,
-                  `ASSERTION: a project whose Mates fit in view opens without moving the list: ${JSON.stringify(seen)}`,
+                  `ASSERTION: a project whose Mates fit in view opens without moving the list: ${said}`,
                 ).toBe(seen.before.scrollTop);
                 expect(
                   seen.atEnd.open,
-                  `ASSERTION: the last project is folded at the list's end: ${JSON.stringify(seen)}`,
+                  `ASSERTION: the last project is folded at the list's end: ${said}`,
                 ).toBe(false);
                 expect(
                   seen.brought.mateTop,
-                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${JSON.stringify(seen)}`,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
                 ).toBeGreaterThanOrEqual(0);
                 expect(
                   seen.brought.mateBottom,
-                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${JSON.stringify(seen)}`,
+                  `ASSERTION: the last project's first Mate stands inside the list's visible rect once it opens: ${said}`,
                 ).toBeGreaterThanOrEqual(0);
                 expect(
                   seen.brought.headingTop,
-                  `ASSERTION: its heading stays in view above them: ${JSON.stringify(seen)}`,
+                  `ASSERTION: its heading stays in view above them: ${said}`,
                 ).toBeGreaterThanOrEqual(0);
                 yield* s.then.noExternalNetwork;
               }),
