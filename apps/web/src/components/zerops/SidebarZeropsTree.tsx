@@ -239,6 +239,7 @@ import {
   groupLead,
   groupMateOrder,
   groupRowPress,
+  heldOrder,
   projectRowKey,
   projectRowKind,
 } from "./SidebarProjectRow.logic";
@@ -941,6 +942,24 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // written after each render, not during it.
   const mateOrder = useRef<ReadonlyArray<string>>([]);
   const jumpIndex = useRef<SidebarJumpIndex>(EMPTY_JUMP_INDEX);
+  // While the pointer is over the list, a project's Mates keep the places they were drawn in
+  // (`heldOrder`): a press lands on the row it was aimed at. The order they wait for is drawn once
+  // the pointer leaves.
+  const pointerOver = useRef(false);
+  const drawnOrders = useRef(new Map<string, ReadonlyArray<string>>());
+  const orderWaits = useRef(false);
+  const [, drawWaitingOrder] = useState(0);
+  const inPlace = <R extends { readonly key: string }>(
+    list: string,
+    rows: ReadonlyArray<R>,
+  ): ReadonlyArray<R> => {
+    const next = rows.map((row) => row.key);
+    const shown = heldOrder(drawnOrders.current.get(list) ?? [], next, pointerOver.current);
+    drawnOrders.current.set(list, shown);
+    if (shown === next) return rows;
+    orderWaits.current = true;
+    return shown.flatMap((key) => rows.find((row) => row.key === key) ?? []);
+  };
   useEffect(() => {
     useSidebarReveal.getState().setMateOrder(mateOrder.current);
     useSidebarJump.getState().publish(jumpIndex.current);
@@ -1824,7 +1843,14 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         drawn: order,
         order,
         folds: false,
-        render: () => <>{ordered.map(({ item }) => mateRow(item, "alone"))}</>,
+        render: () => (
+          <>
+            {inPlace(
+              id,
+              ordered.map(({ item }) => ({ key: item.key, draw: () => mateRow(item, "alone") })),
+            ).map((row) => row.draw())}
+          </>
+        ),
       };
     }
     if (kind === "solo") {
@@ -2046,9 +2072,18 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
               {/* The viewer's Mates first, those they are making after their listed ones and
                   before colleagues': a Mate made here is the viewer's from its press, so its row
                   stands where its listed row will, and never leaps over the others. */}
-              {ordered.filter((entry) => entry.mine).map(({ item }) => mateRow(item, "kid"))}
-              {coming.map((member) => comingRow(member, "kid"))}
-              {ordered.filter((entry) => !entry.mine).map(({ item }) => mateRow(item, "kid"))}
+              {inPlace(id, [
+                ...ordered
+                  .filter((entry) => entry.mine)
+                  .map(({ item }) => ({ key: item.key, draw: () => mateRow(item, "kid") })),
+                ...coming.map((member) => ({
+                  key: `coming:${member.projectId}`,
+                  draw: () => comingRow(member, "kid"),
+                })),
+                ...ordered
+                  .filter((entry) => !entry.mine)
+                  .map(({ item }) => ({ key: item.key, draw: () => mateRow(item, "kid") })),
+              ]).map((row) => row.draw())}
             </SidebarProjectFold>
           </RowMarks.Provider>
         ),
@@ -2274,6 +2309,15 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       // selected band stands behind every row.
       className={cn("relative isolate flex flex-col gap-1.5 pt-4", className)}
       data-zerops-surface="sidebar-environments"
+      onPointerEnter={() => {
+        pointerOver.current = true;
+      }}
+      onPointerLeave={() => {
+        pointerOver.current = false;
+        if (!orderWaits.current) return;
+        orderWaits.current = false;
+        drawWaitingOrder((draws) => draws + 1);
+      }}
       ref={treeRef}
     >
       {structureView.updateRequired || followingHqUpdate ? (
