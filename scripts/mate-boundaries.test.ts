@@ -1,8 +1,11 @@
 // Spec §0 Boundaries, invariant MA-6: the mate server spawns `zcp` for a
 // closed list of verbs — `mate status`/`mate update` (ZeropsCli.ts, spec §2.9
-// MU-2) and `studio console serve` (ZeropsDataConsole.ts, the Data Console
-// engine host). The agent sign-in flag is written through the API
-// (ZeropsAgentFlag.ts), not by spawning `zcp agent mark-oauth`.
+// MU-2), `studio console serve` (ZeropsDataConsole.ts, the Data Console
+// engine host), `lease release` (ZeropsCli.ts: an archived conversation
+// gives its workspace back; zcp refuses while work is unsaved) and `version`
+// (ZeropsCli.ts: whether this zcp can release yet). The agent sign-in flag is
+// written through the API (ZeropsAgentFlag.ts), not by spawning
+// `zcp agent mark-oauth`.
 // Everything else the product needs from the platform is read by the client
 // with the user's own token (rule 1), and zcp never grows a layer for mate
 // (rule 3). This is a source scan, not an AST: every `zcp` argv in the zone
@@ -17,7 +20,13 @@ import type { PlatformError } from "effect/PlatformError";
 
 const repoRootUrl = new URL("..", import.meta.url);
 const ZONE = "apps/server/src/zerops";
-const ALLOWED_ARGV = ["mate status", "mate update", "studio console serve"];
+const ALLOWED_ARGV = [
+  "mate status",
+  "mate update",
+  "studio console serve",
+  "lease release",
+  "version",
+];
 
 // The leading string literals of the argv; a trailing identifier (`agentId`) is not a verb.
 const ZCP_ARGV_PATTERN = /\[\s*\.\.\.baseArgs\s*,\s*((?:"[^"\n]*"\s*,\s*)*"[^"\n]*")/g;

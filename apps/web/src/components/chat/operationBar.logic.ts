@@ -15,7 +15,6 @@ import { standupStepRole, type ZeropsOperation } from "@t3tools/client-runtime/z
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
 
 import { drawnSteps } from "../zerops/operation/drawnSteps";
-import { splitBatchDeploy } from "./conversation.logic";
 import type { BarTone } from "./StatusBar";
 
 export type OperationLineState = "waits" | "building" | "up" | "failed";
@@ -307,16 +306,20 @@ export function observedLinesOf(
         readonly steps: ReadonlyArray<unknown>;
         readonly chips?: ReadonlyArray<unknown>;
         readonly pipeline?: PipelineReadout;
+        readonly services?: ReadonlyArray<unknown>;
         readonly log?: unknown;
       }
     | undefined,
 ): ObservedLines | null {
   if (observed === undefined) return null;
   return {
+    // A batch draws a row per service, never the one pipeline it follows.
     steps:
-      observed.pipeline !== undefined && listed(observed.pipeline)
-        ? observed.pipeline.steps.length
-        : observed.steps.length,
+      observed.services !== undefined && observed.services.length > 0
+        ? observed.services.length
+        : observed.pipeline !== undefined && listed(observed.pipeline)
+          ? observed.pipeline.steps.length
+          : observed.steps.length,
     chips: observed.chips?.length ?? 0,
     log: observed.log !== undefined && observed.log !== null,
   };
@@ -415,13 +418,4 @@ export function slotOpenDeployLine(
     return standing.key;
   }
   return (newestRunning ?? deploys.at(-1))?.key ?? null;
-}
-
-/** What a batch deploy's card draws: the service it shows, as a deploy of its own; any other operation as it is. */
-export function cardOperationOf(
-  operation: ZeropsOperation,
-  service: string | undefined,
-): ZeropsOperation {
-  if (operation.batch !== true || service === undefined) return operation;
-  return splitBatchDeploy(operation).find((one) => one.subject === service) ?? operation;
 }

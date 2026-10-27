@@ -68,6 +68,7 @@ import { ServiceBrowserLink } from "../ServiceBrowserLink";
 import { ZeropsMark } from "../ZeropsMark";
 import { drawnSteps } from "./operation/drawnSteps";
 import { ExplanationBlock } from "./operation/ExplanationBlock";
+import { BatchServiceRows, type BatchServiceRow } from "./operation/BatchServiceRows";
 import { CheckChips, PipelineSegments } from "./operation/OperationStepRow";
 import {
   PipelineCalculating,
@@ -91,6 +92,8 @@ export interface ObservedRegion {
   readonly pipeline?: PipelineReadout;
   /** The observation's secondary processes (e.g. a subdomain toggle beside a deploy), one compact row each. */
   readonly chips?: ReadonlyArray<ZeropsOperationStep>;
+  /** A batch deploy only: each service it deploys, named, with its own steps. */
+  readonly services?: ReadonlyArray<BatchServiceRow>;
   /** Empty while the feed observes; "Zerops isn't answering · last update 2m ago" once it is not. */
   readonly provenance: string;
   /** The build log region, when the caller has one. */
@@ -632,6 +635,11 @@ function StepsBody({
           operation={operation}
           pipeline={observed?.pipeline}
           saysWhy={saysWhyOnStep}
+        />
+      ) : observed?.services !== undefined && observed.services.length > 0 ? (
+        <BatchServiceRows
+          aria-label={`${operation.kicker} services`}
+          services={observed.services}
         />
       ) : steps.length === 0 ? null : PIPELINE_KINDS.has(operation.kind) ? (
         <PipelineSegments aria-label={`${operation.kicker} progress`} steps={steps} />

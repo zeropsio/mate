@@ -92,7 +92,7 @@ import {
   type GitRepoAt,
 } from "../gitBrowser/GitBrowserLink";
 import { ReviewCommits } from "./ReviewCommits";
-import { mainStageOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
+import { mainStagesOf, useGroupName, useMatePreviews, type ReviewPreview } from "./reviewReads";
 import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
@@ -107,6 +107,8 @@ import {
   type ReviewButton,
   type ReviewDiffState,
 } from "./ZeropsReviewSurface";
+
+const NO_STAGES: ReadonlyArray<string> = [];
 
 const KIND: ReviewKind = "change";
 /** How long a change with no description holds the room of its run's words for them. */
@@ -455,7 +457,7 @@ function ChangeReviewData({
       previews={previews}
       project={project}
       appId={target.groupId}
-      stage={flow === undefined ? undefined : mainStageOf(flow)?.name}
+      stages={flow === undefined ? NO_STAGES : mainStagesOf(flow).map((entry) => entry.name)}
       release={flow?.release.gate}
       mate={
         mate === undefined
@@ -622,8 +624,8 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
   readonly appId?: string | undefined;
-  /** The stage that follows `main`, by name: "Merge to stage". */
-  readonly stage?: string | undefined;
+  /** The stages that follow `main`, by name: each deploys what merges. */
+  readonly stages?: ReadonlyArray<string>;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
   readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
   readonly now: number;
@@ -816,7 +818,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
             : mergeFoot({
                 state: model.verdict.state,
                 consequence: model.consequence,
-                stage: props.stage,
+                stages: props.stages ?? NO_STAGES,
                 live: props.live,
                 warning: receipt?.warning,
               })
@@ -884,9 +886,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                   ? undefined
                   : pull.pullRequest?.state === "open"
                     ? "Merge on GitHub"
-                    : props.stage !== undefined
-                      ? `Merge to ${props.stage}`
-                      : undefined,
+                    : undefined,
               onPress: () => {
                 if (asked) props.onClosing("press");
                 else props.onMerge();

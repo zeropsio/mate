@@ -84,6 +84,17 @@ export function useProductionAddresses(
 const NO_ADDRESSES: ReadonlyArray<GroupFlowAddress> = [];
 
 /** The stage that follows `main`: where a merge lands first. */
+/** Every stage that follows `main`, each deploying what merges into it. */
+export function mainStagesOf(
+  flow: ZeropsProjectFlow,
+): ReadonlyArray<ZeropsProjectFlow["environmentInputs"][number]> {
+  return flow.environmentInputs.filter(
+    (entry) =>
+      entry.tier === "stage" &&
+      flow.environments.find((row) => row.id === entry.id)?.source === "main",
+  );
+}
+
 export function mainStageOf(
   flow: ZeropsProjectFlow,
 ): ZeropsProjectFlow["environmentInputs"][number] | undefined {

@@ -33,6 +33,8 @@ const stubCli = (
 ) => ({
   mateStatus,
   mateUpdate: () => Effect.die("not used"),
+  version: Effect.die("not used"),
+  leaseRelease: () => Effect.die("not used"),
 });
 
 describe("ZeropsMateUpdate (MU-3: absent, never fabricated)", () => {

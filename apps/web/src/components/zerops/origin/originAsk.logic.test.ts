@@ -1,4 +1,4 @@
-import { ORIGIN_ASK_ACTIVITY_KIND } from "@t3tools/client-runtime/data";
+import { ORIGIN_ASK_ACTIVITY_KIND, OperationStopped } from "@t3tools/client-runtime/data";
 import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 import { describe, expect, it } from "vite-plus/test";
@@ -8,6 +8,7 @@ import {
   keepInMate,
   originAskAnswer,
   originAskFace,
+  originAnswerSettled,
   originAskGroup,
   originAskPlaces,
   originAskPlacesKey,
@@ -336,18 +337,53 @@ describe("a card standing for several asks", () => {
     const group = originAskGroup(asks);
     expect(group.ask).toEqual({
       url: NOOLA,
-      repo: "appdev",
+      repo: "apidev",
       reason: "Its CI runs there.",
       state: "open",
     });
     expect(group.open).toEqual(["r2", "r3"]);
-    expect(group.repos).toEqual(["appdev", "apidev"]);
+    expect(group.repos).toEqual(["apidev"]);
   });
+
+  it.each([
+    { case: "withdrawn by its Mate", state: "closed" as const },
+    { case: "answered already", state: "declined" as const },
+  ])(
+    "an ask of the same address $case stands in no repository its answer mounts or follows",
+    ({ state }) => {
+      const group = originAskGroup([
+        { requestId: "r1", url: NOOLA, repo: "apidev", reason: null, state: "open" },
+        { requestId: "r2", url: NOOLA, repo: "webdev", reason: null, state },
+      ]);
+      expect(group.open).toEqual(["r1"]);
+      expect(group.repos).toEqual(["apidev"]);
+      expect(group.connected([repo("apidev", NOOLA, "app")])).toBe(true);
+    },
+  );
 
   it("is kept on GitHub once HQ mounts every repository its asks name", () => {
     const group = originAskGroup(asks);
-    const mounted = repo("appdev", `${NOOLA}.git`, "app");
-    expect(group.connected([mounted])).toBe(false);
-    expect(group.connected([mounted, repo("apidev", NOOLA, "app")])).toBe(true);
+    const mounted = repo("apidev", `${NOOLA}.git`, "app");
+    expect(group.connected([repo("appdev", NOOLA, "app")])).toBe(false);
+    expect(group.connected([mounted])).toBe(true);
+  });
+});
+
+describe("the person's pick refused for an ask the engine holds open no more", () => {
+  it.each([
+    {
+      case: "an ask the Mate settled meanwhile: the pick stands",
+      error: new OperationStopped("That question is no longer open.", "unknown-request"),
+      settled: true,
+    },
+    {
+      case: "an ask the engine cannot take an answer for: refused",
+      error: new OperationStopped("That question can no longer be answered.", "not-answerable"),
+      settled: false,
+    },
+    { case: "a failure that says no reason: refused", error: new Error("socket"), settled: false },
+    { case: "nothing: refused", error: undefined, settled: false },
+  ])("$case", ({ error, settled }) => {
+    expect(originAnswerSettled(error)).toBe(settled);
   });
 });
