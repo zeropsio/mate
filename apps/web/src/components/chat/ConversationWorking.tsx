@@ -673,7 +673,7 @@ function Instruments({
           .map((service) => service.hostname),
       ),
     ),
-    topology?.services ?? [],
+    topology?.services,
   );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;

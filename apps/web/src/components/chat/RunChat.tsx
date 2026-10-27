@@ -126,6 +126,7 @@ import {
   operationUnreturnedWords,
   type BrokeOff,
   type BrowserStripModel,
+  incidentToneNow,
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
@@ -2340,7 +2341,10 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
 }
 
 /** A service's trouble, in its colour: red while broken, amber while it needs the person. */
-function IncidentMark({ tone }: { readonly tone: IncidentModel["tone"] }) {
+function IncidentMark({ incident }: { readonly incident: IncidentModel }) {
+  const ctx = use(TimelineRowCtx);
+  const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
+  const tone = incidentToneNow(incident, topology?.services).tone;
   return (
     <ActivityIcon
       aria-hidden="true"
@@ -2999,7 +3003,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
       return {
         key: item.key,
         bubble: <IncidentBubble incident={item.incident} />,
-        mark: <IncidentMark tone={item.incident.tone} />,
+        mark: <IncidentMark incident={item.incident} />,
       };
     case "event":
       return { key: item.key, bubble: <EventCaption event={item.event} />, across: true };

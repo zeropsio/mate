@@ -2261,6 +2261,7 @@ function devServerFailurePhrase(operation: ZeropsOperation): string {
 
 /** The kinds that act on a service: after one of them, what was found of it before is old. */
 const ACTING_KINDS: ReadonlySet<ZeropsOperation["kind"]> = new Set([
+  "delete",
   "deploy",
   "devServer",
   "import",
@@ -2359,24 +2360,49 @@ const AT_REST_WORDS: Readonly<Record<string, string>> = {
   STOPPED: "stopped",
 };
 
+type ServiceStatus = { readonly hostname: string; readonly status: string };
+
+/** Why nothing is meant to run on a service now, by its status; undefined where something is. */
+function atRestWords(status: string): string | undefined {
+  return AT_REST_WORDS[status.replace(/^SERVICE_/u, "")];
+}
+
 /**
  * A dev server found not running is a fault only where something is meant to
- * run. On a service the platform says holds nothing — never deployed (a
- * stand-in while services move, say) — or stopped, it reads at rest and says
- * why. A start that failed stays a failure, and a service whose state is not
- * known yet stays as it was found.
+ * run. The dock says nothing until the platform's state of the project is
+ * read (`services` undefined) — never amber first — and nothing of a service
+ * no longer in it. On a service the platform says holds nothing — never
+ * deployed (a stand-in while services move, say) — or stopped, it reads at
+ * rest and says why. A start that failed stays a failure.
  */
 export function incidentsAtRest(
   incidents: ReadonlyArray<IncidentModel>,
-  services: ReadonlyArray<{ readonly hostname: string; readonly status: string }>,
+  services: ReadonlyArray<ServiceStatus> | undefined,
 ): ReadonlyArray<IncidentModel> {
-  return incidents.map((incident) => {
-    if (incident.tone !== "attention") return incident;
-    const status = services.find((service) => service.hostname === incident.hostname)?.status;
-    const words =
-      status === undefined ? undefined : AT_REST_WORDS[status.replace(/^SERVICE_/u, "")];
-    return words === undefined ? incident : { ...incident, tone: "rest", phases: [words] };
+  if (services === undefined) return [];
+  return incidents.flatMap((incident) => {
+    const service = services.find((one) => one.hostname === incident.hostname);
+    if (service === undefined) return [];
+    const words = incident.tone === "attention" ? atRestWords(service.status) : undefined;
+    return [words === undefined ? incident : { ...incident, tone: "rest", phases: [words] }];
   });
+}
+
+/**
+ * The run's record of a dev server found not running, in its own words; its
+ * colour says whether it still needs anyone: amber only on a service the
+ * platform says is meant to run — never while its state is unread, once the
+ * service is gone, or while it holds nothing or is stopped.
+ */
+export function incidentToneNow(
+  incident: IncidentModel,
+  services: ReadonlyArray<ServiceStatus> | undefined,
+): IncidentModel {
+  if (incident.tone !== "attention") return incident;
+  const status = services?.find((one) => one.hostname === incident.hostname)?.status;
+  return status === undefined || atRestWords(status) !== undefined
+    ? { ...incident, tone: "rest" }
+    : incident;
 }
 
 /**
