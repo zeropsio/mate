@@ -7,11 +7,15 @@ import type {
   Observation,
   ObservationState,
   ObservedPipeline,
+  ObservedService,
 } from "@t3tools/client-runtime/zerops/activity/observe";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
 import { readPipeline } from "@t3tools/client-runtime/zerops/activity/pipelineReadout";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
-import type { ZeropsTopologyView } from "@t3tools/client-runtime/zerops/topology";
+import type {
+  ZeropsTopologyService,
+  ZeropsTopologyView,
+} from "@t3tools/client-runtime/zerops/topology";
 
 import { reactHookHarness as hooks } from "../../test/reactHookHarness";
 
@@ -68,6 +72,7 @@ vi.mock("./useOperationObservation.ts", () => ({
 }));
 
 import {
+  batchServiceRows,
   browserScreenshotFor,
   browserSubjectHostFor,
   deriveObservedStepsRegion,
@@ -1046,5 +1051,112 @@ it("a long restart card counts its own process without manufacturing failure", (
     text: "Eddy is restarting — 15 min elapsed.",
     status: "Restarting",
     duration: "15m",
+  });
+});
+
+describe("batchServiceRows — a batch deploy's card, one named row per service", () => {
+  const HOSTS = ["apipool", "edgepool", "embedderpool", "geopool", "webpool", "sitepool"];
+  const batch = (phase: ZeropsOperation["phase"], stepState: "running" | "done" = "running") =>
+    operation({
+      batch: true,
+      phase,
+      subject: HOSTS.join(", "),
+      target: { hostname: "apipool" },
+      steps: HOSTS.map((host) => ({
+        id: host,
+        label: host,
+        state: stepState,
+        stateLabel: stepState === "running" ? "Running" : "Deployed",
+      })),
+    });
+  const view = topology({
+    services: HOSTS.map(
+      (hostname) => ({ hostname, serviceId: `svc-${hostname}` }) as ZeropsTopologyService,
+    ),
+  });
+  const pipeline = (appVersion: ObservedPipeline["appVersion"]): ObservedPipeline => ({
+    appVersion,
+  });
+  const T = (second: number) => `2026-09-01T00:00:${String(second).padStart(2, "0")}.000Z`;
+  // Each service at its own point: building, deploying, done, failed, its
+  // process read before its pipeline, and none read yet.
+  const SERVICES: ReadonlyArray<ObservedService> = [
+    {
+      serviceIds: ["svc-apipool"],
+      pipeline: pipeline({ status: "BUILDING", build: { pipelineStart: T(1), startDate: T(4) } }),
+    },
+    {
+      serviceIds: ["svc-edgepool"],
+      pipeline: pipeline({
+        status: "DEPLOYING",
+        build: { pipelineStart: T(1), startDate: T(4), endDate: T(20) },
+      }),
+    },
+    {
+      serviceIds: ["svc-embedderpool"],
+      pipeline: pipeline({
+        status: "ACTIVE",
+        build: { pipelineStart: T(1), startDate: T(4), endDate: T(20), pipelineFinish: T(30) },
+        activationDate: T(30),
+      }),
+      outcome: "finished",
+    },
+    {
+      serviceIds: ["svc-geopool"],
+      pipeline: pipeline({
+        status: "BUILD_FAILED",
+        build: { pipelineStart: T(1), startDate: T(4), pipelineFailed: T(9) },
+      }),
+      outcome: "failed",
+    },
+    { serviceIds: ["svc-webpool"] },
+  ];
+
+  it.each([
+    {
+      name: "running: each service by name, its own steps and state",
+      operation: batch("running"),
+      topology: view,
+      rows: [
+        ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
+        ["edgepool", "running", ["done", "done", "done", "done", "running"]],
+        ["embedderpool", "done", ["done", "done", "done", "done", "done"]],
+        ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
+        ["webpool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
+        ["sitepool", "queued", ["queued", "queued", "queued", "queued", "queued"]],
+      ],
+    },
+    {
+      name: "before the topology names its services: still one named row each",
+      operation: batch("running"),
+      topology: undefined,
+      rows: HOSTS.map((host) => [
+        host,
+        "queued",
+        ["queued", "queued", "queued", "queued", "queued"],
+      ]),
+    },
+    {
+      name: "settled with nothing read of a service: its row says how its call ended",
+      operation: batch("done", "done"),
+      topology: view,
+      rows: [
+        ["apipool", "running", ["done", "running", "queued", "queued", "queued"]],
+        ["edgepool", "running", ["done", "done", "done", "done", "running"]],
+        ["embedderpool", "done", ["done", "done", "done", "done", "done"]],
+        ["geopool", "failed", ["done", "failed", "queued", "queued", "queued"]],
+        ["webpool", "done", []],
+        ["sitepool", "done", []],
+      ],
+    },
+  ])("$name", ({ operation: op, topology: known, rows }) => {
+    const drawn = batchServiceRows(op, SERVICES, known, NOW);
+    expect(drawn?.map((row) => [row.name, row.state, row.steps.map((step) => step.state)])).toEqual(
+      rows,
+    );
+  });
+
+  it("a deploy of one service has no service rows", () => {
+    expect(batchServiceRows(operation(), SERVICES, view, NOW)).toBeUndefined();
   });
 });
