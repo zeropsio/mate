@@ -472,6 +472,16 @@ describe("attributeActivity — a batch deploy's step source", () => {
       services: ["p-api", "p-web"],
       chips: ["p-api-old", "p-sub"],
     },
+    {
+      name: "a service's earlier failed build gives way to its newer one that ended well",
+      processes: [
+        api({ id: "p-api-failed", status: "FAILED", finished: at(1) }),
+        api({ id: "p-api", created: at(2), ...ended(3) }),
+        web({ status: "RUNNING" }),
+      ],
+      services: ["p-api", "p-web"],
+      chips: ["p-api-failed"],
+    },
   ])("each service it names has its own step source: $name", ({ processes, services, chips }) => {
     const result = attributeActivity({
       processes,

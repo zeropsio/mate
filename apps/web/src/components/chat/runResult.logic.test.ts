@@ -390,7 +390,8 @@ describe("resultRows", () => {
       facts: facts({
         services: { appdev: { status: "STOPPED", since: at(40), versionAt: at(0) } },
       }),
-      rows: [["waiting", "attention", "appdev", "Dev server not running"]],
+      // Stopped, nothing is meant to run there: its words stay, never amber.
+      rows: [["waiting", "muted", "appdev", "Dev server not running"]],
     },
     {
       name: "a page whose check stayed failed is broken; one retried until it passed is not",

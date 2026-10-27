@@ -158,8 +158,9 @@ export function attributeActivity(input: AttributionInput): AttributionResult {
 }
 
 /**
- * Each service's own step source among a batch's candidates (newest first), keyed by the service
- * it deploys: the first of its ids the batch names, else its first.
+ * Each service's own step source among a batch's candidates (newest first): its newest build,
+ * keyed by the service it deploys — the first of its ids the batch names, else its first. An
+ * older build of the same service, however it ended, is its history, never its row.
  */
 function serviceStepSources(
   newestFirst: ReadonlyArray<ActivityProcess>,
@@ -174,8 +175,5 @@ function serviceStepSources(
       process.id;
     byService.set(key, [...(byService.get(key) ?? []), process]);
   }
-  return [...byService.values()].flatMap((candidates) => {
-    const source = batchStepSource(candidates);
-    return source === undefined ? [] : [source];
-  });
+  return [...byService.values()].flatMap((candidates) => candidates.slice(0, 1));
 }

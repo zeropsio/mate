@@ -25,6 +25,7 @@ import {
   namedToolCall,
   incidentsAtRest,
   incidentsStanding,
+  incidentToneNow,
   operationLineWords,
   operationUnreturnedWords,
   standingIncidents,
@@ -2184,14 +2185,30 @@ describe("standingIncidents — what the dock under the now line says of a servi
       shows: [["appdev", "start failed", "failed"]],
     },
     {
-      name: "before the platform names its state: as it was found",
+      name: "before the platform's state is read: held, never amber first",
       ops: [dev("s1", 1, "Status", false)],
-      status: undefined,
-      shows: [["appdev", "not running", "attention"]],
+      status: "unread",
+      shows: [],
+    },
+    {
+      name: "gone from the project: nothing left to say",
+      ops: [dev("s1", 1, "Status", false)],
+      status: "gone",
+      shows: [],
+    },
+    {
+      name: "deleted by the Mate since: nothing left to say",
+      ops: [
+        dev("s1", 1, "Status", false),
+        operation("x1", "t1", 2, { kind: "delete", subject: "appdev" }),
+      ],
+      status: "ACTIVE",
+      shows: [],
     },
   ])("a service nothing is meant to run on — $name", ({ ops, status, shows }) => {
     const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
-    const services = status === undefined ? [] : [{ hostname: "appdev", status }];
+    const services =
+      status === "unread" ? undefined : status === "gone" ? [] : [{ hostname: "appdev", status }];
     expect(
       incidentsAtRest(standingIncidents(only!.stretches[0]!), services).map((incident) => [
         incident.hostname,
@@ -2200,6 +2217,103 @@ describe("standingIncidents — what the dock under the now line says of a servi
       ]),
     ).toEqual(shows);
   });
+
+  // zcp marks the dev it holds while a repository moves onto dev pools: nothing
+  // is meant to run there, whatever the platform says of it.
+  it.each([
+    {
+      name: "marked on its snapshot, running its version",
+      ops: [dev("s1", 1, "Status", false)],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "pool-migrate" } }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "marked by the status call itself",
+      ops: [dev("s1", 1, "Status", false, { standIn: { for: "pool-migrate" } })],
+      services: [{ hostname: "appdev", status: "ACTIVE" }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "a start that failed on it",
+      ops: [dev("s1", 1, "Start", false, { phase: "failed" })],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "pool-migrate" } }],
+      shows: [["appdev", "moving onto dev pools", "rest"]],
+    },
+    {
+      name: "held for a reason this build has no words for",
+      ops: [dev("s1", 1, "Status", false)],
+      services: [{ hostname: "appdev", status: "ACTIVE", standIn: { for: "repo-split" } }],
+      shows: [["appdev", "held for repo-split", "rest"]],
+    },
+  ])(
+    "a dev service zcp holds as a stand-in reads at rest, saying it's moving onto dev pools — $name",
+    ({ ops, services, shows }) => {
+      const [only] = structure([user("m0", 0), ...ops, moveOn], { live: "t1" }).turns;
+      expect(
+        incidentsAtRest(standingIncidents(only!.stretches[0]!), services).map((incident) => [
+          incident.hostname,
+          incident.phases.join(" · "),
+          incident.tone,
+        ]),
+      ).toEqual(shows);
+    },
+  );
+
+  it.each([
+    { name: "marked on its snapshot", standIn: undefined, envelope: { for: "pool-migrate" } },
+    { name: "marked by the call", standIn: { for: "pool-migrate" }, envelope: undefined },
+  ])(
+    "the run's record of a stand-in dev never reads amber or red — $name",
+    ({ standIn, envelope }) => {
+      const [only] = structure(
+        [
+          user("m0", 0),
+          dev("s1", 1, "Start", false, {
+            phase: "failed",
+            ...(standIn === undefined ? {} : { standIn }),
+          }),
+        ],
+        { live: "t1" },
+      ).turns;
+      const [found] = stretchIncidents(only!.stretches[0]!);
+      const services = [
+        {
+          hostname: "appdev",
+          status: "ACTIVE",
+          ...(envelope === undefined ? {} : { standIn: envelope }),
+        },
+      ];
+      expect(incidentToneNow(found!, services).tone).toBe("rest");
+    },
+  );
+
+  // The run's record keeps what it found in its own words; only its colour
+  // says whether it still needs anyone.
+  it.each([
+    {
+      name: "nothing deployed yet",
+      services: [{ hostname: "appdev", status: "READY_TO_DEPLOY" }],
+      tone: "rest",
+    },
+    { name: "stopped", services: [{ hostname: "appdev", status: "STOPPED" }], tone: "rest" },
+    { name: "gone from the project", services: [], tone: "rest" },
+    { name: "its state not read yet", services: undefined, tone: "rest" },
+    {
+      name: "running its version",
+      services: [{ hostname: "appdev", status: "ACTIVE" }],
+      tone: "attention",
+    },
+  ])(
+    "the run's record of a dev server found not running — $name: $tone, in its words",
+    ({ services, tone }) => {
+      const [only] = structure([user("m0", 0), dev("s1", 1, "Status", false)], {
+        live: "t1",
+      }).turns;
+      const [found] = stretchIncidents(only!.stretches[0]!);
+      const now = incidentToneNow(found!, services);
+      expect([now.phases.join(" · "), now.tone]).toEqual(["not running", tone]);
+    },
+  );
 });
 
 describe("deriveOutcome", () => {

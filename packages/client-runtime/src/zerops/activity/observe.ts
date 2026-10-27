@@ -45,7 +45,10 @@ export interface Observation {
 /** One of a batch's services as the platform states it: which, its pipeline, how it ended. */
 export interface ObservedService {
   readonly serviceIds: ReadonlyArray<string>;
-  /** Absent while its process has no step to show. */
+  /**
+   * Its version, whenever its process carries one — also one with no step to show (refused
+   * before its build, cancelled once it ran), which its row reads as such.
+   */
   readonly pipeline?: ObservedPipeline;
   readonly outcome?: "finished" | "failed" | "cancelled";
 }
@@ -167,7 +170,11 @@ function pipelineFor(stepSource: ActivityProcess | undefined): ObservedPipeline 
 }
 
 function observedService(process: ActivityProcess): ObservedService {
-  const pipeline = pipelineFor(process);
+  const appVersion = process.appVersion;
+  const pipeline =
+    appVersion === undefined
+      ? undefined
+      : { appVersion, ...(process.started === undefined ? {} : { startedAt: process.started }) };
   const outcome = outcomeFor(process);
   return {
     serviceIds: process.serviceStackIds,

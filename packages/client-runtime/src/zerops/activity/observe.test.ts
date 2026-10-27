@@ -294,11 +294,20 @@ describe("observe — a batch deploy's services", () => {
         activationDate: "2026-09-02T10:01:00.000Z",
       },
     });
+    // Refused before its build ran: a version with no step to show, still its own.
+    const refused = process({
+      id: "p-geo",
+      serviceStackIds: ["svc-geo"],
+      status: "FAILED",
+      appVersion: { id: "av-geo", status: "BUILD_VALIDATION_FAILED" },
+    });
+    // Its kickoff failed: no version at all, its process says how it ended.
+    const unstarted = process({ id: "p-edge", serviceStackIds: ["svc-edge"], status: "FAILED" });
     const state = observe(
       baseInput({
         attribution: {
           stepSource: building,
-          services: [building, deployed],
+          services: [building, deployed, refused, unstarted],
           chips: [],
           projectMismatch: false,
         },
@@ -315,6 +324,8 @@ describe("observe — a batch deploy's services", () => {
     ).toEqual([
       { serviceIds: ["svc-api"], version: "av-api", outcome: undefined },
       { serviceIds: ["svc-web"], version: "av-web", outcome: "finished" },
+      { serviceIds: ["svc-geo"], version: "av-geo", outcome: undefined },
+      { serviceIds: ["svc-edge"], version: undefined, outcome: "failed" },
     ]);
   });
 });

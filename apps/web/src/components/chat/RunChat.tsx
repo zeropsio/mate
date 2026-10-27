@@ -113,7 +113,8 @@ import {
   useOperationCard,
   type OperationCardRegions,
 } from "../../zerops/activity/useOperationCard";
-import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import { helpersBubbleOf } from "./helpersBubble.logic";
 import { BrowserStrip, BrowserTakes } from "./BrowserStrip";
 import {
@@ -126,6 +127,8 @@ import {
   operationUnreturnedWords,
   type BrokeOff,
   type BrowserStripModel,
+  incidentToneNow,
+  servicesWithStandIns,
   type IncidentModel,
   type OutcomeModel,
 } from "./conversation.logic";
@@ -2340,7 +2343,17 @@ function ChecksBubble({ strip: recorded }: { readonly strip: BrowserStripModel }
 }
 
 /** A service's trouble, in its colour: red while broken, amber while it needs the person. */
-function IncidentMark({ tone }: { readonly tone: IncidentModel["tone"] }) {
+function IncidentMark({ incident }: { readonly incident: IncidentModel }) {
+  const ctx = use(TimelineRowCtx);
+  const topology = useZeropsTopology(ctx.activeThreadEnvironmentId);
+  const lifecycle = useZeropsLifecycle(
+    ctx.activeThreadEnvironmentId,
+    ctx.threadRef?.threadId ?? null,
+  );
+  const tone = incidentToneNow(
+    incident,
+    servicesWithStandIns(topology?.services, (hostname) => standInOf(hostname, lifecycle)),
+  ).tone;
   return (
     <ActivityIcon
       aria-hidden="true"
@@ -2999,7 +3012,7 @@ function itemLine(item: RecordItem, undone: ReadonlySet<string>): ChatLine {
       return {
         key: item.key,
         bubble: <IncidentBubble incident={item.incident} />,
-        mark: <IncidentMark tone={item.incident.tone} />,
+        mark: <IncidentMark incident={item.incident} />,
       };
     case "event":
       return { key: item.key, bubble: <EventCaption event={item.event} />, across: true };
