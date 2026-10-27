@@ -19,7 +19,6 @@ const ruleItself = batch.createHarness({
 const testFile = batch.createHarness({
   filename: "packages/client-runtime/src/zerops/hq/refusals.test.ts",
 });
-const hqFile = batch.createHarness({ filename: "apps/hq/src/api.ts" });
 
 describe("t3code/no-direct-permission-rule", () => {
   webFile.valid(
@@ -56,7 +55,6 @@ describe("t3code/no-direct-permission-rule", () => {
     "leaves tests alone",
     `import { REASONS } from "@t3tools/shared/zeropsPermissions";`,
   );
-  hqFile.valid("leaves HQ, which runs the rule, alone", `import { can } from "./permissions.ts";`);
 
   webFile.invalid(
     "reports a named import of a value",
@@ -93,22 +91,6 @@ describe("t3code/no-direct-permission-rule", () => {
   sharedFile.invalid(
     "reports a shared module passing it on",
     `export { can } from "./zeropsPermissions.ts";`,
-  );
-  webFile.invalid(
-    "reports HQ's rule by its package, even its types",
-    `import type { Verb } from "@t3tools/hq/permissions";`,
-  );
-  runtimeFile.invalid(
-    "reports HQ's rule by a path into HQ",
-    `import { can } from "../../../../apps/hq/src/permissions.ts";`,
-  );
-  sharedFile.invalid(
-    "reports a shared module passing HQ's rule on",
-    `export * from "../../../apps/hq/src/permissions.ts";`,
-  );
-  mobileFile.invalid(
-    "reports HQ's rule loaded at run time",
-    `const rule = await import("@t3tools/hq/permissions");`,
   );
   webFile.invalid(
     "reports a dynamic import",

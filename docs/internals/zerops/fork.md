@@ -25,8 +25,8 @@ The zcp↔mate release and environment contract belongs to `../zcp/docs/spec-mat
 - **Owned product** — `apps/server/src/zerops/**`, `apps/server/src/engine/**`,
   `packages/contracts/src/engine*.ts`, `apps/web/src/zerops/**`, `apps/web/src/components/zerops/**`,
   `packages/client-runtime/src/zerops/**`, `apps/mobile/src/features/zerops/**`,
-  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts`, `apps/hq/**`,
-  `packages/hq-git/**` and `docs/internals/zerops/**`. This code is ours only. Client code follows the [design guide](design-system.md).
+  `packages/shared/src/{brand,threadStatus,crewHome,crewTemplates}.ts` and
+  `docs/internals/zerops/**`. This code is ours only. Client code follows the [design guide](design-system.md).
 - **Removed** — delete retired code; do not disable it or preserve compatibility shims.
 
 ### 3.1 Boundaries

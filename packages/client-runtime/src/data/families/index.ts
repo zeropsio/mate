@@ -84,7 +84,6 @@ import { organizationLocationsFamily } from "./organizationLocations.ts";
 import { organizationUserFamily } from "./organizationUser.ts";
 import { organizationMembersFamily } from "./organizationMembers.ts";
 import { memberProjectRolesFamily } from "./memberProjectRoles.ts";
-import { hqVerdictFamily } from "./hqVerdict.ts";
 import { mateLinkFamily } from "./mateLink.ts";
 import { processFamily } from "./process.ts";
 import { projectFamily } from "./project.ts";
@@ -204,7 +203,6 @@ export const FAMILIES = defineFamilies([
   publicPortRoutingFamily,
   projectAddonsFamily,
   hqAppDetailFamily,
-  hqVerdictFamily,
   mateVariablesFamily,
   mateLinkFamily,
   mateImageFamily,

@@ -592,7 +592,6 @@ it.layer(NodeServices.layer)("guard exception driver", (it) => {
                 "apps/desktop/src",
                 "packages/shared/src",
                 "packages/client-runtime/src",
-                "apps/hq/src",
               ]);
               assert.deepStrictEqual(request.env, { T3CODE_GUARD_REPORT_LEDGERED: "1" });
             },
@@ -771,7 +770,7 @@ it.layer(NodeServices.layer)("environment identity ratchet", (it) => {
         const baseline = loadRatchetBaseline(cwd, main);
         assert.deepStrictEqual(baseline.get(rule), []);
         const hit = {
-          ...entry("apps/hq/src/deploys.ts"),
+          ...entry("apps/web/src/deploys.ts"),
           kind: "sql-project-identity-read",
           fingerprint: "SELECT project_id FROM hq_deploy_job",
           expires: "never",

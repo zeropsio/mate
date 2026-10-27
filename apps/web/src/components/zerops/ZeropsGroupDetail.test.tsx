@@ -97,7 +97,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
 }));
 vi.mock("~/zerops/useNowMs", async (importOriginal) => ({
   ...(await importOriginal<object>()),

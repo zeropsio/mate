@@ -12,7 +12,7 @@ import type { FollowRepoUpstreamRequest } from "@t3tools/shared/hqChanges";
 import { HqLifecycleRecord, type HqLifecycleIntent } from "@t3tools/shared/hqLifecycle";
 import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
- * HQ's API as the client calls it (`apps/hq/src/api.ts`), through HQ's door.
+ * HQ's API as the client calls it (`mate-hq apps/hq/src/api.ts`), through HQ's door.
  *
  * A person signs in with their Zerops access token (`POST /api/door {accessToken, orgId}`, in the
  * body only) and HQ answers a session of its own, which this client sends as `Authorization:
@@ -836,7 +836,7 @@ const changePath = ({ appId, repo, number }: ChangeLink): string =>
   `/api/apps/${encodeURIComponent(appId)}/changes/${encodeURIComponent(repo)}/${String(number)}`;
 
 /**
- * How HQ's parts stand while it serves, as its health reports them (`apps/hq/src/health.ts`):
+ * How HQ's parts stand while it serves, as its health reports them (`mate-hq apps/hq/src/health.ts`):
  * `db` its database's answer to a fresh probe, `quarantined` the repositories it withholds until
  * they converge (`<appId>/<repo>`), `backup` its newest set's outcome, `keys` where its key for
  * deploy tokens stands. A part an older Core does not report, or reports in a shape this build
@@ -849,7 +849,7 @@ export interface HqParts {
   readonly keys?: HqKeys;
 }
 
-/** What a backup set needed beside what the backup bucket holds (`apps/hq/src/backup.ts`). */
+/** What a backup set needed beside what the backup bucket holds (`mate-hq apps/hq/src/backup.ts`). */
 export interface HqBackupUsage {
   readonly usedBytes: number;
   readonly neededBytes: number;
@@ -857,7 +857,7 @@ export interface HqBackupUsage {
 }
 
 /**
- * HQ's backup by its newest set (`apps/hq/src/backup.ts` `BackupStatus`): `off` with no bucket,
+ * HQ's backup by its newest set (`mate-hq apps/hq/src/backup.ts` `BackupStatus`): `off` with no bucket,
  * `pending` before a first set, `ok` with the time the newest set was taken (wall ms), `degraded`
  * when that set cost a set the retention targets keep, `failed` with HQ's reason — a quarantined
  * repository's name, or the bucket's usage when it is full.
@@ -874,7 +874,7 @@ export type HqBackup =
     };
 
 /**
- * HQ's key for deploy tokens (`apps/hq/src/deployKeys.ts` `KeysStatus`): none, one that is no key,
+ * HQ's key for deploy tokens (`mate-hq apps/hq/src/deployKeys.ts` `KeysStatus`): none, one that is no key,
  * the key, or the key beside tokens sealed under another.
  */
 export type HqKeys = "ok" | "no_secret" | "bad_secret" | "other_secret";
@@ -992,11 +992,6 @@ export function makeHqApi(input: {
   /** The instant, for the renewal of a session; the wall clock where absent. */
   readonly now?: () => number;
   readonly openSocket: OpenHqSocket;
-  /**
-   * Waits until a write may be sent to this HQ, or fails it before anything is sent: the page may
-   * read an HQ it has not yet verified official, but writes nothing to it. Absent: at once.
-   */
-  readonly beforeWrite?: () => Promise<void>;
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
   /**
@@ -1137,7 +1132,6 @@ export function makeHqApi(input: {
     init: RequestInit = {},
     write = false,
   ): Promise<Response> => {
-    if (write) await input.beforeWrite?.();
     let renewed = false;
     for (;;) {
       const held = session ?? restore() ?? enter();

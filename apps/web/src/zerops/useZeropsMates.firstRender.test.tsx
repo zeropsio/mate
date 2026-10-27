@@ -1,5 +1,5 @@
 import { RegistryContext } from "@effect/atom-react";
-import { seedHqNavigation, seedHqVerdict } from "@t3tools/client-runtime/data/fixtures";
+import { seedHqNavigation } from "@t3tools/client-runtime/data/fixtures";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { EnvironmentId } from "@t3tools/contracts";
@@ -69,7 +69,6 @@ describe("a Mate's first frame", () => {
   it("names and draws the menu's Mate in its stage and voice before the candidate listing is read", () => {
     const registry = AtomRegistry.make();
     const store = mountRoster(registry, ORG, [PROJECT]);
-    seedHqVerdict(store, ORG, "official");
     seedHqNavigation(store, ORG, {
       structure: {
         apps: [

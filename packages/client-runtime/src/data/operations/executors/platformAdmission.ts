@@ -68,7 +68,6 @@ export function admitPlatformOperation(input: {
     if (
       intent.kind === "create-project" ||
       intent.kind === "import-project" ||
-      intent.kind === "hq-birth" ||
       // Its creator gives the project it just made its people, as a creation would have.
       intent.kind === "grant-new-project-access"
     ) {

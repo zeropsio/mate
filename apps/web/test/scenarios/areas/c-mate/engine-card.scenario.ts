@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Deferred from "effect/Deferred";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import * as Queue from "effect/Queue";
@@ -260,7 +260,7 @@ const longConversation = Effect.gen(function* () {
 });
 
 describe("C: an engine Mate's run card in a live conversation", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a run its job's end wakes goes on in the folded card without moving the page", () =>
       Effect.gen(function* () {
         const { s, chat, provider } = yield* realLongConversation;

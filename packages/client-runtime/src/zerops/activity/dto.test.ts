@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { readActivityAppVersion, readProjectProcesses } from "./dto.ts";
+import { readActivityAppVersion, readActivityProcess } from "./dto.ts";
 
 describe("readActivityAppVersion — what the pipeline readout reads", () => {
   it.each([
@@ -63,79 +63,65 @@ describe("readActivityAppVersion — what the pipeline readout reads", () => {
   });
 });
 
-describe("readProjectProcesses", () => {
+describe("readActivityProcess", () => {
   it("reads a process with a full appVersion", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          serviceStacks: [{ id: "svc-1" }],
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "2026-09-02T10:00:00.000Z",
-          appVersion: {
-            status: "BUILDING",
-            build: { pipelineStart: "t1", startDate: "t2" },
-            prepareCustomRuntime: { startDate: "t3" },
-            activationDate: "t4",
-          },
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      serviceStacks: [{ id: "svc-1" }],
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
+      appVersion: {
+        status: "BUILDING",
+        build: { pipelineStart: "t1", startDate: "t2" },
+        prepareCustomRuntime: { startDate: "t3" },
+        activationDate: "t4",
+      },
     });
 
-    expect(processes).toEqual([
-      {
-        id: "p1",
-        projectId: "proj-1",
-        serviceStackIds: ["svc-1"],
-        status: "RUNNING",
-        actionName: "stack.deploy",
-        created: "2026-09-02T10:00:00.000Z",
-        appVersion: {
-          status: "BUILDING",
-          build: { pipelineStart: "t1", startDate: "t2" },
-          prepareCustomRuntime: { startDate: "t3" },
-          activationDate: "t4",
-        },
+    expect(process).toEqual({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackIds: ["svc-1"],
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
+      appVersion: {
+        status: "BUILDING",
+        build: { pipelineStart: "t1", startDate: "t2" },
+        prepareCustomRuntime: { startDate: "t3" },
+        activationDate: "t4",
       },
-    ]);
+    });
   });
 
   it("dedupes serviceStackId against serviceStacks[].id", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          serviceStacks: [{ id: "svc-1" }, { id: "svc-2" }],
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "2026-09-02T10:00:00.000Z",
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      serviceStacks: [{ id: "svc-1" }, { id: "svc-2" }],
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
     });
 
-    expect(processes?.[0]?.serviceStackIds).toEqual(["svc-1", "svc-2"]);
+    expect(process?.serviceStackIds).toEqual(["svc-1", "svc-2"]);
   });
 
   it("reads a process with no appVersion at all", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          status: "PENDING",
-          actionName: "stack.deploy",
-          created: "2026-09-02T10:00:00.000Z",
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      status: "PENDING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
     });
 
-    expect(processes?.[0]?.appVersion).toBeUndefined();
+    expect(process?.appVersion).toBeUndefined();
   });
 
   it.each([
@@ -163,20 +149,16 @@ describe("readProjectProcesses", () => {
     },
     { name: "nothing, for a process that says none", extra: {}, reason: undefined },
   ])("reads why a process failed: $name", ({ extra, reason }) => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          status: "FAILED",
-          actionName: "stack.create",
-          created: "2026-09-02T10:00:00.000Z",
-          ...extra,
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      status: "FAILED",
+      actionName: "stack.create",
+      created: "2026-09-02T10:00:00.000Z",
+      ...extra,
     });
-    expect(processes?.[0]?.failReason).toBe(reason);
+    expect(process?.failReason).toBe(reason);
   });
 
   it.each([
@@ -189,56 +171,30 @@ describe("readProjectProcesses", () => {
     { name: "nothing, for an empty one", error: {}, read: undefined },
     { name: "nothing, for none", error: undefined, read: undefined },
   ])("keeps the error a process carries, as the platform gave it: $name", ({ error, read }) => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          status: "FAILED",
-          actionName: "project.create",
-          created: "2026-09-02T10:00:00.000Z",
-          ...(error === undefined ? {} : { error }),
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      status: "FAILED",
+      actionName: "project.create",
+      created: "2026-09-02T10:00:00.000Z",
+      ...(error === undefined ? {} : { error }),
     });
-    expect(processes?.[0]?.error).toEqual(read);
-  });
-
-  it("drops a process entry missing an identifying field, keeping the rest", () => {
-    const processes = readProjectProcesses({
-      list: [
-        { id: "p1", status: "RUNNING", actionName: "stack.deploy", created: "t" },
-        {
-          id: "p2",
-          projectId: "proj-1",
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "t",
-        },
-      ],
-    });
-
-    expect(processes).toHaveLength(1);
-    expect(processes?.[0]?.id).toBe("p2");
+    expect(process?.error).toEqual(read);
   });
 
   it("ignores a field the API adds that this build knows nothing about", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "t",
-          somethingNew: { nested: true },
-          appVersion: { status: "BUILDING", somethingNew: 1 },
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "t",
+      somethingNew: { nested: true },
+      appVersion: { status: "BUILDING", somethingNew: 1 },
     });
 
-    expect(processes?.[0]).toEqual({
+    expect(process).toEqual({
       id: "p1",
       projectId: "proj-1",
       serviceStackIds: ["svc-1"],
@@ -250,70 +206,50 @@ describe("readProjectProcesses", () => {
   });
 
   it("reads the observation fields the pipeline-with-durations port needs", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "2026-09-02T10:00:00.000Z",
-          started: "2026-09-02T10:00:01.000Z",
-          finished: "2026-09-02T10:05:00.000Z",
-          appVersion: {
-            id: "av-1",
-            status: "BUILDING",
-            build: {
-              pipelineStart: "t1",
-              startDate: "t2",
-              serviceStackId: "build-svc-1",
-              pipelineFinish: "t9",
-            },
-            prepareCustomRuntime: { startDate: "t3", serviceStackId: "prepare-svc-1" },
-          },
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
+      started: "2026-09-02T10:00:01.000Z",
+      finished: "2026-09-02T10:05:00.000Z",
+      appVersion: {
+        id: "av-1",
+        status: "BUILDING",
+        build: {
+          pipelineStart: "t1",
+          startDate: "t2",
+          serviceStackId: "build-svc-1",
+          pipelineFinish: "t9",
         },
-      ],
+        prepareCustomRuntime: { startDate: "t3", serviceStackId: "prepare-svc-1" },
+      },
     });
 
-    expect(processes?.[0]?.started).toBe("2026-09-02T10:00:01.000Z");
-    expect(processes?.[0]?.finished).toBe("2026-09-02T10:05:00.000Z");
-    expect(processes?.[0]?.appVersion?.id).toBe("av-1");
-    expect(processes?.[0]?.appVersion?.build?.serviceStackId).toBe("build-svc-1");
-    expect(processes?.[0]?.appVersion?.build?.pipelineFinish).toBe("t9");
-    expect(processes?.[0]?.appVersion?.prepareCustomRuntime?.serviceStackId).toBe("prepare-svc-1");
+    expect(process?.started).toBe("2026-09-02T10:00:01.000Z");
+    expect(process?.finished).toBe("2026-09-02T10:05:00.000Z");
+    expect(process?.appVersion?.id).toBe("av-1");
+    expect(process?.appVersion?.build?.serviceStackId).toBe("build-svc-1");
+    expect(process?.appVersion?.build?.pipelineFinish).toBe("t9");
+    expect(process?.appVersion?.prepareCustomRuntime?.serviceStackId).toBe("prepare-svc-1");
   });
 
   it("decodes a process/appVersion with none of the new observation fields", () => {
-    const processes = readProjectProcesses({
-      list: [
-        {
-          id: "p1",
-          projectId: "proj-1",
-          serviceStackId: "svc-1",
-          status: "RUNNING",
-          actionName: "stack.deploy",
-          created: "2026-09-02T10:00:00.000Z",
-          appVersion: { status: "BUILDING" },
-        },
-      ],
+    const process = readActivityProcess({
+      id: "p1",
+      projectId: "proj-1",
+      serviceStackId: "svc-1",
+      status: "RUNNING",
+      actionName: "stack.deploy",
+      created: "2026-09-02T10:00:00.000Z",
+      appVersion: { status: "BUILDING" },
     });
 
-    expect(processes?.[0]?.started).toBeUndefined();
-    expect(processes?.[0]?.finished).toBeUndefined();
-    expect(processes?.[0]?.appVersion?.id).toBeUndefined();
-    expect(processes?.[0]?.appVersion?.build).toBeUndefined();
-  });
-
-  it("returns an empty array for a valid empty list, distinct from no observation", () => {
-    expect(readProjectProcesses({ list: [] })).toEqual([]);
-  });
-
-  it("returns undefined for a document with no readable list — no observation", () => {
-    expect(readProjectProcesses({})).toBeUndefined();
-    expect(readProjectProcesses({ list: "not-an-array" })).toBeUndefined();
-    expect(readProjectProcesses(undefined)).toBeUndefined();
-    expect(readProjectProcesses(null)).toBeUndefined();
-    expect(readProjectProcesses("not a record")).toBeUndefined();
+    expect(process?.started).toBeUndefined();
+    expect(process?.finished).toBeUndefined();
+    expect(process?.appVersion?.id).toBeUndefined();
+    expect(process?.appVersion?.build).toBeUndefined();
   });
 });

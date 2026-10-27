@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { mapCodexModelCapabilities } from "../../../../../server/src/provider/Layers/CodexProvider.ts";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
@@ -24,7 +24,7 @@ const capabilities = mapCodexModelCapabilities(model, {
 const group = '[role="radiogroup"][aria-label="Context Window"]';
 
 describe("C: Codex context window", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "Codex's catalog window arriving after first paint is selectable, checked and reversible in the shared model picker",
       () =>

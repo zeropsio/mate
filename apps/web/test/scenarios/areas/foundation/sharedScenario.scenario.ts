@@ -1,7 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import * as Layer from "effect/Layer";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { SharedScenario, sharedScenarioLayer } from "../../harness/sharedScenario.ts";
 
@@ -15,7 +14,7 @@ describe("Opt-in read-only scenario stack", () => {
       yield* s.given.project("Ada", { mate: true });
       yield* s.given.signedIn;
     }),
-  ).pipe(Layer.provide(tempPostgresLayer));
+  );
 
   it.layer(stack, { excludeTestServices: true })((it) => {
     it.effect("a read-only case reads the once-prepared shared stack", () =>
@@ -36,7 +35,7 @@ describe("Opt-in read-only scenario stack", () => {
       }),
     );
   });
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("ordinary scenarios keep their own ports, database, browser context and world", () =>
       Effect.gen(function* () {
         const s = yield* createScenario();

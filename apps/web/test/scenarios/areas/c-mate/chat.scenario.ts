@@ -1,4 +1,5 @@
 // @effect-diagnostics nodeBuiltinImport:off -- controls bytes uploaded to the disposable scenario Mate.
+import { scenarioSuite } from "../../harness/suite.ts";
 import * as NodeFSP from "node:fs/promises";
 import * as NodePath from "node:path";
 import { menuMateRow, sendConversationMessage } from "../../harness/browser.ts";
@@ -20,7 +21,6 @@ import * as Deferred from "effect/Deferred";
 import * as Queue from "effect/Queue";
 import * as Stream from "effect/Stream";
 import { FetchHttpClient, HttpClient } from "effect/http";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario, type ScenarioOptions } from "../../harness/scenario.ts";
 
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
@@ -34,10 +34,7 @@ const routes = new WeakMap<Scenario, Map<string, string>>();
 const seededDoors = new WeakMap<Scenario, Map<string, number>>();
 const openedDoors = (s: Scenario, name: string) => {
   const gate = s.drivers.realMates.get(name)!.gate;
-  return s.drivers.core.kind === "external"
-    ? gate.openedConnections
-    : gate.requests.filter((request) => request.startsWith("POST /mate/api/auth/zerops-throwaway "))
-        .length;
+  return gate.openedConnections;
 };
 
 // Seed through another isolated browser, so the case's browser still crosses a cold door.
@@ -131,7 +128,7 @@ const openArea = (options: ScenarioOptions) =>
 const setup = openArea({});
 
 describe("C: opening a Mate and chat", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Decision: keep fresh-send working; restore the guard's intent; Aleš's archive source is the one source.
     it.effect(
       "a Mate's non-crewmate engine conversation never becomes a generic sidebar thread",

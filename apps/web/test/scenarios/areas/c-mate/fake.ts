@@ -44,7 +44,7 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { definePerson, projectRoles } from "../../fakes/zeropsWorld.ts";
 import type { ScenarioDrivers, ScenarioExtension } from "../../harness/scenario.ts";
 import * as Effect from "effect/Effect";
-import { enrollMate } from "../../../../../hq/test/harness/runningCore.ts";
+import { enrollMate } from "../../harness/coreSeed.ts";
 import { reportConversation } from "../b-menu/fake.ts";
 import type { ChatIntent } from "./wire.ts";
 import { EngineChatWire } from "./engine.ts";

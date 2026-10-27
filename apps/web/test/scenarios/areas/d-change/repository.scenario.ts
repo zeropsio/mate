@@ -1,12 +1,12 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 
 const browser = '[data-zerops-surface="repository-browser"]';
 describe("Git repository detail", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect(
       "source navigation preserves project context, commit links and the selected overview",
       () =>

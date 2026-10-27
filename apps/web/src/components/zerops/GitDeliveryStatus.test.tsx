@@ -424,7 +424,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ status: "ready", hq: { kind: "official", address: "https://hq.test" } }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
 }));
 it("the mounted compact flow joins delayed navigation evidence before menus and details read it", async () => {
   const registry = AtomRegistry.make();

@@ -895,7 +895,7 @@ describe("accessProposalPlan", () => {
     ],
     [
       "offers nothing where none of its projects can be given",
-      { projects: new Map(), hq: new Set() },
+      { projects: new Map() },
       "None of these projects can be given from here.",
     ],
   ])("access approval %s", (_title, over, words) => {
@@ -910,18 +910,6 @@ describe("accessProposalPlan", () => {
       kind: "ready",
       changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
       dropped: ["Contoso - Dana's Mate: not a project in your organization"],
-    });
-  });
-
-  it("an approved access change never gives anyone the Headquarters project", () => {
-    const plan = ready([{ person: "Greta Guest", level: "read" }], {
-      projects: new Map([...projects, ["pDana", "Headquarters"]]),
-      hq: new Set(["pDana"]),
-    });
-    expect(plan).toMatchObject({
-      kind: "ready",
-      changes: [{ clientUserId: "cu-greta", projectId: "pProd", roleCode: "READ_ONLY" }],
-      dropped: ["Headquarters: the Headquarters project is never given"],
     });
   });
 

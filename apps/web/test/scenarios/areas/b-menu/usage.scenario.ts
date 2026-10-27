@@ -1,13 +1,13 @@
 // @effect-diagnostics preferSchemaOverJson:off -- controlled report inputs on the existing scenario wire.
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { HqStreamMessage } from "@t3tools/shared/hqStream";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { recordedReport, statistics } from "../../../../src/components/usage/usageTestFixtures.ts";
 
 describe("B: Usage report presentation", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     for (const check of ["filters", "geometry"] as const) {
       it.effect(
         check === "filters"

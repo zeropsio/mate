@@ -203,7 +203,7 @@ const KIND_WORDS: Readonly<Record<string, string>> = {
  * Every project the organization can give, by its Mate name, in order: each Mate project's places
  * and Mates — a place by its kind, or by its own name where the group has several of that kind, a
  * Mate by its name under the app (`nameUnderApp`: "Snap - Kai" is Snap's Kai) — then projects
- * outside any Mate project by their own names. Chiefs and HQ's own project never.
+ * outside any Mate project by their own names. Chiefs never.
  */
 export function accessProjects(input: {
   readonly groups: ReadonlyArray<{
@@ -213,8 +213,6 @@ export function accessProjects(input: {
   /** Every project the viewer can name: its Zerops name. */
   readonly roster: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly chiefs: ReadonlySet<string>;
-  /** The Headquarters projects (`hqProjectsOf`): HQ's own credentials live there. */
-  readonly hq: ReadonlySet<string>;
 }): ReadonlyArray<AccessProject> {
   const names = new Map(input.roster.map(({ id, name }) => [id, name]));
   const grouped = new Set<string>();
@@ -233,9 +231,7 @@ export function accessProjects(input: {
     });
   });
   const outside = input.roster.flatMap(({ id, name }) =>
-    grouped.has(id) || input.chiefs.has(id) || input.hq.has(id)
-      ? []
-      : [{ projectId: id, label: name }],
+    grouped.has(id) || input.chiefs.has(id) ? [] : [{ projectId: id, label: name }],
   );
   return [...inGroups, ...outside].toSorted((a, b) => a.label.localeCompare(b.label));
 }
@@ -448,7 +444,7 @@ export interface InviteProject {
 /**
  * What an invitation offers to give, by name: each Mate project as one choice holding all of its
  * places and Mates — the same projects its People section gives — then projects outside any by
- * their own names. Chiefs and HQ's own project never.
+ * their own names. Chiefs never.
  */
 export function inviteProjects(input: {
   readonly groups: ReadonlyArray<{
@@ -458,8 +454,6 @@ export function inviteProjects(input: {
   }>;
   readonly roster: ReadonlyArray<{ readonly id: string; readonly name: string }>;
   readonly chiefs: ReadonlySet<string>;
-  /** The Headquarters projects (`hqProjectsOf`): HQ's own credentials live there. */
-  readonly hq: ReadonlySet<string>;
 }): ReadonlyArray<InviteProject> {
   const grouped = new Set(
     input.groups.flatMap(({ projects }) => projects.map(({ projectId }) => projectId)),
@@ -477,9 +471,7 @@ export function inviteProjects(input: {
         ],
   );
   const outside = input.roster.flatMap(({ id, name }) =>
-    grouped.has(id) || input.chiefs.has(id) || input.hq.has(id)
-      ? []
-      : [{ key: id, name, projectIds: [id] }],
+    grouped.has(id) || input.chiefs.has(id) ? [] : [{ key: id, name, projectIds: [id] }],
   );
   return [...apps, ...outside].toSorted((a, b) => a.name.localeCompare(b.name));
 }

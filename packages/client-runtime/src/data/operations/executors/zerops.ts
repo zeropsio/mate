@@ -12,7 +12,6 @@ import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
-import type { HqCoreArtifact } from "../../../zerops/hq/birth.ts";
 import {
   makeProjectTagWriter,
   makeInMemoryProjectTagLocks,
@@ -21,17 +20,12 @@ import {
 import type { DetailDemand } from "../../demand.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { projectsScope } from "../../families/project.ts";
-import { hqBirthWaits } from "../../hqBirthWaits.ts";
 import type { RunToEnd } from "../runToEnd.ts";
-import { hqProvisionExecutor } from "./hqProvision.ts";
-import { hqBirthReads } from "./hqBirthReads.ts";
 import type { OperationExecutor } from "../coordinator.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
 import { readRetiredMateKey, retireMateKeyExecutor } from "./mateDeletion.ts";
 import { mateKeyRetirementAllowed } from "../mateDeletion.ts";
-import { hqBirthExecutor } from "./hqBirth.ts";
-import { hqUpdateExecutor } from "./hqUpdate.ts";
 import { creationWritesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
@@ -77,17 +71,9 @@ type ZeropsOperationsClient = Pick<
   | "importDevelopmentContainer"
   | "hardenMate"
   | "readProjectEnv"
-  | "readProjectBirthEnv"
   | "listProjectServices"
-  | "createAppVersion"
-  | "uploadAppVersionArchive"
-  | "buildAndDeployAppVersion"
-  | "createProjectEnv"
-  | "hasServiceVariable"
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
-  | "writeServiceSecret"
-  | "listPublicHttpRoutings"
   | "createPublicHttpRouting"
   | "syncPublicHttpRouting"
   | "updatePublicHttpRouting"
@@ -130,8 +116,6 @@ export function makeZeropsExecutor(input: {
   readonly nowMs: () => number;
   readonly run: RunToEnd;
   readonly makeId: () => string;
-  /** The HQ Core this app carries, which HQ's update deploys. */
-  readonly hqCore: () => Promise<HqCoreArtifact>;
   /** The page's locks, which serialize a project's record writes across tabs; absent, this page's. */
   readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
@@ -175,12 +159,6 @@ export function makeZeropsExecutor(input: {
         client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
       readProjectEnv: (clientId, projectId) => client.readProjectEnv(clientId, projectId),
     });
-    const updateHq = hqUpdateExecutor({
-      core: input.hqCore,
-      createAppVersion: (serviceId, name) => client.createAppVersion(serviceId, name),
-      uploadAppVersionArchive: (id, archive) => client.uploadAppVersionArchive(id, archive),
-      buildAndDeployAppVersion: (id, deploy) => client.buildAndDeployAppVersion(id, deploy),
-    });
     const publish = enableSubdomainAccessExecutor({
       enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
     });
@@ -208,43 +186,6 @@ export function makeZeropsExecutor(input: {
     const assign = assignMateOwnerExecutor({
       setProjectMemberRole: (input) => client.setProjectMemberRole(input),
       fetchProject: (projectId) => client.fetchProject(projectId),
-    });
-    const birthWrite = hqBirthExecutor({
-      createProjectEnv: (projectId, key, content) =>
-        client.createProjectEnv(projectId, key, content),
-      hasServiceVariable: (input) => client.hasServiceVariable(input),
-      listIntegrationTokens: (clientId) => client.listIntegrationTokens(clientId),
-      mintIntegrationToken: (input) => client.mintIntegrationToken(input),
-      regenerateIntegrationToken: (input) => client.regenerateIntegrationToken(input),
-      writeServiceSecret: (input) => client.writeServiceSecret(input),
-      listPublicHttpRoutings: (projectId) => client.listPublicHttpRoutings(projectId),
-      createPublicHttpRouting: (projectId, routing) =>
-        client.createPublicHttpRouting(projectId, routing),
-      syncPublicHttpRouting: (projectId) => client.syncPublicHttpRouting(projectId),
-      listOrganizationMembers: (clientId) => client.listOrganizationMembers(clientId),
-    });
-    const provisionHq = hqProvisionExecutor({
-      store: input.store,
-      deps: {
-        run: async (intent, options) => {
-          if (intent.kind === "hq-update")
-            intent = { ...intent, carried: (await input.hqCore()).build };
-          return input.run(intent, options);
-        },
-        reads: hqBirthReads(client),
-        waits: hqBirthWaits({
-          data: input.store.data,
-          registry: input.registry,
-          demandDetail: input.demandDetail,
-        }),
-        now: input.nowMs,
-        every: (ms, tick) => {
-          // @effect-diagnostics-next-line globalTimers:off -- HQ birth's one timer port; plain promises, no Effect runtime.
-          const timer = setInterval(() => void tick(), ms);
-          return () => clearInterval(timer);
-        },
-        newBirthId: input.makeId,
-      },
     });
     const vault = vaultWriteExecutor({
       addProjectVariable: (projectId, write) => client.addProjectVariable(projectId, write),
@@ -345,10 +286,6 @@ export function makeZeropsExecutor(input: {
             case "assign-mate-owner":
             case "finish-mate-handover":
               return assign(requestId, intent);
-            case "hq-birth":
-              return provisionHq(requestId, intent);
-            case "hq-update":
-              return updateHq(requestId, intent);
             case "create-project":
               return create(requestId, intent);
             case "import-project":
@@ -356,12 +293,6 @@ export function makeZeropsExecutor(input: {
             case "import-container":
             case "harden-project":
               return creationWrite(requestId, intent);
-            case "hq-birth-note":
-            case "hq-org-token":
-            case "hq-key-secret":
-            case "route-hq-domain":
-            case "mark-official-hq":
-              return birthWrite(requestId, intent);
             case "vault-write":
               return vault(requestId, intent);
             case "service-restart":
@@ -464,12 +395,6 @@ export function makeZeropsExecutor(input: {
           source.importDevelopmentContainer(input, signal, check),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>
           source.hardenMate(orgId, projectId, signal, check, tokenId),
-        createAppVersion: (id, name, signal) => source.createAppVersion(id, name, signal, check),
-        uploadAppVersionArchive: (id, archive, signal) =>
-          source.uploadAppVersionArchive(id, archive, signal, check),
-        buildAndDeployAppVersion: (id, deploy, signal) =>
-          source.buildAndDeployAppVersion(id, deploy, signal, check),
-        createProjectEnv: (id, key, content) => source.createProjectEnv(id, key, content, check),
         addProjectVariable: (id, write) => source.addProjectVariable(id, write, check),
         updateProjectVariable: (id, write) => source.updateProjectVariable(id, write, check),
         removeProjectVariable: (id) => source.removeProjectVariable(id, check),
@@ -479,7 +404,6 @@ export function makeZeropsExecutor(input: {
         mintIntegrationToken: (input, signal) => source.mintIntegrationToken(input, signal, check),
         regenerateIntegrationToken: (token, signal) =>
           source.regenerateIntegrationToken(token, signal, check),
-        writeServiceSecret: (input, signal) => source.writeServiceSecret(input, signal, check),
         createPublicHttpRouting: (id, routing, signal) =>
           source.createPublicHttpRouting(id, routing, signal, check),
         syncPublicHttpRouting: (id, signal) => source.syncPublicHttpRouting(id, signal, check),
@@ -503,10 +427,7 @@ export function makeZeropsExecutor(input: {
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
         readProjectEnv: (...args) => source.readProjectEnv(...args),
-        readProjectBirthEnv: (...args) => source.readProjectBirthEnv(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
-        hasServiceVariable: (...args) => source.hasServiceVariable(...args),
-        listPublicHttpRoutings: (...args) => source.listPublicHttpRoutings(...args),
         listOrganizationMembers: (...args) => source.listOrganizationMembers(...args),
         readMemberProjectRoles: (...args) => source.readMemberProjectRoles(...args),
         validateOrganizationUser: (orgId, email) =>

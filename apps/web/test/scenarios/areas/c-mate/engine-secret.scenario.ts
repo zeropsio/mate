@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { mateChat } from "./dsl.ts";
 import { installArea, vaultWrites } from "./fake.ts";
@@ -21,7 +21,7 @@ const holdsSecret = (value: unknown): boolean =>
       : false;
 
 describe("C: a secret the Mate asks the person for", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     it.effect("a secret the person gives never reaches the Mate's records or its agent", () =>
       Effect.gen(function* () {
         const s = yield* createScenario([installArea]);

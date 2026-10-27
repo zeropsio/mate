@@ -220,29 +220,3 @@ export function readActivityProcess(value: unknown): ActivityProcess | undefined
     ...(error === undefined ? {} : { error }),
   };
 }
-
-/**
- * Reads `{ list: Process[] }` into the processes the activity overlay uses.
- *
- * Returns `undefined` when the document itself cannot be read as that shape —
- * that is "no observation" (§7 edge 17), distinct from an empty `list`, which
- * is a valid observation that just found nothing. A process entry that is
- * missing an identifying field is dropped, not allowed to corrupt the read.
- *
- * HQ's update reads its deploys through it (`ZeropsApiClient.listProjectProcesses`);
- * `apps/web/src/zerops/topologyDataParity.test.ts` also decodes the same raw
- * process document against it, to prove the migrated
- * `decodeEntityDirectResponse` pipeline reproduces this reader's output.
- */
-export function readProjectProcesses(
-  document: unknown,
-): ReadonlyArray<ActivityProcess> | undefined {
-  const record = readRecord(document);
-  if (record === undefined || !Array.isArray(record.list)) {
-    return undefined;
-  }
-  return record.list.filter(isRecord).flatMap((entry) => {
-    const process = readActivityProcess(entry);
-    return process === undefined ? [] : [process];
-  });
-}

@@ -30,7 +30,6 @@ import {
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { hqProjectsOf } from "@t3tools/client-runtime/zerops/hq";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -39,7 +38,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { sendOutcomeOf } from "~/hooks/useComposerSendRequests";
 import { newCommandId, newMessageId } from "~/lib/utils";
-import { useAccountHq } from "~/zerops/accountHq";
 import { useAskMate } from "~/zerops/useAskMate";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
@@ -204,7 +202,6 @@ function Proposal({
     accessOrg?.orgId ?? null,
     UNREAD_PLACEMENTS,
   );
-  const { hq: officialHq } = useAccountHq(accessOrg?.clientId);
   // What each person reaches on its projects today: each project's own row, held while it is read.
   const accessProjectKey =
     accessOrg === null || proposal.kind !== "access.set"
@@ -251,10 +248,9 @@ function Proposal({
             projects: roster.complete
               ? new Map(roster.projects.map(({ id, name }) => [id, name]))
               : undefined,
-            hq: hqProjectsOf(officialHq),
             grants,
           }),
-    [grants, members, officialHq, placements.complete, projectPeople, proposal, roster],
+    [grants, members, placements.complete, projectPeople, proposal, roster],
   );
   const askMate = useAskMate();
   const openMate = useOpenMate();

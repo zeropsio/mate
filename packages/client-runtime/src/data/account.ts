@@ -19,7 +19,6 @@ import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
 import { detailScopeOf, type DetailDemand } from "./demand.ts";
-import { hqVerdictScope, type HqVerdict } from "./families/hqVerdict.ts";
 import { familySpec } from "./families/index.ts";
 import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { holdStandingDemands } from "./operations/standing.ts";
@@ -176,21 +175,22 @@ export function startMateHealth(options: {
   };
 }
 
-/** An organization's HQ as the app names it: its official HQ, or the verdict there is none yet.
+/** An organization's HQ as the app names it.
  * ownerId identifies the accepting project and address; a new owner replaces its observation.
  */
-export type ShownHq =
-  | { readonly orgId: string; readonly wire: HqWire; readonly ownerId?: string }
-  | { readonly orgId: string; readonly verdict: Exclude<HqVerdict, "official"> };
+export interface ShownHq {
+  readonly orgId: string;
+  readonly wire: HqWire;
+  readonly ownerId?: string;
+}
 
 /** The account's observation, as an app holds it: the organization shown, and the details held. */
 export interface AccountObservation {
   /** The organization the app shows now; `null` stops observing. */
   readonly show: (orgId: string | null) => void;
   /**
-   * The organization's HQ: its official HQ once known, observed while its organization is the one
-   * shown — named before, from then on; else the account's verdict on it — none, the member list
-   * deciding it unreadable, or not decided yet. The verdict is held as a fact (`hqVerdict`).
+   * The organization's HQ once known, observed while its organization is the one shown — named
+   * before, from then on.
    * Letting it go returns the completion of the queued release decision.
    */
   readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
@@ -255,31 +255,6 @@ export function observeAccount(options: {
   let stopPlaced: (() => void) | null = null;
   /** The HQ the app named last, and the one observed: only while it is the shown organization's. */
   let wantedHq: ShownHq | null = null;
-  let heldVerdict: { readonly orgId: string; readonly verdict: HqVerdict } | null = null;
-  let verdictRevision = 0;
-  /** The verdict on the shown organization's HQ, as a fact; written only when it changes. */
-  const holdVerdict = () => {
-    if (shown === null || wantedHq === null || wantedHq.orgId !== shown.orgId || closed) return;
-    const verdict = "wire" in wantedHq ? "official" : wantedHq.verdict;
-    if (heldVerdict?.orgId === shown.orgId && heldVerdict.verdict === verdict) return;
-    heldVerdict = { orgId: shown.orgId, verdict };
-    verdictRevision += 1;
-    options.store.dispatch({
-      kind: "baseline-commit",
-      scope: hqVerdictScope(shown.orgId),
-      generation: 0,
-      via: "zerops-read",
-      members: [shown.orgId],
-      rows: [
-        {
-          family: "hqVerdict",
-          id: shown.orgId,
-          value: { verdict },
-          revision: { kind: "zerops", version: verdictRevision },
-        },
-      ],
-    });
-  };
   let hq: {
     readonly orgId: string;
     readonly wire: HqWire;
@@ -319,11 +294,7 @@ export function observeAccount(options: {
   };
   /** Observes the HQ named for the organization shown, and none other. */
   const followHq = () => {
-    holdVerdict();
-    const next =
-      wantedHq !== null && "wire" in wantedHq && wantedHq.orgId === shown?.orgId && !closed
-        ? wantedHq
-        : null;
+    const next = wantedHq !== null && wantedHq.orgId === shown?.orgId && !closed ? wantedHq : null;
     if (hq !== null && next !== null && hq.orgId === next.orgId && hq.ownerId === next.ownerId) {
       // Its HQ reached anew: the link and what it holds go on, its next socket over the new wire.
       if (hq.wire !== next.wire) {

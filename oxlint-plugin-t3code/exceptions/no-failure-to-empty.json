@@ -342,15 +342,6 @@
     "class": "justified"
   },
   {
-    "path": "packages/client-runtime/src/data/projections/hqBirth.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "project.kind === \"known\" ? project.value.publicZone : undefined",
-    "owner": "maintainers",
-    "reason": "Optional public-zone lookup accompanies separate project setup state.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/projections/hqMates.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "fact.kind === \"known\" ? { presence: fact.value.presence, ...fact.value.overview } : null",

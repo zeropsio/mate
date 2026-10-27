@@ -1,7 +1,7 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { Page } from "puppeteer-core";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import { createScenario } from "../../harness/scenario.ts";
 
 // How many visible timeline rows' text nodes read exactly `text`.
@@ -24,7 +24,7 @@ const shownTimes = (page: Page, text: string) =>
   );
 
 describe("foundation: the real Mate", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // Catches a send that never reaches the provider, or a reply duplicated by reload or restart.
     it.effect(
       "a sent message reaches the provider and its reply shows once across reload and restart",

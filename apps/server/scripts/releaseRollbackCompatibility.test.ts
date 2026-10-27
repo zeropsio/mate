@@ -195,6 +195,7 @@ describe("a release may update automatically only inside its proved rollback ran
         "apps/server/src/git/GitManager.ts",
         "apps/server/src/textGeneration/CodexTextGeneration.ts",
         "apps/server/src/engine/store/EngineStore.test.ts",
+        "apps/hq/src/main.ts",
         "packages/hq-git/src/index.ts",
         "packages/shared/src/hqStream.ts",
         "package.json",
@@ -391,11 +392,7 @@ describe("the allowlisted HQ wire modules stay free of stored state", () => {
       expect(
         all
           .filter(({ imports }) =>
-            imports.some(
-              (specifier) =>
-                specifier.startsWith("@t3tools/hq-git") ||
-                specifier.startsWith("@t3tools/client-runtime"),
-            ),
+            imports.some((specifier) => specifier.startsWith("@t3tools/client-runtime")),
           )
           .map(({ file }) => file),
       ).toEqual([]);

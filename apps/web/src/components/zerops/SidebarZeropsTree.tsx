@@ -97,7 +97,7 @@ import {
   type ZeropsPublicRoute,
   formatRunClock,
 } from "@t3tools/client-runtime/zerops";
-import { birthFaceOf, hqZeropsProject } from "@t3tools/client-runtime/zerops/hq";
+import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import type { EnvironmentConnectionPresentation } from "@t3tools/client-runtime/connection";
 import { useAtomValue } from "@effect/atom-react";
 import { shownHqMateIdentitiesAtom, shownHqPersonFactsAtom } from "@t3tools/client-runtime/data";
@@ -178,9 +178,6 @@ import { usePendingSentAsk } from "~/zerops/sentAsk";
 import { appTasksWaitingAtom, hqDown, hqPlacementsAtom } from "~/state/zerops";
 import { useMateCrew } from "~/zerops/crew/useCrew";
 import { useCrewAccess } from "~/zerops/crew/useCrewAccess";
-import { mayBearHq } from "@t3tools/shared/zeropsRoles";
-import { useAccountHq, useCarriedCoreBuild } from "~/zerops/accountHq";
-import { ZeropsHqUpdate } from "./ZeropsHqUpdate";
 import { useZeropsSessionOptional } from "~/zerops/ZeropsSessionProvider";
 import {
   projectFolded,
@@ -335,7 +332,6 @@ import {
   groupFlowInputOf,
   groupMemberFactsOf,
   tiersAddable,
-  withoutOfficialHq,
   type GroupFlowReads,
 } from "./projects/projectsView.logic";
 import type { HeadingLineInput } from "./SidebarHeadingLine.logic";
@@ -638,8 +634,6 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getCrew?: ((candidate: T) => SidebarCrewRead | undefined) | undefined;
 }
 
-const ignoreUpdateState = (_state: boolean) => {};
-
 /**
  * Memoised: the menu above it redraws on every event of a streaming Mate's chat, and its props —
  * the Mates, their activity, the verbs — stand while what they say does.
@@ -745,13 +739,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
 }: SidebarZeropsTreeProps<T>) {
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
-  const session = useZeropsSessionOptional();
-  const accountHq = useAccountHq(structureView.orgId ?? undefined);
   const accountOrgId = useAccountOrgId();
-  const carried = useCarriedCoreBuild();
-  // HQ's update deploys to its own Zerops project; an HQ every organization shares has none here.
-  const hqProject = hqZeropsProject(accountHq.hq);
-  const [followingHqUpdate, setFollowingHqUpdate] = useState(false);
   const hqStale = structureView.structure !== null && hqDown(structureView);
   // Whose each Mate is, as HQ says it (invariant 11).
   const personFacts = useAtomValue(menuPersonFactsAtom);
@@ -762,11 +750,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       : structureView.structure.apps.filter(
           (app) => (getFlow?.(app.id)?.pullRequests.length ?? 0) > 0,
         );
-  // HQ's own project is never a project to set a Mate up in: an organization holding only HQ has
-  // no project yet, and its one way on is New project, not "Set up Mate".
   const emptyReason = candidates.some((candidate) => candidate.project.hq !== undefined)
     ? undefined
-    : mateEnvironmentsEmptyReason(withoutOfficialHq(candidates, accountHq.hq));
+    : mateEnvironmentsEmptyReason(candidates);
   const hqMates = useMatesLinkedInHq();
   // Which projects a build or deploy runs on now, as Zerops says: the headings' indicator.
   const building = useBuildsUnderWay(
@@ -2362,23 +2348,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       onPointerLeave={holdOrder.release}
       ref={treeRef}
     >
-      {structureView.updateRequired || followingHqUpdate ? (
+      {structureView.updateRequired ? (
         <div className="px-4 pb-3 text-xs text-sidebar-muted-foreground" role="status">
-          {structureView.updateRequired ? "HQ needs an update to show all navigation facts." : null}
-          {session !== null &&
-          session !== undefined &&
-          mayBearHq(session.activeOrganization ?? undefined) &&
-          hqProject !== undefined &&
-          carried !== undefined ? (
-            <ZeropsHqUpdate
-              projectId={hqProject}
-              carried={carried}
-              answering={structureView.coreBuild}
-              trigger="Update HQ"
-              onBusy={ignoreUpdateState}
-              onFollowing={setFollowingHqUpdate}
-            />
-          ) : null}
+          HQ needs an update to show all navigation facts.
         </div>
       ) : null}
       <KeptGitQuestions />
@@ -2521,10 +2493,8 @@ export function SidebarHqStatus({
   kind,
   line,
   onAgain,
-  serviceUrl,
   compact = false,
 }: {
-  readonly serviceUrl?: string | undefined;
   readonly kind: HqOutage["kind"];
   readonly line: string;
   readonly onAgain?: (() => void) | undefined;
@@ -2604,16 +2574,6 @@ export function SidebarHqStatus({
           {again === undefined ? line : `${line} Press to try again.`}
         </TooltipPopup>
       </Tooltip>
-      {working || serviceUrl === undefined ? null : (
-        <a
-          className="text-xs text-sidebar-muted-foreground underline"
-          href={serviceUrl}
-          target="_blank"
-          rel="noreferrer"
-        >
-          Open in Zerops
-        </a>
-      )}
     </span>
   );
 }

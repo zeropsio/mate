@@ -155,7 +155,9 @@ export function meaningfulChanges(root: string, base: string, paths: ReadonlyArr
       const old = NodeChildProcess.spawnSync("git", ["show", `${base}:${path}`], {
         cwd: root,
         encoding: "utf8",
+        maxBuffer: 64 * 1024 * 1024,
       });
+      if (old.error) throw old.error;
       if (old.status !== 0) throw new Error(old.stderr);
       previous.set(path, old.stdout);
     }

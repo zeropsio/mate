@@ -540,8 +540,6 @@ export function accessProposalPlan(input: {
   readonly owners: Readonly<Record<string, string | null | undefined>>;
   /** The organization's projects, id → name; `undefined` while they are read. */
   readonly projects: ReadonlyMap<string, string> | undefined;
-  /** The Headquarters projects (`hqProjectsOf`): never given to anyone. */
-  readonly hq: ReadonlySet<string>;
   /** Each project's own grants as far as read: what each person reaches there today. */
   readonly grants: Readonly<Record<string, ProjectGrantsRead | undefined>>;
 }): AccessProposalPlan {
@@ -551,10 +549,6 @@ export function accessProposalPlan(input: {
     return { kind: "held", words: "Reading your organization's projects…" };
   const dropped: Array<string> = [];
   const projectIds = input.proposal.params.projects.flatMap(({ id, name }) => {
-    if (input.hq.has(id)) {
-      dropped.push(`${inventory.get(id) ?? name}: the Headquarters project is never given`);
-      return [];
-    }
     if (!inventory.has(id)) {
       dropped.push(`${name}: not a project in your organization`);
       return [];

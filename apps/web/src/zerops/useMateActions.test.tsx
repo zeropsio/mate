@@ -177,8 +177,6 @@ const mock = vi.hoisted(() => ({
   handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
   /** No account data is mounted: there is no HQ to ask. */
   noAccountData: false,
-  /** The account HQ's read of the member list again. */
-  reread: vi.fn(),
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
   moveDialog: {
     current: null as {
@@ -459,15 +457,10 @@ vi.mock("./inventoryContext", async () => {
   const { useDialogState } = await import("./useDialogState");
   return { useProjectDialog: useDialogState };
 });
-// The organization's official HQ, where a Mate's face is written.
-vi.mock("./accountHq", async (original) => ({
-  officialHq: (await original<typeof import("./accountHq")>()).officialHq,
-  useAccountHq: () => ({
-    status: "ready",
-    hq: { kind: "official", projectId: "p-hq", address: "https://hq.example.test" },
-    admins: [],
-    reread: mock.reread,
-  }),
+// The HQ the build names, where a Mate's face is written.
+const HQ = { projectId: "p-hq", address: "https://hq.example.test" };
+vi.mock("./accountHq", () => ({
+  configuredHq: () => ({ projectId: "p-hq", address: "https://hq.example.test" }),
   accountHqApi: () => ({
     updateMate: mock.updateMate,
     moveProject: mock.moveProject,
@@ -588,7 +581,6 @@ beforeEach(() => {
   mock.handoverAsked = [];
   mock.handoverAnswer = () => Promise.resolve([]);
   mock.noAccountData = false;
-  mock.reread.mockReset();
   mock.mateKey = null;
   mock.keyAnswer = null;
   mock.deleteDialog.current = null;
@@ -1235,12 +1227,12 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
     expect(mock.finishMateSetup.mock.calls[0]![0]).toMatchObject({
       projectId: unrecorded.project.id,
       registration: {
-        hq: { kind: "official", projectId: "p-hq" },
+        hq: HQ,
         kind: "mate-record",
         record: { face: expect.any(String) },
         standUp: false,
       },
-      hq: { kind: "official", projectId: "p-hq" },
+      hq: HQ,
       // Adopted: its key lowered from ADMIN, as the harden finds it.
       harden: true,
     });

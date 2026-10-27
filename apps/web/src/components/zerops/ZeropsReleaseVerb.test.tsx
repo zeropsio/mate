@@ -17,7 +17,7 @@ vi.mock("~/zerops/ZeropsSessionProvider", async (original) => ({
   useZeropsSessionOptional: () => ({ status: "signed-in", activeOrganization: { id: "org" } }),
 }));
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({ hq: { kind: "official", address: "https://hq.test" } }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.test" }),
 }));
 vi.mock("~/zerops/flowVerbs", () => ({
   useFlowVerbs: () => ({ pending: new Set() }),

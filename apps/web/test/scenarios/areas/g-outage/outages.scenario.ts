@@ -1,6 +1,6 @@
+import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { tempPostgresLayer } from "../../../../../hq/test/harness/tempPostgres.ts";
 import {
   givenOutage,
   reportsWork,
@@ -22,7 +22,7 @@ import {
 } from "./dsl.ts";
 
 describe("G: outages, sleep and several tabs", () => {
-  it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+  scenarioSuite((it) => {
     // A replaced Core must resubscribe the open tab, including after backoff reaches its cap.
     it.effect("HQ restart and a new build recover the open tab without reloading", () =>
       Effect.gen(function* () {

@@ -196,7 +196,7 @@ export function taskSourceProblem(action: AutomationAction<string>): string | nu
   return action.kind === "failed" || action.kind === "unresolved" ? action.words : null;
 }
 
-/** HQ's caps on the limits (`apps/hq/src/taskLimits.ts`): said here before anything is sent. */
+/** HQ's caps on the limits (`mate-hq apps/hq/src/taskLimits.ts`): said here before anything is sent. */
 const MINUTES_MAX = 1440;
 const COST_MAX = 10_000;
 const MINUTES_WORDS = "Minutes are a whole number from 1 to 1,440.";
@@ -225,7 +225,7 @@ export function allowlistAfter(
 ): { readonly userIds: ReadonlyArray<string> } | { readonly error: string } {
   if ("remove" in change) return { userIds: held.filter((id) => id !== change.remove) };
   const id = change.add.trim();
-  // As HQ takes it (`apps/hq/src/discord.ts`): a snowflake of up to 20 digits.
+  // As HQ takes it (`mate-hq apps/hq/src/discord.ts`): a snowflake of up to 20 digits.
   if (!/^\d{1,20}$/u.test(id))
     return { error: "A Discord user ID is a number of up to 20 digits." };
   return { userIds: held.includes(id) ? held : [...held, id] };
@@ -271,7 +271,7 @@ export function slackManifestApp(text: string): {
   };
 }
 
-/** A key a connection's form takes, checked as HQ checks it (`apps/hq/src/slack.ts`, `discord.ts`). */
+/** A key a connection's form takes, checked as HQ checks it (`mate-hq apps/hq/src/slack.ts`, `discord.ts`). */
 export type ConnectKey =
   | "slack-bot-token"
   | "slack-signing-secret"

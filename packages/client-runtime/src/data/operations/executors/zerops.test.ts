@@ -26,7 +26,6 @@ function executorFor(
     nowMs: () => 0,
     run: () => Promise.reject(new Error("No nested operation.")),
     makeId: () => "nested",
-    hqCore: () => Promise.reject(new Error("No HQ artifact.")),
   });
 }
 

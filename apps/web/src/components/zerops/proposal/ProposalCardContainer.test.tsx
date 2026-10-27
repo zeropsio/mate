@@ -61,9 +61,7 @@ vi.mock("~/zerops/ZeropsAccountData", async () => {
   };
 });
 vi.mock("~/zerops/accountHq", () => ({
-  useAccountHq: () => ({
-    hq: { kind: "official", projectId: "hq", address: "https://hq.example" },
-  }),
+  configuredHq: () => ({ projectId: "hq", address: "https://hq.example" }),
 }));
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => "readers-chief" }));
 vi.mock("~/zerops/useZeropsEnvironmentProject", () => ({

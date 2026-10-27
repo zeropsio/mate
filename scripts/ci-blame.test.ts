@@ -62,7 +62,7 @@ it("Summary failures rerun their failed dependencies without selecting unrelated
     "test",
     "test_scripts",
   ]);
-  expect(selection.matrices.test_hq!.include).toEqual([]);
+  expect(selection.matrices.test_client_runtime!.include).toEqual([]);
   expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.prepare.outputs.blame == 'true'");
 });
 

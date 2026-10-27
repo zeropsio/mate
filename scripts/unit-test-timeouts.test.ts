@@ -25,14 +25,6 @@ async function projectConfig(file: string, project: string) {
 
 it.each([
   {
-    name: "HQ",
-    workflow: "ci.yml",
-    job: "test_hq",
-    file: "../apps/hq/vite.config.ts",
-    project: "unit",
-    polls: false,
-  },
-  {
     name: "web",
     workflow: "ci.yml",
     job: "test_web",

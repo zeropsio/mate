@@ -40,7 +40,7 @@ import type { Atom, AtomRegistry } from "effect/reactivity";
 import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
-import { accountHqApi, officialHq, useAccountHq } from "./accountHq";
+import { accountHqApi, configuredHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
@@ -240,14 +240,13 @@ export function useEnvironmentCreation(): (
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const registry = useContext(RegistryContext);
-  const accountHq = useAccountHq(activeOrganization?.id);
 
   const readGroupAgents = useReadGroupAgents();
 
   return useCallback(
     async (request: EnvironmentCreationRequest): Promise<EnvironmentCreationRun> => {
       if (activeOrganization === null) return { kind: "refused", reason: null };
-      const hq = officialHq(accountHq);
+      const hq = configuredHq();
       const organization = activeOrganization;
       const isCurrent = captureAccountLifetime();
       const { group, role, choice, creationId } = request;
@@ -399,6 +398,6 @@ export function useEnvironmentCreation(): (
       });
       return { kind: "ran", outcome, withAgent };
     },
-    [accountHq, activeOrganization, client, organizationRef, readGroupAgents, registry, operations],
+    [activeOrganization, client, organizationRef, readGroupAgents, registry, operations],
   );
 }

@@ -126,7 +126,7 @@ import {
   settleDeletingMates,
   useDeletingMates,
 } from "./deletingMates";
-import { officialHq, useAccountHq } from "./accountHq";
+import { configuredHq } from "./accountHq";
 import { useProjectDialog } from "./inventoryContext";
 import { captureAccountLifetime, currentAccountEpoch } from "./accountLifetime";
 import { useOpenMate } from "./useOpenMate";
@@ -338,7 +338,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const projectOrder = useProjectOrderOptions();
 
-  const accountHq = useAccountHq(activeOrganization?.id);
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
@@ -710,9 +709,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    */
   const remainders = useProjection(
     lifecycleRemainders,
-    activeOrganization === null || accountHq.hq.kind !== "official"
+    activeOrganization === null
       ? null
-      : { orgId: activeOrganization.id, hqProjectId: officialHq(accountHq).projectId },
+      : { orgId: activeOrganization.id, hqProjectId: configuredHq().projectId },
     NO_REMAINDERS,
   );
   const unrenamed = remainders.renames;
@@ -756,7 +755,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       void write(
         candidate.key,
         async () => {
-          const hq = officialHq(accountHq);
+          const hq = configuredHq();
           if (membership.kind === "new") {
             const previous = appAttempts.current.get(candidate.project.id);
             if (previous !== undefined && previous.name !== membership.name)
@@ -848,7 +847,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [
       activeOrganization,
       groupTree.groups,
-      accountHq,
       operations,
       refresh,
       captureDialogReply,
@@ -959,7 +957,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // press this tab holds places it in, under that face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
       const registration = mateFinishRegistration({
-        hq: officialHq(accountHq),
+        hq: configuredHq(),
         hqKnown,
         structure: hqStructure?.structure ?? null,
         project: candidate.project,
@@ -1003,7 +1001,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             container,
             harden: adopting,
             registration,
-            hq: accountHq.hq.kind === "official" ? accountHq.hq : null,
+            hq: configuredHq(),
             isCurrent: captureAccountLifetime(),
           });
           if (!finished.ok) throw new Error(finished.error);
@@ -1012,7 +1010,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       );
     },
     [
-      accountHq,
       activeOrganization,
       candidates,
       client,
@@ -1117,7 +1114,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const projectId = candidate.project.id;
       setPress({ pending: true, error: null });
       void (async () => {
-        const hqProjectId = officialHq(accountHq).projectId;
+        const hqProjectId = configuredHq().projectId;
         const preparedRequestId =
           cleanup?.preparedRequestId ?? deletionRequests.current.get(projectId) ?? randomUUID();
         deletionRequests.current.set(projectId, preparedRequestId);
@@ -1239,7 +1236,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
         );
     },
-    [activeOrganization, accountHq, operations, leaveDeleted, organizationRef, captureDialogReply],
+    [activeOrganization, operations, leaveDeleted, organizationRef, captureDialogReply],
   );
 
   /**

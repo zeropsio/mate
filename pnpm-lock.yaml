@@ -161,40 +161,6 @@ importers:
         specifier: 1.0.0
         version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(esbuild@0.28.1)(happy-dom@20.14.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
 
-  apps/hq:
-    dependencies:
-      '@effect/platform-node':
-        specifier: 4.0.1
-        version: 4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(redis@6.2.1)(utf-8-validate@6.0.6)
-      '@effect/sql-pg':
-        specifier: 4.0.1
-        version: 4.0.1(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))
-      '@noble/hashes':
-        specifier: 'catalog:'
-        version: 1.8.0
-      '@t3tools/contracts':
-        specifier: workspace:*
-        version: link:../../packages/contracts
-      '@t3tools/hq-git':
-        specifier: workspace:*
-        version: link:../../packages/hq-git
-      '@t3tools/shared':
-        specifier: workspace:*
-        version: link:../../packages/shared
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586)
-    devDependencies:
-      '@effect/vitest':
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(esbuild@0.28.1)(happy-dom@20.14.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(vitest@5.0.1)(yaml@2.9.0)
-      '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
-      vite-plus:
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(esbuild@0.28.1)(happy-dom@20.14.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
   apps/mobile:
     dependencies:
       '@clerk/expo':
@@ -923,25 +889,6 @@ importers:
       '@effect/openapi-generator':
         specifier: 'catalog:'
         version: 4.0.1(@effect/platform-node@4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(redis@6.2.1)(utf-8-validate@6.0.6))(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))
-      '@effect/platform-node':
-        specifier: 4.0.1
-        version: 4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(redis@6.2.1)(utf-8-validate@6.0.6)
-      '@effect/vitest':
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=359f6fb2f7b3ec145bb72208edb9034f02489791aa2491a55cdbd69bd56ee0d2)(@types/node@24.12.4)(@vitest/ui@5.0.1(vitest@5.0.1))(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(esbuild@0.28.1)(happy-dom@20.14.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(vitest@5.0.1)(yaml@2.9.0)
-      '@types/node':
-        specifier: 24.12.4
-        version: 24.12.4
-      vite-plus:
-        specifier: 1.0.0
-        version: 1.0.0(@types/node@24.12.4)(@vitest/ui@5.0.1)(bufferutil@4.1.0)(esbuild@0.28.1)(happy-dom@20.14.5(bufferutil@4.1.0)(utf-8-validate@6.0.6))(jiti@2.7.0)(msw@2.12.11(@types/node@24.12.4)(typescript@7.0.2))(terser@5.48.0)(typescript@7.0.2)(unrun@0.2.39)(utf-8-validate@6.0.6)(yaml@2.9.0)
-
-  packages/hq-git:
-    dependencies:
-      effect:
-        specifier: 4.0.1
-        version: 4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586)
-    devDependencies:
       '@effect/platform-node':
         specifier: 4.0.1
         version: 4.0.1(bufferutil@4.1.0)(effect@4.0.1(patch_hash=4432458ea742ee6a8cd0358d3be6f57557b10df74f0efd7a4eb0a64eedd84586))(redis@6.2.1)(utf-8-validate@6.0.6)
