@@ -5,8 +5,9 @@
  *
  * A Mate's dev pool lists its workspaces, never its ports: a pool declares a port per container
  * slot, each with a subdomain whether or not a container holds it, so its routes say nothing of
- * whose an address is. Each lease zcp still holds is one row, named `<pool> · <branch>` as the
- * bound conversation names it, with its preview's state and its preview's address.
+ * whose an address is. Each lease zcp still holds is one row: its pool by name, its branch and
+ * alias beside, its preview's state and address, which of the Mate's chats holds it, and its
+ * Release.
  *
  * The tag says one thing, the highest of: production down; an environment that did not come up;
  * the newest release failed while the old one serves; a release going out or production
@@ -16,13 +17,14 @@
  * Pure: no clock of its own, no platform globals.
  */
 import {
-  checkoutLabel,
+  type CheckoutLease,
   comingLine,
+  type LastTurn,
   placeAddresses,
   type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { servicePairs } from "@t3tools/client-runtime/zerops/servicePairs";
-import { isZeropsLeaseHeld, type ZeropsLease } from "@t3tools/contracts";
+import { isZeropsLeaseHeld, sameZeropsLeaseGroup, type ZeropsLease } from "@t3tools/contracts";
 
 import {
   chipFace,
@@ -192,24 +194,63 @@ export interface SitesLink {
 }
 
 /** A lease zcp holds on one of a Mate's dev pools, as its envelope names it (`leases[]`). */
-export type SitesLease = Pick<ZeropsLease, "alias" | "pool" | "branch" | "state" | "devServers">;
+export type SitesLease = Pick<
+  ZeropsLease,
+  | "alias"
+  | "pool"
+  | "branch"
+  | "repo"
+  | "state"
+  | "acquiredAt"
+  | "devServers"
+  | "activity"
+  | "unsaved"
+  | "notAnswering"
+>;
+
+/** One of a Mate's conversations bound to a lease, as its shell reads it (`ThreadLease`). */
+export interface SitesConversation {
+  /** Its scoped thread key. */
+  readonly key: string;
+  readonly title: string;
+  readonly lease: CheckoutLease & { readonly acquiredAt?: string | undefined };
+  readonly lastTurn: LastTurn | null;
+}
 
 /**
- * One workspace of a Mate's dev pool, as its row shows it: the lease's name and alias, what its
- * preview is doing, and the preview's address while it has one to open.
+ * One workspace of a Mate's dev pool, as its row shows it: the pool it is of, its branch and
+ * alias, what its preview is doing and the preview's address while it has one to open, and which
+ * of the Mate's chats holds it.
  */
 export interface SitesWorkspace {
   readonly key: string;
-  /** `<pool> · <branch>`, or the alias of a lease of no branch (`checkoutLabel`). */
+  /** The pool's hostname: the name the person knows it by. */
   readonly name: string;
-  /** `<pool>-<number>`, beside the name; absent where the name is the alias. */
-  readonly alias: string | undefined;
-  /** Its preview server's status (zcp's word), `parked`, or `no preview yet`. */
+  /** `<branch> · <alias>`, or the alias of a lease of no branch: beside the name, muted. */
+  readonly detail: string;
+  /** `<pool>-<number>`: what its Release names. */
+  readonly alias: string;
+  /** The lease its Release asks about and asks to release. */
+  readonly lease: CheckoutLease;
+  /** What zcp last read of it: its activity and what a release would lose there. */
+  readonly read: SitesLease;
+  /** Its preview server's status (zcp's word), `parked`, `not answering`, or `no preview yet`. */
   readonly word: string;
   readonly dot: ChipDot;
+  /** Why its container did not answer zcp, as zcp said it. */
+  readonly notAnswering: string | undefined;
   /** Its preview's address; absent while it has none to open. */
   readonly url: string | undefined;
   readonly host: string | undefined;
+  /**
+   * `Held by this chat`, `Held by “<title>”`, or `Held by no chat`; absent while the Mate's
+   * conversations are not read.
+   */
+  readonly held: string | undefined;
+  /** The conversation holding it, by scoped thread key; absent where none does. */
+  readonly holder: string | undefined;
+  /** That conversation's last turn, which dates the workspace too; null where none holds it. */
+  readonly lastTurn: LastTurn | null;
 }
 
 /** A Mate of the project, as its addresses are read. */
@@ -232,6 +273,10 @@ export interface SitesMateFacts {
    * Mate; `undefined` while none is read, never none.
    */
   readonly leases: ReadonlyArray<SitesLease> | undefined;
+  /** Its conversations bound to a lease; `undefined` while its conversations are not read. */
+  readonly conversations: ReadonlyArray<SitesConversation> | undefined;
+  /** The conversation the person is in, by scoped thread key; absent where they are in none. */
+  readonly here: string | undefined;
 }
 
 const ROLE_ORDER: ReadonlyArray<SitesLinkRole | undefined> = ["dev", "preview", undefined];
@@ -292,46 +337,91 @@ const SERVER_DOT: Readonly<Record<string, ChipDot>> = {
 const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
 
 /**
- * A Mate's workspaces: one row per lease zcp still holds on its dev pools (held or parked), in
- * name order. A free or warm slot is no lease and never shows; nor does one zcp no longer holds.
- * A row says its preview server's status and opens its preview (the server zcp read with an
- * address); a parked lease's container is stopped, so it says parked and opens nothing; one with
- * no preview read, or whose address is no web address, says so. None while the leases are not read.
+ * The conversation bound to a lease: the one whose binding is of its alias, repository and branch
+ * — and of its acquire, where both say one, since a pool hands a released container out again
+ * under the same alias.
+ */
+const holderOf = (
+  lease: SitesLease,
+  conversations: ReadonlyArray<SitesConversation>,
+): SitesConversation | undefined =>
+  conversations.find(
+    ({ lease: binding }) =>
+      binding.alias === lease.alias &&
+      sameZeropsLeaseGroup(binding, lease) &&
+      (binding.acquiredAt === undefined ||
+        lease.acquiredAt === undefined ||
+        binding.acquiredAt === lease.acquiredAt),
+  );
+
+const heldWords = (holder: SitesConversation | undefined, here: string | undefined): string => {
+  if (holder === undefined) return "Held by no chat";
+  return holder.key === here ? "Held by this chat" : `Held by “${holder.title}”`;
+};
+
+/**
+ * What a workspace's preview is doing, as its row's word and dot say it, and the preview to open:
+ * a parked one opens nothing; one whose container did not answer zcp says so first.
+ */
+function previewOf(lease: SitesLease): Pick<SitesWorkspace, "word" | "dot" | "url" | "host"> {
+  if (lease.state === "parked")
+    return { word: "parked", dot: "hollow", url: undefined, host: undefined };
+  const preview = (lease.devServers ?? []).find(
+    (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
+  );
+  const opens =
+    preview?.url === undefined
+      ? { url: undefined, host: undefined }
+      : { url: preview.url, host: hostOf(preview.url) };
+  if (lease.notAnswering !== undefined && lease.notAnswering !== "")
+    return { word: "not answering", dot: "failed", ...opens };
+  if (preview === undefined || opens.url === undefined)
+    return { word: "no preview yet", dot: "off", url: undefined, host: undefined };
+  return { word: preview.status, dot: SERVER_DOT[preview.status] ?? "off", ...opens };
+}
+
+/**
+ * A Mate's workspaces: one row per lease zcp still holds on its dev pools (held or parked), by
+ * pool, then branch and alias. A free or warm slot is no lease and never shows; nor does one zcp
+ * no longer holds. A row says its preview server's status and opens its preview (the server zcp
+ * read with an address); a parked lease's container is stopped, so it says parked and opens
+ * nothing; one whose container did not answer says so; one with no preview read, or whose address
+ * is no web address, says so. Each says which of the Mate's chats holds it, once they are read.
+ * None while the leases are not read.
  */
 function mateWorkspaces(mate: SitesMateFacts): ReadonlyArray<SitesWorkspace> {
   const held = (mate.leases ?? []).filter((lease) => isZeropsLeaseHeld(lease.state));
-  const named = held.map((lease) => ({
-    alias: lease.alias,
-    pool: lease.pool,
-    branch: lease.branch === undefined || lease.branch === "" ? null : lease.branch,
-  }));
   return held
     .map((lease): SitesWorkspace => {
-      const name = checkoutLabel(lease.alias, named);
-      const preview = (lease.devServers ?? []).find(
-        (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
-      );
-      const base = {
-        key: `workspace:${lease.alias}`,
-        name,
-        alias: name === lease.alias ? undefined : lease.alias,
-      };
-      if (lease.state === "parked")
-        return { ...base, word: "parked", dot: "hollow", url: undefined, host: undefined };
-      if (preview?.url === undefined)
-        return { ...base, word: "no preview yet", dot: "off", url: undefined, host: undefined };
+      const branch = lease.branch === undefined || lease.branch === "" ? null : lease.branch;
+      const holder =
+        mate.conversations === undefined ? undefined : holderOf(lease, mate.conversations);
       return {
-        ...base,
-        word: preview.status,
-        dot: SERVER_DOT[preview.status] ?? "off",
-        url: preview.url,
-        host: hostOf(preview.url),
+        key: `workspace:${lease.alias}`,
+        name: lease.pool,
+        detail: branch === null ? lease.alias : `${branch} · ${lease.alias}`,
+        alias: lease.alias,
+        lease: {
+          alias: lease.alias,
+          pool: lease.pool,
+          branch,
+          ...(lease.repo === undefined || lease.repo === "" ? {} : { repo: lease.repo }),
+        },
+        read: lease,
+        notAnswering:
+          lease.notAnswering === undefined || lease.notAnswering === ""
+            ? undefined
+            : lease.notAnswering,
+        ...previewOf(lease),
+        held: mate.conversations === undefined ? undefined : heldWords(holder, mate.here),
+        holder: holder?.key,
+        lastTurn: holder?.lastTurn ?? null,
       };
     })
     .toSorted(
       (left, right) =>
         left.name.localeCompare(right.name, "en") ||
-        left.key.localeCompare(right.key, "en", { numeric: true }),
+        left.detail.localeCompare(right.detail, "en", { numeric: true }),
     );
 }
 
@@ -455,7 +545,7 @@ export function sitesHoldNothing(
 
 /**
  * The sections a filter leaves: the addresses whose service, role, host, section or owner holds
- * every word of it, and the workspaces whose name, alias, state or preview does; a section left
+ * every word of it, and the workspaces whose name, branch, alias, state, preview or holder does; a section left
  * with nothing hides. An empty filter keeps everything.
  */
 export function filterSites(
@@ -478,7 +568,7 @@ export function filterSites(
     );
     if (section.kind === "place") return links.length === 0 ? [] : [{ ...section, links }];
     const workspaces = section.workspaces.filter((workspace) =>
-      holds([workspace.name, workspace.alias, workspace.word, workspace.host]),
+      holds([workspace.name, workspace.detail, workspace.word, workspace.host, workspace.held]),
     );
     return links.length === 0 && workspaces.length === 0 ? [] : [{ ...section, links, workspaces }];
   });

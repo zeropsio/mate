@@ -584,6 +584,7 @@ describe("a Mate's dev pools", () => {
 /** Kara's leases as a status call read them: the one this chat holds, a helper's parked one. */
 const KARA_READ = [
   held("webpool-3", "feat-x", {
+    acquiredAt: hoursAgo(72),
     activity: {
       lastChangeAt: hoursAgo(3),
       previewOpenConns: 0,
@@ -594,6 +595,7 @@ const KARA_READ = [
   }),
   held("webpool-5", "b-red", {
     state: "parked",
+    acquiredAt: hoursAgo(80),
     activity: {
       lastChangeAt: hoursAgo(50),
       previewOpenConns: 0,
@@ -628,13 +630,24 @@ const KARA_CONVERSATIONS = [
   },
 ];
 
-/** The header's Sites of Kara's conversation `thread-open`, opened. */
+/** Each opening's own conversation: a Sites list keeps what it read of one for the page's life. */
+let opening = 0;
+/** The conversation the header's Sites last opened in, by scoped key. */
+let here = "";
+
+/** The header's Sites of Kara's conversation, the one bound to `webpool-3`, opened. */
 async function openHeaderSites(
   leases: ReadonlyArray<unknown> = KARA_READ,
   over: { readonly mine?: boolean } = {},
 ) {
-  lifecycles.set("env-kara:thread-open", leases);
-  boundary.conversations = { "quill-kara": KARA_CONVERSATIONS };
+  opening += 1;
+  here = `env-kara:thread-open-${String(opening)}`;
+  lifecycles.set(here, leases);
+  boundary.conversations = {
+    "quill-kara": KARA_CONVERSATIONS.map((conversation) =>
+      conversation.key === "env-kara:thread-open" ? { ...conversation, key: here } : conversation,
+    ),
+  };
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const container = document.createElement("div");
   document.body.append(container);
@@ -662,7 +675,7 @@ async function openHeaderSites(
       <HeaderSites
         mateProjectId="quill-kara"
         sites={sites}
-        threadKey="env-kara:thread-open"
+        threadKey={here}
         trigger={<button data-trigger="" type="button" />}
       >
         Sites
@@ -696,11 +709,10 @@ describe("a Mate's workspaces in its Sites", () => {
   it("The list names each of the Mate's workspaces with its state, last activity and unsaved work, marks the bound one, and offers each its own Release", async () => {
     await openHeaderSites();
     const rows = [...document.querySelectorAll<HTMLElement>("[data-zerops-workspace]")];
-    expect(rows.map((row) => row.dataset["zeropsWorkspace"])).toEqual([
-      "apipool-2",
-      "webpool-3",
-      "webpool-5",
-    ]);
+    expect(
+      rows.map((row) => row.dataset["zeropsWorkspace"]),
+      "by pool, then branch",
+    ).toEqual(["apipool-2", "webpool-5", "webpool-3"]);
     for (const said of [
       "webpool",
       "feat-x · webpool-3",
@@ -722,7 +734,7 @@ describe("a Mate's workspaces in its Sites", () => {
     for (const said of ["apipool", "not answering", "Held by no chat", "at its process limit"]) {
       expect(workspace("apipool-2")?.textContent, said).toContain(said);
     }
-    for (const alias of ["apipool-2", "webpool-3", "webpool-5"]) {
+    for (const alias of ["apipool-2", "webpool-5", "webpool-3"]) {
       expect(releaseOf(alias)?.textContent).toBe("Release");
     }
   });
@@ -741,7 +753,11 @@ describe("a Mate's workspaces in its Sites", () => {
   });
 
   it("A conversation's last turn dates its workspace before zcp read it, and nothing shows with neither", async () => {
-    await openHeaderSites([held("webpool-3", "feat-x"), held("webpool-6", "feat-z")]);
+    // Leases a call read with no acquire and no activity: only a turn can date them.
+    await openHeaderSites([
+      held("webpool-3", "feat-x", { acquiredAt: undefined }),
+      held("webpool-6", "feat-z", { acquiredAt: undefined }),
+    ]);
     expect(workspace("webpool-3")?.textContent, "the bound one's turn").toContain("5 h ago");
     expect(workspace("webpool-6")?.textContent, "no turn, no read").not.toMatch(/ago|just now/u);
   });
@@ -763,7 +779,7 @@ describe("a Mate's workspaces in its Sites", () => {
       expect.objectContaining({
         alias: "webpool-5",
         bound: false,
-        threadRef: { environmentId: "env-kara", threadId: "thread-open" },
+        threadRef: { environmentId: "env-kara", threadId: here.slice("env-kara:".length) },
         archived: false,
       }),
     );
@@ -774,7 +790,7 @@ describe("a Mate's workspaces in its Sites", () => {
   });
 
   it("asks about the workspace this chat holds as its own, with its last turn", async () => {
-    await openHeaderSites([held("webpool-3", "feat-x")]);
+    await openHeaderSites([held("webpool-3", "feat-x", { acquiredAt: undefined })]);
     await press(releaseOf("webpool-3"));
     expect(document.querySelector("[data-zerops-release-question]")?.textContent).toContain(
       "last active 5 h ago",
@@ -808,8 +824,8 @@ describe("a Mate's workspaces in its Sites", () => {
       ),
     ).toEqual([
       "Release workspace apipool-2",
-      "Release workspace webpool-3",
       "Release workspace webpool-5",
+      "Release workspace webpool-3",
     ]);
   });
 });

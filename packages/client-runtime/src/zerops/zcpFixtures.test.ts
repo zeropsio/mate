@@ -18,7 +18,7 @@ import { buildDevServerFields } from "./model/builders/devServer.ts";
 import { gitCheckoutHostnames } from "./gitTab.ts";
 import { flowChange } from "./projectFlow.ts";
 import { poolPairsIn, servicePairs } from "./servicePairs.ts";
-import { mateWorkspaceList, workspaceChip, workspaceName } from "./workspaceChip.ts";
+import { workspaceActivity } from "./workspaceChip.ts";
 
 const dir = new URL("./fixtures/zcp/", import.meta.url);
 const raw = (name: string) => NodeFS.readFileSync(new URL(name, dir));
@@ -241,24 +241,24 @@ describe("zcp contract fixtures", () => {
     expect(unread).not.toHaveProperty("unsaved");
   });
 
-  it("draws the workspace chip from a lease status, never idle while its preview was not observed", () => {
+  it("reads a workspace's activity from a lease status, never idle while its preview was not observed", () => {
     const [read, unread] = decodeEnvelope(json("envelope.lease-status.json")).leases ?? [];
-    const chip = (lease: typeof read, at: string) =>
-      lease === undefined
-        ? undefined
-        : workspaceChip({ name: workspaceName(lease), lease, lastTurn: null, now: Date.parse(at) });
-    expect(chip(read, "2026-10-23T20:04:00Z")).toEqual({
-      words: "devpool · feat-a · last active 51 min ago · 2 unpushed · 2 uncommitted",
+    const activity = (lease: typeof read, at: string) => {
+      const said = workspaceActivity({ lease, lastTurn: null, now: Date.parse(at) });
+      return said === undefined ? undefined : { words: said.words, idle: said.idle };
+    };
+    expect(activity(read, "2026-10-23T20:04:00Z")).toEqual({
+      words: "last active 51 min ago · 2 unpushed · 2 uncommitted",
       idle: false,
     });
-    expect(chip(read, "2026-10-27T20:04:00Z")?.idle).toBe(false);
-    expect(chip(unread, "2026-10-27T20:04:00Z")).toEqual({
-      words: "stoppool · feat-b · last active 4 d ago",
+    expect(activity(read, "2026-10-27T20:04:00Z")?.idle).toBe(false);
+    expect(activity(unread, "2026-10-27T20:04:00Z")).toEqual({
+      words: "last active 4 d ago",
       idle: false,
     });
   });
 
-  it("keeps why a lease status found a lease's container not answering, and lists that workspace not answering", () => {
+  it("keeps why a lease status found a lease's container not answering", () => {
     // zcp's lease status with its first lease's container at its process limit (DP-21): the
     // fixture's bytes plus the `notAnswering` zcp sends then.
     const sent = json("envelope.lease-status.json") as { leases: Array<Record<string, unknown>> };
@@ -271,19 +271,6 @@ describe("zcp contract fixtures", () => {
     };
     const decoded = decodeEnvelope(variant);
     expect(decoded.leases?.map((lease) => lease.notAnswering)).toEqual([why, undefined]);
-    const list = mateWorkspaceList({
-      binding: { alias: "stoppool-2", pool: "stoppool", branch: "feat-b" },
-      lifecycle: {
-        state: "known",
-        value: { threadId: "thread-1", recentTools: [], envelope: decoded },
-      } as unknown as Parameters<typeof mateWorkspaceList>[0]["lifecycle"],
-      lastTurn: null,
-      now: Date.parse("2026-10-23T20:04:00Z"),
-    });
-    expect(list.map(({ name, state, notAnswering }) => [name, state, notAnswering])).toEqual([
-      ["stoppool · feat-b", "held", undefined],
-      ["devpool · feat-a", "not answering", why],
-    ]);
   });
 
   it("reads a receipt whose web preview is older than the change head", () => {
