@@ -75,10 +75,13 @@ export interface MateRestartPorts {
 
 /** What a person's Update on a Mate needing a restart answers at once. */
 export type MateRestartStart =
-  | { readonly started: true }
+  | { readonly started: true; readonly attempt: string }
   | { readonly started: false; readonly reason: string };
 
-type RestartProgress = Pick<NonNullable<ExecutionEnvironmentUpdate["restart"]>, "phase" | "reason">;
+type RestartProgress = Pick<
+  NonNullable<ExecutionEnvironmentUpdate["restart"]>,
+  "phase" | "reason" | "attempt"
+>;
 
 export class ZeropsMateUpdate extends Context.Service<
   ZeropsMateUpdate,
@@ -174,13 +177,14 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       });
 
     const restartPorts = options.restart;
+    let attempts = 0;
     const attemptRestart = (
       ports: MateRestartPorts,
       automatic: boolean,
       key: string,
+      attempt: string,
     ): Effect.Effect<void> =>
       Effect.gen(function* () {
-        yield* setProgress({ phase: "draining" });
         if (!(yield* ports.drain({ automatic }))) {
           // An automatic drain also stops when the organization pauses automatic updates.
           const paused =
@@ -190,25 +194,34 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           yield* setProgress({
             phase: "postponed",
             reason: paused ? "automatic updates were paused" : RESTART_WORK_NOT_DONE,
+            attempt,
           });
           return;
         }
         // Written before the platform is asked: the restart it causes ends this process.
         yield* ports.marker.write(key);
         const answer = yield* options.cli.selfRestart;
+        // Only zcp's own refusal reopens at once: an answer it did not give may still restart us.
         if (answer.outcome === "refused") {
           yield* ports.reopen;
-          yield* setProgress({ phase: "postponed", reason: answer.reason });
+          yield* setProgress({ phase: "postponed", reason: answer.reason, attempt });
           return;
         }
-        // Said once the platform took it, never before: admission stays closed until it ends us.
-        yield* setProgress({ phase: "restarting" });
-        yield* Effect.logInfo("mate update: the platform took the container restart", {
-          process: answer.process,
-        });
+        // Said once the platform took it (or may have), never before: admission stays closed
+        // until the restart ends this process, or the grace runs out.
+        yield* setProgress({ phase: "restarting", attempt });
+        yield* answer.outcome === "accepted"
+          ? Effect.logInfo("mate update: the platform took the container restart", {
+              process: answer.process,
+            })
+          : Effect.logWarning("mate update: zcp gave no answer to the container restart");
         yield* Effect.sleep(ports.grace ?? MATE_RESTART_GRACE);
         yield* ports.reopen;
-        yield* setProgress({ phase: "postponed", reason: "the container did not restart" });
+        yield* setProgress({
+          phase: "postponed",
+          reason: "the container did not restart",
+          attempt,
+        });
       }).pipe(
         Effect.ensuring(
           Effect.sync(() => {
@@ -220,22 +233,42 @@ export const make = (options: ZeropsMateUpdateOptions) =>
       status: MateStatusResult,
       automatic: boolean,
     ): Effect.Effect<MateRestartStart> =>
-      Effect.gen(function* () {
+      Effect.suspend((): Effect.Effect<MateRestartStart> => {
         if (restartPorts === undefined)
-          return { started: false, reason: "this Mate can't restart itself here" } as const;
-        if (restartUnderWay) return { started: true } as const;
+          return Effect.succeed({
+            started: false,
+            reason: "this Mate can't restart itself here",
+          } as const);
+        // A second press joins the restart under way, as that restart.
+        if (restartUnderWay && progress?.attempt !== undefined)
+          return Effect.succeed({ started: true, attempt: progress.attempt } as const);
+        if (restartUnderWay)
+          return Effect.succeed({ started: false, reason: "a restart is starting" } as const);
         restartUnderWay = true;
-        // An older zcp is never asked: it does not know the verb.
-        if (!zcpAtLeast(yield* options.cli.version, ZCP_SELF_RESTART_SINCE)) {
-          restartUnderWay = false;
-          yield* setProgress({ phase: "postponed", reason: SELF_RESTART_TOO_OLD });
-          return { started: false, reason: SELF_RESTART_TOO_OLD } as const;
-        }
-        yield* Effect.forkIn(
-          attemptRestart(restartPorts, automatic, restartReading(status)),
-          scope,
+        const attempt = `restart-${++attempts}`;
+        // Reset unless the attempt was forked: an interrupted press never holds the next one.
+        let forked = false;
+        return Effect.gen(function* () {
+          // An older zcp is never asked: it does not know the verb.
+          if (!zcpAtLeast(yield* options.cli.version, ZCP_SELF_RESTART_SINCE)) {
+            yield* setProgress({ phase: "postponed", reason: SELF_RESTART_TOO_OLD, attempt });
+            return { started: false, reason: SELF_RESTART_TOO_OLD } as const;
+          }
+          // Draining, as this attempt, before the press is answered.
+          yield* setProgress({ phase: "draining", attempt });
+          yield* Effect.forkIn(
+            attemptRestart(restartPorts, automatic, restartReading(status), attempt),
+            scope,
+          );
+          forked = true;
+          return { started: true, attempt } as const;
+        }).pipe(
+          Effect.ensuring(
+            Effect.sync(() => {
+              if (!forked) restartUnderWay = false;
+            }),
+          ),
         );
-        return { started: true } as const;
       });
     const restart: Effect.Effect<MateRestartStart> = Effect.suspend(() =>
       reading?.restartNeeded === true
@@ -243,27 +276,44 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         : Effect.succeed({ started: false, reason: "this Mate needs no restart" } as const),
     );
 
-    /** The organization's automatic update of a Mate that only a restart gets current. */
-    const automaticRestart = (status: MateStatusResult, enabled: boolean | undefined) =>
+    /**
+     * The organization's automatic update of a Mate that only a restart gets current: true when
+     * the restart is this reading's answer (started, under way or not allowed), false once a
+     * restart for it is spent, so the Mate's own update still runs.
+     */
+    const automaticRestart = (
+      ports: MateRestartPorts,
+      status: MateStatusResult,
+      enabled: boolean | undefined,
+    ): Effect.Effect<boolean> =>
       Effect.gen(function* () {
-        if (restartPorts === undefined) return;
         const key = restartReading(status);
-        const restartedFor = yield* restartPorts.marker.read;
-        if (
-          mayAutoRestart({
-            enabled,
-            restartNeeded: true,
-            reading: key,
-            restartedFor,
-            underWay: restartUnderWay,
-          })
-        ) {
-          yield* startRestart(status, true);
-          return;
+        const restartedFor = yield* ports.marker.read;
+        if (restartedFor !== key || restartUnderWay) {
+          if (
+            mayAutoRestart({
+              enabled,
+              restartNeeded: true,
+              reading: key,
+              restartedFor,
+              underWay: restartUnderWay,
+            })
+          )
+            yield* startRestart(status, true);
+          return true;
         }
+        if (
+          mayAutoUpdate({
+            enabled,
+            available: status.updateAvailable,
+            latest: status.latest,
+            updater: status.updater,
+          })
+        )
+          return false;
         // Already tried for this reading (the container came back still behind, or the platform
         // refused): said once, never tried again by itself; the person's Update tries again.
-        if (enabled === true && !restartUnderWay && restartedFor === key && progress === undefined)
+        if (enabled === true && progress === undefined)
           yield* setProgress({
             phase: "postponed",
             reason:
@@ -271,6 +321,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
                 ? `a restart was already tried for zcp ${status.zcp.latest}; Update to try again`
                 : "a restart was already tried; Update to try again",
           });
+        return true;
       });
 
     let launching = false;
@@ -279,11 +330,14 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         if (launching || options.policy === undefined) return;
         const policy = yield* options.policy.verify;
         const enabled = Option.isSome(policy) ? policy.value.enabled : undefined;
-        // Only a restart gets this Mate current: `mate update` would not.
-        if (status.restartNeeded === true) {
-          yield* automaticRestart(status, enabled);
+        // Only a restart gets this Mate current: `mate update` would not, unless that restart is
+        // spent and the Mate's own update is there to take.
+        if (
+          status.restartNeeded === true &&
+          restartPorts !== undefined &&
+          (yield* automaticRestart(restartPorts, status, enabled))
+        )
           return;
-        }
         if (
           !mayAutoUpdate({
             enabled,

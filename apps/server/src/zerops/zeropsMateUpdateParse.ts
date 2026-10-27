@@ -12,6 +12,7 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { ExecutionEnvironmentUpdate, ExecutionEnvironmentZcp } from "@t3tools/contracts";
+import { zcpVersionText } from "./zcpVersion.ts";
 
 export interface MateStatusResult {
   readonly installed: string;
@@ -58,7 +59,17 @@ export const parseMateStatusOutput = (text: string): MateStatusResult | undefine
   if (status === undefined) return undefined;
   const { zcp, ...rest } = status;
   const reading = zcp === undefined ? undefined : Option.getOrUndefined(decodeZcpReading(zcp));
-  return reading === undefined ? rest : { ...rest, zcp: reading };
+  return reading === undefined
+    ? rest
+    : {
+        ...rest,
+        // zcp writes `v9.226.0`; the app reads and says `9.226.0`.
+        zcp: {
+          ...reading,
+          installed: zcpVersionText(reading.installed),
+          latest: zcpVersionText(reading.latest),
+        },
+      };
 };
 
 export const MateUpdateAction = Schema.Literals(["none", "installed", "updated"]);

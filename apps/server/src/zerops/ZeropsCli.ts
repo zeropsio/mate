@@ -25,6 +25,7 @@ import {
   type MateStatusResult,
   type MateUpdateResult,
 } from "./zeropsMateUpdateParse.ts";
+import { zcpVersionText } from "./zcpVersion.ts";
 
 /** The binary `zcp init` installs on every Zerops container. */
 const ZCP_COMMAND = "zcp";
@@ -70,8 +71,8 @@ const versionOf = (stdout: string): ReadonlyArray<number> | undefined => {
 
 /** Whether `version` is at least `since`; an unreadable version is too old. */
 export const zcpAtLeast = (version: string | undefined, since: string): boolean => {
-  const have = version === undefined ? undefined : versionOf(`zcp v${version}`);
-  const want = versionOf(`zcp v${since}`);
+  const have = version === undefined ? undefined : versionOf(`zcp v${zcpVersionText(version)}`);
+  const want = versionOf(`zcp v${zcpVersionText(since)}`);
   if (have === undefined || want === undefined) return false;
   for (let index = 0; index < want.length; index++) {
     if (have[index]! !== want[index]!) return have[index]! > want[index]!;
@@ -115,11 +116,14 @@ const decodeSelfRestartAnswer = Schema.decodeUnknownOption(
 
 /**
  * `zcp self restart`'s answer: the platform took the restart of this container's own zcp service
- * (its process id when zcp names one), or refused it, in zcp's words or a fixed phrase.
+ * (its process id when zcp names one), refused it in zcp's words (or never heard it: zcp could
+ * not be run), or zcp gave no answer to read.
  */
 export type SelfRestartResult =
   | { readonly outcome: "accepted"; readonly process?: string | undefined }
-  | { readonly outcome: "refused"; readonly reason: string };
+  | { readonly outcome: "refused"; readonly reason: string }
+  /** No answer in words (a timeout, unreadable output): the platform may have taken it. */
+  | { readonly outcome: "uncertain" };
 
 /** zcp's answer: the last line of its stdout that reads as one, past any notice printed before. */
 const lastAnswer = (stdout: string) => {
@@ -458,16 +462,14 @@ export const make = (options: ZeropsCliOptions) =>
                 ? { outcome: "accepted" }
                 : { outcome: "accepted", process: answer.value.processId };
           }
-          return { outcome: "refused", reason: SELF_RESTART_TOO_OLD };
+          return { outcome: "uncertain" };
         }),
         Effect.catch((cause) =>
-          Effect.succeed<SelfRestartResult>({
-            outcome: "refused",
-            reason:
-              cause._tag === "ProcessTimeoutError"
-                ? "zcp did not answer the restart in time"
-                : "zcp could not be run",
-          }),
+          Effect.succeed<SelfRestartResult>(
+            cause._tag === "ProcessSpawnError"
+              ? { outcome: "refused", reason: "zcp could not be run" }
+              : { outcome: "uncertain" },
+          ),
         ),
       );
 

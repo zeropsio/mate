@@ -1047,6 +1047,8 @@ export const ZeropsMateUpdateResult = Schema.Struct({
   restarted: Schema.Boolean,
   started: Schema.optional(Schema.Boolean),
   error: Schema.optional(Schema.String),
+  /** The container restart this press started or joined: its line's `update.restart.attempt`. */
+  restartAttempt: Schema.optional(Schema.String),
   serverVersion: Schema.String,
 });
 export type ZeropsMateUpdateResult = typeof ZeropsMateUpdateResult.Type;

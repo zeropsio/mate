@@ -1,3 +1,5 @@
+import { zcpVersionText } from "./zcpVersion.ts";
+
 export interface AutomaticUpdateEvidence {
   readonly enabled: boolean | undefined;
   readonly available: boolean;
@@ -32,7 +34,8 @@ export function restartReading(status: {
   readonly installed: string;
   readonly zcp?: { readonly installed: string; readonly latest: string } | undefined;
 }): string {
-  return `zcp ${status.zcp?.installed ?? "?"} -> ${status.zcp?.latest ?? "?"}; mate ${status.installed}`;
+  const zcp = status.zcp;
+  return `zcp ${zcp === undefined ? "?" : zcpVersionText(zcp.installed)} -> ${zcp === undefined ? "?" : zcpVersionText(zcp.latest)}; mate ${status.installed}`;
 }
 
 /**

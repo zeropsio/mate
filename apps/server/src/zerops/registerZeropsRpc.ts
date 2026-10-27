@@ -147,7 +147,13 @@ export const runZeropsMateUpdate = (
     if ((yield* deps.zeropsMateUpdate.current)?.restart?.needed === true) {
       const start = yield* deps.zeropsMateUpdate.restart;
       return start.started
-        ? { action: "none" as const, restarted: false, started: true, serverVersion }
+        ? {
+            action: "none" as const,
+            restarted: false,
+            started: true,
+            restartAttempt: start.attempt,
+            serverVersion,
+          }
         : { action: "none" as const, restarted: false, error: start.reason, serverVersion };
     }
     const result = yield* deps.zeropsCli.mateUpdate().pipe(
