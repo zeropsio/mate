@@ -1357,6 +1357,36 @@ const cardOutcome = <Outcome extends string>(
     : null;
 };
 
+/** One repository's address however written: `https://github.com/A/b.git/` is `github.com/a/b`. */
+const originAddressKey = (url: string): string =>
+  url
+    .replace(/^https:\/\//iu, "")
+    .replace(/\/+$/u, "")
+    .replace(/\.git$/iu, "")
+    .toLowerCase();
+
+const sameOriginAddress = (a: string, b: string): boolean =>
+  originAddressKey(a) === originAddressKey(b);
+
+/**
+ * Closes the open origin asks `settled` picks, none of them answered by the person: their card
+ * draws nothing and the conversation waits on them no more.
+ */
+const settleOrigins = (
+  b: StepBuilder,
+  settled: (asked: NonNullable<OpenRequest["origin"]>) => boolean,
+): void => {
+  for (const request of Object.values(b.state.requests)) {
+    if (request.origin === undefined || !settled(request.origin)) continue;
+    b.emit({
+      _tag: "RequestClosed",
+      runId: request.runId,
+      requestId: request.id,
+      state: "dismissed",
+    });
+  }
+};
+
 /** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
 const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
   `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
@@ -2277,6 +2307,12 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
       if (owner === undefined) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
       const id = deriveRequestId(run.id, run.nextRequestOrdinal);
+      // An origin asked again for the same repository is the one question: the earlier ask
+      // needs the person no more.
+      if (signal.ask.kind === "origin") {
+        const { url, repo } = signal.ask;
+        settleOrigins(b, (asked) => asked.repo === repo && sameOriginAddress(asked.url, url));
+      }
       const live = isLive(run);
       // Asked by message: the agent does not wait on it, and a message answers it after its turn.
       // An ask on a card is not waited on either: the person answers it there after the turn.
@@ -2350,6 +2386,19 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
           summary: `Saved to ${vaultPlace(vault)}`,
         });
       }
+      return;
+    }
+    case "origin-settled": {
+      // zcp found the asked address already an origin in HQ — it would ask none of its
+      // repositories now — or the agent withdrew the ask. The agent knows already: no word
+      // reaches it.
+      const { url, repo } = signal;
+      settleOrigins(
+        b,
+        (asked) =>
+          sameOriginAddress(asked.url, url) &&
+          (signal.how === "connected" || repo === undefined || asked.repo === repo),
+      );
       return;
     }
     case "turn-ended": {

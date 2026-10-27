@@ -132,9 +132,16 @@ export interface FlowPullRequest {
   readonly pullRequest?: HqPullRequest | undefined;
 }
 
-/** Whether a change asks for the person's review at all: it is no draft. */
-export function changeAsksForReview(pull: Pick<FlowPullRequest, "ready">): boolean {
-  return pull.ready !== false;
+/**
+ * Whether a change asks for the person's review at all: it is no draft, and no Mate's automatic
+ * proposal of the recipe's missing tiers (`isRecipeProposal`) — zcp makes that one at every start
+ * of its Mate, unasked, and Core lands it by itself; one left open is a race its Mate proposes
+ * again, never the person's to judge.
+ */
+export function changeAsksForReview(
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title">,
+): boolean {
+  return pull.ready !== false && !isRecipeProposal(pull);
 }
 
 /** A change's Mate as its Review reads it: whether it works now, in any of its chats. */
@@ -149,7 +156,7 @@ export interface MateRunFacts {
  * still move: none asks for review until it rests.
  */
 export function changeShowsReview(
-  pull: Pick<FlowPullRequest, "ready">,
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title">,
   mate: MateRunFacts | undefined,
 ): boolean {
   return changeAsksForReview(pull) && mate?.working !== true;
@@ -590,6 +597,8 @@ export function changeState(pull: {
   readonly mergeability: MergeabilityKind;
   readonly ready?: boolean | undefined;
   readonly mateGone?: true | undefined;
+  readonly kind: FlowPullRequestKind;
+  readonly title: string;
 }): ChangeState | undefined {
   // Nobody carries it on until a person closes it or hands it to another Mate.
   if (pull.mateGone === true) return { word: "Mate gone", tone: "attention" };
@@ -600,6 +609,8 @@ export function changeState(pull: {
       tone: blocked.tone,
     };
   }
+  // Core lands it by itself: nobody's merge.
+  if (isRecipeProposal(pull)) return { word: "Lands by itself", tone: "off" };
   // Its Mate has not described it as it is: nothing asks for its merge yet.
   if (!changeAsksForReview(pull)) return { word: "Draft", tone: "off" };
   return { word: "Ready to merge", tone: "off" };

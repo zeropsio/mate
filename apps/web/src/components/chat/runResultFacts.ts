@@ -36,7 +36,7 @@ import { runEffortWords, type ResultChange, type ResultFacts } from "./runResult
 import { TimelineRowCtx, type TimelineRowSharedState } from "./timelineContext";
 
 function resultChange(
-  pull: Pick<FlowPullRequest, "repository" | "number" | "title" | "ready">,
+  pull: Pick<FlowPullRequest, "repository" | "number" | "title" | "ready" | "kind">,
 ): ResultChange {
   return {
     repository: pull.repository,

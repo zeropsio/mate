@@ -134,7 +134,11 @@ import {
 } from "~/zerops/mateNoticeVoice";
 import { useProjectActivity } from "~/zerops/activity/useProjectActivity";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
-import { useToldActivity, useLastKnownMateWords } from "~/zerops/useMenuMateReadings";
+import {
+  useHqMainChats,
+  useToldActivity,
+  useLastKnownMateWords,
+} from "~/zerops/useMenuMateReadings";
 import { useOpenMate } from "~/zerops/useOpenMate";
 import { usePressesElsewhere } from "~/zerops/usePressesElsewhere";
 import { useUsualAgent } from "~/zerops/useUsualAgent";
@@ -353,17 +357,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
   // Up: its main conversation, read live, and its agents' sign-in — what the conversation paints
   // first, painted here first. Its environment is the one its machine opens, or its row's once
-  // connected.
+  // connected. This page keeps a Mate's conversations current only while it is open: one started
+  // elsewhere is the main chat HQ names for this project — only ever in the environment its own
+  // link opens, so its address never lands on another Mate's conversation.
   const environmentId = mateConversationEnvironment(link, candidate);
   const threads = useThreadShells();
+  const hqMain = useHqMainChats()(projectId);
   const primaryId = useMemo(
     () =>
       environmentId === null
         ? undefined
-        : resolvePrimaryConversation(
+        : (resolvePrimaryConversation(
             threads.filter((thread) => thread.environmentId === environmentId),
-          ).primary?.id,
-    [environmentId, threads],
+          ).primary?.id ?? (hqMain?.environmentId === environmentId ? hqMain.threadId : undefined)),
+    [environmentId, hqMain, threads],
   );
   const threadRef = useMemo(
     () =>

@@ -100,6 +100,7 @@ function framed(scene: Scene): MessagesTimelineRow[] {
       : {
           originAsks: scene.originAsks.map((ask) => ({
             requestId: ask.requestId,
+            requestIds: [ask.requestId],
             turnId: turn(ask.turn),
             createdAt: at(2),
           })),
