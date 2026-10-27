@@ -53,6 +53,7 @@ import type {
   OrchestrationThreadShell,
   ServerProvider,
 } from "@t3tools/contracts";
+import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
@@ -75,6 +76,7 @@ import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
+import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
@@ -255,8 +257,19 @@ export const connectLinkSocket: ConnectLinkSocket = (url) => {
  */
 export const MATE_LINK_ROTATE_MS = 100_000;
 
-const decodeDown = Schema.decodeUnknownOption(Schema.fromJsonString(KeyLinkDown));
+const decodeDown = Schema.decodeUnknownResult(Schema.fromJsonString(KeyLinkDown));
 const encodeUp = Schema.encodeSync(Schema.fromJsonString(KeyLinkUp));
+/** The task a `task` frame names, read past what of it the Mate cannot decode. */
+const decodeNamedTask = Schema.decodeUnknownOption(
+  Schema.fromJsonString(
+    Schema.Struct({
+      type: Schema.Literal("task"),
+      task: Schema.Struct({ id: TrimmedNonEmptyString }),
+    }),
+  ),
+);
+/** What HQ hears of a task the Mate could not read, and passes on to where it came from. */
+const UNREAD_TASK = "This Mate could not read the task as HQ sent it.";
 
 type SocketEvent =
   | { readonly _tag: "open" }
@@ -396,13 +409,11 @@ export const makeZeropsHqLink = (
       // Whether HQ's latest state on this link says the Mate is automated: only then are tasks
       // reported on it.
       const automatedHere = yield* Ref.make(false);
-      const tasks = options.tasks
-        ? yield* options.tasks.open((report) =>
-            Effect.flatMap(Ref.get(automatedHere), (automated) =>
-              automated ? send({ type: "task-state", report }) : Effect.void,
-            ),
-          )
-        : undefined;
+      const reportTask = (report: MateTaskReport) =>
+        Effect.flatMap(Ref.get(automatedHere), (automated) =>
+          automated ? send({ type: "task-state", report }) : Effect.void,
+        );
+      const tasks = options.tasks ? yield* options.tasks.open(reportTask) : undefined;
       let requestSerial = 0;
       const policyRequests = new Map<
         string,
@@ -532,13 +543,29 @@ export const makeZeropsHqLink = (
             return usage?.receive(frame) ?? Effect.void;
         }
       };
+      /**
+       * A frame the Mate cannot decode: one of a newer HQ's it reads past, but a task's is logged
+       * with why and answered `failed`, so HQ and the task's source hear it was not worked.
+       */
+      const undecoded = (raw: string, error: Schema.SchemaError): Effect.Effect<void> => {
+        const named = decodeNamedTask(raw);
+        if (Option.isNone(named)) return Effect.void;
+        const taskId = named.value.task.id;
+        return Effect.logWarning("zerops hq link: could not read a task HQ sent", {
+          taskId,
+          error: error.message,
+        }).pipe(
+          Effect.andThen(onceStated(reportTask({ taskId, state: "failed", detail: UNREAD_TASK }))),
+        );
+      };
       const relay = Effect.gen(function* () {
         for (;;) {
           const event = yield* Queue.take(events);
           if (event._tag === "close") return event.close;
           if (event._tag !== "message") continue;
           const frame = decodeDown(event.raw);
-          if (Option.isSome(frame)) yield* receive(frame.value);
+          if (Result.isSuccess(frame)) yield* receive(frame.success);
+          else yield* undecoded(event.raw, frame.failure);
         }
       });
       const relayed = yield* Effect.forkScoped(
