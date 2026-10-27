@@ -1069,6 +1069,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         alwaysThinkingEnabled: false,
+        autoCompactWindow: 200000,
       });
       assert.equal(createInput?.options.thinking, undefined);
       assert.equal(createInput?.options.extraArgs?.["thinking-display"], undefined);
@@ -1097,6 +1098,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.settings, {
         alwaysThinkingEnabled: true,
         showThinkingSummaries: true,
+        autoCompactWindow: 200000,
       });
       assert.deepEqual(createInput?.options.thinking, {
         type: "adaptive",
@@ -1122,7 +1124,7 @@ describe("ClaudeAdapterLive", () => {
       });
 
       const createInput = harness.getLastCreateQueryInput();
-      assert.equal(createInput?.options.settings, undefined);
+      assert.deepEqual(createInput?.options.settings, { autoCompactWindow: 200000 });
       assert.equal(createInput?.options.thinking, undefined);
       assert.equal(createInput?.options.extraArgs?.["thinking-display"], "omitted");
     }).pipe(
@@ -1149,6 +1151,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
+        autoCompactWindow: 200000,
       });
       assert.deepEqual(createInput?.options.thinking, {
         type: "adaptive",
@@ -1179,6 +1182,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
         fastMode: true,
+        autoCompactWindow: 200000,
       });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1204,6 +1208,7 @@ describe("ClaudeAdapterLive", () => {
       const createInput = harness.getLastCreateQueryInput();
       assert.deepEqual(createInput?.options.settings, {
         showThinkingSummaries: true,
+        autoCompactWindow: 200000,
       });
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
@@ -1287,7 +1292,10 @@ describe("ClaudeAdapterLive", () => {
         const { options: customOptions, prompt: customPrompt } = yield* runCustomFlow;
         assert.equal(customOptions.model, SYNTHETIC_CLAUDE_COLLIDING_ALIAS);
         assert.equal(customOptions.effort, undefined);
-        assert.deepEqual(customOptions.settings, { showThinkingSummaries: true });
+        assert.deepEqual(customOptions.settings, {
+          showThinkingSummaries: true,
+          autoCompactWindow: 200000,
+        });
         assert.deepEqual(customHarness.query.setModelCalls, [
           `${SYNTHETIC_CLAUDE_CAPABLE_MODEL}[expanded]`,
           SYNTHETIC_CLAUDE_COLLIDING_ALIAS,
@@ -1300,6 +1308,7 @@ describe("ClaudeAdapterLive", () => {
         assert.deepEqual(builtInOptions.settings, {
           showThinkingSummaries: true,
           fastMode: true,
+          autoCompactWindow: 200000,
         });
       });
     },
