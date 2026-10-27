@@ -112,15 +112,20 @@ const releaseManifestAssetCommand = Command.make(
       Flag.withDescription("RFC3339 publish timestamp."),
     ),
     out: Flag.String("out").pipe(Flag.withDescription("Where to write stable.json.")),
-    previousTag: Flag.String("previous-tag").pipe(
+    publishedTags: Flag.String("published-tags").pipe(
       Flag.withDefault(""),
-      Flag.withDescription("Previous published stable tag; absence requires an attended update."),
+      Flag.withDescription(
+        "Published stable tags, whitespace-separated; none requires an attended update.",
+      ),
     ),
   },
   (config) =>
     Effect.gen(function* () {
       const fs = yield* FileSystem.FileSystem;
-      const compatibility = yield* readRollbackCompatibility(config.previousTag, config.version);
+      const compatibility = yield* readRollbackCompatibility(
+        config.publishedTags.split(/\s+/u).filter(Boolean),
+        config.version,
+      );
       const manifest = buildStableManifest({ ...config, compatibility });
       const json = yield* encodeStableManifest(manifest);
       yield* fs.writeFileString(config.out, `${json}\n`);

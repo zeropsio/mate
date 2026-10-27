@@ -275,9 +275,9 @@ jobs:
           sha256="$(cd "$release_dir" && sha256sum "$TARBALL_NAME" | cut -d ' ' -f1)"
           size="$(stat -c%s "$TARBALL" 2>/dev/null || stat -f%z "$TARBALL")"
           published_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
-          # Only the preceding published stable release can establish the rollback floor.
-          # A missing/unreadable release leaves the gate closed and still permits manual updates.
-          previous_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          # The published stable history sets the rollback floor (compatibleFrom).
+          # A missing/unreadable list leaves the gate closed and still permits manual updates.
+          published_tags="$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases --limit 1000 --json tagName --jq '.[].tagName' 2>/dev/null || true)"
           node apps/server/scripts/releaseManifestAsset.ts \
             --version "$APP_VERSION" \
             --asset "$TARBALL_NAME" \
@@ -286,7 +286,7 @@ jobs:
             --sha256 "$sha256" \
             --size "$size" \
             --published-at "$published_at" \
-            --previous-tag "$previous_tag" \
+            --published-tags "$published_tags" \
             --out "$release_dir/stable.json"
           cat "$release_dir/stable.json"
 

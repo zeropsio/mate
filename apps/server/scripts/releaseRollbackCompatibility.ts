@@ -43,74 +43,71 @@ const runtimeDeclaration = (encoded: string): string | undefined => {
 };
 
 /**
- * `packages/shared` hq* modules, nested directories included, are HQ wire schemas versioned by
- * HQ. The persistence guard test checks every path under this prefix: free of persistence
- * imports and reachable only from `zerops/`.
+ * What the previous release reads back, so a change here makes the release manual: stored rows
+ * and their migrations, persisted engine and crew events and snapshots, the state directory's
+ * files, and the update and startup path that performs the switch and the rollback. A path
+ * ending in `/` covers its directory. The rule is a blocklist: every other path, a new one included, is compatible.
+ * The server manifest's runtime declaration and the update protocol are compared separately;
+ * dependencies are judged by the lockfile closure below.
  */
-export const HQ_WIRE_MODULES = "packages/shared/src/hq";
-
-/**
- * Paths proved not to touch stored state, the updater or the zcp seam. The rule is an
- * allowlist: a path that matches nothing here makes the release manual, so a directory or
- * package added later fails closed until someone verifies it and lists it with its reason.
- * Verification per entry: no `SqlClient`, secret store or state-dir write in the directory
- * (grep `writeFile|appendFile|makeDirectory|rename|SqlClient|SecretStore|stateDir`), and what it
- * writes lives in a user workspace or a temporary directory.
- */
-const COMPATIBLE_PREFIXES: ReadonlyArray<readonly [prefix: string, reason: string]> = [
-  ["apps/web/", "the hosted client; the Mate only serves its bundle"],
-  ["apps/desktop/", "not part of the released server"],
-  ["apps/mobile/", "not part of the released server"],
-  ["docs/", "repository documents; not in the Mate artifact"],
-  [".claude/", "agent instructions; not in the Mate artifact"],
-  ["apps/hq/", "deleted; neither was in the Mate artifact"],
-  [".github/workflows/ci.yml", "verification only"],
-  [".github/workflows/signal.yml", "verification only"],
-  [".github/ISSUE_TEMPLATE/", "prose"],
-  ["oxlint-plugin-t3code/", "lint rules"],
-  ["scripts/", "repository tooling, except the ARTIFACT_FILES below"],
-  ["packages/client-runtime/", "client-only; no server file imports it"],
-  ["packages/hq-git/", "deleted; neither was in the Mate artifact"],
-  ["apps/server/src/git/", "repository operations; writes a temporary body file"],
-  ["apps/server/src/sourceControl/", "clones into user-chosen workspace directories"],
-  ["apps/server/src/textGeneration/", "one-shot generation; temporary isolated provider profiles"],
-  ["apps/server/src/project/", "setup scripts; reads settings and projections"],
-  ["apps/server/src/review/", "review service; reads"],
-  ["apps/server/src/observability/", "tracing and heap snapshots; no stored format"],
-  ["apps/server/src/diagnostics/", "reads"],
-  ["apps/server/src/resourceTelemetry/", "in-memory samples"],
-  ["apps/server/src/background/", "reads settings; no stored format"],
-  ["apps/server/src/stream/", "stream helpers"],
-  ["apps/server/src/utils/", "pure helpers"],
-  ["apps/server/src/workspace/", "reads and writes the user's workspace files only"],
-  ["apps/server/src/testUtils/", "test tooling"],
-  ["apps/server/src/testing/", "test tooling"],
-  [HQ_WIRE_MODULES, "HQ wire schemas, not stored by the Mate"],
-];
-
-/** Files under an allowlisted prefix that still shape the released artifact. */
-const ARTIFACT_FILES: ReadonlySet<string> = new Set([
+export const BLOCKING_PATHS: ReadonlyArray<readonly [path: string, reason: string]> = [
+  ["apps/server/src/persistence/", "SQL migrations, repositories and their row schemas"],
+  ["apps/server/src/engine/store/", "the engine event store, its migrations and projections"],
+  ["apps/server/src/engine/domain/command.ts", "persisted engine commands and events"],
+  ["apps/server/src/engine/domain/conversationDomain.ts", "the conversation record's codec"],
+  ["apps/server/src/engine/domain/evolve.ts", "the fold behind the stored snapshot"],
+  ["apps/server/src/engine/domain/state.ts", "the stored snapshot"],
+  ["apps/server/src/engine/domain/ids.ts", "derived ids a restart converges on"],
+  ["apps/server/src/engine/outbox/", "effect outbox rows"],
+  ["apps/server/src/engine/wakes/", "scheduled wake rows"],
+  ["apps/server/src/engine/wire/records.ts", "engine wire record rows"],
+  ["apps/server/src/usage/UsageOutbox.ts", "usage outbox rows"],
+  ["apps/server/src/zerops/ZeropsSetup.ts", "setup rows"],
+  ["apps/server/src/zerops/crew/CrewStore.ts", "crew rows"],
+  ["apps/server/src/zerops/crew/engine/CrewOwner.ts", "crew rows and their codec"],
+  ["apps/server/src/zerops/crew/engine/command.ts", "persisted crew commands"],
+  ["apps/server/src/zerops/crew/engine/events.ts", "persisted crew events"],
+  ["apps/server/src/zerops/crew/engine/evolve.ts", "the fold behind the stored crew state"],
+  ["apps/server/src/zerops/crew/engine/state.ts", "the stored crew state"],
+  ["apps/server/src/zerops/crew/engine/importV1Crew.ts", "reads the first crew store"],
+  ["packages/contracts/src/engine.ts", "persisted engine event and command payloads"],
+  ["packages/contracts/src/orchestration.ts", "persisted orchestration events"],
+  ["apps/server/src/provider/Layers/", "adapters write the resume cursor stored per session"],
+  ["apps/server/src/config.ts", "the state directory's layout"],
+  ["apps/server/src/serverSettings.ts", "settings.json"],
+  ["packages/contracts/src/settings.ts", "settings.json"],
+  ["apps/server/src/keybindings.ts", "keybindings.json"],
+  ["packages/contracts/src/keybindings.ts", "keybindings.json"],
+  ["apps/server/src/serverRuntimeState.ts", "server-runtime.json"],
+  ["apps/server/src/auth/ServerSecretStore.ts", "the secrets directory"],
+  ["apps/server/src/auth/SessionStore.ts", "stored sessions"],
+  ["apps/server/src/auth/replayMarkers.ts", "stored replay markers"],
+  ["apps/server/src/attachmentPaths.ts", "the attachments directory's layout"],
+  ["apps/server/src/attachmentStore.ts", "stored attachments"],
+  ["apps/server/src/uploadsFolder.ts", "the uploads index"],
+  ["apps/server/src/zerops/ZeropsGitCredentialFile.ts", "the stored git credential"],
+  ["apps/server/src/environment/ServerEnvironment.ts", "environment id, epoch, readiness probe"],
+  ["apps/server/src/cli/config.ts", "the serve flags and environment zcp starts each release with"],
+  ["apps/server/src/update/", "drain, admission fence and native resume across the switch"],
+  ["apps/server/src/engine/updateAdmission.ts", "update admission"],
+  ["apps/server/src/engine/updateDrain.ts", "update drain"],
+  ["apps/server/src/engine/updateIdle.ts", "update idle barrier"],
+  ["apps/server/src/RpcUpdateAdmission.ts", "update admission"],
+  ["apps/server/src/ws.ts", "refuses changing calls while an update waits"],
+  ["apps/server/src/mateUpdateBoot.ts", "update boot"],
+  ["apps/server/src/serverRuntimeStartup.ts", "startup"],
+  ["apps/server/src/server.ts", "wires startup, the update route and admission"],
+  ["apps/server/src/spi/ProviderUpdateSafety.ts", "provider update safety"],
+  ["apps/server/src/zerops/mateUpdateHttp.ts", "the update route zcp calls"],
+  ["apps/server/src/zerops/ZeropsMateUpdate.ts", "the update service"],
+  ["apps/server/src/zerops/mateAutoUpdate.logic.ts", "the automatic update decision"],
   // What the pack inlines, and what the release manifest leaves for npm to resolve.
-  "scripts/lib/cli-external-packages.ts",
+  ["scripts/lib/cli-external-packages.ts", "the artifact's runtime dependencies"],
   // The versions `catalog:` resolves to in the release manifest.
-  "scripts/lib/resolve-catalog.ts",
+  ["scripts/lib/resolve-catalog.ts", "the artifact's runtime dependency versions"],
   // The `define` constants baked into dist/bin.mjs.
-  "scripts/lib/public-config.ts",
-]);
-
-/**
- * Single files whose change cannot alter what the previous release reads back. The server
- * manifest's runtime declaration and the update protocol are compared separately; dependencies
- * are judged by the lockfile closure below.
- */
-const COMPATIBLE_FILES: ReadonlySet<string> = new Set([
-  "package.json",
-  "pnpm-workspace.yaml",
-  "apps/server/package.json",
-  "apps/server/update-protocol.json",
-  ".github/pull_request_template.md",
-  "zerops.yml",
-]);
+  ["scripts/lib/public-config.ts", "constants baked into the artifact"],
+];
 
 /** A `link:` target resolved against its importer directory, as the lockfile's importer id. */
 const resolveLink = (from: string, target: string): string =>
@@ -124,23 +121,14 @@ const resolveLink = (from: string, target: string): string =>
 
 const isTest = (path: string): boolean => /\.test\.tsx?$/u.test(path);
 
-/**
- * Markdown at the repository root (AGENTS.md, CLAUDE.md, README.md, CONTRIBUTING.md, …) and any
- * README: repository documents, not in the Mate artifact, which packs only `dist`.
- */
-const isRepositoryDocument = (path: string): boolean =>
-  (!path.includes("/") && path.endsWith(".md")) || /(^|\/)README[^/]*$/u.test(path);
-
-/** Paths outside the allowlist. The lockfile is judged separately. */
-const unlistedPaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> =>
+/** Changed paths on the blocklist. Tests are not in the artifact; the lockfile is judged separately. */
+const blockingPaths = (paths: ReadonlyArray<string>): ReadonlyArray<string> =>
   paths.filter(
     (path) =>
-      path !== "pnpm-lock.yaml" &&
       !isTest(path) &&
-      (ARTIFACT_FILES.has(path) ||
-        (!COMPATIBLE_FILES.has(path) &&
-          !isRepositoryDocument(path) &&
-          !COMPATIBLE_PREFIXES.some(([prefix]) => path.startsWith(prefix)))),
+      BLOCKING_PATHS.some(([blocked]) =>
+        blocked.endsWith("/") ? path.startsWith(blocked) : path === blocked,
+      ),
   );
 
 const NAMED_BLOCKERS = 20;
@@ -214,9 +202,8 @@ const serverRuntimeClosure = (lock: string): string | undefined => {
 
 /**
  * Why the release needs an attended update, or undefined when it may update automatically.
- * A release is rollback-compatible from the previous stable only when every changed path is on
- * the allowlist, the server's runtime dependency closure did not move, and the runtime
- * declaration and update protocol are unchanged. Anything unproven is a blocker.
+ * A release is rollback-compatible from the previous stable unless it changes a blocklisted
+ * path, the server's runtime dependency closure, the runtime declaration or the update protocol.
  */
 export function rollbackBlocker(evidence: RollbackEvidence): string | undefined {
   const from = evidence.previousTag.startsWith("v") ? evidence.previousTag.slice(1) : "";
@@ -241,14 +228,14 @@ export function rollbackBlocker(evidence: RollbackEvidence): string | undefined 
     evidence.changedPaths.includes("pnpm-lock.yaml") &&
     (previous === undefined || previous !== current);
   const blocking = [
-    ...unlistedPaths(evidence.changedPaths),
+    ...blockingPaths(evidence.changedPaths),
     ...(lockMoved
       ? ["pnpm-lock.yaml (the server's runtime dependencies moved or cannot be compared)"]
       : []),
   ];
   if (blocking.length === 0) return undefined;
   const more = blocking.length - NAMED_BLOCKERS;
-  return `${blocking.length} changed path(s) not proved free of stored or seam state: ${blocking
+  return `${blocking.length} changed path(s) the previous release reads back: ${blocking
     .slice(0, NAMED_BLOCKERS)
     .join(", ")}${more > 0 ? ` and ${more} more` : ""}`;
 }
@@ -259,13 +246,15 @@ export function rollbackCompatibility(evidence: RollbackEvidence): RollbackCompa
     : MANUAL;
 }
 
-/** A failed or incomplete git probe never stamps permission into a release. */
+/**
+ * The candidate's rollback range over the published stable history: compatibleFrom is the oldest
+ * published release R such that every release after R, the candidate included, is
+ * rollback-compatible with the one before it, so a Mate several compatible releases behind still
+ * updates automatically. The walk stops at the first manual step. A failed or incomplete git
+ * probe never stamps permission into a release.
+ */
 export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
-  function* (previousTag: string, candidateVersion: string, cwd?: string) {
-    const manual = (reason: string) =>
-      Effect.logInfo(`[release] manual update: ${reason}`).pipe(Effect.as(MANUAL));
-    if (!previousTag.startsWith("v") || !stableVersion.test(previousTag.slice(1)))
-      return yield* manual(`previous tag ${previousTag} is not a stable release`);
+  function* (publishedTags: ReadonlyArray<string>, candidateVersion: string, cwd?: string) {
     const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const git = Effect.fnUntraced(function* (args: ReadonlyArray<string>) {
       const child = yield* spawner.spawn(ChildProcess.make("git", args, { stderr: "ignore", cwd }));
@@ -275,47 +264,86 @@ export const readRollbackCompatibility = Effect.fn("readRollbackCompatibility")(
       );
       return { output, code };
     }, Effect.scoped);
-    const previousSource = yield* readReleaseSource(previousTag, git);
-    const currentSource = yield* readReleaseSource("HEAD", git);
-    if (previousSource === undefined || currentSource === undefined)
-      return yield* manual(`the release source of ${previousTag} or HEAD cannot be read`);
-    const ancestor = yield* git(["merge-base", "--is-ancestor", previousSource, currentSource]);
-    if (ancestor.code !== 0)
-      return yield* manual(`${previousTag} is not an ancestor of the candidate`);
-    const reads = {
-      previousProtocol: yield* git(["show", `${previousTag}:apps/server/update-protocol.json`]),
-      currentProtocol: yield* git(["show", "HEAD:apps/server/update-protocol.json"]),
-      previousPackage: yield* git(["show", `${previousTag}:apps/server/package.json`]),
-      currentPackage: yield* git(["show", "HEAD:apps/server/package.json"]),
-      changed: yield* git(["diff", "--no-renames", "--name-only", "-z", previousTag, "HEAD"]),
-    };
-    const failed = Object.entries(reads).find(([, read]) => read.code !== 0);
-    if (failed !== undefined) return yield* manual(`git could not read ${failed[0]}`);
-    const changedPaths = reads.changed.output.split("\0").filter(Boolean);
-    const lockChanged = changedPaths.includes("pnpm-lock.yaml");
-    const previousLock = lockChanged
-      ? yield* git(["show", `${previousTag}:pnpm-lock.yaml`])
-      : undefined;
-    const currentLock = lockChanged ? yield* git(["show", "HEAD:pnpm-lock.yaml"]) : undefined;
-    const evidence: RollbackEvidence = {
-      previousTag,
-      candidateVersion,
-      ancestor: true,
-      previousProtocol: Option.getOrUndefined(decodeProtocol(reads.previousProtocol.output))
-        ?.protocol,
-      currentProtocol: Option.getOrUndefined(decodeProtocol(reads.currentProtocol.output))
-        ?.protocol,
-      previousPackage: reads.previousPackage.output,
-      currentPackage: reads.currentPackage.output,
-      changedPaths,
-      ...(previousLock?.code === 0 && currentLock?.code === 0
-        ? { lockfiles: { previous: previousLock.output, current: currentLock.output } }
-        : {}),
-    };
-    const blocker = rollbackBlocker(evidence);
-    return blocker === undefined
-      ? rollbackCompatibility(evidence)
-      : yield* manual(`${previousTag} → ${candidateVersion}: ${blocker}`);
+    /** Why `currentRef` (release `currentVersion`) is not rollback-compatible with `previousTag`. */
+    const stepBlocker = Effect.fnUntraced(function* (
+      previousTag: string,
+      currentRef: string,
+      currentVersion: string,
+    ) {
+      const previousSource = yield* readReleaseSource(previousTag, git);
+      const currentSource = yield* readReleaseSource(currentRef, git);
+      if (previousSource === undefined || currentSource === undefined)
+        return `the release source of ${previousTag} or ${currentRef} cannot be read`;
+      const ancestor = yield* git(["merge-base", "--is-ancestor", previousSource, currentSource]);
+      if (ancestor.code !== 0) return `${previousTag} is not an ancestor of ${currentRef}`;
+      const reads = {
+        previousProtocol: yield* git(["show", `${previousTag}:apps/server/update-protocol.json`]),
+        currentProtocol: yield* git(["show", `${currentRef}:apps/server/update-protocol.json`]),
+        previousPackage: yield* git(["show", `${previousTag}:apps/server/package.json`]),
+        currentPackage: yield* git(["show", `${currentRef}:apps/server/package.json`]),
+        changed: yield* git(["diff", "--no-renames", "--name-only", "-z", previousTag, currentRef]),
+      };
+      const failed = Object.entries(reads).find(([, read]) => read.code !== 0);
+      if (failed !== undefined) return `git could not read ${failed[0]}`;
+      const changedPaths = reads.changed.output.split("\0").filter(Boolean);
+      const lockChanged = changedPaths.includes("pnpm-lock.yaml");
+      const previousLock = lockChanged
+        ? yield* git(["show", `${previousTag}:pnpm-lock.yaml`])
+        : undefined;
+      const currentLock = lockChanged
+        ? yield* git(["show", `${currentRef}:pnpm-lock.yaml`])
+        : undefined;
+      return rollbackBlocker({
+        previousTag,
+        candidateVersion: currentVersion,
+        ancestor: true,
+        previousProtocol: Option.getOrUndefined(decodeProtocol(reads.previousProtocol.output))
+          ?.protocol,
+        currentProtocol: Option.getOrUndefined(decodeProtocol(reads.currentProtocol.output))
+          ?.protocol,
+        previousPackage: reads.previousPackage.output,
+        currentPackage: reads.currentPackage.output,
+        changedPaths,
+        ...(previousLock?.code === 0 && currentLock?.code === 0
+          ? { lockfiles: { previous: previousLock.output, current: currentLock.output } }
+          : {}),
+      });
+    });
+    const history = publishedTags
+      .filter(
+        (tag) =>
+          tag.startsWith("v") &&
+          stableVersion.test(tag.slice(1)) &&
+          stableVersion.test(candidateVersion) &&
+          compareSemverVersions(tag.slice(1), candidateVersion) < 0,
+      )
+      .toSorted((a, b) => compareSemverVersions(b.slice(1), a.slice(1)));
+    if (history.length === 0) {
+      yield* Effect.logInfo(
+        `[release] manual update: no published stable release precedes ${candidateVersion}`,
+      );
+      return MANUAL;
+    }
+    let currentRef = "HEAD";
+    let currentVersion = candidateVersion;
+    let compatibleFrom: string | undefined;
+    for (const tag of history) {
+      const blocker = yield* stepBlocker(tag, currentRef, currentVersion);
+      if (blocker !== undefined) {
+        yield* Effect.logInfo(
+          compatibleFrom === undefined
+            ? `[release] manual update: ${tag} → ${candidateVersion}: ${blocker}`
+            : `[release] rollback-compatible from ${compatibleFrom}; ${tag} → ${currentVersion} is manual: ${blocker}`,
+        );
+        break;
+      }
+      compatibleFrom = tag.slice(1);
+      currentRef = tag;
+      currentVersion = compatibleFrom;
+    }
+    return compatibleFrom === undefined
+      ? MANUAL
+      : ({ rollbackCompatible: true, compatibleFrom } as const);
   },
   Effect.orElseSucceed(() => MANUAL),
 );

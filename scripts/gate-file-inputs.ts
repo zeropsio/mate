@@ -59,6 +59,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
     "apps/server/src/**",
     "packages/shared/src/**",
     "packages/contracts/src/**",
+    "scripts/lib/**",
   ],
   "apps/server/src/assets/AssetAccess.test.ts": [],
   "apps/server/src/assets/AttachmentUpload.test.ts": [],
