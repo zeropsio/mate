@@ -671,6 +671,8 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
       attention: attention(said({ working: 1 })),
       threads: [{ ...WORKING, title: "Fix the build" }],
       overviews: onEngine(engineRow("t1", {})),
+      // Its socket stands: the shell this page holds is current.
+      standing: new Set([VERA_ENV]),
     });
     expect(activity).toMatchObject({ subject: "Fix the build" });
   });
@@ -736,7 +738,8 @@ describe("matesActivityOf — what a Mate's row keeps between reads", () => {
     hqCurrent: true,
     threads,
     sockets: new Map(),
-    standing: new Set(),
+    // Vera's socket stands: the shell this page holds of her chat is current.
+    standing: new Set([VERA_ENV]),
     lastVisitedAtById: {},
   });
   const first = matesActivityOf(twoMates([WORKING]));
@@ -941,7 +944,8 @@ it("direct and HQ attention keep the same restart item even when conversation wo
       hqCurrent: true,
       threads,
       sockets: new Map(),
-      standing: new Set(),
+      // Its socket stands: a shell this page holds is current.
+      standing: new Set([VERA_ENV]),
       lastVisitedAtById: {},
     };
     const read = matesActivityOf(input).get("vera");

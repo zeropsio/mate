@@ -148,6 +148,7 @@ export function useToldActivity(projectId: string): ZeropsAgentActivity | undefi
       environmentId: read.attention.source.environmentId,
       overview: told,
       shells: [],
+      followed: false,
       lastVisitedAtById: {},
     });
   }, [told, read]);
