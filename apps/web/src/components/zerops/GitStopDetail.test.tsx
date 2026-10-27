@@ -8,6 +8,7 @@ import type { HqPushNavigationJob } from "@t3tools/shared/hqStream";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
+import { OperationStopped } from "@t3tools/client-runtime/data";
 import { GitStopDetail } from "./GitStopDetail";
 const environment = {
   id: HqEnvironmentId.make("git-bookmark"),
@@ -425,4 +426,82 @@ it("A Git release keeps a refused repository visible beside a pushed repository.
       releases: [historyRelease],
     }),
   ).toEqual(['v0.1.2releaseweb bbbbbbb · web: Stage CI "check" failed.api: Pushed · web: Refused']);
+});
+
+describe("Git environment detail answers", () => {
+  const mount = async (props: Partial<Parameters<typeof GitStopDetail>[0]>) => {
+    const host = document.createElement("div");
+    const root = createRoot(host);
+    const projected = gitDeliveryOf(environment, { releases: [], repos: [] });
+    if (projected === undefined) throw new Error("The Git fixture must project a Git delivery");
+    const delivery = {
+      ...projected,
+      repositories: [
+        {
+          repo: "web",
+          sha: "a".repeat(40),
+          state: "unknown" as const,
+          reason: null,
+          job: undefined,
+          confirmed: undefined,
+        },
+      ],
+    };
+    await act(async () =>
+      root.render(
+        <GitStopDetail
+          environment={environment}
+          delivery={delivery}
+          repos={repos}
+          can={{ remove_git_environment: { allow: true }, redeploy: { allow: true } }}
+          onRemove={async () => {}}
+          {...props}
+        />,
+      ),
+    );
+    const click = async (label: string) =>
+      act(async () =>
+        [...host.querySelectorAll("button")]
+          .find((button) => button.textContent === label)!
+          .click(),
+      );
+    return { host, click, unmount: async () => act(async () => root.unmount()) };
+  };
+
+  it("a refused removal or Run again says HQ's reason, not that HQ couldn't confirm", async () => {
+    const reason = "Only the organization's owner or admin can change this.";
+    const refuse = vi.fn(async () => {
+      throw new OperationStopped(reason, "not_structure_writer");
+    });
+    const view = await mount({ onRemove: refuse, onRunAgain: refuse });
+    try {
+      await view.click("Run web again");
+      expect(view.host.textContent).toContain(reason);
+      expect(view.host.textContent).not.toContain("couldn't confirm");
+      await view.click("Remove environment");
+      await view.click("Confirm removal");
+      expect(refuse).toHaveBeenCalledTimes(2);
+      expect(view.host.textContent).toContain(reason);
+      expect(view.host.textContent).not.toContain("couldn't confirm");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("a repository mirrored through the GitHub app never shows token copy on removal", async () => {
+    const through = (via?: "app") => [
+      { ...repos[0]!, remote: { ...repos[0]!.remote, ...(via === undefined ? {} : { via }) } },
+    ];
+    const text = async (via?: "app") => {
+      const view = await mount({ repos: through(via) });
+      try {
+        await view.click("Remove environment");
+        return view.host.textContent ?? "";
+      } finally {
+        await view.unmount();
+      }
+    };
+    expect(await text("app")).not.toContain("token stays valid");
+    expect(await text()).toContain("token stays valid");
+  });
 });

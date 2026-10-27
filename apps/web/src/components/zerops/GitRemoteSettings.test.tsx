@@ -60,6 +60,21 @@ describe("Repositories in a project page's column", () => {
     );
     expect(html).toContain("The remote refused Mate&#x27;s token. Replace token.");
   });
+
+  it("a repository mirrored through the GitHub app never shows token copy when GitHub refuses it", () => {
+    const html = renderToStaticMarkup(
+      <GitRemoteLines
+        repos={[
+          {
+            ...repos[0]!,
+            remote: { ...remote, via: "app", invalidSince: remote.keptAt },
+          },
+        ]}
+      />,
+    );
+    expect(html).not.toMatch(/token/i);
+    expect(html).toContain("GitHub refused the app");
+  });
 });
 
 describe("Application repositories", () => {
@@ -744,6 +759,12 @@ describe("mirroring through the organization's GitHub app", () => {
       await view.click("Connect on GitHub");
       expect(viaApp).toHaveBeenCalledWith("appdev", "acme/tea-shop");
       await view.click("Stop following");
+      expect(unfollow).not.toHaveBeenCalled();
+      expect(view.host.textContent).toContain("The repository stays on GitHub.");
+      await view.click("Cancel");
+      expect(unfollow).not.toHaveBeenCalled();
+      await view.click("Stop following");
+      await view.click("Confirm stop following");
       expect(unfollow).toHaveBeenCalledWith("appdev");
       await view.render({
         github: app,
@@ -774,6 +795,7 @@ describe("mirroring through the organization's GitHub app", () => {
     });
     try {
       await view.click("Stop following");
+      await view.click("Confirm stop following");
       expect(view.host.textContent).toContain(
         "Only the organization's owner or admin can change this.",
       );
@@ -829,6 +851,26 @@ describe("mirroring through the organization's GitHub app", () => {
       expect(view.buttons()).toContain("Use Acme Mate instead");
       expect(view.host.textContent?.includes("Remove those Git environments first")).toBe(shown);
       expect(view.buttons()).not.toContain("Disconnect");
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it("says HQ's refusal to disconnect, not that HQ couldn't confirm", async () => {
+    const reason = "Only the organization's owner or admin can change this.";
+    const refuse = vi.fn(async () => {
+      throw new OperationStopped(reason, "not_structure_writer");
+    });
+    const view = await mount({
+      github: app,
+      actions: { ...actions, disconnect: refuse },
+      repos,
+    });
+    try {
+      await view.click("Disconnect");
+      await view.click("Confirm disconnect");
+      expect(view.host.textContent).toContain(reason);
+      expect(view.host.textContent).not.toContain("couldn't confirm");
     } finally {
       await view.unmount();
     }
@@ -967,11 +1009,10 @@ it("Stop following returns a followed repository to not mirrored once HQ's recor
     expect(host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe(
       "Follows github.com/acme/tea-shop · Mate keeps the code",
     );
-    await act(async () =>
-      [...host.querySelectorAll("button")]
-        .find((node) => node.textContent === "Stop following")!
-        .click(),
-    );
+    for (const label of ["Stop following", "Confirm stop following"])
+      await act(async () =>
+        [...host.querySelectorAll("button")].find((node) => node.textContent === label)!.click(),
+      );
     await render();
     expect(host.querySelector("[data-zerops-mirror-state]")?.textContent).toBe("Not mirrored");
     expect([...host.querySelectorAll("button")].map((node) => node.textContent)).not.toContain(

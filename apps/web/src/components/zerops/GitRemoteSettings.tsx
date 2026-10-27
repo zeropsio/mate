@@ -6,6 +6,7 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
 import { hqOffer } from "@t3tools/shared/hqOffers";
+import { stoppedWords } from "~/zerops/stoppedWords";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useId, useState } from "react";
 import { Button, InlineButton } from "~/components/ui/button";
@@ -77,7 +78,11 @@ export function GitRemoteLines({
             {repo.name} → {gitRemoteLabel(repo.remote.url)}
           </p>
           {repo.remote.invalidSince === null ? null : (
-            <p className="rv-note">The remote refused Mate's token. Replace token.</p>
+            <p className="rv-note">
+              {repo.remote.via === "app"
+                ? "GitHub refused the app's access to this repository."
+                : "The remote refused Mate's token. Replace token."}
+            </p>
           )}
           {repo.remote.expiresAt == null ||
           gitRemoteExpiry(repo.remote, now) === undefined ? null : (
@@ -195,6 +200,7 @@ function Remote({
   const [awaitingRecord, setAwaitingRecord] = useState(false);
   const [answer, setAnswer] = useState<string | undefined>();
   const [disconnecting, setDisconnecting] = useState(false);
+  const [unfollowing, setUnfollowing] = useState(false);
   const urlId = useId();
   const tokenId = useId();
   const repositoryId = useId();
@@ -264,11 +270,13 @@ function Remote({
     setAnswer(undefined);
     try {
       await unfollow(repo.name);
+      setUnfollowing(false);
     } catch (cause) {
       setAnswer(
-        cause instanceof OperationStopped
-          ? cause.message
-          : "HQ couldn't confirm it stopped following. Check it before trying again.",
+        stoppedWords(
+          cause,
+          "HQ couldn't confirm it stopped following. Check it before trying again.",
+        ),
       );
     } finally {
       setBusy(false);
@@ -282,9 +290,7 @@ function Remote({
       await viaApp(repo.name, repository);
     } catch (cause) {
       setAnswer(
-        cause instanceof OperationStopped
-          ? cause.message
-          : "HQ couldn't confirm the mirror. Check it before trying again.",
+        stoppedWords(cause, "HQ couldn't confirm the mirror. Check it before trying again."),
       );
     } finally {
       setBusy(false);
@@ -371,17 +377,37 @@ function Remote({
               Connect on GitHub
             </Button>
           ) : null}
-          {unfollow !== undefined ? (
+          {unfollow !== undefined && !unfollowing ? (
             <Button
               className="ms-auto"
               disabled={busy}
               size="sm"
               variant="ghost"
-              onClick={() => void stopFollowing()}
+              onClick={() => setUnfollowing(true)}
             >
               Stop following
             </Button>
           ) : null}
+        </div>
+      ) : null}
+      {unfollow !== undefined && unfollowing ? (
+        <div className="grid gap-2">
+          <p className="rv-note">
+            Stop following forgets the GitHub repository HQ follows. The repository stays on GitHub.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              size="sm"
+              variant="destructive"
+              disabled={busy}
+              onClick={() => void stopFollowing()}
+            >
+              Confirm stop following
+            </Button>
+            <Button size="sm" variant="ghost" disabled={busy} onClick={() => setUnfollowing(false)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       ) : null}
       {remote == null &&
@@ -592,9 +618,12 @@ function Remote({
                   try {
                     await actions.disconnect!(repo.name);
                     setDisconnecting(false);
-                  } catch {
+                  } catch (cause) {
                     setAnswer(
-                      "HQ couldn't confirm disconnect. Check its outcome before trying again.",
+                      stoppedWords(
+                        cause,
+                        "HQ couldn't confirm disconnect. Check its outcome before trying again.",
+                      ),
                     );
                   } finally {
                     setBusy(false);
@@ -627,9 +656,12 @@ function Remote({
                 try {
                   await review!.confirm();
                   setVerifiedAddress(undefined);
-                } catch {
+                } catch (cause) {
                   setAnswer(
-                    "HQ couldn't confirm the new address. Check its outcome before trying again.",
+                    stoppedWords(
+                      cause,
+                      "HQ couldn't confirm the new address. Check its outcome before trying again.",
+                    ),
                   );
                 } finally {
                   setBusy(false);

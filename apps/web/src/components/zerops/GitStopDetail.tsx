@@ -9,6 +9,7 @@ import { Atom } from "effect/reactivity";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useAccountOperationsOptional } from "~/zerops/accountOperations";
 import { hqProjectIdOf } from "~/zerops/hqWrites";
+import { stoppedWords } from "~/zerops/stoppedWords";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import {
   flowReleaseOf,
@@ -169,9 +170,12 @@ export function GitStopDetail({
                 setBusy(true);
                 try {
                   await onRunAgain(repo.repo);
-                } catch {
+                } catch (cause) {
                   setNotice(
-                    "HQ couldn't confirm Run again. Check its outcome before trying again.",
+                    stoppedWords(
+                      cause,
+                      "HQ couldn't confirm Run again. Check its outcome before trying again.",
+                    ),
                   );
                 } finally {
                   setBusy(false);
@@ -255,7 +259,9 @@ export function GitEnvironmentRemoval({
   const [busy, setBusy] = useState(false);
   const [removing, setRemoving] = useState(false);
   const targets = repos?.flatMap((repo) =>
-    repo.remote == null ? [] : [{ name: repo.name, url: repo.remote.url }],
+    repo.remote == null
+      ? []
+      : [{ name: repo.name, url: repo.remote.url, viaApp: repo.remote.via === "app" }],
   );
   const targetKnown =
     environment.tier !== "production" || (targets !== undefined && targets.length > 0);
@@ -296,7 +302,10 @@ export function GitEnvironmentRemoval({
           )}
           <p className="rv-note">
             Its push history goes with it. Removing this environment never deletes an external
-            branch or undoes a push. The token stays valid at its host until you revoke it there.
+            branch or undoes a push.
+            {targets?.length && targets.every((target) => target.viaApp)
+              ? ""
+              : " The token stays valid at its host until you revoke it there."}
           </p>
           {delivery?.standing === "unresolved" ? (
             <p className="rv-note">
@@ -331,8 +340,13 @@ export function GitEnvironmentRemoval({
               try {
                 await onRemove?.(historyLoss ? true : undefined);
                 setRemoving(false);
-              } catch {
-                setNotice("HQ couldn't confirm removal. Check its outcome before trying again.");
+              } catch (cause) {
+                setNotice(
+                  stoppedWords(
+                    cause,
+                    "HQ couldn't confirm removal. Check its outcome before trying again.",
+                  ),
+                );
               } finally {
                 setBusy(false);
               }
