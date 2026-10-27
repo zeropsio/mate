@@ -169,3 +169,110 @@ describe("ZeropsCli.mateUpdate", () => {
     }),
   );
 });
+
+describe("ZeropsCli.leaseRelease", () => {
+  const branch = { branch: "feat-x", repo: "https://hq.example/git/app/web.git" };
+  const stubWithin = (script: string, timeoutMs: number): CliEffect =>
+    ZeropsCli.make({
+      command: process.execPath,
+      baseArgs: ["-e", script],
+      cwd: process.cwd(),
+      leaseReleaseTimeout: timeoutMs,
+    });
+
+  it.effect("asks zcp to release the branch's leases, never forced", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        stub(
+          `process.stdout.write(JSON.stringify({released:[{lease:"webpool-3",outcome:process.argv.slice(1).join(" ")}]}))`,
+        ),
+        (cli) => cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({
+        outcome: "released",
+        leases: [
+          {
+            lease: "webpool-3",
+            outcome:
+              "lease release --branch feat-x --repo https://hq.example/git/app/web.git --json",
+          },
+        ],
+      });
+    }),
+  );
+
+  it.effect("a branch zcp released reads released, with each lease's outcome", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        stub(
+          `process.stdout.write('{"released":[{"lease":"webpool-3","outcome":"kept-warm"},{"lease":"apipool-1","outcome":"removed"}]}')`,
+        ),
+        (cli) => cli.leaseRelease({ branch: "feat-x" }),
+      );
+      expect(result).toEqual({
+        outcome: "released",
+        leases: [
+          { lease: "webpool-3", outcome: "kept-warm" },
+          { lease: "apipool-1", outcome: "removed" },
+        ],
+      });
+    }),
+  );
+
+  it.effect("a release zcp refused for unsaved work reads refused, naming what is unsaved", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        stub(
+          `process.stdout.write('{"refused":[{"lease":"webpool-3","unsaved":{"files":["src/app.ts"],"commits":["abc1234 wip"]}}]}'); process.exit(3)`,
+        ),
+        (cli) => cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({
+        outcome: "refused",
+        leases: [
+          { lease: "webpool-3", unsaved: { files: ["src/app.ts"], commits: ["abc1234 wip"] } },
+        ],
+      });
+    }),
+  );
+
+  it.effect("a release zcp could not make reads failed, in zcp's words", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        stub(`process.stdout.write('{"error":"the pool did not answer"}'); process.exit(1)`),
+        (cli) => cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({ outcome: "failed", reason: "the pool did not answer" });
+    }),
+  );
+
+  // On the real clock: the bound is a real wait on a real process.
+  it.live("a release zcp does not answer in time reads failed, and zcp is not waited on", () =>
+    Effect.gen(function* () {
+      const result = yield* run(stubWithin(`setTimeout(() => {}, 10_000)`, 200), (cli) =>
+        cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({
+        outcome: "failed",
+        reason: "zcp did not answer the release within 0.2 s",
+      });
+    }),
+  );
+
+  it.effect("a zcp without the release command reads failed, never released", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        stub(`process.stderr.write("unknown command \\"lease\\"\\n"); process.exit(2)`),
+        (cli) => cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({ outcome: "failed", reason: 'unknown command "lease"' });
+    }),
+  );
+
+  it.effect("a container without zcp reads failed", () =>
+    Effect.gen(function* () {
+      const result = yield* run(missingBinary(), (cli) => cli.leaseRelease(branch));
+      expect(result.outcome).toBe("failed");
+    }),
+  );
+});

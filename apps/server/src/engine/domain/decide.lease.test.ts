@@ -127,3 +127,115 @@ describe("a conversation's lease", () => {
     },
   );
 });
+
+const archive: Command = { _tag: "Archive" };
+const releaseOf = (scene: Scene) =>
+  scene.effects.filter((effect) => effect.kind === "lease.release");
+/** The release an archive asked for settles with what zcp answered. */
+const settled = (scene: Scene, value: unknown): Command => ({
+  _tag: "EffectSettled",
+  effectId: releaseOf(scene)[0]!.effectId,
+  outcome: { kind: "ok", value },
+});
+const playFrom = (scene: Scene, command: Command): Scene => {
+  const envelope = {
+    commandId: CommandId.make(`settle-${scene.state.headSeq}`),
+    conversationId: conversation,
+    principal: engine,
+    command,
+  };
+  const decision = decide(scene.state, envelope, T0);
+  const events =
+    decision._tag === "Accept"
+      ? stampEvents(scene.state.headSeq, envelope, decision.step.events, T0)
+      : [];
+  return {
+    state: fold(scene.state, events),
+    decision,
+    events,
+    effects: decision._tag === "Accept" ? decision.step.effects : [],
+  };
+};
+
+describe("archiving a conversation gives its workspace back", () => {
+  const withRepo: ThreadLease = { ...webpool3, repo: "https://hq.example/git/app/web.git" };
+
+  it("archiving a conversation bound to a lease asks zcp to release its branch, once", () => {
+    const scene = play([bind(withRepo), archive]);
+    expect(scene.events.map((event) => event._tag)).toEqual([
+      "ConversationArchived",
+      "EffectRequested",
+    ]);
+    expect(releaseOf(scene).map((effect) => effect.payload)).toEqual([
+      { alias: "webpool-3", branch: "feat-x", repo: "https://hq.example/git/app/web.git" },
+    ]);
+  });
+
+  it("archiving a conversation without a lease asks for no release", () => {
+    expect(releaseOf(play([archive]))).toEqual([]);
+  });
+
+  it("archiving a conversation whose lease holds no branch asks for no release", () => {
+    expect(releaseOf(play([bind({ ...webpool3, branch: null }), archive]))).toEqual([]);
+  });
+
+  it("archiving an archived conversation asks for no second release", () => {
+    const again = play([bind(webpool3), archive, archive]);
+    expect(again.decision._tag).toBe("Accept");
+    expect(again.effects).toEqual([]);
+  });
+
+  it("a release zcp made unbinds the conversation and records the receipt", () => {
+    const asked = play([bind(webpool3), archive]);
+    const result = { outcome: "released", leases: [{ lease: "webpool-3", outcome: "kept-warm" }] };
+    const scene = playFrom(asked, settled(asked, { alias: "webpool-3", branch: "feat-x", result }));
+    expect(scene.events.map((event) => event._tag)).toEqual([
+      "EffectOutcomeRecorded",
+      "LeaseReleaseSettled",
+      "LeaseUnbound",
+    ]);
+    expect(scene.events.find((event) => event._tag === "LeaseReleaseSettled")).toMatchObject({
+      alias: "webpool-3",
+      branch: "feat-x",
+      result,
+    });
+    expect(scene.state.lease).toBeNull();
+  });
+
+  it.each([
+    {
+      name: "refused for unsaved work",
+      result: {
+        outcome: "refused",
+        leases: [{ lease: "webpool-3", unsaved: { files: ["src/app.ts"], commits: [] } }],
+      },
+    },
+    { name: "failed", result: { outcome: "failed", reason: "zcp did not answer within 180 s" } },
+  ])("a release zcp $name keeps the binding and records only the receipt", ({ result }) => {
+    const asked = play([bind(webpool3), archive]);
+    const scene = playFrom(asked, settled(asked, { alias: "webpool-3", branch: "feat-x", result }));
+    expect(scene.events.map((event) => event._tag)).toEqual([
+      "EffectOutcomeRecorded",
+      "LeaseReleaseSettled",
+    ]);
+    expect(scene.events.find((event) => event._tag === "LeaseReleaseSettled")).toMatchObject({
+      result,
+    });
+    expect(scene.state.lease).toEqual(webpool3);
+  });
+
+  it("a release the worker could not run keeps the binding and records it failed", () => {
+    const asked = play([bind(webpool3), archive]);
+    const scene = playFrom(asked, {
+      _tag: "EffectSettled",
+      effectId: releaseOf(asked)[0]!.effectId,
+      outcome: { kind: "failed", reason: "no handler" },
+    });
+    expect(scene.events.find((event) => event._tag === "LeaseReleaseSettled")).toMatchObject({
+      alias: "webpool-3",
+      branch: "feat-x",
+      result: { outcome: "failed", reason: "no handler" },
+    });
+    expect(scene.state.lease).toEqual(webpool3);
+  });
+});
