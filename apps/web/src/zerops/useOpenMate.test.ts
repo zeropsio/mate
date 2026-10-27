@@ -166,6 +166,20 @@ describe("useOpenMate — a Mate HQ tells of", () => {
       params: { environmentId: ENVIRONMENT, threadId: "thread-main" },
     });
   });
+
+  // The owner, 2026-10-27: a conversation started in another browser showed in the row, and the
+  // row opened a new draft. This page keeps a Mate's conversations current only while it is open.
+  it("opens the main chat HQ names where this page has not read it yet, never a new draft", async () => {
+    app.threads = [];
+    app.toldMain = { environmentId: ENVIRONMENT, threadId: ThreadId.make("thread-elsewhere") };
+    const told = await openFen();
+    expect(told).toEqual([{ environmentId: ENVIRONMENT, threadId: "thread-elsewhere" }]);
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENVIRONMENT, threadId: "thread-elsewhere" },
+    });
+    expect(app.newThreadCalls).not.toHaveBeenCalled();
+  });
 });
 
 // The owner, 2026-09-30: "all of the sudden when I now try to open Quinn or Wren it just throws me
