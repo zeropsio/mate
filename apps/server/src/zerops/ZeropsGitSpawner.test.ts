@@ -259,6 +259,13 @@ const makeInnerSpawner = (options?: {
 }) =>
   Effect.gen(function* () {
     const calls = yield* Ref.make<ReadonlyArray<SpawnRecord>>([]);
+    /** Each spawn's environment, in order, and whether it extends the server's. */
+    const envs = yield* Ref.make<
+      ReadonlyArray<{
+        readonly env: Record<string, string | undefined> | undefined;
+        readonly extendEnv: boolean | undefined;
+      }>
+    >([]);
     const inFlight = yield* Ref.make(0);
     const peak = yield* Ref.make(0);
     const spawner = ChildProcessSpawner.make((command) =>
@@ -270,6 +277,10 @@ const makeInnerSpawner = (options?: {
         yield* Ref.update(calls, (previous) => [
           ...previous,
           { command: command.command, args: command.args },
+        ]);
+        yield* Ref.update(envs, (previous) => [
+          ...previous,
+          { env: command.options.env, extendEnv: command.options.extendEnv },
         ]);
         const current = yield* Ref.updateAndGet(inFlight, (n) => n + 1);
         yield* Ref.update(peak, (n) => Math.max(n, current));
@@ -291,7 +302,7 @@ const makeInnerSpawner = (options?: {
         });
       }),
     );
-    return { spawner, calls, peak } as const;
+    return { spawner, calls, envs, peak } as const;
   });
 
 const available = (list: ReadonlyArray<ZeropsRepository>): Effect.Effect<ZeropsRepositories> =>
@@ -409,6 +420,232 @@ describe("makeZeropsGitSpawner", () => {
           assert.deepStrictEqual(yield* Ref.get(inner.calls), []);
         }),
       ),
+  );
+
+  // A runtime the project lists with no dev checkout mounted (a stage, a service the agent never
+  // mounted): the Git tab asks its status at /var/www/<host> all the same.
+  it.effect(
+    "hands git at a workspace path no mount holds to the platform, where git finds no repository",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: available(repositories),
+            refresh: available(repositories),
+            inner: inner.spawner,
+          });
+
+          yield* spawner.spawn(
+            ChildProcess.make("git", [
+              "-C",
+              "/var/www/imgrun",
+              "rev-parse",
+              "--is-inside-work-tree",
+            ]),
+          );
+          yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }));
+
+          assert.deepStrictEqual(yield* Ref.get(inner.calls), [
+            {
+              command: "git",
+              args: ["-C", "/var/www/imgrun", "rev-parse", "--is-inside-work-tree"],
+            },
+            { command: "git", args: ["status"] },
+          ]);
+        }),
+      ),
+  );
+
+  // An unmounted path's directory can outlive its mount: git there must not answer for whatever
+  // repository holds the workspace root itself.
+  it.effect(
+    "git at a workspace path no mount holds never looks for a repository above that path",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const inner = yield* makeInnerSpawner();
+          const spawner = makeZeropsGitSpawner({
+            enabled: true,
+            repositories: available(repositories),
+            refresh: available(repositories),
+            inner: inner.spawner,
+          });
+
+          yield* spawner.spawn(
+            ChildProcess.make("git", ["-C", "/var/www/imgrun", "status"], {
+              env: { GIT_CEILING_DIRECTORIES: "/home/zerops", LC_ALL: "C" },
+            }),
+          );
+          yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }));
+
+          const [first, second] = yield* Ref.get(inner.envs);
+          assert.includeMembers(first?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], [
+            "/var/www",
+            "/home/zerops",
+          ]);
+          assert.strictEqual(first?.env?.LC_ALL, "C");
+          assert.include(second?.env?.GIT_CEILING_DIRECTORIES?.split(":") ?? [], "/var/www");
+          assert.isTrue(second?.extendEnv, "a command with no environment still inherits PATH");
+        }),
+      ),
+  );
+
+  // Review r4-8: local git honours the checkout's own `.git/config` (`core.fsmonitor` runs a
+  // command), so it must never run against an sshfs mount. A mount matched by prefix missed one
+  // named through `..`, `.` or `//`, or by a path-valued option relative to the location.
+  it.effect.each([
+    { case: "its location climbs into a mount", args: ["-C", "/var/www/imgrun/../kanbandev"] },
+    {
+      case: "a relative -C climbs into a mount",
+      args: ["-C", "../kanbandev", "status"],
+      cwd: "/var/www/imgrun",
+    },
+    {
+      case: "its location names a mount through a dot",
+      args: ["status"],
+      cwd: "/var/www/./kanbandev",
+    },
+    {
+      case: "its git directory names a mount through a double slash",
+      args: ["--git-dir=/var/www//kanbandev/.git", "status"],
+      cwd: "/var/www/imgrun",
+    },
+    {
+      case: "its git directory climbs into a mount",
+      args: ["status"],
+      cwd: "/var/www/imgrun",
+      env: { GIT_DIR: "/var/www/imgrun/../kanbandev/.git" },
+    },
+    {
+      case: "a relative git directory climbs into a mount",
+      args: ["status"],
+      cwd: "/var/www/imgrun",
+      env: { GIT_DIR: "../kanbandev/.git" },
+    },
+  ])("never runs local git against a mount when $case", ({ args, cwd, env }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inner = yield* makeInnerSpawner();
+        const spawner = makeZeropsGitSpawner({
+          enabled: true,
+          repositories: available(repositories),
+          refresh: available(repositories),
+          inner: inner.spawner,
+        });
+
+        yield* Effect.result(
+          spawner.spawn(
+            ChildProcess.make("git", args, {
+              ...(cwd === undefined ? {} : { cwd }),
+              ...(env === undefined ? {} : { env }),
+            }),
+          ),
+        );
+
+        const local = (yield* Ref.get(inner.calls)).filter((call) => call.command === "git");
+        assert.deepStrictEqual(local, []);
+      }),
+    ),
+  );
+
+  it.effect("never takes a workspace path for no mount's on a read older than the spawn", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inner = yield* makeInnerSpawner();
+        const mountedNow = yield* Ref.make(false);
+        const fresh: ZeropsRepository = {
+          host: "imgrun",
+          mountPath: "/var/www/imgrun",
+          remotePath: "/var/www",
+        };
+        const spawner = makeZeropsGitSpawner({
+          enabled: true,
+          repositories: available(repositories),
+          refresh: Effect.flatMap(Ref.get(mountedNow), (mounted) =>
+            available(mounted ? [...repositories, fresh] : repositories),
+          ),
+          inner: inner.spawner,
+        });
+        const status = spawner.spawn(
+          ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }),
+        );
+
+        yield* status;
+        // The lease mounts its checkout there a moment later.
+        yield* Ref.set(mountedNow, true);
+        yield* status;
+
+        const calls = yield* Ref.get(inner.calls);
+        assert.deepStrictEqual(
+          calls.map((call) => call.command),
+          ["git", "ssh"],
+        );
+      }),
+    ),
+  );
+
+  it.effect("reads the mount table again before it takes a workspace path for no mount's", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inner = yield* makeInnerSpawner();
+        const fresh: ZeropsRepository = {
+          host: "newdev",
+          mountPath: "/var/www/newdev",
+          remotePath: "/var/www",
+        };
+        const spawner = makeZeropsGitSpawner({
+          enabled: true,
+          repositories: available(repositories),
+          refresh: available([...repositories, fresh]),
+          inner: inner.spawner,
+        });
+
+        yield* spawner.spawn(ChildProcess.make("git", ["status"], { cwd: "/var/www/newdev" }));
+
+        const [call] = yield* Ref.get(inner.calls);
+        assert.strictEqual(call?.command, "ssh");
+        assert.strictEqual(call?.args.at(-2), "newdev");
+      }),
+    ),
+  );
+
+  it.effect.each([
+    {
+      case: "an attachment there could not be identified",
+      read: {
+        _tag: "available",
+        repositories,
+        limitations: ["Some SSHFS attachments could not be identified."],
+      } satisfies ZeropsRepositories,
+      command: ChildProcess.make("git", ["status"], { cwd: "/var/www/imgrun" }),
+    },
+    {
+      case: "its git directory lies in a mount",
+      read: { _tag: "available", repositories } satisfies ZeropsRepositories,
+      command: ChildProcess.make("git", ["status"], {
+        cwd: "/tmp/elsewhere",
+        env: { GIT_DIR: "/var/www/kanbandev/.git" },
+      }),
+    },
+  ])("still refuses local git at a workspace path when $case", ({ read, command }) =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const inner = yield* makeInnerSpawner();
+        const spawner = makeZeropsGitSpawner({
+          enabled: true,
+          repositories: Effect.succeed(read),
+          refresh: Effect.succeed(read),
+          inner: inner.spawner,
+        });
+
+        const result = yield* Effect.result(spawner.spawn(command));
+
+        assert.strictEqual(result._tag, "Failure");
+        assert.deepStrictEqual(yield* Ref.get(inner.calls), []);
+      }),
+    ),
   );
 
   it.effect("spawns ssh for a git command inside a mount", () =>

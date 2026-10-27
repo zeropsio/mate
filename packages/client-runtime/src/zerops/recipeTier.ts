@@ -66,6 +66,8 @@
  * @module recipeTier
  */
 
+import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
+
 /** The tier directories, spelled as an application's recipe repository spells them in HQ. */
 export { RECIPE_TIER_PATHS, type RecipeTier } from "@t3tools/shared/hqRecipe";
 
@@ -273,6 +275,10 @@ export function isStageHostname(hostname: string): boolean {
 }
 
 function roleOf(item: TierItem): RecipeServiceRole {
+  // A pool or a Box is infrastructure the platform runs for the app, never the app's dev or stage
+  // runtime — whatever code keys a tier writes beside it, it is imported with the managed part.
+  const type = ownScalar(item, "type");
+  if (type !== undefined && isPoolOrSandboxServiceType(type)) return "managed";
   if ([...CODE_KEYS].every((key) => ownKeyAt(item, key) === undefined)) return "managed";
   const repository = repositoryOf(item);
   if (repository !== undefined && isPublicRepository(repository)) return "utility";

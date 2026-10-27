@@ -24,7 +24,7 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { type ChangeReceipt, changeUrl, type HqChange } from "@t3tools/shared/hqChanges";
+import { type ChangeReceipt, changeUrl, type HqChange, repoUrl } from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -42,6 +42,13 @@ export interface FlowPullRequest {
   readonly pipeline?: HqChange["pipeline"] | undefined;
   /** The repository's name in the group's org. */
   readonly repository: string;
+  /**
+   * The repository at HQ (`repoUrl`), by which a lease's checkout finds its change: a lease names
+   * its `repo` by the shared HQ's git address, with the organization, and the two are compared by
+   * the application and repository they name (`leaseOfRepository`). Absent where it was not built
+   * from HQ's address.
+   */
+  readonly repositoryUrl?: string | undefined;
   readonly number: number;
   readonly title: string;
   readonly kind: FlowPullRequestKind;
@@ -83,6 +90,8 @@ export interface FlowPullRequest {
   readonly firstCodeMerge?: boolean | undefined;
   /** Merged by GitHub of a head no person merged in Mate (`HqChange.landedOutside`). */
   readonly landedOutside?: boolean | undefined;
+  /** Closed without merging by its own Mate (`HqChange.closedByMate`). */
+  readonly closedByMate?: true | undefined;
   /**
    * `open` or `closed`, as HQ says. A change read on its own by number may be closed without
    * ever merging: its review must not offer to merge it. Optional, as every flow built before a
@@ -164,6 +173,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
   return {
     pipeline: change.pipeline,
     repository: change.repo,
+    repositoryUrl: repoUrl(hqAddress, change.appId, change.repo),
     number: change.number,
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",
@@ -178,6 +188,7 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     ...(merged && change.mergedSha !== null ? { mergeCommitSha: change.mergedSha } : {}),
     ...(change.firstCodeMerge === undefined ? {} : { firstCodeMerge: change.firstCodeMerge }),
     ...(merged && change.landedOutside === true ? { landedOutside: true } : {}),
+    ...(change.state === "closed" && change.closedByMate === true ? { closedByMate: true } : {}),
     state: change.state === "open" ? "open" : "closed",
     headSha: change.head ?? undefined,
     ...(change.state === "open" && change.head === null ? { unpushed: true } : {}),
@@ -227,6 +238,7 @@ export function flowChanges(input: {
 function menuChange(appId: string, change: HqNavigationChange, hqAddress: string): FlowPullRequest {
   return {
     repository: change.repo,
+    repositoryUrl: repoUrl(hqAddress, appId, change.repo),
     number: change.number,
     title: change.title,
     kind: change.repo === RECIPE_REPO ? "recipe" : "code",

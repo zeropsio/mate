@@ -102,7 +102,7 @@ export interface MateTarget extends ProjectTarget {
   readonly appId: string | null;
 }
 
-/** A change a Mate edits, as HQ records it (`null`: HQ has no such change). */
+/** A change a Mate edits or closes, as HQ records it (`null`: HQ has no such change). */
 export interface MateChangeTarget extends MateTarget {
   readonly change: { readonly mateProjectId: string } | null;
 }
@@ -208,6 +208,8 @@ export interface Targets {
   readonly ensure_repo: MateTarget;
   readonly open_change: MateTarget;
   readonly edit_change: MateChangeTarget;
+  /** A Mate's own open change closed without merging: abandoned work, its branch kept. */
+  readonly close_own_change: MateChangeTarget;
   readonly fetch_repo: MateFetchTarget;
   readonly land_recipe: RecipeLandingTarget;
 }
@@ -284,6 +286,7 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     request.verb === "ensure_repo" ||
     request.verb === "open_change" ||
     request.verb === "edit_change" ||
+    request.verb === "close_own_change" ||
     request.verb === "fetch_repo"
   ) {
     // A Mate's work on its application: its repositories, its changes and its git. Only for its
@@ -294,8 +297,8 @@ function decide(principal: Principal, request: Request, facts: Facts): Decision 
     if (appId === null) return deny("mate_not_in_app");
     if (!knownHeld(held)) return deny("unknown_kind");
     if (!isMateKind(held)) return deny("not_a_mate");
-    if (request.verb === "edit_change") {
-      // Its own change only: a sibling Mate's is no change of its own to word.
+    if (request.verb === "edit_change" || request.verb === "close_own_change") {
+      // Its own change only: a sibling Mate's is no change of its own to word or to give up.
       const { change } = request.target;
       if (change === null) return deny("unknown_change");
       if (change.mateProjectId !== projectId) return deny("not_your_change");

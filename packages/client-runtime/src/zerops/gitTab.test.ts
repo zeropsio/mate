@@ -1,8 +1,11 @@
-import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
+import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS, type ZeropsLifecycle } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  CODE_IN_POOL_LINE,
+  checkoutLabel,
   gitCheckoutHostnames,
+  gitEmptyLine,
   environmentForBranch,
   gitActionAllowed,
   gitBlock,
@@ -11,12 +14,15 @@ import {
   gitVerdict,
   mateChangeIn,
   pullRequestBlocked,
+  threadCheckoutHostnames,
+  threadLeases,
   type GitBlockEvidence,
   type GitChangeState,
   type GitCheckoutState,
 } from "./gitTab.ts";
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import type { Known } from "./knowledge/index.ts";
 import { mateNextStep } from "./mateNextStep.ts";
 import { changeState, type FlowPullRequest } from "./projectFlow.ts";
 
@@ -680,6 +686,20 @@ describe("gitCheckoutHostnames", () => {
     ).toEqual(["todoapp"]);
   });
 
+  it("never lists a pool or a Box as a checkout, nor pairs one with a stage", () => {
+    // A pool reads `USER` and a Box `STANDARD`; the type-version string is what tells them apart.
+    expect(
+      gitCheckoutHostnames([
+        { hostname: "appdev", group: "runtimes", type: "ubuntu/python@3.12" },
+        { hostname: "pool", group: "infrastructure", type: "swarm@1" },
+        { hostname: "vmpool", group: "runtimes", type: "swarm-vm@1" },
+        { hostname: "box", group: "runtimes", type: "ubuntu/zbox@1" },
+        { hostname: "boxstage", group: "runtimes", type: "ubuntu/zbox@1" },
+        { hostname: "appstage", group: "runtimes", type: "ubuntu/python@3.12" },
+      ]),
+    ).toEqual(["appdev"]);
+  });
+
   it("keeps a runtime whose name ends in stage when it has no dev partner", () => {
     expect(
       gitCheckoutHostnames([
@@ -689,6 +709,103 @@ describe("gitCheckoutHostnames", () => {
       ]),
     ).toEqual(["backstage", "cachedev"]);
   });
+
+  describe("a part migrated to a dev pool", () => {
+    // After the migration the dev service is gone, the tier on main still names it, and zcp keys
+    // the pair by the pool, whose snapshot carries the stage (zcp spec-mate §2.8a.3).
+    const services = [
+      { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+      { hostname: "appstage", group: "runtimes", type: "ubuntu/nodejs@22" },
+      { hostname: "api", group: "runtimes", type: "ubuntu/nodejs@22" },
+      { hostname: "db", group: "data", type: "postgresql@17" },
+    ] as const;
+    const tier = [
+      "services:",
+      "  - hostname: appdev",
+      "    type: nodejs@22",
+      "    zeropsSetup: dev",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      "  - hostname: appstage",
+      "    type: nodejs@22",
+      "    zeropsSetup: prod",
+      "    buildFromGit: https://hq.example.com/git/app-1/appdev",
+      "",
+    ].join("\n");
+    const poolPairs = [{ pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] }];
+
+    it.each([
+      { read: "the tier on main naming the dead dev", tier },
+      { read: "no tier", tier: undefined },
+    ])("never lists its stage as a checkout, with $read", ({ tier: read }) => {
+      expect(gitCheckoutHostnames(services, read, poolPairs)).toEqual(["api"]);
+    });
+  });
+});
+
+describe("what the Git tab says while it lists no repository", () => {
+  // A Mate whose every part was migrated to a dev pool: a chat bound to no lease lists no checkout,
+  // yet the project has code — in the pool, which a chat reaches by leasing one of its containers.
+  const services = [{ hostname: "apppool" }, { hostname: "appstage" }];
+  const pool = { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool" };
+  const known = (snapshots: ReadonlyArray<Record<string, unknown>>) =>
+    ({
+      state: "known",
+      value: { threadId: "thread-1", recentTools: [], envelope: { services: snapshots } },
+    }) as unknown as Known<ZeropsLifecycle>;
+  type Case = {
+    readonly when: string;
+    readonly services?: ReadonlyArray<{ readonly hostname: string }>;
+    readonly lifecycle: Known<ZeropsLifecycle> | undefined;
+  };
+
+  it.each<Case>([
+    {
+      when: "the thread's last envelope pairs a stage with a pool the project holds",
+      lifecycle: known([{ ...pool, stages: [{ hostname: "appstage", setup: "prod" }] }]),
+    },
+    {
+      when: "it names the one stage zcp sends as stageHostname",
+      lifecycle: known([{ ...pool, stageHostname: "appstage" }]),
+    },
+    {
+      when: "it names a pool's repository, though the pool carries no stage",
+      services: [{ hostname: "apppool" }],
+      lifecycle: known([{ ...pool, remoteUrl: "https://hq.example.com/git/app-1/appdev.git" }]),
+    },
+  ])(
+    "says the code lives in a dev pool, reached by taking a workspace, when $when",
+    ({ services: held = services, lifecycle }) => {
+      expect(gitEmptyLine(held, lifecycle)).toBe(CODE_IN_POOL_LINE);
+    },
+  );
+
+  it.each<Case>([
+    {
+      when: "the envelope's pool is one the project no longer holds",
+      services: [{ hostname: "appstage" }],
+      lifecycle: known([{ ...pool, stages: [{ hostname: "appstage" }] }]),
+    },
+    {
+      when: "only a dev service names a repository",
+      services: [{ hostname: "appdev" }],
+      lifecycle: known([
+        { hostname: "appdev", runtimeClass: "dynamic", remoteUrl: "https://example.com/app.git" },
+      ]),
+    },
+    { when: "the pool carries neither a stage nor a repository", lifecycle: known([pool]) },
+    {
+      when: "the thread carries no envelope yet",
+      lifecycle: { state: "unread", waitingFor: null },
+    },
+    { when: "nothing is asked of the thread", lifecycle: undefined },
+  ])(
+    "says there is no code repository yet when $when",
+    ({ services: held = services, lifecycle }) => {
+      expect(gitEmptyLine(held, lifecycle)).toBe(
+        "No code repository yet. The first service brings one.",
+      );
+    },
+  );
 });
 
 describe("the second dev service of a pair is not shown as a repository in the Git tab", () => {
@@ -804,7 +921,12 @@ describe("one answer on every surface (DESIGN §4.7)", () => {
       const seen = surfaces(change(mergeability));
       // The tab's door is the review's, on every open change; the review decides.
       expect(seen.tab.action?.kind).toBe("review");
-      expect(seen.banner !== undefined).toBe(mergeability === "mergeable");
+      // The composer lists it whatever HQ says, as the conversation's header counts it, and says
+      // the row's word where it does not merge (the rehearsal of 2026-10-25).
+      expect(seen.banner).toBeDefined();
+      expect(seen.banner?.lines[0]?.verdict?.title).toBe(
+        seen.blocked === null ? undefined : seen.row?.word,
+      );
       expect(seen.tab.verdict?.tone).toBe(seen.row?.tone);
       expect(seen.tab.verdict?.ask).toBe(seen.blocked?.ask);
       const rebase = {
@@ -825,4 +947,317 @@ it("does not call an unread working tree clean or claim it has no repository", (
   const unread = checkout({ read: false, isRepo: false, changed: [] });
   expect(gitCheckoutLine(unread)).toBe("Reading repository…");
   expect(block(unread).state).toBe("unread");
+});
+
+it.each([
+  { name: "HQ has told its changes", told: changes() },
+  { name: "HQ has not", told: changes({ read: false, change: undefined }) },
+])(
+  "a checkout whose read failed says so, in git's words, and offers no verb on it, when $name",
+  ({ told }) => {
+    const failure =
+      "Git command failed in GitVcsDriver.statusDetails.status (/var/www/api): Git command exited with a non-zero status.";
+    const failed = checkout({ read: true, failure, isRepo: false, headRef: null, changed: [] });
+    const shown = block(failed, told);
+    expect(shown.state).toBe("unreadable");
+    expect(shown.checkoutLine).toBe(failure);
+    expect(shown.verdict).toEqual({
+      tone: "failed",
+      text: "Could not read this repository.",
+      ask: undefined,
+    });
+    expect(shown.action).toBeUndefined();
+    expect(shown.destination).toBe("");
+  },
+);
+
+describe("a thread's lease", () => {
+  const LEASE = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it("a thread bound to a lease reads that lease's repository and no other", () => {
+    expect(threadCheckoutHostnames(["appdev", "api"], [LEASE])).toEqual(["webpool-3"]);
+    // Its lease is known before the Mate's topology is: it waits on nothing.
+    expect(threadCheckoutHostnames(undefined, [LEASE])).toEqual(["webpool-3"]);
+  });
+
+  it("a thread bound to no lease reads the Mate's checkouts, as before", () => {
+    expect(threadCheckoutHostnames(["appdev", "api"], [])).toEqual(["appdev", "api"]);
+    expect(threadCheckoutHostnames(["appdev"], threadLeases(null, undefined))).toEqual(["appdev"]);
+    expect(threadCheckoutHostnames(undefined, [])).toBeUndefined();
+  });
+
+  it("names a lease's repository by its pool and branch, and by its alias with no branch", () => {
+    expect(checkoutLabel("webpool-3", [LEASE])).toBe("webpool · feat-x");
+    expect(checkoutLabel("webpool-3", [{ ...LEASE, branch: null }])).toBe("webpool-3");
+    expect(checkoutLabel("appdev", [LEASE])).toBe("appdev");
+    expect(checkoutLabel("appdev", [])).toBe("appdev");
+  });
+
+  it("a lease's block in the Git tab goes by the lease's name, a service's by its hostname", () => {
+    const checkout = (repository: string): GitCheckoutState => ({
+      repository,
+      isRepo: true,
+      hasRemote: true,
+      headRef: "feat-x",
+      aheadCount: 0,
+      behindCount: 0,
+      hasUpstream: true,
+      changed: [],
+    });
+    const block = (repository: string, lease: typeof LEASE | null) =>
+      gitBlock({
+        checkout: checkout(repository),
+        changes: { read: true, change: undefined },
+        declarations: DECLARATIONS,
+        evidence: { remoteReachable: true },
+        leases: lease === null ? [] : [lease],
+      });
+    expect(block("webpool-3", LEASE)).toMatchObject({
+      repository: "webpool-3",
+      label: "webpool · feat-x",
+    });
+    expect(block("appdev", null)).toMatchObject({ repository: "appdev", label: "appdev" });
+  });
+
+  // HQ names a repository after the dev service it began on (`appdev`), never after a pool's
+  // container: what ties a lease to its change is the branch zcp checked out there.
+  it("a lease's block reads the Mate's change on the lease's branch, and goes to HQ by that change's repository", () => {
+    const onBranch = change("mergeable", { number: 7, repository: "appdev", branch: "feat-x" });
+    const flow = {
+      pullRequests: [
+        onBranch,
+        change("mergeable", { number: 9, repository: "appdev", branch: "feat-y" }),
+        change("mergeable", {
+          number: 11,
+          repository: "appdev",
+          branch: "feat-x",
+          mateProjectId: "p2",
+        }),
+      ],
+      merged: [],
+    };
+    expect(mateChangeIn(flow, "p1", "webpool-3", [LEASE])).toBe(onBranch);
+    expect(mateChangeIn(flow, "p1", "webpool-3", [{ ...LEASE, branch: "feat-z" }])).toBe(undefined);
+    expect(mateChangeIn(flow, "p1", "appdev", []), "a service's, by its repository").toBe(
+      flow.pullRequests[1],
+    );
+
+    const checkout: GitCheckoutState = {
+      repository: "webpool-3",
+      isRepo: true,
+      hasRemote: true,
+      headRef: "feat-x",
+      aheadCount: 0,
+      behindCount: 0,
+      hasUpstream: true,
+      changed: [],
+    };
+    const shown = gitBlock({
+      checkout,
+      changes: { read: true, change: onBranch },
+      declarations: DECLARATIONS,
+      evidence: EVIDENCE,
+      leases: [LEASE],
+    });
+    expect(shown).toMatchObject({
+      repository: "webpool-3",
+      hqRepository: "appdev",
+      pullRequestNumber: 7,
+    });
+    expect(
+      gitBlock({
+        checkout: { ...checkout, repository: "appdev" },
+        changes: { read: true, change: undefined },
+        declarations: DECLARATIONS,
+        evidence: EVIDENCE,
+      }).hqRepository,
+    ).toBe("appdev");
+  });
+
+  /** Two apps of one Mate, each its own repository in HQ, both with a change on `feat-x`. */
+  const WEB = "https://hq.example/git/g1/appdev";
+  const API = "https://hq.example/git/g1/apidev";
+  const webChange = change("mergeable", {
+    number: 7,
+    repository: "appdev",
+    repositoryUrl: WEB,
+    branch: "feat-x",
+  });
+  const apiChange = change("mergeable", {
+    number: 9,
+    repository: "apidev",
+    repositoryUrl: API,
+    branch: "feat-x",
+  });
+  const twoApps = { pullRequests: [webChange, apiChange], merged: [] };
+
+  it("a lease's block reads the Mate's change of the lease's repository on its branch, never another app's change on the same branch", () => {
+    expect(mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: WEB }])).toBe(webChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "apipool-4", [
+        { alias: "apipool-4", pool: "apipool", branch: "feat-x", repo: API },
+      ]),
+    ).toBe(apiChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: `${WEB.toUpperCase()}.git/` }]),
+      "repositories compared as zcp compares them",
+    ).toBe(webChange);
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [
+        { ...LEASE, repo: "https://hq.example/git/g1/docsdev" },
+      ]),
+    ).toBe(undefined);
+  });
+
+  // zcp names a repository kept on GitHub by its GitHub address (spec-mate §5.10), which says
+  // nothing of the repository's name in HQ: such a lease is matched as one that names none.
+  it("a lease of a repository kept outside HQ reads the Mate's newest change on its branch", () => {
+    expect(
+      mateChangeIn(twoApps, "p1", "webpool-3", [{ ...LEASE, repo: "https://github.com/acme/web" }]),
+    ).toBe(apiChange);
+  });
+
+  it("a lease that names no repository reads the Mate's newest change on its branch", () => {
+    expect(mateChangeIn(twoApps, "p1", "webpool-3", [LEASE])).toBe(apiChange);
+    const { repositoryUrl: _url, ...unaddressed } = webChange;
+    expect(
+      mateChangeIn({ pullRequests: [unaddressed], merged: [] }, "p1", "webpool-3", [
+        { ...LEASE, repo: API },
+      ]),
+      "a change whose repository's address is not known is matched by its branch",
+    ).toBe(unaddressed);
+  });
+
+  // The shared HQ serves git at `/git/<orgId>/<appId>/<repo>.git`, and zcp names a lease's
+  // repository by that address; the change's own is built without the organization (`repoUrl`).
+  const SHARED = "https://hq.example/git/org-1";
+  const otherApp = change("mergeable", {
+    number: 11,
+    repository: "appdev",
+    repositoryUrl: "https://hq.example/git/g2/appdev",
+    branch: "feat-x",
+  });
+  it.each([
+    {
+      title: "a lease named by the shared HQ's address reads its own repository's change",
+      flow: twoApps,
+      repo: `${SHARED}/g1/appdev`,
+      read: webChange,
+    },
+    {
+      title: "a lease named by the shared HQ's address with .git reads its own repository's change",
+      flow: twoApps,
+      repo: `${SHARED}/g1/apidev.git`,
+      read: apiChange,
+    },
+    {
+      title: "a lease of another repository of its application on the shared HQ reads none",
+      flow: twoApps,
+      repo: `${SHARED}/g1/docsdev`,
+      read: undefined,
+    },
+    {
+      title: "a lease of another application's repository of one name reads that one's change",
+      flow: { pullRequests: [webChange, otherApp], merged: [] },
+      repo: `${SHARED}/g1/appdev`,
+      read: webChange,
+    },
+    {
+      title: "a lease named by an address without the organization still reads its own change",
+      flow: { pullRequests: [webChange, otherApp], merged: [] },
+      repo: "https://hq.example/git/g2/appdev",
+      read: otherApp,
+    },
+    {
+      title: "a lease of a change whose own address names the organization reads it",
+      flow: {
+        pullRequests: [{ ...webChange, repositoryUrl: `${SHARED}/g1/appdev.git` }, apiChange],
+        merged: [],
+      },
+      repo: WEB,
+      read: { ...webChange, repositoryUrl: `${SHARED}/g1/appdev.git` },
+    },
+  ])("two apps' changes on one branch: $title", ({ flow, repo, read }) => {
+    expect(mateChangeIn(flow, "p1", "webpool-3", [{ ...LEASE, repo }])).toEqual(read);
+  });
+
+  /** zcp's leases as the thread last read them: its branch is held on two more pools. */
+  const READ = [
+    { alias: "hqpool-2", pool: "hqpool", branch: "feat-x", state: "held" },
+    { alias: "webpool-3", pool: "webpool", branch: "feat-x", state: "held" },
+    { alias: "apipool-4", pool: "apipool", branch: "feat-x", state: "unmounted" },
+    { alias: "docspool-5", pool: "docspool", branch: "feat-x", state: "lost" },
+    { alias: "hqpool-6", pool: "hqpool", branch: "feat-y", state: "held" },
+  ];
+
+  it("a thread bound to a lease of a branch held on several pools reads every lease of its branch zcp holds, its own first", () => {
+    const leases = threadLeases(LEASE, READ);
+    expect(leases).toEqual([
+      LEASE,
+      { alias: "hqpool-2", pool: "hqpool", branch: "feat-x" },
+      { alias: "apipool-4", pool: "apipool", branch: "feat-x" },
+    ]);
+    expect(threadCheckoutHostnames(["appdev"], leases)).toEqual([
+      "webpool-3",
+      "hqpool-2",
+      "apipool-4",
+    ]);
+  });
+
+  it("names every lease of a thread's branch by its pool and branch", () => {
+    const leases = threadLeases(LEASE, READ);
+    expect(leases.map(({ alias }) => checkoutLabel(alias, leases))).toEqual([
+      "webpool · feat-x",
+      "hqpool · feat-x",
+      "apipool · feat-x",
+    ]);
+  });
+
+  it("a thread reads only the lease it is bound to until zcp's leases are read, and none while it is bound to none", () => {
+    expect(threadLeases(LEASE, undefined)).toEqual([LEASE]);
+    expect(threadLeases(null, READ)).toEqual([]);
+  });
+
+  it("a thread bound to one app's lease of a branch reads every lease of its repository and branch zcp holds, never another app's of the same branch", () => {
+    const bound = { alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB } as const;
+    expect(
+      threadLeases(bound, [
+        { alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB, state: "held" },
+        { alias: "apipool-1", pool: "apipool", branch: "main", repo: API, state: "held" },
+        { alias: "hqpool-2", pool: "hqpool", branch: "main", repo: WEB, state: "held" },
+        { alias: "docspool-4", pool: "docspool", branch: "feat-x", repo: WEB, state: "held" },
+      ]),
+    ).toEqual([bound, { alias: "hqpool-2", pool: "hqpool", branch: "main", repo: WEB }]);
+  });
+
+  it("a thread whose binding or read names no repository reads every lease of its branch", () => {
+    const read = [
+      { alias: "apipool-1", pool: "apipool", branch: "main", repo: API, state: "held" },
+      { alias: "hqpool-2", pool: "hqpool", branch: "main", state: "held" },
+    ];
+    expect(
+      threadLeases({ alias: "webpool-3", pool: "webpool", branch: "main" }, read).map(
+        ({ alias }) => alias,
+      ),
+    ).toEqual(["webpool-3", "apipool-1", "hqpool-2"]);
+    expect(
+      threadLeases({ alias: "webpool-3", pool: "webpool", branch: "main", repo: WEB }, read).map(
+        ({ alias }) => alias,
+      ),
+    ).toEqual(["webpool-3", "hqpool-2"]);
+  });
+
+  it("a lease of no branch is of main's group", () => {
+    expect(
+      threadLeases({ ...LEASE, branch: null }, [
+        { alias: "hqpool-2", pool: "hqpool", branch: "main", state: "held" },
+        { alias: "apipool-4", pool: "apipool", state: "held" },
+        { alias: "docspool-5", pool: "docspool", branch: "feat-x", state: "held" },
+      ]),
+    ).toEqual([
+      { ...LEASE, branch: null },
+      { alias: "hqpool-2", pool: "hqpool", branch: "main" },
+      { alias: "apipool-4", pool: "apipool", branch: null },
+    ]);
+  });
 });

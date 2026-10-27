@@ -13,7 +13,7 @@
  * a Chief (`chiefOffered`). On the rail the photo alone opens it.
  */
 
-import { useLocation, useNavigate } from "@tanstack/react-router";
+import { useLocation, useNavigate, useRouter } from "@tanstack/react-router";
 import { ArrowUpCircleIcon, EllipsisIcon, LogOutIcon } from "lucide-react";
 import { createContext, useContext, useState, type ReactNode } from "react";
 
@@ -47,6 +47,7 @@ import {
   type ZeropsAccountDisplay,
 } from "./landing/ZeropsAccountControl.logic";
 import {
+  organizationSwitchLanding,
   SIDEBAR_ACCOUNT_DESTINATIONS,
   sidebarAccountDestinationOf,
   sidebarAccountLines,
@@ -385,6 +386,7 @@ export function SidebarZeropsAccountRow({
   // account row. Signed out, there is no account to name either way.
   const session = useZeropsSessionOptional();
   const navigate = useNavigate();
+  const router = useRouter();
   const { isMobile, setOpenMobile } = useSidebar();
   const destination = useLocation({
     select: (location) => sidebarAccountDestinationOf(location.pathname),
@@ -413,7 +415,15 @@ export function SidebarZeropsAccountRow({
         void navigate({ to: entry.to });
       }}
       onSelectOrganization={(membershipId) => {
-        void selectOrganization(membershipId);
+        // Read once the switch is in view, so the home lands the new organization's.
+        const landing = organizationSwitchLanding({
+          pathname: router.state.location.pathname,
+          from: activeOrganization?.membershipId,
+          to: membershipId,
+        });
+        void selectOrganization(membershipId).then(() => {
+          if (landing !== null) void navigate({ to: landing });
+        });
       }}
       onSignOut={() => {
         setSigningOut(true);

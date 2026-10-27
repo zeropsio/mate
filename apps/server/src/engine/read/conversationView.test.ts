@@ -7,7 +7,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Stream from "effect/Stream";
 import * as SqlClient from "effect/sql/SqlClient";
-import { CommandId, ConversationId, runId } from "@t3tools/contracts";
+import { CommandId, ConversationId, runId, ThreadId } from "@t3tools/contracts";
 import { USAGE_LIMIT_RESUME_PROMPT } from "@t3tools/shared/userAsk";
 
 import { conversationRowOf } from "./conversationRow.ts";
@@ -376,6 +376,64 @@ describe("a conversation's agent", () => {
   );
 });
 
+describe("a conversation bound to the lease its agent acquired", () => {
+  const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+  const engine = { kind: "engine" } as const;
+
+  it.effect("names the lease its agent works in, until the lease ends", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        assert.strictEqual((yield* viewOf(w))?.lease, null);
+        yield* w.tell({ _tag: "BindLease", lease }, engine);
+        assert.deepStrictEqual((yield* viewOf(w))?.lease, lease);
+        yield* w.tell({ _tag: "UnbindLease", ended: "webpool-3" }, engine);
+        assert.strictEqual((yield* viewOf(w))?.lease, null);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("keeps its lease through a kill of the server: the record holds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "BindLease", lease }, engine);
+        yield* w.kill;
+        yield* w.boot;
+        assert.deepStrictEqual((yield* viewOf(w))?.lease, lease);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  // zcp keeps its lease records and work session in the session's working directory: a session
+  // moved into the lease would find none of them after a reopen.
+  it.effect(
+    "opens every session where it always worked, through a kill of the server, and resolves its pictures there",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const cwds = () =>
+            w.provider.starts.map((start) => (start as { readonly cwd?: string }).cwd);
+          yield* w.tell({ _tag: "Send", text: "Lease a container for the footer" });
+          yield* w.tell({ _tag: "BindLease", lease }, engine);
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const before = cwds();
+          yield* w.kill;
+          yield* w.boot;
+          yield* w.tell({ _tag: "Send", text: "Fix the footer" });
+          assert.deepStrictEqual(before, [w.dir]);
+          assert.deepStrictEqual(cwds(), [w.dir]);
+          const context = yield* (yield* w.engine).assetContext(ThreadId.make(mate));
+          assert.strictEqual(context?.workspaceRoot, w.dir);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
 describe("the engine's doors for the grafts", () => {
   it.effect(
     "a stand-up wake runs for the principal it names, and its run is found by the wake",
@@ -616,6 +674,67 @@ describe("the views of every conversation", () => {
           );
           assert.deepStrictEqual(list.unread, [broken]);
           assert.isFalse(list.complete);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+});
+
+// Review r3-6: the lifecycle reads who is bound to a lease on its one ingest fiber, at every
+// change of zcp's leases; a whole view of every conversation made each one wait on ten queries
+// per conversation. The record's lease is all it needs.
+describe("the leases of every conversation", () => {
+  const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" } as const;
+
+  it.effect(
+    "are read from each conversation's record alone: one whose view cannot be read still says its lease",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          yield* w.tell({ _tag: "Send", text: "Lease a container for the footer" });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          yield* w.tell({ _tag: "BindLease", lease }, { kind: "engine" });
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`UPDATE engine_run SET trigger_json = '{' WHERE conversation_id = ${mate}`;
+            }),
+          );
+          const engine = yield* w.engine;
+          assert.deepStrictEqual((yield* engine.conversations).unread, [mate]);
+          assert.deepStrictEqual(yield* engine.leases, {
+            leases: [{ conversationId: mate, lease }],
+            complete: true,
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
+  it.effect(
+    "name a conversation whose record cannot be read as unread, never as bound to none",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const broken = ConversationId.make("broken");
+          yield* w.tell({ _tag: "BindLease", lease }, { kind: "engine" });
+          yield* w.within(
+            Effect.gen(function* () {
+              const sql = yield* SqlClient.SqlClient;
+              yield* sql`INSERT INTO engine_conversation (conversation_id, head_seq, updated_at)
+            VALUES (${broken}, 1, 0)`;
+              yield* sql`INSERT INTO engine_event
+            (conversation_id, seq, type, v, at, command_id, run_id, payload_json)
+            VALUES (${broken}, 1, 'SessionClosed', 1, 0, 'x', NULL, '{"sessionId":"s"}')`;
+            }),
+          );
+          const engine = yield* w.engine;
+          assert.deepStrictEqual(yield* engine.leases, {
+            leases: [{ conversationId: mate, lease }],
+            complete: false,
+          });
           yield* w.shutdown;
         }),
       ),

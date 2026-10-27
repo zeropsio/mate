@@ -1,3 +1,7 @@
+// @effect-diagnostics nodeBuiltinImport:off -- a change's commits are written into HQ's repository with the host's git.
+import * as NodeChildProcess from "node:child_process";
+import * as NodePath from "node:path";
+
 import { assert, describe, it } from "@effect/vitest";
 import type { MateTask } from "@t3tools/contracts";
 import { DEFAULT_HOSTED_APP_URL } from "@t3tools/shared/connectAuth";
@@ -55,7 +59,7 @@ const mirroredPool = Effect.gen(function* () {
             const [row] = yield* sql<{ readonly head: string | null; readonly branch: string }>`
               SELECT head, branch FROM hq_change
               WHERE app_id::text = ${appId} AND repo = ${repo} AND number = ${number}`;
-            // A change on a branch its Mate named is that branch on GitHub.
+            // A change on a branch its Mate named is pushed under that name.
             if (row?.head == null) return undefined;
             return row.branch.startsWith("mate/")
               ? { branch: `mate/${String(number)}-hotter-tea`, sha: row.head }
@@ -233,6 +237,29 @@ const squashOnMain = (core: Pool) =>
     core.github.state.merge = { ...core.github.state.merge, sha };
     return sha;
   });
+
+/** `git <args>` in HQ's repository `dir`, with no ambient configuration; its output. */
+const bare = (dir: string, args: ReadonlyArray<string>, input = "") =>
+  NodeChildProcess.execFileSync("git", ["--git-dir", dir, ...args], {
+    input,
+    encoding: "utf8",
+    env: {
+      PATH: process.env["PATH"] ?? "/usr/bin:/bin",
+      GIT_CONFIG_NOSYSTEM: "1",
+      GIT_CONFIG_GLOBAL: "/dev/null",
+      GIT_AUTHOR_NAME: "Juno",
+      GIT_AUTHOR_EMAIL: "juno@mate.test",
+      GIT_COMMITTER_NAME: "Juno",
+      GIT_COMMITTER_EMAIL: "juno@mate.test",
+    },
+  }).trim();
+
+/** A commit in `dir` holding only `file`, after `parents`. */
+const commitIn = (dir: string, parents: ReadonlyArray<string>, file: string) => {
+  const blob = bare(dir, ["hash-object", "-w", "--stdin"], file);
+  const tree = bare(dir, ["mktree"], `100644 blob ${blob}\t${file}\n`);
+  return bare(dir, ["commit-tree", tree, ...parents.flatMap((p) => ["-p", p]), "-m", file]);
+};
 
 const changeOf = (core: Pool) =>
   Effect.map(
@@ -1253,6 +1280,158 @@ describe("a change's pull request", () => {
           assert.strictEqual(core.github.state.pulls.get(2)?.state, "open");
           assert.strictEqual((yield* changeOf(core)).state, "open");
           yield* core.tasks((rows) => rows[0]?.["state"] === "working");
+        }),
+    );
+
+    it.effect.each([
+      ["a person closes it in Mate", "person"],
+      ["its Mate closes it", "mate"],
+    ] as const)(
+      "a change on a branch its Mate named closes its pull request on GitHub as it closes: %s",
+      ([_who, by]) =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          // Off any task, the Mate opens a change on a branch it names, and describes it.
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea", branch: "fix-x" },
+          });
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD} WHERE repo = 'web' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/web/1", {
+            headers: core.robot.auth,
+            body: { body: "Boils the water twice." },
+          });
+          const [made] = yield* asked(core, "POST", "/repos/acme/tea-shop/pulls");
+          assert.strictEqual((made!.body as { head: string }).head, "fix-x");
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 2,
+          );
+          // The test's head is HQ's record alone, never pushed to git: the close reviews none.
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed =
+            by === "person"
+              ? yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/close`, {
+                  session: core.owner,
+                  body: { expectedHead: null },
+                })
+              : yield* core.call("POST", "/api/mate/changes/web/1/close", {
+                  headers: core.robot.auth,
+                });
+          assert.strictEqual(closed.status, 200);
+          yield* core.github.seenWhere("closed on GitHub", (seen) =>
+            seen.some(
+              (request) =>
+                request.method === "PATCH" &&
+                request.path === PULL &&
+                (request.body as { state?: string }).state === "closed",
+            ),
+          );
+        }),
+    );
+
+    it.effect(
+      "a pull request someone else opened on a named change's branch stays open on GitHub when its Mate closes the change, and HQ lets it go",
+      () =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          // A person opened the pull request of `fix-x` on GitHub themselves.
+          core.github.state.pulls.set(9, {
+            title: "Fix x",
+            body: "Ada's words.",
+            head: "fix-x",
+            state: "open",
+            merged: false,
+            author: "ada",
+          });
+          core.github.state.pullNumber = 10;
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          yield* core.call("POST", "/api/mate/changes", {
+            headers: core.robot.auth,
+            body: { repo: "web", title: "Hotter tea", branch: "fix-x" },
+          });
+          yield* core.sql`UPDATE hq_change SET head = ${HEAD} WHERE repo = 'web' AND number = 1`;
+          yield* core.call("PATCH", "/api/mate/changes/web/1", {
+            headers: core.robot.auth,
+            body: { body: "Boils the water twice." },
+          });
+          yield* rowsWhere(
+            core.url,
+            "SELECT pr_number FROM hq_pull_request",
+            (rows) => rows[0]?.["pr_number"] === 9,
+          );
+          // The test's head is HQ's record alone, never pushed to git: the close reviews none.
+          yield* core.sql`UPDATE hq_change SET head = NULL WHERE repo = 'web' AND number = 1`;
+          const closed = yield* core.call("POST", "/api/mate/changes/web/1/close", {
+            headers: core.robot.auth,
+          });
+          assert.strictEqual(closed.status, 200);
+          assert.strictEqual(core.github.state.pulls.get(9)?.state, "open");
+          // HQ no longer holds it as the change's, so no sweep closes it later.
+          yield* rowsWhere(core.url, "SELECT 1 FROM hq_pull_request", (rows) => rows.length === 0);
+          assert.isFalse(
+            core.github.state.seen.some(
+              (request) =>
+                request.method === "PATCH" &&
+                request.path === "/repos/acme/tea-shop/pulls/9" &&
+                (request.body as { state?: string }).state === "closed",
+            ),
+          );
+        }),
+    );
+
+    it.effect.each([
+      [
+        "the first change into a repository holding nothing, carrying another repository's history, as a merge commit",
+        "theirs",
+        "merge",
+      ],
+      ["a change of the repository's own history, as a squash", "own", "squash"],
+    ] as const)(
+      "Merge in Mate merges a change's pull request on GitHub keeping its commits only where it carries another repository's history into an empty repository: %s",
+      ([_name, history, method]) =>
+        Effect.gen(function* () {
+          const core = yield* mirroredPool;
+          yield* core.call("POST", "/api/mate/repos", {
+            headers: core.robot.auth,
+            body: { name: "web" },
+          });
+          // Written into HQ's repository, its main still HQ's empty first commit.
+          const dir = NodePath.join(core.gitRoot, core.appId, "web.git");
+          const main = bare(dir, ["rev-parse", "refs/heads/main"]);
+          const theirs = commitIn(dir, [commitIn(dir, [], "README.md")], "kettle.ts");
+          const head =
+            history === "theirs"
+              ? bare(dir, [
+                  "commit-tree",
+                  `${theirs}^{tree}`,
+                  "-p",
+                  main,
+                  "-p",
+                  theirs,
+                  "-m",
+                  "Join the repository's base",
+                ])
+              : commitIn(dir, [main], "kettle.ts");
+          bare(dir, ["update-ref", "refs/heads/mate/P_ROBOT/1", head]);
+          yield* describedChange(core, head);
+          yield* asked(core, "POST", "/repos/acme/tea-shop/issues/2/comments");
+          yield* squashOnMain(core);
+          const merged = yield* core.call("POST", `/api/apps/${core.appId}/changes/web/1/merge`, {
+            session: core.owner,
+            body: { expectedHead: head },
+          });
+          assert.strictEqual(merged.status, 200);
+          const [put] = yield* asked(core, "PUT", `${PULL}/merge`);
+          assert.strictEqual((put!.body as { merge_method: string }).merge_method, method);
         }),
     );
 

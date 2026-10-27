@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vite-plus/test";
 
 import { recipeTierServices } from "./recipeTier.ts";
-import { isStageHostname, previewLabel, servicePairs, type ServicePair } from "./servicePairs.ts";
+import {
+  isStageHostname,
+  poolPairsIn,
+  previewLabel,
+  servicePairs,
+  type ServicePair,
+} from "./servicePairs.ts";
 
 /** A Mate tier on `main` as zcp composes it: each runtime with its setup and its repository. */
 const tier = (
@@ -34,6 +40,21 @@ const THREE_PART_TIER = tier([
   { hostname: "apistage", setup: "api", repository: "appdev" },
   { hostname: "workerstage", setup: "worker", repository: "appdev" },
 ]);
+
+/** A part whose dev service was migrated to a dev pool: the pool and the stage it deploys. */
+const MIGRATED = [
+  { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+  { hostname: "appstage", group: "runtimes", type: "ubuntu/nodejs@22" },
+];
+
+/** zcp's envelope link for it: the pool's snapshot carries the pair's stage. */
+const POOL_PAIR = { pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] };
+
+const POOL_KEYED: ServicePair = {
+  name: "apppool",
+  dev: "apppool",
+  previews: [{ hostname: "appstage", setup: "prod", source: "envelope" }],
+};
 
 describe("servicePairs", () => {
   const cases: ReadonlyArray<{
@@ -175,8 +196,121 @@ describe("servicePairs", () => {
       pairs: [],
     },
     {
+      name: "a pool is no dev half: `poolstage` beside `pool` pairs nothing",
+      input: {
+        services: [
+          { hostname: "pool", group: "runtimes", type: "swarm@1" },
+          { hostname: "poolstage", group: "runtimes", type: "ubuntu/python@3.12" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a pool is no preview half either",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "ubuntu/python@3.12" },
+          { hostname: "appstage", group: "runtimes", type: "swarm-vm@1" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a Box is neither half, even beside a `…stage` of its own group",
+      input: {
+        services: [
+          { hostname: "boxdev", group: "data", type: "ubuntu/zbox@1" },
+          { hostname: "boxstage", group: "data", type: "ubuntu/zbox@1" },
+        ],
+      },
+      pairs: [],
+    },
+    {
+      name: "a tier that declares a pool as a runtime pairs nothing for it",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "swarm@1" },
+          { hostname: "appstage", group: "runtimes", type: "ubuntu/nodejs@22" },
+        ],
+        tier: SINGLE_TIER,
+      },
+      pairs: [],
+    },
+    {
       name: "a `…stage` with no dev half beside it is a service somebody named that way",
       input: { services: runtimes("docsstage") },
+      pairs: [],
+    },
+    {
+      name: "a pool zcp's envelope keys a pair by is that pair's dev half, with the stages it carries",
+      input: { services: MIGRATED, poolPairs: [POOL_PAIR] },
+      pairs: [POOL_KEYED],
+    },
+    {
+      name: "a tier naming a dead dev yields to the envelope link",
+      input: { services: MIGRATED, tier: SINGLE_TIER, poolPairs: [POOL_PAIR] },
+      pairs: [POOL_KEYED],
+    },
+    {
+      name: "a tier naming a dev that still stands keeps its stage, whatever the envelope says",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "ubuntu/nodejs@22" },
+          ...MIGRATED,
+        ],
+        tier: SINGLE_TIER,
+        poolPairs: [POOL_PAIR],
+      },
+      pairs: [
+        {
+          name: "app",
+          dev: "appdev",
+          previews: [{ hostname: "appstage", setup: "prod", source: "tier" }],
+        },
+      ],
+    },
+    {
+      name: "the envelope link outranks the hostname stem",
+      input: {
+        services: [
+          { hostname: "appdev", group: "runtimes", type: "ubuntu/nodejs@22" },
+          ...MIGRATED,
+        ],
+        poolPairs: [POOL_PAIR],
+      },
+      pairs: [POOL_KEYED],
+    },
+    {
+      name: "a pool-keyed pair of several parts pairs every stage, each by its part",
+      input: {
+        services: [
+          { hostname: "apppool", group: "infrastructure", type: "swarm@1" },
+          ...runtimes("webstage", "apistage"),
+        ],
+        poolPairs: [
+          {
+            pool: "apppool",
+            stages: [
+              { hostname: "webstage", setup: "web" },
+              { hostname: "apistage", setup: "api" },
+            ],
+          },
+        ],
+      },
+      pairs: [
+        {
+          name: "apppool",
+          dev: "apppool",
+          previews: [
+            { hostname: "webstage", setup: "web", source: "envelope" },
+            { hostname: "apistage", setup: "api", source: "envelope" },
+          ],
+        },
+      ],
+    },
+    {
+      name: "an envelope link to a pool the project no longer holds pairs nothing",
+      input: { services: runtimes("appstage"), poolPairs: [POOL_PAIR] },
       pairs: [],
     },
   ];
@@ -194,6 +328,51 @@ describe("servicePairs", () => {
       ["webstage", "appdev"],
       ["apistage", "appdev"],
     ]);
+  });
+});
+
+describe("poolPairsIn", () => {
+  const pool = { hostname: "apppool", typeVersion: "swarm@1", runtimeClass: "pool" };
+
+  it("a pool's snapshot names its pair's stages, in zcp's order", () => {
+    expect(
+      poolPairsIn([
+        {
+          ...pool,
+          stages: [{ hostname: "webstage", setup: "web" }, { hostname: "apistage" }],
+        },
+      ]),
+    ).toEqual([
+      {
+        pool: "apppool",
+        stages: [{ hostname: "webstage", setup: "web" }, { hostname: "apistage" }],
+      },
+    ]);
+  });
+
+  it("names the one stage zcp sends as stageHostname until it sends stages", () => {
+    expect(poolPairsIn([{ ...pool, stageHostname: "appstage", stageSetupName: "prod" }])).toEqual([
+      { pool: "apppool", stages: [{ hostname: "appstage", setup: "prod" }] },
+    ]);
+    expect(poolPairsIn([{ ...pool, stageHostname: "appstage" }])).toEqual([
+      { pool: "apppool", stages: [{ hostname: "appstage" }] },
+    ]);
+  });
+
+  it("a dev service's stages name no pool pair: Mate pairs a dev from the tier, never the envelope", () => {
+    expect(
+      poolPairsIn([
+        {
+          hostname: "appdev",
+          runtimeClass: "dynamic",
+          stages: [{ hostname: "appstage", setup: "prod" }],
+        },
+      ]),
+    ).toEqual([]);
+  });
+
+  it("a pool carrying no stage keys no pair", () => {
+    expect(poolPairsIn([pool, { ...pool, hostname: "emptypool", stages: [] }])).toEqual([]);
   });
 });
 

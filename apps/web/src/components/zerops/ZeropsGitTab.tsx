@@ -12,7 +12,13 @@
  * Which repositories there are comes from the project's own topology: a runtime
  * service is a codebase, its hostname is the name of its repository in the
  * Mate's application at HQ (`/git/<appId>/<hostname>.git`), and its checkout
- * is `/var/www/{hostname}` — the path zcp mounts every sibling service at.
+ * is `/var/www/{hostname}` — the path zcp mounts every sibling service at. A part
+ * migrated to a dev pool lists no checkout: its stage is the pool's pair's, as the
+ * thread's last envelope says (`useThreadPoolPairs`); a tab that lists nothing then says the
+ * code lives in the pool, which the chat reaches by taking a workspace (`gitEmptyLine`). A thread
+ * whose agent leased a pool container reads that lease's repository and every
+ * other of its repository and branch zcp holds, alone (`threadLeases`,
+ * `threadCheckoutHostnames`), each at `/var/www/{alias}`.
  *
  * Checkout-side verbs (`vcs.*`) run in the container as the agent's user, so
  * they are the Mate's owner's alone (D11); *Review* is offered to whoever can
@@ -27,7 +33,11 @@ import {
   gitActionAllowed,
   gitBlock,
   gitCheckoutHostnames,
+  gitEmptyLine,
   mateChangeIn,
+  NO_REPOSITORY_LINE,
+  threadCheckoutHostnames,
+  type CheckoutLease,
   type FlowPullRequest,
   type GitBlock,
   type GitChangedFile,
@@ -38,9 +48,13 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback, useMemo, useState } from "react";
 
 import { useComposerDraftStore } from "../../composerDraftStore";
+import { useThreadShell } from "../../state/entities";
+import { useThreadLeases } from "../../zerops/useThreadLeases";
+import { useThreadPoolPairs } from "../../zerops/useThreadPoolPairs";
 
 import { mergedMain } from "../../zerops/useZeropsChangeDetail";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
+import { useZeropsLifecycle } from "../../zerops/useZeropsFeeds";
 import { checkoutPathFor, useGitRemoteReads } from "../../zerops/useZeropsGitRemoteProbe";
 import { useZeropsGroupRecipe } from "../../zerops/useZeropsGroupRecipe";
 import { useVcsPullAction } from "../../state/sourceControlActions";
@@ -71,10 +85,13 @@ function CheckoutProbe({
   const cwd = checkoutPathFor(hostname);
   const status = useEnvironmentQuery(vcsEnvironment.status({ environmentId, input: { cwd } }));
   const data = status.data;
+  // A read that failed has answered: it says so, and never reads as one still on its way.
+  const failure = data === null ? (status.error ?? undefined) : undefined;
   const state = useMemo<GitCheckoutState>(
     () => ({
       repository: hostname,
-      read: data !== null,
+      read: data !== null || failure !== undefined,
+      ...(failure === undefined ? {} : { failure }),
       isRepo: data?.isRepo ?? false,
       hasRemote: data?.hasPrimaryRemote ?? false,
       headRef: data?.refName ?? null,
@@ -83,7 +100,7 @@ function CheckoutProbe({
       hasUpstream: data?.hasUpstream ?? false,
       changed: data === null ? EMPTY_CHANGED : data.workingTree.files,
     }),
-    [data, hostname],
+    [data, failure, hostname],
   );
   const key = JSON.stringify(state);
   useMemo(() => {
@@ -92,6 +109,26 @@ function CheckoutProbe({
     // would set state in a loop.
   }, [hostname, key, onState, state]);
   return null;
+}
+
+/** Reads a repository's status again, after its read failed. */
+function RepositoryReadAgain({
+  environmentId,
+  repository,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly repository: string;
+}) {
+  const status = useEnvironmentQuery(
+    vcsEnvironment.status({ environmentId, input: { cwd: checkoutPathFor(repository) } }),
+  );
+  return (
+    <ZeropsMateVerb
+      disabled={status.isPending}
+      label="Read again"
+      onClick={() => status.refresh()}
+    />
+  );
 }
 
 /** The existing VCS action manager owns pending/error state for this repository. */
@@ -164,17 +201,33 @@ export interface ZeropsGitTabProps {
 }
 
 export function ZeropsGitTab(props: ZeropsGitTabProps) {
-  const topology = useProjectTopology(props.threadRef?.environmentId ?? null);
+  const environmentId = props.threadRef?.environmentId ?? null;
+  const threadId = props.threadRef?.threadId ?? null;
+  const topology = useProjectTopology(environmentId);
+  const leases = useThreadLeases(
+    environmentId,
+    threadId,
+    useThreadShell(props.threadRef)?.lease ?? null,
+  );
+  const poolPairs = useThreadPoolPairs(leases.length === 0 ? environmentId : null, threadId);
+  const lifecycle = useZeropsLifecycle(leases.length === 0 ? environmentId : null, threadId);
   // The Mate tier on `main` says which dev services share a pair's code (one repository per pair).
   const recipe = useZeropsGroupRecipe({ appId: props.appId, tier: "mate", enabled: true });
   const tierYaml = recipe.tier?.yaml;
   const repositories = useMemo(
     () =>
-      topology.view === undefined
-        ? undefined
-        : gitCheckoutHostnames(topology.view.services, tierYaml),
-    [topology.view, tierYaml],
+      threadCheckoutHostnames(
+        topology.view === undefined
+          ? undefined
+          : gitCheckoutHostnames(topology.view.services, tierYaml, poolPairs),
+        leases,
+      ),
+    [topology.view, tierYaml, poolPairs, leases],
   );
+  const emptyLine =
+    topology.view === undefined
+      ? NO_REPOSITORY_LINE
+      : gitEmptyLine(topology.view.services, lifecycle);
   if (repositories === undefined)
     return (
       <div role="status">
@@ -187,15 +240,28 @@ export function ZeropsGitTab(props: ZeropsGitTabProps) {
       {topology.liveness === "recovering" ? (
         <div role="status">{topology.error ?? "Updating repositories."}</div>
       ) : null}
-      <KnownGitTab {...props} repositories={repositories} key={props.threadRef?.environmentId} />
+      <KnownGitTab
+        {...props}
+        emptyLine={emptyLine}
+        leases={leases}
+        repositories={repositories}
+        key={props.threadRef?.environmentId}
+      />
     </>
   );
 }
 
 function KnownGitTab({
   repositories,
+  leases,
+  emptyLine,
   ...props
-}: ZeropsGitTabProps & { readonly repositories: ReadonlyArray<string> }) {
+}: ZeropsGitTabProps & {
+  readonly repositories: ReadonlyArray<string>;
+  readonly leases: ReadonlyArray<CheckoutLease>;
+  /** What the tab says while it lists no repository (`gitEmptyLine`). */
+  readonly emptyLine: string;
+}) {
   const environmentId = props.threadRef?.environmentId;
   const [checkouts, setCheckouts] = useState<ReadonlyMap<string, GitCheckoutState>>(new Map());
   const [generation, setGeneration] = useState(0);
@@ -243,10 +309,11 @@ function KnownGitTab({
               ? { read: false, change: undefined }
               : {
                   read: true,
-                  change: mateChangeIn(props.changes, props.mateProjectId, repository),
+                  change: mateChangeIn(props.changes, props.mateProjectId, repository, leases),
                 },
           declarations: props.declarations,
           ...(props.mateName === undefined ? {} : { mateName: props.mateName }),
+          leases,
           evidence: {
             remoteReachable: remotes.get(repository)?.reachable,
             remoteDetail: remotes.get(repository)?.detail,
@@ -255,6 +322,7 @@ function KnownGitTab({
       ),
     [
       checkouts,
+      leases,
       props.changes,
       props.declarations,
       props.mateName,
@@ -290,6 +358,10 @@ function KnownGitTab({
   }, [asking, props.threadRef]);
 
   const renderBlockAction = (block: GitBlock) => {
+    if (block.state === "unreadable")
+      return environmentId === undefined ? null : (
+        <RepositoryReadAgain environmentId={environmentId} repository={block.repository} />
+      );
     const action = block.action;
     if (!gitActionAllowed(action, { isOwner: props.isOwner }) || action === undefined) return null;
     if (action.kind === "push") return null;
@@ -358,7 +430,7 @@ function KnownGitTab({
       )}
       <ZeropsGitPanel
         {...(openCommit === null ? {} : { className: "hidden" })}
-        model={{ blocks }}
+        model={{ blocks, emptyLine }}
         renderBlockAction={renderBlockVerbs}
         renderBlockCommits={(block) => (
           <ZeropsGitBlockCommits
@@ -369,13 +441,13 @@ function KnownGitTab({
                 : { number: block.pullRequestNumber, head: block.pullRequestHead }
             }
             // Each repository has its own main, independent of the application's other merges.
-            main={mergedMain(block.repository, props.changes?.merged)}
+            main={mergedMain(block.hqRepository, props.changes?.merged)}
             onOpenCommit={
               threadRef === null
                 ? undefined
-                : (commit) => setOpenCommit({ repository: block.repository, ...commit })
+                : (commit) => setOpenCommit({ repository: block.hqRepository, ...commit })
             }
-            repository={block.repository}
+            repository={block.hqRepository}
           />
         )}
         {...(props.onOpenChange === undefined ? {} : { onOpenChange: props.onOpenChange })}

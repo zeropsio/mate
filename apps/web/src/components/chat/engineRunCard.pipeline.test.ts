@@ -138,6 +138,12 @@ function render(input: {
   requests?: Request[];
   row?: ConversationRow;
   paged?: boolean;
+  /** What a reload holds of each run not read whole, where `paged` alone does not say it. */
+  spans?: ReadonlyArray<{
+    readonly runId: string;
+    readonly from: number | null;
+    readonly to: number | null;
+  }>;
   isWorking?: boolean;
   /** The helpers' finishes, from their fold, as the conversation passes them. */
   helpers?: boolean;
@@ -152,7 +158,11 @@ function render(input: {
     ...(input.requests === undefined ? {} : { requests: input.requests }),
     ...(input.row === undefined ? {} : { row: input.row }),
     ...(input.paged ? { spans: [{ runId: run1, from: null, to: 0, reading: null }] } : {}),
+    ...(input.spans === undefined
+      ? {}
+      : { spans: input.spans.map((span) => ({ ...span, reading: null })) }),
   };
+  const paged = input.paged === true || input.spans !== undefined;
   const thread = engineThreadOfRecords(key, records)!;
   const zerops = input.zerops
     ? deriveZeropsThreadModel({ activities: thread.activities, runningTurnId: null })
@@ -172,7 +182,7 @@ function render(input: {
     latestTurn: thread.latestTurn,
     isWorking: input.isWorking ?? false,
     activeTurnStartedAt: null,
-    ...(input.paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
+    ...(paged ? { cardPaging: engineCardPagingOfRecords(key, records) } : {}),
     ...(input.away === undefined ? {} : { away: input.away }),
     ...(input.helpers
       ? {
@@ -1032,6 +1042,52 @@ it("what woke a run opens its card, inside it", () => {
   expect(card?.kind === "record" ? card.opener : null).toMatchObject({
     title: "Interface: AAA UI polish",
   });
+});
+
+// Filip's card (Aleš, 2026-10-25): a person's message sent while a run worked goes on in that run's
+// card. Opened once that run had ended, the live card drew none of its work: no steps on its head,
+// nothing over the step it ran, nothing its Hide work folded away.
+it("a live card a queued message joined draws its live run's newest work, opened once the run before it ended", () => {
+  const tail = Array.from({ length: 40 }, (_, n) =>
+    n % 2 === 0
+      ? ({
+          ...bash(401 + n, 100_000 + n * 1_000, `git status --short # ${n}`, `Check the tree ${n}`),
+          runId: run2,
+          id: `${run2}/i/${401 + n}`,
+        } as Item)
+      : noteItem(run2, 401 + n, `Step ${n} done.`, { answer: false, at: t0 + 100_000 + n * 1_000 }),
+  );
+  const rows = render({
+    runs: [
+      stressRun(),
+      engineRun(key.conversationId, 2, {
+        state: "running",
+        end: null,
+        queuedAt: t0 + 60_000,
+        admittedAt: t0 + 77_800,
+        startedAt: t0 + 77_800,
+        endedAt: null,
+        summary: { items: 428, calls: { command: 214 }, answerItemId: null, lastItemSeq: 440 },
+      } as never),
+    ],
+    items: [
+      personItem(run1, 1, "Run the stress checks", { at: t0 }),
+      noteItem(run1, 12, "All checks passed.", { at: t0 + 77_700 }),
+      personItem(run2, 13, "GitHub is set", { at: t0 + 60_000 }),
+      ...tail,
+    ],
+    spans: [
+      { runId: run1, from: null, to: 0 },
+      { runId: run2, from: 401, to: null },
+    ],
+    isWorking: true,
+  });
+  const card = cardOf(rows);
+  expect(card.live).toBe(true);
+  const drawn = JSON.stringify(card.chatItems);
+  expect(drawn).toContain("git status --short # 38");
+  expect(drawn).toContain("Step 39 done.");
+  expect(drawn).not.toContain("All checks passed.");
 });
 
 // Milo's stress run 5 (A +1:37.6): wake 92 fired as a planned restart began and only spoke, so it

@@ -550,6 +550,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
       return { ...state, archived: true };
     case "ConversationUnarchived":
       return { ...state, archived: false };
+    case "LeaseBound":
+      return { ...state, lease: event.lease };
+    case "LeaseUnbound":
+      return state.lease?.alias === event.alias ? { ...state, lease: null } : state;
     case "EffectRequested": {
       const counted =
         event.kind === "session.open"

@@ -4,6 +4,10 @@ import * as Schema from "effect/Schema";
 
 import {
   agentIdForDriverKind,
+  isZeropsLeaseHeld,
+  KNOWN_ZEROPS_LEASE_STATES,
+  sameZeropsLeaseGroup,
+  sameZeropsRepo,
   ZEROPS_AGENT_LOGIN_COMMANDS,
   ZeropsAgentAuth,
   ZeropsAgentAuthSnapshot,
@@ -20,6 +24,7 @@ import {
   ZeropsLogin,
   ZeropsLoginAddInput,
   ZeropsLoginRemoveInput,
+  ZeropsStateEnvelope,
 } from "./zerops.ts";
 
 const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
@@ -464,4 +469,223 @@ it("decodes a signer persistence failure from adding a login", () => {
     detail: "Sign-in could not be recorded.",
   });
   expect(decoded.reason).toBe("signer-write-failed");
+});
+
+const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
+const envelope = (extra: Record<string, unknown> = {}) => ({
+  phase: "develop-active",
+  environment: "container",
+  project: { id: "proj-1", name: "z3-eval" },
+  services: [],
+  generated: "2026-10-23T12:00:00Z",
+  ...extra,
+});
+
+describe("ZeropsStateEnvelope services", () => {
+  const service = (hostname: string, extra: Record<string, unknown> = {}) => ({
+    hostname,
+    typeVersion: "nodejs@22",
+    runtimeClass: "dynamic",
+    status: "ACTIVE",
+    bootstrapped: true,
+    ...extra,
+  });
+  const web = {
+    name: "web",
+    port: 3000,
+    url: "https://appdev-1df2-3000.prg1.zerops.app",
+    status: "running",
+    readAt: "2026-10-23T12:00:00Z",
+  };
+  const worker = { name: "worker", status: "crashed", readAt: "2026-10-23T12:00:00Z" };
+
+  it("a service's dev server this build cannot read is left out, never the service", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        services: [
+          service("appdev", { devServers: [web, { name: "api", port: "x" }, worker] }),
+          service("appstage"),
+        ],
+      }),
+    );
+    expect(decoded.services.map((entry) => entry.hostname)).toEqual(["appdev", "appstage"]);
+    expect(decoded.services[0]?.devServers).toEqual([web, worker]);
+  });
+});
+
+describe("ZeropsStateEnvelope leases", () => {
+  const held = {
+    alias: "webpool-3",
+    pool: "webpool",
+    branch: "feat-x",
+    containerHostname: "node-id-3.runtime.webpool.zerops",
+    state: "held",
+    unverified: false,
+  };
+
+  it("an envelope from a zcp that reads no leases says nothing of them", () => {
+    expect(decodeEnvelope(envelope()).leases).toBeUndefined();
+  });
+
+  it("an envelope says which pool containers zcp holds, and none as none", () => {
+    expect(decodeEnvelope(envelope({ leases: [held] })).leases).toEqual([held]);
+    expect(decodeEnvelope(envelope({ leases: [] })).leases).toEqual([]);
+  });
+
+  it("a lease in a state or with a field this build does not know still reads", () => {
+    const decoded = decodeEnvelope(
+      envelope({ leases: [{ ...held, state: "draining", region: "prg1" }] }),
+    );
+    expect(decoded.leases).toEqual([{ ...held, state: "draining" }]);
+  });
+
+  it("a lease this build cannot read is left out, never the envelope", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        leases: [{ pool: "webpool", state: "held" }, held, { ...held, alias: "../etc" }],
+      }),
+    );
+    expect(decoded.leases).toEqual([held]);
+    expect(decoded.phase).toBe("develop-active");
+  });
+
+  it("a lease names the dev servers zcp read on it, one this build cannot read left out", () => {
+    const preview = {
+      name: "webpool-3",
+      port: 3000,
+      url: "https://webpool-3003.prg1.zerops.app",
+      status: "running",
+      readAt: "2026-10-23T12:00:00Z",
+    };
+    const decoded = decodeEnvelope(
+      envelope({ leases: [{ ...held, devServers: [preview, { port: "x" }] }, held] }),
+    );
+    expect(decoded.leases?.[0]?.devServers).toEqual([preview]);
+    expect(decoded.leases?.[1]).not.toHaveProperty("devServers");
+  });
+
+  it("a lease names the repository its group is keyed by beside its branch, and one zcp names none for reads without it", () => {
+    const repo = "https://hq.example.zerops.app/git/acme/web";
+    const recorded = { ...held, acquiredAt: "2026-10-23T12:00:01Z", repo };
+    expect(decodeEnvelope(envelope({ leases: [recorded] })).leases).toEqual([recorded]);
+    expect(decodeEnvelope(envelope({ leases: [held] })).leases?.[0]).not.toHaveProperty("repo");
+  });
+
+  it("a lease acquired for no branch reads without one", () => {
+    const { branch: _branch, ...noBranch } = held;
+    expect(decodeEnvelope(envelope({ leases: [noBranch] })).leases).toEqual([noBranch]);
+  });
+
+  /** What a `zerops_lease action=status` read of the lease's checkout found (spec-mate §2.8a.3). */
+  const activity = {
+    lastChangeAt: "2026-10-23T19:12:40Z",
+    previewLastConnAt: "2026-10-23T19:40:00Z",
+    previewOpenConns: 0,
+    acquiredAt: "2026-10-23T18:00:00Z",
+    readAt: "2026-10-23T20:04:00Z",
+  };
+  const unsaved = {
+    files: [" M src/App.tsx", "?? notes.txt"],
+    fileCount: 2,
+    unpushedCommits: 2,
+  };
+
+  it("a lease says what zcp read of its checkout: when it was last active, and what a release would lose", () => {
+    const decoded = decodeEnvelope(envelope({ leases: [{ ...held, activity, unsaved }, held] }));
+    expect(decoded.leases?.[0]).toEqual({ ...held, activity, unsaved });
+    expect(decoded.leases?.[1], "a lease no call read carries neither").toEqual(held);
+  });
+
+  it("a fact zcp did not read stays absent, never a zero", () => {
+    const unread = {
+      acquiredAt: "2026-10-23T18:00:00Z",
+      note: "not read: the pool's orchestrator did not confirm this lease",
+    };
+    const clean = { fileCount: 0, unpushedCommits: 0 };
+    const [lease] =
+      decodeEnvelope(envelope({ leases: [{ ...held, activity: unread, unsaved: clean }] }))
+        .leases ?? [];
+    expect(lease?.activity).toEqual(unread);
+    expect(lease?.unsaved, "a clean checkout lists no files").toEqual(clean);
+  });
+
+  it("what zcp read of a checkout that this build cannot read costs only itself, never the lease", () => {
+    const decoded = decodeEnvelope(
+      envelope({
+        leases: [
+          { ...held, activity: { ...activity, previewOpenConns: "two" }, unsaved },
+          { ...held, alias: "webpool-4", activity, unsaved: { fileCount: "many" } },
+          {
+            ...held,
+            alias: "webpool-5",
+            unsaved: { ...unsaved, files: [" M src/App.tsx", 7, "?? notes.txt"] },
+          },
+        ],
+      }),
+    );
+    expect(decoded.leases?.map((lease) => lease.alias)).toEqual([
+      "webpool-3",
+      "webpool-4",
+      "webpool-5",
+    ]);
+    expect(decoded.leases?.[0]?.activity).toBeUndefined();
+    expect(decoded.leases?.[0]?.unsaved).toEqual(unsaved);
+    expect(decoded.leases?.[1]?.activity).toEqual(activity);
+    expect(decoded.leases?.[1]?.unsaved).toBeUndefined();
+    expect(decoded.leases?.[2]?.unsaved?.files).toEqual(unsaved.files);
+  });
+
+  it("a parked lease is a state this build knows, and zcp still holds it", () => {
+    expect(KNOWN_ZEROPS_LEASE_STATES).toContain("parked");
+    expect(isZeropsLeaseHeld("parked")).toBe(true);
+  });
+});
+
+describe("the repository and branch a lease's group is keyed by", () => {
+  const web = "https://hq.example.zerops.app/git/acme/web";
+  const api = "https://hq.example.zerops.app/git/acme/api";
+
+  it.each([
+    { how: "the same address", other: web, same: true },
+    { how: "the address with .git", other: `${web}.git`, same: true },
+    { how: "the address with a trailing slash", other: `${web}/`, same: true },
+    { how: "the address with .git and a slash", other: `${web}.git/`, same: true },
+    { how: "the address in capitals, spaced", other: ` ${web.toUpperCase()} `, same: true },
+    { how: "another repository's address", other: api, same: false },
+    { how: "an address on another host", other: "https://github.com/acme/web", same: false },
+    { how: "an empty address", other: "", same: false },
+  ])("$how names the same repository as zcp compares them: $same", ({ other, same }) => {
+    expect(sameZeropsRepo(web, other)).toBe(same);
+    expect(sameZeropsRepo(other, web)).toBe(same);
+  });
+
+  it("no address names the same repository as another that names none", () => {
+    expect(sameZeropsRepo("", "")).toBe(false);
+    expect(sameZeropsRepo(" / ", "")).toBe(false);
+  });
+
+  it("two apps' leases of one branch are two groups", () => {
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main", repo: api })).toBe(
+      false,
+    );
+    expect(
+      sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main", repo: `${web}.git` }),
+    ).toBe(true);
+    expect(
+      sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "feat-x", repo: web }),
+    ).toBe(false);
+    expect(
+      sameZeropsLeaseGroup({ branch: null, repo: web }, { branch: "main", repo: web }),
+      "a lease of no branch is of main's group",
+    ).toBe(true);
+  });
+
+  it("a lease or a binding that names no repository is grouped by its branch alone", () => {
+    expect(sameZeropsLeaseGroup({ branch: "main" }, { branch: "main", repo: api })).toBe(true);
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: web }, { branch: "main" })).toBe(true);
+    expect(sameZeropsLeaseGroup({ branch: "main", repo: "" }, { branch: "main", repo: api })).toBe(
+      true,
+    );
+    expect(sameZeropsLeaseGroup({ branch: "main" }, { branch: "feat-x" })).toBe(false);
+  });
 });

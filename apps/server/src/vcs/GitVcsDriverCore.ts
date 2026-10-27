@@ -2530,9 +2530,21 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
     const indexPath = path.isAbsolute(indexValue.trim())
       ? indexValue.trim()
       : path.resolve(cwd, indexValue.trim());
-    const tempIndexPath = yield* fileSystem.makeTempFileScoped({
-      prefix: `t3code-review-index-${process.pid}-`,
-    });
+    // Beside the real index, in the repository's own git directory: git may run on another
+    // machine that shares only the checkout with this one (a Zerops service over ssh), where a
+    // file in this server's temp directory does not exist and `git add` cannot take its lock.
+    const tempIndexPath = yield* Effect.acquireRelease(
+      crypto.randomUUIDv4.pipe(
+        Effect.map((id) =>
+          path.join(path.dirname(indexPath), `t3code-review-index-${process.pid}-${id}`),
+        ),
+      ),
+      (file) =>
+        Effect.all([
+          fileSystem.remove(file, { force: true }),
+          fileSystem.remove(`${file}.lock`, { force: true }),
+        ]).pipe(Effect.ignore),
+    );
     const indexExists = yield* fileSystem.exists(indexPath);
     if (indexExists) {
       const { mtime } = yield* fileSystem.stat(indexPath);
@@ -3261,22 +3273,48 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
       }
     }
   });
+  const forgetListRefsSnapshot = (gitCommonDir: string) => {
+    const previousGeneration = currentListRefsGeneration(gitCommonDir);
+    bumpListRefsGeneration(gitCommonDir);
+    bumpListRefsEpoch(gitCommonDir);
+    return Cache.invalidate(
+      listRefsRefreshSnapshotCache,
+      new GitRefsRefreshCacheKey({ gitCommonDir, generation: previousGeneration }),
+    );
+  };
+
   const invalidateListRefsSnapshot = Effect.fn("invalidateListRefsSnapshot")(function* (
     cwd: string,
   ) {
     const repositoryPathsCacheKey = normalizeRepositoryPathsCacheKey(cwd);
     const repositoryPaths = yield* Cache.get(repositoryPathsCache, repositoryPathsCacheKey);
     if (repositoryPaths === null) return;
-    const previousGeneration = currentListRefsGeneration(repositoryPaths.gitCommonDir);
-    bumpListRefsGeneration(repositoryPaths.gitCommonDir);
-    bumpListRefsEpoch(repositoryPaths.gitCommonDir);
-    yield* Cache.invalidate(
-      listRefsRefreshSnapshotCache,
-      new GitRefsRefreshCacheKey({
-        gitCommonDir: repositoryPaths.gitCommonDir,
-        generation: previousGeneration,
-      }),
-    );
+    yield* forgetListRefsSnapshot(repositoryPaths.gitCommonDir);
+    yield* Cache.invalidate(repositoryPathsRefreshCache, repositoryPathsCacheKey);
+    yield* Cache.invalidate(repositoryPathsCache, repositoryPathsCacheKey);
+  });
+
+  // What is kept by the repository's paths, read from the cache alone: the repository that was
+  // there may be gone, and the one there now is read when it is next asked for.
+  const forgetRepository: GitVcsDriver.GitVcsDriver["Service"]["forgetRepository"] = Effect.fn(
+    "forgetRepository",
+  )(function* (cwd) {
+    const repositoryPathsCacheKey = normalizeRepositoryPathsCacheKey(cwd);
+    const kept = yield* Cache.getSuccess(repositoryPathsCache, repositoryPathsCacheKey);
+    const gitCommonDirs = new Set([
+      repositoryPathsCacheKey,
+      path.join(repositoryPathsCacheKey, ".git"),
+      ...(Option.isSome(kept) && kept.value !== null ? [kept.value.gitCommonDir] : []),
+    ]);
+    for (const gitCommonDir of gitCommonDirs) {
+      yield* Cache.invalidate(defaultBranchCache, gitCommonDir);
+      yield* Cache.invalidate(originExistsCache, gitCommonDir);
+      if (
+        listRefsGenerationByCommonDir.has(gitCommonDir) ||
+        listRefsEpochByCommonDir.has(gitCommonDir)
+      )
+        yield* forgetListRefsSnapshot(gitCommonDir);
+    }
     yield* Cache.invalidate(repositoryPathsRefreshCache, repositoryPathsCacheKey);
     yield* Cache.invalidate(repositoryPathsCache, repositoryPathsCacheKey);
   });
@@ -3943,6 +3981,7 @@ export const makeGitVcsDriverCore = Effect.fn("makeGitVcsDriverCore")(function* 
         Effect.andThen(withListRefsInvalidation(input.cwd, switchRef(input))),
       ),
     initRepo: initRepoWithListRefsInvalidation,
+    forgetRepository,
     listLocalBranchNames,
   });
 });

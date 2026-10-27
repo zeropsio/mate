@@ -2001,6 +2001,83 @@ describe("Claude's helpers and background work, as the engine records them", () 
       ),
   );
 
+  // Kara's cross-monorepo job: three background helpers worked on after the turn that started them
+  // ended; each of their calls came back, yet the helpers' panel read every one "No result" (zcp's
+  // "Used Lease a pool container — No result") and kept none of what it came back with.
+  it.effect.each([
+    {
+      what: "a zcp call",
+      tool: "mcp__zerops__zerops_lease",
+      itemType: "mcp_tool_call",
+      title: "MCP tool call",
+      input: { action: "acquire", pools: ["hqpool"], branch: "build-stamp" },
+      result: [{ type: "text", text: '{"leases":[{"alias":"hqpool-6","branch":"build-stamp"}]}' }],
+      says: "hqpool-6",
+    },
+    {
+      what: "a command",
+      tool: "Bash",
+      itemType: "command_execution",
+      title: "Command run",
+      input: { command: "git status -sb" },
+      result: "## build-stamp...origin/build-stamp",
+      says: "## build-stamp",
+    },
+  ])(
+    "a helper's call that comes back after the turn that started its helper ended reads done, with what it came back with: $what",
+    ({ tool, itemType, title, input, result, says }) =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("claudeAgent");
+          const c = claude(w);
+          yield* send(w);
+          yield* c.call(
+            "toolu_h",
+            { description: "Shared build stamp", run_in_background: true },
+            null,
+            "Agent",
+          );
+          yield* c.task("task.started", {
+            taskId: "ah",
+            description: "Shared build stamp",
+            taskType: "local_agent",
+            toolUseId: "toolu_h",
+          });
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          assert.deepStrictEqual(yield* ending(w, 1), ["ended", "completed", "agent"]);
+          const head = { itemType, title, agentId: "ah", parentToolUseId: "toolu_h" };
+          yield* w.agent((agent, thread) =>
+            agent.emit("item.started", thread, {
+              itemId: "toolu_x",
+              payload: { ...head, status: "inProgress", data: { toolName: tool, input } },
+            }),
+          );
+          yield* w.agent((agent, thread) =>
+            agent.emit("item.completed", thread, {
+              itemId: "toolu_x",
+              payload: {
+                ...head,
+                status: "completed",
+                data: {
+                  toolName: tool,
+                  input,
+                  result: { type: "tool_result", tool_use_id: "toolu_x", content: result },
+                },
+              },
+            }),
+          );
+          const call = (yield* w.items(r(1))).find(
+            (item) => item.kind === "call" && item.by.kind === "helper",
+          );
+          assert.strictEqual(call?.body.state, "done");
+          const engine = yield* w.engine;
+          const [kept] = yield* w.within(engine.callData(mate, { itemIds: [call!.item_id] }));
+          assert.include(JSON.stringify(kept?.data ?? null), says);
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   // Milo's final engine run (seg E +1:32): in Supervised, two helpers' commands needed approval
   // after the turn ended; nothing reached the person and the run waited on its helpers for good.
   it.effect(

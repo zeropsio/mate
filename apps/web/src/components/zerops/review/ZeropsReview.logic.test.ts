@@ -39,6 +39,8 @@ import {
   sinceWords,
   whySaid,
   productionBefore,
+  otherOpenChanges,
+  reviewBranch,
 } from "./ZeropsReview.logic";
 
 describe("reviewKindLine", () => {
@@ -1089,6 +1091,58 @@ describe("productionCode: the code production runs, to browse before a release r
     ["nothing while its repositories are not known", new Map(), undefined, []],
   ])("%s", (_, runs, repos, expected) => {
     expect(productionCode({ runs, repositories: repos })).toEqual(expected);
+  });
+});
+
+// Several changes of one Mate in one repository read apart by their branches (several-changes
+// design §5.11): the review names a change's branch beside its number, and its Mate's other open
+// changes there, each a way to its own review.
+describe("a change's branch and its Mate's other open changes", () => {
+  const change = (over: Record<string, unknown> = {}) => ({
+    repository: "appsdev",
+    number: 6,
+    title: "Test badge",
+    kind: "code" as const,
+    mateProjectId: "p-wren",
+    branch: "badge",
+    merged: false,
+    ...over,
+  });
+
+  it.each([
+    ["the branch its Mate named", change(), "badge"],
+    [
+      "no branch HQ chose for a change that named none",
+      change({ branch: "mate/p-wren/6" }),
+      undefined,
+    ],
+    [
+      "no branch of an older HQ's change, which names none",
+      change({ branch: undefined }),
+      undefined,
+    ],
+  ] as const)("names %s", (_case, pull, named) => {
+    expect(reviewBranch(pull)).toBe(named);
+  });
+
+  it("lists the Mate's other open changes in the repository, by number, never another's", () => {
+    const pull = change();
+    const others = otherOpenChanges(pull, [
+      change({ number: 7, title: "Build stamp", branch: "build-stamp" }),
+      pull,
+      change({ number: 2, title: "Pool previews", branch: "pool-previews" }),
+      change({ number: 9, mateProjectId: "p-juno", branch: "their-work" }),
+      change({ number: 3, repository: "apidev", branch: "api-work" }),
+      change({ number: 5, merged: true, branch: "landed" }),
+    ]);
+    expect(others.map((other) => [other.number, other.title])).toEqual([
+      [2, "Pool previews"],
+      [7, "Build stamp"],
+    ]);
+  });
+
+  it("a change alone of its Mate's in the repository lists none", () => {
+    expect(otherOpenChanges(change(), [change()])).toEqual([]);
   });
 });
 

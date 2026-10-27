@@ -1,10 +1,12 @@
 import * as PgClient from "@effect/sql-pg/PgClient";
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Exit from "effect/Exit";
 import * as Redacted from "effect/Redacted";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { TempPostgres, tempPostgresLayer } from "../test/harness/tempPostgres.ts";
+import { CHANGE_COLUMNS } from "./changes.ts";
 import { treeMigrations } from "./migrationFiles.ts";
 import { MIGRATIONS_TABLE, migrate } from "./migrations.ts";
 
@@ -32,6 +34,28 @@ const tables = Effect.gen(function* () {
 
 describe("migrate", () => {
   it.layer(tempPostgresLayer, { excludeTestServices: true })((it) => {
+    it.effect(
+      "a change read finds whether its own Mate closed it by an index of the log's closes, never by scanning the log",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const sql = yield* SqlClient.SqlClient;
+            yield* migrate(treeMigrations());
+            const plan = yield* sql.withTransaction(
+              Effect.andThen(
+                // Tables this small are read whole by any plan; only a missing index forces it.
+                sql`SET LOCAL enable_seqscan = off`,
+                sql.unsafe<{ readonly "QUERY PLAN": string }>(
+                  `EXPLAIN SELECT ${CHANGE_COLUMNS} FROM hq_change WHERE state = 'closed'`,
+                ),
+              ),
+            );
+            const lines = plan.map((row) => row["QUERY PLAN"]).join("\n");
+            assert.include(lines, "hq_git_event");
+            assert.notMatch(lines, /Seq Scan on hq_git_event/u);
+          }),
+        ),
+    );
     it.effect(
       "existing Chief registrations retain their application's identity after the schema expands",
       () =>
@@ -268,6 +292,66 @@ describe("migrate", () => {
             assert.strictEqual((yield* open(4, "mate/P_MATE/1"))._tag, "Success");
             yield* sql`UPDATE hq_change SET state = 'closed' WHERE number = 4`;
             assert.strictEqual((yield* open(5, "mate/P_MATE/2"))._tag, "Failure");
+          }),
+        ),
+    );
+
+    it.effect(
+      "a person's own Mate keeps one default change per repository beside any on a branch it named or was handed, the open changes before it kept as they were",
+      () =>
+        withSql(
+          Effect.gen(function* () {
+            const all = treeMigrations();
+            yield* migrate(all.filter((file) => file.name < "0084_"));
+            const sql = yield* SqlClient.SqlClient;
+            const app = "00000000-0000-0000-0000-000000000001";
+            yield* sql`INSERT INTO hq_app (id, name, created_by) VALUES (${app}, 'Shop', 'owner')`;
+            yield* sql`INSERT INTO hq_repo (app_id, name, created_by)
+              VALUES (${app}, 'appdev', 'owner')`;
+            const insert = (number: number, mate: string, branch: string, state = "open") =>
+              Effect.exit(sql`INSERT INTO hq_change (app_id, repo, number, mate_project_id, title,
+                  state, branch) VALUES (${app}, 'appdev', ${number}, ${mate}, 'The task', ${state},
+                  ${branch})`);
+            for (const [number, mate, state] of [
+              [1, "P_MATE", "merged"],
+              [2, "P_MATE", "open"],
+              [3, "P_BEA", "open"],
+            ] as const)
+              assert.isTrue(
+                Exit.isSuccess(yield* insert(number, mate, `mate/${mate}/${number}`, state)),
+              );
+            yield* migrate(all);
+            const rows = yield* sql<{ readonly number: number; readonly state: string }>`
+              SELECT number, state FROM hq_change ORDER BY number`;
+            assert.deepStrictEqual(
+              rows.map((row) => [row.number, row.state]),
+              [
+                [1, "merged"],
+                [2, "open"],
+                [3, "open"],
+              ],
+            );
+            // Beside its default change: one on a branch it named, one handed to it on another
+            // Mate's default branch; a second default change is refused.
+            assert.isTrue(Exit.isSuccess(yield* insert(4, "P_MATE", "fix-login")));
+            assert.isTrue(Exit.isSuccess(yield* insert(5, "P_MATE", "mate/P_GONE/5")));
+            assert.isTrue(Exit.isFailure(yield* insert(6, "P_MATE", "mate/P_MATE/6")));
+            const indexes = yield* sql<{ readonly name: string }>`
+              SELECT indexname AS name FROM pg_indexes
+              WHERE tablename = 'hq_change' AND indexname LIKE 'hq\\_change\\_%open%'
+                OR indexname = 'hq_change_one_default' ORDER BY 1`;
+            assert.deepStrictEqual(
+              indexes.map((index) => index.name),
+              [
+                "hq_change_mate_open",
+                "hq_change_one_default",
+                "hq_change_open_branch",
+                "hq_change_task_open",
+              ],
+            );
+            // Once its default change is no longer open, the next one may be.
+            yield* sql`UPDATE hq_change SET state = 'closed' WHERE number = 2`;
+            assert.isTrue(Exit.isSuccess(yield* insert(7, "P_MATE", "mate/P_MATE/7")));
           }),
         ),
     );

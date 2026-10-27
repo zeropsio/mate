@@ -23,6 +23,7 @@ import {
 import { mateDiagnostics } from "@t3tools/client-runtime/zerops/diagnostics";
 import { useMateRecoveryAction } from "../zerops/useMateRecoveryAction";
 import { useMateRepositories } from "../zerops/useMateRepositories";
+import { useThreadLeases } from "../zerops/useThreadLeases";
 import { terminalStartCwd } from "../zerops/terminalCwd.logic";
 import { useHqProjectPerson, zeropsMateOwnerOf } from "../zerops/useZeropsMateOwners";
 import { useEngineRunCards } from "../zerops/useEngineCardPaging";
@@ -1033,19 +1034,37 @@ const PersistentThreadTerminalDrawer = memo(function PersistentThreadTerminalDra
   }, [launchContext, worktreePath]);
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden drawer reads none.
   // Terminals already open stay on screen while the checkouts are read: they keep their folders.
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const leases = useThreadLeases(
+    visible ? threadRef.environmentId : null,
+    threadRef.threadId,
+    serverThread?.lease ?? null,
+  );
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    leases,
+    threadRef.threadId,
+  );
   const hasOpenTerminals = drawerTerminalSessions.length > 0;
+  const leaseAlias = serverThread?.lease?.alias ?? null;
   const cwd = useMemo(
     () =>
       project
         ? (terminalStartCwd({
             launchCwd: launchContext?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: leaseAlias,
             worktreePath: effectiveWorktreePath,
             repositories,
           }) ?? (hasOpenTerminals ? project.workspaceRoot : null))
         : (launchContext?.cwd ?? null),
-    [effectiveWorktreePath, hasOpenTerminals, launchContext?.cwd, project, repositories],
+    [
+      effectiveWorktreePath,
+      hasOpenTerminals,
+      launchContext?.cwd,
+      leaseAlias,
+      project,
+      repositories,
+    ],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1300,24 +1319,35 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     threadId: threadRef.threadId,
   });
   const threadWorktreePath = serverThread?.worktreePath ?? draftThread?.worktreePath ?? null;
+  const threadLease = serverThread?.lease?.alias ?? null;
   const activeSummary =
     knownTerminalSessions.find((session) => session.target.terminalId === surface.activeTerminalId)
       ?.state.summary ?? null;
   const worktreePath =
     launchContext?.worktreePath ?? activeSummary?.worktreePath ?? threadWorktreePath;
   // A Mate's terminal starts in its code checkout (`terminalStartCwd`); a hidden panel reads none.
-  const repositories = useMateRepositories(visible ? threadRef.environmentId : null);
+  const leases = useThreadLeases(
+    visible ? threadRef.environmentId : null,
+    threadRef.threadId,
+    serverThread?.lease ?? null,
+  );
+  const repositories = useMateRepositories(
+    visible ? threadRef.environmentId : null,
+    leases,
+    threadRef.threadId,
+  );
   const cwd = useMemo(
     () =>
       project
         ? terminalStartCwd({
             launchCwd: launchContext?.cwd ?? activeSummary?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: threadLease,
             worktreePath,
             repositories,
           })
         : (launchContext?.cwd ?? activeSummary?.cwd ?? null),
-    [activeSummary?.cwd, launchContext?.cwd, project, repositories, worktreePath],
+    [activeSummary?.cwd, launchContext?.cwd, project, repositories, threadLease, worktreePath],
   );
   const runtimeEnv = useMemo(
     () =>
@@ -1359,6 +1389,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
         ? terminalStartCwd({
             launchCwd: launchContext?.cwd ?? summary?.cwd,
             workspaceRoot: project.workspaceRoot,
+            lease: threadLease,
             worktreePath: terminalWorktreePath,
             repositories,
           })
@@ -1381,6 +1412,7 @@ const PersistentThreadTerminalPanel = memo(function PersistentThreadTerminalPane
     project,
     repositories,
     surface.terminalIds,
+    threadLease,
     threadWorktreePath,
   ]);
 
@@ -3235,11 +3267,21 @@ function ConversationView(props: ChatViewProps) {
     : null;
   const gitStatusCwd = activeThread?.worktreePath ?? gitCwd;
   // A Mate's new terminal starts in its code checkout, never its bare workspace (`terminalStartCwd`).
-  const mateRepositories = useMateRepositories(activeProject ? environmentId : null);
+  const mateLeases = useThreadLeases(
+    activeProject ? environmentId : null,
+    activeThreadId,
+    activeThread?.lease ?? null,
+  );
+  const mateRepositories = useMateRepositories(
+    activeProject ? environmentId : null,
+    mateLeases,
+    activeThreadId,
+  );
   const terminalOpenCwd = activeProject
     ? terminalStartCwd({
         launchCwd: null,
         workspaceRoot: activeProject.workspaceRoot,
+        lease: activeThread?.lease?.alias ?? null,
         worktreePath: activeThread?.worktreePath ?? null,
         repositories: mateRepositories,
       })
@@ -5388,6 +5430,8 @@ function ConversationView(props: ChatViewProps) {
       working: isWorking || mateAtWork,
     },
     colleagueReadOnly === null,
+    // Its own work leads: the change on the branch of the lease this conversation is bound to.
+    activeThread?.lease?.branch ?? undefined,
   );
   // Typing here while the Mate works in another of its chats, Send's hover says so
   // (`ConversationStrip.tsx`). A crewmate works on its own copy of the code, so another chat's
@@ -8343,6 +8387,7 @@ function ConversationView(props: ChatViewProps) {
             activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
+            readAlong={colleagueReadOnly !== null}
             activeProjectName={activeProjectDisplayName}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}
             activeProjectFaviconPath={activeProject?.faviconPath ?? null}

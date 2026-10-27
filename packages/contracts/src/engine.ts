@@ -24,9 +24,11 @@ import {
   BackgroundWork,
   ChatFileAttachment,
   ChatImageAttachment,
+  LeaseAlias,
   ProviderInteractionMode,
   ProviderUserInputAnswers,
   RuntimeMode,
+  ThreadLease,
   UserInputAttachments,
 } from "./orchestration.ts";
 import { ToolPresentation } from "./providerRuntime.ts";
@@ -840,6 +842,13 @@ export const ConversationRow = Schema.Struct({
   askedAt: Schema.NullOr(Millis),
   /** How freely its agent works, once a person set it; absent: the workspace's mode. */
   runtimeMode: Schema.optionalKey(forwardCompatibleLiterals(RuntimeMode.literals)),
+  /** The pool container its agent leased, which it works in; absent: none. */
+  lease: Schema.optionalKey(ThreadLease),
+  /**
+   * The person archived it (Archive and start fresh, the archive's own menu): the menu reads it
+   * archived though nobody holds it. Absent while it is not, and from an older server.
+   */
+  archived: Schema.optionalKey(Schema.Literal(true)),
 });
 export type ConversationRow = typeof ConversationRow.Type;
 
@@ -1128,6 +1137,14 @@ export const ModelSwitched = event("ModelSwitched", {
 export const RuntimeModeSet = event("RuntimeModeSet", { runtimeMode: RuntimeMode, by: Principal });
 export const ConversationArchived = event("ConversationArchived", { by: Principal });
 export const ConversationUnarchived = event("ConversationUnarchived", { by: Principal });
+/**
+ * The pool container the conversation's agent leased (zcp's `zerops_lease`): the person's views of
+ * the conversation's work (Git tab, diff, terminal) show it from now on; its sessions stay where
+ * they open. Only its first lease binds it.
+ */
+export const LeaseBound = event("LeaseBound", { lease: ThreadLease });
+/** The conversation's lease ended: released, lost, or no longer held. */
+export const LeaseUnbound = event("LeaseUnbound", { alias: LeaseAlias });
 export const EffectRequested = event("EffectRequested", {
   effectId: EffectId,
   kind: Schema.String,
@@ -1258,6 +1275,8 @@ const knownEvents = [
   RuntimeModeSet,
   ConversationArchived,
   ConversationUnarchived,
+  LeaseBound,
+  LeaseUnbound,
   EffectRequested,
   EffectOutcomeRecorded,
   WakeArmed,

@@ -349,6 +349,12 @@ export class GitVcsDriver extends Context.Service<
     ) => Effect.Effect<VcsSwitchRefResult, GitCommandError>;
     readonly initRepo: (input: VcsInitInput) => Effect.Effect<void, GitCommandError>;
     readonly listLocalBranchNames: (cwd: string) => Effect.Effect<string[], GitCommandError>;
+    /**
+     * Forgets what is kept of the repository at `cwd` (its paths, branch, default branch, origin
+     * and refs), without asking git: another repository may sit at that path now, such as a
+     * lease's checkout handed to another branch.
+     */
+    readonly forgetRepository: (cwd: string) => Effect.Effect<void>;
   }
 >()("t3/vcs/GitVcsDriver") {}
 

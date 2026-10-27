@@ -57,6 +57,7 @@ type Candidate = ZeropsCandidate & {
       readonly status: string;
       readonly runtime: boolean;
     }>;
+    readonly pools: ReadonlyArray<string>;
   };
 };
 
@@ -82,6 +83,7 @@ function mate(bot: string, hostnames: ReadonlyArray<string> | undefined): Candid
             deployedAt: undefined,
             deployable: [],
             statuses: hostnames.map((hostname) => ({ hostname, status: "ACTIVE", runtime: true })),
+            pools: [],
           },
         }),
   };

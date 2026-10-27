@@ -45,6 +45,34 @@ describe("workspace identity observation", () => {
       assert.strictEqual(result.repository.rootId, workspaceRootId("p", "s", "/var/www"));
     }),
   );
+  it.effect(
+    "two leases of one pool are two workspace roots, and a service's root is as before",
+    () =>
+      Effect.gen(function* () {
+        // Every container of a pool answers with the pool's own project and service.
+        const observer = makeZeropsWorkspaceObserver({
+          projectId: "p",
+          runProbe: () => Effect.succeed(probeOutput("p", "pool")),
+        });
+        const leaseOf = (alias: string) => ({
+          host: alias,
+          mountPath: `/var/www/${alias}`,
+          remotePath: "/var/www",
+          kind: "lease" as const,
+        });
+        const rootOf = (result: Effect.Success<ReturnType<typeof observer.observe>>) =>
+          result._tag === "available" ? result.repository.rootId : undefined;
+        const three = rootOf(yield* observer.observe(leaseOf("webpool-3")));
+        const four = rootOf(yield* observer.observe(leaseOf("webpool-4")));
+        assert.isString(three);
+        assert.notStrictEqual(three, four);
+        assert.notStrictEqual(three, workspaceRootId("p", "pool", "/var/www"));
+        assert.strictEqual(
+          rootOf(yield* observer.observe({ ...repository, host: "app" })),
+          workspaceRootId("p", "pool", "/var/www"),
+        );
+      }),
+  );
   it.effect("rejects foreign projects and malformed observations", () =>
     Effect.gen(function* () {
       for (const raw of [probeOutput("other"), "banner\n" + probeOutput(), "p\0s\0"]) {

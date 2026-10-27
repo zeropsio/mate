@@ -37,21 +37,35 @@
  * @module gitTab
  */
 
-import { ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS } from "@t3tools/contracts";
+import {
+  isZeropsLeaseHeld,
+  sameZeropsLeaseGroup,
+  ZEROPS_GIT_REMOTE_DETAIL_MAX_CHARS,
+  type ZeropsLease,
+  type ZeropsLifecycle,
+} from "@t3tools/contracts";
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
+import { repoOfUrl } from "@t3tools/shared/hqChanges";
 
 import type { MergeabilityKind } from "./changeMergeability.ts";
 import type { GroupEnvironment } from "./groupEnvironments.ts";
+import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
+import type { Known } from "./knowledge/index.ts";
 import { branchLabel } from "./mateIdentity.ts";
 import type { FlowPullRequest } from "./projectFlow.ts";
 import { REVIEW_LABEL } from "./reviewVerdict.ts";
-import { servicePairs } from "./servicePairs.ts";
+import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import type { ZeropsTopologyService } from "./topology.ts";
 
 /** What the container says about one checkout (`subscribeVcsStatus`). */
 export interface GitCheckoutState {
   /** False until the checkout owner has answered; omitted on retained clients. */
   readonly read?: boolean;
+  /**
+   * Why the checkout's owner could not read it, in its own words: a read that failed is an
+   * answer, never one still on its way.
+   */
+  readonly failure?: string | undefined;
   /** The service's hostname, which is its repository's name in the group's org. */
   readonly repository: string;
   readonly isRepo: boolean;
@@ -96,7 +110,11 @@ export interface GitChangeState {
 /**
  * A Mate's newest change in a repository, as the flow carries its application's — the open one,
  * if any, being the newest, since a Mate opens a number only while none is open. A change closed
- * without landing is no work of anybody's any more.
+ * without landing is no work of anybody's any more. A checkout one of the thread's `leases` mounts
+ * is no repository of HQ's — HQ names a repository after the dev service it began on, never after
+ * a pool's container — so its change is the one on the branch zcp checked out there, of the
+ * repository the lease names (`leaseOfRepository`): two apps of one Mate may each have a change on
+ * one branch name.
  */
 export function mateChangeIn(
   flow: {
@@ -105,9 +123,16 @@ export function mateChangeIn(
   },
   mateProjectId: string | undefined,
   repository: string,
+  leases: ReadonlyArray<CheckoutLease> = [],
 ): FlowPullRequest | undefined {
+  const lease = leases.find(({ alias }) => alias === repository);
   const own = (change: FlowPullRequest) =>
-    change.mateProjectId === mateProjectId && change.repository === repository;
+    change.mateProjectId === mateProjectId &&
+    (lease === undefined
+      ? change.repository === repository
+      : lease.branch !== null &&
+        change.branch === lease.branch &&
+        leaseOfRepository(lease.repo, change.repositoryUrl));
   return [...flow.pullRequests.filter(own), ...flow.merged.filter(own)].reduce<
     FlowPullRequest | undefined
   >(
@@ -115,6 +140,24 @@ export function mateChangeIn(
     undefined,
   );
 }
+
+/**
+ * Whether a lease that names `repo` may be of the repository HQ keeps at `address`
+ * (`FlowPullRequest.repositoryUrl`): the same application and repository at the same HQ, read from
+ * either address with its organization or without (`repoOfUrl`), but for case — or not known to be
+ * another: the lease names none, the change carries no address, or the lease's is no repository
+ * address of the change's HQ (a repository kept on GitHub, whose name in HQ its address does not
+ * say). Only another application or repository at the change's HQ is another repository.
+ */
+export function leaseOfRepository(repo: string | undefined, address: string | undefined): boolean {
+  if (repo === undefined || address === undefined) return true;
+  const leased = repoOfUrl(repo);
+  const own = repoOfUrl(address);
+  if (leased === null || own === null || !sameText(leased.hq, own.hq)) return true;
+  return sameText(leased.appId, own.appId) && sameText(leased.repo, own.repo);
+}
+
+const sameText = (left: string, right: string) => left.toLowerCase() === right.toLowerCase();
 
 /**
  * The fact that has to be proved rather than assumed. `undefined` means not
@@ -134,7 +177,15 @@ export interface GitBlockEvidence {
 /** What the person is looking at, in one word the block is built around. */
 export type GitBlockState =
   /** HQ has not told the changes. Says nothing, and must not be made to. */
-  "unread" | "no-repository" | "untouched" | "unpushed" | "behind" | "in-review" | "merged";
+  | "unread"
+  /** The checkout could not be read. Says so, and nothing about the work in it. */
+  | "unreadable"
+  | "no-repository"
+  | "untouched"
+  | "unpushed"
+  | "behind"
+  | "in-review"
+  | "merged";
 
 export type GitBlockActionKind = "update-from-main" | "push" | "review";
 
@@ -152,7 +203,15 @@ export interface GitBlockAction {
 }
 
 export interface GitBlock {
+  /** The checkout: a service's hostname, or a lease's alias. */
   readonly repository: string;
+  /**
+   * The repository's name in HQ, which its change, commits and review go by: the checkout's own,
+   * or for a lease the repository of the change on its branch (`mateChangeIn`).
+   */
+  readonly hqRepository: string;
+  /** What the block is called: the repository, or a lease's `<pool> · <branch>` (`checkoutLabel`). */
+  readonly label?: string;
   /** The branch the container is on. `main` for a codebase nobody has touched. */
   readonly branch: string;
   /**
@@ -294,6 +353,7 @@ export function gitCheckoutLine(
    */
   hasChange = false,
 ): string {
+  if (checkout.failure !== undefined) return checkout.failure;
   if (checkout.read === false) return "Reading repository…";
   if (!checkout.isRepo) return "no repository yet";
   const branch = branchLabel(checkout.headRef, mateName);
@@ -364,6 +424,8 @@ export function gitVerdict(input: {
       // read lands — and a panel that speaks here is a panel that takes it
       // back.
       return undefined;
+    case "unreadable":
+      return { tone: "failed", text: "Could not read this repository.", ask: undefined };
     case "no-repository":
       return { tone: "off", text: "No code here yet.", ask: undefined };
     case "merged":
@@ -462,6 +524,7 @@ function runsInTheContainer(action: GitBlockAction): boolean {
 }
 
 function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockState {
+  if (checkout.failure !== undefined) return "unreadable";
   if (checkout.read === false || !changes.read) return "unread";
   if (!checkout.isRepo) return "no-repository";
   if (changes.change?.merged === true) return "merged";
@@ -481,7 +544,13 @@ function stateOf(checkout: GitCheckoutState, changes: GitChangeState): GitBlockS
  * change open: the Mate's push opens its change (SPEC §3.2a).
  */
 function actionOf(checkout: GitCheckoutState, state: GitBlockState): GitBlockAction | undefined {
-  if (state === "unread" || state === "no-repository" || state === "merged") return undefined;
+  if (
+    state === "unread" ||
+    state === "unreadable" ||
+    state === "no-repository" ||
+    state === "merged"
+  )
+    return undefined;
   if (state === "unpushed" && checkout.isRepo) {
     return { kind: "push", label: "Push", running: "Pushing…", ownerOnly: true };
   }
@@ -507,6 +576,8 @@ export function gitBlock(input: {
   readonly evidence: GitBlockEvidence;
   /** Whose Mate this is, so its own branch reads as a name rather than an id. */
   readonly mateName?: string | undefined;
+  /** The leases of the thread the tab is open beside (`threadLeases`), which name their repositories. */
+  readonly leases?: ReadonlyArray<CheckoutLease> | undefined;
 }): GitBlock {
   const { checkout, changes } = input;
   const change = changes.change;
@@ -515,7 +586,7 @@ export function gitBlock(input: {
   // which is what a push to a source branch already does.
   const target = change?.baseBranch ?? checkout.headRef;
   const environment =
-    state === "unread" || state === "no-repository"
+    state === "unread" || state === "unreadable" || state === "no-repository"
       ? // Where the branch lands is local knowledge, but its wording is not:
         // the same branch reads "runs this branch" before HQ answers and
         // "picks it up on merge" after. Said once, when it is settled.
@@ -545,7 +616,10 @@ export function gitBlock(input: {
   });
   return {
     repository: checkout.repository,
-    branch: checkout.read === false ? "" : (checkout.headRef ?? MAIN),
+    hqRepository: change?.repository ?? checkout.repository,
+    label: checkoutLabel(checkout.repository, input.leases ?? []),
+    branch:
+      checkout.read === false || checkout.failure !== undefined ? "" : (checkout.headRef ?? MAIN),
     verdict,
     checkoutLine: gitCheckoutLine(checkout, input.mateName, change !== undefined),
     state,
@@ -584,19 +658,130 @@ export function gitActionAllowed(
  * and a row for it said "no repository yet" about something that will never
  * have one (the owner, 2026-09-17). Managed data services hold no repository
  * either. One repository per pair, whatever the number of dev services: a further dev
- * service built from the same repository shares the first one's code volume.
+ * service built from the same repository shares the first one's code volume. A part migrated
+ * to a dev pool lists nothing: the pool holds no checkout (its leases do), and its stage is the
+ * pool's pair's stage once zcp's envelope says so (`poolPairs`), even while the tier on `main`
+ * still names the retired dev service.
  */
 export function gitCheckoutHostnames(
-  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group">>,
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname" | "group"> & { type?: string }>,
   tier?: string,
+  /** The pairs the thread's last envelope keys by a dev pool (`poolPairsIn`). */
+  poolPairs?: ReadonlyArray<PoolPair>,
 ): ReadonlyArray<string> {
-  const { devOf, sharesCodeWith } = servicePairs({ services, tier });
+  const { devOf, sharesCodeWith } = servicePairs({ services, tier, poolPairs });
   return services
     .filter(
       (service) =>
         service.group === "runtimes" &&
+        // A pool or a Box holds no codebase, whatever group a caller's read gave it.
+        (service.type === undefined || !isPoolOrSandboxServiceType(service.type)) &&
         !devOf.has(service.hostname) &&
         !sharesCodeWith.has(service.hostname),
     )
     .map((service) => service.hostname);
+}
+
+/** What the Git tab says while it lists no repository and no code is anywhere else either. */
+export const NO_REPOSITORY_LINE = "No code repository yet. The first service brings one.";
+
+/**
+ * What it says instead when the code is in a dev pool: a chat bound to no lease lists no checkout
+ * of a part migrated to a pool, and reaches the code by leasing one of the pool's containers,
+ * which a person calls a workspace.
+ */
+export const CODE_IN_POOL_LINE =
+  "The code lives in a dev pool. This chat reaches it by taking a workspace.";
+
+/**
+ * What the Git tab says while it lists no repository: the code is in a dev pool when the thread's
+ * last envelope says a pool the project holds keys a pair (`poolPairsIn`) or names the repository
+ * its pair keeps (`remoteUrl` on a pool's snapshot, which carries no stage for a part that had
+ * none) — else there is none yet. An envelope not read yet says nothing of a pool.
+ */
+export function gitEmptyLine(
+  services: ReadonlyArray<Pick<ZeropsTopologyService, "hostname">>,
+  lifecycle: Known<ZeropsLifecycle> | undefined,
+): string {
+  if (lifecycle?.state !== "known") return NO_REPOSITORY_LINE;
+  const snapshots = lifecycle.value.envelope?.services ?? [];
+  const held = new Set(services.map((service) => service.hostname));
+  const pools = [
+    ...poolPairsIn(snapshots).map(({ pool }) => pool),
+    ...snapshots
+      .filter(
+        (snapshot) =>
+          snapshot.runtimeClass === "pool" &&
+          snapshot.remoteUrl !== undefined &&
+          snapshot.remoteUrl !== "",
+      )
+      .map((snapshot) => snapshot.hostname),
+  ];
+  return pools.some((pool) => held.has(pool)) ? CODE_IN_POOL_LINE : NO_REPOSITORY_LINE;
+}
+
+/** The pool container a thread's agent leased, as a checkout reads it (`ThreadLease`). */
+export interface CheckoutLease {
+  /** `<pool>-<number>`: zcp mounts the container at `/var/www/<alias>`. */
+  readonly alias: string;
+  readonly pool: string;
+  /** The branch zcp checked out there; null for none. */
+  readonly branch: string | null;
+  /** The repository its group is keyed by beside the branch (zcp's `repo`); none where zcp named none. */
+  readonly repo?: string | undefined;
+}
+
+/**
+ * The leases a thread reads: the one it is bound to first, then every other lease of its
+ * repository and branch zcp holds, as the thread's last read of zcp's leases (`leases[]`) names
+ * them — a branch that spans several app parts holds one lease per part's pool, and the
+ * conversation that acquired them shows them all, never another app's lease of the same branch
+ * (`sameZeropsLeaseGroup`). Derived on every read, never kept: none for a thread bound to no
+ * lease, and the bound one alone until zcp's leases are read.
+ */
+export function threadLeases(
+  lease: CheckoutLease | null | undefined,
+  read:
+    | ReadonlyArray<Pick<ZeropsLease, "alias" | "pool" | "branch" | "state" | "repo">>
+    | undefined,
+): ReadonlyArray<CheckoutLease> {
+  if (lease == null) return [];
+  const others = (read ?? []).filter(
+    (other) =>
+      other.alias !== lease.alias &&
+      isZeropsLeaseHeld(other.state) &&
+      sameZeropsLeaseGroup(lease, other),
+  );
+  return [
+    lease,
+    ...others.map(({ alias, pool, branch: checkedOut, repo }) => ({
+      alias,
+      pool,
+      branch: checkedOut === undefined || checkedOut === "" ? null : checkedOut,
+      ...(repo === undefined || repo === "" ? {} : { repo }),
+    })),
+  ];
+}
+
+/**
+ * The checkouts a thread reads: the ones its leases mount (`threadLeases`), alone, once its agent
+ * leased a pool container — the thread works there and nowhere else, and a lease is never a
+ * service its topology lists; with no lease, the Mate's own (`gitCheckoutHostnames`),
+ * `undefined`/`null` while unread. A thread bound to no lease so never reads another thread's lease.
+ */
+export function threadCheckoutHostnames<Unread extends null | undefined>(
+  checkouts: ReadonlyArray<string> | Unread,
+  leases: ReadonlyArray<CheckoutLease>,
+): ReadonlyArray<string> | Unread {
+  return leases.length === 0 ? checkouts : leases.map(({ alias }) => alias);
+}
+
+/**
+ * What a checkout is called: its hostname, or — for one of the thread's leases, whose alias says
+ * only which container of the pool it is — `<pool> · <branch>`, the alias with no branch.
+ */
+export function checkoutLabel(hostname: string, leases: ReadonlyArray<CheckoutLease>): string {
+  const lease = leases.find(({ alias }) => alias === hostname);
+  if (lease === undefined) return hostname;
+  return lease.branch === null ? lease.alias : `${lease.pool} · ${lease.branch}`;
 }

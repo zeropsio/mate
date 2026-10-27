@@ -1173,6 +1173,121 @@ describe("an engine card not held whole, as its worked line and its scroll read 
     });
   });
 
+  // Filip's card (Aleš, 2026-10-25): a person's message sent while a run worked goes on in that
+  // run's card. Opened once that run had ended, the run is not read yet, and the live run holds its
+  // newest lines from its window: the card held none of them, the live card opened onto its current
+  // step alone and its Hide work folded nothing away.
+  describe("a live card a queued message joined to a run not read yet", () => {
+    const run2 = "thread-ada/r/2";
+    const iso = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
+    const worked = long(1, { startedAt: AT, endedAt: AT + 10_000 });
+    const queued = (patch: Partial<Parameters<typeof engineRun>[2]>) =>
+      long(2, {
+        queuedAt: AT + 5_000,
+        admittedAt: AT + 10_000,
+        startedAt: AT + 10_000,
+        summary: {
+          items: 1_700,
+          calls: { command: 800 },
+          answerItemId: null,
+          lastItemSeq: 3_700,
+        },
+        ...patch,
+      });
+    const working = queued({ state: "running", end: null, endedAt: null });
+    const said = personItem(run2, 2_001, "GitHub is set", { at: AT + 5_000 });
+    const tail = [
+      callItem(run2, 3_661, { at: AT + 20_000 }),
+      callItem(run2, 3_700, { at: AT + 30_000 }),
+    ];
+    const notRead = { runId: run1, from: null, to: 0, reading: null };
+
+    it("holds its live run's newest lines through its end, and pages back from them", () => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, working],
+        items: [...held, said, ...tail],
+        spans: [notRead, { runId: run2, from: 3_661, to: null, reading: null }],
+      });
+      expect(paging[run1]).toMatchObject({
+        pageRuns: { earlier: run2, later: null },
+        holdsLines: true,
+        since: iso(AT + 20_000),
+        through: null,
+      });
+    });
+
+    it.each([
+      {
+        name: "read back to its start",
+        spans: [{ runId: run2, from: null, to: null, reading: null }],
+      },
+      { name: "held whole from its first line", spans: [] },
+    ])("reaches back into the run before it once its live run is $name", ({ spans }) => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, working],
+        items: [...held, said, ...tail],
+        spans: [notRead, ...spans],
+      });
+      expect(paging[run1]).toMatchObject({
+        pageRuns: { earlier: run1, later: null },
+        holdsLines: true,
+        since: iso(AT + 5_000),
+        through: null,
+      });
+    });
+
+    // Review r3-16: the person's message is timed at its queueing, inside the run before it. A
+    // page read back from that run's end starts the stretch at its first line, after the message,
+    // so the message the person sent vanished as they scrolled up.
+    it.each([
+      { name: "live", run: working },
+      { name: "settled", run: queued({ endedAt: AT + 40_000 }) },
+    ])(
+      "keeps the queued message as it pages back into the run before it, its run $name",
+      ({ run }) => {
+        const paging = engineCardPagingOfRecords(key, {
+          runs: [worked, run],
+          items: [...held, callItem(run1, 1_650, { at: AT + 9_000 }), said, ...tail],
+          spans: [{ runId: run1, from: 1_650, to: null, reading: null }],
+        });
+        expect(paging[run1]).toMatchObject({
+          pageRuns: { earlier: run1, later: null },
+          holdsLines: true,
+          since: iso(AT + 5_000),
+          through: null,
+        });
+      },
+    );
+
+    // Catches a card emptied under the person reading it: its live run, read back to its start,
+    // settled while the run before it was still not read. A run that started after the
+    // conversation opened (any new turn) has no span of its own: it was held whole as it came.
+    it.each([
+      {
+        name: "holding its newest lines",
+        spans: [{ runId: run2, from: 3_661, to: null, reading: null }],
+        expected: { pageRuns: { earlier: run2, later: null }, since: iso(AT + 20_000) },
+      },
+      {
+        name: "read back to its start",
+        spans: [{ runId: run2, from: null, to: null, reading: null }],
+        expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
+      },
+      {
+        name: "held whole from its first line",
+        spans: [],
+        expected: { pageRuns: { earlier: run1, later: null }, since: iso(AT + 5_000) },
+      },
+    ])("keeps what it holds as its live run settles, $name", ({ spans, expected }) => {
+      const paging = engineCardPagingOfRecords(key, {
+        runs: [worked, queued({ endedAt: AT + 40_000 })],
+        items: [...held, said, ...tail],
+        spans: [notRead, ...spans],
+      });
+      expect(paging[run1]).toMatchObject({ ...expected, holdsLines: true, through: null });
+    });
+  });
+
   it("keeps counting from the summary once every page is read, so its worked line never changes", () => {
     const paging = engineCardPagingOfRecords(key, {
       runs: [long(1)],
@@ -1294,6 +1409,35 @@ describe("an engine conversation's row in the menu", () => {
       row.state.kind === "waiting" && row.state.on === "vault" ? "key" : null,
     );
     expect(overlaid.modelSelection.instanceId).toBe("claudeAgent");
+  });
+
+  it("names the pool container the conversation's agent leased, and none once the row names none", () => {
+    const lease = { alias: "webpool-3", pool: "webpool", branch: "feat-x" };
+    const leased = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", { state: { kind: "idle" }, lease } as Partial<ConversationRow>),
+    );
+    expect(leased.lease).toEqual(lease);
+    expect(leased.worktreePath).toBeNull();
+    expect(
+      overlayEngineRow(leased, engineRow(ENV, "thread-ada", { state: { kind: "idle" } })).lease,
+    ).toBeNull();
+  });
+
+  // Lab A.3, 2026-10-25: Archive and start fresh left the conversation reading live once nobody
+  // held it, and a review's Fix asked it, on a hidden composer, rather than the live one.
+  it.each([
+    { name: "archived", row: { archived: true }, archived: true },
+    { name: "live", row: {}, archived: false },
+  ] as const)("reads a conversation nobody holds $name, as its row says", ({ row, archived }) => {
+    const overlaid = overlayEngineRow(
+      shellThread,
+      engineRow(ENV, "thread-ada", {
+        state: { kind: "idle" },
+        ...row,
+      } as Partial<ConversationRow>),
+    );
+    expect(overlaid.archivedAt != null).toBe(archived);
   });
 
   it("gives a thread shell that never had a session its row's: working, on its run", () => {

@@ -145,7 +145,8 @@ describe("a takeover after git moved past HQ's records", () => {
                 // The recovered squash is the application's first code merge.
                 first: true,
               },
-              // Open in the records, but Bo opened a newer one since: closed, superseded.
+              // Bo's default change, open in the records, but a newer default of his is in git:
+              // closed, superseded (a Mate holds one default change per repository).
               {
                 number: 3,
                 mate: "P_MATE2",
@@ -323,6 +324,125 @@ describe("a takeover after git moved past HQ's records", () => {
           ],
         );
       }),
+    );
+
+    it.effect(
+      "an HQ restart keeps every open change a Mate holds on a branch, and of its default changes only the newest",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          const { appId } = ada;
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          const open = (auth: Record<string, string>, title: string, branch?: string) =>
+            first.call("POST", "/api/mate/changes", {
+              headers: auth,
+              body: { repo: "appdev", title, ...(branch === undefined ? {} : { branch }) },
+            });
+          // Ada's default change, and one on each branch she named.
+          yield* open(ada.auth, "Ada's default");
+          yield* open(ada.auth, "Feature A", "feat-a");
+          yield* open(ada.auth, "Feature B", "feat-b");
+          // Bo's default change, handed to Ada once Bo was gone: it keeps Bo's branch.
+          const bo = yield* anotherMate(first.call, first.fake, owner, appId, "P_MATE2");
+          yield* open(bo, "Bo's default");
+          yield* rowsWhere(
+            first.url,
+            `UPDATE hq_change SET mate_project_id = 'P_MATE', handed_from = 'P_MATE2'
+             WHERE number = 4 RETURNING 1`,
+            () => true,
+          );
+          yield* first.stop;
+          // A newer default branch of Ada's than her recorded default, without its record.
+          const appdev = bareAt(NodePath.join(first.gitRoot, appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const newer = commitOn(appdev, main, "newer.txt", "Newer");
+          appdev(["update-ref", "refs/heads/mate/P_MATE/5", newer]);
+
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          addProject(next.fake, "P_MATE2");
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT number, mate_project_id AS mate, branch, state FROM hq_change
+               WHERE repo = 'appdev' ORDER BY number`,
+              () => true,
+            ),
+            [
+              // Her recorded default, a newer default of hers in git: closed, superseded.
+              { number: 1, mate: "P_MATE", branch: "mate/P_MATE/1", state: "closed" },
+              { number: 2, mate: "P_MATE", branch: "feat-a", state: "open" },
+              { number: 3, mate: "P_MATE", branch: "feat-b", state: "open" },
+              // Handed to her: no default of hers, so it stays open beside her own.
+              { number: 4, mate: "P_MATE", branch: "mate/P_MATE2/4", state: "open" },
+              { number: 5, mate: "P_MATE", branch: "mate/P_MATE/5", state: "open" },
+            ],
+          );
+        }),
+    );
+
+    it.effect(
+      "a takeover reads a change merged only from main's own line, never from a Mate-Change trailer in history main took in",
+      () =>
+        Effect.gen(function* () {
+          const first = yield* startCore(true);
+          yield* untilHealth(first.call, "active");
+          const owner = yield* sessionFor(first.call, "door-owner");
+          const ada = yield* mateInApp(first.call, first.fake, owner, "P_MATE", "Shop");
+          yield* first.call("POST", "/api/mate/repos", {
+            headers: ada.auth,
+            body: { name: "appdev" },
+          });
+          yield* first.call("POST", "/api/mate/changes", {
+            headers: ada.auth,
+            body: { repo: "appdev", title: "Ada's first" },
+          });
+          yield* first.stop;
+          // Another repository's history, brought in beside main's own line: its commits carry
+          // trailers naming changes of that repository, and Ada's id is the same Mate's there.
+          const appdev = bareAt(NodePath.join(first.gitRoot, ada.appId, "appdev.git"));
+          const main = appdev(["rev-parse", "refs/heads/main"]);
+          const blob = appdev(["hash-object", "-w", "--stdin"], "theirs\n");
+          const tree = appdev(["mktree"], `100644 blob ${blob}\ttheirs.txt\n`);
+          const root = appdev(["commit-tree", tree, "-m", "Theirs (#7)\n\nMate-Change: P_MATE/7"]);
+          const theirs = appdev([
+            "commit-tree",
+            tree,
+            "-p",
+            root,
+            "-m",
+            "Theirs again (#1)\n\nMate-Change: P_MATE/1",
+          ]);
+          const joined = appdev([
+            "commit-tree",
+            tree,
+            "-p",
+            main,
+            "-p",
+            theirs,
+            "-m",
+            "Bring the repository in",
+          ]);
+          appdev(["update-ref", "refs/heads/main", joined, main]);
+
+          const next = yield* startCore(true, { url: first.url, gitRoot: first.gitRoot });
+          yield* Stream.runHead(Stream.filter(next.gitHost.recorded, (tick) => tick > 0));
+          assert.deepStrictEqual(
+            yield* rowsWhere(
+              next.url,
+              `SELECT number, state, merged_sha AS merged FROM hq_change
+               WHERE repo = 'appdev' ORDER BY number`,
+              () => true,
+            ),
+            [{ number: 1, state: "open", merged: null }],
+          );
+        }),
     );
 
     it.effect("recovers unrecorded squashes in the order main merged them", () =>

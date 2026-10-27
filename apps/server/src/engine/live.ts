@@ -49,7 +49,11 @@ import {
   WakeRefused,
   type MateEngineService,
 } from "./MateEngine.ts";
-import { readConversationView, readConversationViews } from "./read/conversationView.ts";
+import {
+  readConversationLeases,
+  readConversationView,
+  readConversationViews,
+} from "./read/conversationView.ts";
 import * as EffectOutboxModule from "./outbox/EffectOutbox.ts";
 import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
@@ -406,6 +410,16 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
           Effect.logWarning("Mate engine: the conversations could not be listed", cause).pipe(
             Effect.as({ views: [], unread: [], complete: false }),
           ),
+        ),
+      ),
+      leases: readConversationLeases.pipe(
+        Effect.provideService(Conversations, conversations),
+        Effect.provideService(SqlClient.SqlClient, sql),
+        Effect.catchCause((cause) =>
+          Effect.logWarning(
+            "Mate engine: the conversations' leases could not be listed",
+            cause,
+          ).pipe(Effect.as({ leases: [], complete: false })),
         ),
       ),
       assetContext: (thread) => {

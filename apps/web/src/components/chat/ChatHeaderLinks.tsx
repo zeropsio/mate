@@ -8,7 +8,7 @@
  * The owner, 2026-10-03: "I also question whether ability to open public
  * links shouldnt be in top bar of the main convo".
  */
-import { scopeThreadRef } from "@t3tools/client-runtime/environment";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { ChevronDownIcon, GlobeIcon, LayoutDashboardIcon } from "lucide-react";
 
@@ -41,6 +41,7 @@ export function ChatHeaderLinks({
         <HeaderSites
           mateProjectId={mateProjectId}
           sites={sites}
+          threadKey={scopedThreadKey(scopeThreadRef(environmentId, threadId))}
           trigger={
             <Button
               aria-label="Open the Mate's sites"

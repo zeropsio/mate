@@ -14,6 +14,7 @@ import { changeReviewItem, headerReviewItems } from "./SidebarProjectReview.logi
 import {
   ZeropsNextStepStrip,
   useZeropsNextStepStrip,
+  composerStripKey,
   zeropsComposerTop,
   type ZeropsNextStepPending,
   type ZeropsNextStepStripModel,
@@ -45,6 +46,7 @@ const WAITING: ZeropsMateNextStep = {
     detail: "Add a status page",
     lines: [],
     more: 0,
+    waiting: 1,
   },
   tint: "slate",
   shape: "squircle",
@@ -95,6 +97,7 @@ const WAITING_TWO: ZeropsMateNextStep = {
       { pull: PULL, label: "app #2 Add a status page" },
     ],
     more: 0,
+    waiting: 2,
   },
   target: { kind: "change", groupId: "g-1", repository: "api", number: 2 },
 };
@@ -112,6 +115,102 @@ const SHOWN_TWO: ZeropsNextStepStripModel = {
     {
       label: "app #2 Add a status page",
       target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
+    },
+  ],
+};
+
+/** Nova's change that conflicts with main, after the one that merges (the 2026-10-25 rehearsal). */
+const POOLS_PULL: FlowPullRequest = {
+  ...PULL,
+  number: 4,
+  title: "Add an api part and dev pools",
+  branch: "api-info",
+  mergeability: "conflicting",
+};
+
+const RESOLVE = {
+  label: "Ask Nova to resolve it",
+  problem: {
+    what: "Change #4 no longer merges cleanly into main",
+    ask: "Merge main into it, resolve the conflicts, and deliver it again.",
+  },
+};
+
+const WAITING_AND_CONFLICT: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: PULL,
+    title: "Nova is waiting for your review of 2 changes",
+    detail: "Add a status page",
+    lines: [
+      { pull: PULL, label: "#2 Add a status page" },
+      {
+        pull: POOLS_PULL,
+        label: "#4 Add an api part and dev pools",
+        verdict: { title: "Conflicts with main", fix: RESOLVE },
+      },
+    ],
+    more: 0,
+    waiting: 1,
+  },
+};
+
+/** The same two changes, once #4 merges cleanly into main again. */
+const CONFLICT_MERGES_AGAIN: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: PULL,
+    title: "Nova is waiting for your review of 2 changes",
+    detail: "Add a status page",
+    lines: [
+      { pull: PULL, label: "#2 Add a status page" },
+      {
+        pull: { ...POOLS_PULL, mergeability: "mergeable" },
+        label: "#4 Add an api part and dev pools",
+      },
+    ],
+    more: 0,
+    waiting: 2,
+  },
+};
+
+/** The same two changes, and a third that started waiting beside them. */
+const ANOTHER_WAITS_BESIDE: ZeropsMateNextStep = {
+  ...WAITING,
+  step: {
+    kind: "review",
+    pull: PULL,
+    title: "Nova is waiting for your review of 3 changes",
+    detail: "Add a status page",
+    lines: [
+      { pull: PULL, label: "#2 Add a status page" },
+      {
+        pull: POOLS_PULL,
+        label: "#4 Add an api part and dev pools",
+        verdict: { title: "Conflicts with main", fix: RESOLVE },
+      },
+      { pull: { ...PULL, number: 5, title: "Fix the footer" }, label: "#5 Fix the footer" },
+    ],
+    more: 0,
+    waiting: 2,
+  },
+};
+
+const SHOWN_WAITING_AND_CONFLICT: ZeropsNextStepStripModel = {
+  ...SHOWN,
+  title: "Nova is waiting for your review of 2 changes",
+  lines: [
+    {
+      label: "#2 Add a status page",
+      target: { kind: "change", groupId: "g-1", repository: "app", number: 2 },
+    },
+    {
+      label: "#4 Add an api part and dev pools",
+      target: { kind: "change", groupId: "g-1", repository: "app", number: 4 },
+      verdict: "Conflicts with main",
+      fix: { ...RESOLVE, mateProjectId: "p-nova", branch: "api-info" },
     },
   ],
 };
@@ -224,10 +323,27 @@ describe("zeropsComposerTop", () => {
       "app#2",
     ]);
   });
+  // Review r3-11: the dismissal was its leading change alone, so in a bound conversation, whose
+  // branch always leads, another change starting to wait never brought the strip back, nor did a
+  // listed change that merges cleanly again.
+  it("a dismissed strip of several changes comes back once another waits beside them, or one of them merges again", () => {
+    const shown = zeropsComposerTop({ nextStep: WAITING_AND_CONFLICT, pending: NOTHING_PENDING });
+    const dismissed = composerStripKey(shown.strip!);
+    const top = (nextStep: ZeropsMateNextStep) =>
+      zeropsComposerTop({ nextStep, dismissed, pending: NOTHING_PENDING }).strip;
+    expect(top(WAITING_AND_CONFLICT), "the same strip stays away").toBeNull();
+    expect(top(CONFLICT_MERGES_AGAIN)).not.toBeNull();
+    expect(top(ANOTHER_WAITS_BESIDE)).not.toBeNull();
+  });
   it("shows current source lines for several waiting changes", () => {
     expect(zeropsComposerTop({ nextStep: WAITING_TWO, pending: NOTHING_PENDING }).strip).toEqual(
       SHOWN_TWO,
     );
+  });
+  it("lists a change that does not merge in its row's word, with the fix its review offers", () => {
+    expect(
+      zeropsComposerTop({ nextStep: WAITING_AND_CONFLICT, pending: NOTHING_PENDING }).strip,
+    ).toEqual(SHOWN_WAITING_AND_CONFLICT);
   });
 });
 
@@ -312,6 +428,32 @@ describe("ZeropsNextStepStrip", () => {
       { kind: "change", groupId: "g-1", repository: "appdev", number: 1 },
       pressed,
     );
+  });
+
+  it("offers a change that does not merge the fix its review offers, in place of its Review", () => {
+    const strip = SHOWN_WAITING_AND_CONFLICT;
+    const text = renderToStaticMarkup(<ZeropsNextStepStrip onReview={() => {}} strip={strip} />)
+      .replace(/<[^>]*>/gu, " ")
+      .replace(/\s+/gu, " ");
+    expect(text).toContain("Nova is waiting for your review of 2 changes");
+    expect(text).toContain("#2 Add a status page Review");
+    expect(text).toContain(
+      "#4 Add an api part and dev pools · Conflicts with main Ask Nova to resolve it",
+    );
+
+    const onReview = vi.fn();
+    const onFix = vi.fn();
+    const fix = visitElements(
+      ZeropsNextStepStrip({ onReview, onFix, strip }) as ReactElement,
+      (element) => element.type === Button && element.props.children === "Ask Nova to resolve it",
+    );
+    if (fix === null) throw new Error("the conflicting change offers no fix");
+    const pressed = { tagName: "BUTTON" } as unknown as HTMLElement;
+    (fix.props.onClick as (event: { currentTarget: HTMLElement }) => void)({
+      currentTarget: pressed,
+    });
+    expect(onFix).toHaveBeenCalledWith(strip.lines?.[1]?.fix);
+    expect(onReview).not.toHaveBeenCalled();
   });
 
   it("puts the strip away from its dismiss button, until another change waits", () => {

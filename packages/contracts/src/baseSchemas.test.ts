@@ -61,6 +61,34 @@ describe("ForwardCompatibleArray", () => {
     expect(wire).toEqual([{ name: "a" }, null, { name: "b" }]);
     expect(fromWire(Named)(wire)).toEqual([{ name: "a" }, { name: "b" }]);
   });
+
+  const Point = Schema.Struct({ n: Schema.Number, at: Schema.DateTimeUtc });
+  const point = { n: 1, at };
+  it.each([
+    {
+      title: "keeps an element whose nested array drops an entry it cannot read",
+      element: Schema.Struct({ id: Schema.String, points: ForwardCompatibleArray(Point) }),
+      wire: { id: "a", points: [point, { n: "x", at }] },
+      kept: (decoded: unknown) => (decoded as { points: ReadonlyArray<unknown> }).points,
+    },
+    {
+      title: "keeps an element whose field falls back on a value it cannot read",
+      element: Schema.Struct({
+        id: Schema.String,
+        point: Schema.UndefinedOr(Point).pipe(
+          Schema.catchDecoding(() => Effect.succeedSome(undefined)),
+        ),
+        last: Point,
+      }),
+      wire: { id: "a", point: { n: "x", at }, last: point },
+      kept: (decoded: unknown) => [(decoded as { last: unknown }).last],
+    },
+  ])("$title", ({ element, wire, kept }) => {
+    const decoded = fromWire(ForwardCompatibleArray(element))([wire, { id: 2 }]);
+    expect(decoded).toHaveLength(1);
+    expect(kept(decoded[0])).toHaveLength(1);
+    expect(DateTime.isDateTime((kept(decoded[0])[0] as { at: unknown }).at)).toBe(true);
+  });
 });
 
 describe("ForwardCompatibleUnion", () => {

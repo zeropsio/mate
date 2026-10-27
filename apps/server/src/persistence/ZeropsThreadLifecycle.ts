@@ -50,6 +50,11 @@ export class ZeropsThreadLifecycleRepository extends Context.Service<
     readonly getByThreadId: (
       threadId: ThreadId,
     ) => Effect.Effect<Option.Option<ZeropsThreadLifecycleRow>, ProjectionRepositoryError>;
+    /**
+     * The `leases` of the most recently written envelope that holds any, as stored (`unknown`):
+     * zcp's latest read of its leases this server kept. None when no envelope read them.
+     */
+    readonly latestLeases: Effect.Effect<Option.Option<unknown>, ProjectionRepositoryError>;
   }
 >()("t3/persistence/ZeropsThreadLifecycle/ZeropsThreadLifecycleRepository") {}
 
@@ -68,6 +73,7 @@ const RawDbRow = Schema.Struct({
 });
 
 const decodeRow = Schema.decodeUnknownEffect(DbRow);
+const decodeJson = Schema.decodeUnknownEffect(Schema.fromJsonString(Schema.Unknown));
 
 const GetRequest = Schema.Struct({ threadId: ThreadId });
 
@@ -120,6 +126,14 @@ export const make = Effect.gen(function* () {
       `,
   });
 
+  const findLatestLeases = sql<{ readonly leases: string }>`
+    SELECT json_extract(envelope_json, '$.leases') AS leases
+    FROM zerops_thread_lifecycle
+    WHERE json_type(envelope_json, '$.leases') = 'array'
+    ORDER BY updated_at DESC
+    LIMIT 1
+  `;
+
   return {
     upsert: (row) =>
       upsertRow(row).pipe(
@@ -139,6 +153,19 @@ export const make = Effect.gen(function* () {
           toRepositoryError("zeropsThreadLifecycle.get", "zeropsThreadLifecycle.get.decode"),
         ),
       ),
+    latestLeases: findLatestLeases.pipe(
+      Effect.flatMap((rows) =>
+        rows[0] === undefined
+          ? Effect.succeedNone
+          : decodeJson(rows[0].leases).pipe(Effect.map(Option.some)),
+      ),
+      Effect.mapError(
+        toRepositoryError(
+          "zeropsThreadLifecycle.latestLeases",
+          "zeropsThreadLifecycle.latestLeases.decode",
+        ),
+      ),
+    ),
   } satisfies ZeropsThreadLifecycleRepository["Service"];
 });
 

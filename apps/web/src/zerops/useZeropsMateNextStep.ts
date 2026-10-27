@@ -1,8 +1,9 @@
 /**
  * What this Mate's conversation offers next, from the project's flow rather
  * than from what the agent said (the owner, 2026-09-23 — "extremely important
- * findings the whole UI should be built around"): this Mate's own change,
- * waiting for the person's review, where HQ says it merges.
+ * findings the whole UI should be built around"): this Mate's own changes,
+ * as the conversation's header counts them — those HQ says merge waiting for
+ * the person's review, one that does not merge in its row's word.
  *
  * It opens the review and nothing else (R1): the merge is the review's
  * button, so this reads the flow and never writes to it.
@@ -71,6 +72,8 @@ export function useZeropsMateNextStep(
   threadRef: ScopedThreadRef | null,
   /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
   yours = true,
+  /** The branch of the lease the conversation is bound to: its change is offered first. */
+  boundBranch?: string,
 ): ZeropsMateNextStep {
   const inventory = useZeropsInventory();
   const projectId = useMateOfEnvironment(threadRef?.environmentId)?.projectId;
@@ -94,6 +97,7 @@ export function useZeropsMateNextStep(
     mateProjectId: projectId,
     mateName: projectId === undefined ? undefined : mateNames.get(projectId),
     yours,
+    boundBranch,
   });
   if (step.kind === "none") return NOTHING;
   const mate = zeropsMateAt(mates, threadRef.environmentId);

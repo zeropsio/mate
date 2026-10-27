@@ -2095,39 +2095,71 @@ export function browserCheckFailure(operation: ZeropsOperation): string | null {
 }
 
 /**
+ * A check whose walk ended before it read the page's errors — zcp ended it at
+ * a wedged browser, or its deadline cut it — and nothing it did read failed:
+ * it neither passed nor failed.
+ */
+export function browserCheckUnfinished(operation: ZeropsOperation): boolean {
+  return (
+    operation.phase === "done" &&
+    !browserCheckFailed(operation) &&
+    operation.browserSummary?.unfinished === true
+  );
+}
+
+/** A check that showed what it looked for: it read the page through, and nothing failed. */
+export function browserCheckPassed(operation: ZeropsOperation): boolean {
+  return (
+    operation.phase === "done" &&
+    !browserCheckFailed(operation) &&
+    operation.browserSummary?.unfinished !== true
+  );
+}
+
+/** A later check of the same page passed: it settles this one. */
+function settledLater(checks: ReadonlyArray<ZeropsOperation>, index: number): boolean {
+  const page = browserCheckPage(checks[index]!);
+  return checks
+    .slice(index + 1)
+    .some((later) => browserCheckPassed(later) && browserCheckPage(later) === page);
+}
+
+/**
  * The checks that failed and stayed failed: a failure a later check of the
  * same page passed is a retry — the Mate asked for a device the browser does
- * not know, or took the page before it was up — never the page's.
+ * not know, or took the page before it was up — never the page's. A later
+ * check that did not finish settles nothing.
  */
 export function unrecoveredCheckFailures(
   checks: ReadonlyArray<ZeropsOperation>,
 ): ReadonlyArray<ZeropsOperation> {
+  return checks.filter((check, index) => browserCheckFailed(check) && !settledLater(checks, index));
+}
+
+/** The checks that did not finish and stayed so: a later check of the same page that passed settles one. */
+export function unsettledUnfinishedChecks(
+  checks: ReadonlyArray<ZeropsOperation>,
+): ReadonlyArray<ZeropsOperation> {
   return checks.filter(
-    (check, index) =>
-      browserCheckFailed(check) &&
-      !checks
-        .slice(index + 1)
-        .some(
-          (later) =>
-            later.phase === "done" &&
-            !browserCheckFailed(later) &&
-            browserCheckPage(later) === browserCheckPage(check),
-        ),
+    (check, index) => browserCheckUnfinished(check) && !settledLater(checks, index),
   );
 }
 
-export type BrowserTakeState = "running" | "passed" | "retried" | "failed";
+export type BrowserTakeState = "running" | "passed" | "retried" | "failed" | "unfinished";
 
 /**
  * How a take ended, as its frame tells it — the same reading the heading and
  * the report count by: a failure a later take of the same page passed is a
- * retry, never the page's failure.
+ * retry, never the page's failure. A take that did not finish says so
+ * whether or not a later one settled it: it alarms nobody either way, and
+ * the counts take only the ones still standing.
  */
 export function browserTakeState(
   check: ZeropsOperation,
   checks: ReadonlyArray<ZeropsOperation>,
 ): BrowserTakeState {
   if (check.phase === "running") return "running";
+  if (browserCheckUnfinished(check)) return "unfinished";
   if (!browserCheckFailed(check)) return "passed";
   return unrecoveredCheckFailures(checks).includes(check) ? "failed" : "retried";
 }
@@ -2143,6 +2175,8 @@ export interface BrowserStripModel {
   /** Distinct pages looked at. */
   readonly views: number;
   readonly failures: number;
+  /** Checks that did not finish and no later check of their page settled. */
+  readonly unfinished: number;
   readonly live: boolean;
 }
 
@@ -2159,8 +2193,31 @@ export function checksStrip(
     checks,
     views: browserCheckViews(checks),
     failures: unrecoveredCheckFailures(checks).length,
+    unfinished: unsettledUnfinishedChecks(checks).length,
     live,
   };
+}
+
+/**
+ * What a row of checks came to, beside its words: the failures that stood,
+ * else what passed and what did not finish — a check that never read the
+ * page is never counted as one that passed. Null while one runs, and for one
+ * check that passed: its words say it.
+ */
+export function checksVerdict(strip: BrowserStripModel): string | null {
+  if (strip.checks.at(-1)?.phase === "running") return null;
+  const settled = strip.checks.filter((check) => check.phase !== "running").length;
+  if (strip.failures > 0) {
+    return strip.failures === 1 ? "1 check failed" : `${strip.failures} checks failed`;
+  }
+  if (strip.unfinished > 0) {
+    if (settled === 1) return "not finished";
+    const passed = settled - strip.unfinished;
+    return passed === 0
+      ? `${strip.unfinished} checks not finished`
+      : `${passed} ${passed === 1 ? "check" : "checks"} passed, ${strip.unfinished} not finished`;
+  }
+  return settled === 1 ? null : `${settled} checks passed`;
 }
 
 export type IncidentTone = "attention" | "ok" | "failed";

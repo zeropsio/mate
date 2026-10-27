@@ -51,6 +51,7 @@ import {
   type DiffChoice,
 } from "./DiffPanel.logic";
 import { useDiffRepositories } from "./useDiffRepositories";
+import { useThreadLeases } from "../zerops/useThreadLeases";
 import { DiffStatLabel } from "./chat/DiffStatLabel";
 import { AnnotatableCodeView, type AnnotatableCodeViewHandle } from "./diffs/AnnotatableCodeView";
 import { Button } from "./ui/button";
@@ -149,10 +150,17 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     serverConfig?.availableEditors ?? [],
   );
   const getDiffFileContents = useAtomCommand(reviewEnvironment.diffFileContents);
+  const leases = useThreadLeases(
+    activeThread?.environmentId ?? null,
+    activeThread?.id ?? null,
+    activeThread?.lease ?? null,
+  );
   const { reads, gitPage } = useDiffRepositories(
     activeThread?.environmentId ?? null,
     activeCwd ?? null,
     activeThread?.crew ?? null,
+    leases,
+    activeThread?.id ?? null,
   );
   const diffSelection = useDiffPanelStore((state) =>
     selectThreadDiffPanelSelection(state.byThreadKey, routeThreadRef),
@@ -183,7 +191,7 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
     shownChoice === null
       ? "Diff"
       : manyRepositories
-        ? `${shownChoice.repository.name} · ${shownChoice.label}`
+        ? `${shownChoice.repository.label} · ${shownChoice.label}`
         : shownChoice.label;
   const branchDiffPreview = useEnvironmentQuery(
     activeThread && shownCwd
@@ -430,7 +438,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
         Open Git
       </Button>
     ) : null;
-  const repositoryNames = [...new Set(choices.map((choice) => choice.repository.name))];
+  const repositories = [
+    ...new Map(choices.map(({ repository }) => [repository.name, repository])).values(),
+  ];
 
   const headerRow = (
     <>
@@ -450,9 +460,9 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                 value={shownChoice === null ? "" : choiceValue(shownChoice)}
                 onValueChange={selectChoice}
               >
-                {repositoryNames.map((name) => (
+                {repositories.map(({ name, label }) => (
                   <DropdownMenuGroup key={name}>
-                    {manyRepositories ? <DropdownMenuLabel>{name}</DropdownMenuLabel> : null}
+                    {manyRepositories ? <DropdownMenuLabel>{label}</DropdownMenuLabel> : null}
                     {choices
                       .filter((choice) => choice.repository.name === name)
                       .map((choice) => (
@@ -768,13 +778,28 @@ export default function DiffPanel({ mode = "inline", composerDraftTarget }: Diff
                 incomplete.
               </p>
             )}
-            {selectedPatchError && (
-              <div className="px-3">
-                <p className="mb-2 text-2xs text-error/80">{selectedPatchError}</p>
+            {selectedPatchError && renderablePatch && (
+              <div className="flex items-center gap-2 px-3">
+                <p className="text-2xs text-error/80">{selectedPatchError}</p>
+                <Button size="sm" variant="link" onClick={refreshGitDiff}>
+                  Try again
+                </Button>
               </div>
             )}
             {!renderablePatch ? (
-              isLoadingSelectedPatch && !selectedPatchError ? (
+              selectedPatchError ? (
+                // A read that failed is not a diff with nothing in it: it says so, and reads again.
+                <div
+                  role="alert"
+                  className="flex flex-1 flex-col items-center justify-center gap-1 px-6 text-center text-xs text-muted-foreground"
+                >
+                  <p className="text-foreground">Could not read the diff.</p>
+                  <p className="text-error/80">{selectedPatchError}</p>
+                  <Button size="sm" variant="link" onClick={refreshGitDiff}>
+                    Try again
+                  </Button>
+                </div>
+              ) : isLoadingSelectedPatch ? (
                 <DiffPanelLoadingState
                   label={
                     selectedGitScope === "unstaged"

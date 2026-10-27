@@ -10,10 +10,21 @@
  * where they read the same from every Mate's conversation (the owner,
  * 2026-09-26 — "merges could be coming from different mates").
  *
- * The rule is the in-chat offer's exactly (MB-30): this Mate's own code
- * change, described at its head (a draft asks nothing), only where HQ said it merges — a change that conflicts or is
- * still being checked waits on the Mate or on HQ, not on the person. A
- * recipe change is the group's document and is left to the projects page.
+ * The rule is the conversation header's Review (`headerReviewItems`): this Mate's own code change,
+ * described at its head (a draft asks nothing), its Mate at rest (D7). A recipe change is the
+ * group's document and is left to the projects page.
+ *
+ * A change that does not merge as it stands — it conflicts with `main`, HQ still checks it, or
+ * `main` holds all of it — waits on the Mate or on HQ, not on the person, yet the header counts it:
+ * the strip lists it too, after those that merge, in the word its row says (`changeState`: one
+ * answer on every surface) and with the fix its review offers (`Ask Wren to resolve it`), so the
+ * header's count and the strip's never part (the rehearsal of 2026-10-25: "Review 2" over a strip
+ * of one). Only a change that merges makes the Mate's face need the person (`waiting`).
+ *
+ * A Mate may hold several changes at once, one per branch: the conversation offers every one of
+ * them, the change on the branch its lease is bound to first, then the newest that merge, then the
+ * newest of the rest (the owner, D-7, 2026-10-25) — the conversation's own work leads, and nothing
+ * of its Mate's is hidden.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -23,32 +34,60 @@
 import {
   byNewest,
   changeShowsReview,
+  changeState,
   sidebarChangeLabel,
   type FlowPullRequest,
 } from "./projectFlow.ts";
+import { changeMergeVerdict, type ReviewFixProblem } from "./reviewVerdict.ts";
 
 /** How many of its waiting changes the strip lists, each with its own Review. */
 export const MATE_NEXT_STEP_LINES = 3;
 
+/**
+ * What a change that does not merge as it stands says on its line: the word its row says
+ * (`changeState` — `Conflicts with main`, `Checking`, `Nothing to merge`), and the fix its review
+ * offers (`changeMergeVerdict`), where the Mate is the viewer's and its name is known.
+ */
+export interface MateNextStepVerdict {
+  readonly title: string;
+  /** `Ask Wren to resolve it`, and what goes into the Mate's composer; else its line offers Review. */
+  readonly fix?: { readonly label: string; readonly problem: ReviewFixProblem } | undefined;
+}
+
+export interface MateNextStepLine {
+  readonly pull: FlowPullRequest;
+  /** As the menu names it: `apidev #1 Rebuild the API`. */
+  readonly label: string;
+  /** Where it does not merge as it stands; absent on a change that merges. */
+  readonly verdict?: MateNextStepVerdict | undefined;
+}
+
 export type MateNextStep =
   | {
       readonly kind: "review";
-      /** The newest of its waiting changes. */
+      /**
+       * The change on the conversation's own branch, else the newest of those that merge, else the
+       * newest of the rest.
+       */
       readonly pull: FlowPullRequest;
       /**
        * `Wren is waiting for your review`, its change's title under it — or `… of 2 changes` where
-       * more than one waits.
+       * the header counts more than one.
        */
       readonly title: string;
-      /** What the newest change is: its own title. */
+      /** What the leading change is: its own title. */
       readonly detail: string;
       /**
-       * Where more than one waits, the newest three, each named as the menu names it
-       * (`apidev #1 Rebuild the API`); none where one waits, which the title names.
+       * Where more than one is listed, or one that does not merge, the first three — the
+       * conversation's own branch's, then those that merge, then the rest, each newest first — each
+       * named as the menu names it (`apidev #1 Rebuild the API`); none where one change waits and
+       * merges, which the title names.
        */
-      readonly lines: ReadonlyArray<{ readonly pull: FlowPullRequest; readonly label: string }>;
-      /** How many more wait past the lines. */
+      readonly lines: ReadonlyArray<MateNextStepLine>;
+      /** How many more are listed past the lines. */
       readonly more: number;
+      /** How many of them wait on the person: HQ said they merge. The rest wait on the Mate or HQ. */
+      readonly waiting: number;
     }
   | { readonly kind: "none" };
 
@@ -68,28 +107,42 @@ export function mateNextStep(input: {
   readonly working?: boolean;
   /** Whether the Mate is the viewer's; a colleague's waits for a review, not the viewer's. */
   readonly yours?: boolean;
+  /**
+   * The branch of the lease this conversation is bound to (zcp's lease binding), where it is bound
+   * to one: its change leads.
+   */
+  readonly boundBranch?: string | undefined;
 }): MateNextStep {
   const { pullRequests, mateProjectId } = input;
   if (pullRequests === undefined || mateProjectId === undefined) return NONE;
 
-  // The newest by its last move where a Mate has two — its number is per repository, so two
-  // repositories' #1s would tie — and by number after that, so the strip is stable.
-  const waiting = pullRequests
+  // The conversation's own branch's change first; then those that merge, which wait on the person,
+  // before those that do not; within each, the newest by its last move where a Mate has two — its
+  // number is per repository, so two repositories' #1s would tie — and by number after that, so
+  // the strip is stable.
+  const merges = (entry: FlowPullRequest) => entry.mergeability === "mergeable";
+  const rank = (entry: FlowPullRequest) =>
+    input.boundBranch !== undefined && entry.branch === input.boundBranch
+      ? 0
+      : merges(entry)
+        ? 1
+        : 2;
+  const listed = pullRequests
     .filter(
       (entry) =>
         entry.kind === "code" &&
         entry.mateProjectId === mateProjectId &&
         !entry.merged &&
-        entry.mergeability === "mergeable" &&
         changeShowsReview(entry, { working: input.working }),
     )
-    .sort(byNewest);
-  const [pull] = waiting;
+    .sort((left, right) => rank(left) - rank(right) || byNewest(left, right));
+  const [pull] = listed;
   if (pull === undefined) return NONE;
+  const waiting = listed.filter(merges).length;
   const who = `${input.mateName ?? "This Mate"} is waiting for ${
     input.yours === false ? "a" : "your"
   } review`;
-  if (waiting.length === 1) {
+  if (listed.length === 1 && merges(pull)) {
     // The change goes by its title, on the line under this one.
     return {
       kind: "review",
@@ -98,17 +151,38 @@ export function mateNextStep(input: {
       detail: pull.title,
       lines: [],
       more: 0,
+      waiting,
     };
   }
   return {
     kind: "review",
     pull,
-    title: `${who} of ${String(waiting.length)} changes`,
+    title: listed.length === 1 ? who : `${who} of ${String(listed.length)} changes`,
     detail: pull.title,
-    lines: waiting.slice(0, MATE_NEXT_STEP_LINES).map((entry) => ({
-      pull: entry,
-      label: sidebarChangeLabel(entry, pullRequests),
-    })),
-    more: Math.max(0, waiting.length - MATE_NEXT_STEP_LINES),
+    lines: listed.slice(0, MATE_NEXT_STEP_LINES).map((entry) => {
+      const line = { pull: entry, label: sidebarChangeLabel(entry, pullRequests) };
+      return merges(entry) ? line : { ...line, verdict: notMerging(entry, input) };
+    }),
+    more: Math.max(0, listed.length - MATE_NEXT_STEP_LINES),
+    waiting,
+  };
+}
+
+/**
+ * A change that does not merge as it stands: its row's word, and its review's fix — offered only to
+ * the Mate's own person, who alone writes to it, by the Mate's name.
+ */
+function notMerging(
+  pull: FlowPullRequest,
+  mate: { readonly mateName: string | undefined; readonly yours?: boolean },
+): MateNextStepVerdict {
+  const { verdict } = changeMergeVerdict({ pull, mateName: mate.mateName ?? "This Mate" });
+  const title = changeState(pull)?.word ?? verdict.title;
+  if (verdict.fix === undefined || mate.yours === false || mate.mateName === undefined) {
+    return { title };
+  }
+  return {
+    title,
+    fix: { label: `Ask ${mate.mateName} to ${verdict.fix.verb}`, problem: verdict.fix.problem },
   };
 }

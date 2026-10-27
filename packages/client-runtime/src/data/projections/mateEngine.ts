@@ -1260,15 +1260,22 @@ export function engineCardPagingOf(
     return count;
   };
   const spanOf = new Map(spans.map((span) => [span.runId as string, span]));
-  const cards: Record<string, EngineCardPaging> = {};
-  for (const span of spans) {
-    const card = cardOf(span.runId);
-    if (card === null || cards[card] !== undefined) continue;
-    // The card's runs in the order it draws them. Its scroll holds one stretch: from the start, or
-    // from the last run before the first gap whose start is not held, through the first run whose
-    // end is not held (a run read from its start), so the next page each way is always beside it.
-    const members = runs.filter((member) => cardOf(member.id) === card);
-    if (members.length === 0) continue;
+  /** Where a stretch that starts with `run` starts: its first line held, else its queueing. */
+  const startOf = (run: RunRecord) => {
+    let first = run.queuedAt;
+    for (const id of read.index("engineItemsOfRun", engineFactId(key.environmentId, run.id))) {
+      const fact = read.fact("mateEngineItem", id);
+      if (fact.kind === "known" && fact.value.at < first) first = fact.value.at;
+    }
+    return iso(first);
+  };
+  type Stretch = Pick<EngineCardPaging, "pageRuns" | "holdsLines" | "since" | "through">;
+  /**
+   * The stretch from the start, or from the last run before the first gap whose start is not held,
+   * through the first run whose end is not held (a run read from its start), so the next page each
+   * way is always beside it.
+   */
+  const fromStart = (members: ReadonlyArray<RunRecord>): Stretch => {
     const laterAt = members.findIndex((member) => (spanOf.get(member.id)?.to ?? null) !== null);
     const later = laterAt === -1 ? undefined : members[laterAt];
     const earlier = (laterAt === -1 ? members : members.slice(0, laterAt + 1)).findLast(
@@ -1276,6 +1283,73 @@ export function engineCardPagingOf(
     );
     const laterSpan = later === undefined ? undefined : spanOf.get(later.id);
     const earlierSpan = earlier === undefined ? undefined : spanOf.get(earlier.id);
+    return {
+      pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
+      // None until it first opens: its first run read from its start, nothing of it read yet.
+      holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,
+      since:
+        earlier === undefined || earlierSpan === undefined || earlierSpan.from === null
+          ? null
+          : timeAt(earlier.id, earlierSpan.from, earlier.endedAt ?? earlier.queuedAt),
+      through:
+        later === undefined || laterSpan === undefined || laterSpan.to === null
+          ? null
+          : timeAt(later.id, laterSpan.to, later.queuedAt),
+    };
+  };
+  /**
+   * The stretch through the end, back through every run held whole to the first, from the end,
+   * not held from its start; a run whose end is not held (read from its start, or not at all) stops
+   * it at the start of the run after it, and is the one it pages back into, from its end. Read back
+   * from its end, it starts no later than the run after it: a person's message queued behind it is
+   * timed inside it, and stays as its pages are read.
+   */
+  const fromEnd = (members: ReadonlyArray<RunRecord>): Stretch => {
+    const at = members.findLastIndex((member) => {
+      const span = spanOf.get(member.id);
+      return span !== undefined && (span.from !== null || span.to !== null);
+    });
+    const gap = members[at];
+    const span = gap === undefined ? undefined : spanOf.get(gap.id);
+    if (gap === undefined || span === undefined)
+      return {
+        pageRuns: { earlier: null, later: null },
+        holdsLines: true,
+        since: null,
+        through: null,
+      };
+    const next = members[at + 1];
+    const nextStart = next === undefined ? null : startOf(next);
+    const pageStart =
+      span.from === null ? null : timeAt(gap.id, span.from, gap.endedAt ?? gap.queuedAt);
+    return {
+      pageRuns: { earlier: gap.id, later: null },
+      holdsLines: true,
+      since:
+        pageStart === null
+          ? nextStart
+          : nextStart !== null && Date.parse(nextStart) < Date.parse(pageStart)
+            ? nextStart
+            : pageStart,
+      through: null,
+    };
+  };
+  const cards: Record<string, EngineCardPaging> = {};
+  for (const span of spans) {
+    const card = cardOf(span.runId);
+    if (card === null || cards[card] !== undefined) continue;
+    // The card's runs in the order it draws them. Its scroll holds one stretch: from its start,
+    // unless its last run's newest lines are held — a run with no span, held whole as it came
+    // (any run that started after the conversation opened), live or settled, or a run's whose
+    // span holds its end — when it reaches its end. From its start, a live card whose earlier run
+    // was not read yet held none of its work (Filip's card, Aleš, 2026-10-25), and lost what it
+    // held as its live run settled.
+    const members = runs.filter((member) => cardOf(member.id) === card);
+    const last = members.at(-1);
+    if (last === undefined) continue;
+    const lastSpan = spanOf.get(last.id);
+    const endHeld = lastSpan === undefined || lastSpan.to === null;
+    const stretch = endHeld ? fromEnd(members) : fromStart(members);
     let hasWork = false;
     for (const member of members) {
       // Past the person's words and its answer, something it did. The words counted from the
@@ -1294,19 +1368,9 @@ export function engineCardPagingOf(
         hasWork = true;
     }
     cards[card] = {
-      pageRuns: { earlier: earlier?.id ?? null, later: later?.id ?? null },
+      ...stretch,
       counts: engineCardCounts(members),
       hasWork,
-      // None until it first opens: its first run read from its start, nothing of it read yet.
-      holdsLines: earlierSpan !== undefined || laterAt !== 0 || laterSpan?.to !== 0,
-      since:
-        earlier === undefined || earlierSpan === undefined || earlierSpan.from === null
-          ? null
-          : timeAt(earlier.id, earlierSpan.from, earlier.endedAt ?? earlier.queuedAt),
-      through:
-        later === undefined || laterSpan === undefined || laterSpan.to === null
-          ? null
-          : timeAt(later.id, laterSpan.to, later.queuedAt),
       reading:
         members.map((member) => spanOf.get(member.id)?.reading ?? null).find(Boolean) ?? null,
     };
@@ -1471,9 +1535,12 @@ export function overlayEngineRow(
   // The engine's record says the access (held, its header; else its row): V1's thread never hears
   // of a pick made on an engine conversation.
   const runtimeMode = held?.runtimeMode ?? known(row.runtimeMode) ?? thread.runtimeMode;
+  const archived = held?.archived ?? row.archived;
   return {
     ...thread,
     runtimeMode,
+    // The pool container its agent leased, as its record says: the V1 thread never had one.
+    lease: row.lease ?? null,
     ...(row.agent === null
       ? {}
       : {
@@ -1485,10 +1552,12 @@ export function overlayEngineRow(
         }),
     // Held, its records name the turn; until they do, the row's run — never the V1 thread's.
     latestTurn: held?.latestTurn ?? latestTurn,
-    // Held, its header says whether it is archived: the V1 thread never was, and the row never says.
-    ...(held?.archived === undefined
+    // Whether it is archived, as its records say — held, its header; else its row (an older server's
+    // never says) — the V1 thread never heard of it. Nobody holds one archived by Archive and start
+    // fresh: read live, a review's Fix asked it on a hidden composer (lab A.3).
+    ...(archived === undefined
       ? {}
-      : { archivedAt: held.archived ? (thread.archivedAt ?? thread.updatedAt) : null }),
+      : { archivedAt: archived ? (thread.archivedAt ?? thread.updatedAt) : null }),
     ...rowWords(row),
     // Its turn over, its helpers work on: the row says so, never the V1 thread's liveness.
     backgroundLiveness: row.state.kind === "working" && row.state.waitsOnHelpers ? "working" : null,

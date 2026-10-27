@@ -15,14 +15,16 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import { CommandId, ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
 import { SessionAdmission } from "../auth/EnvironmentAuthPolicy.ts";
 import * as ZeropsThreadLifecycle from "../persistence/ZeropsThreadLifecycle.ts";
 import { layer as providerInstancesLayer } from "../spi/providerInstances.ts";
 import * as ProcessRunner from "../processRunner.ts";
-import { conversationOfThread } from "../engine/MateEngine.ts";
+import { conversationOfThread, MateEngine } from "../engine/MateEngine.ts";
 import { engineLayer } from "../engine/layer.ts";
+import { VcsStatusBroadcaster } from "../vcs/VcsStatusBroadcaster.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { crewEngineHooks, crewLayer } from "./crew/crewLayer.ts";
 import { crewEngineLinkLayer } from "./crew/engine/CrewEngineLayer.ts";
@@ -40,6 +42,7 @@ import * as ZeropsDataConsoleModule from "./ZeropsDataConsole.ts";
 import * as ZeropsGitRemoteProbeModule from "./ZeropsGitRemoteProbe.ts";
 import { loadFixtureScene, makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
+import { ZEROPS_WORKSPACE_ROOT } from "./ZeropsRepositorySource.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
@@ -235,8 +238,61 @@ const ZeropsHqLinkLive = Layer.unwrap(
   Layer.provide(MateEngineLive),
 );
 
+/**
+ * The lifecycle feed, which tells a conversation's own record the lease its agent acquired, and
+ * every conversation bound to a lease that ended, through the very engine the merge runs (memoized
+ * by reference): the record binds or unbinds it, under the call's own command id, so a call told
+ * again acts once. Who is bound is read from the conversations' records (their lease alone, never
+ * their views), only when a call says something new of the leases; a record that could not be read
+ * is read again with the next call that reads them. A lease that changed hands has its checkout's
+ * git status forgotten and read again: the same alias may be another branch's container now.
+ */
+const ZeropsLifecycleLive = Layer.unwrap(
+  Effect.gen(function* () {
+    const engine = yield* MateEngine;
+    const vcsStatus = yield* VcsStatusBroadcaster;
+    return ZeropsLifecycle.layer(conversationOfThread, {
+      checkoutChanged: (alias) => vcsStatus.forgetStatus(`${ZEROPS_WORKSPACE_ROOT}/${alias}`),
+      // A conversation whose record could not be read leaves the list incomplete, never unbound.
+      leaseBindings: Effect.map(engine.leases, ({ leases, complete }) => ({
+        bindings: leases.map(({ conversationId, lease }) => ({
+          conversation: ThreadId.make(conversationId),
+          alias: lease.alias,
+          branch: lease.branch,
+          repo: lease.repo,
+          acquiredAt: lease.acquiredAt,
+        })),
+        complete,
+      })),
+      recordLease: (conversation, change, key) =>
+        engine
+          .deliver(ConversationId.make(conversation), change, CommandId.make(key), {
+            kind: "engine",
+          })
+          .pipe(
+            Effect.flatMap((result) =>
+              result._tag === "Rejected"
+                ? Effect.logWarning("A conversation's record refused its lease change", {
+                    conversation,
+                    change: change._tag,
+                    rejection: result.rejection,
+                  })
+                : Effect.void,
+            ),
+            Effect.catch((error) =>
+              Effect.logWarning("A conversation's lease change could not be recorded", {
+                conversation,
+                change: change._tag,
+                error: error.message,
+              }),
+            ),
+          ),
+    });
+  }),
+).pipe(Layer.provide(ZeropsThreadLifecycle.layer), Layer.provide(MateEngineLive));
+
 const liveLayer = Layer.mergeAll(
-  ZeropsLifecycle.layer(conversationOfThread).pipe(Layer.provide(ZeropsThreadLifecycle.layer)),
+  ZeropsLifecycleLive,
   // `ZeropsProjectSigners` is merged rather than hidden: the agent-auth feed
   // reads who signed each agent in for its snapshot, and the turn gate below
   // asks the same service before it lets a turn start (D6). Both go by the

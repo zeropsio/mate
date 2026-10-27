@@ -32,7 +32,7 @@ const input = vi.hoisted(() => {
     pr: null,
   });
   const checkout = (name: string, changed: number, aheadOfMain: number) => ({
-    repository: { name, cwd: `/var/www/${name}` },
+    repository: { name, label: name, cwd: `/var/www/${name}` },
     status: status(changed, aheadOfMain),
   });
   return {
@@ -44,6 +44,8 @@ const input = vi.hoisted(() => {
     },
     source: "local",
     error: "Local refs refused." as string | null,
+    /** Why git could not read the shown diff; `null` while it reads it. */
+    previewFailure: null as string | null,
     pending: false,
     retained: false,
     otherKnown: false,
@@ -117,18 +119,20 @@ vi.mock("../state/query", async (importOriginal) => ({
   useEnvironmentQuery: (key: string | null) => ({
     data:
       key === "preview"
-        ? {
-            cwd: "/work",
-            sources: [
-              {
-                kind: "branch-range",
-                baseRef: "main",
-                headRef: "work",
-                diff: "",
-                truncated: false,
-              },
-            ],
-          }
+        ? input.previewFailure !== null
+          ? null
+          : {
+              cwd: "/work",
+              sources: [
+                {
+                  kind: "branch-range",
+                  baseRef: "main",
+                  headRef: "work",
+                  diff: "",
+                  truncated: false,
+                },
+              ],
+            }
         : key === input.source
           ? input.retained
             ? { refs: [{ name: "main", current: false, isDefault: true, worktreePath: null }] }
@@ -148,7 +152,7 @@ vi.mock("../state/query", async (importOriginal) => ({
                   : [],
               }
             : null,
-    error: key === input.source ? input.error : null,
+    error: key === "preview" ? input.previewFailure : key === input.source ? input.error : null,
     isPending: key === input.source && input.pending,
     refresh:
       key === "preview" || key === "local" || key === "remote" ? input.refreshes[key] : () => {},
@@ -440,6 +444,34 @@ it("Diff of changes it shows offers the Git page beside them", async () => {
       ).toContain("Open Git");
     });
   } finally {
+    restore();
+  }
+});
+
+it("a diff git could not read says so and offers to read it again, never that there is no patch", async () => {
+  const restore = withReads([input.checkout("apidev", 1, 0)], { kind: "unstaged" });
+  input.previewFailure =
+    "Git command failed in GitVcsDriver.readUnifiedWorkingTreeReviewDiff.addUntracked (/var/www/apidev): Git command exited with a non-zero status.";
+  try {
+    await withDiff(async (container) => {
+      expect(container.textContent).toContain("Could not read the diff.");
+      expect(container.textContent).toContain(input.previewFailure);
+      expect(container.textContent).not.toContain("No patch available");
+      input.refreshes.preview.mockClear();
+      input.statusRefreshes.mockClear();
+      const again = Array.from(container.querySelectorAll("button")).find(
+        (button) => button.textContent === "Try again",
+      );
+      expect(again).toBeDefined();
+      await act(() => again!.click());
+      expect(input.refreshes.preview).toHaveBeenCalledOnce();
+      expect(input.statusRefreshes).toHaveBeenCalledWith({
+        environmentId: "mate",
+        input: { cwd: "/var/www/apidev" },
+      });
+    });
+  } finally {
+    input.previewFailure = null;
     restore();
   }
 });

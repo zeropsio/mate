@@ -37,7 +37,7 @@ import {
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { useRouter } from "@tanstack/react-router";
 import { ArrowUpRightIcon, CheckIcon } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { Button, InlineButton } from "~/components/ui/button";
 import { buildThreadRouteParams } from "~/threadRoutes";
@@ -45,7 +45,7 @@ import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useHqAppDetailHold } from "~/zerops/useHqAppDetail";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
-import type { ReviewTarget } from "~/zerops/review";
+import { reviewTargetKey, useOpenReview, type ReviewTarget } from "~/zerops/review";
 import { useAskMate } from "~/zerops/useAskMate";
 import { pullRequestLinkWords } from "~/zerops/automatedMate.logic";
 import { useAddEnvironment, useEnvironmentQuestionFacts } from "~/zerops/useAddEnvironment";
@@ -75,6 +75,8 @@ import {
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
+  otherOpenChanges,
+  reviewBranch,
   reviewKindLine,
   sizeWords,
   whySaid,
@@ -217,7 +219,10 @@ export function ZeropsChangeReview({
     );
   }
   return (
+    // Keyed by the change, so a page whose address moves to another change starts that review
+    // from its own state: nothing pressed on the one before carries over.
     <ChangeReviewData
+      key={reviewTargetKey(target)}
       reviewOffers={reviewOffers}
       flow={flow}
       hqAddress={flows.hqAddress}
@@ -258,6 +263,7 @@ function ChangeReviewData({
   readonly onClose: () => void;
 }) {
   const router = useRouter();
+  const openReview = useOpenReview();
   const now = useNowMs();
   const askMate = useAskMate();
   const askMateToFix = useAskMateToFix();
@@ -480,6 +486,7 @@ function ChangeReviewData({
       onAsk={async (said) => {
         // The change keeps the record of what was asked; the Mate gets the words to act on.
         const refusal = await comments.say(said);
+        // Asked where the change's work is: the conversation bound to a lease of its branch.
         askMate(
           pull.mateProjectId,
           changeAskPrompt({
@@ -488,18 +495,42 @@ function ChangeReviewData({
             title: pull.title,
             said,
           }),
+          { branch: pull.branch, repositoryUrl: pull.repositoryUrl },
         );
         if (refusal === null) onClose();
       }}
       onClose={onClose}
       onRetry={detail.retry}
       showFiles={detail.showFiles}
+      readDiffs={detail.readDiffs}
       fileDiffs={fileDiffs}
       commits={readCommits}
       showCommits={commitsUnrecorded && !commitsWanted ? showCommits : undefined}
       onFix={(problem) => {
-        askMateToFix(pull.mateProjectId, problem);
+        askMateToFix(pull.mateProjectId, problem, {
+          branch: pull.branch,
+          repositoryUrl: pull.repositoryUrl,
+        });
         onClose();
+      }}
+      others={flow === undefined ? NO_OTHERS : otherOpenChanges(pull, flow.pullRequests)}
+      onOpenChange={(number) => {
+        const other = {
+          kind: "change",
+          groupId: target.groupId,
+          repository: pull.repository,
+          number,
+        } as const;
+        if (frame === "page")
+          void router.navigate({
+            to: "/change/$groupId/$repository/$number",
+            params: {
+              groupId: other.groupId,
+              repository: other.repository,
+              number: String(number),
+            },
+          });
+        else openReview(other);
       }}
       onOpenRun={
         runRef === undefined
@@ -531,6 +562,9 @@ const NO_ENVIRONMENTS: ReadonlyArray<{ readonly tier: GroupEnvironmentTier }> = 
 
 /** Nothing said: the state before the conversation is read. */
 const NO_REMARKS: ReadonlyArray<ChangeRemark> = [];
+
+/** No other open change of its Mate's known: the project's flow is not read yet. */
+const NO_OTHERS: ReadonlyArray<Pick<FlowPullRequest, "number" | "title">> = [];
 
 export interface ChangeReviewViewProps {
   /** A dialog over the conversation, or the change's own page. */
@@ -609,6 +643,11 @@ export interface ChangeReviewViewProps {
   /** For a change whose files were never recorded: reads them from its repository on a press. */
   readonly showFiles?: (() => void) | undefined;
   /**
+   * For a change recorded with no merge base to read a file's diff from: unfolding a file reads
+   * HQ's detail of the change, which holds its diffs.
+   */
+  readonly readDiffs?: (() => void) | undefined;
+  /**
    * The commits read from the repository on the person's press, for a change whose commits HQ
    * never recorded; absent, the readout holds them.
    */
@@ -616,6 +655,13 @@ export interface ChangeReviewViewProps {
   /** For a change whose commits were never recorded: reads them on a press. */
   readonly showCommits?: (() => void) | undefined;
   readonly onFix: (problem: FixProblem) => void;
+  /**
+   * Its Mate's other open changes in its repository (`otherOpenChanges`), each a way to its own
+   * review; none where it is the Mate's only one there.
+   */
+  readonly others?: ReadonlyArray<Pick<FlowPullRequest, "number" | "title">> | undefined;
+  /** Opens the review of the Mate's other open change `number` in the repository. */
+  readonly onOpenChange?: ((number: number) => void) | undefined;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
   readonly onAsk: (said: string) => Promise<void>;
   /** Reads again what could not be read. */
@@ -744,6 +790,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
   // own words only restate its title.
   const onLine = model.verdict.state === "merging" || model.verdict.state === "merged";
   const question = model.question === undefined || questionClosed ? undefined : model.question;
+  // A Mate's several changes in one repository read apart by their branches.
+  const branch = reviewBranch(pull);
+  const others = props.others ?? NO_OTHERS;
   return (
     <ZeropsReviewSurface
       ask={
@@ -799,7 +848,12 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       }
       kind={KIND}
       kindLabel={props.project === undefined ? mate.name : `${mate.name} · ${props.project}`}
-      meta={<span>#{pull.number}</span>}
+      meta={
+        <span>
+          #{pull.number}
+          {branch === undefined ? null : ` · ${branch}`}
+        </span>
+      }
       elsewhere={
         pull.pullRequest === undefined ? undefined : (
           <InlineButton
@@ -877,6 +931,24 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       verdict={model.verdict}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
+      {others.length === 0 ? null : (
+        <p className="rv-words" data-zerops-surface="change-others">
+          Other open changes in {pull.repository}:{" "}
+          {others.map((other, index) => (
+            <Fragment key={other.number}>
+              {index === 0 ? null : ", "}
+              <InlineButton
+                onClick={() => {
+                  props.onOpenChange?.(other.number);
+                }}
+                title={other.title}
+              >
+                #{other.number}
+              </InlineButton>
+            </Fragment>
+          ))}
+        </p>
+      )}
       {model.orphan === undefined ? null : (
         <ReviewSection title="Its Mate is gone">
           <p className="rv-words">{model.orphan.text}</p>
@@ -949,7 +1021,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
           notRecorded={
             read !== undefined && !read.filesKnown ? { onShow: props.showFiles } : undefined
           }
-          onOpen={laterDiffs?.ask}
+          onOpen={laterDiffs?.ask ?? props.readDiffs}
           onRetry={props.onRetry}
         />
       </ReviewSection>

@@ -45,6 +45,8 @@ describe("update admission", () => {
     "EffectSettled",
     "ProviderSignals",
     "Recovered",
+    "BindLease",
+    "UnbindLease",
   ] as const)("an update allows %s to finish accepted work", (command) =>
     Effect.gen(function* () {
       const admission = yield* makeUpdateAdmission;

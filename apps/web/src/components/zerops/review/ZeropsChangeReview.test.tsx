@@ -141,7 +141,19 @@ vi.mock("~/zerops/useProjectedHqPicture", () => ({
   useHqPictureSource: () => undefined,
   useProjectedHqPicture: () => ({ kind: "reading" }),
 }));
-vi.mock("~/zerops/useAskMate", () => ({ useAskMate: () => () => undefined }));
+/** What the review asked of a Mate, and which Mates of the person's it may ask to fix it. */
+const asks = vi.hoisted(() => ({
+  ask: [] as Array<ReadonlyArray<unknown>>,
+  fix: [] as Array<ReadonlyArray<unknown>>,
+  fixers: [] as Array<{ readonly mateProjectId: string }>,
+}));
+vi.mock("~/zerops/useAskMate", () => ({
+  useAskMate:
+    () =>
+    (...asked: ReadonlyArray<unknown>) => {
+      asks.ask.push(asked);
+    },
+}));
 vi.mock("~/zerops/useAddEnvironment", () => ({
   useAddEnvironment: () => () => undefined,
   useEnvironmentQuestionFacts: () => ({
@@ -149,8 +161,14 @@ vi.mock("~/zerops/useAddEnvironment", () => ({
     productionHeld: false,
   }),
 }));
-vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => () => undefined }));
-vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
+vi.mock("~/zerops/fixRequest", () => ({
+  useAskMateToFix:
+    () =>
+    (...asked: ReadonlyArray<unknown>) => {
+      asks.fix.push(asked);
+    },
+}));
+vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => asks.fixers }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 vi.mock("./reviewReads", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./reviewReads")>()),
@@ -242,7 +260,16 @@ function render(
   files: ReadonlyArray<ChangeFile>,
   over: Partial<ChangeReviewViewProps> = {},
 ): string {
-  const props: ChangeReviewViewProps = {
+  return renderToStaticMarkup(<ChangeReviewView {...viewProps(pull, files, over)} />);
+}
+
+/** What `render` hands the review. */
+function viewProps(
+  pull: ChangeReviewViewProps["pull"],
+  files: ReadonlyArray<ChangeFile>,
+  over: Partial<ChangeReviewViewProps> = {},
+): ChangeReviewViewProps {
+  return {
     pull,
     mate: { name: "Wren", tint: undefined, mine: false },
     readout: {
@@ -287,7 +314,6 @@ function render(
     onClose: noop,
     ...over,
   };
-  return renderToStaticMarkup(<ChangeReviewView {...props} />);
 }
 
 /** The visible text, tags stripped, whitespace folded. */
@@ -399,6 +425,47 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(textOf(markup)).toContain("Add a status page");
   });
 
+  it("A file of a change sharing no history with main reads its diff from HQ's detail when the person unfolds it", async () => {
+    const asked: Array<string> = [];
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const host = document.createElement("div") as unknown as TestNode;
+    const root = createRoot(host as unknown as Element);
+    // HQ recorded the files of a change into an empty main: there is no merge base to read from.
+    const unrelated = changeReadoutOfRecord({ mergeability: "clean", behind: false } as HqChange, {
+      mergeBase: null,
+      files: [{ path: "summary.txt", added: 1, deleted: 0, binary: false, status: "A" }],
+      filesTruncated: false,
+      conflictPaths: [],
+      commits: [],
+      commitsTruncated: false,
+    });
+    await act(async () => {
+      root.render(
+        <ChangeReviewView
+          {...viewProps(merged({ merged: false, state: "open" }), [], {
+            readout: { kind: "read", value: unrelated },
+            readDiffs: () => {
+              asked.push("diffs");
+            },
+          })}
+        />,
+      );
+    });
+    const file = elementsOf(host, "button").find((button) =>
+      button.textContent.includes("summary.txt"),
+    );
+    expect(asked).toEqual([]);
+    await act(async () => {
+      press(file!);
+    });
+    expect(asked).toEqual(["diffs"]);
+    await act(async () => {
+      root.unmount();
+    });
+    vi.unstubAllGlobals();
+  });
+
   it("Commits not recorded yet read not known yet, and a press reads them", () => {
     const markup = render(merged(), [], {
       readout: { kind: "read", value: recorded([{ path: "src/a.ts" }]) },
@@ -496,6 +563,63 @@ const footOf = (html: string) => {
   document.body.innerHTML = html;
   return document.querySelector("footer")?.innerHTML ?? "";
 };
+
+// Several changes of one Mate in one repository read apart (several-changes design §5.11).
+describe("ChangeReviewView: one of several changes of its Mate in a repository", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const badge = merged({
+    repository: "appsdev",
+    number: 6,
+    title: "Test badge",
+    branch: "badge",
+    line: "appsdev #6",
+    merged: false,
+    mergedAt: undefined,
+  });
+
+  it("names its branch beside its number, and its Mate's other open changes there, each opening its review", async () => {
+    const opened: Array<number> = [];
+    installTestDom();
+    const { createRoot } = await import("react-dom/client");
+    const host = document.createElement("div") as unknown as TestNode;
+    const root = createRoot(host as unknown as Element);
+    await act(async () => {
+      root.render(
+        <ChangeReviewView
+          {...viewProps(badge, [], {
+            others: [
+              { number: 2, title: "Pool previews" },
+              { number: 7, title: "Build stamp" },
+            ],
+            onOpenChange: (number) => {
+              opened.push(number);
+            },
+          })}
+        />,
+      );
+    });
+    const text = host.textContent.replace(/\s+/gu, " ");
+    expect(text).toContain("#6 · badge");
+    expect(text).toContain("Other open changes in appsdev: #2, #7");
+    await act(async () => {
+      press(buttonsLabelled(host, "#2")[0]!);
+    });
+    expect(opened).toEqual([2]);
+    await act(async () => {
+      root.unmount();
+    });
+  });
+
+  it("names no branch HQ chose for a change that named none, and no other changes where it is its Mate's only one", () => {
+    const text = textOf(render({ ...badge, branch: "mate/p-wren/6" }, []));
+    expect(text).toContain("#6");
+    expect(text).not.toContain("mate/p-wren/6");
+    expect(text).not.toContain("Other open changes");
+  });
+});
 
 describe("ChangeReviewView: an open change", () => {
   it("says since when HQ does not answer instead of silently removing its actions", () => {
@@ -753,20 +877,29 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     account.answer = { ok: true };
     detail.readout = { kind: "reading" };
     offers.held.current = DEVELOPS;
+    asks.ask.length = 0;
+    asks.fix.length = 0;
+    asks.fixers = [];
     vi.unstubAllGlobals();
   });
 
-  /** The review of API_CHANGE, mounted; `test` reads what it drew, and presses what it may. */
+  /**
+   * The review of API_CHANGE, mounted; `test` reads what it drew, and presses what it may. A
+   * rerender given a number shows that change at the same place, as a change's page does when its
+   * address moves to another change.
+   */
   async function reviewed(
-    test: (host: TestNode, rerender: () => Promise<void>) => void | Promise<void>,
+    test: (host: TestNode, rerender: (number?: number) => Promise<void>) => void | Promise<void>,
+    change: HqChange = API_CHANGE,
+    frame?: "page",
   ): Promise<void> {
-    account.changes.set("group-orchard/apidev#1", API_CHANGE);
+    account.changes.set("group-orchard/apidev#1", change);
     installTestDom();
     const { createRoot } = await import("react-dom/client");
     const host = document.createElement("div") as unknown as TestNode;
     const root = createRoot(host as unknown as Element);
     const data = reviewAccount(({ link }) => hq.api.change(link));
-    const rerender = () =>
+    const rerender = (number = 1) =>
       act(async () => {
         root.render(
           createElement(
@@ -776,11 +909,12 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
               AccountDataContext,
               { value: data.data },
               createElement(ZeropsChangeReview, {
+                ...(frame === undefined ? {} : { frame }),
                 target: {
                   kind: "change",
                   groupId: "group-orchard",
                   repository: "apidev",
-                  number: 1,
+                  number,
                 },
                 titleId: "t",
                 onClose: noop,
@@ -863,6 +997,40 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     },
   );
 
+  it("asks the conversation of the change's branch to update it", async () => {
+    asks.fixers = [{ mateProjectId: "p-wren" }];
+    // main moved on past its merge base: behind, and still merging cleanly.
+    detail.readout = {
+      kind: "read",
+      value: changeReadout({
+        change: API_CHANGE,
+        mainHead: MAIN,
+        mergeBase: "b".repeat(40),
+        mergeability: { kind: "clean" },
+        files: [changed("src/api.ts")],
+        filesTruncated: false,
+        commits: [],
+        commitsTruncated: false,
+      }),
+    };
+    await reviewed(
+      async (host) => {
+        await pressed(host, "Ask the Mate to update it");
+        expect(asks.fix).toEqual([
+          [
+            "p-wren",
+            {
+              what: "Change #1 is behind main",
+              ask: "Merge main into it, check it still works, and deliver it again.",
+            },
+            { branch: "badge", repositoryUrl: "https://hq.example.test/git/group-orchard/apidev" },
+          ],
+        ]);
+      },
+      { ...API_CHANGE, branch: "badge" },
+    );
+  });
+
   it("merges with the head the review shows, and says it merged", async () => {
     detail.readout = READ_DETAIL;
     await reviewed(async (host) => {
@@ -872,6 +1040,59 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       ]);
       expect(host.textContent).toContain("Merged into main");
     });
+  });
+
+  // A change's page steps to its Mate's other open changes in place (`Other open changes`).
+  it("a change's page moved on to another change never shows the merge pressed on the one before", async () => {
+    detail.readout = READ_DETAIL;
+    account.changes.set("group-orchard/apidev#2", {
+      ...API_CHANGE,
+      number: 2,
+      title: "Pool previews",
+    });
+    await reviewed(
+      async (host, rerender) => {
+        await pressed(host, "Merge");
+        expect(host.textContent).toContain("Merged into main");
+        await rerender(2);
+        expect(host.textContent).toContain("Pool previews");
+        expect(host.textContent).not.toContain("Merged into main");
+        expect(buttonsOf(host, "Merge")).toHaveLength(1);
+      },
+      API_CHANGE,
+      "page",
+    );
+  });
+
+  it("a change's page moved on to another change reads that change's unrecorded commits only on a press of its own", async () => {
+    detail.readout = {
+      kind: "read",
+      value: changeReadoutOfRecord(API_CHANGE, {
+        mergeBase: MAIN,
+        files: [{ path: "src/api.ts", added: 2, deleted: 0, binary: false, status: "M" }],
+        filesTruncated: false,
+        conflictPaths: [],
+        commits: null,
+        commitsTruncated: false,
+      }),
+    };
+    account.changes.set("group-orchard/apidev#2", {
+      ...API_CHANGE,
+      number: 2,
+      title: "Pool previews",
+    });
+    await reviewed(
+      async (host, rerender) => {
+        await pressed(host, "Show commits");
+        expect(buttonsOf(host, "Show commits")).toHaveLength(0);
+        await rerender(2);
+        expect(host.textContent).toContain("Pool previews");
+        expect(host.textContent).toContain("The commits are not known yet.");
+        expect(buttonsOf(host, "Show commits")).toHaveLength(1);
+      },
+      API_CHANGE,
+      "page",
+    );
   });
 
   it("says HQ's refusal, and keeps Merge for a deliberate press", async () => {

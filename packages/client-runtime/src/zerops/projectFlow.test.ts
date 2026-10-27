@@ -99,6 +99,14 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     },
   );
 
+  // zcp names a lease's repository by the address git reaches it at (spec-mate §2.8a.3 `repo`):
+  // for a repository HQ keeps, `<HQ>/git/<appId>/<repo>`, which a lease's change is matched by.
+  it("names where git reaches a change's repository at HQ", () => {
+    expect(flowChange(change({ appId: "g2", repo: "webdev" }), `${HQ}/`).repositoryUrl).toBe(
+      `${HQ}/git/g2/webdev`,
+    );
+  });
+
   it("carries the pull request its change is mirrored to on GitHub into review", () => {
     const pullRequest = {
       number: 14,
@@ -129,6 +137,7 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
         kind: "code",
         mateProjectId: VERA,
         url: `${HQ}/changes/g1/appdev/3`,
+        repositoryUrl: `${HQ}/git/g1/appdev`,
         mergeability: "mergeable",
         behind: false,
         merged: false,
@@ -227,6 +236,16 @@ describe("an application's changes: the menu's rows, and its detail while a surf
     ...over,
   });
 
+  it("names where git reaches a change's repository at HQ from navigation too", () => {
+    const listed = flowAppChanges({
+      appId: "g1",
+      open: [menuRow({ repo: "apidev" })],
+      detail: undefined,
+      hqAddress: `${HQ}/`,
+    }).pullRequests;
+    expect(listed.map((pull) => pull.repositoryUrl)).toEqual([`${HQ}/git/g1/apidev`]);
+  });
+
   it("carries the pull request a change is mirrored to on GitHub, from navigation or its detail", () => {
     const pullRequest = {
       number: 14,
@@ -260,6 +279,7 @@ describe("an application's changes: the menu's rows, and its detail while a surf
           kind: "code",
           mateProjectId: VERA,
           url: `${HQ}/changes/g1/appdev/3`,
+          repositoryUrl: `${HQ}/git/g1/appdev`,
           mergeability: "mergeable",
           behind: false,
           merged: false,
@@ -366,6 +386,37 @@ describe("the one merge that was an application's first code", () => {
     ["HQ says nothing", {}, undefined],
   ] as const)("%s", (_name, over, expected) => {
     expect(flowChange(merged(over), "https://hq/").firstCodeMerge).toBe(expected);
+  });
+});
+
+// Lab G, 2026-10-25: a change Cal gave up read "Somebody closed it", though HQ said Cal.
+describe("a change closed without merging", () => {
+  const closed = (over: Partial<HqChange>): HqChange => ({
+    appId: "g1",
+    repo: "appdev",
+    number: 6,
+    mateProjectId: VERA,
+    title: "Given up",
+    body: "",
+    state: "closed",
+    head: "a".repeat(40),
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-10-25T09:00:00.000Z",
+    mergedAt: null,
+    closedAt: "2026-10-25T10:00:00.000Z",
+    updatedAt: "2026-10-25T10:00:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 1,
+    ...over,
+  });
+  it.each([
+    ["says its Mate closed it where HQ says so", { closedByMate: true }, true],
+    ["says nothing of who closed it where HQ does not", {}, undefined],
+  ] as const)("%s", (_name, over, expected) => {
+    expect(flowChange(closed(over), "https://hq/").closedByMate).toBe(expected);
   });
 });
 

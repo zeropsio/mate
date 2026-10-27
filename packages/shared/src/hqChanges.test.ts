@@ -33,6 +33,8 @@ import {
   mergeSubject,
   parseAttachmentUrl,
   parseChangeUrl,
+  repoOfUrl,
+  repoUrl,
 } from "./hqChanges.ts";
 
 const HQ = "https://hqzone.prg1-zerops.zone";
@@ -50,6 +52,64 @@ describe("hqChanges — the change link", () => {
     expect(parseChangeUrl(url, `${HQ}/`)).toEqual({ appId: APP, repo: "appdev", number: 7 });
     expect(changeRoutePath(APP, "appdev", 7)).toBe(`/change/${APP}/appdev/7`);
   });
+
+  it("names where git reaches a repository at HQ's address, as zcp names a lease's repository", () => {
+    expect(repoUrl(HQ, APP, "appdev")).toBe(`${HQ}/git/${APP}/appdev`);
+    expect(repoUrl(`${HQ}/`, APP, "appdev")).toBe(`${HQ}/git/${APP}/appdev`);
+  });
+
+  // The shared HQ serves git at `/git/<orgId>/<appId>/<repo>.git`, the address it lists and zcp
+  // names a lease's repository by; an HQ of one organization served `/git/<appId>/<repo>.git`.
+  const ORG = "4KHK4MkhQ2yjEvRLE7a1Ag";
+  const appdev = { hq: HQ, appId: APP, repo: "appdev" };
+  it.each([
+    {
+      title: "the shared HQ's address as it lists it, with the organization and .git",
+      address: `${HQ}/git/${ORG}/${APP}/appdev.git`,
+      named: appdev,
+    },
+    {
+      title: "the shared HQ's address as zcp names a lease's repository, canonical",
+      address: `${HQ}/git/${ORG}/${APP}/appdev`,
+      named: appdev,
+    },
+    {
+      title: "an HQ of one organization's address, without one",
+      address: repoUrl(HQ, APP, "appdev"),
+      named: appdev,
+    },
+    {
+      title: "an address with .git and a trailing slash",
+      address: `${HQ}/git/${APP}/appdev.git/`,
+      named: appdev,
+    },
+    {
+      title: "an address escaped as HQ escapes its parts",
+      address: `${HQ}/git/${ORG}/${encodeURIComponent("app 1")}/appdev.git`,
+      named: { hq: HQ, appId: "app 1", repo: "appdev" },
+    },
+    {
+      title: "an HQ served under a path",
+      address: `${HQ}/hq/git/${ORG}/${APP}/appdev`,
+      named: { ...appdev, hq: `${HQ}/hq` },
+    },
+    { title: "a repository on GitHub", address: "https://github.com/acme/appdev", named: null },
+    { title: "a change's address", address: changeUrl(HQ, APP, "appdev", 7), named: null },
+    { title: "an application's, naming no repository", address: `${HQ}/git/${APP}`, named: null },
+    {
+      title: "an address of more parts than an organization's",
+      address: `${HQ}/git/x/${ORG}/${APP}/appdev`,
+      named: null,
+    },
+    { title: "an address with an empty part", address: `${HQ}/git//${APP}/appdev`, named: null },
+    { title: "an SSH address", address: `ssh://git@${HQ.slice(8)}/git/${APP}/appdev`, named: null },
+    { title: "no address", address: "appdev", named: null },
+  ])(
+    "reads the repository a git address of HQ's names, never its organization: $title",
+    ({ address, named }) => {
+      expect(repoOfUrl(address)).toEqual(named);
+    },
+  );
 
   it.each([
     ["a query and a fragment", `${HQ}/changes/${APP}/appdev/7?tab=files#c3`, true],
@@ -233,6 +293,55 @@ describe("hqChanges — the wire", () => {
         ],
       },
       "Success",
+    ],
+    [
+      "an HQ that keeps an open change per branch, its open change judged",
+      MateChanges,
+      {
+        appId: APP,
+        openPerBranch: true,
+        changes: [
+          {
+            repo: "appdev",
+            number: 8,
+            state: "open",
+            head: SHA,
+            mergedSha: null,
+            landedHead: null,
+            branch: "badge",
+            ready: false,
+            mergeability: "clean",
+            behind: true,
+            updatedAt: "2026-10-25T10:00:00.000Z",
+          },
+        ],
+      },
+      "Success",
+    ],
+    [
+      "an open change judged in a way this build does not know",
+      MateChanges,
+      {
+        appId: APP,
+        changes: [
+          {
+            repo: "appdev",
+            number: 8,
+            state: "open",
+            head: SHA,
+            mergedSha: null,
+            landedHead: null,
+            mergeability: "sideways",
+          },
+        ],
+      },
+      "Failure",
+    ],
+    [
+      "an HQ that says it keeps one open change per repository in a word it never says",
+      MateChanges,
+      { appId: APP, openPerBranch: false, changes: [] },
+      "Failure",
     ],
     [
       "a change of a state this build does not know",

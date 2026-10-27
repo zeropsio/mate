@@ -70,7 +70,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         {
           kind: "change",
           groupId,
-          repository: block.repository,
+          repository: block.hqRepository,
           number: block.pullRequestNumber,
         },
         { from },
@@ -96,7 +96,7 @@ export function ZeropsGitSurface({ threadRef }: { readonly threadRef: ScopedThre
         to: "/change/$groupId/$repository/$number",
         params: {
           groupId,
-          repository: block.repository,
+          repository: block.hqRepository,
           number: String(block.pullRequestNumber),
         },
       });

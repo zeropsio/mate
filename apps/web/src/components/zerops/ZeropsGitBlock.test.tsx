@@ -11,6 +11,7 @@ const CHANGE_URL = "https://hq.example.test/changes/acme/api/12";
 function blockOf(overrides: Partial<GitBlock> = {}): GitBlock {
   return {
     repository: "api",
+    hqRepository: "api",
     branch: "feature/invoices",
     baseBranch: "main",
     verdict: { tone: "off", text: "Nothing is stopping it.", ask: undefined },
@@ -41,6 +42,14 @@ describe("ZeropsGitBlock", () => {
     // The order a person reads in: which repository, what about it, what now.
     expect(html.indexOf(">api<")).toBeLessThan(html.indexOf("feature/invoices ↑3"));
     expect(html.indexOf("feature/invoices ↑3")).toBeLessThan(html.indexOf("Nothing is stopping"));
+  });
+
+  it("a lease's block goes by the lease's pool and branch, not its alias", () => {
+    const html = render({
+      block: blockOf({ repository: "webpool-3", label: "webpool · feat-x" }),
+    });
+    expect(html).toContain(">webpool · feat-x<");
+    expect(html).not.toContain(">webpool-3<");
   });
 
   it("spends the repository's name once, on the line that is the name", () => {
