@@ -83,6 +83,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as Semaphore from "effect/Semaphore";
 
 import { ServerConfig } from "../config.ts";
 import { ServerEnvironment } from "../environment/ServerEnvironment.ts";
@@ -319,6 +320,12 @@ export const makeZeropsHqLink = (
     // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
     const refusal = yield* Ref.make<string | undefined>(undefined);
     let reportedKey: string | undefined;
+    // Links are numbered as they open; the current one is the newest HQ answered on. A credential
+    // is written only from the current link, one write at a time, so a superseded link's frame
+    // neither lands after nor races the current link's.
+    let linksOpened = 0;
+    let currentLink = 0;
+    const credentialWrites = yield* Semaphore.make(1);
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
@@ -335,6 +342,7 @@ export const makeZeropsHqLink = (
         return Option.none<Link>();
       }
       const origin = options.publicOrigin;
+      const serial = ++linksOpened;
       const events = yield* Queue.unbounded<SocketEvent>();
       const socket = options.connect(url);
       socket.addEventListener("open", () => Queue.offerUnsafe(events, { _tag: "open" }));
@@ -504,6 +512,7 @@ export const makeZeropsHqLink = (
             return send({ type: "pong" }).pipe(Effect.andThen(usage?.ping ?? Effect.void));
           case "state":
             if (sentKey !== undefined) reportedKey = sentKey;
+            currentLink = Math.max(currentLink, serial);
             return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
@@ -518,7 +527,11 @@ export const makeZeropsHqLink = (
           case "access":
             return options.access(frame);
           case "git-credential":
-            return options.gitCredential(frame.credential);
+            return credentialWrites.withPermits(1)(
+              Effect.suspend(() =>
+                serial < currentLink ? Effect.void : options.gitCredential(frame.credential),
+              ),
+            );
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":

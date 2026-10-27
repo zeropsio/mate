@@ -12,6 +12,7 @@ import {
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
 import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/mateLink";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -186,6 +187,8 @@ const rig = (
     readonly reconnectDelaysMs?: ReadonlyArray<number>;
     /** The Mate's public origin; its container's own unless a test takes it away. */
     readonly publicOrigin?: string | undefined;
+    /** What a credential's write waits on before it lands, as a file write in flight does. */
+    readonly credentialLands?: (credential: string | null) => Effect.Effect<void>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -231,7 +234,12 @@ const rig = (
       attention: options.attention ?? Stream.never,
       ...(options.health === undefined ? {} : { health: options.health }),
       access: (frame) => Effect.sync(() => void relayed.push(frame)),
-      gitCredential: (credential) => Effect.sync(() => void credentials.push(credential)),
+      gitCredential: (credential) =>
+        Effect.uninterruptible(
+          (options.credentialLands?.(credential) ?? Effect.void).pipe(
+            Effect.andThen(Effect.sync(() => void credentials.push(credential))),
+          ),
+        ),
       gitFingerprint: Ref.get(fingerprint),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
@@ -1116,6 +1124,33 @@ describe("ZeropsHqLink", () => {
           yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
           assert.lengthOf(sockets, 3);
           assert.isFalse(successor.closed);
+        }),
+      ),
+  );
+
+  // During a rotation HQ's older link may still issue a credential the successor already replaced.
+  it.effect(
+    "a credential frame from a superseded link never overwrites the current link's credential",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const oldLands = yield* Deferred.make<void>();
+          const { sockets, credentials } = yield* rig({
+            credentialLands: (credential) =>
+              credential === "ORG.old" ? Deferred.await(oldLands) : Effect.void,
+          });
+          const first = yield* linked(sockets, 0);
+          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
+          const successor = yield* opened(sockets, 1);
+          // The old link's credential is still being written as HQ answers on the successor.
+          first.hear({ type: "git-credential", credential: "ORG.old" });
+          yield* TestClock.adjust(Duration.zero);
+          admit(successor);
+          successor.hear({ type: "git-credential", credential: "ORG.new" });
+          yield* TestClock.adjust(Duration.zero);
+          yield* Deferred.succeed(oldLands, undefined);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(credentials, ["ORG.old", "ORG.new"]);
         }),
       ),
   );
