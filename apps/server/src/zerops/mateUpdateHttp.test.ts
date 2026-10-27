@@ -8,7 +8,8 @@ import { ProjectCloneTracker } from "../project/ProjectCloneTracker.ts";
 import { CrewEngine } from "./crew/CrewEngine.ts";
 import { ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ProviderUpdateSafety } from "../spi/ProviderUpdateSafety.ts";
-import { isLocalUpdateRequest, readMateUpdateIdleFacts } from "./mateUpdateHttp.ts";
+import { isLocalUpdateRequest } from "./mateUpdateHttp.ts";
+import { readMateUpdateIdleFacts } from "./mateUpdateDrainLive.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 describe("zcp's update control door", () => {
   it.each([
