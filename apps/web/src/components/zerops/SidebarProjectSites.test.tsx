@@ -274,7 +274,7 @@ describe("the project's addresses", () => {
     expect(surface("sidebar-project-sites-popover")).not.toBeNull();
     expect(listed()).toEqual([
       ["Production", ["https://quill.example.com", "https://api.quill.example.com"]],
-      ["stage", ["https://stage.quill.example.app"]],
+      ["Main", ["https://stage.quill.example.app"]],
       ["Nell", ["https://quill-nell.example.app"]],
       ["Odo", ["https://quill-odo.example.app"]],
     ]);
@@ -739,7 +739,7 @@ describe("the addresses sheet's doors", () => {
 
   it.each([
     ["Production", "quill-production"],
-    ["stage", "quill-stage"],
+    ["Main", "quill-stage"],
     ["Nell", "quill-nell"],
   ])(
     "Manage on %s's head opens the addresses sheet for its project and closes the popover",
@@ -771,7 +771,7 @@ describe("the addresses sheet's doors", () => {
     await press(surface("sidebar-project-sites"));
     expect(sectionOf("Production")).toBeDefined();
     expect(manageIn("Production")).toBeNull();
-    expect(manageIn("stage")).not.toBeNull();
+    expect(manageIn("Main")).not.toBeNull();
   });
 
   it("offers no Manage outside an account, where no sheet can read a place", async () => {

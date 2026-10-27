@@ -73,6 +73,8 @@ export const ZeropsStageRef = Schema.Struct({
   hostname: Schema.String,
   /** Absent while zcp has not resolved the stage's setup. */
   setup: Schema.optional(Schema.String),
+  /** The application part the stage serves ("box"), as its leases name it; absent from older zcp. */
+  part: Schema.optional(Schema.String),
 });
 export type ZeropsStageRef = typeof ZeropsStageRef.Type;
 

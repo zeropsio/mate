@@ -5682,6 +5682,27 @@ code {
   line-height: 16px;
 }
 
+.zerops-sites-role[data-tone="red"] {
+  color: var(--zerops-status-failed-text);
+}
+
+/* A piece of a Mate's work: its heading on the names' edge, hugging the parts under it; pieces sit
+   apart by more than three times that gap. */
+.zerops-sites-work {
+  margin-top: 8px;
+}
+
+.zerops-sites-workhead {
+  overflow: hidden;
+  padding: 6px 10px 0 36px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .zerops-sites-host {
   flex: 1 1 auto;
   min-width: 0;

@@ -145,18 +145,51 @@ const pairName = (dev: string): string =>
 
 const POOL_SUFFIX = "pool";
 
+/** Parts whose names are acronyms people write in capitals. */
+const ACRONYMS = new Set([
+  "ai",
+  "api",
+  "cdn",
+  "cms",
+  "crm",
+  "db",
+  "erp",
+  "gql",
+  "hq",
+  "llm",
+  "ml",
+  "rpc",
+  "sso",
+  "ui",
+  "ux",
+]);
+
 /**
- * The part of the application a dev pool serves, as a person reads it: the pool's hostname with
- * `pool` left off, its first letter capital — `embedderpool` is Embedder. A pool's leases are
- * zcp's business; a person sees only the part and its preview.
+ * A part's name as a person reads it: `web` is Web, an acronym (`api`, `hq`, or a short name with
+ * no vowel) is written in capitals — API, HQ.
  */
-export const poolPartName = (pool: string): string => {
-  const part =
-    pool.length > POOL_SUFFIX.length && pool.endsWith(POOL_SUFFIX)
-      ? pool.slice(0, -POOL_SUFFIX.length)
-      : pool;
+export const partName = (part: string): string => {
+  const lower = part.toLocaleLowerCase("en");
+  if (ACRONYMS.has(lower) || (lower.length <= 4 && !/[aeiouy]/u.test(lower)))
+    return lower.toLocaleUpperCase("en");
   return part.charAt(0).toLocaleUpperCase("en") + part.slice(1);
 };
+
+const withoutSuffix = (hostname: string, suffix: string): string =>
+  hostname.length > suffix.length && hostname.endsWith(suffix)
+    ? hostname.slice(0, -suffix.length)
+    : hostname;
+
+/**
+ * The part of the application a dev pool serves, as a person reads it: the pool's hostname with
+ * `pool` left off (`partName`) — `embedderpool` is Embedder. A pool's leases are zcp's business;
+ * a person sees only the part and its preview.
+ */
+export const poolPartName = (pool: string): string => partName(withoutSuffix(pool, POOL_SUFFIX));
+
+/** The part a stage serves, by its hostname with `stage` left off: `boxstage` is Box. */
+export const stagePartName = (stage: string): string =>
+  partName(withoutSuffix(stage, STAGE_SUFFIX));
 
 interface Declared {
   readonly dev: string;

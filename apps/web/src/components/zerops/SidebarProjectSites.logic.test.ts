@@ -319,14 +319,14 @@ const slots = (pool: string) =>
 
 /** The works the section of a Mate alone lists; none where it has no section. */
 const worksOf = (facts: SitesMateFacts): ReadonlyArray<SitesWork> => {
-  const [section] = projectSitesSections({
+  const section = projectSitesSections({
     production: undefined,
     productionUnread: false,
     stages: undefined,
     unreadStages: [],
     placeRoutes: (place) => place.routes,
     mates: [facts],
-  });
+  }).find((found) => found.kind === "mate");
   return section?.kind === "mate" ? section.works : [];
 };
 
