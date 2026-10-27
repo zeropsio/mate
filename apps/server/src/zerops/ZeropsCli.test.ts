@@ -291,6 +291,25 @@ describe("ZeropsCli.leaseRelease", () => {
     }),
   );
 
+  it.effect("a release zcp made only in part reads failed, naming the leases that went", () =>
+    Effect.gen(function* () {
+      const result = yield* run(
+        zcp({
+          release: `process.stdout.write('{"error":"the pool kept webpool-3","released":[{"lease":"apipool-1","outcome":"reset"},{"lease":"edgepool-1","outcome":"lost"}]}'); process.exit(1)`,
+        }),
+        (cli) => cli.leaseRelease(branch),
+      );
+      expect(result).toEqual({
+        outcome: "failed",
+        reason: "the pool kept webpool-3",
+        released: [
+          { lease: "apipool-1", outcome: "reset" },
+          { lease: "edgepool-1", outcome: "lost" },
+        ],
+      });
+    }),
+  );
+
   it.effect("a notice line before zcp's answer does not hide the answer", () =>
     Effect.gen(function* () {
       const result = yield* run(

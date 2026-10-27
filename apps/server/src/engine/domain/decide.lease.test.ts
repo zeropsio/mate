@@ -229,6 +229,29 @@ describe("archiving a conversation gives its workspace back", () => {
     expect(scene.state.lease).toEqual(webpool3);
   });
 
+  it.each([
+    { name: "its own lease went", released: ["webpool-3", "apipool-1"], bound: false },
+    { name: "only another lease went", released: ["apipool-1"], bound: true },
+  ])(
+    "a release zcp made only in part, where $name, unbinds only what went",
+    ({ released, bound }) => {
+      const asked = play([bind(webpool3), archive]);
+      const result = {
+        outcome: "failed",
+        reason: "the pool kept one",
+        released: released.map((lease) => ({ lease, outcome: "removed" })),
+      };
+      const scene = playFrom(
+        asked,
+        settled(asked, { alias: "webpool-3", branch: "feat-x", result }),
+      );
+      expect(scene.events.find((event) => event._tag === "LeaseReleaseSettled")).toMatchObject({
+        result,
+      });
+      expect(scene.state.lease).toEqual(bound ? webpool3 : null);
+    },
+  );
+
   it("a release that found nothing held of the branch unbinds the conversation", () => {
     const asked = play([bind(webpool3), archive]);
     const result = { outcome: "released", leases: [] };
