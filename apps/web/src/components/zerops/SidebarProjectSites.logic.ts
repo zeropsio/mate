@@ -288,7 +288,6 @@ function poolDevs(mate: SitesMateFacts, pool: string): ReadonlyArray<SitesSide> 
       const preview = servers.find(
         (server) => server.url !== undefined && isServiceBrowserUrl(server.url),
       );
-      // Where zcp reads no preview, a slot's own route could stand in once slots map to ports.
       const url = lease.state === "parked" ? undefined : preview?.url;
       if (url !== undefined)
         return {
