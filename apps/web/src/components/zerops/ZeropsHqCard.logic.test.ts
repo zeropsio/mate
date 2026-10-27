@@ -318,3 +318,18 @@ describe("the HQ line before HQ's navigation is read", () => {
     },
   );
 });
+
+describe("hqCardView — the Version row names a build that is not a commit identity", () => {
+  it.each([
+    ["no name at all", "", "unnamed"],
+    [
+      "a dotted name that is not a commit identity",
+      "b6e65699e0.20261003T120000",
+      "b6e65699e0.20261003T120000",
+    ],
+    ["a plain name", "hq-core", "hq-core"],
+  ])("%s", (_name, build, core) => {
+    const standing = { kind: "healthy", build, parts: { quarantined: [] } } as const;
+    expect(hqCardView(input({ standing })).core).toBe(core);
+  });
+});

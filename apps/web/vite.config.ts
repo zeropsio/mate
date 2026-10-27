@@ -235,8 +235,9 @@ const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
 const allowedHosts = configuredAllowedHosts;
 
 // The one HQ every organization shares: the client names it at build time, never reads it off an
-// organization (`zerops/accountHq.ts` `configuredHq`). A build without `VITE_HQ_ORIGIN` names
-// production's; dev and tests name alfa's, so local work never writes to the shared production HQ.
+// organization (`zerops/accountHq.ts` `configuredHq`). A build without `VITE_HQ_ORIGIN` (the
+// desktop staging build, a local `vp build`) names production's, as `zerops.yml` does for `prod`;
+// `vite dev` names alfa's, so a dev server never writes to the shared production HQ.
 const PRODUCTION_HQ_ORIGIN = "https://mate-hq.zerops.io";
 const ALFA_HQ_ORIGIN = "https://hq-31d9-8080.prg1.zerops.app";
 
