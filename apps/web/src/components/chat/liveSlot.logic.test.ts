@@ -440,6 +440,19 @@ describe("the live slot's schedule", () => {
     expect(slotDue(slot)).toBeNull();
   });
 
+  // k27 item 5: a live card opens on its run's newest lines and its scroll reads back the earlier
+  // ones at once; each page went through the slot one at a time, a hundred lines replayed.
+  it("draws a live card's earlier lines read in above the ones it holds as history at once", () => {
+    const slot = slotStart({ at: 0, live: ["c11"], record: ["c8", "c9", "c10"] });
+    const record = ["c1", "c2", "c3", "c4", "c5", "c6", "c7", "c8", "c9", "c10"];
+    const read = slotOffer(slot, { at: 100, live: ["c11"], record, final: false });
+    expect([...slotHoldsIn(read, record)]).toEqual(["c11"]);
+    expect(slotDue(read)).toBeNull();
+    // What arrives after them, at the run's foot, still stands its turn.
+    const next = slotOffer(read, { at: 200, live: [], record: [...record, "c11"], final: false });
+    expect(next.entries.map((entry) => entry.key)).toEqual(["c11"]);
+  });
+
   it("leaves out of the history what arrived since the slot last heard, before it places it", () => {
     const slot = slotStart({ at: 0, live: [], record: ["c1"] });
     expect([...slotHoldsIn(slot, ["c1", "c2"])]).toEqual(["c2"]);

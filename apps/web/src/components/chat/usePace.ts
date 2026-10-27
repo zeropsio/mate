@@ -23,7 +23,7 @@ export function usePace({
   readonly flush: boolean;
 }): ReadonlySet<string> {
   // A tab out of sight, nobody watches: what arrives is simply there.
-  const hidden = useOutOfSight();
+  const hidden = usePageOutOfSight();
   const flushing = flush || hidden;
   const [pace, setPace] = useState<Pace>(() => paceStart(keys));
   // What this draw offers, for the pace's own clock between draws. Read in
@@ -72,7 +72,8 @@ function readOutOfSight(): boolean {
   return typeof document !== "undefined" && document.visibilityState === "hidden";
 }
 
-function useOutOfSight(): boolean {
+/** Whether the page is out of sight now: a tab in the background, which nobody watches. */
+export function usePageOutOfSight(): boolean {
   const [hidden, setHidden] = useState(readOutOfSight);
   useEffect(() => {
     if (typeof document === "undefined" || typeof document.addEventListener !== "function") {
