@@ -4,7 +4,7 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
-import { posix } from "node:path";
+import * as NodePath from "node:path";
 import { parse as parseYaml } from "yaml";
 import { ChildProcess, ChildProcessSpawner } from "effect/process";
 
@@ -155,7 +155,9 @@ const serverRuntimeClosure = (lock: string): string | undefined => {
       for (const [name, entry] of Object.entries(section ?? {})) {
         const version = entry?.version ?? "";
         if (version.startsWith("link:")) {
-          pushImporter(posix.normalize(posix.join(from, version.slice("link:".length))));
+          pushImporter(
+            NodePath.posix.normalize(NodePath.posix.join(from, version.slice("link:".length))),
+          );
         } else if (!linkedOnly) {
           queue.push(`${name}@${version}`);
         }
