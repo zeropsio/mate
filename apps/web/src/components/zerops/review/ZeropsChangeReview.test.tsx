@@ -842,10 +842,15 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     vi.unstubAllGlobals();
   });
 
-  /** The review of API_CHANGE, mounted; `test` reads what it drew, and presses what it may. */
+  /**
+   * The review of API_CHANGE, mounted; `test` reads what it drew, and presses what it may. A
+   * rerender given a number shows that change at the same place, as a change's page does when its
+   * address moves to another change.
+   */
   async function reviewed(
-    test: (host: TestNode, rerender: () => Promise<void>) => void | Promise<void>,
+    test: (host: TestNode, rerender: (number?: number) => Promise<void>) => void | Promise<void>,
     change: HqChange = API_CHANGE,
+    frame?: "page",
   ): Promise<void> {
     account.changes.set("group-orchard/apidev#1", change);
     installTestDom();
@@ -853,7 +858,7 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
     const host = document.createElement("div") as unknown as TestNode;
     const root = createRoot(host as unknown as Element);
     const data = reviewAccount(({ link }) => hq.api.change(link));
-    const rerender = () =>
+    const rerender = (number = 1) =>
       act(async () => {
         root.render(
           createElement(
@@ -863,11 +868,12 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
               AccountDataContext,
               { value: data.data },
               createElement(ZeropsChangeReview, {
+                ...(frame === undefined ? {} : { frame }),
                 target: {
                   kind: "change",
                   groupId: "group-orchard",
                   repository: "apidev",
-                  number: 1,
+                  number,
                 },
                 titleId: "t",
                 onClose: noop,
@@ -993,6 +999,59 @@ describe("ZeropsChangeReview: a change its project's flow does not hold yet", ()
       ]);
       expect(host.textContent).toContain("Merged into main");
     });
+  });
+
+  // A change's page steps to its Mate's other open changes in place (`Other open changes`).
+  it("a change's page moved on to another change never shows the merge pressed on the one before", async () => {
+    detail.readout = READ_DETAIL;
+    account.changes.set("group-orchard/apidev#2", {
+      ...API_CHANGE,
+      number: 2,
+      title: "Pool previews",
+    });
+    await reviewed(
+      async (host, rerender) => {
+        await pressed(host, "Merge");
+        expect(host.textContent).toContain("Merged into main");
+        await rerender(2);
+        expect(host.textContent).toContain("Pool previews");
+        expect(host.textContent).not.toContain("Merged into main");
+        expect(buttonsOf(host, "Merge")).toHaveLength(1);
+      },
+      API_CHANGE,
+      "page",
+    );
+  });
+
+  it("a change's page moved on to another change reads that change's unrecorded commits only on a press of its own", async () => {
+    detail.readout = {
+      kind: "read",
+      value: changeReadoutOfRecord(API_CHANGE, {
+        mergeBase: MAIN,
+        files: [{ path: "src/api.ts", added: 2, deleted: 0, binary: false, status: "M" }],
+        filesTruncated: false,
+        conflictPaths: [],
+        commits: null,
+        commitsTruncated: false,
+      }),
+    };
+    account.changes.set("group-orchard/apidev#2", {
+      ...API_CHANGE,
+      number: 2,
+      title: "Pool previews",
+    });
+    await reviewed(
+      async (host, rerender) => {
+        await pressed(host, "Show commits");
+        expect(buttonsOf(host, "Show commits")).toHaveLength(0);
+        await rerender(2);
+        expect(host.textContent).toContain("Pool previews");
+        expect(host.textContent).toContain("The commits are not known yet.");
+        expect(buttonsOf(host, "Show commits")).toHaveLength(1);
+      },
+      API_CHANGE,
+      "page",
+    );
   });
 
   it("says HQ's refusal, and keeps Merge for a deliberate press", async () => {
