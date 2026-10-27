@@ -1,5 +1,6 @@
 import * as Schema from "effect/Schema";
 import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
+import { RECIPE_PROPOSAL_TITLE } from "@t3tools/shared/hqRecipe";
 import { gitEnvironment } from "../data/__fixtures__/hqWire.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
 import { canonicalEnvironmentRow } from "./groupRows.ts";
@@ -264,6 +265,20 @@ describe("groupFlow", () => {
       expect(flow.nextStep.target).toEqual({ kind: "change", repository: "group", number: 3 });
     },
   );
+
+  // zcp composes its conflicting proposal of the tiers main lacks again from main by itself: the
+  // group's next step never sends the person to ask its Mate about it.
+  it("takes no step for a Mate's own recipe proposal its Mate redoes from main", () => {
+    const proposal = pull({
+      repository: "group",
+      kind: "recipe",
+      number: 3,
+      title: RECIPE_PROPOSAL_TITLE,
+      mergeability: "conflicting",
+    });
+    const flow = groupFlow({ ...SM_FIXTURE, pullRequests: [proposal] });
+    expect(flow.nextStep).toMatchObject({ kind: "none", text: "Nothing needs you here." });
+  });
 
   it("asks for the merge first, and adds production once it has landed (sm-fixture)", () => {
     const flow = groupFlow(SM_FIXTURE);

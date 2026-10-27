@@ -525,7 +525,7 @@ function Change({
       onOpenPage={frame === "page" ? undefined : noop}
       previews={PREVIEWS}
       project="Beviro"
-      stage="stage"
+      stages={["stage"]}
       onRetry={noop}
       remarks={remarksOf(conversation)}
       onFix={noop}
@@ -1452,7 +1452,7 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
           }}
           previews={PREVIEWS}
           project="Beviro"
-          stage="stage"
+          stages={["stage"]}
           remarks={read ? remarksOf(TALKING) : []}
           onClose={() => {
             setOpen(false);

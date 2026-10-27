@@ -15,6 +15,7 @@ import {
   slotStart,
   type LiveSlot,
 } from "./liveSlot.logic";
+import { usePageOutOfSight } from "./usePace";
 
 export function useLiveSlot({
   live,
@@ -49,6 +50,13 @@ export function useLiveSlot({
     slotStart({ live, record, at: Date.now(), ...(quietFrom === undefined ? {} : { quietFrom }) }),
   );
   const slotRef = useRef(slot);
+  // A tab in the background wakes its timers once a second at best, then once a minute: nobody
+  // watches it, and what arrives meanwhile is history at once, never a backlog played back.
+  const pageOutOfSight = usePageOutOfSight();
+  const unwatched = syncing || pageOutOfSight;
+  // The draw that ends a stretch nobody watched swaps in what arrived in it (a first snapshot as
+  // the read ends, a kept conversation shown again): its offer catches up too.
+  const unwatchedBeforeRef = useRef(unwatched);
   // What the slot's own clock offers with: the draw's `onChange`, kept as
   // drawn. Never through an effect event: in a production build one called
   // from a layout effect ran the draw before's offer, and a change arriving in
@@ -69,7 +77,9 @@ export function useLiveSlot({
   // nothing returns the slot it was given.
   useLayoutEffect(() => {
     onChangeRef.current = onChange;
-    if (syncing && !final) {
+    const catchingUp = unwatched || unwatchedBeforeRef.current;
+    unwatchedBeforeRef.current = unwatched;
+    if (catchingUp && !final) {
       // Nobody watched it: no landing to draw.
       const next = slotResync(slotRef.current, {
         live,

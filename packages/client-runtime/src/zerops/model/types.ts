@@ -356,6 +356,8 @@ export interface ZeropsOperation {
   readonly strategy?: "git-push";
   /** `devServer` only: zcp refused the call's parameters (INVALID_PARAMETER), so it read no server. */
   readonly refused?: true;
+  /** `devServer` only: what zcp holds the service in place for, as its call said (a stand-in). */
+  readonly standIn?: { readonly for: string };
   /**
    * `deploy` with the git-push strategy only: the change the push lands through
    * in HQ — the change a run's result follows — by its repository's name and its

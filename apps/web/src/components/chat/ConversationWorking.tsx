@@ -38,11 +38,14 @@ import { Button, InlineButton } from "../ui/button";
 import { MateFace } from "../zerops/primitives";
 import {
   formatWorkDuration,
+  incidentsAtRest,
   incidentsStanding,
+  servicesWithStandIns,
   isGitPushOnly,
   type IncidentModel,
 } from "./conversation.logic";
-import { useZeropsTopology } from "../../zerops/useZeropsFeeds";
+import { standInOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import { useZeropsLifecycle, useZeropsTopology } from "../../zerops/useZeropsFeeds";
 import {
   detailLines,
   importLines,
@@ -106,6 +109,7 @@ const INCIDENT_BAR: Record<IncidentModel["tone"], BarTone> = {
   attention: "attention",
   ok: "done",
   failed: "failed",
+  rest: "waiting",
 };
 
 /**
@@ -662,13 +666,21 @@ function Instruments({
   useLayoutEffect(() => onDrawn?.());
   // A service the platform works on this moment says nothing stale of itself.
   const topology = useZeropsTopology(incidents.length === 0 ? null : environmentId);
-  const standing = incidentsStanding(
-    incidents,
-    new Set(
-      (topology?.services ?? [])
-        .filter((service) => service.transient)
-        .map((service) => service.hostname),
+  // zcp's word on what it holds in place, beside the platform's status.
+  const lifecycle = useZeropsLifecycle(
+    incidents.length === 0 ? null : environmentId,
+    threadRef?.threadId ?? null,
+  );
+  const standing = incidentsAtRest(
+    incidentsStanding(
+      incidents,
+      new Set(
+        (topology?.services ?? [])
+          .filter((service) => service.transient)
+          .map((service) => service.hostname),
+      ),
     ),
+    servicesWithStandIns(topology?.services, (hostname) => standInOf(hostname, lifecycle)),
   );
   const operations = dock?.operations ?? [];
   const helpers = dock?.helpers ?? null;

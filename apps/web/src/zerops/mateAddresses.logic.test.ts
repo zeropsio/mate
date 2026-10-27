@@ -357,7 +357,7 @@ describe("a thread's lease's addresses", () => {
   const lease = (
     devServers?: NonNullable<MateAddressInput["leases"]>[number]["devServers"],
     alias = "webpool-3",
-    label = "webpool · feat-x",
+    label = "Web",
   ) => ({
     alias,
     label,
@@ -374,7 +374,7 @@ describe("a thread's lease's addresses", () => {
       role: "dev",
       url: LEASE_URL,
       host: "webpool-3-1df2-3000.prg1.zerops.app",
-      name: "webpool · feat-x",
+      name: "Web",
     });
   });
 
@@ -390,10 +390,10 @@ describe("a thread's lease's addresses", () => {
       ],
     });
     expect(addresses.map(({ service, name, url }) => ({ service, name, url }))).toEqual([
-      { service: "webpool-3 web", name: "webpool · feat-x · web :3000", url: LEASE_URL },
+      { service: "webpool-3 web", name: "Web · web :3000", url: LEASE_URL },
       {
         service: "webpool-3 api",
-        name: "webpool · feat-x · api :8080",
+        name: "Web · api :8080",
         url: "https://webpool-3-1df2-8080.prg1.zerops.app",
       },
     ]);
@@ -413,7 +413,7 @@ describe("a thread's lease's addresses", () => {
       services: [pool],
       leases: [
         lease([{ name: "web", port: 3000, url: LEASE_URL }]),
-        lease([{ name: "hq", port: 8080, url: HQ_URL }], "hqpool-2", "hqpool · feat-x"),
+        lease([{ name: "hq", port: 8080, url: HQ_URL }], "hqpool-2", "Hq"),
       ],
     });
     expect(
@@ -421,8 +421,8 @@ describe("a thread's lease's addresses", () => {
         .filter(({ url }) => url === LEASE_URL || url === HQ_URL)
         .map(({ service, role, name, url }) => ({ service, role, name, url })),
     ).toEqual([
-      { service: "webpool-3", role: "dev", name: "webpool · feat-x", url: LEASE_URL },
-      { service: "hqpool-2", role: "dev", name: "hqpool · feat-x", url: HQ_URL },
+      { service: "webpool-3", role: "dev", name: "Web", url: LEASE_URL },
+      { service: "hqpool-2", role: "dev", name: "Hq", url: HQ_URL },
     ]);
   });
 });

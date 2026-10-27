@@ -64,6 +64,11 @@ export interface AttributionInput {
 export interface AttributionResult {
   /** The newest attributed process whose action matches `kind`; drives the pipeline steps. */
   readonly stepSource?: ActivityProcess;
+  /**
+   * A batch deploy's: each service's own step source, newest first — one per
+   * service its step candidates name, read the way the batch's own is.
+   */
+  readonly services?: ReadonlyArray<ActivityProcess>;
   /** Every other attributed process — older matching actions and secondary actions. */
   readonly chips: ReadonlyArray<ActivityProcess>;
   /**
@@ -136,8 +141,39 @@ export function attributeActivity(input: AttributionInput): AttributionResult {
     .filter((process) => actionSet.has(process.actionName))
     .sort((a, b) => Date.parse(b.created) - Date.parse(a.created));
 
-  const stepSource = input.batch === true ? batchStepSource(stepCandidates) : stepCandidates[0];
-  const chips = matches.filter((process) => process !== stepSource);
+  if (input.batch !== true) {
+    const stepSource = stepCandidates[0];
+    const chips = matches.filter((process) => process !== stepSource);
+    return { ...(stepSource === undefined ? {} : { stepSource }), chips, projectMismatch: false };
+  }
+  const stepSource = batchStepSource(stepCandidates);
+  const services = serviceStepSources(stepCandidates, input.serviceIds);
+  const chips = matches.filter((process) => process !== stepSource && !services.includes(process));
+  return {
+    ...(stepSource === undefined ? {} : { stepSource }),
+    services,
+    chips,
+    projectMismatch: false,
+  };
+}
 
-  return { ...(stepSource === undefined ? {} : { stepSource }), chips, projectMismatch: false };
+/**
+ * Each service's own step source among a batch's candidates (newest first): its newest build,
+ * keyed by the service it deploys — the first of its ids the batch names, else its first. An
+ * older build of the same service, however it ended, is its history, never its row.
+ */
+function serviceStepSources(
+  newestFirst: ReadonlyArray<ActivityProcess>,
+  serviceIds: ReadonlyArray<string>,
+): ReadonlyArray<ActivityProcess> {
+  const named = new Set(serviceIds);
+  const byService = new Map<string, ActivityProcess[]>();
+  for (const process of newestFirst) {
+    const key =
+      process.serviceStackIds.find((id) => named.has(id)) ??
+      process.serviceStackIds[0] ??
+      process.id;
+    byService.set(key, [...(byService.get(key) ?? []), process]);
+  }
+  return [...byService.values()].flatMap((candidates) => candidates.slice(0, 1));
 }

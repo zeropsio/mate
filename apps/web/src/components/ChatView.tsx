@@ -8387,7 +8387,6 @@ function ConversationView(props: ChatViewProps) {
             activeThreadTask={activeThreadTask ?? undefined}
             conversationLoading={threadDetailLoading}
             isServerThread={isServerThread}
-            readAlong={colleagueReadOnly !== null}
             activeProjectName={activeProjectDisplayName}
             activeProjectCwd={activeProject?.workspaceRoot ?? null}
             activeProjectFaviconPath={activeProject?.faviconPath ?? null}

@@ -3,7 +3,6 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
 import { taskTitle, type ConversationTask } from "../../zerops/automatedMate.logic";
 import { MateTaskStatus } from "../zerops/MateTaskCard";
 import { MateStatusMarker } from "../zerops/MateStatusMarker";
-import { ZeropsWorkspaceChip } from "../zerops/ZeropsWorkspaceChip";
 import { useEnvironmentSettings } from "../../hooks/useSettings";
 import {
   type EnvironmentId,
@@ -91,11 +90,6 @@ interface ChatHeaderProps {
   conversationLoading?: boolean;
   /** Drafts have no server thread yet, so the title carries no action menu. */
   isServerThread: boolean;
-  /**
-   * The viewer only reads along (a colleague's Mate, or a member without operator rights): it
-   * sends the conversation's agent nothing, so nothing here asks it to act.
-   */
-  readAlong?: boolean;
   activeProjectName: string | undefined;
   activeProjectCwd: string | null;
   activeProjectFaviconPath: string | null;
@@ -214,7 +208,6 @@ export const ChatHeader = memo(function ChatHeader({
   activeThreadTask,
   conversationLoading = false,
   isServerThread,
-  readAlong = false,
   activeProjectName,
   activeProjectCwd,
   activeProjectFaviconPath,
@@ -685,22 +678,6 @@ export const ChatHeader = memo(function ChatHeader({
                 status={status}
                 timestampFormat={settings.timestampFormat}
               />
-            )}
-            {/* A conversation bound to a lease: its workspace by name, when it was last
-              active, what a release would lose there, whether it is idle, how many other
-              workspaces the Mate holds (pressed, it lists them), and a Release that asks first —
-              where the header has room. */}
-            {activeThreadShell?.lease == null ? null : (
-              <span className="hidden shrink-0 @3xl/header-actions:block">
-                <ZeropsWorkspaceChip
-                  canRelease={!readAlong}
-                  environmentId={activeThreadEnvironmentId}
-                  latestTurn={activeThreadShell.latestTurn}
-                  lease={activeThreadShell.lease}
-                  mateName={mate?.name}
-                  threadId={activeThreadId}
-                />
-              </span>
             )}
           </>
         ) : (

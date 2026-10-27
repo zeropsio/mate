@@ -676,27 +676,32 @@ describe("the sheet's footnote: what happens next", () => {
   it.each([
     [
       "a change ready to merge, with a stage and a production",
-      { state: "ready", stage: "stage", live: "v2.3.1" },
-      "Merging puts it on stage. Production keeps v2.3.1 until you release.",
+      { state: "ready", stages: ["stage"], live: "v2.3.1" },
+      "Lands on main; stage deploys it. Production keeps v2.3.1 until you release.",
     ],
     [
       "nothing released yet",
-      { state: "ready", stage: "stage", live: undefined },
-      "Merging puts it on stage.",
+      { state: "ready", stages: ["stage"], live: undefined },
+      "Lands on main; stage deploys it.",
     ],
     [
       "behind main but clean",
-      { state: "behind-clean", stage: "staging", live: "v1.0.0" },
-      "Merging puts it on staging. Production keeps v1.0.0 until you release.",
+      { state: "behind-clean", stages: ["staging"], live: "v1.0.0" },
+      "Lands on main; staging deploys it. Production keeps v1.0.0 until you release.",
+    ],
+    [
+      "several stages follow main: each deploys it",
+      { state: "ready", stages: ["webstage", "apistage", "boxstage"], live: "v2" },
+      "Lands on main; webstage, apistage and boxstage deploy it. Production keeps v2 until you release.",
     ],
     [
       "no stage: the review's own words",
-      { state: "ready", stage: undefined, live: "v1" },
+      { state: "ready", stages: [], live: "v1" },
       "Adds this change to main.",
     ],
     [
       "merged: the review's own words",
-      { state: "merged", stage: "stage", live: "v1" },
+      { state: "merged", stages: ["stage"], live: "v1" },
       "Adds this change to main.",
     ],
   ] as const)("%s", (_case, input, words) => {
@@ -948,12 +953,12 @@ describe("a change's receipt: each part's preview", () => {
       mergeFoot({
         state: "ready",
         consequence: "Adds this change to main.",
-        stage: "stage",
+        stages: ["stage"],
         live: undefined,
         warning: gaps?.warning,
       }),
     ).toBe(
-      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Merging puts it on stage.",
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Lands on main; stage deploys it.",
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();

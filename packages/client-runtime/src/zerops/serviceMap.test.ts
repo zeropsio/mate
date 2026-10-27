@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
-import type { ZeropsLifecycle } from "@t3tools/contracts";
+import { ZeropsStateEnvelope, type ZeropsLifecycle } from "@t3tools/contracts";
+import { Schema } from "effect";
 
 import type { Known } from "./knowledge/index.ts";
 
@@ -11,6 +12,7 @@ import {
   threadLeasesOf,
   serviceStatusNeedsWord,
   serviceStatusTone,
+  standInOf,
   zeropsPortLabel,
   zeropsRouteChoices,
   zeropsRoutesFolded,
@@ -1020,5 +1022,34 @@ describe("a thread's leases", () => {
   it("are the one it is bound to while the lifecycle is not known", () => {
     expect(threadLeasesOf(LEASE, undefined)).toEqual([LEASE]);
     expect(threadLeasesOf(null, undefined)).toEqual([]);
+  });
+});
+
+describe("standInOf — a dev service zcp holds as a stand-in", () => {
+  const snapshot = (hostname: string, extra: Record<string, unknown> = {}) => ({
+    hostname,
+    typeVersion: "nodejs@22",
+    runtimeClass: "dynamic",
+    status: "ACTIVE",
+    bootstrapped: true,
+    ...extra,
+  });
+  const envelope = Schema.decodeUnknownSync(ZeropsStateEnvelope)({
+    phase: "develop_active",
+    environment: "container",
+    project: { id: "proj-1", name: "kiln" },
+    generated: "2026-10-27T10:00:00Z",
+    services: [snapshot("kiln", { standIn: { for: "pool-migrate" } }), snapshot("apidev")],
+  });
+  it.each([
+    { name: "marked: what holds it", hostname: "kiln", standIn: { for: "pool-migrate" } },
+    { name: "unmarked: none", hostname: "apidev", standIn: undefined },
+    { name: "not in the envelope: none", hostname: "webdev", standIn: undefined },
+  ])("$name", ({ hostname, standIn }) => {
+    expect(standInOf(hostname, lifecycle({ envelope }))).toEqual(standIn);
+  });
+
+  it("none while the lifecycle is not known", () => {
+    expect(standInOf("kiln", undefined)).toBeUndefined();
   });
 });

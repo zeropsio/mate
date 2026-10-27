@@ -437,6 +437,75 @@ describe("attributeActivity — a batch deploy's step source", () => {
       batch: true,
       exact: { appVersionIds: ["av-a"] },
     });
-    expect(result).toEqual({ stepSource: named, chips: [], projectMismatch: false });
+    expect(result).toEqual({
+      stepSource: named,
+      services: [named],
+      chips: [],
+      projectMismatch: false,
+    });
+  });
+
+  // Six services deploying side by side: each is its own deploy, never
+  // another service's secondary process.
+  it.each([
+    {
+      name: "every service its own build, newest first",
+      processes: ["api", "edge", "embedder", "geo", "web", "site"].map((host, index) =>
+        process({ id: `p-${host}`, serviceStackIds: [`svc-${host}`], created: at(index) }),
+      ),
+      services: ["p-site", "p-web", "p-geo", "p-embedder", "p-edge", "p-api"],
+      chips: [],
+    },
+    {
+      name: "a service's earlier build is a secondary process; its newest is its own",
+      processes: [
+        api({ id: "p-api-old", ...ended(1) }),
+        api({ id: "p-api", created: at(2) }),
+        web({}),
+        process({
+          id: "p-sub",
+          serviceStackIds: ["svc-web"],
+          actionName: "stack.enableSubdomainAccess",
+          created: at(1),
+        }),
+      ],
+      services: ["p-api", "p-web"],
+      chips: ["p-api-old", "p-sub"],
+    },
+    {
+      name: "a service's earlier failed build gives way to its newer one that ended well",
+      processes: [
+        api({ id: "p-api-failed", status: "FAILED", finished: at(1) }),
+        api({ id: "p-api", created: at(2), ...ended(3) }),
+        web({ status: "RUNNING" }),
+      ],
+      services: ["p-api", "p-web"],
+      chips: ["p-api-failed"],
+    },
+  ])("each service it names has its own step source: $name", ({ processes, services, chips }) => {
+    const result = attributeActivity({
+      processes,
+      projectId: "proj-1",
+      serviceIds: processes.flatMap((one) => one.serviceStackIds),
+      startedAtMs: NOW,
+      kind: "deploy",
+      batch: true,
+    });
+    expect({
+      services: result.services?.map((one) => one.id),
+      chips: result.chips.map((one) => one.id),
+    }).toEqual({ services, chips });
+  });
+
+  it("a deploy of one service has no services of its own", () => {
+    const one = process({});
+    const result = attributeActivity({
+      processes: [one],
+      projectId: "proj-1",
+      serviceIds: ["svc-1"],
+      startedAtMs: NOW,
+      kind: "deploy",
+    });
+    expect(result.services).toBeUndefined();
   });
 });

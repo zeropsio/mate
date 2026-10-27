@@ -44,3 +44,36 @@ export function originAskOfCall(body: ItemBody): Extract<RequestAsk, { kind: "or
   const reason = typeof why === "string" ? why.trim().slice(0, REASON_MAX) : "";
   return { kind: "origin", url, repo, reason: reason === "" ? null : reason };
 }
+
+/**
+ * An origin the person was asked about that needs their pick no more, read off zcp's answer to
+ * `zerops_origin`: `connected`, the address already is the origin of a repository in HQ, which
+ * settles the ask of the repository that call asked about — zcp told the agent the pick of every
+ * other repository would come, so those wait for their own word; `withdrawn` (`action=withdraw`),
+ * the agent no longer needs the pick — of the one repository `repo` names, else of every
+ * repository asked about the address. `null` for every other call, or a malformed answer.
+ */
+export function originSettledOfCall(body: ItemBody): {
+  readonly url: string;
+  readonly how: "connected" | "withdrawn";
+  readonly repo?: string;
+} | null {
+  const answer = zcpAnswerOfCall(body, ORIGIN_REQUEST_TOOL);
+  if (answer === null || answer.requested !== undefined) return null;
+  const how = isRecord(answer.connected)
+    ? ("connected" as const)
+    : isRecord(answer.withdrawn)
+      ? ("withdrawn" as const)
+      : null;
+  const said = how === null ? null : (answer[how] as Record<string, unknown>);
+  // Both answers carry the ask as `origin`: its `repo` is the HQ repository the ask named (absent
+  // from a withdrawal of every ask of the address). `connected.repo`, beside it, is another
+  // thing — the repository already holding the address — and settles nothing here.
+  const origin = said !== null && isRecord(said.origin) ? said.origin : null;
+  const url = originAddress(origin?.url);
+  if (how === null || origin === null || url === null) return null;
+  const repo = typeof origin.repo === "string" && REPO_NAME.test(origin.repo) ? origin.repo : null;
+  // A connected answer names the asked repository: without one it settles none.
+  if (how === "connected" && repo === null) return null;
+  return { url, how, ...(repo === null ? {} : { repo }) };
+}

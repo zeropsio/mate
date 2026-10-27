@@ -353,6 +353,14 @@ describe("RunChat — an operation's card, read from the account store", () => {
     log: nodes(renderer, "data-zerops-build-log-line").length,
     whole: nodes(renderer, "data-zerops-build-log-toggle").length,
   });
+  /** A batch card's service rows, by name, each drawing its own steps. */
+  const serviceRows = (renderer: ReactTestRenderer) =>
+    nodes(renderer, "data-zerops-batch-service")
+      .filter(
+        (row) =>
+          row.findAll((node) => node.props["data-zerops-process-state"] !== undefined).length > 0,
+      )
+      .map((row) => row.props["data-zerops-batch-service"]);
   const operationRows = (renderer: ReactTestRenderer) =>
     renderer.root.findAll(
       (node) =>
@@ -403,10 +411,10 @@ describe("RunChat — an operation's card, read from the account store", () => {
     vi.setSystemTime(fixtureAt(2, 30));
     const renderer = mount(inSlot(batch("running")));
     expect(operationRows(renderer)).toBe(1);
-    // Its card is the API's, the one building: its pipeline and the way to its log.
+    // Its log is the API's, the one building; every service is a row of its own steps.
     expect([...store.logReads]).toEqual(["av-42"]);
     expect(count(renderer)).toMatchObject({ log: 0, whole: 1 });
-    expect(count(renderer).steps).toBeGreaterThan(0);
+    expect(serviceRows(renderer)).toEqual(["appdev", "apidev"]);
   });
 
   it("a batch lands in the history as it stood, its dialog open", () => {
@@ -421,7 +429,7 @@ describe("RunChat — an operation's card, read from the account store", () => {
     plop(renderer, inRecord(batch("done")));
     expect({ rows: operationRows(renderer), ...count(renderer) }).toEqual(settled);
     expect(settled).toMatchObject({ rows: 1, whole: 1 });
-    expect(settled.steps).toBeGreaterThan(0);
+    expect(serviceRows(renderer)).toEqual(["appdev", "apidev"]);
     expect(nodes(renderer, "data-dialog-open")).toHaveLength(1);
     // The API's log, the one its card stood on: no other.
     expect([...store.logReads]).toEqual(["av-42"]);

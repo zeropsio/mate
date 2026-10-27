@@ -68,7 +68,8 @@ export function PipelineSegments({
   steps,
 }: {
   readonly "aria-label": string;
-  readonly steps: ReadonlyArray<ProcessStep>;
+  /** `null`: a slot this pipeline has no step for — empty, at every segment's width. */
+  readonly steps: ReadonlyArray<ProcessStep | null>;
 }): JSX.Element {
   return (
     <ol
@@ -84,7 +85,12 @@ export function PipelineSegments({
           : { gridTemplateColumns: `repeat(${steps.length}, minmax(0, 1fr))` }
       }
     >
-      {steps.map((step) => {
+      {steps.map((step, index) => {
+        if (step === null) {
+          // An empty slot has nothing but its place in the pipeline to be known by.
+          // eslint-disable-next-line react/no-array-index-key
+          return <li aria-hidden="true" data-zerops-segment="absent" key={`absent-${index}`} />;
+        }
         const footnote = segmentFootnote(step);
         return (
           <li
@@ -94,6 +100,7 @@ export function PipelineSegments({
               SEGMENT_BOX[step.state],
             )}
             data-zerops-process-state={step.state}
+            data-zerops-segment="step"
             key={step.id}
           >
             <span className="min-w-0 break-words font-medium text-xs leading-4">
