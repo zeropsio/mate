@@ -173,6 +173,43 @@ it("parameterized and computed setup arguments are not test sentences", () => {
   ]);
 });
 
+it("deleting an it.each row's sentence needs a Drops-test trailer like any test title", () => {
+  fixture(({ root, write, commit, git }) => {
+    const rows = (deleted: boolean) =>
+      [
+        "it.each([",
+        '  { name: "routine reclaim is quiet", level: 1 },',
+        deleted ? "" : '  { name: "pressure shows a notice", level: 2 },',
+        '] as const)("$name", () => {});',
+        'const cases = [["first positional row", 1], ' +
+          (deleted ? "" : '["second positional row", 2]') +
+          "];",
+        'test.each(cases)("%s keeps case %d", () => {});',
+        'describe.for(["kept group"' + (deleted ? "" : ', "deleted group"') + "])(",
+        '  "suite for %s", () => {});',
+      ].join("\n");
+    write("old.test.ts", rows(false));
+    commit("row baseline");
+    git("branch", "-f", "origin/main");
+    write("old.test.ts", rows(true));
+    expect(checkTestSentences(root, "origin/main")).toEqual([
+      "pressure shows a notice",
+      "second positional row keeps case 2",
+      "suite for deleted group",
+    ]);
+    commit(
+      [
+        "drop rows",
+        "",
+        "Drops-test: pressure shows a notice",
+        "Drops-test: second positional row keeps case 2",
+        "Drops-test: suite for deleted group",
+      ].join("\n"),
+    );
+    expect(checkTestSentences(root, "origin/main")).toEqual([]);
+  });
+});
+
 it("test sentences retain modifier and each template titles without inventing tests in strings", () => {
   const source = [
     'describe("resource notices", () => {',
