@@ -21,13 +21,10 @@ zerops:
         - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
         # `--filter @t3tools/web...` takes the web app and its workspace
         # dependencies only, leaving the desktop (Electron) and mobile (Expo)
-        # halves of the monorepo uninstalled; `@t3tools/hq...` adds HQ Core's.
-        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
+        # halves of the monorepo uninstalled. The shared production HQ deploys
+        # from mate-hq through its scripts/deploy-hq.ts.
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
         - $HOME/.local/bin/pnpm --filter @t3tools/web build
-        # Retained legacy HQ Core for per-org birth and update paths, served
-        # under hq-core/. The shared production HQ deploys from mate-hq
-        # through its scripts/deploy-hq.ts.
-        - node apps/hq/scripts/pack-core.ts apps/web/dist
       # `~` shortens the deployed path: apps/web/dist lands at /var/www/dist,
       # which documentRoot below points nginx at.
       deployFiles:
@@ -98,9 +95,8 @@ zerops:
       base: ubuntu/nodejs@24
       buildCommands:
         - npm install -g --prefix "$HOME/.local" pnpm@11.10.0
-        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..." --filter "@t3tools/hq..."
+        - $HOME/.local/bin/pnpm install --frozen-lockfile --filter "@t3tools/web..."
         - $HOME/.local/bin/pnpm --filter @t3tools/web build
-        - node apps/hq/scripts/pack-core.ts apps/web/dist
       deployFiles:
         - apps/web/~dist
       envVariables:
