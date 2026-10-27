@@ -203,9 +203,11 @@ describe("Decision: one owner per concern as the report's table assigns; no new 
                 const inner = document.querySelector<HTMLElement>(
                   "[data-run-chat][data-run-live] [data-run-scroll]",
                 );
+                // Placement hides the list at its end and re-pins it until the page is handed over.
                 return (
                   outer &&
                   inner &&
+                  !document.querySelector("[data-timeline-placing]") &&
                   inner.scrollHeight > inner.clientHeight &&
                   Math.abs(outer.scrollHeight - outer.clientHeight - outer.scrollTop) <= 2
                 );
