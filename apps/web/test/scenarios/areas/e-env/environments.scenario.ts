@@ -256,6 +256,7 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.finish("production");
           yield* a.then.text("Rolled back to v0.1.0");
           yield* a.when.click("Close");
+          yield* a.then.reviewClosed;
           yield* a.then.rowShows("v0.1.2", "Live");
           frames.hold((frame) => decodeHqFrame(frame).type === "compare");
           const submissions: string[] = [];
@@ -267,14 +268,11 @@ describe("E: stage, production, release and rollback", () => {
               submissions.push(request.url());
           });
           yield* a.when.rollBack("v0.1.1");
-          yield* a.then.text("Not known yet.");
+          yield* a.then.text("Not known yet.", '[role="dialog"]');
           yield* a.when.click("Compare");
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
-            f.s.page
-              .locator('::-p-aria(Roll back to v0.1.1[role="button"])')
-              .setTimeout(30_000)
-              .waitHandle(),
+            f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
           );
           expect(
             yield* Effect.promise(() =>
