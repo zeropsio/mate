@@ -153,6 +153,7 @@ it.effect(
       yield* operations.submit(intent, remounted.requestId);
       expect(sends).toBe(1);
       expect(question()).toMatchObject({ requestId, pending: true });
+      expect(question().message).toContain("the question closes when HQ records it");
     }),
 );
 
