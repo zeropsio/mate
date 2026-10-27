@@ -857,6 +857,58 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  // Three Mates on a 1M-token model grew to 370K-685K tokens without one compaction (2026-10-27):
+  // Claude's own window for such a model is the whole million.
+  it.effect("compacts a Claude conversation at 200,000 tokens when no window is configured", () => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const adapter = yield* ClaudeAdapter;
+      yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+
+      const settings = harness.getLastCreateQueryInput()?.options.settings;
+      assert.equal(typeof settings === "object" ? settings.autoCompactWindow : undefined, 200000);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  // A session the reaper closed resumes in a new CLI whose MCP servers start in the background:
+  // its first prompt told the model the zcp tools were gone, then that they were back, and the
+  // model spent a round reloading them. Native evidence: MCP_CONNECTION_NONBLOCKING=false makes
+  // the CLI wait for its servers (about 5 s at most) before it reads the first prompt.
+  it.effect(
+    "connects a Claude session's MCP servers before its first prompt, so a resumed conversation keeps its tools",
+    () => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          resumeCursor: {
+            threadId: THREAD_ID,
+            resume: "5d9f1c3a-7b2e-4c8d-9a1f-3e6b8c0d2f47",
+            turnCount: 1,
+          },
+        });
+
+        assert.equal(
+          harness.getLastCreateQueryInput()?.options.env?.MCP_CONNECTION_NONBLOCKING,
+          "false",
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
   it.effect("forwards claude effort levels into query options", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
