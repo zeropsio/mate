@@ -93,22 +93,27 @@ describe("useLiveSlot — as drawn", () => {
     expect(renderer.toJSON()).toBe("step:f");
   });
 
-  // k27 item 5: switched away, a working Mate's kept conversation went on queueing what arrived;
-  // switched back, what had not yet drained played one at a time.
-  it("a conversation opened mid-turn shows every event already received at once", () => {
+  // k27 item 5: the draw that ends a catch-up — a conversation's first snapshot as its read ends,
+  // a kept conversation shown again with what arrived while it was away — swaps in lines nobody
+  // watched arrive, in the same draw that says it is watched again.
+  const catchUp = (before: ReadonlyArray<string>) => {
     let renderer!: ReactTestRenderer;
     act(() => {
-      renderer = create(<Slot syncing live={["step:a"]} record={[]} />);
-    });
-    act(() => {
-      renderer.update(
-        <Slot syncing live={["step:e"]} record={["step:a", "step:b", "step:c", "step:d"]} />,
-      );
+      renderer = create(<Slot syncing live={["step:a"]} record={before} />);
     });
     act(() => {
       renderer.update(<Slot live={["step:e"]} record={["step:a", "step:b", "step:c", "step:d"]} />);
     });
-    expect(renderer.toJSON()).toBe("step:e");
+    return renderer.toJSON();
+  };
+
+  it("a conversation opened mid-turn shows every event already received at once", () => {
+    // Its read ends in the draw its first snapshot lands in.
+    expect(catchUp([])).toBe("step:e");
+  });
+
+  it("a kept conversation switched back to shows at once what arrived while it was out of sight", () => {
+    expect(catchUp(["step:a"])).toBe("step:e");
   });
 });
 

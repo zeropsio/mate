@@ -810,8 +810,11 @@ export class MateEngineFake {
           item.runId === null
             ? !earlier || item.seq >= from
             : ids.has(item.runId) &&
+              // Pinned however old, as the server's: a person's words, a request, a published
+              // page, the answer; and a live run's newest items.
               (item.kind === "person" ||
                 item.kind === "request" ||
+                (item.kind === "call" && item.result?.page !== undefined) ||
                 answers.has(item.id) ||
                 tails.has(item.id)),
         )

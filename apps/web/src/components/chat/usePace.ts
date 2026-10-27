@@ -31,10 +31,15 @@ export function usePace({
   // production build one called from a layout effect ran the draw before's
   // offer, and an answer arriving in a turn's last draw was never let in.
   const offeredRef = useRef({ keys, landing, flush: flushing });
+  // The draw that ends a flush swaps in what arrived meanwhile (a kept conversation shown again):
+  // nobody watched that arrive either, so it enters at once.
+  const flushedBeforeRef = useRef(flushing);
   // Offered on every draw, before it paints: one that changes nothing keeps the pace.
   useLayoutEffect(() => {
+    const flush = flushing || flushedBeforeRef.current;
+    flushedBeforeRef.current = flushing;
     offeredRef.current = { keys, landing, flush: flushing };
-    const next = paceOffer(pace, { keys, at: Date.now(), landing, flush: flushing });
+    const next = paceOffer(pace, { keys, at: Date.now(), landing, flush });
     // oxlint-disable-next-line react/set-state-in-effect -- the pace is a clock synced to what is drawn
     if (next !== pace) setPace(next);
   });

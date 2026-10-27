@@ -985,7 +985,18 @@ describe("owner-reported layout regressions", () => {
           // Past a window's tail and a page after it: read back once the card is opened afresh,
           // the card reads the second page as the reader nears its top.
           const done = 2 * engine.liveTailItems + engine.runPageItems;
-          for (let step = 0; step < done; step++)
+          for (let step = 0; step < done; step++) {
+            // The person wrote to it mid-run: the window pins their words however old, far above
+            // the newest lines it carries (review of k27).
+            if (step === done / 2)
+              engine.item(run, {
+                kind: "person",
+                by: { kind: "person", principal: { kind: "person", subject: "owner" } },
+                text: "Keep the build logs too",
+                attachments: [],
+                sendId: "steer-mid-run",
+                delivery: { state: "delivered", at: yield* Clock.currentTimeMillis },
+              });
             engine.item(run, {
               kind: "call",
               step: "command",
@@ -995,6 +1006,7 @@ describe("owner-reported layout regressions", () => {
               endedAt: yield* Clock.currentTimeMillis,
               input: `Bash: echo step-${step}`,
             });
+          }
           // Out of sight, nothing paints to wait on: the steps reach the page over its socket.
           yield* Effect.sleep("2 seconds");
           return { s, tab, engine, run, done };
@@ -1092,16 +1104,28 @@ describe("owner-reported layout regressions", () => {
                 const inner = (await s.page.$$(INNER)).at(-1)!;
                 const box = (await inner.boundingBox())!;
                 await s.page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+                const read = () =>
+                  s.page.evaluate((selector: string) => {
+                    const card = [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!;
+                    return { top: card.scrollTop, height: card.scrollHeight };
+                  }, INNER);
+                const held = (await read()).height;
+                // Up to the top of the lines it holds, and no further once the page before lands:
+                // the reader reads there, under the lines the page brings.
                 for (let turn = 0; turn < 40; turn++) {
-                  const top = await s.page.evaluate(
-                    (selector: string) =>
-                      [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!.scrollTop,
-                    INNER,
-                  );
-                  if (top < 300) break;
+                  const { top, height } = await read();
+                  if (top < 300 || height > held + 200) break;
                   await s.page.mouse.wheel({ deltaY: -Math.min(2000, top - 200) });
                   await scrollStands(s.page, 3);
                 }
+                await s.page.waitForFunction(
+                  (selector: string, from: number) =>
+                    [...document.querySelectorAll<HTMLElement>(selector)].at(-1)!.scrollHeight >
+                    from + 200,
+                  { polling: "raf" },
+                  INNER,
+                  held,
+                );
                 await scrollStands(s.page, 6);
               });
               yield* Effect.promise(() => startScrollTrace(s.page));
