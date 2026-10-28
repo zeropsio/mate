@@ -25,6 +25,7 @@
  */
 import { isZeropsLeaseHeld, type ZeropsLease } from "@t3tools/contracts";
 
+import { isPoolServiceType } from "./infrastructureType.ts";
 import { partName, poolPartName, servicePairs, type PoolPair } from "./servicePairs.ts";
 
 /** One entry of a part: a dev workspace or its preview, with its address or why it has none. */
@@ -97,7 +98,7 @@ export interface MatePartsInput {
   }>;
   /** The control plane's hostname (zcp), never listed: it serves Mate itself. */
   readonly controlPlane?: string | undefined;
-  /** Its dev pools by hostname; every pool a lease is of is one too. */
+  /** Its dev pools by hostname; every service of a pool's type, and every pool a lease is of, is one too. */
   readonly pools?: ReadonlyArray<string> | undefined;
   /** The pairs its envelope keys by a dev pool (`poolPairsIn`). */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
@@ -177,7 +178,13 @@ const chatOf = (
 
 export function mateParts(input: MatePartsInput): MateParts {
   const leases = input.leases ?? [];
-  const pools = new Set([...(input.pools ?? []), ...leases.map((lease) => lease.pool)]);
+  const pools = new Set([
+    ...(input.pools ?? []),
+    ...input.services.flatMap((service) =>
+      service.type !== undefined && isPoolServiceType(service.type) ? [service.hostname] : [],
+    ),
+    ...leases.map((lease) => lease.pool),
+  ]);
   const routes = input.routes.filter(
     (route) =>
       route.service !== input.controlPlane &&

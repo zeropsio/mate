@@ -18,7 +18,7 @@ import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { MatePartLeaseChat } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { ZeropsLease } from "@t3tools/contracts";
+import type { EnvironmentId, ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
@@ -35,6 +35,30 @@ export interface MateLeasesRead {
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
 export type MatesLeases = Readonly<Record<string, MateLeasesRead | undefined>>;
 
+/** A Mate's chats bound to a lease (`ThreadLease`), by title, unarchived: what each workspace is for. */
+const leaseChatsAtom = Atom.family((environmentId: EnvironmentId) =>
+  Atom.make((get): ReadonlyArray<MatePartLeaseChat> =>
+    get(environmentThreadShells.environmentThreadRefsAtom(environmentId)).flatMap(
+      (ref): ReadonlyArray<MatePartLeaseChat> => {
+        const shell = get(environmentThreadShells.threadShellAtom(ref));
+        const lease = shell?.archivedAt === null ? shell.lease : undefined;
+        return shell === null || lease === undefined || lease === null
+          ? []
+          : [{ alias: lease.alias, acquiredAt: lease.acquiredAt, title: shell.title }];
+      },
+    ),
+  ).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:lease-chats")),
+);
+
+const NO_CHATS = Atom.make<ReadonlyArray<MatePartLeaseChat>>([]);
+
+/** A Mate's chats bound to a lease, by title; none without an environment. */
+export function useLeaseChats(
+  environmentId: EnvironmentId | null,
+): ReadonlyArray<MatePartLeaseChat> {
+  return useAtomValue(environmentId === null ? NO_CHATS : leaseChatsAtom(environmentId));
+}
+
 const matesLeasesAtom = Atom.family((key: string) => {
   const threads = JSON.parse(key) as ReadonlyArray<readonly [projectId: string, threadKey: string]>;
   return Atom.make((get): MatesLeases => {
@@ -48,15 +72,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
           input: { threadId: thread.threadId },
         }),
       );
-      const leaseChats = get(
-        environmentThreadShells.environmentThreadRefsAtom(thread.environmentId),
-      ).flatMap((ref): ReadonlyArray<MatePartLeaseChat> => {
-        const shell = get(environmentThreadShells.threadShellAtom(ref));
-        const lease = shell?.archivedAt === null ? shell.lease : undefined;
-        return shell === null || lease === undefined || lease === null
-          ? []
-          : [{ alias: lease.alias, acquiredAt: lease.acquiredAt, title: shell.title }];
-      });
+      const leaseChats = get(leaseChatsAtom(thread.environmentId));
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
