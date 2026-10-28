@@ -1533,6 +1533,11 @@ describe("setupChangeWords", () => {
       words: "Changes how Production is built",
     },
     {
+      case: "only recipes nothing in the project is made from",
+      reach: reach({ unused: ["Remote (CDE)", "Local"] }),
+      words: "Changes the project's setup",
+    },
+    {
       case: "only the recipe new Mates are made from",
       reach: reach({ later: ["mate"] }),
       words: "Changes the project's setup",
