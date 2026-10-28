@@ -178,8 +178,15 @@ export function creationOf(held: CreationAsk, read: CreationRead): NewProjectBir
     projectId,
     intent: steps.birth.state === "done" ? read.birthId : null,
   };
-  if (projectId !== null)
-    return { ...shared, appId: ask.adds?.appId ?? appId, step: "created", failed: null };
+  if (projectId !== null) {
+    const project = steps.project;
+    // Acceptance keeps its handle; only this creation's definitive failure ends its setup.
+    const failed =
+      project.state === "stopped" && project.kind === "create-project" && !project.uncertain
+        ? stopOf(project, PRESS_MAY_HAVE_LANDED)
+        : null;
+    return { ...shared, appId: ask.adds?.appId ?? appId, step: "created", failed };
+  }
   if (ask.adds !== undefined) {
     const { project } = steps;
     const failed =

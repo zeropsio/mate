@@ -23,6 +23,24 @@ describe("pressElsewhere", () => {
   }>([
     { case: "HQ said nothing of presses yet: unknown", presses: null, said: "unknown" },
     { case: "no press holds it: awaiting evidence", presses: {}, said: "unknown" },
+    {
+      case: "its press is gone but its recorded import runs: pressing",
+      presses: {},
+      importStatus: "RUNNING",
+      said: "pressing",
+    },
+    {
+      case: "its press is gone but its recorded import failed: stopped",
+      presses: {},
+      importStatus: "FAILED",
+      said: "stopped",
+    },
+    {
+      case: "its press is gone but its recorded import was canceled: stopped",
+      presses: {},
+      importStatus: "CANCELED",
+      said: "stopped",
+    },
     // Run 2 (2026-10-16): a press that went through leaves no record at HQ, and its Mate read as
     // half made until its container was listed. One that stops keeps its record.
     {

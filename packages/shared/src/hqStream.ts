@@ -334,6 +334,8 @@ export const HqNavigationMate = Schema.Struct({
   /** Still sent by older HQ builds; no client reads it. */
   keyWider: Schema.optionalKey(Schema.Boolean),
   birthId: Schema.optionalKey(Schema.String),
+  /** The accepted setup import, retained after its browser press ends. */
+  importProcessId: Schema.optionalKey(Schema.String),
   /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
   /** The task an automated Mate is on, or none: what its row names while it works. */
