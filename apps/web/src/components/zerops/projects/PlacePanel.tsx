@@ -40,6 +40,7 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 
 /** A place's addresses as read, held while its panel is drawn. */

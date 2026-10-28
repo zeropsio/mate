@@ -1569,6 +1569,7 @@ describe("a place's addresses on its panel", () => {
     waitingDomains: [],
     waitingPorts: [],
     readsProject: false,
+    nothingDeployed: false,
   });
   const listed = [{ service: "app", url: "https://app-1a2b-3000.prg1.zerops.app" }];
 

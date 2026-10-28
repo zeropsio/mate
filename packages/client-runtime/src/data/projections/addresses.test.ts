@@ -70,7 +70,11 @@ const APP_PORTS: ReadonlyArray<ZeropsServicePort> = [
 ];
 
 /** Production of a shop: an app serving the web on 3000 with its zerops.app address on, a db. */
-const production = (patch: Readonly<Record<string, unknown>> = {}, appPorts = APP_PORTS) =>
+const production = (
+  patch: Readonly<Record<string, unknown>> = {},
+  appPorts = APP_PORTS,
+  app: Readonly<Record<string, unknown>> = {},
+) =>
   liveZerops({
     running: [],
     projects: [
@@ -91,6 +95,7 @@ const production = (patch: Readonly<Record<string, unknown>> = {}, appPorts = AP
         name: "app",
         subdomainAccess: true,
         ports: appPorts,
+        ...app,
       },
       {
         id: "s2",
@@ -144,12 +149,14 @@ function place(
     readonly ports?: Readonly<Record<string, PublicPortRoutingValue>> | "refused";
     readonly project?: Readonly<Record<string, unknown>>;
     readonly appPorts?: typeof APP_PORTS;
+    /** The app service's own fields beyond the fixture's. */
+    readonly app?: Readonly<Record<string, unknown>>;
   },
   /** The place asked for: production's own unless a test names another. */
   projectId = "p1",
 ): PlaceAddresses {
   const inputs: AccountInput[] = [
-    ...production(input.project, input.appPorts),
+    ...production(input.project, input.appPorts, input.app),
     ...baselined(routingsScope(ORG), "publicRouting", input.routings ?? {}),
   ];
   if (input.ports === "refused") {
@@ -377,6 +384,32 @@ describe("one place's addresses", () => {
     expect(shown.waitingDomains).toEqual([]);
     expect(shown.waitingPorts).toEqual([]);
   });
+
+  // The live audit (2026-10-28): Larkspur's empty production offered an IPv4 to buy and a port
+  // to open, with nothing deployed to reach.
+  it.each([
+    { case: "its runtime holds no deploy", activeAppVersion: null, nothing: true },
+    {
+      case: "its runtime runs a deploy",
+      activeAppVersion: { created: "2026-10-01T00:00:00Z" },
+      nothing: false,
+    },
+    { case: "what its runtime holds is not read", activeAppVersion: undefined, nothing: false },
+  ])(
+    "A place says nothing is deployed there only where the platform says so: $case",
+    ({ activeAppVersion, nothing }) => {
+      const shown = place({
+        app: {
+          serviceStackTypeInfo: {
+            serviceStackTypeVersionName: "nodejs@22",
+            serviceStackTypeCategory: "USER",
+          },
+          ...(activeAppVersion === undefined ? {} : { activeAppVersion }),
+        },
+      });
+      expect(shown.nothingDeployed).toBe(nothing);
+    },
+  );
 
   it("a domain may point only at a web port, and only a port the service may open is offered", () => {
     const shown = place({});
