@@ -5,6 +5,7 @@ import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
 import { resizeMenu } from "../../harness/browser.ts";
 import { transportGate } from "../../harness/transportGate.ts";
+import { completedHttp } from "../../harness/completedHttp.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { environmentFixtureWith } from "./fake.ts";
 import { environmentActions } from "./dsl.ts";
@@ -58,14 +59,16 @@ describe("owner-reported layout regressions", () => {
             await page.waitForSelector(cardAt);
             await resizeMenu(page, 435);
             await page.evaluateOnNewDocument(recordCardFrames, cardAt);
+            const settled = completedHttp(page);
             await page.reload({ waitUntil: "domcontentloaded" });
             await page.waitForFunction(
               (at) => document.querySelector(at)?.textContent?.includes("v0.1.0") === true,
               { polling: 100 },
               cardAt,
             );
-            // What a settled card might still move shows within a beat.
-            await new Promise((resolve) => setTimeout(resolve, 1_500));
+            await settled();
+            await waitForStillFrames(page);
+            settled.close();
             return page.evaluate(
               () => (window as unknown as { cardFrames: CardFrame[] }).cardFrames,
             );
@@ -141,8 +144,7 @@ describe("owner-reported layout regressions", () => {
           held.release();
           yield* a.when.finish("production");
           yield* a.then.text("Running", `${cardAt} [data-zerops-place="production"]`);
-          // What a landed card might still move shows within a beat.
-          yield* Effect.promise(() => new Promise((resolve) => setTimeout(resolve, 1_500)));
+          yield* Effect.promise(() => waitForStillFrames(page));
           const frames = yield* Effect.promise(() =>
             page.evaluate(() => (window as unknown as { heldFrames: HeldFrame[] }).heldFrames),
           );

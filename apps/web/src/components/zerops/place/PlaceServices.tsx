@@ -268,6 +268,11 @@ function PlaceServiceLine({
           )}
         </span>
       )}
+      {(answer === undefined ? code?.sourceArchive : answer.sourceArchive) === undefined ? null : (
+        <span className="text-caption text-muted-foreground">
+          {answer === undefined ? code?.sourceArchive : answer.sourceArchive}
+        </span>
+      )}
       {/* What it runs, where HQ did not make it run that: never overwritten, said here. */}
       {code?.drift === undefined ? null : (
         <span

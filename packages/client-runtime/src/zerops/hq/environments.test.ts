@@ -219,3 +219,14 @@ describe("delivery environments", () => {
     expect(environmentsOf([git])).toEqual([]);
   });
 });
+
+it.each([undefined, null, 0, 1_305_166_613])(
+  "environment reads preserve each job's source archive measurement: %j",
+  (sourceArchiveBytes) => {
+    const measured = {
+      ...job("1", "app", "failed"),
+      ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
+    };
+    expect(environmentsOf([{ ...STAGE, jobs: [measured] }])?.[0]?.jobs).toEqual([measured]);
+  },
+);

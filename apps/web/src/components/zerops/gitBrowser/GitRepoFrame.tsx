@@ -18,6 +18,7 @@ import { GitArchiveButton, useGitArchive } from "./GitArchiveButton";
 import { GIT_VIEW_TABS, type GitView } from "./GitBrowseView";
 import { GitRefPicker } from "./GitRefPicker";
 import { GitWhen } from "./GitWhen";
+import { GitRepositoryStorage } from "./GitRepositoryStorage";
 import type { PickerChange } from "./GitRefPicker.logic";
 
 /** How HQ follows GitHub, in one line. */
@@ -157,6 +158,7 @@ export function GitRepoFrame({
           </div>
         }
       />
+      <GitRepositoryStorage storage={about?.storage} />
       {about?.mirror ? (
         <p className="text-xs text-muted-foreground">
           {about.mirror.syncedAt === null ? (

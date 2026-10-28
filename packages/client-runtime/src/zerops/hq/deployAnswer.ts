@@ -10,13 +10,14 @@ import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
  */
 import type { HqDeployAnswer, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 
+import { formatStorageBytes } from "../gitBrowse/home.ts";
 import { shortCommit } from "../release.ts";
 import type { HqJob } from "./environments.ts";
 import { deployLogTarget, type DeployLogTarget } from "./deployLog.ts";
 
 type DeployObservation = Pick<
   HqDeployOutcome,
-  "evidence" | "appVersionId" | "verifiedVersionId" | "steps"
+  "evidence" | "appVersionId" | "verifiedVersionId" | "steps" | "sourceArchiveBytes"
 >;
 
 /** The operation's next actor/action, shared by the answer and its durable service row. */
@@ -35,8 +36,15 @@ export function deployFollowText(
   return `${waiting ? "Waiting for Zerops to start the build." : "HQ lost track of this deploy."} ${next}`;
 }
 
+/** Only HQ's measurement of this job supplies its compressed source size. */
+export const sourceArchiveLabel = (bytes: number | null | undefined): string =>
+  bytes == null
+    ? "Source archive size is not available yet."
+    : `Source archive: ${formatStorageBytes(bytes)}`;
+
 /** One job of the answer, said. */
 export interface DeployAnswerJob extends DeployObservation {
+  readonly sourceArchive?: string | undefined;
   readonly jobId: string | null;
   readonly deployLog: DeployLogTarget | undefined;
   readonly state: HqDeployOutcome["state"];
@@ -111,6 +119,9 @@ const jobText = (
 
 function deployJobSaid(outcome: HqDeployOutcome, answer: HqDeployAnswer): DeployAnswerJob {
   return {
+    ...(outcome.kind === "deploy"
+      ? { sourceArchive: sourceArchiveLabel(outcome.sourceArchiveBytes) }
+      : {}),
     jobId: outcome.job,
     ...(outcome.evidence === undefined ? {} : { evidence: outcome.evidence }),
     ...(outcome.appVersionId === undefined ? {} : { appVersionId: outcome.appVersionId }),
@@ -177,6 +188,9 @@ export function deployAnswerFollowing(
             ...(job.appVersionId == null ? {} : { appVersionId: job.appVersionId }),
             ...(job.verifiedVersionId == null ? {} : { verifiedVersionId: job.verifiedVersionId }),
             ...(job.steps === undefined ? {} : { steps: job.steps }),
+            ...(job.sourceArchiveBytes === undefined
+              ? {}
+              : { sourceArchiveBytes: job.sourceArchiveBytes }),
           };
     }),
   };

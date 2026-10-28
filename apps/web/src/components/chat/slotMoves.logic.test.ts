@@ -187,9 +187,19 @@ describe("rowShifts", () => {
       { key: "new", top: 50 },
       ...before.slice(1).map((row) => ({ ...row, top: row.top + 50 })),
     ];
-    const started = performance.now();
-    const shifts = rowShifts(before, after);
-    expect(performance.now() - started).toBeLessThan(20);
-    expect(shifts.size).toBe(3999);
+    let visits = 0;
+    const countReads = <A>(rows: A[]) =>
+      new Proxy(rows, {
+        get(target, property, receiver) {
+          if (typeof property === "string" && /^\d+$/.test(property)) visits += 1;
+          return Reflect.get(target, property, receiver);
+        },
+      });
+    const shifts = rowShifts(countReads(before), countReads(after));
+    expect([...shifts]).toEqual(before.slice(1).map((row) => [row.key, 50]));
+    expect(
+      visits,
+      "ASSERTION: each history row is visited a bounded number of times",
+    ).toBeLessThanOrEqual(4 * (before.length + after.length));
   });
 });

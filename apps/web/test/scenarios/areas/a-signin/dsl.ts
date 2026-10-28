@@ -1,6 +1,6 @@
 import * as Effect from "effect/Effect";
 import { expect } from "@effect/vitest";
-import type { Page } from "puppeteer-core";
+import type { HTTPResponse, Page } from "puppeteer-core";
 import type { createScenario } from "../../harness/scenario.ts";
 import { openAccountMenu, showsText, visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
@@ -169,30 +169,18 @@ export const allowHqRetries = Effect.fn("signin.allowHqRetries")(function* (
   });
 });
 
-/** How long after `from()` the page first has an answer from HQ's API (its door or a ticket). */
+/** The next HQ API answer to the page, observed independently of any member-list answer. */
 export function firstHqAnswer(page: Page) {
-  let start: number | undefined;
-  let answered: (ms: number) => void = () => undefined;
-  let answer = new Promise<number>(() => undefined);
-  page.on("response", (response) => {
+  const answer = Promise.withResolvers<void>();
+  const received = (response: HTTPResponse) => {
     const path = new URL(response.url()).pathname;
-    if (
-      start !== undefined &&
-      (path.endsWith("/api/door") || path.endsWith("/api/stream-ticket"))
-    ) {
-      answered(performance.now() - start);
-      start = undefined;
+    if (path.endsWith("/api/door") || path.endsWith("/api/stream-ticket")) {
+      page.off("response", received);
+      answer.resolve();
     }
-  });
-  return {
-    from: () => {
-      start = performance.now();
-      answer = new Promise<number>((resolve) => {
-        answered = resolve;
-      });
-    },
-    ms: Effect.promise(() => deadline(answer, "HQ's first answer to the page")),
   };
+  page.on("response", received);
+  return Effect.promise(() => deadline(answer.promise, "HQ's first answer to the page"));
 }
 
 /** Device login from the landing: the Zerops window, what the person does there, what Mate says. */

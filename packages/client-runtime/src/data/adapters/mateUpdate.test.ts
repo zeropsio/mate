@@ -1,5 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Clock from "effect/Clock";
+import * as TestClock from "effect/testing/TestClock";
 import * as Deferred from "effect/Deferred";
 import { AtomRegistry } from "effect/reactivity";
 import * as Option from "effect/Option";
@@ -300,8 +302,13 @@ describe("an update pressed where its Mate is not connected", () => {
           Effect.andThen(SubscriptionRef.set(link, up)),
           Effect.forkChild,
         );
+      const clock = yield* Clock.Clock;
+      const wire = makeMateUpdateWire(registry, { connectWaitMs: 50 });
       const r = setup({
-        wire: makeMateUpdateWire(registry, { connectWaitMs: 50 }),
+        wire: {
+          ...wire,
+          update: (id) => wire.update(id).pipe(Effect.provideService(Clock.Clock, clock)),
+        },
         demand: () => {
           Deferred.doneUnsafe(held, Effect.void);
           return () => {};
@@ -310,37 +317,49 @@ describe("an update pressed where its Mate is not connected", () => {
       return { ...r, sends, connect: SubscriptionRef.set(link, up) };
     });
 
-  it.live("Update on an idle Mate reaches the Mate and the Mate restarts on the new version", () =>
-    Effect.gen(function* () {
-      const { host, read, sends } = yield* parkedMate({ connects: true });
-      yield* Effect.promise(() => host.update(env, server, "2", null));
-      expect(sends).toEqual(["update"]);
-      expect(read()).toEqual({
-        checked: undefined,
-        state: { phase: "updating", to: "2" },
-        notice: "Waiting for this Mate to return. Check the connection again.",
-      });
-      host.observe(env, { serverVersion: "2", bootId: "new" });
-      expect(read().state).toEqual({ phase: "updated", to: "2" });
-      host.close();
-    }),
+  it.effect(
+    "Update on an idle Mate reaches the Mate and the Mate restarts on the new version",
+    () =>
+      Effect.gen(function* () {
+        const { host, read, sends } = yield* parkedMate({ connects: true });
+        const update = host.update(env, server, "2", null);
+        yield* TestClock.adjust(4);
+        expect(sends).toEqual([]);
+        expect(read().state).toEqual({ phase: "updating", to: "2" });
+        yield* TestClock.adjust(1);
+        yield* Effect.promise(() => update);
+        expect(sends).toEqual(["update"]);
+        expect(read()).toEqual({
+          checked: undefined,
+          state: { phase: "updating", to: "2" },
+          notice: "Waiting for this Mate to return. Check the connection again.",
+        });
+        host.observe(env, { serverVersion: "2", bootId: "new" });
+        expect(read().state).toEqual({ phase: "updated", to: "2" });
+        host.close();
+      }),
   );
 
-  it.live("An update its Mate never received says it was not sent, and Update sends it again", () =>
-    Effect.gen(function* () {
-      const { host, read, sends, connect } = yield* parkedMate({ connects: false });
-      yield* Effect.promise(() => host.update(env, server, "2", null));
-      expect(sends).toEqual([]);
-      expect(read().state).toEqual({
-        phase: "failed",
-        message: "This Mate is not connected, so the update was not sent. Update again once it is.",
-      });
-      yield* connect;
-      yield* Effect.promise(() => host.update(env, server, "2", null));
-      expect(sends).toEqual(["update"]);
-      expect(read().state).toEqual({ phase: "updating", to: "2" });
-      host.close();
-    }),
+  it.effect(
+    "An update its Mate never received says it was not sent, and Update sends it again",
+    () =>
+      Effect.gen(function* () {
+        const { host, read, sends, connect } = yield* parkedMate({ connects: false });
+        const update = host.update(env, server, "2", null);
+        yield* TestClock.adjust(50);
+        yield* Effect.promise(() => update);
+        expect(sends).toEqual([]);
+        expect(read().state).toEqual({
+          phase: "failed",
+          message:
+            "This Mate is not connected, so the update was not sent. Update again once it is.",
+        });
+        yield* connect;
+        yield* Effect.promise(() => host.update(env, server, "2", null));
+        expect(sends).toEqual(["update"]);
+        expect(read().state).toEqual({ phase: "updating", to: "2" });
+        host.close();
+      }),
   );
 });
 

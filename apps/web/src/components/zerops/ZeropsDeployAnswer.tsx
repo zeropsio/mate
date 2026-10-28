@@ -67,7 +67,14 @@ function PlatformDeployAnswer({
                     {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
                     {job.service}
                   </b>
-                  <span data-zerops-job-state={job.state}>{job.standing}</span>
+                  <span data-zerops-job-state={job.state}>
+                    <span>{job.standing}</span>
+                    {job.sourceArchive === undefined ? null : (
+                      <span className="block text-caption text-muted-foreground">
+                        {job.sourceArchive}
+                      </span>
+                    )}
+                  </span>
                   {log === undefined ? (
                     <span />
                   ) : (
@@ -107,6 +114,11 @@ function PlatformDeployAnswer({
             >
               {(showEnvironment ?? environments.length > 1) ? `${environment} · ` : ""}
               {job.text}
+              {job.sourceArchive === undefined ? null : (
+                <span className="block text-caption text-muted-foreground">
+                  {job.sourceArchive}
+                </span>
+              )}
             </p>
           )),
       )}

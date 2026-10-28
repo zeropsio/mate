@@ -190,3 +190,41 @@ describe("a merge whose answer handed planning over", () => {
     for (const words of never) expect(markup).not.toContain(words);
   });
 });
+
+it.each([
+  [undefined, "Source archive size is not available yet."],
+  [null, "Source archive size is not available yet."],
+  [0, "Source archive: 0 B"],
+  [1_305_166_613, "Source archive: 1.31 GB"],
+] as const)(
+  "the deployment answer renders its job's source archive evidence: %j",
+  (sourceArchiveBytes, expected) => {
+    navigation.environments = {};
+    const markup = renderToStaticMarkup(
+      <ZeropsDeployAnswer
+        answer={{
+          ...ANSWER,
+          jobs: [
+            {
+              ...ANSWER.jobs[0]!,
+              ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
+            },
+          ],
+        }}
+      />,
+    );
+    expect(markup).toContain(expected);
+    expect(markup).not.toContain("Git storage");
+  },
+);
+
+it("the deployment answer replaces unknown archive size when its HQ job is measured after first paint", () => {
+  navigation.environments = environmentsWith({ ...job, sourceArchiveBytes: null });
+  expect(renderToStaticMarkup(<ZeropsDeployAnswer answer={ANSWER} />)).toContain(
+    "Source archive size is not available yet.",
+  );
+  navigation.environments = environmentsWith({ ...job, sourceArchiveBytes: 1_305_166_613 });
+  const measured = renderToStaticMarkup(<ZeropsDeployAnswer answer={ANSWER} />);
+  expect(measured).toContain("Source archive: 1.31 GB");
+  expect(measured).not.toContain("Source archive size is not available yet.");
+});

@@ -7,6 +7,7 @@ import {
   deliveryAnswerFollowing,
   deployAnswerFollowing,
   deployAnswerSaid,
+  sourceArchiveLabel,
 } from "./deployAnswer.ts";
 
 const WEB = "5c3ea18b00000000000000000000000000000000";
@@ -414,4 +415,48 @@ describe("Git delivery answers", () => {
       ).jobs[0],
     ).toMatchObject({ state: "pushed", sha, evidence: { confirmed } });
   });
+});
+
+it.each([
+  [undefined, "Source archive size is not available yet."],
+  [null, "Source archive size is not available yet."],
+  [0, "Source archive: 0 B"],
+  [1_305_166_613, "Source archive: 1.31 GB"],
+] as const)("a deployment names only its measured source archive: %j", (bytes, expected) => {
+  expect(sourceArchiveLabel(bytes)).toBe(expected);
+  const answer = {
+    jobs: [outcome(bytes === undefined ? {} : { sourceArchiveBytes: bytes })],
+    note: null,
+  };
+  expect(deployAnswerSaid(answer).environments[0]?.jobs[0]?.sourceArchive).toBe(expected);
+});
+
+it("the same deployment job gains its archive measurement when HQ reports it later", () => {
+  const answer = { jobs: [outcome({}), outcome({ job: "2" })], note: null };
+  const followed = deployAnswerFollowing(
+    answer,
+    new Map([
+      [
+        "1",
+        {
+          state: "failed",
+          reason: "archive exceeds cap",
+          processId: null,
+          sourceArchiveBytes: 1_305_166_613,
+        },
+      ],
+    ]),
+  );
+  expect(followed.jobs.map((job) => job.sourceArchiveBytes)).toEqual([1_305_166_613, undefined]);
+  expect(deployAnswerSaid(followed).environments[0]?.jobs.map((job) => job.sourceArchive)).toEqual([
+    "Source archive: 1.31 GB",
+    "Source archive size is not available yet.",
+  ]);
+});
+
+it("an imported recipe has no source archive label", () => {
+  expect(
+    deployAnswerSaid({ jobs: [outcome({ kind: "delta", sourceArchiveBytes: 500 })], note: null })
+      .environments[0]?.jobs[0]?.sourceArchive,
+  ).toBeUndefined();
 });

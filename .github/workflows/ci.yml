@@ -24,17 +24,132 @@ concurrency:
   cancel-in-progress: ${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
-  prepare:
-    name: CI promotion
+  verification:
+    name: Prior CI verification
     runs-on: ubuntu-latest
-    # Past main's worst full run (7.6 min), which a kh-next run may wait for, and State Smoke's
-    # plan: the shards of run 40547693697 each took up to 7 min to select a 700-path diff.
-    timeout-minutes: 16
+    timeout-minutes: 3
     permissions:
       actions: read
       contents: read
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
+      failed: ${{ steps.verdict.outputs.failed }}
+    steps:
+      - name: Checkout CI receipt
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: /package.json
+          sparse-checkout-cone-mode: false
+
+      - name: Check kh-next verification
+        id: verdict
+        # A missing or timed-out receipt leaves skip unset, so consumers run the full suite.
+        timeout-minutes: 1
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          skip=false
+          # Read only the newest page; older receipts are a safe miss, never a history scan.
+          # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
+          main_ran() {
+            local ran
+            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --jq '
+              [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
+            [[ "$ran" =~ ^[1-9] ]]
+          }
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
+            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --jq '
+              .workflow_runs[]
+              | select(.head_sha == env.GITHUB_SHA)
+              | select(.head_branch == "kh-next")
+              | select(.event == "push" and .status == "completed" and .conclusion == "success")
+              | .id')
+            if [[ -z "$verified" ]]; then
+              # Promotions may change commit metadata without changing a single tree entry.
+              export GITHUB_TREE
+              GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --jq '
+                .workflow_runs[]
+                | select(.head_branch == "kh-next")
+                | select(.event == "push" and .status == "completed" and .conclusion == "success")
+                | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
+                | .id')
+            fi
+            if [[ -n "$verified" ]]; then
+              skip=true
+              printf 'Verified kh-next CI run(s): %s\n' "$verified"
+            fi
+          fi
+          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
+            # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
+            export GITHUB_TREE
+            GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
+            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&head_sha=${GITHUB_SHA}&event=push&status=success&per_page=100" --jq '
+              .workflow_runs[]
+              | select(.head_sha == env.GITHUB_SHA and .head_branch == "main")
+              | select(.event == "push" and .status == "completed" and .conclusion == "success")
+              | .id')
+            if [[ -z "$candidates" ]]; then
+              candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --jq '
+                .workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "push" and .status == "completed" and .conclusion == "success")
+                | select(.head_commit.tree_id == env.GITHUB_TREE)
+                | .id')
+            fi
+            for run in $candidates; do
+              if main_ran "$run"; then
+                skip=true
+                printf 'Verified main CI run: %s\n' "$run"
+                break
+              fi
+            done
+            if [[ "$skip" != true ]]; then
+              # "Integrate main" reaches kh-next seconds after the hotfix push, while main's run of the
+              # tree is still going. Wait on that run's own conclusion. A red main run is this tree's
+              # verdict too, so this run fails with it; only a cancelled (superseded) run means a full
+              # run here. The step's timeout-minutes is the only bound.
+              for status in in_progress queued; do
+                export RUN_STATUS=$status
+                pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=${status}&per_page=100" --jq '
+                  .workflow_runs[]
+                  | select(.head_branch == "main")
+                  | select(.event == "push" and .status == env.RUN_STATUS)
+                  | select(.head_commit.tree_id == env.GITHUB_TREE)
+                  | .id')
+                for run in $pending; do
+                  if gh run watch "$run" --exit-status >/dev/null; then
+                    if main_ran "$run"; then
+                      skip=true
+                      printf 'Verified main CI run: %s\n' "$run"
+                      break 2
+                    fi
+                  elif [[ "$(gh run view "$run" --json conclusion --jq .conclusion)" == failure ]]; then
+                    printf 'Main CI run %s failed on this tree; fix main, not kh-next.\n' "$run" >&2
+                    echo "failed=true" >> "$GITHUB_OUTPUT"
+                    exit 1
+                  fi
+                done
+              done
+            fi
+          fi
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          echo "Already verified: ${skip}"
+
+  prepare:
+    name: CI promotion
+    needs: verification
+    # Optional receipt failures fall back to full verification; a failed main receipt stops below.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # The GitHub wait owns another job's deadline; setup and planning retain their full budget.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ needs.verification.outputs.skip }}
       jobs: ${{ steps.blame.outputs.jobs }}
       blame: ${{ steps.blame.outputs.blame }}
       test_scripts: ${{ steps.blame.outputs.test_scripts }}
@@ -44,6 +159,11 @@ jobs:
       state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
       state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
     steps:
+      - name: Reject failed main verification
+        env:
+          MAIN_FAILED: ${{ needs.verification.outputs.failed }}
+        run: test "$MAIN_FAILED" != true
+
       - name: Checkout CI selector
         uses: actions/checkout@v6
         with:
@@ -62,94 +182,9 @@ jobs:
         id: blame
         run: node scripts/ci-blame.ts
 
-      - name: Check kh-next verification
-        id: verdict
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          skip=false
-          # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
-          main_ran() {
-            local ran
-            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --paginate --jq '
-              [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
-            [[ "$ran" =~ ^[1-9] ]]
-          }
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
-              .workflow_runs[]
-              | select(.head_sha == env.GITHUB_SHA)
-              | select(.head_branch == "kh-next")
-              | select(.event == "push" and .status == "completed" and .conclusion == "success")
-              | .id')
-            if [[ -z "$verified" ]]; then
-              # Promotions may change commit metadata without changing a single tree entry.
-              export GITHUB_TREE
-              GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
-              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --paginate --jq '
-                .workflow_runs[]
-                | select(.head_branch == "kh-next")
-                | select(.event == "push" and .status == "completed" and .conclusion == "success")
-                | select(.head_commit.id == .head_sha and .head_commit.tree_id == env.GITHUB_TREE)
-                | .id')
-            fi
-            if [[ -n "$verified" ]]; then
-              skip=true
-              printf 'Verified kh-next CI run(s): %s\n' "$verified"
-            fi
-          fi
-          if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/kh-next ]]; then
-            # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
-            export GITHUB_TREE
-            GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
-            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --paginate --jq '
-              .workflow_runs[]
-              | select(.head_branch == "main")
-              | select(.event == "push" and .status == "completed" and .conclusion == "success")
-              | select(.head_commit.tree_id == env.GITHUB_TREE)
-              | .id')
-            for run in $candidates; do
-              if main_ran "$run"; then
-                skip=true
-                printf 'Verified main CI run: %s\n' "$run"
-                break
-              fi
-            done
-            if [[ "$skip" != true ]]; then
-              # "Integrate main" reaches kh-next seconds after the hotfix push, while main's run of the
-              # tree is still going. Wait on that run's own conclusion. A red main run is this tree's
-              # verdict too, so this run fails with it; only a cancelled (superseded) run means a full
-              # run here. The step's timeout-minutes is the only bound.
-              for status in in_progress queued; do
-                export RUN_STATUS=$status
-                pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=${status}&per_page=100" --paginate --jq '
-                  .workflow_runs[]
-                  | select(.head_branch == "main")
-                  | select(.event == "push" and .status == env.RUN_STATUS)
-                  | select(.head_commit.tree_id == env.GITHUB_TREE)
-                  | .id')
-                for run in $pending; do
-                  if gh run watch "$run" --exit-status >/dev/null; then
-                    if main_ran "$run"; then
-                      skip=true
-                      printf 'Verified main CI run: %s\n' "$run"
-                      break 2
-                    fi
-                  elif [[ "$(gh run view "$run" --json conclusion --jq .conclusion)" == failure ]]; then
-                    printf 'Main CI run %s failed on this tree; fix main, not kh-next.\n' "$run" >&2
-                    exit 1
-                  fi
-                done
-              done
-            fi
-          fi
-          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
-          echo "Already verified: ${skip}"
-
       # State Smoke's affected selection is computed once here; its size sets the shard count.
       - name: Checkout for State Smoke's plan
-        if: &plans_state_smoke steps.verdict.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
+        if: &plans_state_smoke needs.verification.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
         uses: actions/checkout@v6
         with:
           fetch-depth: 0

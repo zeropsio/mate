@@ -70,6 +70,10 @@ export const HqDeployOutcome = Schema.Struct({
   /** The job it waits behind, while queued. */
   behind: Schema.NullOr(Schema.String),
   reason: Schema.NullOr(Schema.String),
+  /** Compressed source bytes HQ measured for this job; unknown before measurement. */
+  sourceArchiveBytes: Schema.optionalKey(
+    Schema.NullOr(Schema.Int.check(Schema.isGreaterThanOrEqualTo(0))),
+  ),
   evidence: Schema.optionalKey(Schema.NullOr(HqDeployEvidence)),
   appVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   verifiedVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),

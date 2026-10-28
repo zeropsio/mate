@@ -209,7 +209,7 @@ describe("connection driver admission", () => {
     "a route reconnect interrupted after $hops hops holds no other Mate",
     ({ hops }) =>
       Effect.gen(function* () {
-        const admission = makeConnectionAdmission();
+        const admission = makeConnectionAdmission({ setTimer: () => () => {} });
         const OTHER = EnvironmentId.make("environment-2");
         const log: Array<string> = [];
         const driver = yield* ConnectionDriver.ConnectionDriver.pipe(
@@ -232,14 +232,11 @@ describe("connection driver admission", () => {
         for (let hop = 0; hop < hops; hop += 1) yield* Effect.yieldNow;
         yield* Fiber.interrupt(fiber);
 
-        const other = yield* Effect.promise(() =>
-          Promise.race([
-            admission.admit(OTHER).then(() => "admitted"),
-            // @effect-diagnostics-next-line globalTimers:off -- a plain deadline on a plain promise.
-            new Promise<string>((resolve) => setTimeout(() => resolve("held"), 50)),
-          ]),
-        );
-        expect(other).toBe("admitted");
+        // The next ticket is the admission receipt: a leaked route hold never produces it.
+        const other = yield* Effect.promise(() => admission.admit(OTHER));
+        expect(other.signal.aborted).toBe(false);
+        other.claim();
+        other.settle(false);
       }),
   );
 });

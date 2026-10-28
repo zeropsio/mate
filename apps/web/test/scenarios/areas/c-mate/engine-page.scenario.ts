@@ -2,6 +2,7 @@ import { scenarioSuite } from "../../harness/suite.ts";
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { ANSWER, TITLE, journey, sampled, type Sample } from "./pageJourney.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof journey>>["s"];
 
@@ -13,7 +14,7 @@ const countLoads = (s: Scenario) =>
         "load",
         (event) => {
           if (event.target instanceof HTMLIFrameElement && event.target.title === title)
-            (window as unknown as { pageLoads: number[] }).pageLoads.push(performance.now());
+            (window as unknown as { pageLoads: number[] }).pageLoads.push(1);
         },
         true,
       );
@@ -92,29 +93,34 @@ describe("C: a page the Mate publishes", () => {
             yield* Effect.sync(publishLive);
             yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
             yield* measured;
+            yield* Effect.promise(() => s.clock.install({ currentDocument: true }));
             yield* Effect.sync(answer);
             yield* settled(s);
-            // The title promises a three-second observation after the run folded, not a blind
-            // delay: every paint must still have its page and no navigation notice.
+            // Observe every DOM transition while three seconds pass on the browser's clock.
+            yield* Effect.promise(() =>
+              s.page.evaluate((title) => {
+                const state = { stood: true };
+                const sample = () => {
+                  state.stood &&=
+                    document.querySelector(`iframe[title="${title}"]`) !== null &&
+                    !document.body.textContent?.includes("The page tried to open something else");
+                };
+                const observer = new MutationObserver(sample);
+                observer.observe(document.body, { childList: true, subtree: true });
+                Reflect.set(window, "pageRetention", { state, observer });
+                sample();
+              }, TITLE),
+            );
+            yield* Effect.promise(() => s.clock.advanceStepped(3_000));
             const observed = yield* Effect.promise(() =>
-              s.page.evaluate(
-                (title) =>
-                  new Promise<boolean>((resolve) => {
-                    const start = performance.now();
-                    let stood = true;
-                    const paint = () => {
-                      stood &&=
-                        document.querySelector(`iframe[title="${title}"]`) !== null &&
-                        !document.body.textContent?.includes(
-                          "The page tried to open something else",
-                        );
-                      if (performance.now() - start >= 3000) resolve(stood);
-                      else requestAnimationFrame(paint);
-                    };
-                    requestAnimationFrame(paint);
-                  }),
-                TITLE,
-              ),
+              s.page.evaluate(() => {
+                const { state, observer } = Reflect.get(window, "pageRetention") as {
+                  state: { stood: boolean };
+                  observer: MutationObserver;
+                };
+                observer.disconnect();
+                return state.stood;
+              }),
             );
             expect(
               observed,

@@ -3,6 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { resizeMenu } from "../../harness/browser.ts";
 import { createScenario } from "../../harness/scenario.ts";
+import { completedHttp } from "../../harness/completedHttp.ts";
+import { waitForStillFrames } from "../../harness/stillFrames.ts";
 
 /** A box's top-left corner, px. */
 type Corner = readonly [number, number];
@@ -151,11 +153,20 @@ describe("owner-reported layout regressions", () => {
             await s.page.goto(`${s.web.origin}/zerops`);
             await s.page.waitForSelector('[data-zerops-surface="project-cards"]');
             await s.page.evaluateOnNewDocument(recordOverviewFrames);
-            if (hqBlinks) s.drivers.hq.drops();
+            const settled = completedHttp(s.page);
+            const failed = hqBlinks
+              ? s.page.waitForResponse((response) => response.status() === 503)
+              : undefined;
+            if (hqBlinks) {
+              await s.clock.install();
+              s.drivers.hq.drops();
+            }
             await s.page.reload({ waitUntil: "domcontentloaded" });
             if (hqBlinks) {
-              await new Promise((resolve) => setTimeout(resolve, 1_500));
+              await failed;
+              await settled();
               s.drivers.hq.returns();
+              await s.clock.advanceStepped(10_000);
             }
             await s.page.waitForFunction(
               () =>
@@ -163,8 +174,9 @@ describe("owner-reported layout regressions", () => {
                   ?.cards === 2,
               { polling: 100 },
             );
-            // What a settled page might still take back shows within a beat of the cards.
-            await new Promise((resolve) => setTimeout(resolve, 1_500));
+            await settled();
+            await waitForStillFrames(s.page);
+            settled.close();
             return s.page.evaluate(
               () => (window as unknown as { overviewFrames: OverviewFrame[] }).overviewFrames,
             );
