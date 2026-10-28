@@ -428,6 +428,44 @@ function fakeCluster() {
   return { root, home, bin, data };
 }
 
+it("Decision: A nonzero guard exit carries pg_ctl's exit code and the tail of its stderr in the relayed error. Decision: No retry, no wider bound; diagnostics only.", async () => {
+  const cluster = fakeCluster();
+  const attempts = NodePath.join(cluster.home, "stop-attempts");
+  const command = NodePath.join(cluster.bin, "pg_ctl");
+  const wrapper = NodeFS.readFileSync(command, "utf8");
+  const stderr = `${"earlier stop diagnostics\n".repeat(2000)}pg_ctl: shutdown failed at checkpoint`;
+  NodeFS.writeFileSync(
+    command,
+    wrapper.replace(
+      "exec ",
+      `case "$*" in *" stop")\nprintf 'stop\\n' >> "${attempts}"\n${wrapper.split("\n")[1]!.replace("exec ", "")}\nprintf '%s\\n' '${stderr}' >&2\nexit 23\n;; esac\nexec `,
+    ),
+  );
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const owner = await acquireTestPostgres();
+    const error = await owner.close().then(
+      () => {
+        throw new Error("Expected guard stop to fail");
+      },
+      (error: unknown) => error,
+    );
+    await guardStopped(cluster.home);
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).message).toContain("PostgreSQL guard exited: 1");
+    expect((error as Error).message).toContain("pg_ctl exited: 23");
+    expect((error as Error).message).toContain("pg_ctl: shutdown failed at checkpoint");
+    expect((error as Error).message.length).toBeLessThan(10_000);
+    expect(NodeFS.readFileSync(attempts, "utf8")).toBe("stop\n");
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+  }
+});
+
 it("Decision: A test PostgreSQL supervisor that starts with no surviving leases rebuilds its disposable cluster once instead of dropping retained databases one by one", async () => {
   const cluster = fakeCluster();
   const commands = NodePath.join(cluster.home, "commands.log");
