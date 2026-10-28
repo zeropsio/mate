@@ -1111,18 +1111,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         if (member.kind !== "writer" || member.host === null) {
           return Option.some<WorkspaceSetup>({ cwd: config.cwd, runtimeMode: "approval-required" });
         }
-        if (
-          member.lane?.state !== "ready" ||
-          (current.hosts[member.host]?.frozenSince ?? null) !== null
-        )
-          return Option.none<WorkspaceSetup>();
         yield* verify([member.host]);
-        if (
-          !(yield* workspace
-            .mountedUsable(member.host, member.handle)
-            .pipe(Effect.orElseSucceed(() => false)))
-        )
-          return Option.none<WorkspaceSetup>();
         const repository = yield* repositoryOf(member.host);
         if (Option.isNone(repository)) return Option.none<WorkspaceSetup>();
         return Option.some<WorkspaceSetup>({

@@ -56,6 +56,7 @@ import {
   engineRefs,
   laneKey,
   makeCrewEffectHandlers,
+  readLane,
   settleError,
   type AppRunPayload,
   type AppRunValue,
@@ -265,6 +266,11 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
             return Effect.succeed({
               _tag: "failed",
               detail: `no free disk on ${asked.host}: a copy needs ${Math.ceil(value.needKiB / 1024)} MiB, ${Math.floor(value.availableKiB / 1024)} MiB are free`,
+            });
+          case "mount-unseen":
+            return Effect.succeed({
+              _tag: "failed",
+              detail: `the copy did not appear through ${asked.host}'s mount`,
             });
         }
       },
@@ -626,16 +632,15 @@ export const makeCrewEngineEffectHandlers = Effect.gen(function* () {
           })),
           landings: asked.landings,
         }),
-      // Recovery owns readiness. After a proved loss, only usable surviving copies reopen.
+      // Whatever the recovery came to, a copy not on the service now stays missing; what it
+      // found gone is named, as V1 named it.
       verdict: (value, asked) =>
-        value._tag === "recovered"
-          ? Effect.succeed({ lost: [], losses: [] })
-          : Effect.map(
-              Effect.filter(asked.handles, (handle) =>
-                Effect.map(workspace.mountedUsable(asked.host, handle), (usable) => !usable),
-              ),
-              (lost) => ({ lost, losses: lossesOf(value) }),
-            ),
+        Effect.map(
+          Effect.filter(asked.handles, (handle) =>
+            Effect.map(readLane(shell, asked.host, handle), (copy) => !copy.present),
+          ),
+          (lost) => ({ lost, losses: lossesOf(value) }),
+        ),
     },
   );
 

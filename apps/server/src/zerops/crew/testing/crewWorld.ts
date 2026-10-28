@@ -23,7 +23,6 @@ import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 
-import type { WorkspaceSetup, WorkspaceUnavailable } from "../../../engine/ports.ts";
 import type { ThreadToolProfile } from "../../../spi/threadToolPolicy.ts";
 import type { MateLogin } from "../../ZeropsLogins.ts";
 import type { TurnPrincipal } from "../../ZeropsTurnAdmission.ts";
@@ -275,21 +274,6 @@ export interface CrewWorld {
   /** The crew feed: the current frame at once, then one per change. */
   readonly frames: Stream.Stream<CrewSnapshot>;
   readonly sent: Effect.Effect<ReadonlyArray<CrewSent>>;
-  /** Actual provider starts and the working directories the provider received. */
-  readonly providerSessions: Effect.Effect<{
-    readonly starts: number;
-    readonly cwds: ReadonlyArray<string | undefined>;
-  }>;
-  /** The latest copy-create attempt, as the worker durably recorded it. */
-  readonly copyAttempt: Effect.Effect<
-    | {
-        readonly state: string;
-        readonly attempt: number;
-      }
-    | undefined
-  >;
-  /** The real session-open workspace consumer, including its fail-closed answer. */
-  readonly agentWorkspace: (chat: CrewChat) => Effect.Effect<WorkspaceSetup, WorkspaceUnavailable>;
   /** A crewmate's sessions once `check` holds for them; it waits on the crew. */
   readonly sessionsWhere: (
     handle: string,
@@ -331,8 +315,6 @@ export interface CrewWorld {
 export type CrewPhase<E> = (world: CrewWorld) => Effect.Effect<void, E>;
 
 export interface CrewJourneyOptions {
-  /** A mount distinct from the SSH repository, to exercise visibility independently. */
-  readonly mountPath?: (root: string) => string;
   /**
    * The crew's tool profiles are put in force as the server does (`toolProfile` reads them);
    * otherwise a world only counts their setups.
