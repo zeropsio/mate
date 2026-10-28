@@ -99,6 +99,7 @@ const repositorySource = (repositories: ReadonlyArray<ZeropsRepository>) =>
   );
 
 export interface CrewShellFixtureOptions {
+  readonly mountPath?: string;
   /** What the far side's login shell carries; defaults to the fixture's identity. */
   readonly remoteEnv?: Readonly<Record<string, string>>;
 }
@@ -416,7 +417,10 @@ export const crewStoreLayer = CrewStore.layer.pipe(
 
 /** The crew git core against one service repository, with its own database. */
 export const crewGitLayer = (root: string, options: CrewShellFixtureOptions = {}) => {
-  const shell = crewShellLayer([serviceRepository(root)], options);
+  const shell = crewShellLayer(
+    [{ ...serviceRepository(root), mountPath: options.mountPath ?? root }],
+    options,
+  );
   const checks = CrewChecks.layer.pipe(Layer.provideMerge(shell));
   return Layer.mergeAll(CrewWorkspace.layer, CrewIntegration.layer, CrewApp.layer).pipe(
     Layer.provideMerge(checks),

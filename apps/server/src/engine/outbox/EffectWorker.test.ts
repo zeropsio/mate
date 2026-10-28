@@ -310,6 +310,67 @@ describe("EffectWorker", () => {
       }),
     );
 
+    it.effect(
+      "an accepted effect awaiting readiness remains pending beyond the retry limit and settles once readiness is observed",
+      () =>
+        Effect.gen(function* () {
+          const store = yield* EngineStore;
+          const c = ConversationId.make("pending-readiness");
+          let ready = false;
+          let attempts = 0;
+          const handler: EffectHandler = {
+            kind: "test.readiness",
+            run: () =>
+              Effect.sync(() => {
+                attempts += 1;
+                return ready
+                  ? { _tag: "Done", outcome: { kind: "ok", value: "ready" } }
+                  : {
+                      _tag: "Retry",
+                      reason: "mounted copy not usable yet",
+                      patient: true,
+                      pending: true,
+                    };
+              }),
+          };
+          const worker = yield* makeEffectWorker(boot1, {
+            ownerRetry: { maxAttempts: 2, delayMs: () => 100 },
+          }).pipe(Effect.provideService(EffectHandlers, handlersOf(handler)));
+          yield* enqueue(c, [{ id: "pending-readiness", kind: handler.kind }]);
+          for (let attempt = 0; attempt < 3; attempt += 1) {
+            yield* worker.runOnce;
+            yield* TestClock.adjust(100);
+          }
+          const outcomes = () =>
+            Effect.map(store.events(c, 0), (events) =>
+              events.flatMap((event) =>
+                event._tag === "EffectOutcomeRecorded" ? [event.outcome] : [],
+              ),
+            );
+          assert.deepStrictEqual(
+            { state: yield* rowState("pending-readiness"), attempts, outcomes: yield* outcomes() },
+            { state: "pending", attempts: 3, outcomes: [] },
+          );
+          ready = true;
+          assert.deepStrictEqual(
+            {
+              ready: yield* worker.runOnce,
+              again: yield* worker.runOnce,
+              state: yield* rowState("pending-readiness"),
+              attempts,
+              outcomes: yield* outcomes(),
+            },
+            {
+              ready: true,
+              again: false,
+              state: "done",
+              attempts: 4,
+              outcomes: [{ kind: "ok", value: "ready" }],
+            },
+          );
+        }),
+    );
+
     it.effect("wakes on the actor's ring and carries a run from admitted to running", () =>
       Effect.gen(function* () {
         const conversations = yield* Conversations;

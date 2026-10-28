@@ -50,7 +50,7 @@ import * as ServerConfig from "../../../config.ts";
 import { Conversations } from "../../../engine/Conversations.ts";
 import { liveEngineLayer } from "../../../engine/live.ts";
 import { MateEngine } from "../../../engine/MateEngine.ts";
-import { HandedOverResume } from "../../../engine/ports.ts";
+import { AgentWorkspace, HandedOverResume } from "../../../engine/ports.ts";
 import { providerThreadOf } from "../../../engine/pump/TurnPump.ts";
 import {
   makeScriptedProvider,
@@ -871,6 +871,22 @@ const enginePort = (input: {
     snapshotWhere,
     frames: Stream.unwrap(Effect.map(crew, (service) => service.snapshot)),
     sent,
+    providerSessions: Effect.sync(() => ({
+      starts: provider.starts.length,
+      cwds: Array.from(provider.sessions.values(), (session) => session.cwd),
+    })),
+    copyAttempt: Effect.flatMap(sql, (client) =>
+      client<{ readonly state: string; readonly attempt: number }>`
+        SELECT state, attempt FROM engine_effect
+        WHERE conversation_id = ${CREW_OWNER_ID} AND kind = 'crew.lane.create'
+        ORDER BY rowid DESC LIMIT 1
+      `.pipe(
+        Effect.map((rows) => rows[0]),
+        Effect.orDie,
+      ),
+    ),
+    agentWorkspace: (chat) =>
+      run(Effect.flatMap(AgentWorkspace, (workspace) => workspace.of(ConversationId.make(chat)))),
     sessionsWhere: (handle, check) =>
       Effect.gen(function* () {
         let last: CrewSessionsSeen | undefined;
@@ -974,6 +990,7 @@ const lifeLayer = (
   provider: ScriptedProvider,
   installer: EngineCrewPolicyInstaller,
   clock: Clock.Clock,
+  options: CrewJourneyOptions,
 ) => {
   const { world, signIns, holds } = fixture;
   const base = Layer.mergeAll(
@@ -985,7 +1002,7 @@ const lifeLayer = (
       deployPollMaxMs: 200,
       thawOfferMs: 600,
     }),
-    platformFakes(world, signIns),
+    platformFakes(world, signIns, undefined, options.mountPath?.(world.root)),
     admissionFake(world),
     countingSsh(world.sshCalls, holds),
     ServerConfig.layer({
@@ -1065,7 +1082,7 @@ export const engineWorld: CrewWorldRunner = <E>(
       const provider = holdableProvider(scripted, sendHold);
       const life = yield* Scope.make();
       const context = (yield* Layer.buildWithScope(
-        lifeLayer(fixture, provider, installer, clock),
+        lifeLayer(fixture, provider, installer, clock, options),
         life,
       )) as Context.Context<never>;
       const startedFlag = yield* Ref.make(false);

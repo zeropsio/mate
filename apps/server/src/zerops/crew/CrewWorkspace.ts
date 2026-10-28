@@ -47,8 +47,9 @@
  * `recover` prunes worktrees, verifies every `crew/<handle>` and every
  * recorded landing's `Crew-Assignment:` trailer in H's first-parent history,
  * and re-adds the lanes only when nothing was lost, each with its saved work -
- * or names what was lost and leaves those copies missing. Either way the host thaws. The boot `sweep` re-derives lane state from git,
- * not from the tables. `rebuild` re-adds one copy a person selects.
+ * or names what was lost and leaves those copies missing. The host thaws once its surviving
+ * copies are usable. The boot `sweep` re-derives lane state from git, not from the tables.
+ * `rebuild` re-adds one copy a person selects.
  *
  * @module CrewWorkspace
  */
@@ -104,10 +105,6 @@ const CONFLICT_MARKER_PATTERN = "^(<<<<<<< |=======$|>>>>>>> )";
 
 /** Attempt refs kept per lane. */
 export const ATTEMPT_REFS_PER_LANE = 3;
-
-/** How long a lane may take to appear through the mount (probe 6). */
-const MOUNT_WAIT_ATTEMPTS = 60;
-const MOUNT_WAIT_INTERVAL = Duration.millis(500);
 
 /** Every lane script finishes well inside a minute; setup and checks have their own. */
 const LANE_SCRIPT_TIMEOUT = Duration.minutes(2);
@@ -212,6 +209,7 @@ export type DispatchOutcome =
   | { readonly _tag: "lane-missing" };
 
 export type RecoverOutcome =
+  | { readonly _tag: "mount-unseen" }
   | {
       readonly _tag: "recovered";
       /** Lanes whose directory was added back (and set up again). */
@@ -268,9 +266,11 @@ export interface OrphanBranch {
 const laneCommit = (commit: LaneCommit): LaneCommit => commit;
 
 export interface CrewWorkspaceService {
+  /** Whether the copy can be traversed and read through the provider's mount, without writing. */
+  readonly mountedUsable: (host: string, handle: string) => Effect.Effect<boolean, CrewShellError>;
   /** One selected missing copy, from its recorded branch; never reset an existing copy. */
   readonly rebuild: (key: LaneKey) => Effect.Effect<RebuildOutcome, CrewWorkspaceError>;
-  /** Apply: exclude line, disk floor, `worktree add`, wait for the mount, setup, record. */
+  /** Apply: exclude line, disk floor, `worktree add`, observe the mount, setup, record. */
   readonly create: (spec: LaneSpec) => Effect.Effect<CreateOutcome, CrewWorkspaceError>;
   /** The person's ordinary task discard: WIP, keep the tip, reset to the dispatch commit. */
   readonly keepAndReset: (
@@ -292,7 +292,8 @@ export interface CrewWorkspaceService {
   /**
    * After a self-deploy, a container replacement, or whenever a lane directory
    * is missing: prune, verify every branch and recorded landing, then re-add
-   * the lanes and set them up - or name the loss. Either way the host thaws.
+   * the lanes and set them up - or name the loss. The host thaws once its surviving copies
+   * are usable.
    */
   readonly recover: (
     host: string,
@@ -433,16 +434,17 @@ export const make = Effect.gen(function* () {
   const runLane = (host: string, operation: string, body: string) =>
     runFields(shell, host, operation, body, LANE_SCRIPT_TIMEOUT);
 
-  /** Polls the mount until the lane directory is there. */
-  const seenThroughMount = (host: string, handle: string) =>
+  const mountedUsable: CrewWorkspaceService["mountedUsable"] = (host, handle) =>
     Effect.gen(function* () {
       const repository = yield* shell.repository(host);
       const path = `${repository.mountPath}/${laneDirectory(handle)}`;
-      for (let attempt = 0; attempt < MOUNT_WAIT_ATTEMPTS; attempt += 1) {
-        if (yield* fileSystem.exists(path).pipe(Effect.orElseSucceed(() => false))) return true;
-        yield* Effect.sleep(MOUNT_WAIT_INTERVAL);
-      }
-      return false;
+      return yield* Effect.gen(function* () {
+        const info = yield* fileSystem.stat(path);
+        if (info.type !== "Directory") return false;
+        yield* fileSystem.readDirectory(path);
+        yield* fileSystem.readFileString(`${path}/.git`);
+        return true;
+      }).pipe(Effect.orElseSucceed(() => false));
     });
 
   /**
@@ -757,6 +759,10 @@ export const make = Effect.gen(function* () {
         .filter((lane) => !lane.kept)
         .map((lane) => ({ handle: lane.handle, since: lane.since }));
       if (lost.length > 0 || branches.length > 0 || wip.length > 0) {
+        for (const lane of present.filter((lane) => lane.dir)) {
+          if (!(yield* mountedUsable(host, lane.handle)))
+            return { _tag: "mount-unseen" } satisfies RecoverOutcome;
+        }
         yield* Effect.forEach(
           lanes.filter((row) => branches.includes(row.lane)),
           (row) => store.updateLane(row.crew, row.lane, (lane) => ({ ...lane, state: "lost" })),
@@ -777,8 +783,11 @@ export const make = Effect.gen(function* () {
         .join("");
       if (back !== "") yield* runLane(host, "recover", back);
       const setups: Record<string, CheckOutcome> = {};
+      for (const lane of present) {
+        if (!(yield* mountedUsable(host, lane.handle)))
+          return { _tag: "mount-unseen" } satisfies RecoverOutcome;
+      }
       for (const handle of readded) {
-        yield* seenThroughMount(host, handle);
         const spec = specs.find((candidate) => candidate.handle === handle);
         if (spec?.setup !== undefined) {
           setups[handle] = yield* checks.run({
@@ -982,16 +991,18 @@ export const make = Effect.gen(function* () {
           `printf 'status\\trebuilt\\ntip\\t%s\\n' "$tip"\n`,
       );
       const status = field(out, "status");
-      if (status === "present" || status === "branch-missing" || status === "branch-changed")
+      if (status === "branch-missing" || status === "branch-changed")
         return { _tag: status } satisfies RebuildOutcome;
-      if (!(yield* seenThroughMount(row.host, row.lane)))
+      if (!(yield* mountedUsable(row.host, row.lane)))
         return { _tag: "mount-unseen" } satisfies RebuildOutcome;
       yield* store.updateLane(row.crew, row.lane, (lane) => ({
         ...lane,
         frozenSince: null,
         state: "ready",
       }));
-      return { _tag: "rebuilt", tip: field(out, "tip") ?? "" } satisfies RebuildOutcome;
+      return status === "present"
+        ? ({ _tag: "present" } satisfies RebuildOutcome)
+        : ({ _tag: "rebuilt", tip: field(out, "tip") ?? "" } satisfies RebuildOutcome);
     });
 
   const create: CrewWorkspaceService["create"] = (spec) =>
@@ -1029,10 +1040,10 @@ export const make = Effect.gen(function* () {
         } satisfies CreateOutcome;
       }
       const tip = field(out, "tip") ?? "";
-      if (status === "exists") return { _tag: "exists", tip } satisfies CreateOutcome;
-      if (!(yield* seenThroughMount(spec.host, spec.handle))) {
+      if (!(yield* mountedUsable(spec.host, spec.handle))) {
         return { _tag: "mount-unseen" } satisfies CreateOutcome;
       }
+      if (status === "exists") return { _tag: "exists", tip } satisfies CreateOutcome;
       const setup =
         spec.setup === undefined
           ? undefined
@@ -1064,6 +1075,7 @@ export const make = Effect.gen(function* () {
     });
 
   return CrewWorkspace.of({
+    mountedUsable,
     create,
     rebuild,
     prepareDispatch,

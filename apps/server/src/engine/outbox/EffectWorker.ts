@@ -52,6 +52,8 @@ export type HandlerResult =
        * is tried again as an owner's effect is, over minutes, whatever owns it.
        */
       readonly patient?: boolean;
+      /** Accepted external work is awaiting readiness; attempts alone cannot settle its outcome. */
+      readonly pending?: boolean;
     };
 
 export interface EffectHandler {
@@ -199,7 +201,7 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
       const result = yield* Effect.uninterruptible(attempt(row));
       if (result._tag === "Retry") {
         const policy = result.patient === true ? policies.owner : retryPolicyOf(row, policies);
-        if (row.attempt >= policy.maxAttempts) {
+        if (result.pending !== true && row.attempt >= policy.maxAttempts) {
           yield* settle(row, { kind: "failed", reason: result.reason });
         } else {
           yield* outbox.retry(
