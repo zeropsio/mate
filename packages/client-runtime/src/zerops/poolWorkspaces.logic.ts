@@ -3,7 +3,7 @@
  * it leases for one of the Mate's chats (zcp `docs/spec-workflows.md` §8 DP-13/25/28/34,
  * `docs/spec-mate.md` §2.8a.3). Never the pool's own slot routes: they balance over every
  * container, and a free or warm one answers nothing. Whether a preview opens is the one rule every
- * surface reads (`poolWorkspaceLink`); a workspace goes by the chat it is for (`leaseChatTitle`).
+ * surface reads (`poolWorkspaceLink`); a workspace goes by the chat it is for, else its branch (`leaseLabel`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -11,7 +11,7 @@
  */
 import { isZeropsLeaseHeld, type ZeropsDevServer, type ZeropsLease } from "@t3tools/contracts";
 
-import { leaseChatTitle, poolWorkspaceLink, type MatePartLeaseChat } from "./mateParts.ts";
+import { leaseLabel, poolWorkspaceLink, type MatePartLeaseChat } from "./mateParts.ts";
 
 /** A chat bound to a lease, by its title: what the workspace is for. */
 export type LeaseChat = MatePartLeaseChat;
@@ -46,7 +46,7 @@ export function poolWorkspaces(input: {
     .filter((lease) => lease.pool === input.pool && isZeropsLeaseHeld(lease.state))
     .sort((left, right) => left.alias.localeCompare(right.alias, "en", { numeric: true }))
     .flatMap((lease): ReadonlyArray<PoolWorkspace> => {
-      const title = leaseChatTitle(lease, input.chats) ?? "dev";
+      const title = leaseLabel(lease, input.chats);
       const previews = (lease.devServers ?? []).filter((server) => server.url !== undefined);
       if (previews.length === 0) {
         const { why } = poolWorkspaceLink(lease);

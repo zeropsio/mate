@@ -1,6 +1,6 @@
 /**
  * The chats of one Mate's environment that are bound to a pool lease (`ThreadLease`), each by its
- * title: a dev pool's workspace goes by the chat working in it (`leaseChatTitle`), on the Zerops
+ * title: a dev pool's workspace goes by the chat working in it (`leaseLabel`), on the Zerops
  * panel, in Sites and on the Browser page. Unarchived chats only. It reads that environment's chats
  * alone, and keeps one value while their titles and bindings stay the same, so a streamed turn
  * redraws nothing.
