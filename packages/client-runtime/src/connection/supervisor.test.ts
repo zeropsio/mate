@@ -1,6 +1,7 @@
 import { EnvironmentId } from "@t3tools/contracts";
 import { RelayClientTracer } from "@t3tools/shared/relayTracing";
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -12,6 +13,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 import * as Tracer from "effect/Tracer";
+import { AtomRegistry } from "effect/reactivity";
 
 import type { WsRpcProtocolClient } from "../rpc/protocol.ts";
 import type { ConnectionCatalogEntry } from "./catalog.ts";
@@ -32,9 +34,17 @@ import {
   type SupervisorConnectionState,
 } from "./model.ts";
 import * as RpcSession from "../rpc/session.ts";
-import { presentConnectionState } from "./presentation.ts";
+import { connectionBannerCopy, presentConnectionState } from "./presentation.ts";
 import * as EnvironmentSupervisor from "./supervisor.ts";
 import * as ConnectionWakeups from "./wakeups.ts";
+import { hqFixtureWire } from "../data/__fixtures__/hqWire.ts";
+import { settle } from "../data/__fixtures__/zeropsWire.ts";
+import { classifyHqClose, hqNavigationLink } from "../data/adapters/hq.ts";
+import { mateTicketIssuer } from "../data/adapters/hqMateTicket.ts";
+import { makeAccountStore, readsOfState } from "../data/store.ts";
+import { superviseLink } from "../data/supervisor.ts";
+import { initialWakeState, wakeStep } from "../zerops/knowledge/signals.ts";
+import { HqError } from "../zerops/hq/client.ts";
 
 const TARGET = new PrimaryConnectionTarget({
   environmentId: EnvironmentId.make("environment-1"),
@@ -293,6 +303,234 @@ describe("retryDelayMs", () => {
 });
 
 describe("EnvironmentSupervisor", () => {
+  describe.each([
+    { case: "one visible outage", outages: 1, hiddenMs: 0, drain: false },
+    { case: "three outages ten minutes apart", outages: 3, hiddenMs: 0, drain: false },
+    { case: "HQ drain 1012 during the outage", outages: 1, hiddenMs: 0, drain: true },
+    { case: "a five-second hidden spell", outages: 1, hiddenMs: 5_000, drain: false },
+    {
+      case: "a hidden tab held past its retry deadline",
+      outages: 1,
+      hiddenMs: 60_000,
+      drain: false,
+    },
+  ])("no-link recovery: $case", (row) => {
+    it.effect(
+      row.hiddenMs === 0
+        ? "After a container restart, a visible Mate reconnects and clears its previous no-link notice when its ticket and socket handshake succeed."
+        : "A Mate whose link recovered while its tab was hidden shows as connected when the tab becomes visible, without waiting out the backoff.",
+      () =>
+        Effect.gen(function* () {
+          let hidden = false;
+          let linked = true;
+          let ready = yield* Deferred.make<void>();
+          let tickets = 0;
+          const issuer = mateTicketIssuer(() => ({
+            mateTicket: async () => {
+              tickets++;
+              if (!linked)
+                throw new HqError({
+                  kind: "refused",
+                  code: "mate_not_connected",
+                  reason: "no-link",
+                  message: "mate_not_connected",
+                });
+              return { ticket: "recovered", expiresIn: 60, origin: "https://mate.example.test" };
+            },
+          }));
+          const harness = yield* makeHarness({
+            prepare: () =>
+              issuer
+                .issue({ orgId: "org-1", projectId: "project-ada" })
+                .pipe(Effect.as({ ...PREPARED_CONNECTION, target: MATE_ENTRY.target })),
+            ready: (attempt) => (attempt === 1 ? Effect.void : Deferred.await(ready)),
+          });
+          const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+            initiallyDesired: true,
+          }).pipe(
+            Effect.provide(harness.dependencies),
+            Effect.provideService(EnvironmentSupervisor.MatePresence, {
+              onScreen: () => true,
+              hidden: () => hidden,
+            }),
+          );
+          const hq = row.drain
+            ? yield* Effect.gen(function* () {
+                const registry = AtomRegistry.make();
+                const store = makeAccountStore(registry);
+                yield* Effect.addFinalizer(() =>
+                  Effect.sync(() => {
+                    store.close();
+                    registry.dispose();
+                  }),
+                );
+                const fixture = hqFixtureWire();
+                const link = hqNavigationLink({ orgId: "org-1", wire: fixture.wire, store });
+                const runtime = yield* superviseLink({
+                  ...link,
+                  store,
+                  repairSession: Effect.void,
+                });
+                yield* Effect.forkScoped(runtime.run);
+                yield* settle;
+                const baseline = (incarnation: string) =>
+                  fixture
+                    .send({
+                      type: "scope-reset",
+                      scope: { kind: "navigation" },
+                      incarnation,
+                      revision: 1,
+                      values: [],
+                      removals: [],
+                    })
+                    .pipe(
+                      Effect.andThen(
+                        fixture.send({
+                          type: "scope-ready",
+                          scope: { kind: "navigation" },
+                          incarnation,
+                          revision: 1,
+                        }),
+                      ),
+                      Effect.andThen(settle),
+                    );
+                yield* baseline("before-deploy");
+                expect(readsOfState(store.state()).stream(link.key).phase).toBe("live");
+                return { fixture, link, runtime, store, baseline };
+              })
+            : null;
+
+          yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+          for (let outage = 0; outage < row.outages; outage++) {
+            if (outage > 0) yield* TestClock.adjust("10 minutes");
+            ready = yield* Deferred.make<void>();
+            linked = false;
+            const before = tickets;
+            yield* harness.closeLatestSession();
+            let failed = yield* awaitState(supervisor.state, (state) => state.phase === "backoff");
+            // One lost socket, then HQ refuses exactly three tickets before its link returns.
+            for (let refusal = 1; refusal <= 3; refusal++) {
+              const now = yield* Clock.currentTimeMillis;
+              yield* TestClock.adjust((failed.retryAt ?? now) - now);
+              failed = yield* eventuallyState(
+                supervisor.state,
+                (state) => state.phase === "backoff" && state.attempt === refusal + 1,
+              );
+              expect(tickets - before).toBe(refusal);
+              expect(failed.lastFailure).toMatchObject({ reason: "mate-not-linked" });
+              expect(presentConnectionState(failed)).toMatchObject({
+                phase: "reconnecting",
+                error: "Mate has no connection to HQ (no-link).",
+              });
+              if (hq !== null && refusal === 1) {
+                yield* hq.fixture.drop(classifyHqClose(1012));
+                yield* settle;
+                expect(readsOfState(hq.store.state()).stream(hq.link.key).phase).toBe("recovering");
+                yield* hq.runtime.signal("resume");
+                yield* settle;
+                expect(hq.fixture.opens()).toBe(2);
+                yield* hq.baseline("after-deploy");
+                expect(readsOfState(hq.store.state()).stream(hq.link.key).phase).toBe("live");
+              }
+            }
+            linked = true;
+            if (row.hiddenMs > 0) {
+              const hiddenAt = yield* Clock.currentTimeMillis;
+              const page = wakeStep(
+                initialWakeState(
+                  { hidden: false, online: true },
+                  { wall: hiddenAt, mono: hiddenAt },
+                ),
+                { type: "visibility", hidden: true },
+                { wall: hiddenAt, mono: hiddenAt },
+              );
+              hidden = true;
+              yield* TestClock.adjust(row.hiddenMs);
+              expect(tickets - before).toBe(3);
+              hidden = false;
+              // A short return emits visibility only, not the coalesced 30-second wake.
+              const shownAt = yield* Clock.currentTimeMillis;
+              const shown = wakeStep(
+                page.state,
+                { type: "visibility", hidden: false },
+                { wall: shownAt, mono: shownAt },
+              );
+              for (const input of shown.signals) {
+                const wakeup = ConnectionWakeups.connectionWakeupForSignal(input);
+                if (wakeup !== null) yield* harness.wake(wakeup);
+              }
+              yield* awaitCount(harness.prepareCount, before + 4);
+            } else {
+              const now = yield* Clock.currentTimeMillis;
+              yield* TestClock.adjust((failed.retryAt ?? now) - now);
+            }
+            yield* eventuallyState(supervisor.state, (state) => state.stage === "synchronizing");
+            expect(tickets - before).toBe(4);
+            // A ticket alone must not clear the notice: the socket handshake is still pending.
+            expect((yield* SubscriptionRef.get(supervisor.state)).lastFailure?.reason).toBe(
+              "mate-not-linked",
+            );
+            yield* Deferred.succeed(ready, undefined);
+            const recovered = yield* eventuallyState(
+              supervisor.state,
+              (state) => state.phase === "connected",
+            );
+            expect(recovered).toMatchObject({
+              generation: outage + 2,
+              lastFailure: null,
+              retryAt: null,
+            });
+            expect(presentConnectionState(recovered)).toEqual({
+              phase: "connected",
+              error: null,
+              traceId: null,
+            });
+            expect(connectionBannerCopy(presentConnectionState(recovered), "Ada")).toBeNull();
+          }
+        }).pipe(Effect.provide(TestClock.layer())),
+    );
+  });
+
+  it.effect.each([
+    {
+      case: "a failed primary connection",
+      entry: TARGET_ENTRY,
+      failure: transient(),
+      phase: "backoff",
+    },
+    {
+      case: "a Mate's definitive refusal",
+      entry: MATE_ENTRY,
+      failure: blocked(),
+      phase: "blocked",
+    },
+  ] as const)("visibility alone does not retry $case", (row) =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness({ prepare: () => Effect.fail(row.failure) });
+      const supervisor = yield* EnvironmentSupervisor.make(row.entry, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* awaitState(supervisor.state, (state) => state.phase === row.phase);
+      yield* harness.wake("application-visible");
+      yield* awaitCount(harness.prepareCount, 1);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect("a visible return alone leaves a healthy Mate's subscriptions and socket intact", () =>
+    Effect.gen(function* () {
+      const probes = yield* Ref.make(0);
+      const harness = yield* makeHarness({ probe: () => Ref.update(probes, (count) => count + 1) });
+      const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(Effect.provide(harness.dependencies));
+      yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+      yield* harness.wake("application-visible");
+      yield* awaitCount(harness.prepareCount, 1);
+      expect(yield* Ref.get(probes)).toBe(0);
+      expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+    }),
+  );
+
   it.effect("exports each relay setup as a standalone linked trace that ends at readiness", () =>
     Effect.gen(function* () {
       const spans: Array<Tracer.NativeSpan> = [];

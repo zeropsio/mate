@@ -1263,7 +1263,19 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     Effect.forkScoped,
   );
   yield* wakeups.changes.pipe(
-    Stream.runForEach((reason) => signal({ _tag: "Wakeup", reason })),
+    Stream.runForEach((reason) =>
+      Effect.gen(function* () {
+        // Visibility releases a Mate's pending retry even after a short tab switch. Healthy
+        // sockets and definitive refusals still wait for their existing recovery signals.
+        if (
+          reason === "application-visible" &&
+          (target._tag !== "ZeropsMateConnectionTarget" ||
+            (yield* SubscriptionRef.get(state)).phase !== "backoff")
+        )
+          return;
+        yield* signal({ _tag: "Wakeup", reason });
+      }),
+    ),
     Effect.forkScoped,
   );
   yield* run().pipe(Effect.forkScoped);

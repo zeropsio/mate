@@ -15,7 +15,7 @@ import {
   Wakeups,
 } from "@t3tools/client-runtime/connection";
 import { EnvironmentRpcRequestObserver } from "@t3tools/client-runtime/rpc";
-import type { PlatformSignal, PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
+import type { PlatformSignals } from "@t3tools/client-runtime/zerops/knowledge";
 import { AuthZeropsClientScopes, PRIMARY_LOCAL_ENVIRONMENT_ID } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Data from "effect/Data";
@@ -71,28 +71,6 @@ const connectivityLayer = Connectivity.layer({
   ),
 });
 
-/**
- * The connection wakeup a tab signal stands for, or `null` when it means
- * nothing to the connection layer. The connection hears the same coalesced
- * visible wake as the account (DESIGN §6.4): focus back from another
- * application after 30 s is one, a click into an iframe and back or a short
- * tab switch is not.
- */
-export function connectionWakeupForSignal(signal: PlatformSignal): Wakeups.ConnectionWakeup | null {
-  switch (signal.type) {
-    case "restored":
-      // A back/forward cache restore comes back with a socket the browser
-      // already killed: replace the lease instead of probing it.
-      return "application-active-reconnect";
-    case "wake":
-      // The restore's own wake follows its `restored`, which already replaced the lease.
-      return signal.visible && signal.cause !== "pageshow" ? "application-active" : null;
-    case "visibility":
-    case "network":
-      return null;
-  }
-}
-
 /** The tab's signals for the connection layer, made when a connection first listens. */
 let tabSignals: PlatformSignals | null = null;
 
@@ -102,7 +80,7 @@ const wakeupsLayer = Wakeups.layer({
       Effect.sync(() => {
         tabSignals ??= browserPlatformSignals(document, window);
         return tabSignals.listen((signal) => {
-          const wakeup = connectionWakeupForSignal(signal);
+          const wakeup = Wakeups.connectionWakeupForSignal(signal);
           if (wakeup !== null) Queue.offerUnsafe(queue, wakeup);
         });
       }),
