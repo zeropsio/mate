@@ -18,6 +18,8 @@ import {
 
 import type { ZeropsWrite } from "~/zerops/zeropsWrite";
 
+import { environmentTitle } from "../place/place.logic";
+
 /** A write the sheet asks for, in the open organization. */
 export type AddressWrite = Extract<
   ZeropsWrite,
@@ -468,11 +470,40 @@ export function removeWrite(
 }
 
 /** One of the application's places the sheet's switch offers. */
+/**
+ * Whether a place's addresses say only "Nothing runs in <place> yet.": production or a stage with
+ * nothing deployed, and nothing of its addresses to see or remove — no domain (one may be added
+ * before the first release), no port opened, no own IPv4, no change on its way. A Mate's own
+ * project never: its workspace runs without a deploy.
+ */
+export function placeRunsNothing(
+  place: Pick<
+    PlaceAddresses,
+    "nothingDeployed" | "domains" | "ports" | "ips" | "waitingDomains" | "waitingPorts"
+  >,
+  kind: PlaceChoice["kind"] | undefined,
+): boolean {
+  return (
+    place.nothingDeployed &&
+    (kind === "production" || kind === "stage") &&
+    place.domains.length === 0 &&
+    place.ports.length === 0 &&
+    place.ips.ownV4 === undefined &&
+    place.waitingDomains.length === 0 &&
+    place.waitingPorts.length === 0
+  );
+}
+
 export interface PlaceChoice {
   readonly projectId: string;
-  /** In the switch: "Production", a stage's name, "Fen's own project". */
+  /** A shared environment, or a Mate's own project. */
+  readonly kind: "production" | "stage" | "mate";
+  /**
+   * In the switch: "Production", a stage by its title ("Client demo"), a Mate by its name — a
+   * colleague's with its owner beside it ("Filip · Lukas's"), never "Filip's own project".
+   */
   readonly label: string;
-  /** In sentences: "Production", a stage's name, "Fen". */
+  /** In sentences: "Production", a stage's title, "Fen". */
   readonly name: string;
   /** Whose it is, where it is a colleague's Mate's: their first name. */
   readonly owner?: string;
@@ -503,8 +534,9 @@ export function addressPlaces(
   const stops = (menu: MenuPlaces | undefined, production: boolean) =>
     (menu?.stops ?? []).flatMap((stop): ReadonlyArray<PlaceChoice> => {
       if (stop.projectId === undefined) return [];
-      const name = production ? "Production" : stop.name;
-      return [{ projectId: stop.projectId, label: name, name }];
+      const kind = production ? "production" : "stage";
+      const name = environmentTitle(kind, stop.name);
+      return [{ projectId: stop.projectId, kind, label: name, name }];
     });
   const seen = new Set<string>();
   return [
@@ -517,7 +549,8 @@ export function addressPlaces(
           : mate.owner.name.trim().split(/\s+/u)[0];
       return {
         projectId: mate.candidate.project.id,
-        label: `${mate.name}'s own project`,
+        kind: "mate" as const,
+        label: mate.name,
         name: mate.name,
         ...(owner === undefined ? {} : { owner }),
       };

@@ -6,6 +6,7 @@ import {
   PRODUCTION_DEPLOYING,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
 import type { AddressDomain, DomainFace, PlaceAddresses } from "@t3tools/client-runtime/data";
 import { HqEnvironmentId } from "@t3tools/contracts";
@@ -24,6 +25,7 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
+  environmentSlotWord,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -34,10 +36,12 @@ import {
   productionBuilding,
   releaseProductionRuns,
   placeLines,
+  placeServices,
   putLiveHasChange,
   readyLine,
   readyTitle,
   rollBackTarget,
+  setupChangeWords,
   siteOf,
   sinceWords,
   soleSite,
@@ -1004,6 +1008,22 @@ describe("a Mate on a card", () => {
     expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(1);
   });
 
+  // The project's card asks for a recipe change once, as a setup change (`cardChanges`).
+  it("leaves a Mate's recipe change out of its overview row, which reviews its code", () => {
+    const recipe = pull({ number: 7, kind: "recipe", title: "Mate: the group's import files" });
+    const flow = {
+      pullRequests: [
+        { pull: recipe, blocked: null, state: undefined, review: true },
+        { pull: pull({ number: 2 }), blocked: null, state: undefined, review: true },
+      ],
+    };
+    expect(mateChangesForReview(flow, "wren-dev").map((each) => each.number)).toEqual([2]);
+    expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(2);
+    expect(mateChangeForReview({ pullRequests: [flow.pullRequests[0]!] }, "wren-dev")).toBe(
+      undefined,
+    );
+  });
+
   // D7, one rule with the menu (`changeShowsReview`): while Wren works, its changes show no Review.
   it.each([
     { case: "at work", review: false, expected: undefined },
@@ -1432,6 +1452,46 @@ describe("a card's latest changes", () => {
       stage: stageOn(6),
       rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
+    // Larkspur, 2026-10-28: Core held Filip's zcp's import files for a person, as their merge
+    // would change the stage and production built from them. Its Mate's Review leaves it out; its
+    // row says what it changes once its review's files are read (`setupChangeWords`).
+    {
+      case: "a setup change waiting for a person: the project's setup, until its files are read",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Mate: the group's import files",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [["Mate: the group's import files", true, "Changes the project's setup"]],
+    },
+    {
+      case: "a setup change waiting where no environment stands: the project's setup",
+      open: [pull({ repository: "group", kind: "recipe", number: 2, title: "Add storage" })],
+      merged: [],
+      stage: undefined,
+      production: false,
+      rows: [["Add storage", true, "Changes the project's setup"]],
+    },
+    {
+      case: "a setup change that does not merge: what stops it",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Add storage",
+          mergeability: "conflicting",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [["Add storage", true, "Conflicts with main"]],
+    },
   ])("says $case", ({ open, merged: landed, stage, production = true, noReleases, rows }) => {
     expect(
       cardChanges({
@@ -1444,6 +1504,50 @@ describe("a card's latest changes", () => {
       }).map((change) => [change.pull.title, change.open, change.words]),
     ).toEqual(rows);
   });
+});
+
+// What its review reads of its files (`recipeReach`), never which environments the project has.
+describe("setupChangeWords", () => {
+  const reach = (over: Partial<RecipeReach> = {}): RecipeReach => ({
+    stages: 0,
+    production: false,
+    later: [],
+    unused: [],
+    ...over,
+  });
+  it.each([
+    { case: "its files unread", reach: undefined, words: "Changes the project's setup" },
+    {
+      case: "the stage's recipe and production's",
+      reach: reach({ stages: 1, production: true }),
+      words: "Changes how Stage and Production are built",
+    },
+    {
+      case: "the stage's recipe, where two stages are made from it",
+      reach: reach({ stages: 2 }),
+      words: "Changes how the stages are built",
+    },
+    {
+      case: "only production's recipe, where a stage stands too",
+      reach: reach({ production: true }),
+      words: "Changes how Production is built",
+    },
+    {
+      case: "only recipes nothing in the project is made from",
+      reach: reach({ unused: ["Remote (CDE)", "Local"] }),
+      words: "Changes the project's setup",
+    },
+    {
+      case: "only the recipe new Mates are made from",
+      reach: reach({ later: ["mate"] }),
+      words: "Changes the project's setup",
+    },
+  ])(
+    "says what a waiting setup change does by the recipes it changes: $case",
+    ({ reach, words }) => {
+      expect(setupChangeWords(reach)).toBe(words);
+    },
+  );
 });
 
 describe("cardChangeRows", () => {
@@ -1569,6 +1673,7 @@ describe("a place's addresses on its panel", () => {
     waitingDomains: [],
     waitingPorts: [],
     readsProject: false,
+    nothingDeployed: false,
   });
   const listed = [{ service: "app", url: "https://app-1a2b-3000.prg1.zerops.app" }];
 
@@ -1790,5 +1895,126 @@ it("Release overview counts distinguish recorded changes from the commits they c
   });
   expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
     "1 change · 6 commits ready to release",
+  );
+});
+
+// The live audit (2026-10-28): Larkspur's production and stage existed with their services and
+// ran nothing, and their panels stood like live ones — green service dots, *Manage addresses*.
+describe("a place with nothing deployed", () => {
+  const empty = stop({ state: "empty", version: undefined, addresses: [] });
+  it.each([
+    {
+      case: "an empty production, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "empty" },
+      },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "an empty production, as the flow says it",
+      input: { flow: { production: { kind: "empty", stop: empty, line: "" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as the flow says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+        stageChips: new Map([["stage", { label: "stage", state: "empty" } as const]]),
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "a production that does not exist",
+      input: { flow: { production: { kind: "absent" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "a running production",
+      input: { flow: { production: LIVE, stages: [] } },
+      name: "prod",
+      nothing: false,
+    },
+    {
+      case: "a production whose first release is on its way",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "releasing", next: "v0.1.0" },
+      },
+      name: "prod",
+      nothing: false,
+    },
+  ] as const)(
+    "A place says it runs nothing only where nothing was deployed there: $case",
+    ({ input, name, nothing }) => {
+      const line = placeLines({ ...input, nowMs: NOW }).find((each) => each.name === name);
+      expect(line?.nothingDeployed === true).toBe(nothing);
+    },
+  );
+});
+
+describe("a place's services", () => {
+  it.each([
+    {
+      case: "a runtime running a deploy",
+      status: { hostname: "app", status: "ACTIVE", runtime: true },
+      state: "up",
+    },
+    {
+      case: "a runtime whose container runs and holds no deploy",
+      status: { hostname: "flip", status: "ACTIVE", runtime: true, nothingDeployed: true },
+      state: "idle",
+    },
+    {
+      case: "a database the platform runs",
+      status: { hostname: "db", status: "ACTIVE", runtime: false },
+      state: "up",
+    },
+    {
+      case: "a stopped service",
+      status: { hostname: "app", status: "STOPPED", runtime: true },
+      state: "stopped",
+    },
+    {
+      case: "a failed service",
+      status: { hostname: "app", status: "CONTAINER_FAILED", runtime: true },
+      state: "down",
+      down: ["app"],
+    },
+  ] as const)(
+    "A service is shown as up only where it runs deployed code or the platform's own service: $case",
+    ({ status, state, ...rest }) => {
+      const down = "down" in rest ? rest.down : [];
+      expect(placeServices([status], down)).toEqual([{ hostname: status.hostname, state }]);
+    },
+  );
+});
+
+describe("a tier an application does not have, on its page's column", () => {
+  it.each([
+    { tier: "production", line: "Not added", word: "Not released yet" },
+    { tier: "stage", line: "Not added", word: "Not deployed yet" },
+    {
+      tier: "production",
+      line: "Waiting for the Mate's recipe",
+      word: "Waiting for the Mate's recipe",
+    },
+  ] as const)(
+    "An absent environment says the word its card says, beside its way to add it: $tier, $line",
+    ({ tier, line, word }) => {
+      expect(environmentSlotWord(tier, line)).toBe(word);
+    },
   );
 });

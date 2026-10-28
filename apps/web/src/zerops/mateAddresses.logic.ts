@@ -11,27 +11,27 @@
  * in the conversation's top bar and in the Browser tab, and a tab exists only
  * for an address somebody opened.
  *
- * A service's FIRST browsable route is its address: a second port on the same
- * service is the same page to a reader, not another thing to look at — except
- * on a dev service running several named dev servers, where each port is a
- * part of the application: "web :3000", "api :8080" (the monorepo model, §6).
- * The control plane serves Mate itself; browsing it from inside Mate is noise.
- *
- * A part migrated to a dev pool keeps its preview: its stage pairs with the pool, as the
- * conversation's last envelope keys the pair (`poolPairs`), though the pool stands in
- * Infrastructure and lists no address of its own.
- *
- * A thread bound to a lease also lists the dev servers zcp read on each of its
- * leases — the one it is bound to and every other of its repository and branch — under the name
- * of the part its pool serves (Embedder). A lease has no address but those: the
- * pool's own route is the pool's, never the lease's.
+ * The Mate's own addresses are its parts (`mateParts`, the one reader the menu's Sites and the
+ * Mate rows read too): each part's dev entries — a dev service's route, or each workspace the Mate
+ * holds on a dev pool that opens by zcp's rule — and its preview, by the part's friendly name; then
+ * every other public service by its name. A service's first route is its address: a second port
+ * is the same page — except where a dev entry runs several dev servers (a monorepo's web and api):
+ * then each running one is its own address, by the server's own name (its port where it has none),
+ * never numbered. One dev server names nothing. The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
  * Pure: no React, no store.
  */
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { servicePairs, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
+import {
+  isBrowsableUrl,
+  mateParts,
+  type MatePartLease,
+  type MatePartLeaseChat,
+} from "@t3tools/client-runtime/zerops/mateParts";
+import { partName, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
+import type { ZeropsDevServer } from "@t3tools/contracts";
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
 
@@ -40,9 +40,9 @@ export type MateAddressRole = "dev" | "preview" | "stage" | "production";
 export interface MateAddress {
   /**
    * The tab's key and its title, unique in the list and stable: a service of
-   * the Mate's own project by its hostname, one of another project by its
-   * hostname and its role — or its project's name where two projects share
-   * the role. A hostname holds no space, so the two never meet.
+   * the Mate's own project by its hostname (a pool workspace by its lease's alias), one of another
+   * project by its hostname and its role — or its project's name where two projects share the
+   * role. A hostname holds no space, so the two never meet.
    */
   readonly service: string;
   readonly role: MateAddressRole | undefined;
@@ -50,22 +50,38 @@ export interface MateAddress {
   /** The address without its scheme — what a row shows and what a person copies. */
   readonly host: string;
   /**
-   * What a row names after the address's role: the service's own hostname (or a dev server's
-   * name), with its environment's name only where its role has several — never the role again.
+   * What a row names after the address's role: a part's friendly name (and the chat a workspace is
+   * for), another service's own hostname, with its environment's name only where its role has
+   * several — never the role again.
    */
   readonly name: string;
 }
 
 type GroupRole = "stage" | "prod";
 
-interface DevServerAddress {
-  readonly name: string;
-  readonly port?: number | undefined;
-  readonly url?: string | undefined;
+/** A dev server as zcp read it on a dev service or a workspace. */
+type DevServerAddress = Pick<ZeropsDevServer, "name" | "port" | "url" | "status">;
+
+/**
+ * A dev entry's running dev servers, each with an address, where it runs several; none where it
+ * runs one or none, as its entry's own address is then the one.
+ */
+function runningServers(
+  servers: ReadonlyArray<DevServerAddress> | undefined,
+): ReadonlyArray<DevServerAddress & { readonly url: string }> {
+  const running = (servers ?? []).flatMap((server) =>
+    server.status === "running" && server.url !== undefined && isBrowsableUrl(server.url)
+      ? [{ ...server, url: server.url }]
+      : [],
+  );
+  return running.length > 1 ? running : [];
 }
 
-const portedName = (server: DevServerAddress) =>
-  server.port === undefined ? server.name : `${server.name} :${String(server.port)}`;
+/** A dev server by its own name, by its port where it has none. */
+const serverName = (server: DevServerAddress): string =>
+  server.name.trim() !== "" || server.port === undefined
+    ? server.name.trim()
+    : `:${String(server.port)}`;
 
 export interface MateAddressInput {
   /** The Mate's own project's services, in topology order. */
@@ -75,26 +91,20 @@ export interface MateAddressInput {
     /** The type-version, which tells a pool or a Box from a runtime (`servicePairs`). */
     readonly type?: string;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
-    /** The dev servers zcp last read on it (`ZeropsServiceRow.devServers`); absent while unread. */
+    /** The dev servers zcp last read on it (`devServersOf`); absent while unread. */
     readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
   }>;
-  /**
-   * The leases of the thread the list is for (`threadLeases`): each one's alias, the name of the
-   * part its pool serves (`poolPartName`) and the dev servers zcp last read on it (`leaseDevServersOf`); absent or
-   * empty for a thread with none.
-   */
-  readonly leases?:
-    | ReadonlyArray<{
-        readonly alias: string;
-        readonly label: string;
-        readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
-      }>
-    | undefined;
+  /** zcp's leases for the whole Mate, in the newest envelope its conversation read; absent unread. */
+  readonly leases?: ReadonlyArray<MatePartLease> | undefined;
+  /** The Mate's chats bound to a lease, by title: what each workspace is for. */
+  readonly leaseChats?: ReadonlyArray<MatePartLeaseChat> | undefined;
   /**
    * The pairs the conversation's last envelope keys by a dev pool (`poolPairsOf`); none before it
    * carries one.
    */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
+  /** The services that envelope marks as a repository's stand-in (`standInsOf`): they open nothing. */
+  readonly standIns?: ReadonlyArray<string> | undefined;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
   /** The Mate's group's stage and production projects the account holds, with their routes. */
@@ -116,17 +126,23 @@ const ROLE_ORDER: ReadonlyArray<MateAddressRole | undefined> = [
 
 const ADDRESS_ROLE: Record<GroupRole, MateAddressRole> = { stage: "stage", prod: "production" };
 
-/** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
-const isDevHostname = (hostname: string) => hostname.length > 3 && hostname.endsWith("dev");
-
 const hostOf = (url: string) => url.replace(/^https?:\/\//u, "").replace(/\/$/u, "");
 
 export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddress> {
-  const own = input.services.filter((service) => service.group !== "infrastructure");
-  // Every service is handed to the pairing: a pool keying a migrated part's pair stands in
-  // Infrastructure, and a pool the services do not list pairs nothing.
-  const { devOf } = servicePairs({ services: input.services, poolPairs: input.poolPairs });
-  const devs = new Set(devOf.values());
+  // Infrastructure is never browsed (the control plane serves Mate itself), but a pool keying a
+  // migrated part's pair stands there, so every service is handed to the reader.
+  const { parts, others } = mateParts({
+    services: input.services,
+    routes: input.services
+      .filter((service) => service.group !== "infrastructure")
+      .flatMap((service) =>
+        service.routes.map((route) => ({ service: service.hostname, url: route.url })),
+      ),
+    poolPairs: input.poolPairs,
+    standIns: input.standIns,
+    leases: input.leases,
+    leaseChats: input.leaseChats,
+  });
 
   const addresses: Array<MateAddress> = [];
   const seenUrls = new Set<string>();
@@ -136,31 +152,37 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     addresses.push({ service: key, role, url, host: hostOf(url), name });
   };
 
-  for (const service of own) {
-    // Several named dev servers: each port is a part's address; one is the service's, as before.
-    const servers = service.devServers ?? [];
-    if (servers.length > 1)
-      for (const server of servers)
-        if (server.url !== undefined) add(portedName(server), "dev", server.url);
-    const route = service.routes.find((entry) => isServiceBrowserUrl(entry.url));
-    if (route === undefined) continue;
-    const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
-    // A pair's half is the Mate's preview, unless its project is itself the stage or production.
-    const role = devOf.has(service.hostname)
-      ? (projectRole ?? "preview")
-      : devs.has(service.hostname) || isDevHostname(service.hostname)
-        ? "dev"
-        : projectRole;
-    add(service.hostname, role, route.url);
-  }
-  for (const { alias, label, devServers = [] } of input.leases ?? []) {
-    for (const server of devServers) {
-      if (server.url === undefined) continue;
-      // One dev server is the lease's address; several are each a part of it, by name and port.
-      if (devServers.length === 1) add(alias, "dev", server.url, label);
-      else add(`${alias} ${server.name}`, "dev", server.url, `${label} · ${portedName(server)}`);
+  const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
+  // A dev entry's dev servers: a workspace's by its lease's alias, a dev service's by its hostname.
+  const serversOf = (service: string) =>
+    input.leases?.find((lease) => lease.alias === service)?.devServers ??
+    input.services.find((each) => each.hostname === service)?.devServers;
+  for (const part of parts) {
+    for (const entry of part.dev) {
+      if (entry.url === undefined) continue;
+      const name = entry.label === "dev" ? part.name : `${part.name} · ${entry.label}`;
+      const several = runningServers(serversOf(entry.service));
+      if (several.length === 0) add(entry.service, "dev", entry.url, name);
+      for (const server of several)
+        add(
+          `${entry.service} ${serverName(server)}`,
+          "dev",
+          server.url,
+          `${name} · ${serverName(server)}`,
+        );
     }
+    // A pair's half is the Mate's preview, unless its project is itself the stage or production.
+    if (part.preview?.url !== undefined)
+      add(part.preview.service, projectRole ?? "preview", part.preview.url, part.name);
   }
+  // A service's first route is its address: a second port is the same page.
+  const listed = new Set<string>();
+  for (const other of others) {
+    if (listed.has(other.service)) continue;
+    listed.add(other.service);
+    add(other.service, projectRole, other.url);
+  }
+
   const environments = input.environments ?? [];
   for (const groupRole of ["stage", "prod"] as const) {
     const ofRole = environments.filter((environment) => environment.role === groupRole);
@@ -177,7 +199,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
           `${service} ${suffix}`,
           role,
           url,
-          ofRole.length === 1 ? service : `${service} · ${environment.name}`,
+          ofRole.length === 1 ? partName(service) : `${partName(service)} · ${environment.name}`,
         );
     }
   }

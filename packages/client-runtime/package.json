@@ -435,6 +435,10 @@
       "types": "./src/zerops/serviceMap.ts",
       "default": "./src/zerops/serviceMap.ts"
     },
+    "./zerops/mateParts": {
+      "types": "./src/zerops/mateParts.ts",
+      "default": "./src/zerops/mateParts.ts"
+    },
     "./zerops/servicePairs": {
       "types": "./src/zerops/servicePairs.ts",
       "default": "./src/zerops/servicePairs.ts"

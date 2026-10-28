@@ -11,7 +11,7 @@ import { useMateAddresses, type MateAddressesRead } from "./useMateAddresses";
 
 const STAGE_URL = "https://appstage-1df2-3000.prg1.zerops.app";
 
-const mate = vi.hoisted(() => ({ lifecycle: undefined as unknown, lease: null as unknown }));
+const mate = vi.hoisted(() => ({ lifecycle: undefined as unknown }));
 
 vi.mock("./useZeropsFeeds", () => ({
   useZeropsTopology: () => ({
@@ -33,9 +33,7 @@ vi.mock("./useZeropsFeeds", () => ({
   useZeropsLifecycle: () => mate.lifecycle,
   useEnvironmentProjectRef: () => null,
 }));
-vi.mock("../state/entities", () => ({
-  useThreadShell: () => (mate.lease === null ? null : { lease: mate.lease }),
-}));
+vi.mock("./useLeaseChats", () => ({ useLeaseChats: () => [] }));
 vi.mock("./inventoryContext", () => ({ InventoryContext: createContext(null) }));
 vi.mock("./ZeropsAccountData", () => ({ useProjectsServiceValues: () => ({}) }));
 
@@ -57,7 +55,6 @@ const render = () =>
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   mate.lifecycle = undefined;
-  mate.lease = null;
 });
 afterEach(() => {
   for (const tree of mounted.splice(0)) act(() => tree.unmount());
@@ -88,16 +85,15 @@ it("a part migrated to a dev pool: its stage is the Mate's preview once the conv
   expect(roles()).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
 });
 
-it("a conversation that carries no envelope yet leaves a migrated part's stage on its own, by its name", () => {
+it("a conversation that carries no envelope yet pairs a migrated part's stage with the pool of its stem", () => {
   mate.lifecycle = { state: "unread", waitingFor: null };
   render();
-  expect(roles()).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+  expect(roles()).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
 });
 
 // The menu draws no Sites for a Mate in no project: its conversation's header lists these.
 it("an ungrouped Mate's conversation still shows its previews, each by its part's name", () => {
   const url = "https://embedderpool-c2e4-8101.prg1.zerops.app";
-  mate.lease = { alias: "embedderpool-3", pool: "embedderpool", branch: "feat-x" };
   mate.lifecycle = {
     state: "known",
     value: {

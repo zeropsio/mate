@@ -18,7 +18,7 @@ const MAIN = "a".repeat(40);
 
 /** What HQ answers each read of the change's record, in order — the last answer repeats. */
 const hq = vi.hoisted(() => ({
-  answers: [] as Array<"record" | "failed">,
+  answers: [] as Array<"record" | "unrecorded" | "failed">,
   reads: [] as Array<string>,
   /** What the person asked the repository to compare. */
   compares: [] as Array<unknown>,
@@ -102,6 +102,12 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
     hq.reads.push(`${link.appId}/${link.repo}#${String(link.number)}`);
     const answer = hq.answers[Math.min(hq.reads.length - 1, hq.answers.length - 1)];
     if (answer === "failed") throw new Error("HQ is not answering right now.");
+    // HQ still working the change out: its files are not recorded yet.
+    if (answer === "unrecorded")
+      return {
+        change: link,
+        review: { ...review, mergeBase: null, files: null, commits: null },
+      } as unknown as ChangeMetadataResponse;
     return { change: link, review } as unknown as ChangeMetadataResponse;
   });
   const root = createRoot(document.createElement("div") as unknown as Element);
@@ -126,6 +132,7 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
   }
   return {
     latest: () => seen.at(-1)!,
+    seen: () => seen,
     unmount: () =>
       act(async () => {
         root.unmount();
@@ -157,9 +164,34 @@ describe("useZeropsChangeDetail", () => {
   it.each([
     ["a push moved its head", { link: LINK, head: "d".repeat(40), main: MAIN }],
     ["a merge moved main", { link: LINK, head: HEAD, main: "e".repeat(40) }],
+    [
+      "HQ judged whether it merges",
+      { link: LINK, head: HEAD, main: MAIN, mergeability: "mergeable" as const },
+    ],
   ])("reads it again once %s", async (_name, moved) => {
     hq.answers = ["record"];
-    const probe = await mount([{ link: LINK, head: HEAD, main: MAIN }, moved]);
+    const probe = await mount([
+      { link: LINK, head: HEAD, main: MAIN, mergeability: "checking" },
+      moved,
+    ]);
+    expect(hq.reads).toHaveLength(2);
+    await probe.unmount();
+  });
+
+  // A reload can read HQ's record while HQ is still checking the change: without a second read, the
+  // review held "Checking whether it merges cleanly" and files "Not known yet" for good.
+  it("a record read while HQ checked the change gives way to the one HQ judged, with nothing taken back meanwhile", async () => {
+    hq.answers = ["unrecorded", "record"];
+    const probe = await mount([
+      { link: LINK, head: HEAD, main: MAIN, mergeability: "checking" },
+      { link: LINK, head: HEAD, main: MAIN, mergeability: "mergeable" },
+    ]);
+    expect(probe.latest().readout).toMatchObject({
+      kind: "read",
+      value: { filesKnown: true, files: [{ path: "src/a.ts" }] },
+    });
+    const kinds = probe.seen().map(({ readout }) => readout.kind);
+    expect(kinds.slice(kinds.indexOf("read"))).not.toContain("reading");
     expect(hq.reads).toHaveLength(2);
     await probe.unmount();
   });

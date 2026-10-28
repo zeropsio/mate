@@ -12,10 +12,14 @@
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   addressComing,
+  changeAsksForReview,
+  changeInMateReview,
   changeState,
   changesCountWords,
+  ENVIRONMENT_NOT_ADDED,
   placeAddresses,
   PRODUCTION_DEPLOYING,
+  pullRequestBlocked,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -23,12 +27,18 @@ import {
   type GroupFlowMate,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
 import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
 
 import { domainFaceWords } from "../addresses/addresses.logic";
-import type { ProductionChip } from "../SidebarProductionChip.logic";
+import { environmentTitle } from "../place/place.logic";
+import {
+  PLACE_RUNNING_WORD,
+  placeStateWord,
+  type ProductionChip,
+} from "../SidebarProductionChip.logic";
 import { MATE_DELETING_WORD } from "../ZeropsDeleteMateDialog.logic";
 import {
   changeLineWords,
@@ -64,6 +74,12 @@ export interface PlaceLine {
   readonly addresses: ReadonlyArray<GroupFlowAddress>;
   /** A wait it is in, whose clock counts from here (wall ms). */
   readonly clock?: { readonly since: number } | undefined;
+  /**
+   * It exists and nothing was deployed there yet, or it does not exist: its panel says its name and
+   * its line alone — no services shown as up, no address doors (the live audit, 2026-10-28: an
+   * empty production stood with green service dots and *Manage addresses*).
+   */
+  readonly nothingDeployed?: true | undefined;
 }
 
 const WEEKDAY = new Intl.DateTimeFormat(undefined, { weekday: "short" });
@@ -126,63 +142,58 @@ function chipLine(
     readonly down: ReadonlyArray<string>;
     readonly rollsBackTo?: string | undefined;
   },
-): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+): PlaceLineSaid {
   const runs = chip.version;
+  const word = placeStateWord(chip.label, chip.state);
   switch (chip.state) {
     case "ok":
     case "waiting":
       return {
         dot: chip.lastKnown === true ? "unknown" : "running",
-        words: ["Running", runs, facts.since].filter((word) => word !== undefined),
+        words: [word, runs, facts.since].filter((each) => each !== undefined),
         trouble: false,
       };
     case "unverified":
-      return { dot: "unknown", words: [chip.readLine ?? "Checking what runs…"], trouble: false };
+      return { dot: "unknown", words: [chip.readLine ?? word], trouble: false };
     case "releasing":
       return {
         dot: "releasing",
-        words: [
-          chip.next === undefined ? "Deploying…" : releasingWords(chip.next, facts.rollsBackTo),
-        ],
+        words: [chip.next === undefined ? word : releasingWords(chip.next, facts.rollsBackTo)],
         trouble: false,
       };
     case "failed":
       return {
         dot: "failed",
-        words: [
-          chip.label === "prod" ? "Release failed" : "Deploy failed",
-          ...(runs === undefined ? [] : [`still runs ${runs}`]),
-        ],
+        words: [word, ...(runs === undefined ? [] : [`still runs ${runs}`])],
         trouble: true,
       };
     case "down":
       return {
         dot: "down",
         words: [
-          "Down",
+          word,
           facts.down.length === 0 ? "its services failed" : `${joined(facts.down)} failed`,
         ],
         trouble: true,
       };
     case "stopped":
-      return { dot: "none", words: ["Stopped"], trouble: false };
+      return { dot: "none", words: [word], trouble: false };
     case "creating":
-      return { dot: "unknown", words: ["Setting up…"], trouble: false };
+      return { dot: "unknown", words: [word], trouble: false };
     case "empty":
-      return {
-        dot: "none",
-        words: [chip.label === "prod" ? "Not released yet" : "Not deployed yet"],
-        trouble: false,
-      };
+      return { dot: "none", words: [word], trouble: false, nothingDeployed: true };
   }
 }
+
+/** What a place's line says of it, before its name and its doors. */
+type PlaceLineSaid = Pick<PlaceLine, "dot" | "words" | "trouble" | "nothingDeployed">;
 
 /** What production's line says from the flow alone, where no chip was read. */
 function flowLine(
   production: Exclude<GroupFlowProduction, { readonly kind: "absent" | "unread" }>,
   since: string | undefined,
   rollsBackTo: string | undefined,
-): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+): PlaceLineSaid {
   switch (production.kind) {
     case "creating":
       return { dot: "unknown", words: [production.line], trouble: false };
@@ -193,11 +204,16 @@ function flowLine(
         trouble: false,
       };
     case "empty":
-      return { dot: "none", words: ["Not released yet"], trouble: false };
+      return {
+        dot: "none",
+        words: [placeStateWord("prod", "empty")],
+        trouble: false,
+        nothingDeployed: true,
+      };
     case "pushed":
       return { dot: "none", words: [production.line], trouble: false };
     case "deploying":
-      return { dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: [placeStateWord("prod", "releasing")], trouble: false };
     case "releasing":
       return {
         dot: "releasing",
@@ -208,7 +224,10 @@ function flowLine(
       const runs = production.stop.version?.label;
       return {
         dot: "failed",
-        words: ["Release failed", ...(runs === undefined ? [] : [`still runs ${runs}`])],
+        words: [
+          placeStateWord("prod", "failed"),
+          ...(runs === undefined ? [] : [`still runs ${runs}`]),
+        ],
         trouble: true,
       };
     }
@@ -217,12 +236,17 @@ function flowLine(
       // A release offered does not make production run anything: a new one runs nothing until its
       // first release (the onboarding run read "Running" for a minute there).
       if (production.stop.state === "empty")
-        return { dot: "none", words: ["Not released yet"], trouble: false };
+        return {
+          dot: "none",
+          words: [placeStateWord("prod", "empty")],
+          trouble: false,
+          nothingDeployed: true,
+        };
       if (production.stop.state === "deploying")
         return { dot: "releasing", words: [PRODUCTION_DEPLOYING], trouble: false };
       return {
         dot: "running",
-        words: ["Running", production.stop.version?.label, since].filter(
+        words: [PLACE_RUNNING_WORD, production.stop.version?.label, since].filter(
           (word) => word !== undefined,
         ),
         trouble: false,
@@ -281,24 +305,29 @@ function stageLine(
 }
 
 /** A stage's line from the flow alone, where no chip was read. */
-function flowStageLine(stop: GroupFlowStop): Pick<PlaceLine, "dot" | "words" | "trouble"> {
+function flowStageLine(stop: GroupFlowStop): PlaceLineSaid {
   switch (stop.state) {
     case "failed":
-      return { dot: "failed", words: ["Deploy failed"], trouble: true };
+      return { dot: "failed", words: [placeStateWord("stage", "failed")], trouble: true };
     case "deploying":
-      return { dot: "releasing", words: ["Deploying…"], trouble: false };
+      return { dot: "releasing", words: [placeStateWord("stage", "releasing")], trouble: false };
     case "empty":
-      return { dot: "none", words: ["Not deployed yet"], trouble: false };
+      return {
+        dot: "none",
+        words: [placeStateWord("stage", "empty")],
+        trouble: false,
+        nothingDeployed: true,
+      };
     case "checking":
       return {
         dot: "unknown",
-        words: [stop.readLine ?? "Checking what runs…"],
+        words: [stop.readLine ?? placeStateWord("stage", "unverified")],
         trouble: false,
       };
     case "deployed":
       return {
         dot: "running",
-        words: ["Running", stop.version?.name].filter((word) => word !== undefined),
+        words: [PLACE_RUNNING_WORD, stop.version?.name].filter((word) => word !== undefined),
         trouble: false,
       };
   }
@@ -373,8 +402,9 @@ export function placeLines(input: {
         projectId: undefined,
         addresses: [],
         dot: "none",
-        words: ["Not released yet"],
+        words: [placeStateWord("prod", "empty")],
         trouble: false,
+        nothingDeployed: true,
       },
     ];
   const stop = production.kind === "creating" ? undefined : production.stop;
@@ -411,10 +441,56 @@ export function placeLines(input: {
   ];
 }
 
+/** One service of a place, as its panel shows it. */
+export interface PlacePanelService {
+  readonly hostname: string;
+  /**
+   * Up; up with nothing deployed in it (`idle`), never drawn as up; stopped; or failed, as the
+   * place's serving says it.
+   */
+  readonly state: "up" | "idle" | "stopped" | "down";
+}
+
+/**
+ * A place's services as its panel shows them, from the platform's listing
+ * (`summarizeEnvironmentServices`): failed where the place's serving says so, stopped where the
+ * platform stopped it, idle where a runtime holds no deploy — its container runs, nothing deployed
+ * does — and up otherwise.
+ */
+export function placeServices(
+  statuses: ReadonlyArray<{
+    readonly hostname: string;
+    readonly status: string;
+    readonly nothingDeployed?: true;
+  }>,
+  down: ReadonlyArray<string>,
+): ReadonlyArray<PlacePanelService> {
+  return statuses.map((service) => ({
+    hostname: service.hostname,
+    state: down.includes(service.hostname)
+      ? "down"
+      : service.status === "STOPPED"
+        ? "stopped"
+        : service.nothingDeployed === true
+          ? "idle"
+          : "up",
+  }));
+}
+
 /** What a place is called on its card: production in full, a stage by its own name, capitalised. */
 export function placeLabel(line: Pick<PlaceLine, "kind" | "name">): string {
-  if (line.kind === "production") return "Production";
-  return line.name.charAt(0).toLocaleUpperCase() + line.name.slice(1);
+  return environmentTitle(line.kind, line.name);
+}
+
+/**
+ * What a tier the application does not have says on its page's column, beside its way to add it:
+ * the word its card says of a place with nothing deployed — never a third word for it (the live
+ * audit read "Not added" there, "Not released yet" on the card) — or why it cannot be added yet.
+ */
+export function environmentSlotWord(tier: "production" | "stage", line: string): string {
+  return line === ENVIRONMENT_NOT_ADDED
+    ? placeStateWord(tier === "production" ? "prod" : "stage", "empty")
+    : line;
 }
 
 /** The release a card offers: how many changes, where they were tested, what production runs. */
@@ -696,13 +772,20 @@ export function cardSecondWords(input: {
 /**
  * The changes of a Mate's that wait for review, by the rule the menu reads (`changeShowsReview`,
  * the flow's `review`): none while it works. An automated Mate holds one per task, several at once.
+ * Its code only (`changeInMateReview`): its recipe change is the project's setup, which the card
+ * asks for once (`cardChanges`).
  */
 export function mateChangesForReview(
   flow: Pick<GroupFlow, "pullRequests">,
   mateProjectId: string,
 ): ReadonlyArray<FlowPullRequest> {
   return flow.pullRequests
-    .filter((entry) => entry.review && entry.pull.mateProjectId === mateProjectId)
+    .filter(
+      (entry) =>
+        entry.review &&
+        entry.pull.mateProjectId === mateProjectId &&
+        changeInMateReview(entry.pull),
+    )
     .map((entry) => entry.pull);
 }
 
@@ -872,6 +955,11 @@ export interface CardChange {
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
   /** When it last moved: updated while open, merged once landed. */
   readonly at: string | undefined;
+  /**
+   * A setup change waiting for a person: its row reads what it does from its review
+   * (`setupChangeWords`), its `words` until then.
+   */
+  readonly setup?: true;
 }
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
@@ -912,6 +1000,37 @@ function holds(
 }
 
 /**
+ * A recipe change that waits for a person: nothing stops its merge, so Core held it — its merge
+ * would change an environment built from the recipe. Its Mate's Review leaves it out
+ * (`changeInMateReview`); the project's card asks for it, here, once.
+ */
+function setupChangeWaits(pull: FlowPullRequest): boolean {
+  return (
+    pull.kind === "recipe" &&
+    pull.mateGone !== true &&
+    changeAsksForReview(pull) &&
+    pullRequestBlocked(pull) === null
+  );
+}
+
+/**
+ * What a waiting setup change does, by what its review reads of it (`recipeReach`, from the files
+ * HQ recorded): "Changes how Stage is built". Never guessed from which environments exist: until its
+ * files are read, or where it changes none of them, it changes the project's setup.
+ */
+export function setupChangeWords(reach: RecipeReach | undefined): string {
+  const stages = reach?.stages ?? 0;
+  if (stages > 0 && reach?.production === true)
+    return stages > 1
+      ? "Changes how the stages and Production are built"
+      : "Changes how Stage and Production are built";
+  if (stages > 0)
+    return stages > 1 ? "Changes how the stages are built" : "Changes how Stage is built";
+  if (reach?.production === true) return "Changes how Production is built";
+  return "Changes the project's setup";
+}
+
+/**
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
  * release made after it landed, else on stage where the stage runs it, deploying to it where it is
@@ -945,9 +1064,10 @@ export function cardChanges(input: {
       return {
         pull,
         open: true,
-        words: state?.word ?? "Open",
+        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : (state?.word ?? "Open"),
         tone: state?.tone ?? "off",
         at: pull.updatedAt,
+        ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
       };
     });
   const merged = input.merged

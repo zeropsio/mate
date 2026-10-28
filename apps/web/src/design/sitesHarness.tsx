@@ -62,6 +62,7 @@ function mate(
     readonly owner?: string;
     readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
     readonly hostnames?: ReadonlyArray<string>;
+    readonly pools?: ReadonlyArray<string>;
   } = {},
 ): SitesMate {
   const id = `${app}-${name.toLowerCase()}`;
@@ -79,7 +80,14 @@ function mate(
       environmentId: EnvironmentId.make(`env-${id}`),
       service: { id: "zcp", name: "zcp", status: "ACTIVE" },
       ...(over.routes === undefined ? {} : { routes: over.routes }),
-      ...(over.hostnames === undefined ? {} : { services: { hostnames: over.hostnames } }),
+      ...(over.hostnames === undefined
+        ? {}
+        : {
+            services: {
+              hostnames: over.hostnames,
+              ...(over.pools === undefined ? {} : { pools: over.pools }),
+            },
+          }),
     },
     tint,
     shape: MATE_SHAPE_OF_TINT[tint],
@@ -277,6 +285,34 @@ const FIXTURES: ReadonlyArray<Fixture> = [
         }),
       ],
       prodChip: { label: "prod", state: "ok", version: "v4.12.0" },
+    },
+  },
+  {
+    title: "Nothing deployed yet, a Mate on dev pools",
+    input: {
+      ...base("noola", "Noola"),
+      production: () => ({
+        stops: [stop({ name: "production", word: "Not released yet", dot: "off", empty: true })],
+      }),
+      stages: () => ({
+        stops: [stop({ name: "stage", word: "Not deployed yet", dot: "off", empty: true })],
+      }),
+      mates: [
+        mate("noola", "Odin", "amber", {
+          routes: [
+            ...["api", "edge", "web"].map((part) =>
+              route(`${part}stage`, `${part}stage-5e2b.prg1.zerops.app`),
+            ),
+            route("mailpit", "mailpit-5e2b-8025.prg1.zerops.app"),
+          ],
+          hostnames: [
+            "noola",
+            "mailpit",
+            ...["api", "edge", "runner", "web"].flatMap((part) => [`${part}pool`, `${part}stage`]),
+          ],
+          pools: ["apipool", "edgepool", "runnerpool", "webpool"],
+        }),
+      ],
     },
   },
   {

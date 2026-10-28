@@ -78,6 +78,7 @@ import {
 import type { ZeropsPublicRoute } from "./publicRoutes.ts";
 import { shortCommit, type ReleaseGate } from "./release.ts";
 import { REVIEW_LABEL, REVIEW_RELEASE_LABEL } from "./reviewVerdict.ts";
+import type { MatePart } from "./mateParts.ts";
 import { previewLabel, servicePairs } from "./servicePairs.ts";
 import { firstDeploy, stopImport, type FirstDeploy, type PlatformService } from "./stopComing.ts";
 import type { GitDelivery } from "./gitDelivery.ts";
@@ -92,8 +93,10 @@ export interface GroupFlowPreview {
 export interface GroupFlowMate {
   readonly projectId: string;
   readonly name: string;
-  /** Its previews, one per pair with a public stage half ({@link pairPreviewRoutes}). */
+  /** Its previews, one per part with a public preview, by the part's name. */
   readonly previews: ReadonlyArray<GroupFlowPreview>;
+  /** Its parts (`mateParts`), each with its preview where it has one; absent where unread. */
+  readonly parts?: ReadonlyArray<MatePart>;
   /** It has stopped and asks something — its face reads `needs`. */
   readonly waiting: boolean;
   /** Its last run stopped on an error: its face reads `needs` too, but it asks nothing. */

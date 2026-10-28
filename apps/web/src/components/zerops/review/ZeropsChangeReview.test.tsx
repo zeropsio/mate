@@ -372,6 +372,16 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(textOf(markup)).toContain("Show files");
   });
 
+  // Kara's #2, 2026-10-28: "Files 0 changed · +0 −0" and a bare "Commits" over
+  // a change whose description listed the files it edits — HQ had recorded neither.
+  it("Files and commits HQ has not recorded say so on their rows, never 0 changed", () => {
+    const text = textOf(render(merged(), [], { readout: { kind: "read", value: recorded(null) } }));
+    expect(text).toContain("Files Not known yet");
+    expect(text).toContain("Commits Not known yet");
+    expect(text).not.toContain("0 changed");
+    expect(text).not.toContain("+0");
+  });
+
   it("A file HQ recorded no status for draws no letter, never a guessed M", () => {
     const markup = render(merged(), [], {
       readout: {
@@ -730,7 +740,7 @@ describe("ChangeReviewView: an open change", () => {
       expect(prLink(html)).toBeNull();
       expect(textOf(footOf(html))).toContain("Merge");
       expect(textOf(footOf(html))).not.toContain("Merge to");
-      expect(textOf(footOf(html))).toContain("Lands on main; appstage deploys it.");
+      expect(textOf(footOf(html))).toContain("Lands on main; Appstage deploys it.");
     });
   });
 
@@ -743,6 +753,23 @@ describe("ChangeReviewView: an open change", () => {
     expect(textOf(html)).toContain(
       "You need more than Read access to one of this project's Zerops projects to do this.",
     );
+  });
+
+  // Larkspur, 2026-10-28: "stage deploys it" over a stage that had never deployed a merge.
+  it("promises no deploy where no stage deploys what merges into main", () => {
+    const html = render(open, files, { environments: [{ tier: "stage" }], stages: [] });
+    expect(textOf(footOf(html))).toContain("Adds this change to main.");
+    expect(textOf(footOf(html))).not.toContain("deploys it");
+    expect(textOf(footOf(html))).not.toContain("picks it up");
+  });
+
+  // Larkspur, 2026-10-28: "Try it: flip flipstage-7c1e-5195.prg1.zerops.app".
+  it("names Try it by whose preview it opens and its part, never by its address", () => {
+    const url = "https://flipstage-7c1e-5195.prg1.zerops.app";
+    const html = render(open, files, { previews: [{ service: "flip", url }] });
+    expect(textOf(html)).toContain("Try it Wren's preview · Flip");
+    expect(textOf(html)).not.toContain("flipstage-7c1e-5195");
+    expect(html).toContain(`href="${url}"`);
   });
 
   it("says it is merging while the press runs, the button held", () => {

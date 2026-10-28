@@ -143,7 +143,7 @@ export function OtherContainers<T>({
               <div className="grid gap-2 @2xl/flow:grid-cols-2">
                 {mates.map(({ item }) => (
                   <Fragment key={props.getKey(item)}>
-                    {props.renderMate(item, { layout: "card", previews: [] })}
+                    {props.renderMate(item, { layout: "card", parts: [] })}
                   </Fragment>
                 ))}
               </div>

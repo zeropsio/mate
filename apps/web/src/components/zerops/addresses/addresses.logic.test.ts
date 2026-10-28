@@ -12,6 +12,7 @@ import {
   normalizeDomain,
   normalizeRange,
   othersWaiting,
+  placeRunsNothing,
   portFaceWords,
   portProblem,
   priceWords,
@@ -420,6 +421,54 @@ describe("removing a domain", () => {
   });
 });
 
+// The live audit (2026-10-28): an empty production offered an IPv4 to buy and a port to open. Its
+// one line hid a domain added before the first release, which then could not be seen or removed.
+describe("an environment with nothing deployed", () => {
+  const { ips } = ADDRESSES_FIXTURE;
+  const empty = { ...ADDRESSES_FIXTURE, nothingDeployed: true, domains: [], ports: [] };
+  const waiting = [{ id: "rt-1", label: "shop.example → app · port 3000" }];
+  it.each([
+    { case: "production holding nothing", kind: "production", place: empty, alone: true },
+    { case: "a stage holding nothing", kind: "stage", place: empty, alone: true },
+    { case: "a Mate's own project", kind: "mate", place: empty, alone: false },
+    {
+      case: "a domain added before the first release",
+      kind: "production",
+      place: { ...empty, domains: ADDRESSES_FIXTURE.domains },
+      alone: false,
+    },
+    {
+      case: "a port opened",
+      kind: "stage",
+      place: { ...empty, ports: ADDRESSES_FIXTURE.ports },
+      alone: false,
+    },
+    {
+      case: "its own IPv4",
+      kind: "production",
+      place: { ...empty, ips: { ...ips, ownV4: "198.51.100.7" } },
+      alone: false,
+    },
+    {
+      case: "a domain change on its way",
+      kind: "production",
+      place: { ...empty, waitingDomains: waiting },
+      alone: false,
+    },
+    {
+      case: "a port change on its way",
+      kind: "production",
+      place: { ...empty, waitingPorts: waiting },
+      alone: false,
+    },
+  ] as const)(
+    "says only that nothing runs there while it holds no address to see or remove: $case",
+    ({ kind, place, alone }) => {
+      expect(placeRunsNothing(place, kind)).toBe(alone);
+    },
+  );
+});
+
 describe("the project's places", () => {
   it("lists production, each stage, then each Mate's own project, a colleague's with its owner", () => {
     const menu = (stops: ReadonlyArray<{ projectId: string | undefined; name: string }>) => () => ({
@@ -430,7 +479,8 @@ describe("the project's places", () => {
         {
           production: menu([{ projectId: "prod", name: "production" }]),
           stages: menu([
-            { projectId: "stage", name: "Stage" },
+            { projectId: "stage", name: "stage" },
+            { projectId: "demo", name: "client demo" },
             { projectId: undefined, name: "Coming" },
           ]),
           mates: [
@@ -450,11 +500,12 @@ describe("the project's places", () => {
         0,
       ),
     ).toEqual([
-      { projectId: "prod", label: "Production", name: "Production" },
-      { projectId: "stage", label: "Stage", name: "Stage" },
-      { projectId: "fen", label: "Fen's own project", name: "Fen" },
-      { projectId: "rhea", label: "Rhea's own project", name: "Rhea", owner: "Karlos" },
-      { projectId: "juno", label: "Juno's own project", name: "Juno" },
+      { projectId: "prod", kind: "production", label: "Production", name: "Production" },
+      { projectId: "stage", kind: "stage", label: "Stage", name: "Stage" },
+      { projectId: "demo", kind: "stage", label: "Client demo", name: "Client demo" },
+      { projectId: "fen", kind: "mate", label: "Fen", name: "Fen" },
+      { projectId: "rhea", kind: "mate", label: "Rhea", name: "Rhea", owner: "Karlos" },
+      { projectId: "juno", kind: "mate", label: "Juno", name: "Juno" },
     ]);
   });
 });

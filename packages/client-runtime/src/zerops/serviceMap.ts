@@ -17,12 +17,16 @@
  * ## Row order
  *
  * Sections come first (`GROUP_ORDER`: Runtimes, Data, Infrastructure), each
- * one fixed and never derived. Rows inside a section are a total order, so
- * two reads of the same topology — whatever order the backend happened to
- * return services in — always render identically:
+ * one fixed and never derived. A dev pool is a runtime kind here, never
+ * infrastructure: it is where a part of the app is developed. Rows inside a
+ * section are a total order, so two reads of the same topology — whatever
+ * order the backend happened to return services in — always render
+ * identically:
  *
- * 1. In Infrastructure, the control plane (`isZcpServiceType`) leads —
- *    it is not a service the user created.
+ * 1. In Runtimes, the app's parts lead, by name — each a pool or a dev with
+ *    its preview folded in — then every other runtime, then a holder at rest.
+ *    In Infrastructure, the control plane (`isZcpServiceType`) leads — it is
+ *    not a service the user created.
  * 2. Then hostname, via `compareZeropsHostnames` (locale-aware,
  *    case-insensitive, numeric-aware: `db` < `db2` < `db10`).
  * 3. Tiebreak on `serviceId`, so two rows can never compare equal.
@@ -41,8 +45,16 @@ import type {
 import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
+import { isPoolServiceType } from "./infrastructureType.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
-import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
+import { poolWorkspaces, type LeaseChat, type PoolWorkspace } from "./poolWorkspaces.logic.ts";
+import {
+  partName,
+  poolPairsIn,
+  poolPartName,
+  servicePairs,
+  type PoolPair,
+} from "./servicePairs.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
@@ -54,6 +66,8 @@ import type {
   ZeropsTopologyView,
   ZeropsUsageSample,
 } from "./topology.ts";
+
+export type { LeaseChat, PoolWorkspace } from "./poolWorkspaces.logic.ts";
 
 /** Reading order: what the user builds, what it stores, what runs it. */
 const GROUP_ORDER: ReadonlyArray<{ group: ZeropsTopologyGroup; title: string }> = [
@@ -125,9 +139,24 @@ export interface ZeropsServiceTrends {
   readonly disk: ReadonlyArray<ZeropsTrendPoint>;
 }
 
+/**
+ * What a row is to the app: one of its parts (a dev pool or a dev service, its preview folded in),
+ * a holder — a dev zcp keeps only for the repository while the parts run on their own pools — or
+ * any other service.
+ */
+export type ZeropsServiceRowKind = "part" | "holder" | "service";
+
 export interface ZeropsServiceRow {
   /** Infrastructure also contains platform services that do not host a Mate. */
   readonly isControlPlane: boolean;
+  readonly kind: ZeropsServiceRowKind;
+  /** A holder's line in words: why its card is at rest. */
+  readonly restNote?: string;
+  /**
+   * A dev pool's workspaces, one per preview zcp read on a container it leases for the Mate: a link
+   * where it answers, else why not (`poolWorkspaces`). Absent on every row but a pool's.
+   */
+  readonly workspaces?: ReadonlyArray<PoolWorkspace>;
   readonly service: ZeropsTopologyService;
   readonly tone: ZeropsServiceTone;
   /** The platform's status token as a word: `READY_TO_DEPLOY` reads as `Ready to deploy`. */
@@ -143,7 +172,10 @@ export interface ZeropsServiceRow {
    * name already says what it is.
    */
   readonly typeShort?: string;
-  /** The row's name: the hostname, or the glossary word for the control plane. */
+  /**
+   * The row's name: a part's friendly name (`API`, `Runner`), the glossary word for the control
+   * plane, else the hostname.
+   */
   readonly title: string;
   /** The service's declared ports after its name, `:80` or `:80, :443`. */
   readonly portLabel?: string;
@@ -161,6 +193,8 @@ export interface ZeropsServiceRow {
   readonly trends?: ZeropsServiceTrends;
   /** The paired stage service, folded into its dev row. */
   readonly stage?: ZeropsTopologyService;
+  /** What a person calls the folded stage: the Mate's preview, never its hostname. */
+  readonly stageTitle?: string;
   readonly stageTone?: ZeropsServiceTone;
   readonly stageStatusLabel?: string;
   /**
@@ -274,6 +308,21 @@ export function zeropsStatusWord(status: string): string {
 
 /** The glossary word for the zcp container (`design-system.md` §2). */
 const CONTROL_PLANE_TITLE = "Zerops Control Plane";
+
+/** A part's folded stage, as a person reads it. */
+const PREVIEW_TITLE = "Preview";
+
+/** A pool's kind, where a dev service says what it runs. */
+const POOL_TYPE_SHORT = "dev pool";
+
+const HOLDER_NOTE = "Holds the code; nothing runs here";
+
+/** Where in Runtimes a row sits: the parts, every other runtime, then a holder at rest. */
+const KIND_ORDER: Readonly<Record<ZeropsServiceRowKind, number>> = {
+  part: 0,
+  service: 1,
+  holder: 2,
+};
 
 /** The service's own page in the Zerops dashboard, the GUI's `/service-stack/:id` route. */
 export const serviceDashboardUrl = (serviceId: string): string =>
@@ -549,6 +598,17 @@ export const standInOf = (
     ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.standIn
     : undefined;
 
+/**
+ * The services a known lifecycle's envelope marks as a repository's stand-in (`standIn`), by
+ * hostname; none while it is not known.
+ */
+export const standInsOf = (lifecycle: Known<ZeropsLifecycle> | undefined): ReadonlyArray<string> =>
+  lifecycle?.state === "known"
+    ? (lifecycle.value.envelope?.services ?? []).flatMap((entry) =>
+        entry.standIn === undefined ? [] : [entry.hostname],
+      )
+    : [];
+
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (
   hostname: string,
@@ -618,6 +678,8 @@ export function buildZeropsServiceMap(
   lifecycle?: Known<ZeropsLifecycle>,
   runningTool?: string,
   crewPorts?: ZeropsCrewPortOwners,
+  /** The Mate's chats, each with the lease it is bound to: a pool's workspace goes by its chat's title. */
+  chats?: ReadonlyArray<LeaseChat>,
 ): ZeropsServiceMapView | undefined {
   if (topology === undefined) {
     return undefined;
@@ -625,83 +687,146 @@ export function buildZeropsServiceMap(
 
   // A preview folds into its dev row and does not also stand on its own: it holds no checkout
   // — it is where its dev partner's code is deployed, built, unmounted. A part migrated to a dev
-  // pool folds its stage under the pool, as zcp's envelope pairs them. A row folds one stage, so
-  // each stage of a pair of several stands on its own rather than be hidden.
-  const { pairs } = servicePairs({
-    services: topology.services,
-    poolPairs: poolPairsOf(lifecycle),
-  });
+  // pool folds its stage under the pool, as zcp's envelope pairs them, or by the pool's stem where
+  // the envelope keys none (a pair zcp has not re-keyed, or a lifecycle not read yet). A row folds
+  // one stage, so each stage of a pair of several stands on its own rather than be hidden.
+  const pools = topology.services
+    .filter((entry) => isPoolServiceType(entry.type))
+    .map((entry) => entry.hostname);
+  const poolPairs = poolPairsOf(lifecycle);
+  const { pairs } = servicePairs({ services: topology.services, poolPairs, pools });
   const stageOf = new Map(
     pairs.flatMap(({ dev, previews: [only, ...more] }) =>
       only === undefined || more.length > 0 ? [] : [[dev, only.hostname] as const],
     ),
   );
+  const pairNames = new Map(pairs.map((pair) => [pair.dev, pair.name]));
   const folded = new Set(stageOf.values());
+  const leases = lifecycleLeases(lifecycle) ?? [];
+
+  // A part's friendly name, as Sites names it (`mateParts`): a pool by its stem (`boxpool` is
+  // Box), never the setup zcp names its stage by (`boxpreview`); a dev service's pair by its stem
+  // (`flipdev` is Flip).
+  const partOf = (entry: ZeropsTopologyService): string | undefined => {
+    if (isPoolServiceType(entry.type)) return poolPartName(entry.hostname);
+    const name = pairNames.get(entry.hostname);
+    return name === undefined || !stageOf.has(entry.hostname) ? undefined : partName(name);
+  };
+  // A holder: a dev zcp keeps as its repository's stand-in (its envelope's `standIn`) while the
+  // project's parts run on their own pools, with no part of its own. Before any pool stands it is
+  // still where the code runs.
+  const isHolder = (entry: ZeropsTopologyService): boolean =>
+    pools.length > 0 &&
+    !stageOf.has(entry.hostname) &&
+    standInOf(entry.hostname, lifecycle) !== undefined;
+
+  const rowOf = (entry: ZeropsTopologyService): ZeropsServiceRow => {
+    const stage = topology.services.find(
+      (candidate) => candidate.hostname === stageOf.get(entry.hostname),
+    );
+    const isPool = isPoolServiceType(entry.type);
+    const part = partOf(entry);
+    const holder = part === undefined && isHolder(entry);
+    const kind: ZeropsServiceRowKind = part !== undefined ? "part" : holder ? "holder" : "service";
+    const crew = crewPorts?.get(entry.hostname);
+    // A pool's ports are its slots', balanced over every container: nobody's workspace.
+    const portLabel = isPool ? undefined : zeropsPortLabel(entry, crew);
+    const workspaces = isPool
+      ? poolWorkspaces({ pool: entry.hostname, leases, chats: chats ?? [] })
+      : undefined;
+    // A pool opens its workspaces' previews; a holder opens nothing, since nothing runs there.
+    const routes: ReadonlyArray<ZeropsRouteChoice> =
+      workspaces !== undefined
+        ? workspaces.flatMap((workspace) =>
+            workspace.url === undefined
+              ? []
+              : [
+                  {
+                    route: {
+                      port: workspace.port ?? 0,
+                      url: workspace.url,
+                      host: workspace.url.replace(/^https?:\/\//u, "").replace(/\/$/u, ""),
+                    },
+                    label: workspace.label,
+                  },
+                ],
+          )
+        : holder
+          ? []
+          : zeropsRouteChoices(entry, crew);
+    // The control plane is named by its glossary word, a part by its name; the hostname and port
+    // move down a line so the name reads as one thing.
+    const isControlPlane = isZcpServiceType(entry.type);
+    const title = isControlPlane ? CONTROL_PLANE_TITLE : (part ?? entry.hostname);
+    const hostnameFact: ReadonlyArray<ZeropsServiceFact> =
+      isControlPlane || part !== undefined
+        ? [{ id: "hostname", label: `${entry.hostname}${portLabel ?? ""}` }]
+        : [];
+    return {
+      isControlPlane,
+      kind,
+      ...(holder ? { restNote: HOLDER_NOTE } : {}),
+      ...withKey("workspaces", workspaces),
+      service: entry,
+      tone: holder ? "muted" : serviceStatusTone(entry),
+      statusLabel: zeropsStatusWord(entry.status),
+      statusNeedsWord: !holder && serviceStatusNeedsWord(entry),
+      typeLabel: zeropsTypeLabel(entry.type),
+      ...(isControlPlane ? {} : { typeShort: isPool ? POOL_TYPE_SHORT : zeropsTypeShort(entry) }),
+      title,
+      ...(isControlPlane || portLabel === undefined ? {} : { portLabel }),
+      routes,
+      routesFolded:
+        zeropsRoutesFolded(routes) ||
+        (workspaces ?? []).some((workspace) => workspace.url === undefined),
+      meta: [...hostnameFact, ...zeropsServiceFacts(entry, title)],
+      dashboardUrl: serviceDashboardUrl(entry.serviceId),
+      metrics: zeropsServiceMetrics(entry.usage, entry.scaling),
+      ...withKey("trends", zeropsUsageTrends(entry.history)),
+      ...(stage === undefined
+        ? {}
+        : {
+            stage,
+            stageTitle: PREVIEW_TITLE,
+            stageTone: serviceStatusTone(stage),
+            stageStatusLabel: zeropsStatusWord(stage.status),
+            stageStatusNeedsWord: serviceStatusNeedsWord(stage),
+            stageMetrics: zeropsServiceMetrics(stage.usage, stage.scaling),
+            ...withKey("stageTrends", zeropsUsageTrends(stage.history)),
+            ...withKey("stagePortLabel", zeropsPortLabel(stage)),
+            stageRoutes: zeropsRouteChoices(stage),
+            stageRoutesFolded: zeropsRoutesFolded(zeropsRouteChoices(stage)),
+          }),
+      production: productionOf(entry.hostname, lifecycle),
+      ...withKey("devServers", devServersOf(entry.hostname, lifecycle)),
+    };
+  };
+
+  // A dev pool is a runtime kind: it reads with the app's parts, never as infrastructure.
+  const groupOf = (entry: ZeropsTopologyService): ZeropsTopologyGroup =>
+    isPoolServiceType(entry.type) ? "runtimes" : entry.group;
 
   const groups = GROUP_ORDER.map(({ group, title }) => ({
     group,
     title,
     rows: topology.services
-      .filter((entry) => entry.group === group && !folded.has(entry.hostname))
-      // Total order within a section: the control plane leads Infrastructure
-      // (it is not a service the user created), then hostname,
-      // locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames`
-      // — `db` < `db2` < `db10`), tiebroken by `serviceId` so two services
-      // can never tie. A folded stage row carries no order of its own — it
-      // rides along nested under its dev partner.
+      .filter((entry) => groupOf(entry) === group && !folded.has(entry.hostname))
+      .map(rowOf)
+      // Total order within a section: the parts lead Runtimes by name and a holder rests last;
+      // the control plane leads Infrastructure (it is not a service the user created); then
+      // hostname, locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames` — `db` <
+      // `db2` < `db10`), tiebroken by `serviceId` so two services can never tie. A folded stage
+      // row carries no order of its own — it rides along nested under its dev partner.
       .sort(
         (left, right) =>
-          Number(isZcpServiceType(right.type)) - Number(isZcpServiceType(left.type)) ||
-          compareZeropsHostnames(left.hostname, right.hostname) ||
-          left.serviceId.localeCompare(right.serviceId),
-      )
-      .map((entry): ZeropsServiceRow => {
-        const stage = topology.services.find(
-          (candidate) => candidate.hostname === stageOf.get(entry.hostname),
-        );
-        const crew = crewPorts?.get(entry.hostname);
-        const portLabel = zeropsPortLabel(entry, crew);
-        const routes = zeropsRouteChoices(entry, crew);
-        // The control plane is named by its glossary word; its hostname and
-        // port move down a line so the name reads as one thing.
-        const isControlPlane = isZcpServiceType(entry.type);
-        const title = isControlPlane ? CONTROL_PLANE_TITLE : entry.hostname;
-        const hostnameFact: ReadonlyArray<ZeropsServiceFact> = isControlPlane
-          ? [{ id: "hostname", label: `${entry.hostname}${portLabel ?? ""}` }]
-          : [];
-        return {
-          isControlPlane,
-          service: entry,
-          tone: serviceStatusTone(entry),
-          statusLabel: zeropsStatusWord(entry.status),
-          statusNeedsWord: serviceStatusNeedsWord(entry),
-          typeLabel: zeropsTypeLabel(entry.type),
-          ...(isControlPlane ? {} : { typeShort: zeropsTypeShort(entry) }),
-          title,
-          ...(isControlPlane || portLabel === undefined ? {} : { portLabel }),
-          routes,
-          routesFolded: zeropsRoutesFolded(routes),
-          meta: [...hostnameFact, ...zeropsServiceFacts(entry, title)],
-          dashboardUrl: serviceDashboardUrl(entry.serviceId),
-          metrics: zeropsServiceMetrics(entry.usage, entry.scaling),
-          ...withKey("trends", zeropsUsageTrends(entry.history)),
-          ...(stage === undefined
-            ? {}
-            : {
-                stage,
-                stageTone: serviceStatusTone(stage),
-                stageStatusLabel: zeropsStatusWord(stage.status),
-                stageStatusNeedsWord: serviceStatusNeedsWord(stage),
-                stageMetrics: zeropsServiceMetrics(stage.usage, stage.scaling),
-                ...withKey("stageTrends", zeropsUsageTrends(stage.history)),
-                ...withKey("stagePortLabel", zeropsPortLabel(stage)),
-                stageRoutes: zeropsRouteChoices(stage),
-                stageRoutesFolded: zeropsRoutesFolded(zeropsRouteChoices(stage)),
-              }),
-          production: productionOf(entry.hostname, lifecycle),
-          ...withKey("devServers", devServersOf(entry.hostname, lifecycle)),
-        };
-      }),
+          KIND_ORDER[left.kind] - KIND_ORDER[right.kind] ||
+          Number(right.isControlPlane) - Number(left.isControlPlane) ||
+          (left.kind === "part" && right.kind === "part"
+            ? compareZeropsHostnames(left.title, right.title)
+            : 0) ||
+          compareZeropsHostnames(left.service.hostname, right.service.hostname) ||
+          left.service.serviceId.localeCompare(right.service.serviceId),
+      ),
   })).filter((group) => group.rows.length > 0);
 
   return {

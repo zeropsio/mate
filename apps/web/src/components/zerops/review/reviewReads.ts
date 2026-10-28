@@ -5,7 +5,6 @@
  */
 import {
   buildZeropsGroupTree,
-  pairPreviewRoutes,
   placeAddresses,
   type GroupFlowAddress,
   type GroupFlowPreview,
@@ -14,6 +13,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
+import { stageDeploysMerges, tryItPreviews } from "./ZeropsReview.logic";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -28,18 +28,16 @@ export function useGroupName(groupId: string): string | undefined {
   );
 }
 
-/** A Mate's preview as "Try it" offers it: its service, its address, and where that answers. */
-export interface ReviewPreview extends GroupFlowPreview {
-  readonly host: string;
-}
+/** A Mate's preview as "Try it" offers it: its part, and where it answers. */
+export type ReviewPreview = GroupFlowPreview;
 
 const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
 
 /**
- * The Mate's previews: "Try it", one per service and named by it. There is none per change; the
- * Mate's own stand for it, each — a frontend and a backend are two, and nothing says which a
- * change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend, how do
- * you know?"). Its repository's only, where a change names one: its pair's stage, each part's.
+ * The Mate's previews: "Try it", one per part and named by it (`tryItPreviews`). There is none per
+ * change; the Mate's own stand for it, each — a frontend and a backend are two, and nothing says
+ * which a change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend,
+ * how do you know?"). Its repository's only, where a change names one that is a part's dev.
  */
 export function useMatePreviews(
   mateProjectId: string,
@@ -51,18 +49,15 @@ export function useMatePreviews(
   const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = pairPreviewRoutes(
-      row?.routes ?? [],
-      row?.services?.hostnames ?? [],
-      mateTier,
+    const previews = tryItPreviews({
+      routes: row?.routes ?? [],
+      hostnames: row?.services?.hostnames ?? [],
+      pools: row?.services?.pools,
+      controlPlane: row?.service?.name,
+      tier: mateTier,
       repository,
-    );
-    return previews.length === 0
-      ? NO_PREVIEWS
-      : previews.map((preview) => ({
-          ...preview,
-          host: preview.url.replace(/^[a-z]+:\/\//iu, "").replace(/\/+$/u, ""),
-        }));
+    });
+    return previews.length === 0 ? NO_PREVIEWS : previews;
   }, [listing, mateProjectId, mateTier, repository]);
 }
 
@@ -83,18 +78,21 @@ export function useProductionAddresses(
 }
 const NO_ADDRESSES: ReadonlyArray<GroupFlowAddress> = [];
 
-/** The stage that follows `main`: where a merge lands first. */
-/** Every stage that follows `main`, each deploying what merges into it. */
+/**
+ * Every stage that deploys what merges into `main` (`stageDeploysMerges`): it follows `main` and
+ * has deployed from it.
+ */
 export function mainStagesOf(
   flow: ZeropsProjectFlow,
 ): ReadonlyArray<ZeropsProjectFlow["environmentInputs"][number]> {
-  return flow.environmentInputs.filter(
-    (entry) =>
-      entry.tier === "stage" &&
-      flow.environments.find((row) => row.id === entry.id)?.source === "main",
-  );
+  return flow.environmentInputs.filter((entry) => {
+    if (entry.tier !== "stage") return false;
+    const row = flow.environments.find((candidate) => candidate.id === entry.id);
+    return row !== undefined && stageDeploysMerges(row);
+  });
 }
 
+/** The stage that follows `main`: where a merge lands first. */
 export function mainStageOf(
   flow: ZeropsProjectFlow,
 ): ZeropsProjectFlow["environmentInputs"][number] | undefined {

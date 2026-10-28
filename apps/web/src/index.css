@@ -5671,11 +5671,12 @@ code {
   white-space: nowrap;
 }
 
-/* A Mate's part: its name, then its dev and its stage in fixed columns, so every row's sides align
-   under each other; on the names' edge, as its addresses are. Each column fits "dev 2 ↗". */
+/* A Mate's part: its name, then its dev and its preview in fixed columns, so every row's entries
+   align under each other; on the names' edge, as its addresses are. The dev column fits a short
+   chat title, cut at its edge; the preview's fits "preview ↗". */
 .zerops-sites-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 64px;
+  grid-template-columns: minmax(0, 1fr) 104px 76px;
   column-gap: 4px;
   align-items: center;
   padding: 4px 38px 4px 36px;
@@ -5694,6 +5695,18 @@ code {
 }
 
 /* A side that opens: the address row's link, compact — its label in the row's text, the ↗ after. */
+.zerops-sites-side > * {
+  max-width: 100%;
+}
+
+.zerops-sites-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .zerops-sites-side > .zerops-sites-link {
   gap: 4px;
   padding: 2px 6px;
@@ -7160,13 +7173,16 @@ a.ov-card-site:hover {
 
 .ov-mate-l1 {
   display: flex;
-  height: 22px;
+  min-height: 22px;
   min-width: 0;
-  align-items: center;
+  align-items: flex-start;
   gap: 6px;
 }
 
+/* The name keeps its own width, up to most of the line: parts wrap beside it, never over it. */
 .ov-mate-name {
+  flex: none;
+  max-width: 65%;
   min-width: 0;
   overflow: hidden;
   font-size: 15px;
@@ -8534,7 +8550,15 @@ button.ov-panel-state:focus-visible {
   background: var(--zerops-status-ok);
 }
 
-.ov-service[data-state="stopped"] .ov-service-dot {
+/* A services line held while its services are read, or while a stage runs nothing yet: a line's
+   room with nothing in it to read. */
+.ov-panel-services[data-zerops-services-held] > .ov-service::before {
+  content: "\200b";
+}
+
+/* Stopped, or running with nothing deployed in it: hollow, never the green of a service that serves. */
+.ov-service[data-state="stopped"] .ov-service-dot,
+.ov-service[data-state="idle"] .ov-service-dot {
   background: transparent;
   box-shadow: inset 0 0 0 1.25px var(--muted-foreground);
 }
@@ -8970,8 +8994,18 @@ div.ov-change:hover {
   color: var(--zerops-status-failed-text);
 }
 
-/* A Mate's preview on its name's line, one per service and named by it — `web ↗`, `api ↗` — 12/16
-   muted like the time (the owner, 2026-10-11: "preview of what? there are multiple services"). */
+/* A Mate's parts on its name's line, between its name and its time: they wrap onto further lines
+   inside the card, so neither the name nor the time gives way. */
+.ov-mate-parts {
+  display: flex;
+  flex: 1 1 0;
+  flex-wrap: wrap;
+  min-width: 0;
+  column-gap: 2px;
+}
+
+/* A part's chip, named by the part — `API ↗`, `Web ↗` — 12/16 muted like the time (the owner,
+   2026-10-11: "preview of what? there are multiple services"). */
 .ov-mate-preview {
   position: relative;
   z-index: 1;
@@ -8990,7 +9024,12 @@ div.ov-change:hover {
     color 150ms var(--ease-out-strong);
 }
 
-.ov-mate-preview:hover {
+.ov-mate-preview[data-off] {
+  color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+  cursor: default;
+}
+
+.ov-mate-preview:not([data-off]):hover {
   background: color-mix(in oklab, var(--foreground) 7%, transparent);
   color: var(--foreground);
 }
@@ -9111,14 +9150,14 @@ div.ov-change:hover {
   flex: none;
   color: var(--muted-foreground);
 }
-.rv-try-host {
+.rv-try-part {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* One pill per service, named by it before its address. */
+/* One pill per part: whose preview, then the part. */
 .rv-tries {
   display: flex;
   flex-wrap: wrap;

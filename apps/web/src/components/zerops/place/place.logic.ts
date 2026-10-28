@@ -10,8 +10,14 @@ import type {
   GroupRowTone,
   ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
-import type { StopServiceRow, StopView } from "@t3tools/client-runtime/zerops/flow";
+import {
+  NOTHING_DEPLOYED,
+  type StopServiceRow,
+  type StopView,
+} from "@t3tools/client-runtime/zerops/flow";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
+
+import { placeStateWord, type ChipLabel } from "../SidebarProductionChip.logic";
 
 /** What a tier is called where the place's own name is only its tier. */
 const TIER_TITLE: Record<GroupEnvironmentTier, string> = {
@@ -27,6 +33,18 @@ const TIER_NAMES: Record<GroupEnvironmentTier, ReadonlyArray<string>> = {
 
 /** The chip beside a custom name, saying which tier it is. */
 const TIER_TAG: Record<GroupEnvironmentTier, string> = { production: "prod", stage: "stage" };
+
+/**
+ * A shared environment's title, the same wherever one is named: "Production"; a stage by its own
+ * name with its first letter capitalised ("Stage", "Client demo"). A name HQ made from the
+ * application's slug and the tier ("demo-app-stage") is the tier's own word.
+ */
+export function environmentTitle(tier: "production" | "stage", name: string): string {
+  if (tier === "production") return "Production";
+  const own = name.trim();
+  if (own === "" || /^[a-z0-9]+(?:-[a-z0-9]+)*-stage$/u.test(own)) return "Stage";
+  return own.charAt(0).toLocaleUpperCase() + own.slice(1);
+}
 
 /**
  * A place's title: its tier in title case where its name only says the tier, else its own name as
@@ -52,7 +70,8 @@ export interface PlaceStatus {
 
 /**
  * Production: `Running · v0.1.0 · released 3h ago by Mira · 1 service`.
- * Stage: `Deployed 23m ago · 6bc9923 · follows main · 1 service`.
+ * Stage: `Running · deployed 23m ago · 6bc9923 · follows main · 1 service`.
+ * Nothing there: `Not released yet`, `Not deployed yet` — the words its card says it in.
  * Any other state says its own word first and what it knows after it.
  */
 export function placeStatus(input: {
@@ -83,10 +102,13 @@ export function placeStatus(input: {
     );
   } else if (view.tone === "good") {
     parts.push(
-      input.since === undefined ? view.word : `${view.word} ${input.since}`,
+      placeStateWord("stage", "ok"),
+      input.since === undefined ? undefined : `deployed ${input.since}`,
       version?.commit ?? version?.label,
       follows,
     );
+  } else if (view.word === NOTHING_DEPLOYED) {
+    parts.push(placeStateWord(CHIP_LABEL[input.tier], "empty"));
   } else {
     const label = version?.label;
     parts.push(view.word, label === view.word ? undefined : label);
@@ -176,4 +198,39 @@ export function foldedFaces<Person>(
 /** The release production rolls back to from its menu: the newest one *Roll back* is offered on. */
 export function rollBackTarget(releases: ReadonlyArray<FlowReleaseRow>): string | undefined {
   return releases.find((release) => release.rollBack)?.tag;
+}
+
+const CHIP_LABEL: Record<GroupEnvironmentTier, ChipLabel> = { production: "prod", stage: "stage" };
+
+/**
+ * An environment's row in its project's page column: what runs there in its version column, and its
+ * state in the words its card and Sites say it (`placeStateWord`) — its dot's tone beside them, none
+ * where the word is only that its answer is not in yet.
+ */
+export function stopRowSays(
+  tier: GroupEnvironmentTier,
+  view: Pick<StopView, "tone" | "word" | "line"> & { readonly version?: StopView["version"] },
+): {
+  readonly version: string | undefined;
+  readonly word: string;
+  readonly tone: GroupRowTone | undefined;
+} {
+  const label = CHIP_LABEL[tier];
+  switch (view.tone) {
+    case "good":
+      return { version: view.line, word: placeStateWord(label, "ok"), tone: "good" };
+    case "pending": {
+      const word = placeStateWord(label, "releasing");
+      return { version: view.line === view.word ? undefined : view.line, word, tone: "pending" };
+    }
+    case "bad":
+      return { version: view.line, word: placeStateWord(label, "failed"), tone: "bad" };
+    case "neutral":
+      if (view.line === NOTHING_DEPLOYED)
+        return { version: undefined, word: placeStateWord(label, "empty"), tone: "neutral" };
+      // The platform says what runs; its HQ row, which says how it does, is not read yet.
+      if (view.version !== undefined)
+        return { version: view.line, word: placeStateWord(label, "ok"), tone: "neutral" };
+      return { version: undefined, word: view.line, tone: undefined };
+  }
 }

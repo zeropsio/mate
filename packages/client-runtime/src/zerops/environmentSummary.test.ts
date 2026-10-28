@@ -105,6 +105,29 @@ describe("summarizeEnvironmentServices", () => {
     ]);
   });
 
+  // The live audit (2026-10-28): an empty production's runtime stood with a green dot beside
+  // "Not released yet" — the platform runs its container, and nothing deployed runs in it.
+  it.each([
+    {
+      name: "a runtime the platform says holds no deploy",
+      given: service("app", { activeAppVersion: null }),
+      nothing: true,
+    },
+    { name: "a runtime running a deploy", given: APP, nothing: false },
+    { name: "a runtime whose deploy is not read", given: service("app"), nothing: false },
+    {
+      name: "a database, which runs no deploy of the developer's",
+      given: { ...DB, activeAppVersion: null },
+      nothing: false,
+    },
+  ])(
+    "says a runtime has nothing deployed only where the platform says so: $name",
+    ({ given, nothing }) => {
+      const [status] = summarizeEnvironmentServices([given]).statuses;
+      expect(status?.nothingDeployed === true).toBe(nothing);
+    },
+  );
+
   it("carries the same services by id, for the reads that need one", () => {
     expect(summarizeEnvironmentServices([BUILD, ZCP, DB, APP, CORE]).deployable).toEqual([
       { serviceId: "app-id", hostname: "app" },

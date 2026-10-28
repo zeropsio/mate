@@ -2,6 +2,7 @@ import { scenarioSuite } from "../../harness/suite.ts";
 import { composerLayout } from "./composerLayout.ts";
 import type { Page } from "puppeteer-core";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
+import { resizeMenu } from "../../harness/browser.ts";
 import { describe, expect, it } from "@effect/vitest";
 import { TurnId } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
@@ -442,6 +443,102 @@ describe("owner-reported layout regressions", () => {
             }),
           );
         });
+      });
+    });
+
+    // The live audit, 2026-10-28: Noola's Odin row put seven parts' chips on its name's line, its
+    // name went to 0 px and the chips and its time ran over the card into Mate Web's row.
+    describe("Decision: a Mate row's parts wrap inside its card, and its name never gives way.", () => {
+      scenarioSuite((it) => {
+        it.effect(
+          "a Mate with many parts keeps its whole name, its parts wrap inside the card and nothing leaves it",
+          () =>
+            Effect.gen(function* () {
+              const s = yield* menuScenario();
+              yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+              yield* s.given.project("Odin", { mate: true, app: "Noola" });
+              const parts = ["api", "edge", "embedder", "geo", "runner", "site", "web"];
+              for (const part of parts)
+                for (const half of ["dev", "stage"])
+                  s.drivers.zerops.put("service-stack", {
+                    id: `service-${part}${half}`,
+                    projectId: "Odin",
+                    clientId: "ORG",
+                    name: `${part}${half}`,
+                    status: "ACTIVE",
+                    subdomainAccess: true,
+                    serviceStackTypeInfo: {
+                      serviceStackTypeName: "nodejs",
+                      serviceStackTypeVersionName: "nodejs@22",
+                      serviceStackTypeCategory: "USER",
+                    },
+                    ports: [{ port: 3000, scheme: "http" }],
+                  });
+              yield* s.given.signedIn;
+              yield* Effect.promise(() => resizeMenu(s.page, 435));
+              const row = yield* Effect.promise(async () => {
+                await s.page.goto(`${s.web.origin}/zerops`);
+                await s.page.waitForFunction(
+                  (count) =>
+                    document.querySelectorAll(
+                      '[data-zerops-surface="card-mate-parts"] .ov-mate-preview',
+                    ).length === count,
+                  {},
+                  parts.length,
+                );
+                await waitForStillFrames(s.page);
+                return s.page.evaluate(() => {
+                  const mate = document.querySelector('[data-zerops-surface="card-mate"]')!;
+                  const card = mate.closest("article")!;
+                  const name = mate.querySelector<HTMLElement>(".ov-mate-name")!;
+                  const box = (element: Element) => {
+                    const rect = element.getBoundingClientRect();
+                    return {
+                      top: rect.top,
+                      bottom: rect.bottom,
+                      left: rect.left,
+                      right: rect.right,
+                    };
+                  };
+                  const chips = [
+                    ...mate.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
+                  ].map(box);
+                  return {
+                    card: box(card),
+                    name: { ...box(name), width: name.clientWidth, needs: name.scrollWidth },
+                    chips,
+                    time: box(mate.querySelector(".ov-mate-time")!),
+                    rows: new Set(chips.map((chip) => Math.round(chip.top))).size,
+                  };
+                });
+              });
+              const seen = quoted(row);
+              expect(
+                row.name.width,
+                `ASSERTION: the Mate's whole name shows: ${seen}`,
+              ).toBeGreaterThanOrEqual(row.name.needs);
+              expect(
+                row.rows,
+                `ASSERTION: the parts wrap onto more lines: ${seen}`,
+              ).toBeGreaterThan(1);
+              for (const chip of [...row.chips, row.time]) {
+                expect(
+                  chip.left,
+                  `ASSERTION: nothing starts left of the card: ${seen}`,
+                ).toBeGreaterThanOrEqual(row.card.left);
+                expect(
+                  chip.right,
+                  `ASSERTION: nothing leaves the card: ${seen}`,
+                ).toBeLessThanOrEqual(row.card.right);
+              }
+              for (const chip of row.chips)
+                expect(
+                  chip.left >= row.name.right && chip.right <= row.time.left,
+                  `ASSERTION: the parts stand between the name and the time: ${seen}`,
+                ).toBe(true);
+              yield* s.then.noExternalNetwork;
+            }),
+        );
       });
     });
 

@@ -52,6 +52,7 @@ import {
   type ReleaseChangeRow,
   type ReviewFrame,
   type ReviewKind,
+  tryItWords,
 } from "./ZeropsReview.logic";
 
 /** The keys that press the primary, as this platform writes them. */
@@ -435,33 +436,34 @@ export function useReviewFold(initiallyOpen = false): ReviewFoldState & {
   };
 }
 
-/** "Try it": the Mate's previews, each by its service and its address, opened in a tab. */
+/** "Try it": the Mate's previews, each by its Mate and its part (`tryItWords`), opened in a tab. */
 export function ReviewTry({
+  mateName,
   previews,
 }: {
-  readonly previews: ReadonlyArray<{
-    readonly service: string;
-    readonly url: string;
-    readonly host: string;
-  }>;
+  readonly mateName: string;
+  readonly previews: ReadonlyArray<{ readonly service: string; readonly url: string }>;
 }) {
   return (
     <ReviewSection title="Try it">
       <div className="rv-tries">
-        {previews.map((preview) => (
-          <a
-            className="rv-try"
-            href={preview.url}
-            key={preview.service}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <GlobeIcon aria-hidden="true" />
-            <span className="rv-try-service">{preview.service}</span>
-            <span className="rv-try-host">{preview.host}</span>
-            <ArrowUpRightIcon aria-hidden="true" />
-          </a>
-        ))}
+        {previews.map((preview) => {
+          const words = tryItWords(mateName, preview.service);
+          return (
+            <a
+              className="rv-try"
+              href={preview.url}
+              key={preview.service}
+              rel="noreferrer"
+              target="_blank"
+            >
+              <GlobeIcon aria-hidden="true" />
+              <span className="rv-try-service">{words.preview}</span>
+              <span className="rv-try-part">· {words.part}</span>
+              <ArrowUpRightIcon aria-hidden="true" />
+            </a>
+          );
+        })}
       </div>
     </ReviewSection>
   );
