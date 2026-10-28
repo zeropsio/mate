@@ -244,8 +244,11 @@ function useDetailWhileSeen(groupId: string) {
       return;
     }
     const observer = new IntersectionObserver(
-      ([record]) => {
-        setSeen(record?.isIntersecting === true);
+      // A busy page gets several of its reports in one call, oldest first: the last says where it
+      // stands now. Read first, a card mounted out of sight under the overview's wait stood in
+      // for good once it came into sight (State Smoke, 2026-10-27).
+      (records) => {
+        setSeen(records.at(-1)?.isIntersecting === true);
       },
       { rootMargin: `0px ${String(CARD_STEP)}px` },
     );
