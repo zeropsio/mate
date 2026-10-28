@@ -1424,7 +1424,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       "its files for this head still being read: off, with its reason, its keys and its place kept",
       "reading",
       { enabled: false, safe: false, shortcut: true },
-      "Merging waits until its files are read.",
+      "Loading change details…",
     ],
     [
       "its files for this head could not be read",
@@ -1452,7 +1452,7 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       }),
     );
     expect(review.primary).toEqual({ label: "Merge", enabled: false, safe: false });
-    expect(review.consequence).toBe("Merging waits until its files are read.");
+    expect(review.consequence).toBe("Loading change details…");
   });
 
   it("keeps a blocked change's reason while its files are read", () => {

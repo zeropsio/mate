@@ -363,6 +363,47 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       },
     );
 
+  it("While the review waits for HQ's record it says Loading change details…", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false }), [], {
+      readout: { kind: "reading" },
+    });
+    expect(document.body.textContent).toContain("Loading change details…");
+    expect(document.body.textContent).not.toContain("files are read");
+    expect(
+      document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
+    ).toBe(true);
+  });
+
+  it("opening Files or reading each diff is never a prerequisite for Merge", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false }), [], {
+      readout: { kind: "read", value: recorded(null) },
+      showFiles: noop,
+    });
+    const merge = document.querySelector('[data-zerops-primary-action="Merge"]');
+    expect(merge).not.toBeNull();
+    expect(merge?.hasAttribute("disabled")).toBe(false);
+    expect(document.body.textContent).toContain("Show files");
+  });
+
+  it("a failed metadata read explains the failure and offers retry", () => {
+    const markup = render(merged({ merged: false }), [], {
+      readout: { kind: "failed", reason: "HQ is not answering right now." },
+      onRetry: noop,
+    });
+    const document = new Window().document;
+    document.body.innerHTML = markup;
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Try again" && button.closest("[hidden]") === null,
+    );
+    expect(
+      retry,
+      "ASSERTION: metadata failure retry is visible without opening Files",
+    ).toBeDefined();
+    expect(retry?.parentElement?.textContent).toContain("HQ is not answering right now.");
+  });
+
   it("Files not recorded yet read not known yet", () => {
     const markup = render(merged(), [], {
       readout: { kind: "read", value: recorded(null) },

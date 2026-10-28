@@ -98,6 +98,7 @@ import { ReviewConversation } from "./ReviewConversation";
 import { ReviewDescription } from "./ReviewDescription";
 import { useReviewHold } from "./ZeropsReviewDialog";
 import {
+  ReviewFailed,
   ReviewFiles,
   ReviewSection,
   ReviewTry,
@@ -926,6 +927,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       verdict={model.verdict}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
+      {readout.kind === "failed" ? (
+        <ReviewFailed
+          onRetry={props.onRetry}
+          reason={readout.reason}
+          what="The change details couldn't be loaded."
+        />
+      ) : null}
       {others.length === 0 ? null : (
         <p className="rv-words" data-zerops-surface="change-others">
           Other open changes in {pull.repository}:{" "}
