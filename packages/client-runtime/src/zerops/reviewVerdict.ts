@@ -265,6 +265,8 @@ export interface ChangeReviewInput {
     readonly behind: boolean;
     /** Whether it asks for review: its Mate described it at its head. Absent reads as ready. */
     readonly ready?: boolean | undefined;
+    /** On a draft described before a push: why it is a draft again (`HqChange.draftReason`). */
+    readonly draftReason?: string | undefined;
     /** HQ's word, once it merged, that it was the application's first merged code change. */
     readonly firstCodeMerge?: boolean | undefined;
     /** HQ's word, once it merged, that GitHub merged it of a head no person merged in Mate. */
@@ -700,8 +702,10 @@ export function changeMergeVerdict(
   }
 
   // Quiet, not green: no signal about a change is not a good signal. A draft merges as well,
-  // but says its words are not of its latest work: its Mate has not described that yet.
+  // but says its words are not of its latest work: its Mate has not described that yet — or, one
+  // described before, why HQ made it a draft again though its own diff may be as it was.
   const draft = pull.ready === false;
+  const again = draft ? draftAgain(pull.draftReason) : undefined;
   return {
     enabled: true,
     verdict: {
@@ -709,15 +713,46 @@ export function changeMergeVerdict(
       tone: "quiet",
       title: draft ? "Draft" : "Ready to merge",
       why: [
-        draft ? `${who} hasn't described its latest work` : undefined,
+        again !== undefined
+          ? `HQ couldn't ${again.couldNot} the latest push${again.inTime ? " in time" : ""}, so ${who} needs to describe it again`
+          : draft
+            ? `${who} hasn't described its latest work`
+            : undefined,
         `No conflicts with ${base}`,
         commits,
       ]
         .filter((part) => part !== undefined)
         .join(" · "),
-      fix: undefined,
+      fix:
+        again === undefined
+          ? undefined
+          : {
+              verb: "describe it again",
+              problem: {
+                what: `Change #${String(pull.number)} is a draft again: HQ couldn't ${again.couldNot} its latest push${again.inTime ? " in time" : ""}`,
+                ask: "Describe the change again as it is now.",
+              },
+            },
     },
   };
+}
+
+/**
+ * Why HQ made a described change a draft again, for the reasons this client knows: its check of
+ * the push ran out of time, or it could not read the push. A later HQ's reason says nothing more
+ * than a draft does.
+ */
+function draftAgain(
+  reason: string | undefined,
+): { readonly couldNot: string; readonly inTime: boolean } | undefined {
+  switch (reason) {
+    case "notes_timed_out":
+      return { couldNot: "check", inTime: true };
+    case "notes_unread":
+      return { couldNot: "read", inTime: false };
+    default:
+      return undefined;
+  }
 }
 
 /**

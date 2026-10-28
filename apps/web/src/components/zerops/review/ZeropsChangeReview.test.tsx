@@ -5,6 +5,7 @@
  */
 import {
   changeReadoutOfRecord,
+  flowChange,
   RELEASE_NOTHING_NEW_ON_MAIN,
   type FlowPullRequest,
 } from "@t3tools/client-runtime/zerops";
@@ -520,6 +521,120 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     });
     expect(textOf(markup)).toContain("The commits are not known yet.");
     expect(textOf(markup)).toContain("Show commits");
+  });
+});
+
+describe("ChangeReviewView: a change as HQ's record of it says", () => {
+  const MATE_COMMIT = {
+    sha: "1".repeat(40),
+    subject: "Add the search box",
+    authorName: "Wren",
+    at: "2026-09-30T09:00:00.000Z",
+  };
+  const HQ_MERGE = {
+    sha: "2".repeat(40),
+    subject: "Merge main as #3 landed it",
+    authorName: "Core",
+    at: "2026-09-30T09:40:00.000Z",
+  };
+  /** An open change of Wren's at HQ, `over` it, its commits HQ's merge and Wren's own. */
+  const record = (over: Partial<HqChange> = {}): HqChange => ({
+    appId: "group-orchard",
+    repo: "appdev",
+    number: 7,
+    mateProjectId: "p-wren",
+    title: "Search the orders",
+    body: "",
+    state: "open",
+    head: HQ_MERGE.sha,
+    mergedSha: null,
+    landedHead: null,
+    openedAt: "2026-09-30T08:00:00.000Z",
+    mergedAt: null,
+    closedAt: null,
+    updatedAt: "2026-09-30T09:40:00.000Z",
+    mergeability: "clean",
+    behind: false,
+    ready: true,
+    comments: 0,
+    ...over,
+  });
+  const shown = (change: HqChange, over: Partial<ChangeReviewViewProps> = {}) =>
+    textOf(
+      render(flowChange(change, hq.address), [], {
+        readout: {
+          kind: "read",
+          value: changeReadoutOfRecord(change, review({ commits: [HQ_MERGE, MATE_COMMIT] })),
+        },
+        ...over,
+      }),
+    );
+  const corePush = {
+    at: "2026-09-30T09:40:02.000Z",
+    from: MATE_COMMIT.sha,
+    head: HQ_MERGE.sha,
+    landed: 3,
+    squash: "3".repeat(40),
+  };
+
+  it.each([
+    [
+      "the merged change's title, where the flow holds it",
+      "Show the order list",
+      "HQ brought main in after “Show the order list” merged",
+    ],
+    ["its number, where the flow does not", undefined, "HQ brought main in after #3 merged"],
+  ])(
+    "A change HQ brought main into lists HQ's merge as HQ's push, naming %s",
+    (_name, landedTitle, line) => {
+      const text = shown(record({ corePush }), { landedTitle });
+      expect(text).toContain(line);
+      expect(text).toContain("Add the search box");
+      expect(text).not.toContain("Merge main as #3 landed it");
+      // HQ's rule kept it described: its push asks for no new description.
+      expect(text).toContain("Ready to merge");
+    },
+  );
+
+  it("A change HQ never pushed to lists its commits as they are", () => {
+    const text = shown(record());
+    expect(text).toContain("Merge main as #3 landed it");
+    expect(text).not.toContain("HQ brought main in");
+  });
+
+  it.each([
+    [
+      "HQ's check of the push ran out of time",
+      "notes_timed_out",
+      "HQ couldn't check the latest push in time, so Wren needs to describe it again",
+    ],
+    [
+      "HQ could not read the push",
+      "notes_unread",
+      "HQ couldn't read the latest push, so Wren needs to describe it again",
+    ],
+  ])(
+    "A draft again because %s says why, and offers to ask its Mate to describe it again",
+    (_name, draftReason, why) => {
+      const text = shown(record({ ready: false, draftReason }), {
+        mate: { name: "Wren", tint: undefined, mine: true },
+      });
+      expect(text).toContain("Draft");
+      expect(text).toContain(why);
+      expect(text).toContain("Ask Wren to describe it again");
+    },
+  );
+
+  it.each([
+    ["a draft HQ gave no reason for", {}],
+    ["a draft for a reason this client does not know", { draftReason: "later_reason" }],
+  ])("%s says only that its Mate hasn't described its latest work", (_name, over) => {
+    const text = shown(record({ ready: false, ...over }), {
+      mate: { name: "Wren", tint: undefined, mine: true },
+    });
+    expect(text).toContain("Wren hasn't described its latest work");
+    expect(text).not.toContain("HQ couldn't");
+    expect(text).not.toContain("describe it again");
   });
 });
 

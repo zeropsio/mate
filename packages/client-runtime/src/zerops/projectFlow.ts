@@ -24,7 +24,13 @@
  */
 
 import type { ServiceStatusToneId } from "@t3tools/shared/brand";
-import { type ChangeReceipt, changeUrl, type HqChange, repoUrl } from "@t3tools/shared/hqChanges";
+import {
+  type ChangeReceipt,
+  changeUrl,
+  type HqChange,
+  type HqCorePush,
+  repoUrl,
+} from "@t3tools/shared/hqChanges";
 import type { HqPullRequest } from "@t3tools/shared/hqGithub";
 import type { HqNavigationChange } from "@t3tools/shared/hqStream";
 import { RECIPE_PROPOSAL_TITLE, RECIPE_REPO } from "@t3tools/shared/hqRecipe";
@@ -123,6 +129,13 @@ export interface FlowPullRequest {
    * reachable, and asks nothing. Absent reads as ready, as every change did before drafts.
    */
   readonly ready?: boolean | undefined;
+  /**
+   * On a draft described before a push: why it is a draft again (`HqChange.draftReason`), an open
+   * word, of which `draftAgainWords` knows some. Absent otherwise.
+   */
+  readonly draftReason?: string | undefined;
+  /** HQ's latest own push on its branch (`HqChange.corePush`); absent where HQ never moved it. */
+  readonly corePush?: HqCorePush | undefined;
   /**
    * What zcp last said of each part's preview (`HqChange.receipt`); absent for a change of a
    * single-part application, which never carries one.
@@ -234,6 +247,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
     description: change.body.trim().length === 0 ? undefined : change.body,
     commentCount: change.comments ?? undefined,
     ready: change.ready,
+    ...(change.draftReason === undefined ? {} : { draftReason: change.draftReason }),
+    ...(change.corePush === undefined ? {} : { corePush: change.corePush }),
     ...(change.receipt === undefined || change.receipt === null ? {} : { receipt: change.receipt }),
     ...(change.pullRequest === undefined ? {} : { pullRequest: change.pullRequest }),
   };
