@@ -5673,12 +5673,13 @@ code {
 
 /* A Mate's part: its name, then its dev and its preview in fixed columns, so every row's entries
    align under each other; on the names' edge, as its addresses are. The dev column fits a short
-   chat title, cut at its edge; the preview's fits "preview ↗". */
+   chat title, cut at its edge; the preview's fits "preview ↗". A dev's further addresses hang
+   under its first, so the pair stays on the row's first line. */
 .zerops-sites-pair {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 104px 76px;
   column-gap: 4px;
-  align-items: center;
+  align-items: baseline;
   padding: 4px 38px 4px 36px;
 }
 

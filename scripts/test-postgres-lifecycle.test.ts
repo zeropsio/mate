@@ -209,6 +209,42 @@ it("a lease client that disconnects before its answer leaves the supervisor and 
   }
 });
 
+it("Decision: Releasing a PostgreSQL lease leaves its databases until the next supervisor starts, so a running worker never waits for their drop", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-release-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  const leases: { close: () => Promise<void> }[] = [];
+  try {
+    const { acquireTestPostgres, postgresBinDir } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    leases.push(first);
+    const database = new URL(await first.createDatabase());
+    const name = database.pathname.slice(1);
+    database.pathname = "/postgres";
+    const count = () =>
+      NodeChildProcess.execFileSync(
+        NodePath.join(postgresBinDir(), "psql"),
+        [database.href, "-X", "-Atc", `SELECT count(*) FROM pg_database WHERE datname = '${name}'`],
+        { encoding: "utf8" },
+      ).trim();
+    const held = await acquireTestPostgres();
+    leases.push(held);
+    await first.close();
+    expect(count()).toBe("1");
+    await held.close();
+    await postgresStopped(home);
+    const next = await acquireTestPostgres();
+    leases.push(next);
+    database.port = new URL(await next.createDatabase()).port;
+    expect(count()).toBe("0");
+  } finally {
+    for (const lease of leases) await lease.close();
+    await postgresStopped(home);
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 it("admits a lease while another lease's database command waits on PostgreSQL", async () => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-wait-"));
   vi.stubEnv("MATE_TEST_PG_HOME", home);
@@ -274,5 +310,83 @@ it("a running test PostgreSQL cluster's port is reserved, so no other test proce
   } finally {
     vi.unstubAllEnvs();
     NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("worktrees with different PostgreSQL homes share admission when creating databases, while idle setup leases consume no slot", async () => {
+  const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-budget-"));
+  const directory = NodePath.join(root, "admit");
+  const firstHome = NodePath.join(root, "first");
+  const secondHome = NodePath.join(root, "second");
+  const actual = await import("./test-postgres-admission.ts");
+  let entered = 0;
+  let waiting!: () => void;
+  const queued = new Promise<void>((resolve) => {
+    waiting = resolve;
+  });
+  vi.doMock("./test-postgres-admission.ts", () => ({
+    ...actual,
+    acquirePostgresAdmission: (options: Parameters<typeof actual.acquirePostgresAdmission>[0]) => {
+      entered++;
+      return actual.acquirePostgresAdmission({
+        ...options,
+        directory,
+        capacity: 1,
+        onWaiting: waiting,
+      });
+    },
+  }));
+  const leases: { close: () => Promise<void> }[] = [];
+  try {
+    vi.stubEnv("MATE_TEST_PG_HOME", firstHome);
+    vi.resetModules();
+    const firstClient = await import("./test-postgres.ts");
+    const first = await firstClient.acquireTestPostgres();
+    leases.push(first);
+    const original = await first.createDatabase();
+    expect(entered).toBe(1);
+    const idle = await firstClient.acquireTestPostgres();
+    leases.push(idle);
+    expect(entered).toBe(1);
+    vi.stubEnv("MATE_TEST_PG_HOME", secondHome);
+    vi.resetModules();
+    const secondClient = await import("./test-postgres.ts");
+    const second = await secondClient.acquireTestPostgres();
+    leases.push(second);
+    let created = false;
+    const database = second.createDatabase().then((url) => {
+      created = true;
+      return url;
+    });
+    await queued;
+    expect(entered).toBe(2);
+    expect(created).toBe(false);
+    const maintenance = new URL(original);
+    maintenance.pathname = "/postgres";
+    const present = NodeChildProcess.execFileSync(
+      NodePath.join(firstClient.postgresBinDir(), "psql"),
+      [
+        maintenance.href,
+        "-X",
+        "-Atc",
+        `SELECT datname FROM pg_database WHERE datname = '${new URL(original).pathname.slice(1)}'`,
+      ],
+      { encoding: "utf8" },
+    ).trim();
+    expect(present).toBe(new URL(original).pathname.slice(1));
+    await first.close();
+    const replacement = await database;
+    expect(new URL(replacement).port).not.toBe(new URL(original).port);
+    expect(created).toBe(true);
+  } finally {
+    // Release in creation order even if an assertion failed while the second lease queued.
+    for (const lease of leases) await lease.close();
+    await Promise.all(
+      [firstHome, secondHome].filter((home) => NodeFS.existsSync(home)).map(postgresStopped),
+    );
+    vi.doUnmock("./test-postgres-admission.ts");
+    vi.unstubAllEnvs();
+    vi.resetModules();
+    NodeFS.rmSync(root, { recursive: true, force: true });
   }
 });

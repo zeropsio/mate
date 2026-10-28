@@ -350,7 +350,6 @@ const MERGED_NOW: Partial<FlowPullRequest> = {
   updatedAt: minutesAgo(1),
 };
 const NONE_OPEN: ReadonlyArray<string> = [];
-const RUN = { words: WORDS, reading: false } as const;
 const OFFERED = { kind: "offered" } as const;
 
 /** A change with a long diff: a lockfile read whole, and files after it too long to read here. */
@@ -473,7 +472,7 @@ function Change({
   over,
   readout = READ,
   open = NONE_OPEN,
-  run = RUN,
+  described = true,
   conversation = TALKING,
   environments = STAGE_AND_PRODUCTION,
   offers = DEVELOPS,
@@ -489,7 +488,8 @@ function Change({
   /** What HQ recorded of it, where it is not the one every state shares. */
   readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
-  readonly run?: { readonly words: string | undefined; readonly reading: boolean };
+  /** Whether its Mate described it: the description every state shares, unless one is given. */
+  readonly described?: boolean;
   readonly conversation?: ChangeDiscussion;
   readonly environments?: ChangeReviewViewProps["environments"];
   readonly offers?: ChangeReviewViewProps["offers"];
@@ -502,7 +502,7 @@ function Change({
   readonly heirs?: ChangeReviewViewProps["heirs"];
   readonly hand?: ChangeReviewViewProps["hand"];
 }) {
-  const value = pull(over);
+  const value = pull(described ? { description: WORDS, ...over } : over);
   return (
     <ChangeReviewView
       addable={addable}
@@ -531,13 +531,12 @@ function Change({
       onFix={noop}
       onClosing={noop}
       onMerge={noop}
-      onOpenRun={run.words === undefined && value.description === undefined ? undefined : noop}
+      onOpenRun={value.description === undefined ? undefined : noop}
       offers={offers}
       pictures={HARNESS_PICTURES}
       press={press}
       pull={value}
       readout={readout}
-      run={run}
       waitingForProduction={0}
       release={{ allowed: true }}
     />
@@ -911,7 +910,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         conversation={comments({ kind: "reading" })}
         frame="page"
         readout={READING}
-        run={{ words: undefined, reading: true }}
+        described={false}
       />
     ),
   },
@@ -949,18 +948,14 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   {
     id: "no-words",
-    label: "No description, and the run said nothing of it",
-    node: <Change run={{ words: undefined, reading: false }} />,
+    label: "No description",
+    node: <Change described={false} />,
   },
   {
     id: "reading",
     label: "Everything HQ answers, still being read",
     node: (
-      <Change
-        conversation={comments({ kind: "reading" })}
-        readout={READING}
-        run={{ words: undefined, reading: true }}
-      />
+      <Change conversation={comments({ kind: "reading" })} readout={READING} described={false} />
     ),
   },
   {
@@ -1156,7 +1151,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         open={[`${UNUSED_TIERS[0]}/import.yaml`]}
         over={RECIPE}
         readout={recipeRead(UNUSED_TIERS)}
-        run={{ words: undefined, reading: false }}
+        described={false}
       />
     ),
   },
@@ -1168,7 +1163,7 @@ export const REVIEW_STATES: ReadonlyArray<{
         conversation={comments({ kind: "read", comments: [] })}
         over={{ ...RECIPE, ...MERGED_NOW }}
         readout={recipeRead(UNUSED_TIERS)}
-        run={{ words: undefined, reading: false }}
+        described={false}
       />
     ),
   },
@@ -1184,7 +1179,7 @@ export const REVIEW_STATES: ReadonlyArray<{
           title: "Add a mail service to the stage and production setups",
         }}
         readout={recipeRead(MADE_FROM_TIERS)}
-        run={{ words: undefined, reading: false }}
+        described={false}
       />
     ),
   },
@@ -1201,7 +1196,7 @@ export const REVIEW_STATES: ReadonlyArray<{
           title: "Add a mail service to the stage and production setups",
         }}
         readout={recipeRead(MADE_FROM_TIERS)}
-        run={{ words: undefined, reading: false }}
+        described={false}
       />
     ),
   },
@@ -1498,7 +1493,6 @@ export function ReviewDialogTry({ openAtStart = false }: { readonly openAtStart?
             },
           })}
           readout={read ? READ : READING}
-          run={RUN}
           titleId="review-try-title"
           waitingForProduction={0}
           release={{ allowed: true }}
@@ -1567,7 +1561,6 @@ function ReleaseTrySteps({
             })}
             readout={READ}
             remarks={remarksOf(TALKING)}
-            run={RUN}
             titleId={onChange ? "release-try-title" : undefined}
             waitingForProduction={2}
             release={{ allowed: true }}

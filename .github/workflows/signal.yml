@@ -32,6 +32,8 @@ jobs:
     name: Chat Contract bundle
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    outputs:
+      node_version: ${{ steps.node.outputs.version }}
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -47,6 +49,10 @@ jobs:
           node-version-file: package.json
           cache: false
           run-install: false
+
+      - name: Record the producer's resolved Node version
+        id: node
+        run: echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
 
       - name: Resolve store path
         id: paths
@@ -144,7 +150,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
+          node-version: ${{ needs.chat_bundle.outputs.node_version }}
           cache: false
           run-install: false
 
@@ -212,7 +218,7 @@ jobs:
   classify:
     name: Classify original failures
     needs: [chat_bundle, chat_scenarios]
-    if: ${{ !cancelled() }}
+    if: ${{ !cancelled() && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     steps:
@@ -231,7 +237,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
+          node-version: ${{ needs.chat_bundle.outputs.node_version }}
           cache: false
           run-install: false
 
@@ -301,6 +307,15 @@ jobs:
       - name: Require the workflow infrastructure to succeed
         # After classification, so a shard the job guard killed still has its running case named.
         run: test "${{ needs.chat_bundle.result }}" = success && test "${{ needs.chat_scenarios.result }}" = success
+
+      - name: Upload infrastructure classifications
+        if: ${{ !cancelled() && hashFiles('signal-infrastructure.json') != '' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: signal-infrastructure
+          path: signal-infrastructure.json
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload failure classifications
         # A standing red fails the classify step after it wrote its classification: the next run

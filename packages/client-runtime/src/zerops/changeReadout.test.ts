@@ -70,6 +70,13 @@ describe("changeReadoutOfRecord: a change's review as HQ recorded it", () => {
     });
   });
 
+  it.each([
+    ["the description its Mate wrote", "Adds a **/status** page.", "Adds a **/status** page."],
+    ["none where its Mate wrote none", "  \n", undefined],
+  ])("A change's review says what it does from its own record: %s", (_case, body, description) => {
+    expect(changeReadoutOfRecord({ ...change, body }, review()).description).toBe(description);
+  });
+
   it("A file's status letter is the one HQ recorded, and none where it recorded none", () => {
     const read = changeReadoutOfRecord(
       change,

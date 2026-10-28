@@ -225,6 +225,17 @@ describe("stopComing — where a stage or a production coming up has got", () =>
       over: { birth: { ended: true }, routes: 0, addressPending: true },
       coming: { kind: "coming", step: "address" },
     },
+    // No publication was requested in the stage whose finished birth formerly spun forever.
+    {
+      case: "a stage HQ is done bringing up, still without its address: no longer coming up, never on its way for ever",
+      over: { birth: { ended: true }, routes: 0, addressPending: false },
+      coming: undefined,
+    },
+    {
+      case: "a stage HQ still brings up, serving a port its address would open: turning its address on",
+      over: { birth: { ended: false }, routes: 0, addressPending: true },
+      coming: { kind: "coming", step: "address" },
+    },
     {
       case: "a stage HQ brought up serving no port its address would open: running as it is",
       over: { birth: { ended: false }, routes: 0, addressPending: false },
@@ -278,6 +289,11 @@ describe("stopComing — where a stage or a production coming up has got", () =>
 describe("addressComing — a place HQ brought up turns its address on, the card's and the menu's one rule", () => {
   it.each([
     { case: "brought up, a port to open, no address yet", over: { pending: true }, coming: true },
+    {
+      case: "done bringing it up, a port to open, no address: nothing turns it on, never coming",
+      over: { pending: false },
+      coming: false,
+    },
     { case: "brought up, its address there", over: { addresses: 1 }, coming: false },
     { case: "brought up, no port its address would open", over: { pending: false }, coming: false },
     {
@@ -568,6 +584,25 @@ describe("listedStopComing — a stage, read the way the menu reads it", () => {
     expect(listed(0, true)).toEqual({ kind: "coming", step: "address" });
     expect(listed(1, true)).toBeUndefined();
     expect(listed(0, false)).toBeUndefined();
+  });
+});
+
+describe("listedStopComing — a stage, read the way the menu reads it", () => {
+  // HQ's birth alone never proves publication; this stage has none pending once birth ends.
+  it("says a stage is turning its address on only while HQ still brings it up, as its card does", () => {
+    const listed = (routes: number, pending: boolean | undefined, ended = false) =>
+      listedStopComing("stage", {
+        stop: { state: "deployed", version: { label: "v1" }, birth: { ended } },
+        projectStatus: "ACTIVE",
+        services: [db("ACTIVE"), app("ACTIVE")],
+        building: false,
+        routes,
+        addressPending: ended ? false : pending,
+      });
+    expect(listed(0, true)).toEqual({ kind: "coming", step: "address" });
+    expect(listed(1, true)).toBeUndefined();
+    expect(listed(0, false)).toBeUndefined();
+    expect(listed(0, true, true)).toBeUndefined();
   });
 });
 

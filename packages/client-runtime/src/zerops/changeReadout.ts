@@ -50,6 +50,8 @@ export interface ChangeReadout {
   readonly conflict: ReadonlyArray<string>;
   /** Whether `main`'s head as read is past the change's merge base with it: `main` moved on. */
   readonly behind: boolean;
+  /** What it does, as its Mate described it (`describe-change`); none where it wrote none. */
+  readonly description: string | undefined;
 }
 
 /** Git's empty tree in a repository of SHA-1 and of SHA-256 object ids. */
@@ -89,6 +91,7 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     mergeability: mergeabilityKindOf(change.mergeability),
     conflict: review.conflictPaths,
     behind: change.behind,
+    description: change.body.trim().length === 0 ? undefined : change.body,
   };
 }
 

@@ -129,13 +129,25 @@ describe("changeAskPrompt", () => {
 
   it("quotes what the person wrote rather than paraphrasing it", () => {
     expect(changeAskPrompt({ ...change, said: "The cache key ignores the locale." })).toBe(
-      'On #4 "Cache the link previews" on appdev:\n\nThe cache key ignores the locale.\n\nDo that, then push.',
+      'A comment on your change #4 "Cache the link previews" on appdev:\n\nThe cache key ignores the locale.',
     );
   });
 
   it("quotes the words without the space around them", () => {
     expect(changeAskPrompt({ ...change, said: "  rebase it \n" })).toBe(
-      'On #4 "Cache the link previews" on appdev:\n\nrebase it\n\nDo that, then push.',
+      'A comment on your change #4 "Cache the link previews" on appdev:\n\nrebase it',
+    );
+  });
+
+  // Lukas, 2026-10-28: "What should I do here? Merge is greyed out." reached his Mate as
+  // an order to do it and push. The Mate judges whether words are a question or work to do.
+  it.each([
+    "What should I do here? Merge is greyed out.",
+    "Handle it",
+    "Why does the total round down?",
+  ])("adds no order to what the person wrote: %s", (said) => {
+    expect(changeAskPrompt({ ...change, said })).toBe(
+      `A comment on your change #4 "Cache the link previews" on appdev:\n\n${said}`,
     );
   });
 

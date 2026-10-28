@@ -1438,6 +1438,14 @@ describe("changeReview: Merge takes only a head whose change was shown", () => {
       { enabled: true, safe: true },
       "Adds this change to main. Production isn't touched until you release.",
     ],
+    // Lukas, 2026-10-28: Merge stayed off beside "Merging waits until its files are read" until a
+    // reload, for a change drawn from the menu's row: HQ had not said its head, so nothing was read.
+    [
+      "no head HQ said for it, and the wait for it over: off, never merged blind",
+      "unread",
+      { enabled: false, safe: false },
+      "Nothing merges from here until HQ sends this change's details.",
+    ],
   ])("%s", (_case, readout, primary, consequence) => {
     const review = changeReview(change({ readout }));
     expect(review.primary).toEqual({ label: "Merge", ...primary });

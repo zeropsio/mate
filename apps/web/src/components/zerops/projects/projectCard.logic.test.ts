@@ -445,7 +445,6 @@ describe("a card's places", () => {
     ]);
   });
 
-  // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
   // A pending publication retains address progress; published stages keep their running label.
   it.each([
     {
@@ -468,6 +467,14 @@ describe("a card's places", () => {
       pending: true,
       published: false,
       words: "Turning its address on…",
+    },
+    // Without public-access evidence, a finished birth and an open port promise no publication.
+    {
+      case: "once HQ has brought it up, its address still off: running, never turning it on for ever",
+      birth: { ended: true },
+      pending: undefined,
+      published: false,
+      words: "Running",
     },
     {
       case: "once HQ has brought it up, serving nothing an address would open",
