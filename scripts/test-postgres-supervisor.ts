@@ -28,7 +28,7 @@ const run = (command: string, args: string[]) => {
   });
   if (result.status !== 0)
     throw new Error(
-      `${command} failed: ${result.error?.message ?? ""}\n${result.stdout}\n${result.stderr}${command === "pg_ctl" && NodeFS.existsSync(NodePath.join(postgresHome, "postgres.log")) ? NodeFS.readFileSync(NodePath.join(postgresHome, "postgres.log"), "utf8") : ""}`,
+      `${command} failed: ${result.error?.message ?? ""}\n${result.stdout}\n${command === "pg_ctl" && NodeFS.existsSync(NodePath.join(postgresHome, "postgres.log")) ? NodeFS.readFileSync(NodePath.join(postgresHome, "postgres.log"), "utf8") : ""}\n${command} exited: ${result.status ?? result.signal}\n${result.stderr?.slice(-4096) ?? ""}`,
     );
   return result.stdout;
 };
@@ -97,8 +97,8 @@ async function guardPostgres() {
   let running = true;
   const stop = () => {
     if (!running) return;
-    stopPostgres();
     running = false;
+    stopPostgres();
   };
   process.once("exit", stop);
   const finish = () => {
@@ -131,12 +131,21 @@ async function supervise() {
       NodeURL.fileURLToPath(import.meta.url),
       "guard",
     ],
-    { stdio: ["pipe", "ignore", "inherit", "ipc"] },
+    { stdio: ["pipe", "ignore", "pipe", "ipc"] },
   );
+  let stderrTail = "";
+  guard.stderr!.setEncoding("utf8");
+  guard.stderr!.on("data", (chunk: string) => {
+    stderrTail = (stderrTail + chunk).slice(-8192);
+    process.stderr.write(chunk);
+  });
   const exited = new Promise<void>((resolve, reject) => {
     guard.once("error", reject);
-    guard.once("exit", (code, signal) =>
-      code === 0 ? resolve() : reject(new Error(`PostgreSQL guard exited: ${code ?? signal}`)),
+    // close follows the stderr drain, so the relayed failure includes the last pg_ctl diagnostic.
+    guard.once("close", (code, signal) =>
+      code === 0
+        ? resolve()
+        : reject(new Error(`PostgreSQL guard exited: ${code ?? signal}\n${stderrTail}`)),
     );
   });
   try {
