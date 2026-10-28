@@ -252,6 +252,7 @@ import { ProjectCluster, type ClusterFace } from "./SidebarProjectCluster";
 import {
   landingAfterDraw,
   openMateReveal,
+  opensOpenProject,
   type MateReveal,
   menuDrawsLoadingRows,
   slackAfterScroll,
@@ -784,15 +785,32 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   // open may not be hidden under a heading. Only when the open conversation
   // changes — a person may collapse the project again afterwards, and a menu
   // that forced it open on every render would not let them. Nothing seen yet
-  // at mount: a reload on a Mate's conversation opens its project too.
+  // at mount: a reload on a Mate's conversation opens its project too, unless
+  // the menu already drew it folded before the Mate was found
+  // (`opensOpenProject`): then its row marks the conversation, and nothing
+  // below it moves.
   const activeGroupId = groupIdOf(candidates, activeProjectId, births);
   const [seenGroupId, setSeenGroupId] = useState<string | undefined>(undefined);
+  // The projects the last paint drew folded, each with the conversation open then.
+  const paintedFolded = useRef<ReadonlyMap<string, string | null>>(new Map());
+  const drawingFolded = useRef(new Map<string, string | null>());
+  useLayoutEffect(() => {
+    paintedFolded.current = drawingFolded.current;
+  });
   if (seenGroupId !== activeGroupId) {
     setSeenGroupId(activeGroupId);
-    if (activeGroupId !== undefined) {
+    if (
+      activeGroupId !== undefined &&
+      opensOpenProject({
+        groupId: activeGroupId,
+        paintedFolded: paintedFolded.current.get(activeGroupId),
+        conversation: activeConversation ?? null,
+      })
+    ) {
       setProjectFolds(withProjectFold(projectFolds, activeGroupId, false));
     }
   }
+  drawingFolded.current = new Map();
   // Same preference the projects screen's sort control and the account menu
   // write (`projectOrderPreference.ts`) — read here too so the surfaces stay
   // in step without either one owning the other. In *Custom* the headings
@@ -1922,6 +1940,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
     // A group: its row, then its Mates under it while it stands open.
     const open = !collapsed.has(id);
     const fold = folds.get(id);
+    if (!open) drawingFolded.current.set(id, activeConversation ?? null);
     const readings = ordered.map(({ item }) => {
       const live = getActivity?.(item);
       const asks =
