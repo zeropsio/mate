@@ -231,7 +231,7 @@ async function supervise() {
       );
       return shutdown;
     };
-    // Serialize all leases, including cleanup, rather than just pairing each lease's replies.
+    // Serialize database commands across leases rather than just pairing each lease's replies.
     let queue = Promise.resolve();
     const server = NodeNet.createServer({ allowHalfOpen: true }, (socket) => {
       owners.add(socket);
@@ -301,7 +301,8 @@ async function supervise() {
         released = true;
         lines.close();
         try {
-          for (const name of databases) await ddl(`DROP DATABASE IF EXISTS ${name} WITH (FORCE)`);
+          // Other workers still run here. Database drops wait for checkpoints, so reclaim them
+          // only through reclaimDeadRuns at the next supervisor startup, before admitting tests.
           owners.delete(socket);
           await idle();
           if (requested) socket.write(`${JSON.stringify({ url: "" })}\n`);

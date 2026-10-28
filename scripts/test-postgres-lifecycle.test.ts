@@ -209,6 +209,42 @@ it("a lease client that disconnects before its answer leaves the supervisor and 
   }
 });
 
+it("Decision: Releasing a PostgreSQL lease leaves its databases until the next supervisor starts, so a running worker never waits for their drop", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-release-"));
+  vi.stubEnv("MATE_TEST_PG_HOME", home);
+  vi.resetModules();
+  const leases: { close: () => Promise<void> }[] = [];
+  try {
+    const { acquireTestPostgres, postgresBinDir } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    leases.push(first);
+    const database = new URL(await first.createDatabase());
+    const name = database.pathname.slice(1);
+    database.pathname = "/postgres";
+    const count = () =>
+      NodeChildProcess.execFileSync(
+        NodePath.join(postgresBinDir(), "psql"),
+        [database.href, "-X", "-Atc", `SELECT count(*) FROM pg_database WHERE datname = '${name}'`],
+        { encoding: "utf8" },
+      ).trim();
+    const held = await acquireTestPostgres();
+    leases.push(held);
+    await first.close();
+    expect(count()).toBe("1");
+    await held.close();
+    await postgresStopped(home);
+    const next = await acquireTestPostgres();
+    leases.push(next);
+    database.port = new URL(await next.createDatabase()).port;
+    expect(count()).toBe("0");
+  } finally {
+    for (const lease of leases) await lease.close();
+    await postgresStopped(home);
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
 it("admits a lease while another lease's database command waits on PostgreSQL", async () => {
   const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-wait-"));
   vi.stubEnv("MATE_TEST_PG_HOME", home);
