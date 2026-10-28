@@ -47,6 +47,10 @@
       "types": "./src/errors/index.ts",
       "default": "./src/errors/index.ts"
     },
+    "./rpc/testing": {
+      "types": "./src/rpc/__fixtures__/mateRecovery.ts",
+      "default": "./src/rpc/__fixtures__/mateRecovery.ts"
+    },
     "./rpc": {
       "types": "./src/rpc/index.ts",
       "default": "./src/rpc/index.ts"
