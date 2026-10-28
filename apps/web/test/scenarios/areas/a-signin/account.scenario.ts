@@ -3,7 +3,7 @@ import { receivedHqReplies } from "../../fakes/a-signin/replies.ts";
 import { describe, it, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createScenario } from "../../harness/scenario.ts";
-import { installSignIn, slowMemberList } from "./fake.ts";
+import { installSignIn, holdMemberList } from "./fake.ts";
 import {
   account,
   organizations,
@@ -59,14 +59,17 @@ describe("A: sign-in, session and organizations", () => {
     // Catches a reload minting a throwaway Zerops token for HQ's door though the account kept a
     // live HQ session: only HQ asking for a new session may mint one.
     it.effect.each([
-      { members: "read at once", lateMs: 0 },
-      { members: "read late, as the organization's", lateMs: 3_000 },
+      { members: "read at once", held: false },
+      { members: "read late, as the organization's", held: true },
     ])(
       "a reload with a kept HQ session mints no door token, its member list $members",
-      ({ lateMs }) =>
+      ({ held }) =>
         Effect.gen(function* () {
           const s = yield* accountScenario();
-          if (lateMs > 0) slowMemberList(s.drivers, lateMs);
+          if (held) {
+            const members = holdMemberList(s.drivers);
+            yield* Effect.addFinalizer(() => Effect.sync(members.release));
+          }
           yield* s.given.project("Ada", { mate: true, app: "Shop" });
           yield* s.given.signedIn;
           yield* s.then.menu.row("Shop").appears();
@@ -151,30 +154,25 @@ describe("A: sign-in, session and organizations", () => {
     // seconds) before it reaches the HQ whose session the account kept.
     it.effect("reload and a new tab reach the kept HQ without waiting for the member list", () =>
       Effect.gen(function* () {
-        const MEMBERS_MS = 5_000;
         const s = yield* accountScenario();
-        slowMemberList(s.drivers, MEMBERS_MS);
+        const members = holdMemberList(s.drivers);
+        yield* Effect.addFinalizer(() => Effect.sync(members.release));
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
         const reloaded = firstHqAnswer(s.page);
-        reloaded.from();
         yield* account(s.page).reload;
-        const reload = yield* reloaded.ms;
+        yield* reloaded;
         yield* s.then.menu.row("Shop").appears();
         const b = yield* s.given.browserActor({ context: s.page.browserContext() });
         const opened = firstHqAnswer(b.page);
-        opened.from();
         yield* Effect.promise(() => b.page.goto(s.web.origin));
-        const tab = yield* opened.ms;
+        yield* opened;
         yield* b.then.menu.row("Shop").appears();
-        process.stdout.write(
-          `A first HQ answer with the member list ${MEMBERS_MS} ms late: reload=${reload.toFixed(0)}ms new tab=${tab.toFixed(0)}ms\n`,
-        );
         expect(
-          [reload, tab].every((ms) => ms < MEMBERS_MS / 2),
-          `reload ${reload} ms, tab ${tab} ms`,
-        ).toBe(true);
+          members.released,
+          "ASSERTION: both pages reached HQ while every browser member-list answer stayed held",
+        ).toBe(false);
         yield* s.then.noExternalNetwork;
       }),
     );
