@@ -332,6 +332,7 @@ export function operationStatusWord(
       return PAST_PARTICIPLE[kind]!;
     case "devServer":
       if (context.action === "logs") return "Read";
+      if (context.action === "stop" && context.running === false) return "Stopped";
       return context.running === false ? "Not running" : "Running";
     case "browser":
       return "Checked";

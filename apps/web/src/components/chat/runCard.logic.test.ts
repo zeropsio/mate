@@ -1508,12 +1508,13 @@ describe("recoveredFailures", () => {
       operation: entry.kind === "operation" ? entry.operation : (null as never),
     };
   };
-  const devServer = (id: string, service: string, running: boolean): RecordItem => {
+  const devServer = (id: string, service: string, running: boolean, name = service): RecordItem => {
     const entry = operationEntry(id, "t1", 1, {
       kind: "devServer",
       phase: "done",
       subject: service,
       target: { hostname: service },
+      devServer: { action: running ? "start" : "status", name, running },
       statusWord: running ? "Running" : "Not running",
       steps: [
         {
@@ -1532,6 +1533,11 @@ describe("recoveredFailures", () => {
     };
   };
   it.each([
+    {
+      name: "a sibling dev server starting does not recover the selected server's failure",
+      items: [devServer("s1", "appdev", false, "aux"), devServer("s2", "appdev", true)],
+      recovered: [],
+    },
     // One story (the owner, 2026-09-30): a dev server found down and then
     // running again is quiet where it was found down; the current state wins.
     {

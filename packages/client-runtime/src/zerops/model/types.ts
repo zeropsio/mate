@@ -1,5 +1,5 @@
 import type { RestartReading } from "../../data/projections/restart.ts";
-import type { CallResultPage, ImageOccurrence } from "@t3tools/contracts";
+import type { CallResultPage, ImageOccurrence, ZeropsDevServer } from "@t3tools/contracts";
 /**
  * The session and operation model — one object per thing Mate does to the
  * project, identity a domain fact (the provider's tool-call id) rather than a
@@ -354,6 +354,13 @@ export interface ZeropsOperation {
   readonly batch?: true;
   /** `deploy` only: the call delivered by pushing to a git remote (zcp's git-push strategy). */
   readonly strategy?: "git-push";
+  /** The selected server and action, independent of the card's display rows. */
+  readonly devServer?: {
+    readonly action: string;
+    readonly name: string;
+    readonly running?: boolean;
+    readonly servers?: ReadonlyArray<ZeropsDevServer>;
+  };
   /** `devServer` only: zcp refused the call's parameters (INVALID_PARAMETER), so it read no server. */
   readonly refused?: true;
   /** `devServer` only: what zcp holds the service in place for, as its call said (a stand-in). */

@@ -1927,6 +1927,80 @@ describe("browser checks", () => {
   );
 });
 
+describe("named dev-server stops", () => {
+  it.each([
+    {
+      sentence:
+        "stopping one of a host's dev servers shows that server stopped and the host's other server running",
+      name: "agent-layout-check",
+      servers: [
+        { name: "flipdev", port: 5195, status: "running", readAt: at(2) },
+        { name: "agent-layout-check", port: 5293, status: "stopped", readAt: at(2) },
+      ],
+      live: [{ hostname: "flipdev", word: "Dev server running", tone: "ok" }],
+      words: "Dev server agent-layout-check stopped on flipdev",
+    },
+    {
+      sentence: "an intentional stop of the only dev server reads as stopped, not as a failure",
+      name: "flipdev",
+      servers: [{ name: "flipdev", port: 5195, status: "stopped", readAt: at(2) }],
+      live: [],
+      words: "Dev server stopped on flipdev",
+    },
+  ])("$sentence", ({ name, servers, live, words }) => {
+    const [stopped] = reduceZeropsOperations(
+      [
+        {
+          id: "stop",
+          turnId: "t1",
+          toolName: "zerops_dev_server",
+          input: { hostname: "flipdev", action: "stop", name },
+          status: "completed",
+          truncated: false,
+          startedAt: at(1),
+          settledAt: at(2),
+          anchorActivityId: "stop",
+          rowIds: new Set(["stop"]),
+          agentInternal: false,
+          resultText: JSON.stringify({
+            action: "stop",
+            hostname: "flipdev",
+            name,
+            running: false,
+            envelope: { services: [{ hostname: "flipdev", devServers: servers }] },
+          }),
+        },
+      ],
+      { projectId: undefined, builds: () => "finished" },
+    ).operations;
+    const only = structure(
+      [user("m0", 0), operation("stop", "t1", 1, stopped!), assistant("a1", "t1", 3)],
+      { latest: { id: "t1", state: "completed", completed: true } },
+    ).turns[0]!;
+    const outcome = deriveOutcome({ turn: only, landed: [] })!;
+    expect(
+      outcome?.live.map(({ hostname, word, tone }) => ({ hostname, word, tone })) ?? [],
+    ).toEqual(live);
+    expect(operationLineWords(stopped!)).toBe(words);
+    expect(stopped!.closing).toBe(
+      `${name === "flipdev" ? "flipdev" : `${name} on flipdev`} stopped.`,
+    );
+    if (servers.length > 1) {
+      expect(stopped!.steps.map(({ label, stateLabel }) => [label, stateLabel])).toEqual([
+        ["flipdev :5195", "Running"],
+        ["agent-layout-check :5293", "Stopped"],
+      ]);
+    }
+    expect(standingIncidents(only.stretches[0]!)).toEqual([]);
+    expect(stretchIncidents(only.stretches[0]!)).toEqual([]);
+    expect(
+      (outcome === null ? [] : resultRows(outcome))
+        .filter((row) => row.key.startsWith("service:"))
+        .map(({ title, words, tone }) => ({ title, words, tone })),
+    ).toEqual(live.map(({ hostname, word, tone }) => ({ title: hostname, words: word, tone })));
+  });
+});
+
 describe("stretchIncidents", () => {
   it("tells a service that stopped answering and came back as one line", () => {
     const entries = [
@@ -1934,12 +2008,14 @@ describe("stretchIncidents", () => {
       operation("s0", "t1", 1, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "start", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Start", state: "done", stateLabel: "Done" }],
       }),
       operation("s1", "t1", 2, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "status", name: "nextstoredev", running: false },
         statusWord: "Not running",
         steps: [
           {
@@ -1954,6 +2030,7 @@ describe("stretchIncidents", () => {
       operation("s2", "t1", 3, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "restart", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Restart", state: "done", stateLabel: "Done" }],
       }),
@@ -1979,6 +2056,7 @@ describe("stretchIncidents", () => {
       operation("s0", "t1", 1, {
         kind: "devServer",
         subject: "nextstoredev",
+        devServer: { action: "start", name: "nextstoredev", running: true },
         statusWord: "Running",
         steps: [{ id: "dev-server", label: "Start", state: "done", stateLabel: "Done" }],
       }),
@@ -1993,6 +2071,11 @@ describe("standingIncidents — what the dock under the now line says of a servi
     operation(id, "t1", minute, {
       kind: "devServer",
       subject: "appdev",
+      devServer: {
+        action: label === "Health check" ? "status" : label.toLowerCase(),
+        name: "appdev",
+        running,
+      },
       statusWord: running ? "Running" : "Not running",
       steps: [
         {
@@ -2717,6 +2800,7 @@ describe("deriveOutcome", () => {
     const ops = actions.map((action, index) =>
       operation(`s${index}`, "t1", index + 1, {
         kind: "devServer",
+        devServer: { action, name: "appdev", running: action !== "stop" },
         statusWord: action === "stop" ? "Not running" : "Running",
         steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
       }),
@@ -2807,6 +2891,11 @@ describe("deriveOutcome", () => {
   const devServer = (id: string, turnId: string, minute: number, action: string) =>
     operation(id, turnId, minute, {
       kind: "devServer",
+      devServer: {
+        action: action === "health check" ? "status" : action,
+        name: "appdev",
+        running: action !== "stop",
+      },
       statusWord: action === "stop" ? "Not running" : "Running",
       steps: [{ id: action, label: action, state: "done", stateLabel: "Done" }],
     });

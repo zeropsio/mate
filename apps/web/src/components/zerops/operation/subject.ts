@@ -8,7 +8,12 @@ import type { ZeropsOperation, ZeropsOperationKind } from "@t3tools/client-runti
 
 export type OperationSubject =
   /** `path` is the page's decoded path — never its query — absent at the site root. */
-  | { readonly kind: "named"; readonly host: string; readonly path?: string }
+  | {
+      readonly kind: "named";
+      readonly host: string;
+      readonly path?: string;
+      readonly serverName?: string;
+    }
   /** The input has not named the target yet; `text` is the reducer's own fallback phrase. */
   | { readonly kind: "nameless"; readonly text: string };
 
@@ -78,5 +83,13 @@ export function operationSubject(
   const hostname = operation.target?.hostname ?? operation.subject;
   return hostname === undefined || /\s/.test(hostname)
     ? nameless
-    : { kind: "named", host: hostname };
+    : {
+        kind: "named",
+        host: hostname,
+        ...(operation.kind === "devServer" &&
+        operation.devServer?.name !== undefined &&
+        operation.devServer.name !== hostname
+          ? { serverName: operation.devServer.name }
+          : {}),
+      };
 }

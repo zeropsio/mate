@@ -26,6 +26,7 @@ import type {
   ZeropsBrowserRead,
   ZeropsBrowserViewport,
   ZeropsCall,
+  ZeropsOperation,
   ZeropsOperationBrowserSummary,
   ZeropsOperationExplanation,
   ZeropsOperationKind,
@@ -68,6 +69,7 @@ export interface BuiltCardFields {
   readonly strategy?: "git-push";
   /** `devServer` only: zcp refused the call's parameters, so it read no server. */
   readonly refused?: true;
+  readonly devServer?: ZeropsOperation["devServer"];
   /** `devServer` only: what zcp holds the service in place for, as its call said. */
   readonly standIn?: { readonly for: string };
   /** `deploy` with the git-push strategy only: the pull request the branch lands through. */

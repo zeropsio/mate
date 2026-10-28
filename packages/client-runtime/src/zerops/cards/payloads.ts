@@ -137,6 +137,7 @@ export type ZeropsCardPayload =
     }
   | {
       readonly kind: "devServer";
+      readonly name?: string;
       readonly action: string;
       readonly hostname: string;
       readonly running: boolean;
@@ -521,6 +522,7 @@ function decodeDevServer(document: Record<string, unknown>): ZeropsCardPayload |
   }
   return {
     kind: "devServer",
+    ...optional("name", readString(document.name)),
     action,
     hostname,
     running,

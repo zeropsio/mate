@@ -1781,6 +1781,12 @@ export function operationLineWords(operation: ZeropsOperation): string {
       // What it came to, as its pill says it: "Running app" read as work
       // still going on, under a finished bar.
       if (failed) return `Dev server on ${subject} failed`;
+      if (operation.phase === "done" && devServerAction(operation) === "stop") {
+        const name = operation.devServer?.name;
+        return name === undefined || name === subject
+          ? `Dev server stopped on ${subject}`
+          : `Dev server ${name} stopped on ${subject}`;
+      }
       return statusWord === "Running" || statusWord === "Not running"
         ? `Dev server ${statusWord.toLowerCase()} on ${subject}`
         : `Dev server on ${subject}`;
@@ -1811,6 +1817,8 @@ export function unrecoveredFailures(
         (later) =>
           later.phase === "done" &&
           operationTargetKey(later) === target &&
+          (operation.kind !== "devServer" ||
+            devServerTargetKey(later) === devServerTargetKey(operation)) &&
           (later.kind === operation.kind ||
             (operation.kind === "verify" && later.kind === "deploy") ||
             (operation.kind === "deploy" && later.kind === "verify")),
@@ -1820,6 +1828,12 @@ export function unrecoveredFailures(
 
 export function operationTargetKey(operation: ZeropsOperation): string {
   return operation.target?.hostname ?? operation.subject;
+}
+
+/** The supervisor's server identity; display rows never decide which server a call acted on. */
+export function devServerTargetKey(operation: ZeropsOperation): string {
+  const hostname = operationTargetKey(operation);
+  return JSON.stringify([hostname, operation.devServer?.name ?? hostname]);
 }
 
 /** Operations whose done phase means the turn produced something the person can use. */
@@ -2242,6 +2256,7 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
   if (devServerAction(operation) === "logs") return null;
   // A call zcp refused before reading any server found nothing; any other failure is a start that did not come up.
   if (operation.phase === "failed") return operation.refused === true ? null : false;
+  if (operation.devServer?.running !== undefined) return operation.devServer.running;
   if (operation.statusWord === "Not running") return false;
   if (operation.statusWord === "Running") return true;
   const step = operation.steps[0];
@@ -2249,8 +2264,14 @@ export function devServerRunning(operation: ZeropsOperation): boolean | null {
   return step.state === "done";
 }
 
+/** A selected stop says nothing against the sibling servers this same call read running. */
+function hostDevServerRunning(operation: ZeropsOperation): boolean | null {
+  if (operation.devServer?.servers?.some((server) => server.status === "running")) return true;
+  return devServerRunning(operation);
+}
+
 function devServerAction(operation: ZeropsOperation): string {
-  return (operation.steps[0]?.label ?? "").toLowerCase();
+  return operation.devServer?.action ?? "";
 }
 
 function devServerFailurePhrase(operation: ZeropsOperation): string {
@@ -2314,9 +2335,17 @@ function actedOn(operation: ZeropsOperation): ReadonlyArray<string> {
  * only what is true now.
  */
 export function standingIncidents(stretch: Stretch): IncidentModel[] {
-  const latest = new Map<string, ZeropsOperation>();
+  const latest = new Map<string, { hostname: string; operation: ZeropsOperation }>();
   for (const operation of stretchOperations(stretch)) {
-    for (const host of actedOn(operation)) latest.set(host, operation);
+    for (const hostname of actedOn(operation)) {
+      if (operation.kind !== "devServer") {
+        for (const [key, held] of latest) {
+          if (held.hostname === hostname) latest.delete(key);
+        }
+      }
+      const key = operation.kind === "devServer" ? devServerTargetKey(operation) : hostname;
+      latest.set(key, { hostname, operation });
+    }
   }
   const lineOf = (operation: ZeropsOperation) =>
     stretch.entries.findIndex(
@@ -2326,8 +2355,9 @@ export function standingIncidents(stretch: Stretch): IncidentModel[] {
     stretch.entries
       .slice(lineOf(operation) + 1)
       .some((entry) => !(entry.kind === "message" && entry.message.role === "reasoning"));
-  return [...latest.entries()].flatMap(([hostname, operation]): IncidentModel[] => {
+  return [...latest.values()].flatMap(({ hostname, operation }): IncidentModel[] => {
     if (operation.kind !== "devServer" || devServerRunning(operation) !== false) return [];
+    if (devServerAction(operation) === "stop" && operation.phase === "done") return [];
     if (!movedOnFrom(operation)) return [];
     const failed = operation.phase === "failed";
     return [
@@ -2457,6 +2487,7 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
   const byHost = new Map<
     string,
     {
+      hostname: string;
       phases: string[];
       tone: IncidentTone;
       appearedAt: string;
@@ -2466,13 +2497,18 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
   >();
   for (const operation of stretchOperations(stretch)) {
     if (operation.kind !== "devServer") continue;
-    const host = operationTargetKey(operation);
+    const host = devServerTargetKey(operation);
     const running = devServerRunning(operation);
+    if (devServerAction(operation) === "stop" && operation.phase === "done") {
+      byHost.delete(host);
+      continue;
+    }
     const incident = byHost.get(host);
     if (incident === undefined) {
       if (running !== false) continue;
       byHost.set(host, {
         key: `incident:${operation.key}`,
+        hostname: operationTargetKey(operation),
         phases: [devServerFailurePhrase(operation)],
         tone: "attention",
         appearedAt: operation.settledAt ?? operation.anchorAt,
@@ -2490,14 +2526,14 @@ export function stretchIncidents(stretch: Stretch): IncidentModel[] {
       incident.tone = "ok";
     } else if (running === false) {
       incident.phases.push(
-        action === "health check" ? "still not answering" : `${action || "start"} failed`,
+        action === "status" ? "still not answering" : `${action || "start"} failed`,
       );
       incident.tone = operation.phase === "failed" ? "failed" : "attention";
     }
   }
-  return [...byHost.entries()].map(([hostname, incident]) => ({
+  return [...byHost.values()].map((incident) => ({
     key: incident.key,
-    hostname,
+    hostname: incident.hostname,
     phases: dedupeAdjacent(incident.phases),
     tone: incident.tone,
     appearedAt: incident.appearedAt,
@@ -3088,7 +3124,7 @@ export function deriveOutcome(input: {
       continue;
     }
     if (operation.kind === "devServer") {
-      if (devServerRunning(operation) === true) devServerRuns.add(host);
+      if (hostDevServerRunning(operation) === true) devServerRuns.add(host);
       else devServerRuns.delete(host);
     }
     // A deploy replaces what ran: the dev server found before it is not what runs now.
@@ -3124,7 +3160,7 @@ export function deriveOutcome(input: {
     const url = operation.links[0]?.url ?? known?.url ?? null;
     if (operation.kind === "devServer") {
       // Stopped on purpose, it no longer runs because of the run.
-      if (devServerAction(operation) === "stop") {
+      if (devServerAction(operation) === "stop" && hostDevServerRunning(operation) !== true) {
         if (known?.word.startsWith("Dev server") === true) services.delete(host);
         continue;
       }
@@ -3135,7 +3171,7 @@ export function deriveOutcome(input: {
       ) {
         continue;
       }
-      const running = operation.statusWord !== "Not running";
+      const running = hostDevServerRunning(operation) === true;
       services.set(host, {
         hostname: host,
         tone: running ? "ok" : "attention",

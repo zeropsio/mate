@@ -134,6 +134,8 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
   const subject =
     pickFirst(readInputString(call.input, "hostname"), card?.hostname) ?? "the dev server";
   const action = pickFirst(readInputString(call.input, "action"), card?.action) ?? "start";
+  const name = pickFirst(card?.name, readInputString(call.input, "name")) ?? subject;
+  const selected = name === subject ? subject : `${name} on ${subject}`;
   const { voice, voiceSource } = mateVoiceFor("devServer", subject);
 
   const steps =
@@ -160,7 +162,7 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
         : phase === "done"
           ? card !== undefined
             ? operationClosing("devServer", "done", {
-                hostname: card.hostname,
+                hostname: selected,
                 port: card.port,
                 running: card.running,
                 action: card.action,
@@ -170,6 +172,12 @@ export function buildDevServerFields(call: ZeropsCall): BuiltCardFields {
 
   return {
     subject,
+    devServer: {
+      action: card?.action ?? action,
+      name,
+      ...(card === undefined ? {} : { running: card.running }),
+      ...(card?.servers === undefined ? {} : { servers: card.servers }),
+    },
     kicker: `${KIND_LABEL.devServer} · ${subject}`,
     voice,
     voiceSource,
