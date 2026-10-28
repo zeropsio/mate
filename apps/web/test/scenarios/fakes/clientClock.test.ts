@@ -98,3 +98,56 @@ it("a clock installed in the current document preserves its content and cancels 
     await NodeFSP.rm(dist, { recursive: true, force: true });
   }
 });
+
+it("stepped time holds at the receipt instead of expiring the attempt it started", async () => {
+  let now = 0;
+  const dist = await NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-receipt-clock-"));
+  await NodeFSP.writeFile(
+    NodePath.join(dist, "index.html"),
+    "<!doctype html><title>Admission</title>",
+  );
+  const web = await openBrowser(
+    dist,
+    {},
+    {
+      currentTimeMillis: () => now,
+      setTime: (time) => {
+        now = time;
+      },
+    },
+  );
+  try {
+    const clock = web.clock(web.page);
+    await clock.install();
+    await web.page.goto(web.origin);
+    await web.page.evaluate(() => {
+      setTimeout(() => {
+        document.body.textContent = "ticket requested";
+        setTimeout(() => {
+          document.body.textContent = "ticket expired";
+        }, 1_000);
+      }, 100);
+    });
+    let received = false;
+    const options = {
+      until: () => received,
+      settle: async () => {
+        received = await web.page.evaluate(() => document.body.textContent === "ticket requested");
+      },
+    };
+    await clock.advanceStepped(2_000, options);
+    expect(
+      await web.page.evaluate(() => document.body.textContent),
+      "ASSERTION: the ticket receipt holds the clock before the admission expires",
+    ).toBe("ticket requested");
+    expect(now).toBe(100);
+    await clock.advanceStepped(2_000, options);
+    expect(now).toBe(100);
+    await clock.advanceStepped(1_000);
+    expect(await web.page.evaluate(() => document.body.textContent)).toBe("ticket expired");
+    expect(now).toBe(1_100);
+  } finally {
+    await web.close();
+    await NodeFSP.rm(dist, { recursive: true, force: true });
+  }
+});

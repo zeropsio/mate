@@ -4,6 +4,8 @@ import { completedHttp } from "./completedHttp.ts";
 export interface SteppedAdvanceOptions {
   /** Override the default completed-HTTP condition, e.g. to release held replies and await receipts. */
   settle?: () => Promise<void>;
+  /** Hold at a receipt without consuming the rest of this advance. */
+  until?: () => boolean;
 }
 
 export interface ScenarioWallClock {
@@ -187,13 +189,14 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
       const settle = options.settle ?? settleHttp;
       let turns = 0;
       while (
-        await page.evaluate(
+        !options.until?.() &&
+        (await page.evaluate(
           (end) =>
             (
               window as unknown as { scenarioClock: { step(end: number): Promise<boolean> } }
             ).scenarioClock.step(end),
           end,
-        )
+        ))
       ) {
         if (++turns > 10_000)
           throw new Error("Scenario clock timer loop exceeded 10,000 callbacks");
