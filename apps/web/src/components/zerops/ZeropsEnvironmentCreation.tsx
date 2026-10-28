@@ -61,6 +61,8 @@ function upNote(
   nowMs: number,
   deployed: boolean,
 ): string {
+  if (tier === "production" && deployments.length === 0)
+    return "Production and its access are reserved. Its services arrive with the first approved release.";
   // The done card stays until dismissed: its first answer must not outlive the place's own line.
   if (deployed) return "The environment is set up.";
   const unknown = deployments.find(({ deployment }) => deployment.state !== "known");

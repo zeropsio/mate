@@ -261,6 +261,11 @@ describe("ZeropsEnvironmentCreation", () => {
     expect(html).toContain("Dismiss");
   });
 
+  it("Production's reserved project says its services arrive with the first release", () => {
+    const html = render({ tier: "production", outcome: { kind: "done", deployments: [] } });
+    expect(html).toContain("Its services arrive with the first approved release.");
+  });
+
   it("says a production waits for a release", () => {
     const html = render({
       tier: "production",

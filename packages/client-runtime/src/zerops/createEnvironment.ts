@@ -10,10 +10,9 @@
  * and undeletable.
  *
  * So nothing here reads a container. Every step is a platform call with the
- * user's own token, over a tier read from the group repo (`recipeTier.ts`) —
- * which is why a group can create its production environment while every one
- * of its dev environments is switched off, and why deleting any member breaks
- * nothing.
+ * user's own token. Production reserves its project and access only: its
+ * services arrive with an approved release. Other environments use a tier read
+ * from the group repo (`recipeTier.ts`).
  *
  * ## Pure, like `candidates.ts`
  *
@@ -151,8 +150,8 @@ export type EnvironmentCreationStep =
    */
   | { readonly kind: "register" }
   /**
-   * `POST /project/{id}/service-stack/import` with a stage's or a
-   * production's tier, whole, services only, converted for the platform
+   * `POST /project/{id}/service-stack/import` with a stage's tier,
+   * whole, services only, converted for the platform
    * (`deployTargetTier`).
    */
   | {
@@ -220,12 +219,35 @@ export type EnvironmentCreationPlan =
  * afterwards restarted nine services, a storage's restart failing: closed off
  * before any runtime exists, it restarts nothing.
  *
- * An environment without one — a stage, a production — has nothing to close
- * off, and takes its tier whole, as one import (`deployTargetTier`).
+ * A stage without an agent has nothing to close off, and takes its tier whole,
+ * as one import (`deployTargetTier`). Production imports no services here.
  */
 export function planEnvironmentCreation(input: EnvironmentCreationInput): EnvironmentCreationPlan {
   const name = input.name.trim();
   if (name.length === 0) return { ok: false, reason: "An environment needs a name." };
+
+  const access =
+    input.userRoles === undefined || input.userRoles.length === 0
+      ? {}
+      : { userRoles: input.userRoles };
+  // Production birth reserves the project and access only. Even a bundled recipe or an explicit
+  // agent request must leave every service to an approved release, without waiting on services.
+  if (input.role === "prod") {
+    return {
+      ok: true,
+      steps: [
+        {
+          kind: "create-project",
+          name,
+          tagList: [],
+          location: input.location,
+          ...(input.birth === undefined ? {} : { birth: input.birth }),
+          ...access,
+        },
+        { kind: "register" },
+      ],
+    };
+  }
 
   const withAgent = input.withAgent ?? defaultAgentForRole(input.role);
   const recipe = input.recipe ?? { kind: "none" };
@@ -256,10 +278,6 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
   const wholeProject =
     tier !== null && input.location === undefined && hasProjectBlock(tier.withProject);
 
-  const access =
-    input.userRoles === undefined || input.userRoles.length === 0
-      ? {}
-      : { userRoles: input.userRoles };
   const steps: Array<EnvironmentCreationStep> = wholeProject
     ? [
         {
