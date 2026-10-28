@@ -637,6 +637,7 @@ function makeManager(input?: {
   serverSettings?: Parameters<typeof ServerSettings.layerTest>[0];
   setupScriptRunner?: ProjectSetupScriptRunner.ProjectSetupScriptRunner["Service"];
   gitConfigReads?: string[];
+  sourceControlCalls?: string[];
 }) {
   const { service: gitHubCli, ghCalls } = createGitHubCliWithFakeGh(input?.ghScenario);
   const textGeneration = createTextGeneration(input?.textGeneration);
@@ -675,8 +676,12 @@ function makeManager(input?: {
         SourceControlProviderRegistry.SourceControlProviderRegistry.of({
           resolveLink: (input) => provider.resolveLink?.(input),
           get: () => Effect.succeed(provider),
-          resolveHandle: () => Effect.succeed({ provider, context: null }),
-          resolve: () => Effect.succeed(provider),
+          resolveHandle: () =>
+            Effect.sync(() => input?.sourceControlCalls?.push("resolveHandle")).pipe(
+              Effect.as({ provider, context: null }),
+            ),
+          resolve: () =>
+            Effect.sync(() => input?.sourceControlCalls?.push("resolve")).pipe(Effect.as(provider)),
           discover: Effect.succeed([]),
         }),
       ),
@@ -1628,6 +1633,80 @@ it.layer(GitManagerTestLayer)("GitManager", (it) => {
         state: "open",
         updatedAt: "2026-01-30T10:00:00.000Z",
       });
+    }),
+  );
+
+  it.effect.each([
+    {
+      title:
+        "A branch whose remote has no known source-control provider has no PR; its status reports no PR without a lookup, an error or a warning.",
+      remoteUrls: [
+        "https://mate-hq.zerops.io/git/org/app/repo.git",
+        "https://git.example.test/team/repo.git",
+      ],
+      known: false,
+    },
+    {
+      title:
+        "A known provider's failed lookup still keeps the last known PR state and logs as today.",
+      remoteUrls: ["https://github.com/team/repo.git"],
+      known: true,
+    },
+  ])("$title", (scenario) =>
+    Effect.gen(function* () {
+      for (const remoteUrl of scenario.remoteUrls) {
+        const repoDir = yield* makeTempDir("t3code-git-manager-");
+        yield* initRepo(repoDir);
+        yield* runGit(repoDir, ["checkout", "-b", "feature/provider-status"]);
+        const remoteDir = yield* createBareRemote();
+        yield* runGit(repoDir, ["remote", "add", "origin", remoteDir]);
+        yield* runGit(repoDir, ["push", "-u", "origin", "feature/provider-status"]);
+        yield* runGit(repoDir, ["remote", "set-url", "origin", "https://github.com/team/repo.git"]);
+
+        const existingPr = {
+          number: 214,
+          title: "Known PR",
+          url: "https://github.com/team/repo/pull/214",
+          baseRefName: "main",
+          headRefName: "feature/provider-status",
+        };
+        const sourceControlCalls: string[] = [];
+        const { manager, ghCalls } = yield* makeManager({
+          sourceControlCalls,
+          ghScenario: {
+            prListSequence: [JSON.stringify([existingPr])],
+            failWith: new GitHubCli.GitHubCliUnavailableError({
+              command: "gh",
+              cwd: repoDir,
+              cause: new Error("provider unavailable"),
+            }),
+            failAfterCalls: 1,
+          },
+        });
+        const first = yield* manager.remoteStatus({ cwd: repoDir }, { refreshUpstream: false });
+        expect(first?.pr?.number).toBe(214);
+        yield* runGit(repoDir, ["remote", "set-url", "origin", remoteUrl]);
+        yield* manager.invalidateStatus(repoDir);
+        sourceControlCalls.length = 0;
+        const previousGhCalls = ghCalls.length;
+        const logs: string[] = [];
+        const logger = Logger.make<unknown, void>(({ message }) => logs.push(String(message)));
+        const status = yield* manager
+          .remoteStatus({ cwd: repoDir }, { refreshUpstream: false })
+          .pipe(Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
+
+        if (scenario.known) {
+          expect(status?.pr).toEqual(first?.pr);
+          expect(sourceControlCalls).toEqual(["resolve"]);
+          expect(ghCalls.length).toBe(previousGhCalls + 1);
+          expect(logs).toEqual(["PR lookup failed; keeping last known PR state."]);
+        } else {
+          expect(sourceControlCalls).toEqual([]);
+          expect(ghCalls).toHaveLength(previousGhCalls);
+          expect(status?.pr).toBeNull();
+          expect(logs).toEqual([]);
+        }
+      }
     }),
   );
 
