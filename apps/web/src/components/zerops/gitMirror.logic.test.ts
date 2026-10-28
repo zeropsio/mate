@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { mirrorGateLine, mirrorLeadLine, mirrorStateLine } from "./gitMirror.logic";
+import {
+  installOffer,
+  mirrorGateLine,
+  mirrorLeadLine,
+  mirrorStateLine,
+  waitingAccount,
+} from "./gitMirror.logic";
 
 const NOW = Date.parse("2026-10-18T09:00:00Z");
 const remote = {
@@ -156,5 +162,45 @@ describe("whether GitHub lets only what was approved in Mate reach a repository'
     },
   ] as const)("$case", ({ remote: given, app: reading, says }) => {
     expect(mirrorGateLine(given, reading)).toBe(says);
+  });
+});
+
+describe("installing the app on another account or more repositories", () => {
+  const INSTALL = "https://github.com/apps/acme-mate/installations/new";
+  const newer = { ...app, installUrl: INSTALL, installTrip: true } as const;
+  it.each([
+    {
+      case: "an admin, with an HQ of install trips",
+      app: newer,
+      admin: true,
+      offer: { kind: "trip" },
+    },
+    {
+      case: "a member, with an HQ of install trips",
+      app: newer,
+      admin: false,
+      offer: {
+        kind: "page",
+        url: INSTALL,
+        note: "What you install there waits for an admin's OK.",
+      },
+    },
+    {
+      case: "an admin, with an older HQ",
+      app: { ...app, installUrl: INSTALL },
+      admin: true,
+      offer: { kind: "page", url: INSTALL, note: null },
+    },
+  ] as const)("$case gets $offer.kind", ({ app: shown, admin, offer }) => {
+    expect(installOffer(shown, admin)).toEqual(offer);
+  });
+
+  it("names the account whose installation reaches a repository but waits for an OK", () => {
+    const waiting = {
+      ...newer,
+      waiting: [{ account: "Stranger", repositories: ["Stranger/Notes"] }],
+    };
+    expect(waitingAccount(waiting, "stranger/notes")).toBe("Stranger");
+    expect(waitingAccount(waiting, "acme/api")).toBeNull();
   });
 });

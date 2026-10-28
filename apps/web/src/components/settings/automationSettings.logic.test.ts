@@ -116,16 +116,19 @@ describe("Settings › Automation's GitHub section", () => {
         id: 1,
         line: "acme · 3 repositories",
         manageUrl: "https://github.com/organizations/acme/settings/installations/1",
+        suspended: false,
       },
       {
         id: 2,
         line: "nova · all repositories",
         manageUrl: "https://github.com/settings/installations/2",
+        suspended: false,
       },
       {
         id: 3,
         line: "juno · suspended",
         manageUrl: "https://github.com/organizations/juno/settings/installations/3",
+        suspended: true,
       },
     ]);
     expect(section).toMatchObject({ manage: true });
@@ -243,7 +246,6 @@ describe("one app on many GitHub accounts", () => {
         id: 4,
         account: "stranger",
         repositories: ["stranger/notes", "stranger/site"],
-        manageUrl: "https://github.com/settings/installations/4",
       },
     ]);
     expect(appRepositories(MANY)).not.toContain("stranger/notes");
@@ -251,35 +253,49 @@ describe("one app on many GitHub accounts", () => {
 
   it("an HQ that says nothing of an installation's standing offers it as before, and nothing of the app's reach", () => {
     const section = githubSection(known(CONNECTED), true);
-    expect(section).toMatchObject({ kind: "connected", waiting: [], privateTo: null });
+    expect(section).toMatchObject({
+      kind: "connected",
+      waiting: [],
+      privateTo: null,
+      installTrip: false,
+    });
+    expect(githubSection(known(MANY), true)).toMatchObject({ installTrip: true });
     expect(appRepositories(CONNECTED)).toContain("nova/notes");
   });
 
   it("a private app says it installs only on its owner, with the page that makes it public", () => {
-    const owned = (accountType: "User" | "Organization") =>
+    const owned = (ownerType?: "User" | "Organization") =>
       githubSection(
         known({
           ...MANY,
           public: false,
-          installations: [{ ...CONNECTED.installations[0]!, accountType, state: "accepted" }],
+          ...(ownerType === undefined ? {} : { ownerType }),
         } as HqGithubView),
         true,
       );
     expect(owned("Organization")).toMatchObject({
       privateTo: {
         owner: "acme",
-        settingsUrl: "https://github.com/organizations/acme/settings/apps/acme-mate/advanced",
+        url: "https://github.com/organizations/acme/settings/apps/acme-mate/advanced",
+        settings: true,
       },
     });
     expect(owned("User")).toMatchObject({
-      privateTo: { settingsUrl: "https://github.com/settings/apps/acme-mate/advanced" },
+      privateTo: { url: "https://github.com/settings/apps/acme-mate/advanced", settings: true },
+    });
+    // HQ does not say whose: the app's own page, no settings page guessed.
+    expect(owned()).toMatchObject({
+      privateTo: { url: "https://github.com/apps/acme-mate", settings: false },
     });
     expect(githubSection(known(MANY), true)).toMatchObject({ privateTo: null });
   });
 
-  it("says GitHub's install waits for an OK where it came back from an account nobody here started", () => {
+  it("says GitHub's install waits for an OK only while an installation here waits for one", () => {
     expect(githubReturnLine("waiting", githubSection(known(MANY), true))).toBe(
       "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it.",
     );
+    // Accepted or suspended since, another organization's, or one with no app: nothing to say.
+    expect(githubReturnLine("waiting", githubSection(known(CONNECTED), true))).toBeNull();
+    expect(githubReturnLine("waiting", githubSection(known({ state: "none" }), true))).toBeNull();
   });
 });

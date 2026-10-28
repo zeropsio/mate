@@ -624,8 +624,11 @@ describe("the organization's GitHub app", () => {
     view.state === "connected"
       ? view.installations.find((installation) => installation.id === id)?.state
       : undefined;
-  /** HQ holding a waiting installation 9, its answer to Accept or Suspend of it changing it. */
-  const judged = (state: "accepted" | "suspended") => {
+  /** HQ holding a waiting installation 9, its answer to `write` of it leaving it `state`. */
+  const judged = (
+    write: "github-accept" | "github-suspend" | "github-resume",
+    state: "accepted" | "suspended",
+  ) => {
     let held = waiting;
     const asked: Array<number> = [];
     const change = async (id: number) => {
@@ -644,9 +647,11 @@ describe("the organization's GitHub app", () => {
       asked,
       api: {
         github: async () => held,
-        ...(state === "accepted"
+        ...(write === "github-accept"
           ? { githubAcceptInstallation: change }
-          : { githubSuspendInstallation: change }),
+          : write === "github-suspend"
+            ? { githubSuspendInstallation: change }
+            : { githubResumeInstallation: change }),
       },
     };
   };
@@ -654,10 +659,11 @@ describe("the organization's GitHub app", () => {
   it.each([
     { title: "Accept makes its repositories available", write: "github-accept", state: "accepted" },
     { title: "Suspend takes it away", write: "github-suspend", state: "suspended" },
+    { title: "Resume gives a suspended one back", write: "github-resume", state: "accepted" },
   ] as const)(
     "$title: HQ is asked for the installation, and a read after its answer has it $state",
     async ({ write, state }) => {
-      const hq = judged(state);
+      const hq = judged(write, state);
       const r = rig(hq.api);
       const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "known");
       const release = r.host.demandOrg("hqGithub", ORG);
@@ -691,11 +697,28 @@ describe("the organization's GitHub app", () => {
     r.close();
   });
 
-  it("asks for an HQ update where HQ cannot accept an installation or hand an install link yet", async () => {
+  it("asks for an HQ update where this client's HQ calls have no Accept and no install link", async () => {
     const r = rig({ github: async () => waiting });
     await r.host.write(ORG, { kind: "github-accept", installationId: 9 });
     expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
     expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    r.close();
+  });
+
+  it("an older HQ answering the install link with a bare 404 asks for an HQ update and hands nothing to open", async () => {
+    const r = rig({
+      github: async () => app,
+      githubInstall: async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "http_404",
+          status: 404,
+          message: "Not found.",
+        });
+      },
+    });
+    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
     r.close();
   });
 
