@@ -456,18 +456,24 @@ describe("buildZeropsServiceMap — a part migrated to a dev pool", () => {
       envelope([{ hostname: "appstage", setup: "prod" }]),
     );
 
-    expect(placed(view)).toEqual([["infrastructure", [["apppool", "appstage"]]]]);
+    expect(placed(view)).toEqual([["runtimes", [["apppool", "appstage"]]]]);
   });
 
   it("leaves the stage on its own while the lifecycle is not known", () => {
-    const view = buildZeropsServiceMap(topology([pool, service({ hostname: "appstage" })]), {
+    // A stage named for no pool: only the envelope keys it under one.
+    const view = buildZeropsServiceMap(topology([pool, service({ hostname: "sitestage" })]), {
       state: "unread",
       waitingFor: null,
     });
 
     expect(placed(view)).toEqual([
-      ["runtimes", [["appstage", undefined]]],
-      ["infrastructure", [["apppool", undefined]]],
+      [
+        "runtimes",
+        [
+          ["apppool", undefined],
+          ["sitestage", undefined],
+        ],
+      ],
     ]);
   });
 
@@ -484,11 +490,11 @@ describe("buildZeropsServiceMap — a part migrated to a dev pool", () => {
       [
         "runtimes",
         [
+          ["apppool", undefined],
           ["apistage", undefined],
           ["webstage", undefined],
         ],
       ],
-      ["infrastructure", [["apppool", undefined]]],
     ]);
   });
 });
@@ -1051,5 +1057,217 @@ describe("standInOf — a dev service zcp holds as a stand-in", () => {
 
   it("none while the lifecycle is not known", () => {
     expect(standInOf("kiln", undefined)).toBeUndefined();
+  });
+});
+
+describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () => {
+  const pool = (hostname: string) =>
+    service({
+      hostname,
+      type: "swarm@1",
+      group: "infrastructure",
+      ports: [{ port: 8101 }, { port: 8102 }],
+      routes: [
+        {
+          port: 8101,
+          url: `https://${hostname}-8101.zerops.app`,
+          host: `${hostname}-8101.zerops.app`,
+        },
+      ],
+    });
+  const stage = (hostname: string) => service({ hostname, type: "alpine/static@1" });
+  const zcp = service({ hostname: "zcp", type: "zcp@1", group: "infrastructure" });
+  const db = service({ hostname: "db", type: "postgresql@17", group: "data" });
+  /** zcp's envelope: each pool's snapshot carries the stages its leases deploy; `standIn` marks a holder. */
+  const envelope = (
+    pairs: ReadonlyArray<readonly [pool: string, stage: string]>,
+    standIns: ReadonlyArray<string> = [],
+  ) =>
+    lifecycle({
+      envelope: {
+        services: [
+          ...pairs.map(([hostname, stageHostname]) => ({
+            hostname,
+            typeVersion: "swarm@1",
+            runtimeClass: "pool",
+            stages: [{ hostname: stageHostname }],
+          })),
+          ...standIns.map((hostname) => ({
+            hostname,
+            typeVersion: "go@1.22",
+            runtimeClass: "dynamic",
+            standIn: { for: "pool-migrate" },
+          })),
+        ],
+      },
+    } as unknown as Partial<ZeropsLifecycle>);
+  const read = (view: ReturnType<typeof buildZeropsServiceMap>) =>
+    view?.groups.map((group) => [
+      group.title,
+      group.rows.map((row) => [row.title, row.service.hostname, row.stage?.hostname, row.kind]),
+    ]);
+
+  it.each([
+    {
+      generation: "pool-era: each pool and its stage are one part, named by the part",
+      services: [
+        zcp,
+        pool("webpool"),
+        stage("webstage"),
+        pool("boxpool"),
+        stage("boxstage"),
+        pool("hqpool"),
+        stage("hqstage"),
+      ],
+      lifecycle: envelope([
+        ["boxpool", "boxstage"],
+        ["hqpool", "hqstage"],
+        ["webpool", "webstage"],
+      ]),
+      expected: [
+        [
+          "Runtimes",
+          [
+            ["Box", "boxpool", "boxstage", "part"],
+            ["HQ", "hqpool", "hqstage", "part"],
+            ["Web", "webpool", "webstage", "part"],
+          ],
+        ],
+        ["Infrastructure", [["Zerops Control Plane", "zcp", undefined, "service"]]],
+      ],
+    },
+    {
+      generation:
+        "pool-era: a pair zcp keys no stage of stays one part by its pool, and the holder rests after the parts",
+      services: [
+        zcp,
+        service({ hostname: "box", type: "ubuntu/zbox@1", group: "infrastructure" }),
+        db,
+        service({ hostname: "mailpit", type: "alpine@3.24" }),
+        service({ hostname: "noola", type: "ubuntu/go@1.22" }),
+        pool("runnerpool"),
+        stage("runnerstage"),
+        pool("apipool"),
+        stage("apistage"),
+      ],
+      lifecycle: envelope([["apipool", "apistage"]], ["noola"]),
+      expected: [
+        [
+          "Runtimes",
+          [
+            ["API", "apipool", "apistage", "part"],
+            ["Runner", "runnerpool", "runnerstage", "part"],
+            ["mailpit", "mailpit", undefined, "service"],
+            ["noola", "noola", undefined, "holder"],
+          ],
+        ],
+        ["Data", [["db", "db", undefined, "service"]]],
+        [
+          "Infrastructure",
+          [
+            ["Zerops Control Plane", "zcp", undefined, "service"],
+            ["box", "box", undefined, "service"],
+          ],
+        ],
+      ],
+    },
+    {
+      generation: "legacy: the dev and its stage are one part, read the same way",
+      services: [zcp, db, service({ hostname: "flipdev" }), service({ hostname: "flipstage" })],
+      lifecycle: undefined,
+      expected: [
+        ["Runtimes", [["Flip", "flipdev", "flipstage", "part"]]],
+        ["Data", [["db", "db", undefined, "service"]]],
+        ["Infrastructure", [["Zerops Control Plane", "zcp", undefined, "service"]]],
+      ],
+    },
+  ])("$generation", ({ services, lifecycle: read_, expected }) => {
+    expect(read(buildZeropsServiceMap(topology(services), read_))).toEqual(expected);
+  });
+
+  it("a dev zcp holds as a stand-in while its parts run on their own pools rests: it holds the code, nothing runs there", () => {
+    const view = buildZeropsServiceMap(
+      topology([
+        pool("apipool"),
+        stage("apistage"),
+        service({
+          hostname: "noola",
+          type: "ubuntu/go@1.22",
+          routes: [
+            { port: 8080, url: "https://noola-8080.zerops.app", host: "noola-8080.zerops.app" },
+          ],
+        }),
+      ]),
+      envelope([["apipool", "apistage"]], ["noola"]),
+    );
+    const holder = view?.groups[0]?.rows.find((row) => row.service.hostname === "noola");
+
+    expect(holder?.kind).toBe("holder");
+    expect(holder?.tone).toBe("muted");
+    expect(holder?.restNote).toBe("Holds the code; nothing runs here");
+    expect(holder?.routes).toEqual([]);
+  });
+
+  it("a stand-in in a project with no pool yet is still where the code runs", () => {
+    const view = buildZeropsServiceMap(
+      topology([service({ hostname: "noola", type: "ubuntu/go@1.22" })]),
+      envelope([], ["noola"]),
+    );
+
+    expect(view?.groups[0]?.rows[0]?.kind).toBe("service");
+  });
+
+  it("a pool opens its workspaces' previews by their chats' titles, never its own slot ports", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool("webpool"), stage("webstage")]),
+      lifecycle({
+        envelope: {
+          services: [],
+          leases: [
+            {
+              alias: "webpool-1",
+              pool: "webpool",
+              state: "held",
+              devServers: [
+                {
+                  name: "web",
+                  port: 3000,
+                  url: "https://webpool-1-3000.zerops.app",
+                  status: "running",
+                  readAt: "2026-10-28T10:00:00Z",
+                },
+              ],
+            },
+            {
+              alias: "webpool-2",
+              pool: "webpool",
+              state: "parked",
+            },
+          ],
+        },
+      } as unknown as Partial<ZeropsLifecycle>),
+      undefined,
+      undefined,
+      [{ title: "Fix the login form", lease: { alias: "webpool-1" } }],
+    );
+    const row = view?.groups[0]?.rows[0];
+
+    expect(row?.routes.map((choice) => [choice.label, choice.route.url])).toEqual([
+      ["Fix the login form", "https://webpool-1-3000.zerops.app"],
+    ]);
+    expect(row?.workspaces?.map((workspace) => [workspace.label, workspace.why])).toEqual([
+      ["Fix the login form", undefined],
+      ["dev", "paused"],
+    ]);
+    expect(row).not.toHaveProperty("portLabel");
+  });
+
+  it("names a part's preview half Preview, never its stage hostname", () => {
+    const row = buildZeropsServiceMap(
+      topology([service({ hostname: "flipdev" }), service({ hostname: "flipstage" })]),
+    )?.groups[0]?.rows[0];
+
+    expect([row?.title, row?.stageTitle]).toEqual(["Flip", "Preview"]);
+    expect(row?.meta[0]).toEqual({ id: "hostname", label: "flipdev" });
   });
 });
