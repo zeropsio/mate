@@ -1984,10 +1984,13 @@ describe("the project's flow under it", () => {
     expect(html).not.toContain("sidebar-pull-request");
   });
 
-  it("keeps the recipe change counted by the Overview under its Mate", () => {
-    const recipe = flow({ pullRequests: [pull(4, { repository: "group", kind: "recipe" })] });
-    expect(reviewTagLabelOf(withFlow([own(), CRM_STAGE], recipe))).toBe("Review Change 4");
-    expect(reviewing([own(), CRM_STAGE], recipe)).toEqual(["Change 4 — crm-dev · #4"]);
+  // Larkspur, 2026-10-28: "Review 2" in the header over a composer card of one.
+  it("leaves its Mate's recipe change out of every Review: the project's page asks for it", () => {
+    const recipe = pull(4, { repository: "group", kind: "recipe" });
+    const both = flow({ pullRequests: [pull(3), recipe] });
+    expect(reviewTagLabelOf(withFlow([own(), CRM_STAGE], both))).toBe("Review Change 3");
+    expect(reviewing([own(), CRM_STAGE], both)).toEqual(["Change 3 — crm-dev · appdev #3"]);
+    expect(reviewing([own(), CRM_STAGE], flow({ pullRequests: [recipe] }))).toEqual([]);
   });
 
   // The heading's lone amber dot said "something here needs you" without

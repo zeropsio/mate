@@ -154,6 +154,20 @@ export function recipeProposalRedone(
   return isRecipeProposal(pull) && pull.mergeability === "conflicting" && pull.mateGone !== true;
 }
 
+/**
+ * Whether a change is listed where a Mate's review is asked for — its conversation's Review, its
+ * menu row's mark, its project row's tag and popover — and so counted alike there and in the
+ * composer's top (`mateNextStep`): its code that asks for review. A recipe change is the project's
+ * setup, whichever Mate proposed it: Core lands it by itself unless its merge would change an
+ * environment, and then the project's page asks for it, once, as a setup change (Larkspur,
+ * 2026-10-28: "Review 2" in the header over a composer card of one).
+ */
+export function changeInMateReview(
+  pull: Pick<FlowPullRequest, "ready" | "kind" | "title" | "mergeability" | "mateGone">,
+): boolean {
+  return pull.kind === "code" && changeAsksForReview(pull);
+}
+
 /** A change's Mate as its Review reads it: whether it works now, in any of its chats. */
 export interface MateRunFacts {
   readonly working?: boolean | undefined;
