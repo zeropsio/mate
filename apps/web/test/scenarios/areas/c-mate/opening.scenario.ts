@@ -142,7 +142,6 @@ describe("C: the conversation opening follows readiness", () => {
           expect(exposure.exposed, "ASSERTION: nothing covers the ready composer").toBe(true);
           yield* s.then.noExternalNetwork;
         }),
-      10_000,
     );
   });
 });
