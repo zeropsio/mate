@@ -1031,7 +1031,7 @@ it.each([
     );
     NodeFS.writeFileSync(
       NodePath.join(directory, "gh"),
-      '#!/bin/sh\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${5}" "$RUNS"\n',
+      '#!/bin/bash\nprintf "%s\\n" "$*" >> "$CALLED"\njq "${@: -1}" "$RUNS"\n',
       { mode: 0o755 },
     );
     const result = NodeChildProcess.spawnSync("bash", ["-c", run], {
@@ -1055,10 +1055,15 @@ it.each([
       "ASSERTION: the real CI consumer emits the exact successful kh-next verdict",
     ).toEqual([`skip=${skip}`]);
     expect(NodeFS.existsSync(called)).toBe(api);
-    if (api)
+    if (api) {
+      expect(
+        NodeFS.readFileSync(called, "utf8"),
+        "ASSERTION: verification reads a bounded newest-first window without following history pages",
+      ).not.toContain("--paginate");
       expect(NodeFS.readFileSync(called, "utf8")).toContain(
         "actions/workflows/ci.yml/runs?head_sha=abc&status=success&per_page=100",
       );
+    }
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
@@ -1749,6 +1754,22 @@ it.each([
     skip: true,
   },
   {
+    title: "an exact-head main receipt is checked before the newest tree window",
+    runs: [{ ...mainRun(1, "other"), head_sha: "0".repeat(40) }],
+    jobs: { 1: [hqJob("success")] },
+    skip: true,
+    exact: true,
+  },
+  {
+    title: "verification outside the newest page is a miss that runs in full",
+    runs: [
+      ...Array.from({ length: 100 }, (_, index) => mainRun(index + 1, "other")),
+      mainRun(101, "same"),
+    ],
+    jobs: { 101: [hqJob("success")] },
+    skip: false,
+  },
+  {
     title: "a kh-next push finds no main run to reuse",
     runs: [],
     jobs: {},
@@ -1819,10 +1840,11 @@ it.each([
       NodeFS.writeFileSync(NodePath.join(dir, `watch-${id}`), String(code));
     for (const [id, conclusion] of Object.entries(conclusions))
       NodeFS.writeFileSync(NodePath.join(dir, `conclusion-${id}`), conclusion);
-    // Stands in for `gh api <url> --paginate --jq <filter>`, applying the filter like gh does.
+    // Applies the API page boundary before gh applies its jq filter.
     NodeFS.writeFileSync(
       NodePath.join(bin, "gh"),
       `#!/usr/bin/env bash
+printf '%s\n' "$1 $2 $3" >> "${dir}/calls"
 if [[ "$1 $2" == "run watch" ]]; then
   [[ "$4" == "--exit-status" ]] || exit 98
   exit "$(cat "${dir}/watch-$3")"
@@ -1838,7 +1860,11 @@ case "$url" in
   *"branch=main"*) file="${dir}/runs.json" ;;
   *) echo '{"workflow_runs":[]}' > "${dir}/empty.json"; file="${dir}/empty.json" ;;
 esac
-jq -r "$filter" "$file"
+if [[ "$*" == *--paginate* ]]; then
+  jq -r "$filter" "$file"
+else
+  jq 'if has("workflow_runs") then .workflow_runs |= .[:100] else .jobs |= .[:100] end' "$file" | jq -r "$filter"
+fi
 `,
       { mode: 0o755 },
     );
@@ -1871,6 +1897,13 @@ jq -r "$filter" "$file"
         GITHUB_OUTPUT: output,
       },
     });
+    const calls = NodeFS.readFileSync(NodePath.join(dir, "calls"), "utf8");
+    expect(
+      calls,
+      "ASSERTION: run and job lookup never traverses history beyond the newest page",
+    ).not.toContain("--paginate");
+    expect(calls.split("\n")[0]).toContain("branch=main&head_sha=");
+    if ("exact" in rest && rest.exact) expect(calls.trim().split("\n")).toHaveLength(2);
     if (skip === "red") {
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Main CI run 1 failed on this tree");
@@ -1882,4 +1915,21 @@ jq -r "$filter" "$file"
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+it("Decision: a step that waits on GitHub has its own timeout and leaves setup and tests their execution budget", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const prepare = workflow.jobs.prepare;
+  const verdict = prepare.steps.find((step: { id?: string }) => step.id === "verdict");
+  expect(
+    verdict["timeout-minutes"],
+    "ASSERTION: GitHub verification cannot consume the preparation job's deadline",
+  ).toBe(1);
+  expect(
+    verdict["continue-on-error"],
+    "ASSERTION: an unavailable receipt runs verification in full",
+  ).toBe(true);
+  expect(prepare["timeout-minutes"] - verdict["timeout-minutes"]).toBeGreaterThanOrEqual(9);
 });

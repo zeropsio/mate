@@ -27,8 +27,7 @@ jobs:
   prepare:
     name: CI promotion
     runs-on: ubuntu-latest
-    # Past main's worst full run (7.6 min), which a kh-next run may wait for, and State Smoke's
-    # plan: the shards of run 40547693697 each took up to 7 min to select a 700-path diff.
+    # Leave State Smoke's plan its execution headroom after the bounded verification step.
     timeout-minutes: 16
     permissions:
       actions: read
@@ -64,20 +63,24 @@ jobs:
 
       - name: Check kh-next verification
         id: verdict
+        # A missing or timed-out receipt leaves skip unset, so consumers run the full suite.
+        timeout-minutes: 1
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
           skip=false
+          # Read only the newest page; older receipts are a safe miss, never a history scan.
           # A reused main run has no Test HQ 1 job; reuse must not rest on another reuse.
           main_ran() {
             local ran
-            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --paginate --jq '
+            ran=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/$1/jobs?per_page=100" --jq '
               [.jobs[] | select(.name == "Test HQ 1" and .conclusion == "success")] | length')
             [[ "$ran" =~ ^[1-9] ]]
           }
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
-            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --paginate --jq '
+            verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?head_sha=${GITHUB_SHA}&status=success&per_page=100" --jq '
               .workflow_runs[]
               | select(.head_sha == env.GITHUB_SHA)
               | select(.head_branch == "kh-next")
@@ -87,7 +90,7 @@ jobs:
               # Promotions may change commit metadata without changing a single tree entry.
               export GITHUB_TREE
               GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
-              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --paginate --jq '
+              verified=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=kh-next&event=push&status=success&per_page=100" --jq '
                 .workflow_runs[]
                 | select(.head_branch == "kh-next")
                 | select(.event == "push" and .status == "completed" and .conclusion == "success")
@@ -103,12 +106,19 @@ jobs:
             # A hotfix pushed to main reaches kh-next with the same tree; main already ran it in full.
             export GITHUB_TREE
             GITHUB_TREE=$(git rev-parse 'HEAD^{tree}')
-            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --paginate --jq '
+            candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&head_sha=${GITHUB_SHA}&event=push&status=success&per_page=100" --jq '
               .workflow_runs[]
-              | select(.head_branch == "main")
+              | select(.head_sha == env.GITHUB_SHA and .head_branch == "main")
               | select(.event == "push" and .status == "completed" and .conclusion == "success")
-              | select(.head_commit.tree_id == env.GITHUB_TREE)
               | .id')
+            if [[ -z "$candidates" ]]; then
+              candidates=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=100" --jq '
+                .workflow_runs[]
+                | select(.head_branch == "main")
+                | select(.event == "push" and .status == "completed" and .conclusion == "success")
+                | select(.head_commit.tree_id == env.GITHUB_TREE)
+                | .id')
+            fi
             for run in $candidates; do
               if main_ran "$run"; then
                 skip=true
@@ -123,7 +133,7 @@ jobs:
               # run here. The step's timeout-minutes is the only bound.
               for status in in_progress queued; do
                 export RUN_STATUS=$status
-                pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=${status}&per_page=100" --paginate --jq '
+                pending=$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/ci.yml/runs?branch=main&event=push&status=${status}&per_page=100" --jq '
                   .workflow_runs[]
                   | select(.head_branch == "main")
                   | select(.event == "push" and .status == env.RUN_STATUS)
