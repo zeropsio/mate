@@ -1627,11 +1627,19 @@ describe("recoveredFailures on a long run", () => {
         false,
       ),
     }));
-    const started = performance.now();
-    const undone = recoveredFailures(items);
-    const took = performance.now() - started;
-    expect(undone.size).toBe(3000);
-    expect(took).toBeLessThan(250);
+    let visits = 0;
+    const counted = new Proxy(items, {
+      get(target, property, receiver) {
+        if (typeof property === "string" && /^\d+$/.test(property)) visits += 1;
+        return Reflect.get(target, property, receiver);
+      },
+    });
+    const undone = recoveredFailures(counted);
+    expect([...undone]).toEqual(Array.from({ length: 3000 }, (_, index) => `step:w${index}`));
+    expect(
+      visits,
+      "ASSERTION: failure recovery visits each record a bounded number of times",
+    ).toBeLessThanOrEqual(4 * items.length);
   });
 });
 

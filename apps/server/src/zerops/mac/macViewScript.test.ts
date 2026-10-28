@@ -135,9 +135,28 @@ describe("the Mac's view helper", () => {
 
 describe("the view helper's stream", () => {
   const running: NodeChildProcess.ChildProcess[] = [];
+  const watched: NodeFS.FSWatcher[] = [];
   afterEach(() => {
+    for (const watcher of watched.splice(0)) watcher.close();
     for (const child of running.splice(0)) child.kill();
   });
+
+  /** Observe a filesystem receipt; subscribe before starting its writer. */
+  const written = (file: string, ready: (file: string) => boolean = () => true) =>
+    new Promise<string>((resolve, reject) => {
+      const changed = NodeFS.watch(NodePath.dirname(file), () => inspect());
+      watched.push(changed);
+      const inspect = () => {
+        if (!NodeFS.existsSync(file) || !ready(file)) return;
+        changed.close();
+        resolve(file);
+      };
+      changed.once("error", (error) => {
+        changed.close();
+        reject(error);
+      });
+      inspect();
+    });
 
   /**
    * Runs the helper as its LaunchAgent would, with macOS's tools replaced by stubs, and with the
@@ -154,28 +173,36 @@ describe("the view helper's stream", () => {
     for (const [name, body] of Object.entries(tools)) {
       NodeFS.writeFileSync(NodePath.join(bin, name), `#!/bin/sh\n${body}\n`, { mode: 0o755 });
     }
-    const child = NodeChildProcess.spawn(process.execPath, [file], {
-      env: { PATH: "/usr/bin:/bin", ZEROPS_MATE_VIEW_TOOLS: bin },
-      stdio: "ignore",
-    });
+    // The socket starts at 0700 under this child's umask. The helper chmods it to 0600
+    // only inside its listen callback, so a bound path alone cannot admit the request.
+    const socket = written(
+      NodePath.join(root, "view.sock"),
+      (path) => (NodeFS.statSync(path).mode & 0o777) === 0o600,
+    );
+    const child = NodeChildProcess.spawn(
+      process.execPath,
+      ["--import", "data:text/javascript,process.umask(0o077)", file],
+      {
+        env: { PATH: "/usr/bin:/bin", ZEROPS_MATE_VIEW_TOOLS: bin },
+        stdio: "ignore",
+      },
+    );
     running.push(child);
-    return { root, socket: NodePath.join(root, "view.sock") };
+    return { root, socket };
   };
 
   /** Reads messages off the stream until `enough` says so, then hangs up. */
   const read = async (
-    socket: string,
+    socket: Promise<string>,
     enough: (messages: ReadonlyArray<MacViewMessage>) => boolean,
     fps = 5,
   ): Promise<ReadonlyArray<MacViewMessage>> => {
-    while (!NodeFS.existsSync(socket)) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
+    const socketPath = await socket;
     return new Promise((resolve, reject) => {
       const parser = makeMacViewParser();
       const messages: MacViewMessage[] = [];
       const request = NodeHttp.get(
-        { socketPath: socket, path: `/stream?app=com.example.Counter&fps=${fps}` },
+        { socketPath, path: `/stream?app=com.example.Counter&fps=${fps}` },
         (response) => {
           response.on("data", (chunk: Buffer) => {
             messages.push(...parser.push(chunk));
@@ -296,27 +323,28 @@ describe("the view helper's stream", () => {
 
   it("stops the smooth streamer when the Mate hangs up", async () => {
     const image = tempDir("mac-view-image-");
-    const pidFile = NodePath.join(image, "pid");
-    const { socket } = startHelper(
-      { ...counterWindow, screencapture: "exit 1" },
-      `echo $$ > '${pidFile}'; while :; do ${streamerSays({ type: "tick" })}; sleep 1; done`,
-    );
+    const stoppedFile = NodePath.join(image, "stopped");
+    // Rename makes the exit receipt visible only once its complete contents have been written.
+    const stopped = written(stoppedFile);
+    // An open message port keeps the stub alive until the helper's SIGTERM; no timer drives it.
+    const streamer = `exec '${process.execPath}' -e '
+      const { writeFileSync, renameSync } = require("node:fs");
+      const { MessageChannel } = require("node:worker_threads");
+      const { port1 } = new MessageChannel();
+      port1.on("message", () => {});
+      process.on("exit", () => {
+        const stopped = ${JSON.stringify(stoppedFile)};
+        writeFileSync(stopped + ".tmp", "stopped");
+        renameSync(stopped + ".tmp", stopped);
+      });
+      process.on("SIGTERM", () => process.exit(0));
+      process.stdout.write(${JSON.stringify(JSON.stringify({ type: "tick" }) + "\n")});
+    '`;
+    const { socket } = startHelper({ ...counterWindow, screencapture: "exit 1" }, streamer);
 
     await read(socket, (all) => all.length > 0);
-
-    const pid = Number(NodeFS.readFileSync(pidFile, "utf8"));
-    const alive = () => {
-      try {
-        process.kill(pid, 0);
-        return true;
-      } catch {
-        return false;
-      }
-    };
-    while (alive()) {
-      await new Promise((resolve) => setTimeout(resolve, 50));
-    }
-    expect(alive()).toBe(false);
+    await stopped;
+    expect(NodeFS.readFileSync(stoppedFile, "utf8")).toBe("stopped");
   });
 
   it("says when the app is not running", async () => {
