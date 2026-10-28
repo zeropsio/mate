@@ -358,6 +358,7 @@ export const HqNavigationJob = Schema.Struct({
   ]),
   ref: Schema.NullOr(Schema.String),
   reason: HqDeployOutcome.fields.reason,
+  sourceArchiveBytes: HqDeployOutcome.fields.sourceArchiveBytes,
   appVersionId: Schema.NullOr(Schema.String),
   processId: HqDeployOutcome.fields.processId,
   evidence: HqDeployOutcome.fields.evidence,

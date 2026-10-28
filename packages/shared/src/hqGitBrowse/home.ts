@@ -34,6 +34,15 @@ export const GitHomeAbout = Schema.Struct({
   updatedAt: Schema.String,
   branchCount: Count,
   tagCount: Count,
+  /** HQ's catalog accounting, including history; absent from older metadata answers. */
+  storage: Schema.optionalKey(
+    Schema.Struct({
+      usedBytes: Schema.NullOr(Count),
+      limitBytes: Count,
+      large: Schema.NullOr(Schema.Boolean),
+      routeBodyLimitBytes: Schema.NullOr(Count),
+    }),
+  ),
 });
 export type GitHomeAbout = typeof GitHomeAbout.Type;
 

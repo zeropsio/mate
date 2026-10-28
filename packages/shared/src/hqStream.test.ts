@@ -467,3 +467,27 @@ it("A release offer preserves recorded change counts without requiring them from
       .summary,
   ).toEqual(legacySummary);
 });
+
+it.each([undefined, null, 0, 1_305_166_613])(
+  "navigation preserves the source archive measurement of its exact deployment job: %j",
+  (sourceArchiveBytes) => {
+    const job = {
+      id: "job",
+      kind: "deploy",
+      service: "web",
+      sha: "sha",
+      state: "failed",
+      cause: "release",
+      ref: "v1.0.0",
+      reason: "archive exceeds cap",
+      appVersionId: null,
+      processId: null,
+      requestedBy: "owner",
+      at: "2026-10-28T00:00:00Z",
+      endedAt: "2026-10-28T00:01:00Z",
+      supersededBy: null,
+      ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
+    };
+    expect(Schema.decodeUnknownSync(Stream.HqNavigationJob)(job)).toEqual(job);
+  },
+);

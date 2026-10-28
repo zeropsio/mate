@@ -774,7 +774,9 @@ describe("serviceRows", () => {
       drift: undefined,
     },
   ])("$hostname", (expected) => {
-    expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toEqual(expected);
+    expect(rowsOf(PLATFORM).find((row) => row.hostname === expected.hostname)).toMatchObject(
+      expected,
+    );
   });
 
   it.each<{
@@ -1695,3 +1697,29 @@ it("Git detail and metadata describe the push destination without a service or p
     }),
   ).toBe("Moves on release · pushes to github.com/example/shop main");
 });
+
+it.each([
+  [undefined, "Source archive size is not available yet."],
+  [null, "Source archive size is not available yet."],
+  [1_305_166_613, "Source archive: 1.31 GB"],
+] as const)(
+  "a durable service row retains its latest deployment's source measurement: %j",
+  (sourceArchiveBytes, expected) => {
+    const latest = deployRecord(
+      "live",
+      sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes },
+    );
+    const [row] = serviceRows({
+      environment: "stage",
+      services: [{ hostname: "api", repository: "api", deploy: { latest, live: latest } }],
+      platform: { state: "unread", waitingFor: null },
+      mainHead: undefined,
+      routes: [],
+      offers: [],
+      nowMs: 0,
+      age: () => "now",
+    });
+    expect(row?.sourceArchive).toBe(expected);
+    expect(row?.job).toBeUndefined();
+  },
+);
