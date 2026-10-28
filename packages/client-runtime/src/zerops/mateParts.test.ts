@@ -158,7 +158,7 @@ describe("a Mate's parts", () => {
     },
   );
 
-  it("a pool part lists one dev per workspace the Mate holds, by the chat it is for, else dev — never numbered", () => {
+  it("a pool part lists one dev per workspace the Mate holds, by the chat it is for, else its branch, else dev — never numbered", () => {
     expect(
       rows({
         services: hostnames("hqpool", "hqstage"),
@@ -168,11 +168,13 @@ describe("a Mate's parts", () => {
           running("hqpool-3"),
           running("hqpool-1"),
           lease("hqpool-2", { state: "released" }),
+          { ...running("hqpool-4"), branch: "build-stamp" },
+          { ...running("hqpool-5"), branch: "main" },
         ],
         leaseChats: [{ alias: "hqpool-3", title: "Fix the login" }],
       }),
     ).toEqual([
-      "HQ | dev hqpool-c2e4-1-3001.prg1.zerops.app, Fix the login hqpool-c2e4-3-3001.prg1.zerops.app | preview hqstage-1df2-80.prg1.zerops.app",
+      "HQ | dev hqpool-c2e4-1-3001.prg1.zerops.app, Fix the login hqpool-c2e4-3-3001.prg1.zerops.app, build-stamp hqpool-c2e4-4-3001.prg1.zerops.app, dev hqpool-c2e4-5-3001.prg1.zerops.app | preview hqstage-1df2-80.prg1.zerops.app",
     ]);
   });
 
