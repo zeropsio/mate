@@ -219,46 +219,68 @@ it.each([
   }
 });
 
-/**
- * A cluster's catalog as `psql -At` answers the supervisor: `oid|quoted name` rows. initdb's own
- * databases and roles are always there; `left` is what a killed run made beside them.
- */
+/** Catalog entries live in the disposable directory; initdb only adds its own entries. */
 function catalog(left: { databases: [number, string][]; roles: [number, string][] }) {
-  const databases = new Map<number, string>([
-    [1, "template1"],
-    [4, "template0"],
-    [5, "postgres"],
-    ...left.databases,
-  ]);
-  const roles = new Map<number, string>([[10, "postgres"], [3373, "pg_monitor"], ...left.roles]);
-  const sql = (query: string) => {
-    const select =
-      /^SELECT oid, quote_ident\((datname|rolname)\) FROM (pg_database|pg_roles)$/u.exec(query);
-    if (select)
-      return [...(select[2] === "pg_database" ? databases : roles)]
-        .map(([oid, name]) => `${oid}|${name}\n`)
-        .join("");
-    const database = /^DROP DATABASE (.+) WITH \(FORCE\)$/u.exec(query)?.[1];
-    const role = /^DROP OWNED BY (.+); DROP ROLE \1$/u.exec(query)?.[1];
-    const from = database === undefined ? roles : databases;
-    const oid = [...from].find(([, name]) => name === (database ?? role))?.[0];
-    if (oid === undefined) throw new Error(`fake catalog: ${query}`);
-    from.delete(oid);
-    return "";
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-pg-catalog-"));
+  const data = NodePath.join(home, "data");
+  const own = {
+    databases: [
+      [1, "template1"],
+      [4, "template0"],
+      [5, "postgres"],
+    ] as [number, string][],
+    roles: [
+      [10, "postgres"],
+      [3373, "pg_monitor"],
+    ] as [number, string][],
   };
-  return { sql, databases, roles };
+  const write = (kind: "databases" | "roles", entries: [number, string][]) => {
+    NodeFS.mkdirSync(NodePath.join(data, kind), { recursive: true });
+    for (const [oid, name] of entries)
+      NodeFS.writeFileSync(NodePath.join(data, kind, String(oid)), name);
+  };
+  const read = (kind: "databases" | "roles") =>
+    new Map(
+      NodeFS.readdirSync(NodePath.join(data, kind))
+        .map(
+          (oid) =>
+            [Number(oid), NodeFS.readFileSync(NodePath.join(data, kind, oid), "utf8")] as const,
+        )
+        .sort(([a], [b]) => a - b),
+    );
+  NodeFS.mkdirSync(data);
+  NodeFS.writeFileSync(NodePath.join(data, "PG_VERSION"), "17\n");
+  for (const kind of ["databases", "roles"] as const) write(kind, [...own[kind], ...left[kind]]);
+  return {
+    data,
+    initialise: () => {
+      for (const kind of ["databases", "roles"] as const) write(kind, own[kind]);
+    },
+    get databases() {
+      return read("databases");
+    },
+    get roles() {
+      return read("roles");
+    },
+    [Symbol.dispose]: () => NodeFS.rmSync(home, { recursive: true, force: true }),
+  };
 }
 
 it("a killed supervisor's lease databases are dropped when the next one starts", async () => {
-  const { reclaimDeadRuns } = await import("./test-postgres.ts");
-  const cluster = catalog({
+  const { startCluster } = await import("./test-postgres.ts");
+  using cluster = catalog({
     databases: [
       [70001, "mate_test_0a1b"],
       [70002, "mate_test_ff00"],
     ],
     roles: [],
   });
-  reclaimDeadRuns(cluster.sql);
+  startCluster(cluster.data, {
+    initialise: cluster.initialise,
+    start: () => {},
+    report: () => {},
+    discardRetained: true,
+  });
   expect([...cluster.databases.values()]).toEqual(["template1", "template0", "postgres"]);
 });
 
@@ -297,9 +319,14 @@ it.each([
 ])(
   "A test run reclaims the databases a killed run left behind: $left, keeping initdb's own",
   async ({ databases, roles }) => {
-    const { reclaimDeadRuns } = await import("./test-postgres.ts");
-    const cluster = catalog({ databases, roles });
-    reclaimDeadRuns(cluster.sql);
+    const { startCluster } = await import("./test-postgres.ts");
+    using cluster = catalog({ databases, roles });
+    startCluster(cluster.data, {
+      initialise: cluster.initialise,
+      start: () => {},
+      report: () => {},
+      discardRetained: true,
+    });
     expect([[...cluster.databases.values()], [...cluster.roles.values()]]).toEqual([
       ["template1", "template0", "postgres"],
       ["postgres", "pg_monitor"],
@@ -400,6 +427,49 @@ function fakeCluster() {
   NodeFS.writeFileSync(NodePath.join(data, "global", "pg_control"), "valid");
   return { root, home, bin, data };
 }
+
+it("Decision: A test PostgreSQL supervisor that starts with no surviving leases rebuilds its disposable cluster once instead of dropping retained databases one by one", async () => {
+  const cluster = fakeCluster();
+  const commands = NodePath.join(cluster.home, "commands.log");
+  for (let i = 0; i < 34; i++)
+    NodeFS.mkdirSync(NodePath.join(cluster.data, "base", `retained_${i}`));
+  for (const command of ["initdb", "pg_ctl", "psql"]) {
+    const path = NodePath.join(cluster.bin, command);
+    const wrapper = NodeFS.readFileSync(path, "utf8");
+    NodeFS.writeFileSync(
+      path,
+      wrapper.replace("exec ", `printf '%s\\n' '${command}' "$@" >> "${commands}"\nexec `),
+    );
+  }
+  vi.stubEnv("MATE_TEST_PG_HOME", cluster.home);
+  vi.stubEnv("MATE_PG_BIN", cluster.bin);
+  vi.resetModules();
+  try {
+    const { acquireTestPostgres } = await import("./test-postgres.ts");
+    const first = await acquireTestPostgres();
+    try {
+      const url = await first.createDatabase();
+      const held = await acquireTestPostgres();
+      try {
+        // Joining a surviving lease keeps its existing database and never initialises again.
+        expect(NodeFS.readdirSync(NodePath.join(cluster.data, "base"))).toEqual([
+          new URL(url).pathname.slice(1),
+        ]);
+        const calls = NodeFS.readFileSync(commands, "utf8").split("\n");
+        expect(calls.filter((line) => line === "initdb")).toHaveLength(1);
+        expect(calls.filter((line) => line.startsWith("DROP DATABASE"))).toEqual([]);
+      } finally {
+        await held.close();
+      }
+    } finally {
+      await first.close();
+    }
+    await guardStopped(cluster.home);
+  } finally {
+    vi.unstubAllEnvs();
+    NodeFS.rmSync(cluster.root, { recursive: true, force: true });
+  }
+});
 
 it.each([
   {

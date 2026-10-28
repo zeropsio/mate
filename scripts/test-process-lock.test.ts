@@ -3,6 +3,7 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
+import * as NodeUtil from "node:util";
 import { expect, it, vi } from "vite-plus/test";
 import { acquireProcessLock } from "./test-process-lock.ts";
 
@@ -72,6 +73,89 @@ it("kills a queued flock child when its waiting client loses its pipe", async ()
     await exited;
     await waiting;
     await unlock();
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  { mode: undefined, sharedProbe: 1 },
+  { mode: "exclusive" as const, sharedProbe: 1 },
+  { mode: "shared" as const, sharedProbe: 0 },
+])(
+  "a $mode process lock admits only compatible kernel lock holders",
+  async ({ mode, sharedProbe }) => {
+    const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-mode-"));
+    const path = NodePath.join(home, "generation.lock");
+    const unlock = await acquireProcessLock(path, mode === undefined ? {} : { mode });
+    try {
+      const shared = NodeChildProcess.spawnSync("flock", ["-n", "-s", path, "true"]);
+      expect(shared.status).toBe(sharedProbe);
+      const exclusive = NodeChildProcess.spawnSync("flock", ["-n", "-x", path, "true"]);
+      expect(exclusive.status).toBe(1);
+    } finally {
+      await unlock();
+    }
+    const released = NodeChildProcess.spawnSync("flock", ["-n", "-x", path, "true"]);
+    expect(released.status).toBe(0);
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  },
+);
+
+it("an unreferenced shared process lock allows its idle owner to exit without a finalizer", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-exit-"));
+  const path = NodePath.join(home, "generation.lock");
+  const script = `import {acquireProcessLock} from ${JSON.stringify(new URL("./test-process-lock.ts", import.meta.url).href)}; await acquireProcessLock(process.argv[1], {mode:'shared',unref:true});`;
+  try {
+    await NodeUtil.promisify(NodeChildProcess.execFile)(process.execPath, [
+      "--input-type=module",
+      "-e",
+      script,
+      path,
+    ]);
+    const unlock = await acquireProcessLock(path);
+    await unlock();
+  } finally {
+    NodeFS.rmSync(home, { recursive: true, force: true });
+  }
+});
+
+it("cancelling a queued process lock waits for its child to exit and preserves the abort reason", async () => {
+  const home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-abort-"));
+  const path = NodePath.join(home, "generation.lock");
+  const unlock = await acquireProcessLock(path);
+  const realFlock = NodeChildProcess.execFileSync("which", ["flock"], { encoding: "utf8" }).trim();
+  const bin = NodePath.join(home, "bin");
+  NodeFS.mkdirSync(bin);
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "flock"),
+    '#!/bin/sh\nprintf "%s\\n" "$$" > "$MATE_TEST_ABORT_PID"\nexec "$MATE_TEST_REAL_FLOCK" "$@"\n',
+    { mode: 0o700 },
+  );
+  const receipt = NodePath.join(home, "waiter.pid");
+  NodeChildProcess.execFileSync("mkfifo", [receipt]);
+  vi.stubEnv("PATH", `${bin}${NodePath.delimiter}${process.env.PATH}`);
+  vi.stubEnv("MATE_TEST_ABORT_PID", receipt);
+  vi.stubEnv("MATE_TEST_REAL_FLOCK", realFlock);
+  const spawned = NodeFS.promises.readFile(receipt, "utf8").then(Number);
+  const abort = new AbortController();
+  const reason = new Error("cancelled generation election");
+  const waiting = acquireProcessLock(path, { signal: abort.signal });
+  const rejected = expect(waiting).rejects.toBe(reason);
+  try {
+    const flockPid = await spawned;
+    vi.unstubAllEnvs();
+    abort.abort(reason);
+    await rejected;
+    expect(() => process.kill(flockPid, 0)).toThrowError(
+      expect.objectContaining({ code: "ESRCH" }),
+    );
+    const probe = NodeChildProcess.spawnSync("flock", ["-n", "-x", path, "true"]);
+    expect(probe.status).toBe(1);
+  } finally {
+    abort.abort(reason);
+    vi.unstubAllEnvs();
+    await unlock();
+    await waiting.catch(() => undefined);
     NodeFS.rmSync(home, { recursive: true, force: true });
   }
 });
