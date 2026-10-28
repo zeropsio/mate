@@ -121,12 +121,16 @@ const app = vi.hoisted(() => ({
   standUpFailed: false,
   standUpRetry: vi.fn(),
   navigate: vi.fn(async (_to: unknown) => undefined),
-  router: { preloadRoute: vi.fn(async (_to: unknown) => undefined) },
+  router: {
+    preloadRoute: vi.fn(async (_to: unknown) => undefined),
+    state: { location: { state: {} as { mateHandOver?: string | undefined } } },
+  },
   connect: vi.fn(async (_target: unknown) => ({ _tag: "Success" as const })),
   onScreen: vi.fn((_projectId: string | null) => undefined),
   openMate: vi.fn(),
   refresh: vi.fn(),
   handingOver: vi.fn(),
+  cancelHandOver: vi.fn(),
   link: { key: undefined, environmentId: undefined, reachability: null } as unknown,
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
@@ -236,8 +240,10 @@ vi.mock("~/zerops/useMateActions", () => ({
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
-  useMateHandOver: (select: (state: unknown) => unknown) =>
-    select({ handingOver: app.handingOver }),
+  useMateHandOver: Object.assign(
+    (select: (state: unknown) => unknown) => select({ handingOver: app.handingOver }),
+    { getState: () => ({ cancel: app.cancelHandOver }) },
+  ),
 }));
 // The creations this tab holds, as their operations say them.
 vi.mock("~/zerops/creations", () => ({
@@ -514,11 +520,13 @@ beforeEach(() => {
   vi.stubGlobal("cancelAnimationFrame", () => undefined);
   app.navigate.mockClear();
   app.router.preloadRoute.mockReset().mockResolvedValue(undefined);
+  app.router.state.location.state = {};
   app.connect.mockClear();
   app.onScreen.mockClear();
   app.openMate.mockClear();
   app.refresh.mockClear();
-  app.handingOver.mockClear();
+  app.handingOver.mockReset();
+  app.cancelHandOver.mockReset();
   app.listing = listingOf([QUINN]);
   app.actionTrouble = null;
   app.setupFailure = undefined;
@@ -1354,6 +1362,65 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
     expect(app.navigate).not.toHaveBeenCalled();
     await act(async () => undefined);
     expect(app.navigate).toHaveBeenCalledOnce();
+  });
+
+  const openNewMateReadyToHandOver = () => {
+    app.listing = listingOf([coming]);
+    openView();
+    app.listing = listingOf([QUINN]);
+    app.link = {
+      key: KEY,
+      environmentId: ENV_QUINN,
+      reachability: { kind: "ready", notice: null },
+    };
+    app.threads = [MAIN];
+    act(() => tree?.update(comingView(PROJECT)));
+  };
+
+  it("the newly created Mate's route carries its exact handover identity until destination acquisition", async () => {
+    app.handingOver.mockReturnValueOnce("test-handover");
+    app.router.state.location.state = { mateHandOver: "test-handover" };
+    openNewMateReadyToHandOver();
+    await act(async () => undefined);
+    expect(app.handingOver).toHaveBeenCalledExactlyOnceWith({
+      environmentId: ENV_QUINN,
+      threadId: "thread-main",
+    });
+    expect(app.navigate).toHaveBeenCalledExactlyOnceWith({
+      to: "/$environmentId/$threadId",
+      params: { environmentId: ENV_QUINN, threadId: "thread-main" },
+      replace: true,
+      state: { mateHandOver: "test-handover" },
+    });
+    act(() => tree?.unmount());
+    tree = undefined;
+    expect(app.cancelHandOver).not.toHaveBeenCalled();
+  });
+
+  it("leaving a newly created Mate during destination preload cancels its own handover and never navigates", async () => {
+    let ready!: () => void;
+    app.router.preloadRoute.mockReturnValueOnce(
+      new Promise<undefined>((resolve) => {
+        ready = () => resolve(undefined);
+      }),
+    );
+    app.handingOver.mockReturnValueOnce("test-handover");
+    openNewMateReadyToHandOver();
+    expect(app.navigate).not.toHaveBeenCalled();
+    act(() => tree?.unmount());
+    tree = undefined;
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
+    await act(async () => ready());
+    expect(app.navigate).not.toHaveBeenCalled();
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
+  });
+
+  it("a replaced destination cancels only the newly created Mate's original handover", async () => {
+    app.handingOver.mockReturnValueOnce("test-handover");
+    openNewMateReadyToHandOver();
+    await act(async () => undefined);
+    expect(app.navigate).toHaveBeenCalledOnce();
+    expect(app.cancelHandOver).toHaveBeenCalledExactlyOnceWith("test-handover");
   });
 
   // Run 2 (2026-10-16): an added Mate landed on a bare conversation titled with its raw project

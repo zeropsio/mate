@@ -2,6 +2,7 @@ import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { beforeEach, describe, expect, it } from "vite-plus/test";
 
+import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { newMateView, useMateHandOver, useNewMateDialog } from "./newMate";
 
 beforeEach(() => {
@@ -40,5 +41,51 @@ describe("the hand-over", () => {
     expect(useMateHandOver.getState().handOver).toEqual(main);
     useMateHandOver.getState().handingOver(null);
     expect(useMateHandOver.getState().handOver).toBeNull();
+  });
+});
+
+describe("scoped hand-over receipts", () => {
+  const main = scopeThreadRef(EnvironmentId.make("env-quinn"), ThreadId.make("thread-main"));
+
+  it("accepts only its destination's exact Mate and conversation", () => {
+    const handover = useMateHandOver.getState();
+    const id = handover.handingOver(main);
+    for (const other of [
+      { ...main, environmentId: EnvironmentId.make("other-mate") },
+      { ...main, threadId: ThreadId.make("other-chat") },
+    ]) {
+      handover.acquired(id, other);
+      expect(useMateHandOver.getState().handOver).toEqual(main);
+    }
+    handover.acquired(id, main);
+    expect(useMateHandOver.getState().handOver).toBeNull();
+  });
+
+  it("fences stale acquisition and cancellation even when the same conversation is opened again", () => {
+    const handover = useMateHandOver.getState();
+    const previous = handover.handingOver(main);
+    const current = handover.handingOver(main);
+    expect(current).not.toBe(previous);
+    handover.acquired(previous, main);
+    handover.cancel(previous);
+    expect(useMateHandOver.getState().handOver).toEqual(main);
+    handover.cancel(current);
+    expect(useMateHandOver.getState().handOver).toBeNull();
+    handover.acquired(current, main);
+    expect(useMateHandOver.getState().handOver).toBeNull();
+  });
+
+  it("closing the account releases its handover and fences it from the next account", () => {
+    openAccountLifetime("source-account");
+    const handover = useMateHandOver.getState();
+    const previous = handover.handingOver(main);
+    closeAccountLifetime();
+    expect(useMateHandOver.getState().handOver).toBeNull();
+    openAccountLifetime("next-account");
+    handover.handingOver(main);
+    handover.acquired(previous, main);
+    handover.cancel(previous);
+    expect(useMateHandOver.getState().handOver).toEqual(main);
+    closeAccountLifetime();
   });
 });

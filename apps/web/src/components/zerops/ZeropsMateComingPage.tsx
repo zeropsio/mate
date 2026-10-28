@@ -461,8 +461,9 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   useEffect(() => {
     if (!handing || !lands || environmentId === null || threadRef === null) return;
     // Kept read from above every view while the route changes under it.
-    if (cameUp) handingOver(threadRef);
+    const handOverId = cameUp ? handingOver(threadRef) : undefined;
     let current = true;
+    let navigating = false;
     const handOver = async () => {
       const destination = {
         to: "/$environmentId/$threadId" as const,
@@ -474,11 +475,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
       await router.preloadRoute(destination);
       if (!current) return;
       takeMateConversation(projectId)?.(threadRef);
-      void navigate(destination);
+      navigating = true;
+      await navigate({
+        ...destination,
+        ...(handOverId === undefined ? {} : { state: { mateHandOver: handOverId } }),
+      });
+      if (handOverId !== undefined && router.state.location.state.mateHandOver !== handOverId)
+        useMateHandOver.getState().cancel(handOverId);
     };
-    void handOver();
+    void handOver().catch(() => {
+      if (handOverId !== undefined) useMateHandOver.getState().cancel(handOverId);
+    });
     return () => {
       current = false;
+      if (!navigating && handOverId !== undefined) useMateHandOver.getState().cancel(handOverId);
     };
   }, [cameUp, environmentId, handing, handingOver, lands, navigate, projectId, router, threadRef]);
 

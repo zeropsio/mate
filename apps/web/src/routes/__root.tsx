@@ -2,6 +2,7 @@ import { RecoveryOutcomeStatus } from "../zerops/recoveryOutcomes";
 import { AgentAdmissionComposition } from "../zerops/AgentAdmissionComposition";
 import { ConversationOpeningProvider } from "~/components/chat/ConversationOpeningStage";
 import { useThreadDetail } from "~/state/entities";
+import { useMateHandOverDestination } from "~/zerops/useMateHandOverDestination";
 import { useMateOfflineSince, useLastKnownMateWords } from "../zerops/useMenuMateReadings";
 import { useMateRecovery } from "../zerops/useMateRecovery";
 import { useMateHeld } from "../zerops/accountEnvironments";
@@ -254,6 +255,8 @@ function SignedInRootRouteView() {
     threadId: pathname.split("/").filter((part) => part.length > 0)[1],
   });
   const routeDetailHeld = useThreadDetail(routeThreadRef, (detail) => detail !== null);
+  const handOverId = useLocation({ select: (location) => location.state.mateHandOver });
+  useMateHandOverDestination(routeThreadRef, handOverId);
   useEffect(() => {
     mateDiagnostics.record({
       kind: "route-gate",
