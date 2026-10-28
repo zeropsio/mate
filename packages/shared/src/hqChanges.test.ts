@@ -1,4 +1,3 @@
-import * as Offers from "./hqOffers.ts";
 import * as Changes from "./hqChanges.ts";
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
@@ -670,25 +669,6 @@ it("Probe and adoption responses retain only safe evidence and reject partial mo
       }),
     ),
   ).not.toContain("TOKEN_MARKER");
-});
-
-it("Direct-target verbs travel through the existing open offers without a second permission verdict.", () => {
-  expect(Offers.HQ_GIT_TARGET_VERBS).toEqual([
-    "connect_remote",
-    "replace_remote_token",
-    "update_remote_address",
-    "disconnect_remote",
-    "add_git_environment",
-    "remove_git_environment",
-  ]);
-  for (const verb of Offers.HQ_GIT_TARGET_VERBS) {
-    expect(
-      Offers.hqOffer({ [verb]: { allow: false, reason: "not_writer" } }, verb, {
-        current: true,
-        unavailableSince: null,
-      }),
-    ).toEqual({ kind: "refused", reason: "not_writer" });
-  }
 });
 
 describe("hqChanges — a change's metadata", () => {

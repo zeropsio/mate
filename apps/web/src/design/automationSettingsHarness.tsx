@@ -11,6 +11,7 @@
  */
 import type { OrgAiKeysRead, TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubView } from "@t3tools/shared/hqGithub";
+import type { HqApplicationOffers } from "@t3tools/shared/hqOffers";
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import type { HqTaskLimitsView } from "@t3tools/shared/hqIntake";
 import { StrictMode, useState, type ReactNode } from "react";
@@ -288,19 +289,28 @@ const REMOTE = {
   expiresAt: "2027-10-17T09:00:00Z",
   invalidSince: null,
 };
-const APP: GitMirrorApp = {
+const APP = {
   kind: "connected",
   name: "Acme Mate",
   repositories: ["acme/api", "acme/tea-shop", "acme/web"],
   installUrl: CONNECTED.installUrl,
+  installTrip: true,
   appId: 123456,
-};
+} satisfies GitMirrorApp;
+/** HQ's application offers to an Owner or Admin, as its navigation streams them. */
 const OFFERS = {
-  connect_remote: { allow: true },
-  replace_remote_token: { allow: true },
-  disconnect_remote: { allow: true },
-  update_remote_address: { allow: true },
-};
+  add_mate: { allow: true },
+  structure: { allow: true },
+  release: { allow: true },
+  add_git_environment: { allow: true },
+} as const satisfies HqApplicationOffers;
+/** And to a member who is neither. */
+const MEMBER_OFFERS = {
+  add_mate: { allow: true },
+  structure: { allow: false, reason: "not_structure_writer" },
+  release: { allow: false, reason: "not_releaser" },
+  add_git_environment: { allow: false, reason: "not_structure_writer" },
+} as const satisfies HqApplicationOffers;
 const ACTIONS = {
   connect: async () => ({ ok: false as const, reason: "Fixture." }),
   replaceToken: async () => ({ ok: false as const, reason: "Fixture." }),
@@ -351,6 +361,46 @@ function Dialogs() {
           appName="Tea Shop"
           can={OFFERS}
           github={APP}
+          admin
+          onInstall={nothing}
+          onOpenAutomation={nothing}
+          repos={[repo("appdev", null)]}
+        />
+      </DialogFrame>
+      <DialogFrame title="App connected, the person's account waits for an OK">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={OFFERS}
+          github={{
+            ...APP,
+            waiting: [{ account: "lukas-dev", repositories: ["lukas-dev/tea-shop"] }],
+          }}
+          admin
+          onInstall={nothing}
+          onOpenAutomation={nothing}
+          repos={[repo("appdev", null)]}
+        />
+      </DialogFrame>
+      <DialogFrame title="App connected, read by a member">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={MEMBER_OFFERS}
+          github={APP}
+          repos={[repo("appdev", null)]}
+        />
+      </DialogFrame>
+      <DialogFrame title="No app, read by a member">
+        <GitRemoteSettings
+          actions={ACTIONS}
+          appId="tea-shop"
+          appName="Tea Shop"
+          can={MEMBER_OFFERS}
+          github={{ kind: "none" }}
+          onOpenAutomation={nothing}
           repos={[repo("appdev", null)]}
         />
       </DialogFrame>
@@ -369,7 +419,7 @@ function Dialogs() {
           actions={ACTIONS}
           appId="tea-shop"
           appName="Tea Shop"
-          can={{}}
+          can={MEMBER_OFFERS}
           github={APP}
           repos={[repo("appdev", null, REMOTE.url)]}
         />

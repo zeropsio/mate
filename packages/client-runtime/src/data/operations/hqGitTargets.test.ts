@@ -1,4 +1,5 @@
 import type { HqDeliveryNavigationJob } from "@t3tools/shared/hqStream";
+import type { HqApplicationOffers } from "@t3tools/shared/hqOffers";
 import { gitRemote, gitAdoption, gitEnvironment } from "../__fixtures__/hqWire.ts";
 import { HqEnvironmentId } from "@t3tools/contracts";
 import * as data from "@t3tools/client-runtime/data";
@@ -37,7 +38,7 @@ const answer = (requestId: string): OperationReceipt => ({
 let revision = 0;
 const publish = (
   store: AccountStore,
-  can: Record<string, unknown>,
+  can: HqApplicationOffers,
   jobs: ReadonlyArray<HqDeliveryNavigationJob> = gitEnvironment.jobs,
 ) =>
   store.dispatch({
@@ -71,7 +72,7 @@ const publish = (
   });
 function setup(
   options: {
-    can?: Record<string, unknown>;
+    can?: HqApplicationOffers;
     send?: HqWrites["gitTargetWrite"];
     lookup?: HqWrites["gitTargetReceipt"];
   } = {},
@@ -84,10 +85,9 @@ function setup(
   publish(
     store,
     options.can ?? {
-      connect_remote: { allow: true },
-      replace_remote_token: { allow: true },
+      add_mate: { allow: true },
+      structure: { allow: true },
       release: { allow: true },
-      disconnect_remote: { allow: true },
       add_git_environment: { allow: true },
     },
   );
@@ -206,9 +206,9 @@ describe("Git target operations through the existing HQ executor", () => {
       expect(serialized(f.store)).not.toContain(TOKEN);
     }),
   );
-  it.effect.each([
+  it.effect.each<{ readonly can: HqApplicationOffers; readonly reason: string }>([
     { can: {}, reason: "unknown" },
-    { can: { connect_remote: { allow: false, reason: "structure_read_only" } }, reason: "refused" },
+    { can: { structure: { allow: false, reason: "not_structure_writer" } }, reason: "refused" },
   ])("every write requires the server offer: $reason", ({ can }) =>
     Effect.gen(function* () {
       const f = setup({ can });
@@ -431,12 +431,12 @@ it.effect("a server offer withdrawn after candidate entry prevents the write", (
   Effect.gen(function* () {
     const f = setup();
     const pending = f.executor.submitGitCandidate(f.operations, "r1", intent, TOKEN);
-    publish(f.store, { connect_remote: { allow: false, reason: "structure_read_only" } });
+    publish(f.store, { structure: { allow: false, reason: "not_structure_writer" } });
     yield* pending;
     expect(f.transcript).toEqual([]);
     expect(operationProgress.derive(readsOfState(f.store.state()), "r1")).toMatchObject({
       stage: "refused",
-      reason: "structure_read_only",
+      reason: "not_structure_writer",
     });
   }),
 );
@@ -498,7 +498,7 @@ it.effect(
   "A reviewed remote address update is one authority-gated operation with a stable id and no token",
   () =>
     Effect.gen(function* () {
-      const f = setup({ can: { update_remote_address: { allow: true } } });
+      const f = setup({ can: { structure: { allow: true } } });
       const update = {
         kind: "update-git-remote-address",
         orgId: ORG,

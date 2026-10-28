@@ -14,6 +14,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { hqRefusalWords, HqError } from "@t3tools/client-runtime/zerops/hq";
+import type { HqApplicationOffers } from "@t3tools/shared/hqOffers";
 import { GitRemoteLines, GitRemoteSettings } from "./GitRemoteSettings";
 const remote = {
   url: "https://github.com/acme/api.git",
@@ -25,6 +26,12 @@ const remote = {
 };
 const repos = [{ name: "api", mainHead: "a".repeat(40), updatedAt: remote.keptAt, remote }];
 const actions = { replaceToken: vi.fn(), disconnect: vi.fn(), connect: vi.fn() };
+/** HQ's application offers to an Owner or Admin: every remote write is admitted on `structure`. */
+const WRITER = { structure: { allow: true } } as const satisfies HqApplicationOffers;
+/** And to anyone else in the organization. */
+const MEMBER = {
+  structure: { allow: false, reason: "not_structure_writer" },
+} as const satisfies HqApplicationOffers;
 /** The field a label names, as a person finds it. */
 function labelled(host: HTMLElement, label: string): HTMLInputElement {
   const id = [...host.querySelectorAll("label")]
@@ -111,7 +118,7 @@ describe("Application repositories", () => {
         repos={repos}
         appName="Shop"
         actions={actions}
-        can={{ disconnect_remote: { allow: true } }}
+        can={WRITER}
         environments={[
           { name: "Stage", target: { kind: "git" } },
           { name: "Production", target: { kind: "git" } },
@@ -130,7 +137,7 @@ describe("Application repositories", () => {
           appId="shop"
           repos={repos}
           appName="Shop"
-          can={{ update_remote_address: { allow: true } }}
+          can={WRITER}
           actions={{
             addressReview: {
               repo: "api",
@@ -192,7 +199,7 @@ describe("Application repositories", () => {
         repos={listed}
         appName="Shop"
         actions={actions}
-        can={{ connect_remote: { allow: true }, replace_remote_token: { allow: true } }}
+        can={WRITER}
         environments={environments}
       />,
     );
@@ -205,7 +212,7 @@ describe("Application repositories", () => {
         appId="shop"
         repos={repos}
         appName="Shop"
-        can={{ replace_remote_token: { allow: true }, disconnect_remote: { allow: true } }}
+        can={WRITER}
         actions={actions}
         live={false}
       />,
@@ -229,7 +236,7 @@ it("candidate token is cleared before verification and failed verification keeps
           appId="shop"
           repos={repos}
           appName="Shop"
-          can={{ replace_remote_token: { allow: true } }}
+          can={WRITER}
           actions={{ replaceToken: replace }}
         />,
       ),
@@ -351,7 +358,7 @@ it.each([
           appId="shop"
           repos={repos}
           appName="Shop"
-          can={{ replace_remote_token: { allow: true } }}
+          can={WRITER}
           actions={{ replaceToken: replace }}
         />,
       ),
@@ -418,12 +425,7 @@ it.each(["connect", "replace", "disconnect", "address"] as const)(
             repos={action === "connect" ? [{ ...repos[0]!, remote: null }] : repos}
             appName="Shop"
             actions={supplied}
-            can={{
-              connect_remote: { allow: true },
-              replace_remote_token: { allow: true },
-              disconnect_remote: { allow: true },
-              update_remote_address: { allow: true },
-            }}
+            can={WRITER}
           />,
         ),
       );
@@ -485,7 +487,7 @@ it.each(["settled", "pending"] as const)(
     const props = {
       repos: [{ ...repos[0]!, name: "appdev" }],
       appName: "Same project name",
-      can: { replace_remote_token: { allow: true } },
+      can: WRITER,
       actions: { replaceToken: () => result },
     };
     const render = async (appId: string) => {
@@ -562,12 +564,7 @@ it("a refreshed disconnect record clears only its project's repository controls"
           appId={appId}
           repos={detail.repos}
           appName={appId}
-          can={{
-            connect_remote: { allow: true },
-            replace_remote_token: { allow: true },
-            disconnect_remote: { allow: true },
-            update_remote_address: { allow: true },
-          }}
+          can={WRITER}
           actions={{ ...actions, reviewAddress: vi.fn(), updateAddress: vi.fn() }}
         />,
       ),
@@ -610,11 +607,7 @@ describe("mirroring through the organization's GitHub app", () => {
     installUrl: "https://github.com/apps/acme-mate/installations/new",
   } as const;
   const unmirrored = [{ ...repos[0]!, name: "appdev", remote: null }];
-  const offers = {
-    connect_remote: { allow: true },
-    replace_remote_token: { allow: true },
-    disconnect_remote: { allow: true },
-  };
+  const offers = WRITER;
 
   async function mount(props: Partial<Parameters<typeof GitRemoteSettings>[0]>) {
     vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
@@ -726,6 +719,56 @@ describe("mirroring through the organization's GitHub app", () => {
       await view.unmount();
     }
   });
+
+  it("offers a person whose GitHub account the app does not reach yet to add one, through HQ's install trip, beside the repositories it reaches", async () => {
+    const onInstall = vi.fn();
+    const view = await mount({
+      github: {
+        ...app,
+        installTrip: true,
+        waiting: [{ account: "lukas-dev", repositories: ["lukas-dev/tea-shop"] }],
+      },
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      admin: true,
+      onInstall,
+    });
+    try {
+      expect(view.buttons()).toContain("Mirror here");
+      expect(view.host.textContent).toContain(
+        "lukas-dev waits for an admin's OK in Settings › Automation.",
+      );
+      await view.click("Add a GitHub account or repository…");
+      expect(onInstall).toHaveBeenCalledTimes(1);
+    } finally {
+      await view.unmount();
+    }
+  });
+
+  it.each([
+    { case: "the app connected", github: app },
+    { case: "no app", github: { kind: "none" } as const },
+  ])(
+    "a person HQ does not let mirror reads who can, and no way to mirror, with $case",
+    async ({ github }) => {
+      const view = await mount({
+        github,
+        can: MEMBER,
+        actions: { ...actions, viaApp: vi.fn(async () => {}) },
+        admin: false,
+        onOpenAutomation: vi.fn(),
+      });
+      try {
+        expect(view.host.textContent).toContain("Not mirrored");
+        expect(view.host.textContent).toContain(
+          "Only an Owner or Admin of the organization can mirror this project's code.",
+        );
+        expect(view.buttons()).toEqual([]);
+        expect(view.host.querySelector("input, [role=combobox]")).toBeNull();
+      } finally {
+        await view.unmount();
+      }
+    },
+  );
 
   it("says Saving… while HQ mirrors it, then where it mirrors to and through which app", async () => {
     let finish!: () => void;
@@ -988,11 +1031,7 @@ describe("mirroring through the organization's GitHub app", () => {
   // live gate 2026-10-21 (D1): the line read as a precondition of the switch, and stood alone after it.
   it.each([
     { name: "in Disconnect's place, where HQ offers Disconnect", can: offers, shown: true },
-    {
-      name: "nowhere, where HQ offers no Disconnect",
-      can: { connect_remote: { allow: true }, replace_remote_token: { allow: true } },
-      shown: false,
-    },
+    { name: "nowhere, where HQ offers no Disconnect", can: MEMBER, shown: false },
   ])("names the Git environments that keep a remote $name", async ({ can, shown }) => {
     const view = await mount({
       github: app,
@@ -1002,7 +1041,7 @@ describe("mirroring through the organization's GitHub app", () => {
       environments: [{ name: "Production", target: { kind: "git" } }],
     });
     try {
-      expect(view.buttons()).toContain("Use Acme Mate instead");
+      expect(view.buttons().includes("Use Acme Mate instead")).toBe(shown);
       expect(view.host.textContent?.includes("Remove those Git environments first")).toBe(shown);
       expect(view.buttons()).not.toContain("Disconnect");
     } finally {
@@ -1145,7 +1184,7 @@ it("Stop following returns a followed repository to not mirrored once HQ's recor
             hqAppDetail.derive(readsOfState(store.state()), { orgId: "org", appId: "shop" }).repos
           }
           appName="Shop"
-          can={{ connect_remote: { allow: true } }}
+          can={WRITER}
           // HQ's record answers the stop.
           actions={{
             unfollow: async () => {

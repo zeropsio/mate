@@ -2,6 +2,8 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   installOffer,
+  mirrorAuthorityLine,
+  parseMirrorSearch,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
@@ -93,6 +95,34 @@ describe("the mirror dialog's lead line", () => {
     expect(mirrorLeadLine({ kind: "none" })).toBe(
       "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
     );
+  });
+});
+
+describe("who may mirror, said where the way to mirror would stand", () => {
+  it.each([
+    { case: "a person HQ lets mirror", offer: { kind: "allowed" }, says: null },
+    {
+      case: "a person HQ refuses as no structure writer",
+      offer: { kind: "refused", reason: "not_structure_writer" },
+      says: "Only an Owner or Admin of the organization can mirror this project's code.",
+    },
+    {
+      case: "a person HQ refuses for another reason, in HQ's words",
+      offer: { kind: "refused", reason: "not_active_member" },
+      says: "You are not an active member of this organization in Zerops.",
+    },
+    {
+      case: "HQ has not said",
+      offer: { kind: "unknown" },
+      says: "HQ hasn't said yet whether you can mirror this project's code.",
+    },
+    {
+      case: "HQ is not answering",
+      offer: { kind: "unavailable", since: NOW },
+      says: "HQ isn't answering, so mirroring waits until it does.",
+    },
+  ] as const)("$case", ({ offer, says }) => {
+    expect(mirrorAuthorityLine(offer)).toBe(says);
   });
 });
 
@@ -202,5 +232,20 @@ describe("installing the app on another account or more repositories", () => {
     };
     expect(waitingAccount(waiting, "stranger/notes")).toBe("Stranger");
     expect(waitingAccount(waiting, "acme/api")).toBeNull();
+  });
+});
+
+describe("back from GitHub's install page, the mirror dialog opens again over its project", () => {
+  it.each([
+    { case: "the project it left from", raw: { mirror: "app-1" }, opens: "app-1" },
+    {
+      case: "beside what HQ adds to the return",
+      raw: { mirror: "app-1", github: "connected" },
+      opens: "app-1",
+    },
+    { case: "nothing without one", raw: { github: "connected" }, opens: undefined },
+    { case: "nothing for an empty one", raw: { mirror: "" }, opens: undefined },
+  ])("$case", ({ raw, opens }) => {
+    expect(parseMirrorSearch(raw).mirror).toBe(opens);
   });
 });

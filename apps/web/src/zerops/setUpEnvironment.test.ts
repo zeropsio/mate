@@ -123,7 +123,7 @@ it("The account candidate bridge uses the existing coordinator once and never re
         value: {
           id: "app",
           name: "Shop",
-          can: { connect_remote: { allow: true } },
+          can: { structure: { allow: true } },
           projectIds: [],
           environments: [],
           births: [],
