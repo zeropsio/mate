@@ -339,9 +339,9 @@ describe("ZeropsServiceMap — the card", () => {
       ]),
     );
 
-    expect(html).toContain("kanbandev");
+    expect(html).toContain(">Kanban<");
     expect(html).toContain("data-zerops-service-stage");
-    expect(html).toContain("kanbanstage");
+    expect(html).toContain(">Preview<");
     expect(html).toContain("Creating");
     expect(html.match(/data-zerops-service-row=/gu)).toHaveLength(1);
   });
@@ -350,7 +350,8 @@ describe("ZeropsServiceMap — the card", () => {
     const html = render(
       topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
     );
-    expect(html).toContain("<span>preview</span>");
+    expect(html).toContain(">Preview<");
+    expect(html).not.toContain(">kanbanstage<");
     expect(html).not.toContain("<span>stage</span>");
   });
 
@@ -677,7 +678,7 @@ describe("ZeropsServiceDetail — the pop", () => {
     );
 
     expect(html).toContain("appdev-1-3000.zerops.app</span>");
-    expect(html).toContain("appstage · appstage-1-3000.zerops.app</span>");
+    expect(html).toContain("Preview · appstage-1-3000.zerops.app</span>");
   });
 
   it("offers a production project as a linked route", () => {
@@ -776,5 +777,105 @@ describe("ZeropsServiceMap — liveness", () => {
 
     expect(html).toContain("data-zerops-map-degraded");
     expect(html).not.toContain('data-zerops-map-liveness="live"');
+  });
+});
+
+describe("ZeropsServiceMap — a pool-era Mate's parts", () => {
+  const webpool = service({
+    hostname: "webpool",
+    type: "swarm@1",
+    group: "infrastructure",
+    ports: [{ port: 8101 }],
+    routes: [
+      { port: 8101, url: "https://webpool-8101.zerops.app", host: "webpool-8101.zerops.app" },
+    ],
+  });
+  const leased = {
+    threadId: "thread-1",
+    recentTools: [],
+    envelope: {
+      services: [],
+      leases: [
+        {
+          alias: "webpool-1",
+          pool: "webpool",
+          state: "held",
+          devServers: [
+            {
+              name: "web",
+              port: 3000,
+              url: "https://webpool-1-3000.zerops.app",
+              status: "running",
+              readAt: "2026-10-28T10:00:00Z",
+            },
+          ],
+        },
+        {
+          alias: "webpool-2",
+          pool: "webpool",
+          state: "held",
+          devServers: [
+            {
+              name: "web",
+              port: 3000,
+              url: "https://webpool-2-3000.zerops.app",
+              status: "crashed",
+              readAt: "2026-10-28T10:00:00Z",
+            },
+          ],
+        },
+      ],
+    },
+  } as unknown as ZeropsLifecycle;
+
+  it("reads a pool as its part among the runtimes, never as infrastructure or by its slot ports", () => {
+    const html = render(topology([webpool, service({ hostname: "webstage" })]), {
+      lifecycle: leased,
+    });
+
+    expect(html).toContain('data-zerops-service-group="runtimes"');
+    expect(html).not.toContain('data-zerops-service-group="infrastructure"');
+    expect(html).toContain(">Web<");
+    expect(html).not.toContain(":8101");
+  });
+
+  it("the pool's pop opens each workspace by its chat and says why another has no link", () => {
+    const row = buildZeropsServiceMap(
+      topology([webpool]),
+      liveLifecycle(leased),
+      undefined,
+      undefined,
+      [{ title: "Fix the login form", lease: { alias: "webpool-1" } }],
+    )?.groups[0]?.rows[0];
+    const html = renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
+
+    expect(html).toContain("Fix the login form · webpool-1-3000.zerops.app</span>");
+    expect(html).toContain("dev · crashed");
+    expect(html).not.toContain("webpool-2-3000");
+    expect(html).not.toContain("webpool-8101");
+  });
+
+  it("a holder's card says it holds the code and nothing runs there", () => {
+    const html = render(
+      topology([webpool, service({ hostname: "keeper", type: "ubuntu/go@1.22" })]),
+      {
+        lifecycle: {
+          threadId: "thread-1",
+          recentTools: [],
+          envelope: {
+            services: [
+              {
+                hostname: "keeper",
+                typeVersion: "go@1.22",
+                runtimeClass: "dynamic",
+                standIn: { for: "pool-migrate" },
+              },
+            ],
+          },
+        } as unknown as ZeropsLifecycle,
+      },
+    );
+
+    expect(html).toContain("Holds the code; nothing runs here");
   });
 });

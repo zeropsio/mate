@@ -27,6 +27,7 @@ import { ArrowUpRightIcon, ChevronDownIcon, DatabaseIcon } from "lucide-react";
 import { useContext, type ReactElement, type ReactNode } from "react";
 
 import type {
+  PoolWorkspace,
   ZeropsRouteChoice,
   ZeropsServiceFact,
   ZeropsServiceMapGroup,
@@ -74,6 +75,8 @@ const RESOURCES: ReadonlyArray<{
   { id: "memory", label: "RAM" },
   { id: "disk", label: "Disk" },
 ];
+
+const NO_WORKSPACES: ReadonlyArray<PoolWorkspace> = [];
 
 const HOVER_OPEN_DELAY_MS = 220;
 const HOVER_CLOSE_DELAY_MS = 120;
@@ -184,6 +187,7 @@ function ServiceHeader({
   aside,
   routes,
   folded,
+  unavailable = NO_WORKSPACES,
 }: {
   service: ZeropsTopologyService;
   tone: ZeropsServiceTone;
@@ -196,6 +200,8 @@ function ServiceHeader({
   routes: ReadonlyArray<ZeropsRouteChoice>;
   /** Too many for a button each: the main route's button and one Open menu. */
   folded: boolean;
+  /** A pool's workspaces with no link, each saying why in the Open menu. */
+  unavailable?: ReadonlyArray<PoolWorkspace> | undefined;
 }) {
   const dataLink = useContext(ZeropsDataLinkContext);
   const openData = service.group === "data" ? dataLink : null;
@@ -234,7 +240,7 @@ function ServiceHeader({
           {folded ? (
             <>
               {main === undefined ? null : <RouteButton route={main.route} />}
-              <RouteMenu routes={routes} />
+              <RouteMenu routes={routes} unavailable={unavailable} />
             </>
           ) : (
             routes.map((choice) => <RouteButton key={choice.route.url} route={choice.route} />)
@@ -429,8 +435,17 @@ function RouteButton({ route }: { route: ZeropsServiceRoute }) {
   );
 }
 
-/** Every public route by its port and who it serves, where there are too many for buttons. */
-function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
+/**
+ * Every public route by its port and who it serves, where there are too many for buttons; a pool's
+ * workspaces by their chats, one with no link saying why.
+ */
+function RouteMenu({
+  routes,
+  unavailable,
+}: {
+  routes: ReadonlyArray<ZeropsRouteChoice>;
+  unavailable: ReadonlyArray<PoolWorkspace>;
+}) {
   return (
     <Menu>
       <MenuTrigger
@@ -458,6 +473,12 @@ function RouteMenu({ routes }: { routes: ReadonlyArray<ZeropsRouteChoice> }) {
             <span className="min-w-0 flex-1 truncate text-muted-foreground">
               {choice.route.host}
             </span>
+          </MenuItem>
+        ))}
+        {unavailable.map((workspace) => (
+          <MenuItem data-zerops-workspace-unavailable disabled key={workspace.key}>
+            <span className="shrink-0 font-medium">{workspace.label}</span>
+            <span className="min-w-0 flex-1 truncate text-muted-foreground">{workspace.why}</span>
           </MenuItem>
         ))}
       </MenuPopup>
@@ -549,6 +570,28 @@ function ServiceRoutes({
   );
 }
 
+/** A pool's workspaces in the pop: each preview by its chat, a link, or why it has none. */
+function PoolWorkspaces({ workspaces }: { workspaces: ReadonlyArray<PoolWorkspace> }) {
+  if (workspaces.length === 0) return null;
+  return (
+    <ul className="mt-2 flex min-w-0 max-w-full flex-col gap-1" data-zerops-pool-workspaces>
+      {workspaces.map((workspace) =>
+        workspace.url === undefined ? (
+          <li className="text-xs text-muted-foreground" key={workspace.key}>
+            {`${workspace.label} · ${workspace.why ?? ""}`}
+          </li>
+        ) : (
+          <RouteLink
+            href={workspace.url}
+            key={workspace.key}
+            label={`${workspace.label} · ${workspace.url.replace(/^https?:\/\//u, "")}`}
+          />
+        ),
+      )}
+    </ul>
+  );
+}
+
 /** The autoscaling range a figure moves in, as the dashboard's panel states it. */
 function MetricRange({ metric }: { metric: ZeropsServiceMetric }) {
   if (metric.range === undefined) return null;
@@ -634,9 +677,13 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
           {row.meta.map(factText).join(" · ")}
         </p>
       )}
-      <ServiceRoutes routes={row.service.routes} row={row} />
+      {row.workspaces === undefined ? (
+        <ServiceRoutes routes={row.service.routes} row={row} />
+      ) : (
+        <PoolWorkspaces workspaces={row.workspaces} />
+      )}
       {row.stage === undefined ? null : (
-        <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
+        <ServiceRoutes of={row.stageTitle ?? row.stage.hostname} routes={row.stage.routes} />
       )}
       {row.metrics.length === 0 ? null : (
         <div
@@ -663,6 +710,7 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
  */
 function StageLine({
   stage,
+  title,
   tone,
   label,
   needsWord,
@@ -674,6 +722,8 @@ function StageLine({
   usageRead,
 }: {
   stage: ZeropsTopologyService;
+  /** What a person calls it: the Mate's preview. */
+  title: string;
   routes: ReadonlyArray<ZeropsRouteChoice>;
   folded: boolean;
   tone: ZeropsServiceTone;
@@ -687,14 +737,14 @@ function StageLine({
   return (
     <div className="mt-2 border-t border-border/60 pt-2" data-zerops-service-stage>
       <ServiceHeader
-        aside="preview"
+        aside={undefined}
         portLabel={portLabel}
         folded={folded}
         routes={routes}
         service={stage}
         statusLabel={label}
         statusNeedsWord={needsWord}
-        title={stage.hostname}
+        title={title}
         tone={tone}
       />
       <ResourcesRow
@@ -748,7 +798,13 @@ function ServiceCardBody({
         statusNeedsWord={row.statusNeedsWord}
         title={row.title}
         tone={row.tone}
+        unavailable={row.workspaces?.filter((workspace) => workspace.url === undefined)}
       />
+      {row.restNote === undefined ? null : (
+        <p className="mt-0.5 text-xs leading-snug text-muted-foreground" data-zerops-service-rest>
+          {row.restNote}
+        </p>
+      )}
       <DevServers servers={row.devServers} />
       <ServiceResources row={row} usageRead={usageRead} />
       {row.stage === undefined ||
@@ -762,6 +818,7 @@ function ServiceCardBody({
           folded={row.stageRoutesFolded ?? false}
           routes={row.stageRoutes ?? []}
           stage={row.stage}
+          title={row.stageTitle ?? row.stage.hostname}
           tone={row.stageTone}
           trends={row.stageTrends}
           usageRead={usageRead}

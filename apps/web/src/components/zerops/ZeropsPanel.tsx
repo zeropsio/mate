@@ -39,6 +39,7 @@ import { useEnvironment } from "~/state/environments";
 import { useAgentLoginCancel } from "../../zerops/useAgentLoginCancel";
 import { useAgentSignOut } from "../../zerops/useAgentSignOut";
 import { useCrew } from "../../zerops/crew/useCrew";
+import { useLeaseChats } from "../../zerops/useLeaseChats";
 import { useMateLogins } from "../../zerops/useMateLogins";
 import { useProjectTopology } from "../../zerops/useProjectTopology";
 import { activityOfNow, mateFaceFor } from "../../zerops/agentActivity";
@@ -100,12 +101,15 @@ export function ZeropsPanel({
   // Whose login each agent is, so a row can say so (D6). Silent for your own.
   const viewerSubject = useZeropsSessionOptional()?.user?.id;
   const crew = useCrew(threadRef?.environmentId ?? null);
-  // A dev service's crew ports name their routes by whose app answers there.
+  const leaseChats = useLeaseChats(threadRef?.environmentId ?? null);
+  // A dev service's crew ports name their routes by whose app answers there; a dev pool's
+  // workspaces go by the chats working in them.
   const view = buildZeropsServiceMap(
     topology.view,
     lifecycle,
     runningToolLabel,
     crew.snapshot === null ? undefined : crewPortOwners(crew.snapshot),
+    leaseChats,
   );
   const authorizationSnapshot = agentAuthSnapshot ?? agentAuthCard;
   const authorizationAgent = authorizationSnapshot?.agents.find(
