@@ -434,6 +434,9 @@ function short(value: number): string {
 }
 
 /** `3 files`, `+42`, `−3` — or nothing while the size is unknown. */
+/** A folded row's count where HQ has not recorded what it counts: never a 0 that reads as none. */
+export const NOT_RECORDED_ASIDE = "Not known yet";
+
 export function sizeWords(size: {
   readonly files: number | undefined;
   readonly additions: number | undefined;

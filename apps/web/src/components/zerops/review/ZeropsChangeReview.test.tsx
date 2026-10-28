@@ -372,6 +372,16 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(textOf(markup)).toContain("Show files");
   });
 
+  // Kara's #2, 2026-10-28: "Files 0 changed · +0 −0" and a bare "Commits" over
+  // a change whose description listed the files it edits — HQ had recorded neither.
+  it("Files and commits HQ has not recorded say so on their rows, never 0 changed", () => {
+    const text = textOf(render(merged(), [], { readout: { kind: "read", value: recorded(null) } }));
+    expect(text).toContain("Files Not known yet");
+    expect(text).toContain("Commits Not known yet");
+    expect(text).not.toContain("0 changed");
+    expect(text).not.toContain("+0");
+  });
+
   it("A file HQ recorded no status for draws no letter, never a guessed M", () => {
     const markup = render(merged(), [], {
       readout: {

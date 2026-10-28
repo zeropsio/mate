@@ -76,6 +76,7 @@ import {
   changeReceipt,
   changeReadVerdict,
   mergeFoot,
+  NOT_RECORDED_ASIDE,
   otherOpenChanges,
   reviewBranch,
   reviewKindLine,
@@ -712,7 +713,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     },
     release: props.release,
     recipe:
-      pull.kind === "recipe" && read !== undefined
+      pull.kind === "recipe" && read?.filesKnown === true
         ? recipeReach({
             files: read.files.map((file) => ({ filename: file.path })),
             environments: props.environments,
@@ -725,8 +726,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     hand: props.hand,
     now: props.now,
   });
+  // Files HQ has not recorded are not known, never none: no size is said of them.
   const size = sizeWords({
-    files: read?.files.length,
+    files: read?.filesKnown === false ? undefined : read?.files.length,
     additions: read?.files.reduce((sum, file) => sum + file.additions, 0),
     deletions: read?.files.reduce((sum, file) => sum + file.deletions, 0),
   });
@@ -991,7 +993,9 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       <ReviewSection
         aside={
-          size === undefined ? undefined : (
+          read?.filesKnown === false ? (
+            NOT_RECORDED_ASIDE
+          ) : size === undefined ? undefined : (
             <>
               {read?.files.length} changed ·{" "}
               <ReviewSize additions={size.additions} deletions={size.deletions} />
