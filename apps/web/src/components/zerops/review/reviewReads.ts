@@ -5,7 +5,6 @@
  */
 import {
   buildZeropsGroupTree,
-  pairPreviewRoutes,
   placeAddresses,
   type GroupFlowAddress,
   type GroupFlowPreview,
@@ -14,7 +13,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
-import { stageDeploysMerges } from "./ZeropsReview.logic";
+import { stageDeploysMerges, tryItPreviews } from "./ZeropsReview.logic";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -35,10 +34,10 @@ export type ReviewPreview = GroupFlowPreview;
 const NO_PREVIEWS: ReadonlyArray<ReviewPreview> = [];
 
 /**
- * The Mate's previews: "Try it", one per part and named by it. There is none per change; the
- * Mate's own stand for it, each — a frontend and a backend are two, and nothing says which a
- * change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend, how do
- * you know?"). Its repository's only, where a change names one: its pair's stage, each part's.
+ * The Mate's previews: "Try it", one per part and named by it (`tryItPreviews`). There is none per
+ * change; the Mate's own stand for it, each — a frontend and a backend are two, and nothing says
+ * which a change touched (the owner, 2026-10-11: "there are multiple services, backend, frontend,
+ * how do you know?"). Its repository's only, where a change names one that is a part's dev.
  */
 export function useMatePreviews(
   mateProjectId: string,
@@ -50,12 +49,14 @@ export function useMatePreviews(
   const { listing } = useZeropsDetailCandidates();
   return useMemo(() => {
     const row = heldCandidates(listing).rows.find((entry) => entry.project.id === mateProjectId);
-    const previews = pairPreviewRoutes(
-      row?.routes ?? [],
-      row?.services?.hostnames ?? [],
-      mateTier,
+    const previews = tryItPreviews({
+      routes: row?.routes ?? [],
+      hostnames: row?.services?.hostnames ?? [],
+      pools: row?.services?.pools,
+      controlPlane: row?.service?.name,
+      tier: mateTier,
       repository,
-    );
+    });
     return previews.length === 0 ? NO_PREVIEWS : previews;
   }, [listing, mateProjectId, mateTier, repository]);
 }

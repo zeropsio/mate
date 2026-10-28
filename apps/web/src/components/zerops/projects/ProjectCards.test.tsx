@@ -452,18 +452,21 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
           parts={[
             {
               key: "part:apipool",
+              devService: "apipool",
               name: "API",
               dev: [],
               preview: entry("preview:apistage", "preview", "https://apistage.example.app"),
             },
             {
               key: "part:matedev",
+              devService: "matedev",
               name: "Mate",
               dev: [entry("dev:matedev", "dev", "https://matedev.example.app")],
               preview: undefined,
             },
             {
               key: "part:runnerpool",
+              devService: "runnerpool",
               name: "Runner",
               dev: [],
               preview: entry("preview:runnerstage", "preview", undefined, "no public address"),

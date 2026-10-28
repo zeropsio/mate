@@ -32,6 +32,7 @@ import {
   changeReceipt,
   mergeFoot,
   stageDeploysMerges,
+  tryItPreviews,
   tryItWords,
   productionNow,
   productionNowLine,
@@ -1198,5 +1199,52 @@ describe("tryItWords: Try it names whose preview it opens, and which part", () =
   ])("$case: $words", ({ mate, part, words }) => {
     const said = tryItWords(mate, part);
     expect(`${said.preview} · ${said.part}`).toBe(words);
+  });
+});
+
+// The live audit, 2026-10-28: Kara's and Odin's reviews offered no Try it, their previews paired with
+// dev pools the old reading never looked at, and Noola's named its parts by their setups (apiprod).
+describe("tryItPreviews: Try it offers each part's preview by its friendly name", () => {
+  const route = (service: string) => ({
+    service,
+    port: 80,
+    url: `https://${service}-1.prg1.zerops.app`,
+    host: `${service}-1.prg1.zerops.app`,
+  });
+  it.each([
+    {
+      case: "a pool-era Mate's change offers every part's preview, its repository no part's dev",
+      input: {
+        routes: [route("apistage"), route("webstage"), route("zcp")],
+        hostnames: [
+          "apipool",
+          "apistage",
+          "webpool",
+          "webstage",
+          "runnerpool",
+          "runnerstage",
+          "zcp",
+        ],
+        pools: ["apipool", "webpool", "runnerpool"],
+        controlPlane: "zcp",
+        tier: undefined,
+        repository: "noola",
+      },
+      offered: ["API", "Web"],
+    },
+    {
+      case: "a change of one repository offers its own pair's preview",
+      input: {
+        routes: [route("appdev"), route("appstage"), route("docsdev"), route("docsstage")],
+        hostnames: ["appdev", "appstage", "docsdev", "docsstage"],
+        pools: undefined,
+        controlPlane: undefined,
+        tier: undefined,
+        repository: "docsdev",
+      },
+      offered: ["Docs"],
+    },
+  ])("$case", ({ input, offered }) => {
+    expect(tryItPreviews(input).map((preview) => preview.service)).toEqual(offered);
   });
 });

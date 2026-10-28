@@ -50,6 +50,8 @@ export interface MatePartEntry {
 export interface MatePart {
   readonly key: string;
   readonly name: string;
+  /** The service its dev side is: a dev service, or the dev pool its workspaces are on. */
+  readonly devService: string;
   readonly dev: ReadonlyArray<MatePartEntry>;
   readonly preview: MatePartEntry | undefined;
 }
@@ -288,6 +290,7 @@ export function mateParts(input: MatePartsInput): MateParts {
           previews.length > 1
             ? partName(withoutSuffix(preview, STAGE_SUFFIX))
             : nameOf(dev, stemOf.get(dev) ?? dev),
+        devService: dev,
         dev: devEntries,
         preview: entryOf(`preview:${preview}`, "preview", preview, "no public address"),
       });
@@ -300,6 +303,7 @@ export function mateParts(input: MatePartsInput): MateParts {
       parts.push({
         key: `part:${hostname}`,
         name: nameOf(hostname, withoutSuffix(hostname, DEV_SUFFIX)),
+        devService: hostname,
         dev,
         preview: undefined,
       });

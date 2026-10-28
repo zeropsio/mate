@@ -11,6 +11,7 @@
 import {
   deployedVersion,
   type GroupFlowAddress,
+  type GroupFlowPreview,
   linksChange,
   type Moved,
   type ProductionRun,
@@ -20,8 +21,10 @@ import {
   type ReviewState,
   type ReviewVerdict,
   type ReleaseReplaces,
+  type ZeropsPublicRoute,
 } from "@t3tools/client-runtime/zerops";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
+import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
 import { siteOf, soleSite } from "../projects/projectCard.logic";
@@ -698,6 +701,35 @@ export function tryItWords(
   part: string,
 ): { readonly preview: string; readonly part: string } {
   return { preview: `${placeName(crewPossessive(mateName))} preview`, part: placeName(part) };
+}
+
+/**
+ * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each
+ * part with a public preview by its friendly name. A change of one repository offers that pair's
+ * parts; where no part's dev is that repository — a pool-era Mate, whose parts' devs are pools — it
+ * offers every part, as a recipe change does.
+ */
+export function tryItPreviews(input: {
+  readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  readonly hostnames: ReadonlyArray<string>;
+  readonly pools: ReadonlyArray<string> | undefined;
+  readonly controlPlane: string | undefined;
+  /** The Mate tier on `main`. */
+  readonly tier: string | undefined;
+  /** The change's repository; `undefined` for every part's. */
+  readonly repository: string | undefined;
+}): ReadonlyArray<GroupFlowPreview> {
+  const { parts } = mateParts({
+    services: input.hostnames.map((hostname) => ({ hostname })),
+    routes: input.routes,
+    pools: input.pools,
+    controlPlane: input.controlPlane,
+    tier: input.tier,
+  });
+  const own = parts.filter((part) => part.devService === input.repository);
+  return (own.length === 0 ? parts : own).flatMap((part) =>
+    part.preview?.url === undefined ? [] : [{ service: part.name, url: part.preview.url }],
+  );
 }
 
 /** One part's preview in a change's review, as its receipt left it. */
