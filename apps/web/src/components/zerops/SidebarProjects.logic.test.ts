@@ -7,6 +7,7 @@ import {
   menuDrawsLoadingRows,
   newProjectOffered,
   openMateReveal,
+  opensOpenProject,
   slackAfterScroll,
   slackForFold,
   unfoldScroll,
@@ -173,6 +174,44 @@ describe("newProjectOffered — New project at the menu's foot (D11)", () => {
     },
   ])("$name: $offered", ({ candidates, births, complete, offered }) => {
     expect(newProjectOffered({ candidates, births, complete })).toBe(offered);
+  });
+});
+
+describe("opensOpenProject — the open conversation's project opens around it", () => {
+  it.each([
+    {
+      title: "a project the menu has not drawn folded opens around the conversation",
+      paintedFolded: undefined,
+      conversation: "c1",
+      opens: true,
+    },
+    {
+      title:
+        "a reload on a Mate's conversation leaves its project folded once the menu drew it folded",
+      paintedFolded: "c1",
+      conversation: "c1",
+      opens: false,
+    },
+    {
+      title: "a conversation opened after the menu drew its project folded opens the project",
+      paintedFolded: "c1",
+      conversation: "c2",
+      opens: true,
+    },
+    {
+      title: "a project drawn folded while no conversation was open opens for one opened after",
+      paintedFolded: null,
+      conversation: "c1",
+      opens: true,
+    },
+  ])("$title", ({ paintedFolded, conversation, opens }) => {
+    expect(opensOpenProject({ groupId: "g", paintedFolded, conversation })).toBe(opens);
+  });
+
+  it("opens nothing while the open conversation's project is not known", () => {
+    expect(
+      opensOpenProject({ groupId: undefined, paintedFolded: undefined, conversation: "c1" }),
+    ).toBe(false);
   });
 });
 

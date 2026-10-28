@@ -1263,5 +1263,144 @@ describe("owner-reported layout regressions", () => {
         });
       });
     });
+
+    describe("Decision: a reload paints nothing it takes back.", () => {
+      describe("B: the menu after a reload on a Mate's conversation", () => {
+        scenarioSuite((it) => {
+          // Aleš, 2026-10-27: aiming at Jago opened Dara. A reload on a Mate's conversation drew its
+          // folded project's row, then opened the project once the Mate was found, seconds later,
+          // pushing every row below it by three rows.
+          it.effect(
+            "after a reload on a Mate's conversation, a row below its project never moves while that Mate is found",
+            () =>
+              Effect.gen(function* () {
+                const s = yield* menuScenario();
+                yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
+                for (const name of ["Ada", "Bea", "Cy"])
+                  yield* s.given.project(name, { mate: true, app: "Alpha Titan" });
+                yield* s.given.project("Di", { mate: true, app: "Zulu" });
+                yield* s.given.signedIn;
+                yield* Effect.promise(() => ownerMenu(s.page));
+                const frames = yield* Effect.promise(async () => {
+                  const heading = '[data-zerops-surface="sidebar-project"][aria-expanded]';
+                  const expanded = (value: "true" | "false") =>
+                    s.page.waitForFunction(
+                      (selector, value) =>
+                        document.querySelector(selector)?.getAttribute("aria-expanded") === value,
+                      {},
+                      heading,
+                      value,
+                    );
+                  await s.page.waitForSelector(heading);
+                  if (
+                    (await s.page.$eval(heading, (row) => row.getAttribute("aria-expanded"))) !==
+                    "true"
+                  )
+                    await s.page.click(heading);
+                  await expanded("true");
+                  await waitForStillFrames(s.page);
+                  // Ada's conversation open, and her project folded around it by its person.
+                  const from = await s.page.evaluate(() => location.pathname);
+                  await s.page.click("[data-zerops-kids] [data-zerops-row]");
+                  await s.page.waitForFunction((from) => location.pathname !== from, {}, from);
+                  await waitForStillFrames(s.page);
+                  await s.page.click(heading);
+                  await expanded("false");
+                  await waitForStillFrames(s.page);
+                  await s.page.evaluateOnNewDocument(recordRowBelow);
+                  await s.page.reload({ waitUntil: "domcontentloaded" });
+                  await s.page.waitForFunction(
+                    () => (window as unknown as { belowDone?: boolean }).belowDone === true,
+                  );
+                  return s.page.evaluate(
+                    () => (window as unknown as { belowFrames: BelowFrame[] }).belowFrames,
+                  );
+                });
+                const said = frames
+                  .map(
+                    (frame) =>
+                      `${frame.at}ms ${frame.where} expanded=${frame.expanded} current=${frame.current} kids=${frame.kids} below=${frame.below}`,
+                  )
+                  .join("; ");
+                const tops = frames.flatMap((frame) => (frame.below === null ? [] : [frame.below]));
+                expect(tops.length, `ASSERTION: the row below is drawn: ${said}`).toBeGreaterThan(
+                  0,
+                );
+                expect(
+                  frames.at(-1)?.current,
+                  `ASSERTION: the folded project marks the conversation open in it once its Mate is found: ${said}`,
+                ).toBe(true);
+                expect(
+                  Math.max(...tops) - Math.min(...tops),
+                  `ASSERTION: the row below the project keeps its top from its first frame: ${said}`,
+                ).toBe(0);
+                yield* s.then.noExternalNetwork;
+              }),
+          );
+        });
+      });
+    });
   });
 });
+
+/** One change of the menu after a reload: the first project's fold and the row below it. */
+interface BelowFrame {
+  readonly at: number;
+  readonly where: "boot" | "app";
+  readonly expanded: string | null;
+  readonly kids: number;
+  /** The first project's row marks the conversation open in it. */
+  readonly current: boolean;
+  /** The top of the project row below the first one, or null before it draws. */
+  readonly below: number | null;
+}
+
+// Runs in every new document: each change of the first project and the row below it, until the
+// menu has stood still for 90 frames with the open conversation's Mate found.
+function recordRowBelow() {
+  const frames: BelowFrame[] = [];
+  const self = window as unknown as { belowFrames: BelowFrame[]; belowDone: boolean };
+  self.belowFrames = frames;
+  self.belowDone = false;
+  let still = 0;
+  const sample = () => {
+    const boot = document.getElementById("boot-shell");
+    const where: "boot" | "app" =
+      boot !== null && !boot.hidden && boot.getBoundingClientRect().width > 0 ? "boot" : "app";
+    const root =
+      where === "boot"
+        ? document.getElementById("boot-shell-menu")
+        : document.querySelector('[data-sidebar="sidebar"]');
+    const sections = [...(root?.querySelectorAll("section[data-zerops-group]") ?? [])].filter(
+      (section) => section.getBoundingClientRect().height > 0,
+    );
+    const open = sections[0];
+    const heading = open?.querySelector('[data-zerops-surface="sidebar-project"]') ?? null;
+    const below = sections[1]?.getBoundingClientRect().top;
+    const frame: BelowFrame = {
+      at: Math.round(performance.now()),
+      where,
+      expanded: heading?.getAttribute("aria-expanded") ?? null,
+      kids: open?.querySelectorAll("[data-zerops-kids] [data-zerops-row]").length ?? 0,
+      current:
+        heading?.getAttribute("aria-current") === "true" ||
+        open?.querySelector('[data-zerops-kids] [aria-current="true"]') != null,
+      below: below === undefined ? null : Math.round(below * 10) / 10,
+    };
+    const last = frames.at(-1);
+    if (
+      last === undefined ||
+      last.where !== frame.where ||
+      last.expanded !== frame.expanded ||
+      last.kids !== frame.kids ||
+      last.current !== frame.current ||
+      last.below !== frame.below
+    ) {
+      frames.push(frame);
+      still = 0;
+    } else still += 1;
+    if (where === "app" && frame.current && still > 90) self.belowDone = true;
+    else requestAnimationFrame(sample);
+  };
+  requestAnimationFrame(sample);
+}
