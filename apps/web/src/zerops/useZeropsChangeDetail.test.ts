@@ -105,10 +105,10 @@ async function mount(requests: ReadonlyArray<ZeropsChangeDetailRequest | null>) 
     // HQ still working the change out: its files are not recorded yet.
     if (answer === "unrecorded")
       return {
-        change: link,
+        change: { ...link, body: "" },
         review: { ...review, mergeBase: null, files: null, commits: null },
       } as unknown as ChangeMetadataResponse;
-    return { change: link, review } as unknown as ChangeMetadataResponse;
+    return { change: { ...link, body: "" }, review } as unknown as ChangeMetadataResponse;
   });
   const root = createRoot(document.createElement("div") as unknown as Element);
   for (const request of requests) {

@@ -445,10 +445,9 @@ describe("a card's places", () => {
     ]);
   });
 
-  // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
-  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`) — and marks it
-  // up as its first deploy ends, the address coming ~0.8 s later in the platform's next read: a
-  // stage that serves a port its address opens still turns it on. One serving none runs as is.
+  // A stage waits for its address only while HQ still brings it up (`EnvironmentBirth`). Once HQ
+  // is done, one still without its address runs without one: a beat of "Running" before a late
+  // address is true, a "turning on" that never ends is not. One serving no such port runs as is.
   it.each([
     {
       case: "while HQ still brings it up",
@@ -462,11 +461,12 @@ describe("a card's places", () => {
       offered: undefined,
       words: "Running",
     },
+    // a project's stage, 2026-10-28: its import never built, so nothing turned its address on.
     {
-      case: "once HQ has brought it up, while the address its app serves is still being turned on",
+      case: "once HQ has brought it up, its address still off: running, never turning it on for ever",
       birth: { ended: true },
       offered: true,
-      words: "Turning its address on…",
+      words: "Running",
     },
     {
       case: "once HQ has brought it up, serving nothing an address would open",

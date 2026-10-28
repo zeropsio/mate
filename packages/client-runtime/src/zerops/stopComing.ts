@@ -187,11 +187,9 @@ export function stopComing(input: {
   if (!beingBorn(input.birth)) {
     if (others.some(({ status }) => MAKING.has(status))) return coming("database");
     if (runtimes.some(({ status }) => MAKING.has(status))) return coming("app");
-    // HQ's bringing up ends with its first deploy, a beat before the platform turns the address on.
-    const up = input.services.every(({ status }) => running(status));
-    return input.tier === "stage" && deployed === true && up && turningOn
-      ? coming("address")
-      : undefined;
+    // Once HQ is done bringing it up, nothing here turns its address on: one still without it
+    // runs without one, never on its way to it for ever (a project's stage, 2026-10-28).
+    return undefined;
   }
   const brokenOther = others.find(({ status }) => failing(status));
   if (brokenOther !== undefined && deployed !== true) {
@@ -236,11 +234,12 @@ export function stopComing(input: {
 }
 
 /**
- * Whether a place HQ brought up is still turning its address on — the one rule the card's line and
- * the menu's heading say it by. HQ ends its bringing up as the first deploy ends, and the platform
- * turns the address on in its next read, about 0.8 s later: one serving a port its address would
- * open waits for that address, so it says Running in the paint its address comes in; one serving
- * no such port runs as it is; one whose ports are unread waits on HQ's word.
+ * Whether a place HQ brings up is still turning its address on — the one rule the card's line and
+ * the menu's heading say it by. Only while HQ is still bringing it up: one serving a port its
+ * address would open waits for that address; one serving no such port runs as it is; one whose
+ * ports are unread waits on HQ's word. Once HQ is done, a place still without its address has
+ * none: on 2026-10-28 a stage whose import never built read "turning its address on" for two
+ * hours after its first deploy, because nothing would ever turn it on.
  */
 export function addressComing(input: {
   /** HQ bringing it up (`HqEnvironment.birth`); none where HQ did not. */
@@ -250,7 +249,9 @@ export function addressComing(input: {
   /** It serves a port its address would open (`addressOffered`); `undefined` while unread. */
   readonly offered: boolean | undefined;
 }): boolean {
-  return input.birth != null && (input.offered ?? !input.birth.ended) && input.addresses === 0;
+  return (
+    input.birth != null && !input.birth.ended && (input.offered ?? true) && input.addresses === 0
+  );
 }
 
 /**

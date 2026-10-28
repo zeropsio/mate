@@ -104,8 +104,11 @@ function hqAppFailureWords({ code, message }: HqAppFailure): string {
   return words === `HQ refused this (${message}).` ? message : words;
 }
 
-/** An application's recipe HQ cannot read, with the person's *Try again*; `undefined` otherwise. */
-export function useHqRecipeFailure(
+/**
+ * Why HQ cannot read an application — its recipe, its changes — with the person's *Try again*;
+ * `undefined` otherwise.
+ */
+export function useHqAppFailure(
   appId: string,
 ): { readonly reason: string; readonly again: () => void } | undefined {
   const { failure } = useHqAppDetail(appId);

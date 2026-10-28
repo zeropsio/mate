@@ -126,7 +126,7 @@ vi.mock("~/zerops/useChangeDiscussion", () => ({
   }),
 }));
 vi.mock("~/zerops/useZeropsChangeRun", () => ({
-  useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
+  useZeropsChangeRun: () => ({ threadRef: undefined }),
 }));
 vi.mock("~/zerops/useProjectedHqPicture", () => ({
   useHqPictureSource: () => undefined,
@@ -195,6 +195,7 @@ vi.mock("~/zerops/useHqAppDetail", async () => {
         };
       }, [key]);
     },
+    useHqAppFailure: () => undefined,
   };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
@@ -275,7 +276,7 @@ function viewProps(
     readout: {
       kind: "read",
       value: changeReadoutOfRecord(
-        { mergeability: "clean", behind: false } as HqChange,
+        { mergeability: "clean", behind: false, body: "" } as HqChange,
         review({ files }),
       ),
     },
@@ -293,7 +294,6 @@ function viewProps(
     offers: DEVELOPS,
     press: { kind: "idle" },
     closing: { kind: "idle" },
-    run: { words: undefined, reading: false },
     hqAddress: undefined,
     pictures: undefined,
     environments: [{ tier: "stage" }, { tier: "production" }],
@@ -345,6 +345,7 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       {
         mergeability: "clean",
         behind: false,
+        body: "",
       } as HqChange,
       {
         mergeBase: MAIN,
@@ -363,6 +364,28 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       },
     );
 
+  // Lukas, 2026-10-28: change #4's "What it does" opened with its Mate's reply about #1 and #3.
+  it.each([
+    [
+      "the description its Mate wrote",
+      "Adds a tip jar under the total.",
+      "Adds a tip jar under the total.",
+    ],
+    ["nothing where its Mate wrote none", "", undefined],
+  ])("What it does says, from the change's own record, %s", (_case, body, said) => {
+    const markup = render(merged({ merged: false, description: undefined }), [], {
+      readout: {
+        kind: "read",
+        value: changeReadoutOfRecord(
+          { mergeability: "clean", behind: false, body } as HqChange,
+          review(),
+        ),
+      },
+    });
+    if (said === undefined) expect(textOf(markup)).not.toContain("What it does");
+    else expect(textOf(markup)).toContain(`What it does ${said}`);
+  });
+
   it("While the review waits for HQ's record it says Loading change details…", () => {
     const document = new Window().document;
     document.body.innerHTML = render(merged({ merged: false }), [], {
@@ -373,6 +396,25 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(
       document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  // Lukas, 2026-10-28: a change whose head HQ never said held Merge until a reload, with no way out.
+  it("a change whose head HQ never said offers Try again and never merges blind", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false, headSha: undefined }), [], {
+      readout: { kind: "failed", reason: "HQ hasn't sent them in time." },
+      onRetry: noop,
+    });
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Try again" && button.closest("[hidden]") === null,
+    );
+    expect(retry?.parentElement?.textContent).toContain("HQ hasn't sent them in time.");
+    expect(
+      document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
+    ).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Nothing merges from here until HQ sends this change's details.",
+    );
   });
 
   it("opening Files or reading each diff is never a prerequisite for Merge", () => {
@@ -651,7 +693,7 @@ describe("ChangeReviewView: an open change", () => {
       readout: {
         kind: "read",
         value: changeReadoutOfRecord(
-          { mergeability: "empty", behind: false } as HqChange,
+          { mergeability: "empty", behind: false, body: "" } as HqChange,
           review({
             commits: Array.from({ length: 20 }, (_, i) => ({
               sha: String(i),
