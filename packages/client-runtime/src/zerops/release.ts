@@ -326,6 +326,50 @@ export function releaseInFlight(input: Parameters<typeof releaseDeploy>[0]): str
 }
 
 /**
+ * The newest release HQ ended landed — all of it live, by HQ's word — while production's own
+ * services do not yet say they run it, or `undefined`: still on its way to the person, so
+ * production's line keeps saying it releases instead of what it ran before (at 8x CPU it read
+ * "Not released yet" for a frame between Releasing and Running). Evidence alone ends it: every
+ * production runs each commit it lists. A production running something HQ's releases never
+ * listed, or a hand-named deploy, says so itself; a release that lists nothing, or one HQ ended
+ * without saying it landed, is never held, since nothing could confirm it.
+ */
+export function releaseLanding(input: {
+  readonly newest: (ReleaseAttempt & Pick<FlowRelease, "entries">) | undefined;
+  readonly rollouts: ReadonlyArray<ReleaseRollout | null | undefined>;
+  /** HQ's earlier releases: what production may still run until it catches up. */
+  readonly earlier: ReadonlyArray<Pick<FlowRelease, "entries">>;
+  /**
+   * What each production's services run, `{hostname: sha}` (`deployedCommit`): `null` for a name
+   * that is not a commit, absent where the service runs nothing.
+   */
+  readonly productions: ReadonlyArray<ReadonlyMap<string, string | null>>;
+}): string | undefined {
+  const { newest } = input;
+  const deploy = releaseDeploy(input);
+  if (newest === undefined || deploy?.ended !== true || deploy.landed !== true) return undefined;
+  if (newest.entries.length === 0) return undefined;
+  let behind = false;
+  for (const running of input.productions)
+    for (const entry of newest.entries) {
+      if (!running.has(entry.service)) {
+        behind = true;
+        continue;
+      }
+      const commit = running.get(entry.service) ?? undefined;
+      if (sameCommit(commit, entry.commit)) continue;
+      const before = input.earlier.some((release) =>
+        release.entries.some(
+          (listed) => listed.service === entry.service && sameCommit(commit, listed.commit),
+        ),
+      );
+      if (!before) return undefined;
+      behind = true;
+    }
+  return behind ? newest.tag : undefined;
+}
+
+/**
  * The newest release, once HQ ended its deploy to production saying some of it did not go live
  * (`releaseDeploy`), or `undefined`: one that landed waits for production's own word that it runs
  * it, and one a Core says nothing of landing of is never called stalled.

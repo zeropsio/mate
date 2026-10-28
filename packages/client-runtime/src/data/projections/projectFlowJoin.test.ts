@@ -589,6 +589,22 @@ describe("joinProjectFlows", () => {
       stalled: "v0.1.1",
     },
     {
+      name: "HQ ended its rollout landed while production still runs the release before: on its way",
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
+      runs: RUNNING,
+      release: { ...rollout("v0.1.1", true), landed: true },
+      inFlight: "v0.1.1",
+      stalled: undefined,
+    },
+    {
+      name: "HQ ended its rollout landed and production runs it: landed",
+      latest: record(MERGED, "live", "2026-09-24T10:01:00Z"),
+      runs: MERGED,
+      release: { ...rollout("v0.1.1", true), landed: true },
+      inFlight: undefined,
+      stalled: undefined,
+    },
+    {
       name: "an older release's rollout says nothing of the newest",
       latest: undefined,
       runs: RUNNING,
