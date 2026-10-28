@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   installOffer,
+  mirrorAuthorityLine,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
@@ -93,6 +94,34 @@ describe("the mirror dialog's lead line", () => {
     expect(mirrorLeadLine({ kind: "none" })).toBe(
       "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.",
     );
+  });
+});
+
+describe("who may mirror, said where the way to mirror would stand", () => {
+  it.each([
+    { case: "a person HQ lets mirror", offer: { kind: "allowed" }, says: null },
+    {
+      case: "a person HQ refuses as no structure writer",
+      offer: { kind: "refused", reason: "not_structure_writer" },
+      says: "Only an Owner or Admin of the organization can mirror this project's code.",
+    },
+    {
+      case: "a person HQ refuses for another reason, in HQ's words",
+      offer: { kind: "refused", reason: "not_active_member" },
+      says: "You are not an active member of this organization in Zerops.",
+    },
+    {
+      case: "HQ has not said",
+      offer: { kind: "unknown" },
+      says: "HQ hasn't said yet whether you can mirror this project's code.",
+    },
+    {
+      case: "HQ is not answering",
+      offer: { kind: "unavailable", since: NOW },
+      says: "HQ isn't answering, so mirroring waits until it does.",
+    },
+  ] as const)("$case", ({ offer, says }) => {
+    expect(mirrorAuthorityLine(offer)).toBe(says);
   });
 });
 

@@ -5,7 +5,7 @@ import type { HqRemoteProbe, RepoListEntry } from "@t3tools/shared/hqChanges";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { gitTokenGuide } from "@t3tools/shared/gitTokenGuide";
 import type { HqOffers } from "@t3tools/shared/hqOffers";
-import { hqOffer } from "@t3tools/shared/hqOffers";
+import { HQ_REMOTE_WRITE_VERB, hqOffer } from "@t3tools/shared/hqOffers";
 import { stoppedWords } from "~/zerops/stoppedWords";
 import { useNowMs } from "~/zerops/useNowMs";
 import { useId, useState } from "react";
@@ -24,6 +24,7 @@ import { gitRemoteLabel } from "./GitDeliveryStatus";
 import { GithubInstallOffer } from "./GithubInstallOffer";
 import {
   githubName,
+  mirrorAuthorityLine,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
@@ -146,6 +147,12 @@ export function GitRemoteSettings({
     .map((environment) => environment.name);
   // Painted once both are read: the blocks never change shape as the app's read lands.
   const ready = listed !== undefined && github !== null;
+  // Who may mirror, said once where a repository is not mirrored and HQ does not let the reader.
+  const authority = listed?.some((repo) => repo.remote == null)
+    ? mirrorAuthorityLine(
+        hqOffer(can, HQ_REMOTE_WRITE_VERB, { current: live, unavailableSince: live ? null : 0 }),
+      )
+    : null;
   return (
     <div data-zerops-surface="git-remote-settings">
       {!ready ? (
@@ -154,7 +161,11 @@ export function GitRemoteSettings({
         <p className="rv-note">No code repository yet.</p>
       ) : (
         <>
-          {listed.every((repo) => repo.remote == null) && dependencies.length === 0 ? (
+          {authority !== null ? (
+            <p className="rv-note" data-zerops-mirror-authority="">
+              {authority}
+            </p>
+          ) : listed.every((repo) => repo.remote == null) && dependencies.length === 0 ? (
             <p className="rv-note">{mirrorLeadLine(github ?? { kind: "unknown" })}</p>
           ) : null}
           {listed.map((repo) => (
@@ -228,13 +239,12 @@ function Remote({
   const app = github.kind === "connected" ? github : null;
   const guide = gitTokenGuide(reviewingAddress ? url : (remote?.url ?? url), appName);
   const keep = remote == null ? actions?.connect : actions?.replaceToken;
-  const permitted =
-    allowed(remote == null ? "connect_remote" : "replace_remote_token") && keep !== undefined;
+  // HQ admits every remote write on one offer (`HQ_REMOTE_WRITE_VERB`).
+  const mayWrite = allowed(HQ_REMOTE_WRITE_VERB);
+  const permitted = mayWrite && keep !== undefined;
   // Through the app: one of its repositories, no token.
   const viaApp =
-    app !== null && allowed("connect_remote") && actions?.viaApp !== undefined
-      ? actions.viaApp
-      : undefined;
+    app !== null && mayWrite && actions?.viaApp !== undefined ? actions.viaApp : undefined;
   const pick = chosen ?? app?.repositories[0] ?? null;
   // Followed only: the way out is connecting it on GitHub through the app, or no longer following.
   const follows = remote == null ? repo.follows : undefined;
@@ -243,8 +253,7 @@ function Remote({
     viaApp !== undefined && followedName !== null && app !== null
       ? app.repositories.find((name) => name.toLowerCase() === followedName.toLowerCase())
       : undefined;
-  const unfollow =
-    follows !== undefined && allowed("connect_remote") ? actions?.unfollow : undefined;
+  const unfollow = follows !== undefined && mayWrite ? actions?.unfollow : undefined;
   const tokenRemote = remote != null && remote.via !== "app";
   const sameRepository = tokenRemote && app !== null ? githubName(remote.url) : null;
   const switchable =
@@ -257,12 +266,12 @@ function Remote({
     remote?.repositoryId != null &&
     remote.via !== "app" &&
     new URL(remote.url).hostname === "github.com" &&
-    allowed("update_remote_address") &&
+    mayWrite &&
     actions?.reviewAddress !== undefined &&
     actions.updateAddress !== undefined &&
     !editing;
   const disconnectOffered =
-    remote != null && allowed("disconnect_remote") && actions?.disconnect !== undefined && !editing;
+    remote != null && mayWrite && actions?.disconnect !== undefined && !editing;
   const canDisconnect = disconnectOffered && dependencies.length === 0;
   const showDisconnect = canDisconnect && !disconnecting;
   // What keeps Disconnect away, said where Disconnect would stand.
@@ -334,9 +343,7 @@ function Remote({
   };
   const submit = async () => {
     if (
-      !(reviewingAddress
-        ? allowed("update_remote_address") && actions?.reviewAddress !== undefined
-        : permitted) ||
+      !(reviewingAddress ? mayWrite && actions?.reviewAddress !== undefined : permitted) ||
       !token ||
       guide.kind !== "guide" ||
       busy
@@ -635,7 +642,7 @@ function Remote({
               }}
               disabled={
                 busy ||
-                !(reviewingAddress ? allowed("update_remote_address") : permitted) ||
+                !(reviewingAddress ? mayWrite : permitted) ||
                 !token ||
                 guide.kind !== "guide"
               }
@@ -698,7 +705,7 @@ function Remote({
           </div>
         ) : null
       ) : null}
-      {sameId && allowed("update_remote_address") ? (
+      {sameId && mayWrite ? (
         <div className="grid gap-2">
           <p className="rv-note">
             Same GitHub repository · Review new address:{" "}
