@@ -1263,8 +1263,7 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
     },
   } as ZeropsCandidatePresentation;
   /** HQ's structure of the organization, known: Dan's application, holding nothing yet. */
-  const known = () => {
-    const registry = AtomRegistry.make();
+  const known = (registry = AtomRegistry.make()) => {
     registry.set(zeropsSessionAtom, {
       status: "signed-in",
       organizationStatus: "selected",
@@ -1312,6 +1311,29 @@ describe("useMateActions — Finish setup on a Mate whose press here stopped bef
   it("is offered to an owner", () => {
     mount(known());
     expect(finishVerb()?.label).toBe("Finish setup");
+  });
+
+  it("an uncertain setup withholds Finish setup and rejects an action opened before its answer was lost", async () => {
+    mount(known(appAtomRegistry));
+    const offered = finishVerb()!;
+    const press = await vi.importActual<typeof import("./matePress")>("./matePress");
+    await act(async () => {
+      press.recordPressOutcome("dan-project", {
+        kind: "failed",
+        step: "import-container",
+        uncertain: true,
+        reason: "The import answer was lost.",
+        retry: null,
+      });
+    });
+    expect(finishVerb()).toBeUndefined();
+    await act(async () => offered.onSelect());
+    expect(mock.finishMateSetup).not.toHaveBeenCalled();
+    expect(press.readMatePress("dan-project")?.state).toMatchObject({
+      kind: "failed",
+      uncertain: true,
+      retry: null,
+    });
   });
 
   it("waits for services before finishing an accepted, unregistered birth", () => {
@@ -1440,7 +1462,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
 });
 
 // B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however
-// old its project; the moment its hold runs out — its tab closed — it is, for Finish setup.
+// old its project. An expired hold awaits evidence; only a terminal import permits Finish setup.
 describe("useMateActions — Finish setup on a Mate another browser still presses", () => {
   const SLOW = (() => {
     const { service: _none, ...base } = mate("Una", "coral:gem");

@@ -140,6 +140,7 @@ import { finishSetupContainer } from "./finishSetup.logic";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import {
   beginPress,
+  pressComing,
   finishSetupRunning,
   finishMateSetup,
   forgetPress,
@@ -890,6 +891,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       // (`halfMadeGroupEnvironments`), never as a Mate's.
       if (tags.role === "stage" || tags.role === "prod") return undefined;
       const press = presses.find((entry) => entry.projectId === candidate.project.id);
+      if (pressComing(press)?.uncertain === true) return undefined;
       // A Mate claimed from the pool is in no group: no registration of its, no container to make.
       const grouped = tags.groupId !== undefined;
       const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
@@ -946,6 +948,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const organizationId = activeOrganization.id;
       const projectId = candidate.project.id;
       const press = readMatePress(projectId);
+      if (pressComing(press)?.uncertain === true) return;
       const pressStopped = press?.state.kind === "failed";
       // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
       const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";

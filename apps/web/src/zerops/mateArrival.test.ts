@@ -808,39 +808,30 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     {
       case: "A Mate's arrival says the step it is on, one at a time",
       steps: [step("copy", "done"), step("workspace", "active"), step("you", "waiting")],
-      stopped: false,
       want: { at: 1, state: "running", clock: true },
     },
     {
       case: "A Mate's arrival that waits on the person says their step, with no clock running",
       steps: [step("copy", "done"), step("workspace", "done"), step("you", "you")],
-      stopped: false,
       want: { at: 2, state: "running", clock: false },
     },
     {
       case: "A Mate's arrival whose every step is done ends as done",
       steps: [step("copy", "done"), step("you", "done")],
-      stopped: false,
       want: { at: 1, state: "done", clock: true },
     },
     {
       case: "A Mate's arrival stops at the step that failed",
       steps: [step("copy", "done"), step("workspace", "failed"), step("you", "waiting")],
-      stopped: false,
       want: { at: 1, state: "failed", clock: true },
     },
     {
-      case: "A creation that stopped stops its row where it stood, a step under way included",
+      case: "A creation needing attention leaves an unfinished step awaiting its own receipt",
       steps: [step("copy", "done"), step("workspace", "active")],
-      stopped: true,
-      want: { at: 1, state: "failed", clock: true },
+      want: { at: 1, state: "running", clock: true },
     },
-  ] as const)("$case", ({ steps, stopped, want }) => {
-    const row = arrivalRow(
-      steps,
-      [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      stopped,
-    );
+  ] as const)("$case", ({ steps, want }) => {
+    const row = arrivalRow(steps, [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")]);
     expect(row.steps).toEqual(steps.map((one) => one.label));
     expect({ at: row.at, state: row.state, clock: row.startedAtMs !== null }).toEqual(want);
   });
@@ -849,7 +840,6 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     const row = arrivalRow(
       [step("workspace", "active")],
       [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      false,
     );
     expect(row.startedAtMs).toBe(Date.parse("2026-10-15T10:00:00Z"));
   });
@@ -858,7 +848,6 @@ describe("arrivalRow — a Mate's arrival as one progress row", () => {
     const row = arrivalRow(
       [step("workspace", "active")],
       [fact("2026-10-15T10:00:30Z"), fact("2026-10-15T10:00:00Z")],
-      false,
       "2026-10-15T09:58:00Z",
     );
     expect(row.startedAtMs).toBe(Date.parse("2026-10-15T09:58:00Z"));

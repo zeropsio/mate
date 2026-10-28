@@ -34,21 +34,6 @@ export function importsToFollow(
 }
 
 /**
- * Whether HQ let go of a press this browser heard it hold (`heard`): a press that went through
- * leaves no record there, so its Mate is never said to have stopped for want of one.
- */
-export function pressEnded(
-  presses: Readonly<Record<string, unknown>>,
-  heard: ReadonlyMap<string, number>,
-  projectId: string,
-): boolean {
-  if (presses[projectId] !== undefined) return false;
-  // `pressHolds` keeps each hold heard as `projectId:until`.
-  for (const hold of heard.keys()) if (hold.startsWith(`${projectId}:`)) return true;
-  return false;
-}
-
-/**
  * Each press HQ holds, its hold measured from when this browser first heard it (`heard`, by
  * project and hold): a renewed hold is a new one.
  */
@@ -112,7 +97,6 @@ export function usePressesElsewhere(
         projectId,
         nowMs: Math.max(nowMs, Date.now()),
         importStatus,
-        ended: presses !== null && pressEnded(presses, heard.current, projectId),
       });
     },
     [presses, processes, nowMs],

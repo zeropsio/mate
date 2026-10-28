@@ -314,3 +314,29 @@ it.each(["process history", "setup projection"] as const)(
     });
   },
 );
+
+it.each(["process history", "setup projection"] as const)(
+  "An uncertain setup does not inherit an earlier attempt's failure from %s",
+  (source) => {
+    const oldFailure = {
+      id: "old-setup",
+      projectId: "p",
+      serviceStackIds: ["s"],
+      status: "FAILED",
+      actionName: "stack.deploy",
+      created: "2026-10-01T00:00:00Z",
+    };
+    const result = mateArrival({
+      press: { container: true, uncertain: true, startedAt: Date.parse("2026-10-28T00:00:00Z") },
+      candidate: { group: "provisioning", service: { id: "s", status: "CREATING" } },
+      setUpFailed: "The setup write may have landed.",
+      ...(source === "process history"
+        ? { processes: [oldFailure] }
+        : { setupFailure: oldFailure }),
+    });
+    expect(result.arrival).toMatchObject({
+      kind: "coming",
+      line: "The setup write may have landed.",
+    });
+  },
+);

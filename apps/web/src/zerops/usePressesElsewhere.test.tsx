@@ -73,14 +73,14 @@ afterEach(() => {
 });
 
 describe("usePressesElsewhere", () => {
-  it("reads a slow press as at it while its hold runs, and as stopped the moment it ran out", async () => {
+  it("reads a slow press as at it while its hold runs, and as awaiting evidence when it runs out", async () => {
     mount({ "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" } });
     expect(said("p-una")).toBe("pressing");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(30_001);
     });
-    expect(said("p-una")).toBe("stopped");
-    expect(probe.drawn.at(-1)).toBe("stopped");
+    expect(said("p-una")).toBe("unknown");
+    expect(probe.drawn.at(-1)).toBe("unknown");
   });
 
   it("reads a press whose import failed as stopped at once, though its hold still runs", () => {

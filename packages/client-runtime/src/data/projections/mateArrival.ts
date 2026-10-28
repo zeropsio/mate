@@ -1,3 +1,4 @@
+import type { CreationPressState } from "../operations/creationPress.ts";
 import { failedSetupProcess } from "./setupFailure.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentShellStatus } from "../../state/shell.ts";
@@ -99,8 +100,12 @@ export interface MateComingInput {
         readonly startedAt?: number | undefined;
         /** Whether a Mate container is being brought up at all. */
         readonly container: boolean;
+        /** The current request's executor state, when this observer owns its receipt. */
+        readonly state?: CreationPressState["kind"];
         /** It stopped at a step safe to ask again: *Try again* resumes it. */
         readonly retryable?: boolean | undefined;
+        /** The write may have landed; its caller's end is not the setup owner's result. */
+        readonly uncertain?: true | undefined;
       }
     | undefined;
   /** Its project as the listing reads it, once it holds it. */
@@ -219,6 +224,9 @@ export const CHECKING_SETUP_LINE = "Checking that its setup finished…";
 /** A Mate held until HQ confirms its close-off (`closeOffHold` `awaiting-hq`). */
 export const AWAITING_HQ_LINE = "Waiting for HQ to confirm its setup finished.";
 
+/** Accepted identity without a container or a current owner result is still unresolved. */
+export const AWAITING_SETUP_LINE = "Waiting for evidence of its workspace setup.";
+
 /**
  * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
  * viewer has it, and says who can where they do not.
@@ -275,16 +283,6 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     return { kind: "failed", line: "Nothing is deployed yet.", verb: "redeploy" };
   }
   const created = input.created === true;
-  const setupFailed =
-    input.setupFailure ??
-    (input.press !== undefined ||
-    created ||
-    input.closeOffHold !== undefined ||
-    input.candidate?.service?.status === "READY_TO_DEPLOY"
-      ? failedSetupProcess(input.processes, input.candidate?.service?.id)
-      : undefined);
-  if (setupFailed !== undefined)
-    return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
   if (candidate?.creationFailed !== undefined) {
     return {
       kind: "failed",
@@ -293,6 +291,23 @@ function comingWords(input: MateComingInput): MateComing | undefined {
       verb: "remove",
     };
   }
+  if (press?.uncertain === true) {
+    // Service history cannot correlate a prior failure to the write whose answer was lost.
+    return { kind: "coming", line: input.setUpFailed ?? "Waiting for the setup result." };
+  }
+  // A service's latest historical process is not the live request's terminal receipt.
+  const setupFailed =
+    press?.state === "pressing"
+      ? undefined
+      : (input.setupFailure ??
+        (input.press !== undefined ||
+        created ||
+        input.closeOffHold !== undefined ||
+        input.candidate?.service?.status === "READY_TO_DEPLOY"
+          ? failedSetupProcess(input.processes, input.candidate?.service?.id)
+          : undefined));
+  if (setupFailed !== undefined)
+    return { kind: "failed", line: "Setup stopped.", verb: "try-again" };
   if (input.setUpFailed !== undefined) {
     const why = asSentence(input.setUpFailed);
     return {
@@ -342,18 +357,15 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     };
   }
   if (press === undefined && candidate?.missingContainer === true) {
-    // A press in another browser that HQ still holds is importing it; one whose hold ran out — its
-    // tab closed — or whose import failed stopped before its container, and nothing will bring it.
-    // While HQ has said nothing of presses, neither is said. This tab's own press, through and
-    // gone, left its container on its way while the listing catches up: one that stopped would
-    // still be held here.
+    // A hold is caller ownership, not a setup result. Only the exact import's terminal receipt
+    // can say it stopped; an empty listing and absent/expired hold await owner evidence.
     if (input.pressElsewhere === "pressing" || (created && containerCatchingUp(input))) {
       return { kind: "coming", line: COMING_UP_LINE };
     }
     if (input.pressElsewhere === "stopped") {
       return { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
     }
-    return undefined;
+    return { kind: "coming", line: AWAITING_SETUP_LINE };
   }
   // Past its grace a first build is taking longer, however long — a slow or queued one looks the
   // same from its status as one whose process is not read yet — with no verb that cannot work on a

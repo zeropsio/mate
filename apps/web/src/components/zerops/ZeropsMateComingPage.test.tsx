@@ -1561,8 +1561,10 @@ describe("ComingBelow — a Mate half made", () => {
     const container = {
       id: "container",
       label: "Dan's container",
-      state: "active",
+      state: "failed",
       startedAt: at(29_000),
+      endedAt: at(40_000),
+      detail: "Its workspace build was refused.",
     } as const;
     let rendered: ReactTestRenderer | undefined;
     act(() => {
@@ -1587,6 +1589,38 @@ describe("ComingBelow — a Mate half made", () => {
     expect(said).not.toContain("139:30");
     expect(said).not.toContain("about 2–3 min");
   });
+});
+
+it("A setup needing attention does not mark its workspace failed without the workspace receipt", () => {
+  let rendered: ReactTestRenderer | undefined;
+  const container = {
+    id: "container",
+    label: "Dan's container",
+    state: "active",
+    startedAt: "2026-10-28T10:00:00Z",
+  } as const;
+  act(() => {
+    rendered = create(
+      h(ComingBelow, {
+        coming: { kind: "failed", line: "The import was refused.", verb: "finish-setup" },
+        progress: {
+          steps: [container],
+          active: container,
+          failed: null,
+          doneCount: 0,
+          total: 1,
+          complete: false,
+        },
+        nowMs: Date.parse("2026-10-28T10:00:42Z"),
+        mate: { name: "Dan", project: undefined },
+      }),
+    );
+  });
+  const said = JSON.stringify(rendered!.toJSON());
+  expect(rendered!.root.findByProps({ "data-slot": "progress" }).props["data-progress-state"]).toBe(
+    "running",
+  );
+  expect(said).not.toContain("Dan's workspace didn't finish.");
 });
 
 // Run 6's second review: a registration refused read as an owner's, with no reason and nothing to

@@ -6,10 +6,9 @@
  *
  * - `pressing` — its hold runs on, or its import's process is queued, running or finished: its
  *   container is on its way, and nobody else imports one.
- * - `stopped` — no press holds it, its hold ran out (its tab closed), or its import's process
- *   failed: what it left is half made, for *Finish setup*.
- * - `unknown` — HQ has said nothing of its presses yet, or held one this browser heard and let it
- *   go: a press that went through leaves no record, one that stopped keeps it — neither is offered.
+ * - `stopped` — its exact import process failed or was cancelled.
+ * - `unknown` — no current owner result is known. No press, a released hold or an expired hold
+ *   says whether accepted setup continues. None permits a second import.
  *
  * @module pressElsewhere
  */
@@ -35,16 +34,14 @@ export function pressElsewhere(input: {
   readonly nowMs: number;
   /** Where the press's import's process stands, as its project's processes read it; none unread. */
   readonly importStatus?: string | undefined;
-  /** HQ held a press of it that this browser heard, and holds none now: its press ended there. */
-  readonly ended?: boolean | undefined;
 }): PressElsewhere {
   if (input.presses === null) return "unknown";
   const held = input.presses[input.projectId];
-  if (held === undefined) return input.ended === true ? "unknown" : "stopped";
+  if (held === undefined) return "unknown";
   if (held.importProcessId !== undefined && input.importStatus !== undefined) {
     return IMPORT_FAILED.has(input.importStatus) ? "stopped" : "pressing";
   }
-  return input.nowMs < held.expiresAtMs ? "pressing" : "stopped";
+  return input.nowMs < held.expiresAtMs ? "pressing" : "unknown";
 }
 
 /** When the soonest of these presses' holds runs out, wall ms; null where none runs on. */
