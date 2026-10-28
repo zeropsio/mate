@@ -24,6 +24,7 @@ export {
 export {
   deployAnswerFollowing,
   deployAnswerSaid,
+  sourceArchiveLabel,
   type DeployAnswerEnvironment,
   type DeployAnswerJob,
   type DeployAnswerSaid,

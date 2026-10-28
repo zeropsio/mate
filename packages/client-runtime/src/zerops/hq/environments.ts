@@ -16,7 +16,7 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  */
 import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
 import { HqOffers } from "@t3tools/shared/hqOffers";
-import { EnvironmentBirth, HqDeployEvidence } from "@t3tools/shared/hqDeploys";
+import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
@@ -59,6 +59,7 @@ export const HqJob = Schema.Struct({
   ref: Schema.NullOr(Schema.String),
   /** HQ's words for how it ended. */
   reason: Schema.NullOr(Schema.String),
+  sourceArchiveBytes: HqDeployOutcome.fields.sourceArchiveBytes,
   evidence: Schema.optionalKey(Schema.NullOr(HqDeployEvidence)),
   verifiedVersionId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   steps: Schema.optionalKey(Schema.Array(Schema.Unknown)),

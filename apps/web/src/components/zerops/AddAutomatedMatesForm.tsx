@@ -91,6 +91,8 @@ export interface AddAutomatedMatesFormProps {
   readonly onOpenKeySettings?: (() => void) | undefined;
   /** The line forecasting the credit wall before Add (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
+  /** Storage and notices for the repositories every new Mate will check out. */
+  readonly repositories?: ReactNode;
   readonly onCancel: () => void;
   readonly onCreate: (choice: AutomatedMatesChoice) => void;
 }
@@ -326,6 +328,7 @@ export function AddAutomatedMatesForm(props: AddAutomatedMatesFormProps) {
             <p className="text-line leading-5 text-muted-foreground">{KEEP_TAB_OPEN_LINE}</p>
           </section>
           {props.forecast}
+          {props.repositories}
           <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">
             {automatedCost(names)}{" "}
             <InlineButton render={<a href={ZEROPS_PRICING_URL} rel="noreferrer" target="_blank" />}>
