@@ -42,9 +42,18 @@ export function classifyHqCall(cause: unknown): StreamFault {
 
 export function makeHqWire(
   api: Pick<HqApi, "openScopeSocket"> &
-    Partial<Pick<HqApi, "changeAttachment" | "changeMetadata" | "changeCommits">>,
+    Partial<Pick<HqApi, "changeAttachment" | "changeMetadata" | "changeCommits" | "reviewRelease">>,
 ): HqWire {
   return {
+    ...(api.reviewRelease === undefined
+      ? {}
+      : {
+          releaseReview: (input: import("../families/hqReleaseReview.ts").ReleaseReviewRequest) =>
+            Effect.tryPromise({
+              try: (signal) => api.reviewRelease!(input.appId, input.request, signal),
+              catch: classifyHqCall,
+            }),
+        }),
     ...(api.changeAttachment === undefined
       ? {}
       : {

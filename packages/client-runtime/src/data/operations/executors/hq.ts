@@ -152,6 +152,10 @@ function flowWrite(
             tag: intent.tag,
             groupHead: intent.groupHead,
             entries: intent.entries,
+            ...(intent.planHash === undefined ? {} : { planHash: intent.planHash }),
+            ...(intent.releaseTarget === undefined
+              ? {}
+              : { target: "zerops", releaseTarget: intent.releaseTarget }),
             ...(intent.git === undefined ? {} : { target: "git", ...intent.git }),
           }),
         ),

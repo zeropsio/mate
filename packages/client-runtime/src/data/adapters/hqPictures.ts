@@ -1,3 +1,10 @@
+import {
+  hqReleaseReviewFamily,
+  releaseReviewRequest,
+  releaseReviewId,
+  type ReleaseReviewRequest,
+} from "../families/hqReleaseReview.ts";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 /** HQ attachment reads beside the scope socket, using each demanded scope's stream policy. */
 import { changeReadId, changeReadRequest } from "../families/hqChangeRead.ts";
 import type { ChangeReadRequest } from "../families/hqChangeRead.ts";
@@ -23,6 +30,9 @@ export const makeHqPictureReads = (options: {
   readonly orgId: string;
   readonly store: AccountStore;
   readonly read: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
+  readonly releaseReview?: (
+    request: ReleaseReviewRequest,
+  ) => Effect.Effect<ReleaseServicePlan, StreamFault>;
   readonly metadata?: (
     request: ChangeReadRequest,
   ) => Effect.Effect<ChangeMetadataResponse, StreamFault>;
@@ -44,6 +54,7 @@ export const makeHqPictureReads = (options: {
         scopes.filter((scope) =>
           [
             hqPictureFamily.scope.suffix,
+            hqReleaseReviewFamily.scope.suffix,
             hqChangeMetadataFamily.scope.suffix,
             hqChangeCommitsFamily.scope.suffix,
           ].includes(scope.split(":")[2]!),
@@ -74,14 +85,21 @@ export const makeHqPictureReads = (options: {
         const owner = scope.split(":").slice(3).join(":");
         const suffix = scope.split(":")[2];
         const spec =
-          suffix === hqChangeMetadataFamily.scope.suffix
-            ? hqChangeMetadataFamily
-            : suffix === hqChangeCommitsFamily.scope.suffix
-              ? hqChangeCommitsFamily
-              : hqPictureFamily;
-        const isChange = spec !== hqPictureFamily;
+          suffix === hqReleaseReviewFamily.scope.suffix
+            ? hqReleaseReviewFamily
+            : suffix === hqChangeMetadataFamily.scope.suffix
+              ? hqChangeMetadataFamily
+              : suffix === hqChangeCommitsFamily.scope.suffix
+                ? hqChangeCommitsFamily
+                : hqPictureFamily;
+        const isReview = spec === hqReleaseReviewFamily;
+        const isChange = spec === hqChangeMetadataFamily || spec === hqChangeCommitsFamily;
         const family = spec.family;
-        const link = isChange ? changeReadRequest(owner) : pictureLink(owner);
+        const link = isReview
+          ? releaseReviewRequest(owner)
+          : isChange
+            ? changeReadRequest(owner)
+            : pictureLink(owner);
         if (link === null) {
           yield* signal(scope, {
             kind: "fault",
@@ -96,9 +114,11 @@ export const makeHqPictureReads = (options: {
         yield* signal(scope, { kind: "attempt" });
         yield* signal(scope, { kind: "handshake" });
         const generation = streamOf(store.state(), scope).generation;
-        const id = isChange
-          ? changeReadId(options.orgId, owner)
-          : pictureId({ orgId: options.orgId, link: link as AttachmentLink });
+        const id = isReview
+          ? releaseReviewId(options.orgId, owner)
+          : isChange
+            ? changeReadId(options.orgId, owner)
+            : pictureId({ orgId: options.orgId, link: link as AttachmentLink });
         // Attachment ids identify immutable bytes. A remount or segment never reads them again.
         if (
           !options.refresh?.has(scope) &&
@@ -110,12 +130,21 @@ export const makeHqPictureReads = (options: {
         store.dispatch({ kind: "baseline-begin", scope, generation });
         const readChange = spec === hqChangeMetadataFamily ? options.metadata : options.commits;
         const request: Effect.Effect<
-          Blob | ChangeMetadataResponse | ChangeCommitsResponse,
+          Blob | ChangeMetadataResponse | ChangeCommitsResponse | ReleaseServicePlan,
           StreamFault
-        > = isChange
-          ? (readChange?.(link as ChangeReadRequest) ??
-            Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read this change." }))
-          : options.read(link as AttachmentLink);
+        > = isReview
+          ? (options.releaseReview?.(link as ReleaseReviewRequest) ??
+            Effect.fail({
+              outcome: "definitive-refusal",
+              message: "HQ cannot review production operations yet.",
+            }))
+          : isChange
+            ? (readChange?.(link as ChangeReadRequest) ??
+              Effect.fail({
+                outcome: "definitive-refusal",
+                message: "HQ cannot read this change.",
+              }))
+            : options.read(link as AttachmentLink);
         const read = request.pipe(
           Effect.flatMap((blob) =>
             Effect.gen(function* () {
@@ -129,9 +158,11 @@ export const makeHqPictureReads = (options: {
               if (spec.sampled!.decode(blob) === null)
                 return yield* Effect.fail<StreamFault>({
                   outcome: "definitive-refusal",
-                  message: isChange
-                    ? "HQ returned an invalid change."
-                    : "HQ returned no picture bytes.",
+                  message: isReview
+                    ? "HQ returned an invalid release plan."
+                    : isChange
+                      ? "HQ returned an invalid change."
+                      : "HQ returned no picture bytes.",
                 });
               store.dispatch({
                 kind: "baseline-commit",
@@ -146,15 +177,17 @@ export const makeHqPictureReads = (options: {
                     value: blob,
                     revision: {
                       kind: "hq",
-                      incarnation: isChange
-                        ? [
-                            id,
-                            (blob as ChangeMetadataResponse | ChangeCommitsResponse).change
-                              .updatedAt,
-                            (blob as ChangeMetadataResponse | ChangeCommitsResponse).change.head,
-                            "mainHead" in blob ? blob.mainHead : null,
-                          ].join("/")
-                        : id,
+                      incarnation: isReview
+                        ? `${id}/${generation}`
+                        : isChange
+                          ? [
+                              id,
+                              (blob as ChangeMetadataResponse | ChangeCommitsResponse).change
+                                .updatedAt,
+                              (blob as ChangeMetadataResponse | ChangeCommitsResponse).change.head,
+                              "mainHead" in blob ? blob.mainHead : null,
+                            ].join("/")
+                          : id,
                       revision: 0,
                     },
                   } as Row,

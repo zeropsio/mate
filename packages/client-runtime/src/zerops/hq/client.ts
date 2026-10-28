@@ -45,6 +45,7 @@ import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
   Release,
   ReleaseListResponse,
+  ReleaseServicePlan,
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
@@ -597,6 +598,11 @@ export interface HqApi {
    */
   readonly mateRecipe: (appId: string, signal?: AbortSignal) => Promise<RecipeTierResponse>;
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
+  readonly reviewRelease: (
+    appId: string,
+    request: CreateReleaseRequest,
+    signal?: AbortSignal,
+  ) => Promise<ReleaseServicePlan>;
   readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
   /** Production back to `tag` as the person: a new release listing its entries. */
   readonly rollback: (
@@ -1822,6 +1828,14 @@ export function makeHqApi(input: {
     },
     // A release is named by its tag, which HQ gives no second one: the one HQ holds under it is
     // this one where it tags the same `main` with the same commits.
+    reviewRelease: async (appId, request, signal) =>
+      decoded(ReleaseServicePlan)(
+        await authorized(`${releasesPath(appId)}/review`, {
+          ...(signal === undefined ? {} : { signal }),
+          method: "POST",
+          body: JSON.stringify(request),
+        }),
+      ),
     release: (appId, request) =>
       confirmed(
         async () =>

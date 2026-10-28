@@ -645,6 +645,30 @@ const WHERE = [
   { service: "api", line: "redeploys from 3fa9c21" },
 ];
 
+const CREATION_PLAN: NonNullable<Parameters<typeof ReleaseReviewView>[0]["servicePlan"]> = {
+  hash: "a".repeat(64),
+  operations: [
+    {
+      kind: "create",
+      service: "agentrunner",
+      settings: {
+        hostname: "agentrunner",
+        type: "nodejs@22",
+        mode: "NON_HA",
+        minContainers: 1,
+        maxContainers: 2,
+        minCpu: 1,
+        maxCpu: 2,
+        minRam: 1,
+        maxRam: 2,
+        startWithoutCode: true,
+      },
+      cost: "Adds one billed service; resource usage is charged by Zerops according to the reviewed settings.",
+    },
+    { kind: "deploy", service: "agentrunner", sha: SEVEN_E },
+  ],
+};
+
 function Release({
   outcome = OFFERED,
   press = IDLE,
@@ -1289,6 +1313,34 @@ export const REVIEW_STATES: ReadonlyArray<{
   },
   { id: "release", label: "A release", node: <Release /> },
   {
+    id: "release-create",
+    label: "Release creates a billed production service with reviewed settings",
+    node: (
+      <Release
+        over={{
+          servicePlan: CREATION_PLAN,
+        }}
+      />
+    ),
+  },
+  {
+    id: "release-create-reading",
+    label: "Creation review is still reading production operations",
+    node: <Release over={{ servicePlanPending: true }} />,
+  },
+  {
+    id: "release-create-refused",
+    label: "Creation review could not be read and offers an explicit retry",
+    node: (
+      <Release
+        over={{
+          servicePlanFailure: "The production plan changed. Review it again.",
+          onRetryServicePlan: noop,
+        }}
+      />
+    ),
+  },
+  {
     id: "release-unreviewed",
     label: "A release carrying a commit nobody reviewed, opening in the Git browser",
     node: <Release onOpenChange={noop} over={{ rows: [...RELEASE_ROWS, UNREVIEWED_ROW] }} />,
@@ -1524,9 +1576,11 @@ const RELEASED: Readonly<Record<number, Partial<FlowPullRequest>>> = {
 function ReleaseTrySteps({
   onClose,
   running,
+  creation,
 }: {
   readonly onClose: () => void;
   readonly running: boolean;
+  readonly creation: boolean;
 }) {
   const steps = useReleaseSteps();
   const onChange = steps.step.view === "change";
@@ -1571,6 +1625,7 @@ function ReleaseTrySteps({
         <Release
           onClose={onClose}
           onOpenChange={steps.open}
+          over={creation ? { servicePlan: CREATION_PLAN } : {}}
           titleId={onChange ? undefined : "release-try-title"}
           {...(running
             ? {
@@ -1593,9 +1648,11 @@ function ReleaseTrySteps({
 export function ReleaseDialogTry({
   openAtStart,
   running = false,
+  creation = false,
 }: {
   readonly openAtStart: boolean;
   readonly running?: boolean;
+  readonly creation?: boolean;
 }) {
   const [from, setFrom] = useState<HTMLElement | null>(null);
   const [open, setOpen] = useState(openAtStart);
@@ -1621,7 +1678,7 @@ export function ReleaseDialogTry({
         onOpenChange={setOpen}
         open={open}
       >
-        <ReleaseTrySteps onClose={close} running={running} />
+        <ReleaseTrySteps onClose={close} running={running} creation={creation} />
       </ZeropsReviewDialog>
     </div>
   );

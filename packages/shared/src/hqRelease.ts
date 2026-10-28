@@ -199,6 +199,23 @@ const Entries = Schema.Array(GitReleaseEntry).check(
   ),
 );
 
+/** HQ's persisted exact production effects, reviewed before service creation. */
+export const ReleaseServicePlan = Schema.Struct({
+  hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+  operations: Schema.Array(
+    Schema.Union([
+      Schema.Struct({
+        kind: Schema.Literal("create"),
+        service: Schema.String,
+        settings: Schema.Record(Schema.String, Schema.Unknown),
+        cost: Schema.String,
+      }),
+      Schema.Struct({ kind: Schema.Literal("deploy"), service: Schema.String, sha: Sha }),
+    ]),
+  ),
+});
+export type ReleaseServicePlan = typeof ReleaseServicePlan.Type;
+
 /**
  * A release as the person was offered it: its name, the recipe repository's `main` head read with
  * the offer (never one read at the press), and each production service at its repository's `main`
@@ -208,6 +225,7 @@ export const CreateReleaseRequest = Schema.Struct({
   tag: ReleaseTag,
   groupHead: Sha,
   entries: Entries,
+  planHash: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
   ...targetFields,
   preflight: Schema.optionalKey(Schema.Array(HqGitReleasePreflight)),
 }).check(

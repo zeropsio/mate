@@ -1,3 +1,4 @@
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 /**
  * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
  * run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
@@ -51,7 +52,11 @@ export interface FlowVerbs {
    * A release of what the flow's offer shows: its `entries`, named its chosen tag (the next patch
    * by default), tagging the `groupHead` it was read with.
    */
-  readonly release: (flow: ZeropsProjectFlow, tag?: string) => Promise<FlowVerbOutcome>;
+  readonly release: (
+    flow: ZeropsProjectFlow,
+    tag?: string,
+    plan?: ReleaseServicePlan,
+  ) => Promise<FlowVerbOutcome>;
   /** A new release listing an earlier release's entries (guide 5.6). */
   readonly rollBack: (flow: ZeropsProjectFlow, tag: string) => Promise<FlowVerbOutcome>;
   /**
@@ -201,8 +206,12 @@ export function useFlowVerbs(): FlowVerbs {
   );
 
   const release = useCallback(
-    (flow: ZeropsProjectFlow, tag?: string): Promise<FlowVerbOutcome> => {
-      const request = releaseRequestOf(flow.release, tag);
+    (
+      flow: ZeropsProjectFlow,
+      tag?: string,
+      plan?: ReleaseServicePlan,
+    ): Promise<FlowVerbOutcome> => {
+      const request = releaseRequestOf(flow.release, tag, plan);
       if ("refused" in request)
         return Promise.resolve(request.says ? refuse(request.refused) : refused(request.refused));
       return run(

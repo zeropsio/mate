@@ -795,3 +795,12 @@ export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
 
 export { hqChangeCommits, type HqChangeCommits } from "./projections/hqChangeCommits.ts";
 export { changeCommitsScope } from "./families/hqChangeCommits.ts";
+
+export {
+  releaseReviewOwner,
+  releaseReviewRequest,
+  releaseReviewId,
+  releaseReviewScope,
+  type ReleaseReviewRequest,
+} from "./families/hqReleaseReview.ts";
+export { hqReleaseReview, type HqReleaseReview } from "./projections/hqReleaseReview.ts";

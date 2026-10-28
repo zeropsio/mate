@@ -280,6 +280,7 @@ export const HQ_CLIENT_VERBS = [
   "changeMetadata",
   "mateRecipe",
   "release",
+  "reviewRelease",
   "rollback",
   "setChief",
   "proposalDecisions",
