@@ -374,6 +374,8 @@ const AutoUpdatePolicyDown = Schema.Struct({
 
 /** What a `state` frame carries beside the Mate: the org's update policy and the usage lane. */
 const StateExtras = {
+  /** HQ's ping period on this link; absent on older HQs, which have no receive-silence guard. */
+  pingIntervalMs: Schema.optionalKey(Schema.Int.check(Schema.isGreaterThan(0))),
   autoUpdate: Schema.optionalKey(HqAutoUpdatePolicy),
   usage: Schema.optionalKey(
     Schema.Struct({
