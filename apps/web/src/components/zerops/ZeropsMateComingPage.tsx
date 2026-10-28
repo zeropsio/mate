@@ -399,7 +399,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     closeOffHold,
     press: pressComing(press),
     candidate,
-    setUpFailed: pressFailure(press),
+    setUpFailed: pressFailure(press) ?? made?.failed?.reason,
     nowMs: Date.now(),
     created: made !== undefined,
     madeAt: made?.startedAt,

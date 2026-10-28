@@ -1,4 +1,8 @@
-import type { CreationRead, CreationStepRead } from "@t3tools/client-runtime/data";
+import {
+  mateArrival,
+  type CreationRead,
+  type CreationStepRead,
+} from "@t3tools/client-runtime/data";
 import {
   birthCopyServices,
   birthRuntimesFacts,
@@ -496,6 +500,48 @@ describe("creationOf — where a creation stands, read off its steps' operations
   ])("$case", ({ held: asked, read: steps, want }) => {
     expect(creationOf(asked, steps)).toMatchObject(want);
   });
+
+  it("an accepted project creation failure keeps its source reason and Remove after handover", () => {
+    const creation = creationOf(
+      held(),
+      read({
+        appId: "app-acme",
+        birthId: "b-vera",
+        projectId: "p-vera",
+        steps: {
+          app: DONE,
+          birth: DONE,
+          project: stopped("create-project", "Project capacity exhausted."),
+        },
+      }),
+    );
+    expect(
+      mateArrival({
+        press: undefined,
+        candidate: { group: "unavailable", missingContainer: true },
+        created: true,
+        setUpFailed: creation.failed?.reason,
+      }).coming,
+      "ASSERTION: the accepted project's own failed creation offers its source details and Remove",
+    ).toEqual({
+      kind: "failed",
+      line: "Could not be set up.",
+      details: "Project capacity exhausted.",
+      verb: "remove",
+    });
+  });
+
+  it.each([
+    stopped("import-project", "Its import stopped."),
+    stopped("create-project", "Its answer was lost.", true),
+  ])(
+    "an accepted project leaves an unconfirmed or imported creation to its owner (%j)",
+    (project) => {
+      expect(
+        creationOf(held(), read({ projectId: "p-vera", steps: { project } })).failed,
+      ).toBeNull();
+    },
+  );
 
   it("names an Add's presses: its own id, then one per Try again", () => {
     expect(creationRunId(held({ adds: ADDS }))).toBe("b-acme");

@@ -214,6 +214,7 @@ export function useMateComingOf(
   return useCallback(
     (candidate: ZeropsCandidate) => {
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
+      const made = madeOf(creations, candidate.project.id);
       return mateArrival({
         press,
         // A row says only the hold it offers Finish setup for; the others, its own view.
@@ -225,12 +226,12 @@ export function useMateComingOf(
           ? "open"
           : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
-        setUpFailed,
+        setUpFailed: setUpFailed ?? made?.failed?.reason,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
         // else may change then.
         nowMs: Math.max(Date.now(), wokeAt),
-        created: madeOf(creations, candidate.project.id) !== undefined,
-        madeAt: madeOf(creations, candidate.project.id)?.startedAt,
+        created: made !== undefined,
+        madeAt: made?.startedAt,
         processes: processFacts[candidate.project.id]?.processes,
         link: mateLink(candidate),
         firstBuild: firstBuilds.get(candidate.key),
