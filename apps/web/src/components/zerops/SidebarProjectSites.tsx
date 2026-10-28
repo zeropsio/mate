@@ -135,6 +135,7 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   pools: mate.candidate.services?.pools,
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
+  standIns: leases[mate.candidate.project.id]?.standIns,
   leaseChats: leases[mate.candidate.project.id]?.leaseChats,
 });
 

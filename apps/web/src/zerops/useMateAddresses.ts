@@ -11,7 +11,11 @@
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
-import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import {
+  lifecycleLeases,
+  poolPairsOf,
+  standInsOf,
+} from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
@@ -85,6 +89,7 @@ export function useMateAddresses(
       leases: lifecycleLeases(lifecycle),
       leaseChats,
       poolPairs: poolPairsOf(lifecycle),
+      standIns: standInsOf(lifecycle),
       ownRole: group?.ownRole,
       environments: group?.environments ?? [],
     });

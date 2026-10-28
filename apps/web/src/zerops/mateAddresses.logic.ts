@@ -73,6 +73,8 @@ export interface MateAddressInput {
    * carries one.
    */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
+  /** The services that envelope marks as a repository's stand-in (`standInsOf`): they open nothing. */
+  readonly standIns?: ReadonlyArray<string> | undefined;
   /** The Mate's own project's role tag, where it is a stage or a production. */
   readonly ownRole?: GroupRole | undefined;
   /** The Mate's group's stage and production projects the account holds, with their routes. */
@@ -107,6 +109,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
         service.routes.map((route) => ({ service: service.hostname, url: route.url })),
       ),
     poolPairs: input.poolPairs,
+    standIns: input.standIns,
     leases: input.leases,
     leaseChats: input.leaseChats,
   });

@@ -418,4 +418,11 @@ describe("a part migrated to a dev pool", () => {
   it("before the envelope pairs it, its stage pairs with the pool of its stem", () => {
     expect(brief({ services })).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
   });
+
+  it("the holder zcp keeps for its repository opens nothing: it holds the code, nothing runs there", () => {
+    const holder = { ...svc("kiln", ["https://kiln-1df2-8080.prg1.zerops.app"]), type: "go@1.22" };
+    expect(brief({ services: [...services, holder], standIns: ["kiln"] })).toEqual([
+      { service: "appstage", role: "preview", url: STAGE_URL },
+    ]);
+  });
 });

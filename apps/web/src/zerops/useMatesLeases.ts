@@ -1,7 +1,7 @@
 /**
  * zcp's leases for each Mate a Sites list shows, as a conversation of that Mate last read them
  * (`leases[]` on its lifecycle's envelope), and the pairs it keys by a dev pool (`poolPairsOf`: each
- * pool's stages, with the part they serve). zcp keeps one set for the whole Mate, and every conversation's lifecycle
+ * pool's stages, with the part they serve), and the holders it marks as a repository's stand-in. zcp keeps one set for the whole Mate, and every conversation's lifecycle
  * carries it as the latest Zerops call read it, whichever conversation made it — so the Mate's
  * conversation the person last visited (`threadKey`) is enough.
  *
@@ -15,7 +15,11 @@
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
-import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import {
+  lifecycleLeases,
+  poolPairsOf,
+  standInsOf,
+} from "@t3tools/client-runtime/zerops/serviceMap";
 import type { MatePartLeaseChat } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsLease } from "@t3tools/contracts";
@@ -29,6 +33,8 @@ import { zeropsFeeds } from "./feeds";
 export interface MateLeasesRead {
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   readonly poolPairs: ReadonlyArray<PoolPair>;
+  /** The services its envelope marks as a repository's stand-in, which open nothing. */
+  readonly standIns: ReadonlyArray<string>;
   readonly leaseChats: ReadonlyArray<MatePartLeaseChat>;
 }
 
@@ -52,6 +58,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
+        standIns: standInsOf(lifecycle),
         leaseChats,
       };
     }

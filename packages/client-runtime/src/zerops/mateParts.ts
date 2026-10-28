@@ -9,7 +9,8 @@
  *   preview a dev pool serves is that pool's, whatever repository holder the tier names as its dev
  *   (Noola's tier pairs every stage with `noola`, which runs nothing once its parts moved to pools).
  *   A dev with no stage yet is a part all the same; a pool with neither a workspace nor a stage is
- *   none.
+ *   none. A holder zcp keeps for a repository (its envelope's `standIn`) runs nothing while a
+ *   pool stands: it has no link and no part of its own.
  * - **Names** are the pair's stem (`partName`): `apipool` and `apistage` are API. Never the setup
  *   zcp names a part by (`apiprod`, `boxpreview`) and never a hostname.
  * - **Dev entries**: a plain dev service's own route; for a pool, one per workspace the Mate holds
@@ -104,6 +105,11 @@ export interface MatePartsInput {
   readonly pools?: ReadonlyArray<string> | undefined;
   /** The pairs its envelope keys by a dev pool (`poolPairsIn`). */
   readonly poolPairs?: ReadonlyArray<PoolPair> | undefined;
+  /**
+   * The services its envelope marks as a repository's stand-in (`standIn`, `standInsOf`): while
+   * a pool stands, a holder keeps the code and runs nothing, so its routes open nothing.
+   */
+  readonly standIns?: ReadonlyArray<string> | undefined;
   /** The Mate tier on `main` (`servicePairs`). */
   readonly tier?: string | undefined;
   /** zcp's leases in the newest envelope read; absent while none is read. */
@@ -190,10 +196,13 @@ export function mateParts(input: MatePartsInput): MateParts {
     ),
     ...leases.map((lease) => lease.pool),
   ]);
+  // Before any pool stands, a stand-in is still where the code runs (the Zerops panel's rule).
+  const holders = new Set(pools.size === 0 ? [] : (input.standIns ?? []));
   const routes = input.routes.filter(
     (route) =>
       route.service !== input.controlPlane &&
       !pools.has(route.service) &&
+      !holders.has(route.service) &&
       isBrowsableUrl(route.url),
   );
   // Routes and the services listing are read separately: a routed service is held before the
@@ -282,14 +291,15 @@ export function mateParts(input: MatePartsInput): MateParts {
     used.add(dev);
     for (const preview of previews) used.add(preview);
     const devEntries = devOf(dev);
-    // Several previews of one dev are several parts of one codebase, each by its own stem.
+    // Several previews of one dev are several parts of one codebase, each by its own stem; so is
+    // a holder's, which is the whole repository and no part of its own.
+    const byPreview = previews.length > 1 || holders.has(dev);
     for (const preview of previews)
       parts.push({
         key: `part:${previews.length > 1 ? preview : dev}`,
-        name:
-          previews.length > 1
-            ? partName(withoutSuffix(preview, STAGE_SUFFIX))
-            : nameOf(dev, stemOf.get(dev) ?? dev),
+        name: byPreview
+          ? partName(withoutSuffix(preview, STAGE_SUFFIX))
+          : nameOf(dev, stemOf.get(dev) ?? dev),
         devService: dev,
         dev: devEntries,
         preview: entryOf(`preview:${preview}`, "preview", preview, "no public address"),

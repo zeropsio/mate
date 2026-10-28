@@ -598,6 +598,17 @@ export const standInOf = (
     ? lifecycle.value.envelope?.services.find((entry) => entry.hostname === hostname)?.standIn
     : undefined;
 
+/**
+ * The services a known lifecycle's envelope marks as a repository's stand-in (`standIn`), by
+ * hostname; none while it is not known.
+ */
+export const standInsOf = (lifecycle: Known<ZeropsLifecycle> | undefined): ReadonlyArray<string> =>
+  lifecycle?.state === "known"
+    ? (lifecycle.value.envelope?.services ?? []).flatMap((entry) =>
+        entry.standIn === undefined ? [] : [entry.hostname],
+      )
+    : [];
+
 /** The dev servers zcp last read on a service; none while the lifecycle is not known. */
 export const devServersOf = (
   hostname: string,

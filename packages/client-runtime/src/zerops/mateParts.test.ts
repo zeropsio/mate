@@ -187,6 +187,53 @@ describe("a Mate's parts", () => {
     ).toEqual(["Web | dev webpool-c2e4-1-3001.prg1.zerops.app | "]);
   });
 
+  // zcp's envelope marks a holder `standIn: { for: "pool-migrate" }`; the Zerops panel rests it.
+  it.each<{ title: string; input: Partial<MatePartsInput>; rows: ReadonlyArray<string> }>([
+    {
+      title: "a holder beside its pools opens nothing: no link of its own, no part",
+      input: {
+        services: hostnames("kiln", "toolsdev", "apipool", "apistage"),
+        routes: [route("kiln", 8080), route("toolsdev"), route("apistage")],
+        pools: ["apipool"],
+        standIns: ["kiln", "toolsdev"],
+        leases: [],
+      },
+      rows: ["API |  | preview apistage-1df2-80.prg1.zerops.app"],
+    },
+    {
+      title: "a holder the tier still pairs a stage with keeps its preview, never its dev link",
+      input: {
+        services: hostnames("noola", "apipool", "apistage", "runnerstage"),
+        routes: [route("noola"), route("apistage"), route("runnerstage")],
+        pools: ["apipool"],
+        standIns: ["noola"],
+        tier: NOOLA_TIER,
+        leases: [],
+      },
+      rows: [
+        "API |  | preview apistage-1df2-80.prg1.zerops.app",
+        "Runner |  | preview runnerstage-1df2-80.prg1.zerops.app",
+      ],
+    },
+    {
+      title: "a stand-in before any pool stands is still where the code runs",
+      input: {
+        services: hostnames("toolsdev"),
+        routes: [route("toolsdev")],
+        standIns: ["toolsdev"],
+      },
+      rows: ["Tools | dev toolsdev-1df2-80.prg1.zerops.app | "],
+    },
+  ])(
+    "a holder zcp keeps for a repository holds the code; nothing runs there: $title",
+    ({ input, rows: expected }) => {
+      expect(rows(input)).toEqual(expected);
+      expect(
+        mateParts({ services: [], routes: [], ...input }).others.map((other) => other.service),
+      ).toEqual([]);
+    },
+  );
+
   it("never lists a pool's slot routes, nor the control plane, and lists the rest by service", () => {
     const read = mateParts({
       services: hostnames("webpool", "webstage", "mailpit", "zcp"),

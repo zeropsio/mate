@@ -227,6 +227,8 @@ export interface SitesMateFacts {
   readonly leases: ReadonlyArray<SitesLease> | undefined;
   /** The pairs its envelope keys by a dev pool; none unread. */
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
+  /** The services its envelope marks as a repository's stand-in (`standInsOf`); none unread. */
+  readonly standIns?: ReadonlyArray<string> | undefined;
   /** The Mate's chats bound to its leases, by title: what each workspace is for. */
   readonly leaseChats?: ReadonlyArray<MatePartLeaseChat> | undefined;
 }
@@ -251,6 +253,7 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
     controlPlane: mate.controlPlane,
     pools: mate.pools,
     poolPairs: mate.poolPairs,
+    standIns: mate.standIns,
     leases: mate.leases,
     leaseChats: mate.leaseChats,
   });
