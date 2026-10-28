@@ -580,6 +580,88 @@ it("CI runs the same named gate as local ports", () => {
   }
 });
 
+it("Decision: every job that builds or consumes the scenario bundle runs the Node version the producer resolved, resolved once per run", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
+  );
+  const producer = jobs.chat_bundle;
+  expect(
+    producer.outputs?.node_version,
+    "ASSERTION: the bundle producer publishes the exact Node version it resolved",
+  ).toBe("${{ steps.node.outputs.version }}");
+  const resolve = producer.steps.find((step: { id?: string }) => step.id === "node");
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "signal-node-"));
+  try {
+    const output = NodePath.join(directory, "output");
+    const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", resolve.run], {
+      env: { ...process.env, GITHUB_OUTPUT: output },
+    });
+    expect(result.status).toBe(0);
+    expect(NodeFS.readFileSync(output, "utf8")).toBe(`version=${process.versions.node}\n`);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+  for (const id of ["chat_scenarios", "classify"]) {
+    const setup = jobs[id].steps.find(
+      (step: { uses?: string }) => step.uses === "voidzero-dev/setup-vp@v1",
+    );
+    expect(setup.with["node-version"], `ASSERTION: ${id} uses the producer's exact Node`).toBe(
+      "${{ needs.chat_bundle.outputs.node_version }}",
+    );
+    expect(setup.with["node-version-file"]).toBeUndefined();
+  }
+  expect(jobs.classify.if).toBe("${{ !cancelled() && needs.chat_bundle.result == 'success' }}");
+});
+
+it("Decision: every workflow sharing the scenario bundle uses one resolved Node version", () => {
+  for (const filename of NodeFS.globSync(".github/workflows/*.yml", { cwd: root })) {
+    const { jobs } = parse(NodeFS.readFileSync(NodePath.join(root, filename), "utf8"));
+    const entries = Object.entries(jobs) as [
+      string,
+      {
+        needs?: string | string[];
+        steps?: { uses?: string; run?: string; with?: Record<string, string> }[];
+      },
+    ][];
+    for (const [producerId, producer] of entries) {
+      const artifact = producer.steps?.find(
+        (step) =>
+          step.uses?.startsWith("actions/upload-artifact@") &&
+          step.with?.path === "node_modules/.cache/mate-scenario-web",
+      );
+      if (!artifact) continue;
+      for (const [consumerId, consumer] of entries) {
+        if (
+          !consumer.steps?.some(
+            (step) =>
+              step.uses?.startsWith("actions/download-artifact@") &&
+              step.with?.name === artifact.with?.name,
+          )
+        )
+          continue;
+        expect([consumer.needs].flat(), `${filename}: ${consumerId}`).toContain(producerId);
+        const setup = consumer.steps.find((step) => step.uses === "voidzero-dev/setup-vp@v1");
+        expect(setup?.with?.["node-version"], `${filename}: ${consumerId}`).toBe(
+          `\${{ needs.${producerId}.outputs.node_version }}`,
+        );
+        expect(setup?.with?.["node-version-file"]).toBeUndefined();
+      }
+    }
+  }
+  const { jobs } = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const steps: { uses?: string; run?: string; env?: Record<string, string> }[] =
+    jobs.state_smoke.steps;
+  const build = steps.findIndex((step) => step.run?.includes("scenarios/harness/build.ts"));
+  const consume = steps.findIndex((step) => step.env?.MATE_SCENARIO_REQUIRE_BUNDLE === "1");
+  expect(build).toBeGreaterThan(-1);
+  expect(consume).toBeGreaterThan(build);
+  expect(steps.slice(build + 1, consume).filter((step) => step.uses?.includes("setup-"))).toEqual(
+    [],
+  );
+});
+
 it("CI builds once and certifies both complete C shards from that artifact", () => {
   const { jobs } = parse(
     NodeFS.readFileSync(new URL("../.github/workflows/signal.yml", import.meta.url), "utf8"),
