@@ -10,6 +10,8 @@ import { useMemo } from "react";
 import { useProjectFlows } from "~/zerops/projectFlows";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import {
   Dialog,
@@ -34,7 +36,9 @@ export function GitMirrorDialog({
   // The application's repositories and environments, read while the dialog is open.
   const flow = useProjectFlows(useMemo(() => [appId], [appId])).flows.get(appId);
   // The organization's GitHub app, read while the dialog is open: its repositories need no token.
-  const github = useGitMirrorApp().app;
+  const mirrorApp = useGitMirrorApp();
+  const github = mirrorApp.app;
+  const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
   return (
     <Dialog
@@ -57,6 +61,8 @@ export function GitMirrorDialog({
             appName={appName}
             can={git.can}
             github={github}
+            admin={admin}
+            onInstall={mirrorApp.install}
             onOpenAutomation={() => {
               onClose();
               void navigate({ to: "/settings/automation" });

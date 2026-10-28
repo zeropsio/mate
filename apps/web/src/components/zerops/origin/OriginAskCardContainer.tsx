@@ -24,6 +24,8 @@ import { useAtomCommand } from "~/state/use-atom-command";
 import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
+import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqOffers } from "~/zerops/useHqOffers";
@@ -109,6 +111,7 @@ function AskCard({
   const follow = appId === null ? undefined : target.actions?.follow;
   // The app is read while the GitHub way can still be picked.
   const github = useGitMirrorApp(ask.state === "open");
+  const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
   const said = useOriginAskSaid((state) => state[requestId] ?? null);
   const answerOriginAsk = useAtomCommand(threadEnvironment.answerOriginAsk, {
@@ -198,6 +201,8 @@ function AskCard({
               },
               onCheckAgain: github.again,
               onOpenAutomation: () => void navigate({ to: "/settings/automation" }),
+              admin,
+              onInstall: github.install,
             }
       }
       face={originAskFace(ask.state, said, connected)}

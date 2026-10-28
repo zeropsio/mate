@@ -184,6 +184,8 @@ export function makeTaskSourceSettings(options: {
   const secrets = new Map<string, TypedSecrets>();
   /** HQ's manifest for the GitHub app, by the request that asked: taken by that request alone. */
   const manifests = new Map<string, HqGithubManifestView>();
+  /** HQ's install link, by the request that asked: taken by that request alone. */
+  const links = new Map<string, string>();
   const operations = makeOperations({
     store,
     makeId: options.makeId,
@@ -207,6 +209,9 @@ export function makeTaskSourceSettings(options: {
         },
         manifested: (requestId, view) => {
           if (!closed) manifests.set(requestId, view);
+        },
+        linked: (requestId, url) => {
+          if (!closed) links.set(requestId, url);
         },
       }),
     },
@@ -291,8 +296,21 @@ export function makeTaskSourceSettings(options: {
     return view;
   };
 
+  /**
+   * Asks HQ for GitHub's page installing the app on another account or more repositories: its
+   * address with a one-time state, for the screen to open, or `null` where HQ refused or did not
+   * answer — its words are the GitHub setting's action.
+   */
+  const githubInstall = async (key: OrgSettingKey, returnTo: string): Promise<string | null> => {
+    const requestId = await write(key, { kind: "github-install", returnTo });
+    const url = links.get(requestId) ?? null;
+    links.delete(requestId);
+    return url;
+  };
+
   return {
     githubManifest,
+    githubInstall,
     /** Reads an organization's setting while a screen shows it. */
     demandOrg: (family: OrgSetting, key: OrgSettingKey) => demandFollowed(specOf(family, key), key),
     /** Reads an application's setting while a screen shows it. */

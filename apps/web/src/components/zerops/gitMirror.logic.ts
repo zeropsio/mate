@@ -18,10 +18,53 @@ export type GitMirrorApp =
       readonly appId?: number;
       /** The repositories it reaches, by `owner/name`. */
       readonly repositories: ReadonlyArray<string>;
+      /** GitHub's own install page: what is installed from it waits for an admin's OK. */
       readonly installUrl: string;
+      /** HQ hands install trips that come back accepted; absent or false from an older HQ. */
+      readonly installTrip?: boolean;
+      /** Accounts it is installed on that wait for an admin's OK, with their repositories. */
+      readonly waiting?: ReadonlyArray<{
+        readonly account: string;
+        readonly repositories: ReadonlyArray<string>;
+      }>;
     }
   | { readonly kind: "none" }
   | { readonly kind: "unknown" };
+
+/**
+ * How a press installs the app further: an Owner or Admin through HQ's install trip, so what they
+ * install comes back accepted; anyone else (or anyone, with an older HQ) on GitHub's own page —
+ * with a newer HQ, what they install there waits for an admin's OK, and they are told so.
+ */
+export function installOffer(
+  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
+  admin: boolean,
+):
+  | { readonly kind: "trip" }
+  | { readonly kind: "page"; readonly url: string; readonly note: string | null } {
+  if (app.installTrip === true && admin) return { kind: "trip" };
+  return {
+    kind: "page",
+    url: app.installUrl,
+    note: app.installTrip === true ? "What you install there waits for an admin's OK." : null,
+  };
+}
+
+/** The account whose installation reaches `repository` (`owner/name`) but waits for an OK. */
+export function waitingAccount(
+  app: Extract<GitMirrorApp, { readonly kind: "connected" }>,
+  repository: string,
+): string | null {
+  const wanted = repository.toLowerCase();
+  return (
+    app.waiting?.find((each) => each.repositories.some((name) => name.toLowerCase() === wanted))
+      ?.account ?? null
+  );
+}
+
+/** What the person is told of an account installed but waiting. */
+export const waitingWords = (account: string) =>
+  `${account} waits for an admin's OK in Settings › Automation.`;
 
 /** `owner/name` of a GitHub address, as the app's repositories name it; null for any other. */
 export function githubName(url: string): string | null {

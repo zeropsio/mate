@@ -603,6 +603,125 @@ describe("the organization's GitHub app", () => {
     r.close();
   });
 
+  const waiting: HqGithubView = {
+    ...app,
+    public: true,
+    installations: [
+      ...(app.state === "connected" ? app.installations : []),
+      {
+        id: 9,
+        account: "stranger",
+        accountType: "User",
+        repositorySelection: "selected",
+        repositories: [{ fullName: "stranger/notes", private: true, defaultBranch: "main" }],
+        suspended: false,
+        state: "waiting",
+        manageUrl: "https://github.com/settings/installations/9",
+      },
+    ],
+  };
+  const standing = (view: HqGithubView, id: number) =>
+    view.state === "connected"
+      ? view.installations.find((installation) => installation.id === id)?.state
+      : undefined;
+  /** HQ holding a waiting installation 9, its answer to `write` of it leaving it `state`. */
+  const judged = (
+    write: "github-accept" | "github-suspend" | "github-resume",
+    state: "accepted" | "suspended",
+  ) => {
+    let held = waiting;
+    const asked: Array<number> = [];
+    const change = async (id: number) => {
+      asked.push(id);
+      if (held.state === "connected")
+        held = {
+          ...held,
+          installations: held.installations.map((installation) =>
+            installation.id === id
+              ? { ...installation, state, suspended: state === "suspended" }
+              : installation,
+          ),
+        };
+    };
+    return {
+      asked,
+      api: {
+        github: async () => held,
+        ...(write === "github-accept"
+          ? { githubAcceptInstallation: change }
+          : write === "github-suspend"
+            ? { githubSuspendInstallation: change }
+            : { githubResumeInstallation: change }),
+      },
+    };
+  };
+
+  it.each([
+    { title: "Accept makes its repositories available", write: "github-accept", state: "accepted" },
+    { title: "Suspend takes it away", write: "github-suspend", state: "suspended" },
+    { title: "Resume gives a suspended one back", write: "github-resume", state: "accepted" },
+  ] as const)(
+    "$title: HQ is asked for the installation, and a read after its answer has it $state",
+    async ({ write, state }) => {
+      const hq = judged(write, state);
+      const r = rig(hq.api);
+      const read = waitFor(r.store, () => r.read("hqGithub").setting.state === "known");
+      const release = r.host.demandOrg("hqGithub", ORG);
+      await read;
+      const done = waitFor(r.store, () => r.read("hqGithub").action.kind === "done");
+      await r.host.write(ORG, { kind: write, installationId: 9 });
+      await done;
+      expect(hq.asked).toEqual([9]);
+      const setting = r.read("hqGithub").setting;
+      expect(setting.state === "known" ? standing(setting.held as HqGithubView, 9) : null).toBe(
+        state,
+      );
+      release();
+      r.close();
+    },
+  );
+
+  it("hands HQ's install link to the screen that asked, and keeps its one-time state out of every record", async () => {
+    const sent: Array<unknown> = [];
+    const url = `https://github.com/apps/acme-mate/installations/new?state=${STATE}`;
+    const r = rig({
+      github: async () => app,
+      githubInstall: async (request) => {
+        sent.push(request);
+        return { url };
+      },
+    });
+    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBe(url);
+    expect(sent).toEqual([{ returnTo: "https://mate.example/settings" }]);
+    expect(r.records()).not.toContain(STATE);
+    r.close();
+  });
+
+  it("asks for an HQ update where this client's HQ calls have no Accept and no install link", async () => {
+    const r = rig({ github: async () => waiting });
+    await r.host.write(ORG, { kind: "github-accept", installationId: 9 });
+    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
+    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    r.close();
+  });
+
+  it("an older HQ answering the install link with a bare 404 asks for an HQ update and hands nothing to open", async () => {
+    const r = rig({
+      github: async () => app,
+      githubInstall: async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "http_404",
+          status: 404,
+          message: "Not found.",
+        });
+      },
+    });
+    expect(await r.host.githubInstall(ORG, "https://mate.example/settings")).toBeNull();
+    expect(r.read("hqGithub").action).toEqual({ kind: "failed", words: GITHUB_UNSUPPORTED });
+    r.close();
+  });
+
   it.each([
     {
       case: "HQ answers that it has no such address",

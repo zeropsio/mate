@@ -9,7 +9,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { GithubAppView } from "./GithubAppSettings";
+import { type GithubAppControls, GithubAppView } from "./GithubAppSettings";
 
 const CONNECTED: HqGithubView = {
   state: "connected",
@@ -41,6 +41,7 @@ const MANIFEST: HqGithubManifestView = {
   state: ["state", "tea", "shop"].join("-"),
 };
 const RETURN_TO = "https://acme.example/mate/settings/automation?github=connected";
+const INSTALL_LINK = `https://github.com/apps/acme-mate/installations/new?state=${MANIFEST.state}`;
 
 const known = (held: HqGithubView) => ({ state: "known", held, stale: false });
 const read = (setting: unknown, action: unknown = { kind: "idle" }) =>
@@ -53,7 +54,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {}) {
+async function render(
+  props: Partial<Omit<ComponentProps<typeof GithubAppView>, "controls">> & {
+    readonly controls?: Partial<GithubAppControls>;
+  } = {},
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div");
   document.body.append(host);
@@ -63,13 +68,19 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
     disconnect: vi.fn(),
     again: vi.fn(),
     manifest: vi.fn(async () => MANIFEST as HqGithubManifestView | null),
+    install: vi.fn(async () => INSTALL_LINK as string | null),
+    accept: vi.fn(),
+    suspend: vi.fn(),
+    resume: vi.fn(),
     ...props.controls,
   };
   const onPost = vi.fn();
+  const onOpen = vi.fn();
   await act(async () =>
     root.render(
       <GithubAppView
         admin
+        onOpen={onOpen}
         onPost={onPost}
         organization="Acme"
         returnTo={RETURN_TO}
@@ -91,7 +102,7 @@ async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {})
       ?.getAttribute("for");
     return id ? host.querySelector<HTMLInputElement>(`[id="${id}"]`) : null;
   };
-  return { host, controls, onPost, button, field };
+  return { host, controls, onPost, onOpen, button, field };
 }
 
 describe("the GitHub section where no app is connected", () => {
@@ -187,6 +198,10 @@ describe("the GitHub section once the app is connected", () => {
     disconnect: vi.fn(),
     again: vi.fn(),
     manifest: vi.fn(),
+    install: vi.fn(async () => INSTALL_LINK as string | null),
+    accept: vi.fn(),
+    suspend: vi.fn(),
+    resume: vi.fn(),
   };
 
   it("names the bot it writes as and where it is installed, each with its page on GitHub", async () => {
@@ -197,7 +212,10 @@ describe("the GitHub section once the app is connected", () => {
     const links = [...host.querySelectorAll("a")].map((a) => [a.textContent, a.href]);
     expect(links).toEqual([
       ["Manage on GitHub", "https://github.com/organizations/acme/settings/installations/1"],
-      ["Install on more repositories", "https://github.com/apps/acme-mate/installations/new"],
+      [
+        "Install on another GitHub account or more repositories",
+        "https://github.com/apps/acme-mate/installations/new",
+      ],
     ]);
   });
 
@@ -220,7 +238,7 @@ describe("the GitHub section once the app is connected", () => {
     expect(host.textContent).toContain("acme · 3 repositories");
     await act(async () => button("Manage")!.click());
     expect(button("Disconnect")).toBeUndefined();
-    expect(host.textContent).not.toContain("Install on more repositories");
+    expect(host.textContent).not.toContain("Install on another GitHub account");
   });
 
   it("confirms the connection in one line once GitHub brings the person back", async () => {
@@ -244,7 +262,12 @@ it("says GitHub asked an owner to approve the app when it brings the person back
           disconnect: vi.fn(),
           again: vi.fn(),
           manifest: vi.fn(),
+          install: vi.fn(),
+          accept: vi.fn(),
+          suspend: vi.fn(),
+          resume: vi.fn(),
         }}
+        onOpen={vi.fn()}
         onPost={vi.fn()}
         organization="Acme"
         returnTo={RETURN_TO}
@@ -272,7 +295,12 @@ it("offers Read again where HQ's answer about the app failed, and reads it again
           again,
           disconnect: vi.fn(),
           manifest: vi.fn(),
+          install: vi.fn(),
+          accept: vi.fn(),
+          suspend: vi.fn(),
+          resume: vi.fn(),
         }}
+        onOpen={vi.fn()}
         onPost={vi.fn()}
         organization="Acme"
         returnTo={RETURN_TO}
@@ -286,4 +314,168 @@ it("offers Read again where HQ's answer about the app failed, and reads it again
   );
   expect(again).toHaveBeenCalledTimes(1);
   await act(async () => root.unmount());
+});
+
+describe("the GitHub app on many accounts", () => {
+  const STRANGER = {
+    id: 9,
+    account: "stranger",
+    accountType: "User" as const,
+    repositorySelection: "selected" as const,
+    repositories: [{ fullName: "stranger/notes", private: true, defaultBranch: "main" }],
+    suspended: false,
+    state: "waiting" as const,
+    manageUrl: "https://github.com/settings/installations/9",
+  };
+  const MANY: HqGithubView = {
+    ...CONNECTED,
+    public: true,
+    installations: [...(CONNECTED.state === "connected" ? CONNECTED.installations : []), STRANGER],
+  } as HqGithubView;
+  const controlsOf = (view: HqGithubView) => ({
+    read: read(known(view)),
+    disconnect: vi.fn(),
+    again: vi.fn(),
+    manifest: vi.fn(),
+    install: vi.fn(async () => INSTALL_LINK as string | null),
+    accept: vi.fn(),
+    suspend: vi.fn(),
+  });
+
+  it("an app installed on two accounts lists both, each with its page on GitHub", async () => {
+    const view = {
+      ...MANY,
+      installations: [
+        ...(CONNECTED.state === "connected" ? CONNECTED.installations : []),
+        { ...STRANGER, state: "accepted" as const },
+      ],
+    } as HqGithubView;
+    const { host, button } = await render({ controls: controlsOf(view) });
+    await act(async () => button("Manage")!.click());
+    const rows = [
+      ...host.querySelectorAll('[data-zerops-surface="settings-github-installations"] li'),
+    ];
+    expect(rows.map((row) => row.textContent)).toEqual([
+      "acme · 3 repositories·Manage on GitHub",
+      "stranger · 1 repository·Manage on GitHub",
+    ]);
+  });
+
+  it("a private app says it installs only on its owner, with the step to make it public", async () => {
+    const { host, button } = await render({
+      controls: controlsOf({
+        ...CONNECTED,
+        public: false,
+        ownerType: "Organization",
+      } as HqGithubView),
+    });
+    await act(async () => button("Manage")!.click());
+    expect(host.textContent).toContain(
+      "This app can only be installed on acme. To add other GitHub accounts, make it public on GitHub.",
+    );
+    const step = [...host.querySelectorAll("a")].find(
+      (a) => a.textContent === "make it public on GitHub",
+    );
+    expect(step?.href).toBe(
+      "https://github.com/organizations/acme/settings/apps/acme-mate/advanced",
+    );
+  });
+
+  it("asks HQ for an install link that comes back to this page, and opens it", async () => {
+    const { controls, onOpen, button } = await render({ controls: controlsOf(MANY) });
+    await act(async () => button("Manage")!.click());
+    await act(async () =>
+      button("Install on another GitHub account or more repositories")!.click(),
+    );
+    expect(controls.install).toHaveBeenCalledWith(RETURN_TO);
+    expect(onOpen).toHaveBeenCalledWith(INSTALL_LINK);
+  });
+
+  it("an installation not started here waits for an admin's OK, with Accept and Suspend for the Owner and Admins", async () => {
+    const { host, controls, button } = await render({ controls: controlsOf(MANY) });
+    expect(host.textContent).toContain("1 waiting for an OK");
+    await act(async () => button("Manage")!.click());
+    const waiting = host.querySelector('[data-zerops-surface="settings-github-waiting"]')!;
+    expect(waiting.textContent).toContain("Waiting for your OK");
+    expect(waiting.textContent).toContain("stranger");
+    expect(waiting.textContent).toContain("stranger/notes");
+    await act(async () => button("Accept")!.click());
+    expect(controls.accept).toHaveBeenCalledWith(9);
+    await act(async () => button("Suspend")!.click());
+    expect(controls.suspend).toHaveBeenCalledWith(9);
+  });
+
+  it("shows a member the installation waiting for an OK, read-only", async () => {
+    const { host, button } = await render({ admin: false, controls: controlsOf(MANY) });
+    await act(async () => button("Manage")!.click());
+    const waiting = host.querySelector('[data-zerops-surface="settings-github-waiting"]')!;
+    expect(waiting.textContent).toContain("stranger/notes");
+    expect(waiting.textContent).toContain("Organization admins and the owner can change this.");
+    expect(button("Accept")).toBeUndefined();
+    expect(button("Suspend")).toBeUndefined();
+  });
+
+  it("an HQ that predates install trips offers GitHub's own install page as a link, never HQ's install link, and no Resume", async () => {
+    const older = {
+      ...CONNECTED,
+      installations: [
+        ...(CONNECTED.state === "connected" ? CONNECTED.installations : []),
+        { ...STRANGER, id: 5, account: "juno", state: undefined, suspended: true },
+      ],
+    } as HqGithubView;
+    const { host, controls, button } = await render({ controls: controlsOf(older) });
+    await act(async () => button("Manage")!.click());
+    const install = [...host.querySelectorAll("a")].find(
+      (a) => a.textContent === "Install on another GitHub account or more repositories",
+    );
+    expect(install?.href).toBe("https://github.com/apps/acme-mate/installations/new");
+    expect(button("Install on another GitHub account or more repositories")).toBeUndefined();
+    expect(host.textContent).toContain("juno · suspended");
+    expect(button("Resume")).toBeUndefined();
+    expect(controls.install).not.toHaveBeenCalled();
+  });
+
+  it("a waiting installation offers no Manage on GitHub: that page is its own account's", async () => {
+    const { host, button } = await render({ controls: controlsOf(MANY) });
+    await act(async () => button("Manage")!.click());
+    const waiting = host.querySelector('[data-zerops-surface="settings-github-waiting"]')!;
+    expect([...waiting.querySelectorAll("a")].map((a) => a.textContent)).toEqual([]);
+  });
+
+  it("Resume on a suspended installation goes to HQ for the Owner and Admins, and GitHub's refusal shows in its words", async () => {
+    const suspended = {
+      ...MANY,
+      installations: [{ ...STRANGER, state: "suspended" as const, suspended: true }],
+    } as HqGithubView;
+    const { host, controls, button } = await render({ controls: controlsOf(suspended) });
+    await act(async () => button("Manage")!.click());
+    await act(async () => button("Resume")!.click());
+    expect(controls.resume).toHaveBeenCalledWith(9);
+    const refused = await render({
+      controls: {
+        ...controlsOf(suspended),
+        read: read(known(suspended), {
+          kind: "failed",
+          words: "GitHub refused: This installation was suspended by its account.",
+        }),
+      },
+    });
+    expect(refused.host.querySelector('[role="alert"]')?.textContent).toBe(
+      "GitHub refused: This installation was suspended by its account.",
+    );
+    expect(host.textContent).not.toContain("GitHub refused");
+  });
+
+  it("a private app whose owner's kind HQ does not say links the app's own page, guessing no settings page", async () => {
+    const { host, button } = await render({
+      controls: controlsOf({ ...CONNECTED, public: false } as HqGithubView),
+    });
+    await act(async () => button("Manage")!.click());
+    expect(host.textContent).toContain(
+      "This app can only be installed on acme. To add other GitHub accounts, its owner makes it public in the app's settings on GitHub, under Advanced: the app on GitHub.",
+    );
+    expect(
+      [...host.querySelectorAll("a")].find((a) => a.textContent === "the app on GitHub")?.href,
+    ).toBe("https://github.com/apps/acme-mate");
+  });
 });
