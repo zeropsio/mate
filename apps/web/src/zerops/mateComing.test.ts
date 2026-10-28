@@ -347,6 +347,15 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
       expected: { kind: "coming", line: "Coming up. A few minutes." },
     },
+    {
+      case: "a Mate with no container and unread presses awaits setup evidence",
+      input: {
+        press: undefined,
+        candidate: { group: "unavailable", missingContainer: true },
+        pressElsewhere: "unknown",
+      },
+      expected: { kind: "coming", line: "Waiting for evidence of its workspace setup." },
+    },
   ])("$case", ({ input, expected }) => {
     expect(mateComing(input)).toEqual(expected);
   });
@@ -384,14 +393,6 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
     {
       case: "a Mate this tab made that a whole listing, read well after, lacks",
       input: { press: undefined, candidate: undefined, created: true, listingLacksIt: true },
-    },
-    {
-      case: "a Mate with no container while HQ has said nothing of its presses: neither is said",
-      input: {
-        press: undefined,
-        candidate: { group: "unavailable", missingContainer: true },
-        pressElsewhere: "unknown",
-      },
     },
     {
       case: "a Mate this tab made whose project is gone",

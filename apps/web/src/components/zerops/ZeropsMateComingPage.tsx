@@ -151,6 +151,7 @@ import {
   finishSetupView,
   forgetPress,
   pressFailure,
+  pressComing,
   useMatePress,
 } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
@@ -396,14 +397,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     projectUnavailable,
   } = mateArrival({
     closeOffHold,
-    press:
-      press === undefined
-        ? undefined
-        : {
-            startedAt: press.startedAt,
-            container: press.container,
-            retryable: pressRetry !== null,
-          },
+    press: pressComing(press),
     candidate,
     setUpFailed: pressFailure(press),
     nowMs: Date.now(),
@@ -1248,17 +1242,11 @@ export function ComingBelow({
   /** What *Go to projects* is: the router's link to the projects screen. */
   readonly projects?: ReactElement;
 }): ReactNode {
-  // The arrival as one row, its words replaced in place; a creation that stopped stops it where it
-  // stood, and its sentence over the row says why.
+  // Each step owns its result. An overall setup notice cannot fail an unfinished workspace.
   const row =
     progress === undefined || nowMs === undefined
       ? null
-      : arrivalRow(
-          arrivalSteps(progress, mate, nowMs),
-          progress.steps,
-          coming?.kind === "failed",
-          progress.startedAt,
-        );
+      : arrivalRow(arrivalSteps(progress, mate, nowMs), progress.steps, progress.startedAt);
   const steps =
     row === null ? null : (
       // The slot centres its words; the row's own read from its start edge.

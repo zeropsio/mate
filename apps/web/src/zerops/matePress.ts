@@ -725,6 +725,8 @@ export function pressComing(press: MatePress | undefined):
       readonly startedAt: number;
       readonly container: boolean;
       readonly retryable: boolean;
+      readonly state: MatePressState["kind"];
+      readonly uncertain?: true;
     }
   | undefined {
   if (press === undefined) return undefined;
@@ -733,6 +735,10 @@ export function pressComing(press: MatePress | undefined):
     // A Finish setup that stopped with its Mate's container brings nothing more: it is not coming.
     container: press.container && !stoppedWithContainer(press),
     retryable: press.state.kind === "failed" && press.state.retry !== null,
+    state: press.state.kind,
+    ...(press.state.kind === "failed" && press.state.uncertain === true
+      ? { uncertain: true as const }
+      : {}),
   };
 }
 

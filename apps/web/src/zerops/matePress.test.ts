@@ -3,6 +3,7 @@ import {
   makeAccountStore,
   creationPressStoreAtom,
   accountReadsAtom,
+  mateArrival,
   type AccountStore,
   type ProjectServices,
 } from "@t3tools/client-runtime/data";
@@ -60,6 +61,7 @@ import {
   type PressInputs,
 } from "./matePress";
 import { accountHqApi } from "./accountHq";
+import { mateArrivalNotice } from "./mateNoticeVoice";
 import type { LockManagerLike } from "./mateLocks";
 
 const serviceRead = Atom.make<ProjectServices>({ services: [], live: true, reconnecting: false });
@@ -849,6 +851,37 @@ describe("a press's hold at HQ", () => {
   });
 });
 
+it.each(["process history", "setup projection"] as const)(
+  "A current setup press does not inherit a previous attempt's terminal receipt from %s",
+  (source) => {
+    beginPress({
+      projectId: "p-1",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+    });
+    try {
+      const previous = {
+        id: "previous-setup",
+        projectId: "p-1",
+        serviceStackIds: ["s"],
+        status: "FAILED",
+        actionName: "stack.deploy",
+        created: "2026-10-01T00:00:00Z",
+      };
+      const coming = mateArrival({
+        ...pressComingInput([readMatePress("p-1")!], "p-1"),
+        candidate: { group: "provisioning", service: { id: "s", status: "CREATING" } },
+        ...(source === "process history" ? { processes: [previous] } : { setupFailure: previous }),
+      }).coming;
+      expect(coming?.kind).toBe("coming");
+    } finally {
+      forgetPress("p-1");
+    }
+  },
+);
+
 describe("a press whose write's answer was lost", () => {
   it("says the write may have landed and withholds retry without owner evidence", async () => {
     beginPress({
@@ -883,6 +916,21 @@ describe("a press whose write's answer was lost", () => {
         reason: `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
       });
       expect(state?.kind === "failed" ? state.retry : null).toBeNull();
+      const press = readMatePress("p-1")!;
+      const coming = mateArrival({
+        ...pressComingInput([press], "p-1"),
+        candidate: { group: "unavailable", missingContainer: true },
+      }).coming;
+      expect(coming).toMatchObject({
+        kind: "coming",
+        line: `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
+      });
+      expect(press.progress?.find((entry) => entry.step.kind === "import-container")?.state).toBe(
+        "running",
+      );
+      expect(mateArrivalNotice({ coming, progress: undefined }).secondary).toBe(
+        `Zerops command exceeded its deadline. ${PRESS_MAY_HAVE_LANDED}`,
+      );
     } finally {
       forgetPress("p-1");
     }
@@ -1049,7 +1097,7 @@ describe("a Finish setup that stopped", () => {
       const press = readMatePress("p-stop");
       expect(finishSetupRowLine(press)).toBe("Setup stopped");
       expect(pressComingInput([press!], "p-stop")).toEqual({
-        press: { startedAt: 0, container: stands, retryable: false },
+        press: { startedAt: 0, container: stands, retryable: false, state: "failed" },
         setUpFailed: stands ? "Zerops refused the change" : undefined,
       });
       vi.advanceTimersByTime(STOPPED_SHOWN_MS);

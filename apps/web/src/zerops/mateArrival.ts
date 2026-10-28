@@ -559,20 +559,18 @@ const parsedTimes = (times: ReadonlyArray<string | undefined>) =>
 
 /**
  * The arrival's steps (`arrivalSteps`) as one row: the step it is on in words, never a growing
- * list. A step that failed — or a creation that stopped, which stops a step under way with it —
- * stops the row there; the person's own step, next, holds the row on their words with no clock,
- * for nothing runs until they act. Its clock is the setup's one clock where there is one (`since`).
+ * list. Only a step's own failure stops the row there; the person's own step, next, holds the row
+ * on their words with no clock, for nothing runs until they act. Its clock is the setup's one clock where there is one (`since`).
  */
 export function arrivalRow(
   steps: ReadonlyArray<ArrivalStep>,
   facts: ReadonlyArray<ArrivalStepInput>,
-  stopped: boolean,
   since?: string,
 ): ArrivalRow {
   const failedAt = steps.findIndex((step) => step.state === "failed");
   const openAt = steps.findIndex((step) => step.state !== "done");
   const at = failedAt !== -1 ? failedAt : openAt !== -1 ? openAt : Math.max(0, steps.length - 1);
-  const state = failedAt !== -1 || stopped ? "failed" : openAt === -1 ? "done" : "running";
+  const state = failedAt !== -1 ? "failed" : openAt === -1 ? "done" : "running";
   const waitsOnYou = state === "running" && steps[at]?.state === "you";
   const starts = parsedTimes(since === undefined ? facts.map((fact) => fact.startedAt) : [since]);
   const ends = parsedTimes(facts.map((fact) => fact.endedAt));
