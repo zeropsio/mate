@@ -1,9 +1,12 @@
 // @effect-diagnostics nodeBuiltinImport:off -- deterministic host admission receipts.
 import * as NodeChildProcess from "node:child_process";
+import * as NodeEvents from "node:events";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { expect, it } from "vite-plus/test";
+import { it } from "@effect/vitest";
+import { Effect } from "effect";
+import { expect } from "vite-plus/test";
 import { acquirePostgresAdmission, postgresAdmissionBudget } from "./test-postgres-admission.ts";
 
 it("Decision: PG-backed test work from z3 and mate-hq on one host is admitted by one shared budget; waiting is ended by a release receipt, never a clock.", async () => {
@@ -79,6 +82,59 @@ it("a PostgreSQL admission owner's process exit releases its host capacity", asy
   } finally {
     if (owner.exitCode === null) owner.kill("SIGTERM");
     await exited;
+  }
+});
+
+it.live(
+  "Decision: A gate stage ends when its own work ends; it never waits on another stage's resources or on leftover processes.",
+  () =>
+    Effect.gen(function* () {
+      const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-stage-exit-"));
+      const script = `import {acquirePostgresAdmission} from ${JSON.stringify(new URL("./test-postgres-admission.ts", import.meta.url).href)}; const lease = await acquirePostgresAdmission({directory:process.argv[1],capacity:2}); process.send('admitted'); process.once('message',async()=>{await lease.release(); process.disconnect();});`;
+      const owner = NodeChildProcess.spawn(
+        process.execPath,
+        ["--input-type=module", "-e", script, directory],
+        { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+      );
+      owner.stdout!.resume();
+      owner.stderr!.resume();
+      const exited = NodeEvents.EventEmitter.once(owner, "exit");
+      const closed = NodeEvents.EventEmitter.once(owner, "close").then(() => "closed");
+      let peer: Awaited<ReturnType<typeof acquirePostgresAdmission>> | undefined;
+      try {
+        const [message] = yield* Effect.promise(() =>
+          NodeEvents.EventEmitter.once(owner, "message"),
+        );
+        expect(message).toBe("admitted");
+        peer = yield* Effect.promise(() => acquirePostgresAdmission({ directory, capacity: 2 }));
+        owner.send("release");
+        expect(yield* Effect.promise(() => exited)).toEqual([0, null]);
+        const outcome = yield* Effect.raceFirst(
+          Effect.promise(() => closed),
+          Effect.as(Effect.sleep(1000), "stderr retained"),
+        );
+        expect(
+          outcome,
+          "A completed admission owner must close its piped output while another stage still holds admission",
+        ).toBe("closed");
+      } finally {
+        yield* Effect.promise(async () => {
+          await peer?.release();
+          if (owner.exitCode === null && owner.signalCode === null) owner.kill("SIGTERM");
+          await closed;
+        });
+      }
+    }),
+);
+
+it("a PostgreSQL admission broker startup failure reports its diagnostics to the launching worker", async () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "pg-startup-failure-"));
+  const generation = NodePath.join(directory, "generation.lock");
+  NodeFS.symlinkSync(NodePath.join(directory, "missing", "generation.lock"), generation);
+  try {
+    await expect(acquirePostgresAdmission({ directory, capacity: 1 })).rejects.toThrow(generation);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
   }
 });
 
