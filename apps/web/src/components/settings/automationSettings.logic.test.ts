@@ -204,3 +204,82 @@ describe("coming back from GitHub", () => {
     expect(githubReturnLine("connected", githubSection(known({ state: "none" }), true))).toBeNull();
   });
 });
+
+describe("one app on many GitHub accounts", () => {
+  const MANY: HqGithubView = {
+    ...CONNECTED,
+    public: true,
+    installations: [
+      { ...CONNECTED.installations[0]!, state: "accepted" },
+      { ...CONNECTED.installations[1]!, state: "accepted" },
+      {
+        id: 4,
+        account: "stranger",
+        accountType: "User",
+        repositorySelection: "selected",
+        repositories: [
+          { fullName: "stranger/notes", private: true, defaultBranch: "main" },
+          { fullName: "stranger/site", private: false, defaultBranch: "main" },
+        ],
+        suspended: false,
+        state: "waiting",
+        manageUrl: "https://github.com/settings/installations/4",
+      },
+    ],
+  } as HqGithubView;
+
+  it("an app installed on two accounts lists both", () => {
+    const section = githubSection(known(MANY), true);
+    expect(
+      section.kind === "connected" ? section.installations.map(({ line }) => line) : null,
+    ).toEqual(["acme · 3 repositories", "nova · all repositories"]);
+    expect(appRepositories(MANY)).toEqual(["acme/api", "acme/tea-shop", "acme/web", "nova/notes"]);
+  });
+
+  it("an installation not started here waits for an admin's OK and its repositories aren't offered", () => {
+    const section = githubSection(known(MANY), false);
+    expect(section.kind === "connected" ? section.waiting : null).toEqual([
+      {
+        id: 4,
+        account: "stranger",
+        repositories: ["stranger/notes", "stranger/site"],
+        manageUrl: "https://github.com/settings/installations/4",
+      },
+    ]);
+    expect(appRepositories(MANY)).not.toContain("stranger/notes");
+  });
+
+  it("an HQ that says nothing of an installation's standing offers it as before, and nothing of the app's reach", () => {
+    const section = githubSection(known(CONNECTED), true);
+    expect(section).toMatchObject({ kind: "connected", waiting: [], privateTo: null });
+    expect(appRepositories(CONNECTED)).toContain("nova/notes");
+  });
+
+  it("a private app says it installs only on its owner, with the page that makes it public", () => {
+    const owned = (accountType: "User" | "Organization") =>
+      githubSection(
+        known({
+          ...MANY,
+          public: false,
+          installations: [{ ...CONNECTED.installations[0]!, accountType, state: "accepted" }],
+        } as HqGithubView),
+        true,
+      );
+    expect(owned("Organization")).toMatchObject({
+      privateTo: {
+        owner: "acme",
+        settingsUrl: "https://github.com/organizations/acme/settings/apps/acme-mate/advanced",
+      },
+    });
+    expect(owned("User")).toMatchObject({
+      privateTo: { settingsUrl: "https://github.com/settings/apps/acme-mate/advanced" },
+    });
+    expect(githubSection(known(MANY), true)).toMatchObject({ privateTo: null });
+  });
+
+  it("says GitHub's install waits for an OK where it came back from an account nobody here started", () => {
+    expect(githubReturnLine("waiting", githubSection(known(MANY), true))).toBe(
+      "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it.",
+    );
+  });
+});
