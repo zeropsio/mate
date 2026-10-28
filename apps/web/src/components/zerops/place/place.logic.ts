@@ -187,14 +187,6 @@ export function placeServiceRows(
   ];
 }
 
-/** Who reaches a place, folded: the first faces, and how many more there are behind them. */
-export function foldedFaces<Person>(
-  people: ReadonlyArray<Person>,
-  shown: number,
-): { readonly faces: ReadonlyArray<Person>; readonly more: number } {
-  return { faces: people.slice(0, shown), more: Math.max(0, people.length - shown) };
-}
-
 /** The release production rolls back to from its menu: the newest one *Roll back* is offered on. */
 export function rollBackTarget(releases: ReadonlyArray<FlowReleaseRow>): string | undefined {
   return releases.find((release) => release.rollBack)?.tag;

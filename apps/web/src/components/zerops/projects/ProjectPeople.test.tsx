@@ -59,7 +59,7 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
     { projectId: "m-1", kind: "mate" },
   ],
   grants: {
-    "p-prod": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "READ_ONLY" }] },
+    "p-prod": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "ADMIN" }] },
     "p-stage": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "ADMIN" }] },
   },
   owners: { "m-1": "u-petr" },
@@ -105,9 +105,9 @@ describe("a project's People section", () => {
     expect(rowsOf(KNOWN([ANNA, PETR, IVA]))).toEqual({
       heading: "People",
       rows: [
-        { text: ["Petr N.", "Mixed"], pending: false },
+        { text: ["Petr N.", "Full"], pending: false },
         { text: ["Anna B.", "Full"], pending: false },
-        { text: ["iva@example.com", "More than Read"], pending: true },
+        { text: ["iva@example.com", "Edit"], pending: true },
       ],
       note: undefined,
     });
@@ -227,7 +227,7 @@ describe("changing who can work on a project", () => {
     expect(chipsOf(section).map(({ text }) => text)).toEqual([
       ["Anna B.", "Full"],
       ["Petr N.", "Saving…"],
-      ["iva@example.com", "More than Read"],
+      ["iva@example.com", "Edit"],
     ]);
     expect(section?.querySelector('[role="alert"]')?.textContent).toBe(
       "iva@example.com: Only an organization owner or admin can change who has access.",
@@ -377,37 +377,5 @@ describe("adding people already in the organization", () => {
         (row) => row.textContent,
       ),
     ).toEqual([expect.stringContaining("Eva Dvořáková")]);
-  });
-});
-
-describe("an environment page's access", () => {
-  let root: Root | undefined;
-  afterEach(() => {
-    act(() => root?.unmount());
-    document.body.innerHTML = "";
-  });
-
-  it("access folds to its faces until opened", () => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-    const view = projectPeople(input(KNOWN([ANNA, PETR, IVA])));
-    act(() => root!.render(<ProjectAccessChips fold heading={false} view={view} />));
-    const button = (label: string) =>
-      [...host.querySelectorAll("button")].find((one) => one.textContent === label);
-    expect(host.textContent).toContain("3 people");
-    expect(chipsOf(host.querySelector("section"))).toEqual([]);
-
-    act(() => button("Manage")!.click());
-    expect(chipsOf(host.querySelector("section")).map((chip) => chip.text[0])).toEqual([
-      "Petr N.",
-      "Anna B.",
-      "iva@example.com",
-    ]);
-
-    act(() => button("Done")!.click());
-    expect(host.textContent).toContain("3 people");
-    expect(button("Manage")).toBeDefined();
   });
 });

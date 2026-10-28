@@ -184,7 +184,7 @@ describe("owner-reported layout regressions", () => {
             const below = at.windowHeight - at.bottom;
             const trace = `${String(size.width)} × ${String(size.height)}: dialog ${String(at.top)}–${String(at.bottom)}, body scrolls ${String(at.bodyOverflow)} px, access says "${at.line}"`;
             expect(at.line, `Access is one line of words: ${trace}`).toMatch(
-              /^17 of 18 people in .+ can open it: 15 with Full access, Karlos with more than Read access, reader with Read access\.$/u,
+              /^17 of 18 people in .+ can open it: 15 with Full access, Karlos with Edit access, reader with Read access\.$/u,
             );
             expect(at.bodyOverflow, `Nothing scrolls: ${trace}`).toBeLessThanOrEqual(0);
             expect(at.top, `It keeps off the window's top: ${trace}`).toBeGreaterThanOrEqual(16);

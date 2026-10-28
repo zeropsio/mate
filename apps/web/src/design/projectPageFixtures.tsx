@@ -390,7 +390,6 @@ export function ProjectPagePeople() {
     access: "Full access",
     line: "Full access",
     level: "full",
-    across: [],
     note: null,
     change: null,
   })) as unknown as ReadonlyArray<ProjectPerson>;

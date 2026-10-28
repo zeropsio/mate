@@ -139,7 +139,7 @@ import {
   WorkspaceBreadcrumbSeparator,
 } from "../WorkspaceBreadcrumb";
 import { ZeropsHostedFrame, type SidePlacement } from "./landing/ZeropsHostedFrame";
-import { ProjectAccess, ProjectPeople } from "./projects/ProjectPeople";
+import { PlaceAccess, ProjectPeople } from "./projects/ProjectPeople";
 import { ProjectCardStandIn } from "./projects/OverviewStandIn";
 import { ProjectPageSpend } from "./projects/ProjectSpend";
 import { ProjectPageHistory } from "./projects/ProjectHistory";
@@ -1193,7 +1193,15 @@ function ZeropsProjectStopDetailPage({
     <>
       <StopPublicAccessStatus access={publicAccess} />
       <ZeropsStopPane
-        access={<ProjectAccess fold heading={false} kind={stop.tier} projectId={projectId} />}
+        access={
+          <PlaceAccess
+            groupId={groupId}
+            groupName={stopGroupName}
+            kind={stop.tier}
+            name={stop.name}
+            projectId={projectId}
+          />
+        }
         platformServices={serviceMap.rows}
         usageRead={serviceMap.usageRead}
         vault={orgId === null ? undefined : { orgId, open: vaultOpen, onToggle: toggleVault }}

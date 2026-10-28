@@ -106,7 +106,7 @@ Source words and the product words that replace them:
 - log in, logged in, log out → **sign in, signed in, sign out**
 - Sign in an agent → **Sign {Mate} in**
 - Basic user, Read only (an organization's role) → **Works on every project**, **Sees every project**; at least
-  Basic user access (a project's) → **more than Read access**; Member → the role's own name
+  Basic user access (a project's) → **Edit**; Member → the role's own name
 - surface → **page**
 - Add your domain → **Put it on your domain**
 - Set custom accesses → **Choose projects**; Advanced (a role's Zerops settings) → **Fine-tune permissions**

@@ -522,7 +522,7 @@ describe("what an owner or admin may change of each person's access", () => {
     expect(
       personMenu({
         clientUserId: "cu-inv",
-        level: "mixed",
+        level: "read",
         levels: both,
         actions: [],
         self: false,
@@ -538,7 +538,7 @@ describe("an owner's, admin's or every-project member's chip menu, as legacy off
     sentence: string;
     viewer: string;
     member: "OWNER" | "ADMIN" | "BASIC_USER" | "READ_ONLY";
-    held: "full" | "basic" | "read" | "hidden" | "mixed";
+    held: "full" | "basic" | "read" | "hidden";
     override?: boolean;
     self?: boolean;
     offered: ReadonlyArray<string> | null;
@@ -721,18 +721,6 @@ describe("each person as a chip", () => {
       level: "full",
     },
     {
-      name: "A member whose level differs from place to place is mixed",
-      member: member("ada", "Ada", "NO_ACCESS"),
-      places: PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-      level: "mixed",
-    },
-    {
-      name: "A member on some places and not others is mixed",
-      member: member("ada", "Ada", "NO_ACCESS"),
-      places: PROD_AND_STAGE([["ada", "ADMIN"]]),
-      level: "mixed",
-    },
-    {
       name: "An app with no place is judged on its Mates",
       member: member("ada", "Ada", "NO_ACCESS"),
       places: [
@@ -759,23 +747,6 @@ describe("each person as a chip", () => {
     expect(
       chip(projectPeople(input({ members: known([one]), projects: places })), "Ada")?.level,
     ).toBe(level);
-  });
-
-  it("A mixed chip lists each project and their level there", () => {
-    const view = projectPeople(
-      input({
-        members: known([member("ada", "Ada", "NO_ACCESS")]),
-        projects: [
-          ...PROD_AND_STAGE([["ada", "READ_ONLY"]], [["ada", "ADMIN"]]),
-          { ...mate("m-1", undefined, [["ada", "ADMIN"]]), name: "Fen" },
-        ],
-      }),
-    );
-    expect(chip(view, "Ada")?.across).toEqual([
-      { label: "Production", level: "read" },
-      { label: "Stage", level: "full" },
-      { label: "Fen", level: "full" },
-    ]);
   });
 
   it("A chip names a person short, with their e-mail and their role for the hover card", () => {

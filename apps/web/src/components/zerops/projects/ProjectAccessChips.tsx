@@ -1,5 +1,5 @@
 /**
- * Who reaches a Zerops project — or every project of an app — as people chips: a face, a short
+ * Who reaches a Zerops project as people chips: a face, a short
  * name and the level they have there, a hover card with who they are, and a ··· for whoever may
  * change it; then *Add access* under them, which picks people already in the organization who reach none of
  * it yet, each at Read or Full. Inviting someone new by e-mail lives on the Team page.
@@ -17,7 +17,6 @@ import {
   LockOpenIcon,
   MoreVerticalIcon,
   PlusIcon,
-  SplitIcon,
 } from "lucide-react";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import { useId, useMemo, useState, type ReactNode } from "react";
@@ -48,11 +47,11 @@ import {
 import { Popover, PopoverPopup, PopoverTrigger } from "../../ui/popover";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../../ui/tooltip";
 import { PersonAvatar } from "../primitives";
-import { foldedFaces } from "../place/place.logic";
 import {
   ACCESS_LEVEL_LINES,
   asksFirst,
   BADGE_WORDS,
+  LEVEL_MEANING,
   personMenu,
   type AccessCandidate,
   type ChipLevel,
@@ -101,15 +100,7 @@ export interface ProjectAccessChipsProps {
   readonly adding?: boolean;
   /** Whether a chip's face leads to that person's Team page; absent, none does. */
   readonly personPage?: PersonPageLink;
-  /**
-   * Folded to a row of faces, how many reach it and *Manage*, which opens the chips: a place's
-   * page holds fifteen people in one line rather than a grid on every visit.
-   */
-  readonly fold?: boolean;
 }
-
-/** How many faces a folded access row shows before it counts the rest. */
-const FOLDED_FACES = 8;
 
 /** A badge's level: a chip's, or `owner` on a project someone owns. */
 export type BadgeLevel = ChipLevel | "owner";
@@ -119,7 +110,6 @@ const BADGE_ICON: Readonly<Record<BadgeLevel, typeof LockOpenIcon>> = {
   full: LockOpenIcon,
   basic: CogIcon,
   read: EyeIcon,
-  mixed: SplitIcon,
   hidden: EyeOffIcon,
 };
 
@@ -136,9 +126,7 @@ export function ProjectAccessChips({
   onAdd,
   adding = false,
   personPage,
-  fold = false,
 }: ProjectAccessChipsProps) {
-  const [unfolded, setUnfolded] = useState(false);
   const people = view.kind === "people" ? view.people : [];
   const said = Object.entries(troubles ?? {}).flatMap(([key, line]) => {
     if (key === ADD_TROUBLE) return [{ key, line }];
@@ -149,32 +137,6 @@ export function ProjectAccessChips({
     view.kind === "people" && view.invite && onAdd !== undefined && view.candidates.length > 0
       ? { candidates: view.candidates, onAdd }
       : null;
-  if (fold && !unfolded && view.kind === "people" && said.length === 0) {
-    const folded = foldedFaces(view.people, FOLDED_FACES);
-    return (
-      <section aria-label={label} className="ov-access" data-folded="">
-        <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1.5">
-          <span className="flex items-center -space-x-1.5">
-            {folded.faces.map((person) => (
-              <PersonAvatar
-                className="ring-2 ring-card"
-                key={person.key}
-                name={person.name}
-                picture={person.avatarUrl}
-                size={24}
-              />
-            ))}
-          </span>
-          <span className="text-body text-muted-foreground">
-            {view.people.length === 1 ? "1 person" : `${String(view.people.length)} people`}
-          </span>
-          <Button onClick={() => setUnfolded(true)} size="sm" variant="ghost">
-            Manage
-          </Button>
-        </span>
-      </section>
-    );
-  }
   return (
     <section className={heading ? "ov-sec" : "ov-access"} aria-label={label}>
       {heading ? <h3 className="ov-sec-name">{label}</h3> : null}
@@ -203,19 +165,12 @@ export function ProjectAccessChips({
         </p>
       ))}
       {/* Adding people is a quiet tool under the people, never a tile as big as one of them. */}
-      {addable !== null || (fold && unfolded) ? (
-        // The quiet buttons' words share the chips' start edge.
+      {addable === null ? null : (
+        // The quiet button's words share the chips' start edge.
         <span className="-ms-2.5 flex items-center gap-1">
-          {addable === null ? null : (
-            <AddAccess adding={adding} candidates={addable.candidates} onAdd={addable.onAdd} />
-          )}
-          {fold && unfolded ? (
-            <Button onClick={() => setUnfolded(false)} size="sm" variant="ghost">
-              Done
-            </Button>
-          ) : null}
+          <AddAccess adding={adding} candidates={addable.candidates} onAdd={addable.onAdd} />
         </span>
-      ) : null}
+      )}
     </section>
   );
 }
@@ -226,7 +181,6 @@ const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
   full: "success",
   basic: "info",
   read: "neutral",
-  mixed: "neutral",
   hidden: "neutral",
 };
 
@@ -329,7 +283,7 @@ function AccessChip({
   );
 }
 
-/** Who someone is: full name, e-mail and role — then each project's level where they differ. */
+/** Who someone is: full name, e-mail and role — then what they may do here. */
 function HoverCard({ person }: { readonly person: ProjectPerson }) {
   return (
     <div className="ov-chip-card">
@@ -340,18 +294,11 @@ function HoverCard({ person }: { readonly person: ProjectPerson }) {
       <span className="ov-chip-card-line">
         {[person.role, ...(person.pending ? ["invited, not joined yet"] : [])].join(" · ")}
       </span>
-      {person.across.length > 0 ? (
-        <ul className="ov-chip-card-across">
-          {person.across.map(({ label, level }) => (
-            <li key={label}>
-              <span>{label}</span>
-              <span>{level === null ? "No access" : BADGE_WORDS[level]}</span>
-            </li>
-          ))}
-        </ul>
-      ) : person.line === "" ? null : (
-        <span className="ov-chip-card-line">{person.line}</span>
-      )}
+      {person.line === "" ? null : <span className="ov-chip-card-line">{person.line}</span>}
+      <span className="ov-chip-card-line">
+        {BADGE_WORDS[person.level]}:{" "}
+        {LEVEL_MEANING[person.level === "hidden" ? "none" : person.level]}
+      </span>
       {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
     </div>
   );
@@ -427,7 +374,7 @@ const matches = (candidate: AccessCandidate, query: string) => {
 };
 
 /** *Add access*: a quiet button opening the organization's people who reach none of it yet. */
-function AddAccess({
+export function AddAccess({
   candidates,
   adding,
   onAdd,

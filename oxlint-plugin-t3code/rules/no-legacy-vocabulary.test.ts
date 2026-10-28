@@ -226,7 +226,7 @@ describe("t3code/no-legacy-vocabulary", () => {
     {
       copy: "Needs Basic user access",
       name: "Basic user",
-      say: "Works on every project, or more than Read access",
+      say: "Works on every project, or Edit",
     },
     {
       copy: "Set custom accesses",
