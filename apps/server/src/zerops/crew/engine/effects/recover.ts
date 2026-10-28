@@ -39,7 +39,7 @@ export interface RecoverPayload {
 }
 
 export type RecoverValue =
-  | RecoverOutcome
+  | Exclude<RecoverOutcome, { readonly _tag: "mount-unseen" }>
   /** Landings no longer in your tree's history: nothing was brought back; the host thawed. */
   | {
       readonly _tag: "landings-lost";
@@ -73,6 +73,14 @@ export const makeRecover = Effect.gen(function* () {
             host: payload.host,
           }));
           const recovered = yield* workspace.recover(payload.host, specs);
+          if (recovered._tag === "mount-unseen") {
+            return {
+              _tag: "Retry",
+              pending: true,
+              patient: true,
+              reason: "The mounted copies are not usable yet.",
+            };
+          }
           if (recovered._tag !== "recovered" || row.attempt <= 1) {
             return done(recovered satisfies RecoverValue);
           }

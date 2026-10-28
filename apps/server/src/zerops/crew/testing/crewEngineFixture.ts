@@ -141,11 +141,12 @@ export const TEST_LEASE: ZeropsRepository = {
  * binding — which a restart forgets. A leased pool container's mount is listed
  * beside it, as a thread's agent leaves one.
  */
-export const repositoryLayers = (root: string) =>
+export const repositoryLayers = (root: string, mountPath = root) =>
   Layer.effectContext(
     Effect.gen(function* () {
       const known = yield* Ref.make<ReadonlyArray<ZeropsRepository>>([]);
-      const { identity: _identity, ...mounted } = serviceRepository(root);
+      const { identity: _identity, ...repository } = serviceRepository(root);
+      const mounted = { ...repository, mountPath };
       const listed = Effect.succeed({
         _tag: "available",
         repositories: [mounted, TEST_LEASE],
@@ -211,9 +212,10 @@ export const platformFakes = (
   signIns: PubSub.PubSub<SignIn>,
   /** Each default agent's signer as the agent-auth feed last told it. */
   agentSigners = new Map<string, string>(),
+  mountPath = world.root,
 ) =>
   Layer.mergeAll(
-    repositoryLayers(world.root),
+    repositoryLayers(world.root, mountPath),
     Layer.succeed(CrewPlatformProcesses, {
       read: Ref.update(world.processReads, (count) => count + 1).pipe(
         Effect.andThen(Ref.get(world.processes)),

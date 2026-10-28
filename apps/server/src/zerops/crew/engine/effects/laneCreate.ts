@@ -32,7 +32,7 @@ export interface LaneCreatePayload {
 export type LaneCreateValue =
   /** The copy stands at `tip`, recorded; `setup` is its setup's outcome when it has one. */
   | { readonly _tag: "created"; readonly tip: string; readonly setup?: CheckOutcome }
-  | Exclude<CreateOutcome, { readonly _tag: "created" | "exists" }>;
+  | Exclude<CreateOutcome, { readonly _tag: "created" | "exists" | "mount-unseen" }>;
 
 export const makeLaneCreate = Effect.gen(function* () {
   const workspace = yield* CrewWorkspace;
@@ -53,6 +53,14 @@ export const makeLaneCreate = Effect.gen(function* () {
             handle: payload.handle,
             host: payload.host,
           });
+          if (created._tag === "mount-unseen") {
+            return {
+              _tag: "Retry",
+              pending: true,
+              patient: true,
+              reason: "The mounted copy is not usable yet.",
+            };
+          }
           if (created._tag !== "created" && created._tag !== "exists") {
             return done(created satisfies LaneCreateValue);
           }
