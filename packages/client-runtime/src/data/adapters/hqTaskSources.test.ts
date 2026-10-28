@@ -667,7 +667,9 @@ describe("the organization's GitHub app", () => {
       await done;
       expect(hq.asked).toEqual([9]);
       const setting = r.read("hqGithub").setting;
-      expect(setting.state === "known" ? standing(setting.held, 9) : null).toBe(state);
+      expect(setting.state === "known" ? standing(setting.held as HqGithubView, 9) : null).toBe(
+        state,
+      );
       release();
       r.close();
     },

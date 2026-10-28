@@ -3,8 +3,10 @@ import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import {
+  HqGithubInstallView,
   HqGithubManifestView,
   HqGithubView,
+  type HqGithubInstallRequest,
   type HqGithubManifestRequest,
   type HqRepoRemoteViaAppRequest,
 } from "@t3tools/shared/hqGithub";
@@ -501,6 +503,16 @@ export interface HqApi {
   /** HQ forgets the organization's GitHub app (`DELETE /api/org/github`); it stays on GitHub. */
   readonly githubDisconnect?: () => Promise<void>;
   /**
+   * GitHub's page installing the organization's app on another account or more repositories,
+   * with a one-time state, so what is installed from it comes back accepted
+   * (`POST /api/org/github/install`).
+   */
+  readonly githubInstall?: (request: HqGithubInstallRequest) => Promise<HqGithubInstallView>;
+  /** HQ acts on a waiting installation's repositories (`POST …/installations/:id/accept`). */
+  readonly githubAcceptInstallation?: (installationId: number) => Promise<void>;
+  /** GitHub suspends an installation of the app (`POST …/installations/:id/suspend`). */
+  readonly githubSuspendInstallation?: (installationId: number) => Promise<void>;
+  /**
    * A repository mirrors to one the organization's GitHub app is installed on, with no token
    * (`PUT /api/apps/:appId/repos/:repo/remote/app`).
    */
@@ -799,6 +811,7 @@ const readAppTasks = decoded(HqAppTasksView);
 const readTaskLimits = decoded(HqTaskLimitsView);
 const readGithub = decoded(HqGithubView);
 const readGithubManifest = decoded(HqGithubManifestView);
+const readGithubInstall = decoded(HqGithubInstallView);
 const readComment = decoded(HqChangeComment);
 const readChange = decoded(HqChange);
 const readMerged = decodedAsked(HqChange);
@@ -1653,6 +1666,28 @@ export function makeHqApi(input: {
       ),
     githubDisconnect: async () => {
       await authorized("/api/org/github", { method: "DELETE" }, true);
+    },
+    githubInstall: async (request) =>
+      readGithubInstall(
+        await authorized(
+          "/api/org/github/install",
+          { method: "POST", body: JSON.stringify(request satisfies HqGithubInstallRequest) },
+          true,
+        ),
+      ),
+    githubAcceptInstallation: async (installationId) => {
+      await authorized(
+        `/api/org/github/installations/${String(installationId)}/accept`,
+        { method: "POST" },
+        true,
+      );
+    },
+    githubSuspendInstallation: async (installationId) => {
+      await authorized(
+        `/api/org/github/installations/${String(installationId)}/suspend`,
+        { method: "POST" },
+        true,
+      );
     },
     repoRemoteViaApp: async (appId, repo, request) => {
       await authorized(

@@ -10,6 +10,11 @@
  * - `POST /api/org/github/manifest` {@link HqGithubManifestRequest} → {@link HqGithubManifestView},
  *   owner or admin: the browser posts `manifest` to `postUrl` as a form, and GitHub's page creates
  *   the app; GitHub sends the browser back to HQ, which keeps the app and sends it on to install it;
+ * - `POST /api/org/github/install` {@link HqGithubInstallRequest} → {@link HqGithubInstallView},
+ *   owner or admin: GitHub's install page with a one-time state, so what is installed from it
+ *   comes back accepted;
+ * - `POST /api/org/github/installations/:id/accept` | `…/suspend` → 204, owner or admin: HQ acts on
+ *   a waiting installation's repositories, or GitHub suspends it;
  * - `DELETE /api/org/github` → 204, owner or admin: HQ forgets the app (deleting it is GitHub's);
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` {@link HqRepoRemoteViaAppRequest} → 204, a
  *   structure writer: the repository mirrors to one the app is installed on, with no token.
@@ -35,6 +40,12 @@ export const HqGithubInstallation = Schema.Struct({
   repositorySelection: Schema.Literals(["all", "selected"]),
   repositories: Schema.Array(HqGithubRepository),
   suspended: Schema.Boolean,
+  /**
+   * `accepted`: HQ acts on its repositories; `waiting`: nobody here started it, and HQ acts on none
+   * of them until an Owner or Admin accepts it; `suspended`: GitHub suspended it. Absent from an
+   * older HQ, which acts on every installation it lists.
+   */
+  state: Schema.optionalKey(Schema.Literals(["accepted", "waiting", "suspended"])),
   /** GitHub's page to change which repositories it reaches. */
   manageUrl: Schema.String,
 });
@@ -58,8 +69,13 @@ export const HqGithubView = Schema.Union([
     owner: Schema.String,
     /** The app's page on GitHub. */
     appUrl: Schema.String,
-    /** GitHub's page to install it on more repositories. */
+    /** GitHub's page to install it on more repositories; what is installed from it waits. */
     installUrl: Schema.String,
+    /**
+     * Whether it installs beyond its owner: `false`, only on `owner`; `null` while GitHub does not
+     * say; absent from an older HQ.
+     */
+    public: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
     installations: Schema.Array(HqGithubInstallation),
   }),
 ]);
@@ -84,6 +100,18 @@ export const HqGithubManifestView = Schema.Struct({
   state: Schema.String,
 });
 export type HqGithubManifestView = typeof HqGithubManifestView.Type;
+
+export const HqGithubInstallRequest = Schema.Struct({
+  /** Where HQ sends the browser once GitHub installed it: a Mate page. */
+  returnTo: Schema.String,
+});
+export type HqGithubInstallRequest = typeof HqGithubInstallRequest.Type;
+
+export const HqGithubInstallView = Schema.Struct({
+  /** GitHub's install page, carrying a one-time state binding its return to this request. */
+  url: Schema.String,
+});
+export type HqGithubInstallView = typeof HqGithubInstallView.Type;
 
 export const HqRepoRemoteViaAppRequest = Schema.Struct({
   /** `owner/name` of a repository the app is installed on. */

@@ -44,7 +44,13 @@ export type TaskSourceWrite =
       readonly name: string;
       readonly returnTo: string;
     }
-  | { readonly kind: "github-disconnect" };
+  | { readonly kind: "github-disconnect" }
+  /** HQ's install link goes to the screen that asked, never into the record: its state is one-time. */
+  | { readonly kind: "github-install"; readonly returnTo: string }
+  /** HQ acts on a waiting installation's repositories. */
+  | { readonly kind: "github-accept"; readonly installationId: number }
+  /** GitHub suspends the installation. */
+  | { readonly kind: "github-suspend"; readonly installationId: number };
 
 declare module "../model.ts" {
   interface OperationIntents {
@@ -82,6 +88,9 @@ export function taskSourceWriteSetting(write: TaskSourceWrite): TaskSourceSettin
       return "hqAppTasks";
     case "github-manifest":
     case "github-disconnect":
+    case "github-install":
+    case "github-accept":
+    case "github-suspend":
       return "hqGithub";
   }
 }
