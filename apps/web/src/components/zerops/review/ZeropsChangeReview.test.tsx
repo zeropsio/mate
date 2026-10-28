@@ -853,6 +853,8 @@ function installTestDom(): void {
     Element: TestNode,
     HTMLElement: TestNode,
     Node: TestNode,
+    setInterval: globalThis.setInterval,
+    clearInterval: globalThis.clearInterval,
     setTimeout: globalThis.setTimeout,
     clearTimeout: globalThis.clearTimeout,
     addEventListener() {},
