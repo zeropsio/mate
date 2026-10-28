@@ -6,8 +6,10 @@
  * Sites is addresses: the places a person opens to follow along. Shared environments keep their
  * own sections. Under each Mate, one row per part, its pair side by side: the part's name, its dev
  * (the dev service's own address, or for a dev pool each workspace zcp holds on it, by the preview
- * zcp read there) and its stage; then the Mate's other addresses. A pool's per-slot routes are
- * never a workspace's address, and no work, status or lease shows.
+ * zcp read there) and its stage; then the Mate's other addresses. Every part shows both halves in
+ * their columns, a half with nothing to open muted, its tooltip saying why. A dev on several
+ * addresses is a link per address. A pool's per-slot routes are never a workspace's address, and no
+ * work, status or lease shows outside a muted half's tooltip.
  *
  * The tag says one thing, the highest of: production down; an environment that did not come up;
  * the newest release failed while the old one serves; a release going out or production
@@ -24,6 +26,7 @@ import {
   type MatePartLease,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
+import type { ZeropsDevServer } from "@t3tools/contracts";
 
 import {
   chipFace,
@@ -195,8 +198,8 @@ export type SitesLease = MatePartLease;
 /** One entry of a part: its dev workspace or its preview (`MatePartEntry`). */
 export type SitesSide = MatePartEntry;
 
-/** A part of a Mate's application: its friendly name, its dev entries and its preview. */
-export type SitesPair = MatePart;
+/** A part of a Mate's application: its friendly name, its dev entries and its preview, always both. */
+export type SitesPair = Omit<MatePart, "preview"> & { readonly preview: SitesSide };
 
 /** A Mate's addresses: its parts, then its other addresses. */
 export interface SitesMateAddresses {
@@ -228,14 +231,26 @@ export interface SitesMateFacts {
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
   /** The services its envelope marks as a repository's stand-in (`standInsOf`); none unread. */
   readonly standIns?: ReadonlyArray<string> | undefined;
+  /** The dev servers its envelope read on each service, by hostname, which name a dev's ports. */
+  readonly devServers?:
+    | Readonly<Record<string, ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">>>>
+    | undefined;
 }
 
 /**
- * Whether a Sites list reads a Mate's leases: only a dev pool's workspaces come from them, so a
- * Mate whose services listing names no pool (or is not read yet) holds no lifecycle feed open.
+ * Whether a Sites list reads a Mate's lifecycle: only a dev pool's workspaces come from its leases,
+ * and only a dev on several addresses needs the names zcp gives its servers, so any other Mate (or
+ * one whose listing is not read yet) holds no lifecycle feed open.
  */
-export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
-  (mate.pools ?? []).length > 0;
+export const readsLeases = (
+  mate: Pick<SitesMateFacts, "pools"> & {
+    readonly routes?: ReadonlyArray<Pick<ZeropsPublicRoute, "service">> | undefined;
+  },
+): boolean => {
+  if ((mate.pools ?? []).length > 0) return true;
+  const services = (mate.routes ?? []).map((route) => route.service);
+  return new Set(services).size < services.length;
+};
 
 /**
  * A Mate's addresses: its parts (`mateParts`, the one reader every surface shows them from), then
@@ -246,7 +261,10 @@ export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
 export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
   const { parts, others } = mateParts({
-    services: (mate.hostnames ?? []).map((hostname) => ({ hostname })),
+    services: (mate.hostnames ?? []).map((hostname) => ({
+      hostname,
+      devServers: mate.devServers?.[hostname],
+    })),
     routes: mate.routes,
     controlPlane: mate.controlPlane,
     pools: mate.pools,
@@ -257,9 +275,47 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
   return {
     pairs: parts.map((part) => ({
       ...part,
-      dev: part.dev.map((side) => (side.label === "dev" ? side : { ...side, label: "dev" })),
+      // A dev's first address is "dev"; the rest go by the server or port that tells them apart.
+      dev:
+        part.dev.length === 0
+          ? [devPlaceholder(mate, part)]
+          : part.dev.map((side, index) =>
+              side.label === "dev" || part.dev[index - 1]?.service === side.service
+                ? side
+                : { ...side, label: "dev" },
+            ),
+      preview: part.preview ?? {
+        key: `preview:${part.key}`,
+        label: "preview",
+        service: part.devService,
+        url: undefined,
+        host: undefined,
+        more: [],
+        why: "Not set up yet.",
+      },
     })),
     links: others,
+  };
+}
+
+/**
+ * A part's dev with nothing to open: a pool's (or a holder's) runs only while the Mate works on
+ * the part; a dev service's has no public address.
+ */
+function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesSide {
+  const runs = `It runs while ${mate.name} works on ${part.name}.`;
+  return {
+    key: `dev:${part.devService}`,
+    label: "dev",
+    service: part.devService,
+    url: undefined,
+    host: undefined,
+    more: [],
+    why: !part.pooled
+      ? "No web address."
+      : mate.leases === undefined
+        ? runs
+        : `Not running now. ${runs}`,
   };
 }
 
@@ -273,8 +329,10 @@ const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<Sit
   }));
 
 /** A part's entries as its row lists them: its dev entries, then its preview. */
-export const partEntries = (pair: SitesPair): ReadonlyArray<SitesSide> =>
-  pair.preview === undefined ? pair.dev : [...pair.dev, pair.preview];
+export const partEntries = (pair: SitesPair): ReadonlyArray<SitesSide> => [
+  ...pair.dev,
+  pair.preview,
+];
 
 /** One section of the popover: a place with its state, or a Mate. */
 export type SitesSection =
