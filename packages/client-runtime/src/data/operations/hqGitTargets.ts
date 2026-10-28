@@ -2,6 +2,7 @@ import type { HqGitTargetIntent as SharedGitIntent } from "@t3tools/shared/hqGit
 /** Git intents carry operation identity and reviewed evidence; candidate secrets belong to the executor. */
 import type { HqGitAdoption, HqRemoteProbe } from "@t3tools/shared/hqChanges";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
+import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
 import type { HqGitReleasePreflight } from "@t3tools/shared/hqRelease";
 import type { OperationReceipt } from "../model.ts";
 import type { ProjectionReads } from "../store.ts";
@@ -28,12 +29,13 @@ declare module "../model.ts" {
   }
 }
 
+/** The verb of HQ's offer each operation is admitted on, in the `can` it reads (application or environment). */
 export const HQ_GIT_OPERATION_VERBS = {
-  "probe-git-remote": "connect_remote",
-  "connect-git-remote": "connect_remote",
-  "replace-git-remote-token": "replace_remote_token",
-  "disconnect-git-remote": "disconnect_remote",
-  "update-git-remote-address": "update_remote_address",
+  "probe-git-remote": HQ_REMOTE_WRITE_VERB,
+  "connect-git-remote": HQ_REMOTE_WRITE_VERB,
+  "replace-git-remote-token": HQ_REMOTE_WRITE_VERB,
+  "disconnect-git-remote": HQ_REMOTE_WRITE_VERB,
+  "update-git-remote-address": HQ_REMOTE_WRITE_VERB,
   "preview-git-environment": "add_git_environment",
   "add-git-environment": "add_git_environment",
   "remove-git-environment": "remove_git_environment",

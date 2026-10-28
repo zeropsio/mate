@@ -22,17 +22,6 @@ import * as Schema from "effect/Schema";
 
 import type { Decision } from "./zeropsPermissions.ts";
 
-/** Person-facing direct-target verbs use the existing open offer record and server authority. */
-export const HQ_GIT_TARGET_VERBS = [
-  "connect_remote",
-  "replace_remote_token",
-  "update_remote_address",
-  "disconnect_remote",
-  "add_git_environment",
-  "remove_git_environment",
-] as const;
-export type HqGitTargetVerb = (typeof HQ_GIT_TARGET_VERBS)[number];
-
 /** One verb's decision as HQ sends it: its reason open, so a later HQ's reason is still read. */
 export const HqDecision = Schema.Union([
   Schema.Struct({ allow: Schema.Literal(true) }),
@@ -59,6 +48,27 @@ export type HqMoveRefusals = typeof HqMoveRefusals.Type;
 
 /** A `can` record as HQ writes it: a decision for each of `V`. */
 export type HqOffersOf<V extends string> = { readonly [K in V]: Decision };
+
+/**
+ * An application's verbs as HQ streams them (`mate-hq apps/hq/src/offers.ts` `applicationOffers`,
+ * `offers/environments.ts` `environmentCreationOffers`). A fixture typed so cannot offer a verb HQ
+ * never sends.
+ */
+export type HqApplicationVerb =
+  | "add_mate"
+  | "structure"
+  | "release"
+  | "add_stage"
+  | "add_production"
+  | "add_git_environment";
+export type HqApplicationOffers = { readonly [K in HqApplicationVerb]?: HqDecision };
+
+/**
+ * The verb HQ admits every write to a repository's remote on: mirroring it through the GitHub app
+ * or with a token, its token, its address, disconnecting it, following a GitHub repository
+ * (`mate-hq apps/hq/src/repoRemotes.ts` `structureWriter`). HQ has no remote verb of its own.
+ */
+export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 
 /** What a control draws for one verb. */
 export type HqOfferState =
