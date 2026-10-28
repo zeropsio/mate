@@ -344,6 +344,7 @@ it.layer(NodeServices.layer)("ServerEnvironmentLive", (it) => {
             }),
             changes: Stream.empty,
             refresh: Effect.void,
+            reread: Effect.void,
             check: Effect.die("not used"),
             restart: Effect.die("not used"),
           }),
