@@ -13,7 +13,7 @@ import type {
 } from "@t3tools/client-runtime/zerops/gitBrowse/reads";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
@@ -83,11 +83,24 @@ export function useGitBrowseReads<R extends GitBrowseRead>(
       [store, keys, allowed],
     ),
   ) as ReadonlyArray<GitBrowseView<GitBrowseValue<R>>>;
+  const held = useRef<Array<() => void>>([]);
   useEffect(() => {
-    if (reader === null || keys === null || allowed !== true) return;
-    const releases = keys.map((key) => reader.demand(key));
-    return () => releases.forEach((release) => release());
+    // Acquire the next set before releasing the previous one: a shared read must never lose
+    // its last holder merely because this view opens another folder or page.
+    const releases =
+      reader !== null && keys !== null && allowed === true
+        ? keys.map((key) => reader.demand(key))
+        : [];
+    held.current.forEach((release) => release());
+    held.current = releases;
   }, [reader, keys, allowed]);
+  useEffect(
+    () => () => {
+      held.current.forEach((release) => release());
+      held.current = [];
+    },
+    [],
+  );
   return {
     views,
     /** Reads every held read again: the newest of what moves, or what failed. */
