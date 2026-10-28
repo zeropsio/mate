@@ -1281,7 +1281,7 @@ describe("owner-reported layout regressions", () => {
                 yield* s.given.project("Di", { mate: true, app: "Zulu" });
                 yield* s.given.signedIn;
                 yield* Effect.promise(() => ownerMenu(s.page));
-                const frames = yield* Effect.promise(async () => {
+                const recorded = yield* Effect.promise(async () => {
                   const heading = '[data-zerops-surface="sidebar-project"][aria-expanded]';
                   const expanded = (value: "true" | "false") =>
                     s.page.waitForFunction(
@@ -1312,10 +1312,15 @@ describe("owner-reported layout regressions", () => {
                   await s.page.waitForFunction(
                     () => (window as unknown as { belowDone?: boolean }).belowDone === true,
                   );
-                  return s.page.evaluate(
-                    () => (window as unknown as { belowFrames: BelowFrame[] }).belowFrames,
-                  );
+                  return s.page.evaluate(() => {
+                    const self = window as unknown as {
+                      belowFrames: BelowFrame[];
+                      menuShifts: string[];
+                    };
+                    return { frames: self.belowFrames, shifts: self.menuShifts };
+                  });
                 });
+                const { frames, shifts } = recorded;
                 const said = frames
                   .map(
                     (frame) =>
@@ -1334,6 +1339,10 @@ describe("owner-reported layout regressions", () => {
                   Math.max(...tops) - Math.min(...tops),
                   `ASSERTION: the row below the project keeps its top from its first frame: ${said}`,
                 ).toBe(0);
+                expect(
+                  shifts,
+                  `ASSERTION: the browser records no layout shift in the menu: ${said}`,
+                ).toEqual([]);
                 yield* s.then.noExternalNetwork;
               }),
           );
@@ -1359,9 +1368,34 @@ interface BelowFrame {
 // menu has stood still for 90 frames with the open conversation's Mate found.
 function recordRowBelow() {
   const frames: BelowFrame[] = [];
-  const self = window as unknown as { belowFrames: BelowFrame[]; belowDone: boolean };
+  const shifts: string[] = [];
+  const self = window as unknown as {
+    belowFrames: BelowFrame[];
+    menuShifts: string[];
+    belowDone: boolean;
+  };
   self.belowFrames = frames;
+  self.menuShifts = shifts;
   self.belowDone = false;
+  // The browser's own layout-shift record: every shift of a node in the menu.
+  new PerformanceObserver((list) => {
+    for (const entry of list.getEntries() as unknown as Array<{
+      startTime: number;
+      sources: Array<{
+        node: Node | null;
+        previousRect: DOMRectReadOnly;
+        currentRect: DOMRectReadOnly;
+      }>;
+    }>)
+      for (const source of entry.sources)
+        if (
+          source.node instanceof Element &&
+          source.node.closest('[data-sidebar="sidebar"]') !== null
+        )
+          shifts.push(
+            `${Math.round(entry.startTime)}ms ${Math.round(source.previousRect.top)}→${Math.round(source.currentRect.top)}`,
+          );
+  }).observe({ type: "layout-shift", buffered: true });
   let still = 0;
   const sample = () => {
     const boot = document.getElementById("boot-shell");
