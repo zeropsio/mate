@@ -40,6 +40,7 @@ import { makeToCore } from "../pump/toCore.ts";
 import { readGolden } from "../testing/bridge/goldens.ts";
 import { commandLogAround } from "../testing/bridge/record.ts";
 import { fold, stampEvents } from "./evolve.ts";
+import { STEERED_NOTE } from "./told.ts";
 import { initialState, type ConversationState } from "./state.ts";
 
 const conversation = ConversationId.make("mate");
@@ -727,6 +728,21 @@ const transitions: ReadonlyArray<Row> = [
     effects: ["provider.steer"],
     also: (scene) =>
       expect(scene.events[0]).toMatchObject({ body: { delivery: { state: "steered" } } }),
+  },
+  {
+    // Filip's Mate answered two such questions only in its thinking; a compaction then
+    // summarised them as answered and the person never got a reply.
+    name: "a message sent while the Mate works asks its agent to answer it in words the person reads, and the record keeps what they typed",
+    given: runningWithSteer,
+    when: { _tag: "Steer", runId: r(1), text: "is the stage live?" },
+    events: ["ItemOpened", "EffectRequested"],
+    effects: ["provider.steer"],
+    also: (scene) => {
+      expect(scene.events[0]).toMatchObject({ body: { text: "is the stage live?" } });
+      expect(scene.effects[0]).toMatchObject({
+        payload: { text: `is the stage live?\n\n${STEERED_NOTE}` },
+      });
+    },
   },
   {
     // A picture sent while the Mate works goes into the work, as words do: never a run after it.
@@ -2675,7 +2691,12 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     expect(scene.effects).toMatchObject([
       {
         kind: "provider.steer",
-        payload: { runId: r(2), sessionId: "s1", itemId: message(2), text: "carry on" },
+        payload: {
+          runId: r(2),
+          sessionId: "s1",
+          itemId: message(2),
+          text: `carry on\n\n${STEERED_NOTE}`,
+        },
       },
     ]);
     expect(scene.events.find((event) => event._tag === "ItemUpdated")).toMatchObject({
@@ -2708,7 +2729,7 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     expect(scene.state.runs[r(2)]?.state).toBe("running");
     expect(scene.state.queue).toEqual([r(3)]);
     expect(scene.effects).toMatchObject([
-      { kind: "provider.steer", payload: { itemId: message(2), text: "first" } },
+      { kind: "provider.steer", payload: { itemId: message(2), text: `first\n\n${STEERED_NOTE}` } },
     ]);
   });
 
@@ -2723,7 +2744,10 @@ describe("decide: a person's waiting message goes into a turn the agent starts i
     ]);
     expect(scene.state.runs[r(3)]).toMatchObject({ state: "running", turn: "bg2" });
     expect(scene.effects).toMatchObject([
-      { kind: "provider.steer", payload: { itemId: message(3), text: "second" } },
+      {
+        kind: "provider.steer",
+        payload: { itemId: message(3), text: `second\n\n${STEERED_NOTE}` },
+      },
     ]);
   });
 

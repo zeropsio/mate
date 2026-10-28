@@ -90,7 +90,7 @@ import {
   type OriginAsk,
   type VaultAsk,
 } from "./state.ts";
-import { toldWith } from "./told.ts";
+import { steeredWith, toldWith } from "./told.ts";
 
 /** Silence after which the watchdog marks a run unresponsive. */
 export const WATCHDOG_SILENCE_MS = 10 * 60_000;
@@ -1590,7 +1590,9 @@ const steer = (b: StepBuilder, command: Extract<Command, { _tag: "Steer" }>): vo
   ) {
     throw new Rejected("steer-unsupported");
   }
-  steerInto(b, run, session.id, command.text, attachments, toldWith(command.text, command.context));
+  // The agent hears the note after the words: it answers where the person reads (`steeredWith`).
+  const told = steeredWith(toldWith(command.text, command.context));
+  steerInto(b, run, session.id, command.text, attachments, told);
 };
 
 /**
@@ -2872,7 +2874,7 @@ const joinOwnTurn = (
     runId: run.id,
     sessionId: session.id,
     itemId: item,
-    text: withLostWorkNote(b, run),
+    text: steeredWith(withLostWorkNote(b, run)),
     ...(attachments.length === 0 ? {} : { attachments: [...attachments] }),
     instanceId: b.state.agent?.instanceId ?? null,
     principal: run.principal,
