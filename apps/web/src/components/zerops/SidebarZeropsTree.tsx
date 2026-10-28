@@ -72,7 +72,7 @@ import {
   readZeropsMembership,
   selectMateEnvironments,
   sidebarChangeLabel,
-  changeAsksForReview,
+  changeInMateReview,
   changeShowsReview,
   listedStopComing,
   mateArrivingUntil,
@@ -1594,7 +1594,8 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
           ].map((projectId) => <StopDemand key={projectId} projectId={projectId} />);
     // What waits for the viewer's review, oldest first as the flow lists it: each shown Mate's
     // change that asks, each change of no Mate here that asks, then the work its crews have ready
-    // for the viewer's Land. A change whose Mate still works asks for no review yet
+    // for the viewer's Land — code only (`changeInMateReview`): a recipe change waits on the
+    // project's page, so the header, the composer's top and the menu count alike. A change whose Mate still works asks for no review yet
     // (`changeShowsReview`) but stays marked, in progress, so it is always findable (Eli,
     // 2026-10-14: "why is MR not showing up anywhere"). A hidden Mate's change is drawn nowhere,
     // as the jump box finds it nowhere.
@@ -1603,12 +1604,12 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       ...ordered.flatMap(({ item }) => {
         const run = mateRunOf(activityOfNow(getActivity?.(item)));
         return (grouped.byMate.get(item.project.id) ?? []).filter((pull) => {
-          if (!changeAsksForReview(pull)) return false;
+          if (!changeInMateReview(pull)) return false;
           if (!changeShowsReview(pull, run)) inProgress.add(pull);
           return true;
         });
       }),
-      ...grouped.others.filter((pull) => changeAsksForReview(pull)),
+      ...grouped.others.filter((pull) => changeInMateReview(pull)),
     ]);
     const byOf = (item: T): ProjectReviewItem["by"] => {
       const owner = getOwner?.(item);

@@ -31,6 +31,8 @@ import {
   changeChecks,
   changeReceipt,
   mergeFoot,
+  stageDeploysMerges,
+  tryItWords,
   productionNow,
   productionNowLine,
   releaseFoot,
@@ -677,26 +679,31 @@ describe("the sheet's footnote: what happens next", () => {
     [
       "a change ready to merge, with a stage and a production",
       { state: "ready", stages: ["stage"], live: "v2.3.1" },
-      "Lands on main; stage deploys it. Production keeps v2.3.1 until you release.",
+      "Lands on main; Stage deploys it. Production keeps v2.3.1 until you release.",
     ],
     [
       "nothing released yet",
       { state: "ready", stages: ["stage"], live: undefined },
-      "Lands on main; stage deploys it.",
+      "Lands on main; Stage deploys it.",
     ],
     [
       "behind main but clean",
       { state: "behind-clean", stages: ["staging"], live: "v1.0.0" },
-      "Lands on main; staging deploys it. Production keeps v1.0.0 until you release.",
+      "Lands on main; Staging deploys it. Production keeps v1.0.0 until you release.",
     ],
     [
       "several stages follow main: each deploys it",
-      { state: "ready", stages: ["webstage", "apistage", "boxstage"], live: "v2" },
-      "Lands on main; webstage, apistage and boxstage deploy it. Production keeps v2 until you release.",
+      { state: "ready", stages: ["stage", "staging", "demo"], live: "v2" },
+      "Lands on main; Stage, Staging and Demo deploy it. Production keeps v2 until you release.",
     ],
     [
       "no stage: the review's own words",
       { state: "ready", stages: [], live: "v1" },
+      "Adds this change to main.",
+    ],
+    [
+      "a setup change: the review's own words of the environments, never a deploy",
+      { state: "ready", stages: ["stage"], live: "v1", recipe: true },
       "Adds this change to main.",
     ],
     [
@@ -958,7 +965,7 @@ describe("a change's receipt: each part's preview", () => {
         warning: gaps?.warning,
       }),
     ).toBe(
-      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Lands on main; stage deploys it.",
+      "Not tried at this change: web (older commit), api (uncommitted), worker (failed), auth (not verified). Lands on main; Stage deploys it.",
     );
     const tried = changeReceipt({ receipt: receipt(part("web"), part("api")), head: HEAD });
     expect(tried?.warning).toBeUndefined();
@@ -1133,5 +1140,63 @@ describe("outsideCommitsWords: the commits no change landed", () => {
     [10000, true, "10000+ commits outside changes"],
   ] as const)("%i, at least %s: %s", (count, atLeast, words) => {
     expect(outsideCommitsWords(count, atLeast)).toBe(words);
+  });
+});
+
+// Larkspur, 2026-10-28: its stage followed main and had never deployed from it, while the
+// review said "stage deploys it"; Nebius's stage deploys every merge.
+describe("stageDeploysMerges: a stage the foot names", () => {
+  const job = (state: "live" | "failed" | "skipped") => ({ kind: "deploy" as const, state });
+  it.each([
+    {
+      case: "a stage that follows main and ran a deploy of it (Nebius)",
+      row: { tier: "stage", source: "main", commit: "dc3837a", deploys: [job("live")] },
+      names: true,
+    },
+    {
+      case: "a stage that follows main and runs what HQ deployed, its newest job failed",
+      row: { tier: "stage", source: "main", commit: "dc3837a", deploys: [job("failed")] },
+      names: true,
+    },
+    {
+      case: "a stage that follows main and never deployed from it (Larkspur)",
+      row: { tier: "stage", source: "main", commit: undefined, deploys: [] },
+      names: false,
+    },
+    {
+      case: "a stage whose every deploy was skipped",
+      row: { tier: "stage", source: "main", commit: undefined, deploys: [job("skipped")] },
+      names: false,
+    },
+    {
+      case: "a stage that follows another branch",
+      row: { tier: "stage", source: "develop", commit: "dc3837a", deploys: [job("live")] },
+      names: false,
+    },
+    {
+      case: "a production, which a release deploys",
+      row: { tier: "production", source: "release", commit: "dc3837a", deploys: [job("live")] },
+      names: false,
+    },
+  ] as const)("$case: $names", ({ row, names }) => {
+    expect(stageDeploysMerges(row)).toBe(names);
+  });
+});
+
+// Larkspur, 2026-10-28: Kaďák's review offered "flip flipstage-7c1e-5195.prg1.zerops.app".
+describe("tryItWords: Try it names whose preview it opens, and which part", () => {
+  it.each([
+    { case: "a Mate's one part", mate: "Kaďák", part: "flip", words: "Kaďák's preview · Flip" },
+    { case: "one of several parts", mate: "Odin", part: "api", words: "Odin's preview · Api" },
+    { case: "a name ending in s", mate: "Ines", part: "app", words: "Ines' preview · App" },
+    {
+      case: "a Mate not named yet",
+      mate: "the Mate",
+      part: "app",
+      words: "The Mate's preview · App",
+    },
+  ])("$case: $words", ({ mate, part, words }) => {
+    const said = tryItWords(mate, part);
+    expect(`${said.preview} · ${said.part}`).toBe(words);
   });
 });

@@ -9,6 +9,7 @@ import type { MergeabilityKind } from "./changeMergeability.ts";
 import {
   changeKindTag,
   changeAsksForReview,
+  changeInMateReview,
   changeShowsReview,
   changeState,
   pullRequestMergeLine,
@@ -1212,5 +1213,26 @@ describe("productionTurnNotes", () => {
     expect(productionTurnNotes(live, "2026-09-20T13:00:00Z")).toEqual([]);
     expect(productionTurnNotes(live, undefined)).toEqual([]);
     expect(productionTurnNotes(undefined, "2026-09-20T11:00:00Z")).toEqual([]);
+  });
+});
+
+// Larkspur, 2026-10-28: the header said "Review 2" over a composer card of one — Filip's zcp's
+// recipe change, which Core held because its merge would change Stage and Production.
+describe("changeInMateReview: a Mate's review lists its code, never the project's setup", () => {
+  it.each([
+    { case: "its code change, described, asks", over: {}, listed: true },
+    { case: "its draft asks nothing", over: { ready: false }, listed: false },
+    {
+      case: "a recipe change it proposed waits on the project's page instead",
+      over: { kind: "recipe", repository: "group", title: "Mate: the group's import files" },
+      listed: false,
+    },
+    {
+      case: "a recipe change of one service waits on the project's page too",
+      over: { kind: "recipe", repository: "group", title: "Give the stage a bigger database" },
+      listed: false,
+    },
+  ] as const)("$case", ({ over, listed }) => {
+    expect(changeInMateReview(row(over))).toBe(listed);
   });
 });

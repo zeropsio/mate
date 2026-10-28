@@ -455,7 +455,19 @@ const PROJECTS: ReadonlyArray<Project> = [
         automated: true,
       },
     ],
-    pullRequests: [inReview(71, "One-page checkout", "juno-s")],
+    pullRequests: [
+      inReview(71, "One-page checkout", "juno-s"),
+      // A setup change Core held for a person: its merge would change production.
+      {
+        ...inReview(3, "Add object storage to the setup", "juno-s"),
+        pull: {
+          ...change(3, "Add object storage to the setup", "juno-s"),
+          repository: "group",
+          kind: "recipe",
+          line: "#3",
+        },
+      },
+    ],
     production: {
       kind: "ready-to-release",
       stop: stop("store-prod", "production", {

@@ -9144,14 +9144,14 @@ div.ov-change:hover {
   flex: none;
   color: var(--muted-foreground);
 }
-.rv-try-host {
+.rv-try-part {
   min-width: 0;
   overflow: hidden;
   color: var(--muted-foreground);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* One pill per service, named by it before its address. */
+/* One pill per part: whose preview, then the part. */
 .rv-tries {
   display: flex;
   flex-wrap: wrap;
