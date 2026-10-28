@@ -1243,6 +1243,7 @@
         "apps/web/src/components/zerops/GitStopDetail.tsx",
         "apps/web/src/components/zerops/GitRemoteSettings.tsx",
         "apps/web/src/components/zerops/GitMirrorDialog.tsx",
+        "apps/web/src/components/zerops/GithubInstallOffer.tsx",
         "apps/web/src/components/zerops/projectAutomation/ProjectAutomation.tsx",
         "apps/web/src/components/zerops/projectAutomation/sourceForms.tsx",
         "apps/web/src/components/zerops/GitDeliveryStatus.tsx",
