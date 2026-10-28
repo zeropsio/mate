@@ -25,6 +25,7 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 
 /** Whether the project is read and has no domain of its own; `false` outside an account. */

@@ -98,6 +98,7 @@ const NOT_READ = Atom.make<PlaceAddresses>({
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 const NO_FACTS = Atom.make<PlaceFacts>({ name: undefined, ipv4: { state: "reading" } });
 

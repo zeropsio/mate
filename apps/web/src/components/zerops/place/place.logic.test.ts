@@ -4,12 +4,14 @@ import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  environmentTitle,
   foldedFaces,
   placeAddress,
   placeServiceRows,
   placeStatus,
   placeTitle,
   rollBackTarget,
+  stopRowSays,
 } from "./place.logic";
 
 const version = (
@@ -74,7 +76,7 @@ describe("a place's head names it, says what runs and links its primary address"
         source: "main",
         services: 1,
       },
-      text: "Deployed 23m ago · 6bc9923 · follows main · 1 service",
+      text: "Running · deployed 23m ago · 6bc9923 · follows main · 1 service",
     },
     {
       case: "a stage being deployed keeps its own word",
@@ -108,7 +110,7 @@ describe("a place's head names it, says what runs and links its primary address"
         source: "—",
         services: 0,
       },
-      text: "Nothing deployed yet",
+      text: "Not deployed yet",
     },
   ])("$case", ({ input, text }) => {
     expect(placeStatus(input).text).toBe(text);
@@ -222,5 +224,73 @@ describe("rollback is offered from the production page, never the project's road
     ["none where only the live one stands", [release("v0.1.0", false)], undefined],
   ] as const)("%s", (_case, releases, tag) => {
     expect(rollBackTarget(releases)).toBe(tag);
+  });
+});
+
+// The live audit (2026-10-28): the project page's column said "Nothing depl…" and "Deployed" where
+// its cards said "Not released yet" and "Running".
+describe("an environment's row on its project's page", () => {
+  it.each<{
+    readonly case: string;
+    readonly tier: "production" | "stage";
+    readonly view: Pick<StopView, "tone" | "word" | "line">;
+    readonly says: ReturnType<typeof stopRowSays>;
+  }>([
+    {
+      case: "a running production",
+      tier: "production",
+      view: { tone: "good", word: "Deployed", line: "v0.1.4" },
+      says: { version: "v0.1.4", word: "Running", tone: "good" },
+    },
+    {
+      case: "a running stage",
+      tier: "stage",
+      view: { tone: "good", word: "Deployed", line: "dc3837a" },
+      says: { version: "dc3837a", word: "Running", tone: "good" },
+    },
+    {
+      case: "a production nothing was released to",
+      tier: "production",
+      view: { tone: "neutral", word: "Nothing deployed yet", line: "Nothing deployed yet" },
+      says: { version: undefined, word: "Not released yet", tone: "neutral" },
+    },
+    {
+      case: "a stage nothing was deployed to",
+      tier: "stage",
+      view: { tone: "neutral", word: "Nothing deployed yet", line: "Nothing deployed yet" },
+      says: { version: undefined, word: "Not deployed yet", tone: "neutral" },
+    },
+    {
+      case: "a production whose deploy failed",
+      tier: "production",
+      view: { tone: "bad", word: "Failed", line: "v0.1.3" },
+      says: { version: "v0.1.3", word: "Release failed", tone: "bad" },
+    },
+    {
+      case: "a stage being deployed",
+      tier: "stage",
+      view: { tone: "pending", word: "Deploying…", line: "6bc9923" },
+      says: { version: "6bc9923", word: "Deploying…", tone: "pending" },
+    },
+    {
+      case: "a stage whose answer is still read",
+      tier: "stage",
+      view: { tone: "neutral", word: "Checking what runs here…", line: "Checking what runs here…" },
+      says: { version: undefined, word: "Checking what runs here…", tone: undefined },
+    },
+  ])("An environment's row says its state in its card's words: $case", ({ tier, view, says }) => {
+    expect(stopRowSays(tier, view)).toEqual(says);
+  });
+});
+
+describe("a shared environment's title", () => {
+  it.each([
+    { tier: "production", name: "demo-app-production", title: "Production" },
+    { tier: "production", name: "production", title: "Production" },
+    { tier: "stage", name: "stage", title: "Stage" },
+    { tier: "stage", name: "client demo", title: "Client demo" },
+    { tier: "stage", name: "demo-app-stage", title: "Stage" },
+  ] as const)("names $tier $name as $title", ({ tier, name, title }) => {
+    expect(environmentTitle(tier, name)).toBe(title);
   });
 });

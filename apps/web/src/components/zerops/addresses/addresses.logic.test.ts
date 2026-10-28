@@ -430,7 +430,8 @@ describe("the project's places", () => {
         {
           production: menu([{ projectId: "prod", name: "production" }]),
           stages: menu([
-            { projectId: "stage", name: "Stage" },
+            { projectId: "stage", name: "stage" },
+            { projectId: "demo", name: "client demo" },
             { projectId: undefined, name: "Coming" },
           ]),
           mates: [
@@ -450,11 +451,12 @@ describe("the project's places", () => {
         0,
       ),
     ).toEqual([
-      { projectId: "prod", label: "Production", name: "Production" },
-      { projectId: "stage", label: "Stage", name: "Stage" },
-      { projectId: "fen", label: "Fen's own project", name: "Fen" },
-      { projectId: "rhea", label: "Rhea's own project", name: "Rhea", owner: "Karlos" },
-      { projectId: "juno", label: "Juno's own project", name: "Juno" },
+      { projectId: "prod", kind: "production", label: "Production", name: "Production" },
+      { projectId: "stage", kind: "stage", label: "Stage", name: "Stage" },
+      { projectId: "demo", kind: "stage", label: "Client demo", name: "Client demo" },
+      { projectId: "fen", kind: "mate", label: "Fen", name: "Fen" },
+      { projectId: "rhea", kind: "mate", label: "Rhea", name: "Rhea", owner: "Karlos" },
+      { projectId: "juno", kind: "mate", label: "Juno", name: "Juno" },
     ]);
   });
 });

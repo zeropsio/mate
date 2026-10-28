@@ -96,6 +96,10 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
   };
   const web = isWeb(mode) ? mode : LIST;
   const direct = isDirect(mode) ? mode : LIST;
+  // Production or a stage that runs nothing deployed has no address to manage yet: no own IPv4 to
+  // buy, no port to open. A Mate's own project is left as it is: its workspace runs without one.
+  const kind = props.places.find((place) => place.projectId === props.projectId)?.kind;
+  const runsNothing = props.place.nothingDeployed && (kind === "production" || kind === "stage");
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-addresses-sheet={props.projectId}>
       <SheetHeader {...props} />
@@ -103,6 +107,10 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
         {props.place.state === "failed" ? (
           <p className="py-6 text-muted-foreground text-sm">
             You can't see {props.placeName}'s addresses.
+          </p>
+        ) : runsNothing ? (
+          <p className="py-6 text-muted-foreground text-sm">
+            Nothing runs in {props.placeName} yet.
           </p>
         ) : props.place.state === "reading" && props.place.domains.length === 0 ? (
           <p className="flex items-center gap-2 py-6 text-muted-foreground text-sm">

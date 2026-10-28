@@ -2213,8 +2213,8 @@ describe("production and the stages are the project's places, behind its globe",
   it("lists the stage and production behind its globe, each with its state", () => {
     const mounted = tree([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(placesOf(mounted)).toEqual([
-      { name: "production", word: "Healthy", tone: "muted" },
-      { name: "crm-stage", word: "Deployed", tone: "muted" },
+      { name: "production", word: "Running", tone: "muted" },
+      { name: "crm-stage", word: "Running", tone: "muted" },
     ]);
     const html = render([CRM_DEV, up(CRM_STAGE), up(CRM_PROD)], { getFlow: () => flow() });
     expect(html).toContain('data-zerops-surface="sidebar-project-sites"');
@@ -2251,8 +2251,8 @@ describe("production and the stages are the project's places, behind its globe",
       </RegistryContext.Provider>,
     );
     expect(placesOf(mounted).map(({ word }) => word)).toEqual([
-      `${prefix}Healthy`,
-      `${prefix}Deployed`,
+      `${prefix}Running`,
+      `${prefix}Running`,
     ]);
     expect(foundStops()?.map(({ word }) => word)).toEqual([
       `${prefix}Stage main, healthy`,
@@ -2273,7 +2273,7 @@ describe("production and the stages are the project's places, behind its globe",
       ],
     });
     const mounted = tree([CRM_DEV, up(CRM_PROD)], { getFlow: () => waiting });
-    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Healthy", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Running", tone: "muted" }]);
     const html = render([CRM_DEV, up(CRM_PROD)], { getFlow: () => waiting });
     expect(envTagOf(html)).toBeUndefined();
     expect(releaseTagOf(html)).toBe("Release: 2 changes wait for production");
@@ -2421,7 +2421,7 @@ describe("production and the stages are the project's places, behind its globe",
     const mounted = tree([CRM_DEV, up(CRM_STAGE)], {
       getFlow: () => flow({ environments: new Map([["crm-stage", stageRow]]) }),
     });
-    expect(placesOf(mounted)).toEqual([{ name: "crm-stage", word: "Deployed", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "crm-stage", word: "Running", tone: "muted" }]);
   });
 
   it("lists no place behind its globe where there is neither a production nor a stage", () => {
@@ -2467,14 +2467,14 @@ describe("production and the stages are the project's places, behind its globe",
       "Stage main, healthy",
       "Production v2.4.0, healthy",
     ]);
-    expect(placesOf(mounted).map(({ word }) => word)).toEqual(["Healthy", "Deployed"]);
+    expect(placesOf(mounted).map(({ word }) => word)).toEqual(["Running", "Running"]);
   });
 
   it("draws what the platform alone says while HQ has not answered the releases", () => {
     stops.deployments = HQ_OPEN.deployments;
     const mounted = tree([CRM_DEV, up(CRM_PROD)]);
     expect(foundStops()?.map(({ word }) => word)).toEqual(["Production v2.4.0, healthy"]);
-    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Healthy", tone: "muted" }]);
+    expect(placesOf(mounted)).toEqual([{ name: "production", word: "Running", tone: "muted" }]);
   });
 
   it("lets the jump box find production and each stage, each with its own dot and words", () => {

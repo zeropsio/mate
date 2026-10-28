@@ -32,6 +32,7 @@ export function placeAddresses(domains: ReadonlyArray<string> | "reading"): Plac
     waitingDomains: [],
     waitingPorts: [],
     readsProject: false,
+    nothingDeployed: false,
   };
 }
 

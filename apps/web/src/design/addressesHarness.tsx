@@ -34,6 +34,8 @@ const PLACE = {
   ...ADDRESSES_FIXTURE,
   ips: TASK === "own" ? { ...ADDRESSES_FIXTURE.ips, ownV4: "203.0.113.24" } : ADDRESSES_FIXTURE.ips,
   waitingDomains: WAITING,
+  // `?task=empty`: production set up with nothing deployed there.
+  nothingDeployed: TASK === "empty",
 };
 
 function Harness() {
@@ -70,9 +72,9 @@ function Harness() {
           place={withOwnWrites(PLACE, own)}
           placeName="Production"
           places={[
-            { projectId: "p1", label: "Production", name: "Production" },
-            { projectId: "p2", label: "Stage", name: "Stage" },
-            { projectId: "p3", label: "Fen's own project", name: "Fen" },
+            { projectId: "p1", kind: "production", label: "Production", name: "Production" },
+            { projectId: "p2", kind: "stage", label: "Stage", name: "Stage" },
+            { projectId: "p3", kind: "mate", label: "Fen", name: "Fen", owner: "Karlos" },
           ]}
           projectId="p1"
           projectName="Shop"
