@@ -1325,8 +1325,15 @@ describe("owner-reported layout regressions", () => {
               });
               const calm = yield* Effect.promise(() => rowReading(s.page));
               expect(calm.tag, "ASSERTION: a calm project's row shows no tag").toBeNull();
-              // A stage is added and comes up, then builds: its tag comes, then changes its words.
+              // Its address is being published, then it builds: its tag comes, then changes words.
               yield* s.stage("Shop-stage", "Shop");
+              s.drivers.zerops.put("service-stack", {
+                ...s.drivers.zerops
+                  .rows("service-stack")
+                  .find((row) => row.id === "app-Shop-stage")!,
+                id: "app-Shop-stage",
+                subdomainAccess: true,
+              });
               yield* s.menu.chip("coming up", 15_000);
               yield* Effect.promise(() => waitForStillFrames(s.page));
               const coming = yield* Effect.promise(() => rowReading(s.page));
