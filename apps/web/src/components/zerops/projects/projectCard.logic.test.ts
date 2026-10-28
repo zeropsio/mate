@@ -501,7 +501,7 @@ describe("a card's places", () => {
     "says a stage runs only with its address, $case",
     ({ birth, pending, published, words: said }) => {
       const lines = placeLines({
-        addressPending: new Map([["stage", pending]]),
+        addressPending: pending === undefined ? new Map() : new Map([["stage", pending]]),
         flow: {
           production: { kind: "absent" },
           stages: [
