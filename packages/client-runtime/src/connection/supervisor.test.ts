@@ -803,6 +803,43 @@ describe("EnvironmentSupervisor", () => {
     }).pipe(Effect.provide(TestClock.layer())),
   );
 
+  it.effect("Repeated reports of the same setup stage do not extend the wait.", () =>
+    Effect.gen(function* () {
+      const harness = yield* makeHarness();
+      const released = yield* Ref.make(0);
+      const driver = ConnectionDriver.ConnectionDriver.of({
+        connect: (_entry, report) =>
+          Effect.gen(function* () {
+            yield* Effect.addFinalizer(() => Ref.update(released, (count) => count + 1));
+            yield* report({ stage: "opening", prepared: PREPARED_CONNECTION });
+            for (;;) {
+              yield* Effect.sleep("5 seconds");
+              // Neither a duplicate nor an older stage is new work.
+              yield* report({ stage: "preparing" });
+              yield* report({ stage: "opening", prepared: PREPARED_CONNECTION });
+            }
+          }),
+      });
+      const supervisor = yield* EnvironmentSupervisor.make(MATE_ENTRY, {
+        initiallyDesired: true,
+      }).pipe(
+        Effect.provideService(ConnectionDriver.ConnectionDriver, driver),
+        Effect.provide(harness.dependencies),
+      );
+      yield* awaitState(supervisor.state, (state) => state.stage === "opening");
+      yield* TestClock.adjust("14 seconds");
+      expect((yield* SubscriptionRef.get(supervisor.state)).phase).toBe("connecting");
+      yield* TestClock.adjust("1 second");
+      const expired = yield* eventuallyState(
+        supervisor.state,
+        (state) => state.phase === "backoff",
+      );
+      expect(expired.lastFailure?.reason).toBe("timeout");
+      expect(yield* Ref.get(released)).toBe(1);
+      expect(Option.isNone(yield* SubscriptionRef.get(supervisor.session))).toBe(true);
+    }).pipe(Effect.provide(TestClock.layer())),
+  );
+
   it.effect("retries when a session never becomes ready", () =>
     Effect.gen(function* () {
       const harness = yield* makeHarness({
@@ -1916,6 +1953,53 @@ describe("EnvironmentSupervisor", () => {
         Option.getOrThrow(yield* SubscriptionRef.get(supervisor.prepared)).httpAuthorization,
       ).toMatchObject({ accessToken: "access-token-3" });
     }).pipe(Effect.provide(TestClock.layer())),
+  );
+
+  it.effect(
+    "An advancing replacement keeps its live predecessor until the replacement is ready.",
+    () =>
+      Effect.gen(function* () {
+        const tokenLifetimeMs = DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS * 20;
+        const harness = yield* makeHarness({
+          prepare: (attempt) =>
+            Effect.gen(function* () {
+              if (attempt === 2) yield* Effect.sleep("10 seconds");
+              return {
+                ...PREPARED_CONNECTION,
+                target: RELAY_TARGET,
+                httpAuthorization: {
+                  _tag: "Dpop" as const,
+                  accessToken: `access-token-${attempt}`,
+                  expiresAtEpochMs: tokenLifetimeMs * attempt,
+                },
+              };
+            }),
+          ready: (attempt) => (attempt === 2 ? Effect.sleep("10 seconds") : Effect.void),
+        });
+        const supervisor = yield* EnvironmentSupervisor.make(RELAY_ENTRY, {
+          initiallyDesired: true,
+        }).pipe(Effect.provide(harness.dependencies));
+        yield* awaitState(supervisor.state, (state) => state.phase === "connected");
+        const firstSession = Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session));
+        yield* TestClock.adjust(tokenLifetimeMs - DPOP_ACCESS_TOKEN_REFRESH_SKEW_MS);
+        yield* TestClock.adjust("16 seconds");
+        expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+        expect(yield* Ref.get(harness.releaseCount)).toBe(0);
+        expect(Option.getOrThrow(yield* SubscriptionRef.get(supervisor.session))).toBe(
+          firstSession,
+        );
+        expect(yield* SubscriptionRef.get(supervisor.state)).toMatchObject({
+          phase: "connected",
+          generation: 1,
+        });
+        yield* TestClock.adjust("4 seconds");
+        yield* awaitState(
+          supervisor.state,
+          (state) => state.phase === "connected" && state.generation === 2,
+        );
+        expect(yield* Ref.get(harness.releaseCount)).toBe(1);
+        expect(yield* Ref.get(harness.prepareCount)).toBe(2);
+      }).pipe(Effect.provide(TestClock.layer())),
   );
 
   it.effect("a replacement's wait for the socket queue does not time it out", () =>

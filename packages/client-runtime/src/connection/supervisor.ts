@@ -40,7 +40,8 @@ const RETRY_BASE_DELAY_MS = 1_000;
  * it to come back, so the ladder tops out at 30 s.
  */
 const RETRY_MAX_DELAY_MS = 30_000;
-const CONNECTION_ESTABLISHMENT_TIMEOUT = "15 seconds";
+const CONNECTION_SETUP_PATIENCE = "15 seconds";
+const SETUP_STAGE_ORDER = { preparing: 0, opening: 1, synchronizing: 2 } as const;
 const CONNECTION_PROBE_TIMEOUT = "15 seconds";
 /**
  * Mobile resumes, explicit retries and the network's return after an offline spell want a fast
@@ -327,8 +328,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   );
   const session = yield* SubscriptionRef.make<Option.Option<RpcSession.RpcSession>>(Option.none());
   const prepared = yield* SubscriptionRef.make<Option.Option<PreparedConnection>>(Option.none());
-  /** The attempt in flight is waiting its turn for a socket. */
-  const queued = yield* SubscriptionRef.make(false);
+  const setup = yield* SubscriptionRef.make({ stage: 0, queued: false });
 
   const clearLease = Effect.all(
     [SubscriptionRef.set(session, Option.none()), SubscriptionRef.set(prepared, Option.none())],
@@ -371,18 +371,20 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
   /**
    * The attempt waits in the browser's socket queue (`admission.ts`): time there is another
-   * Mate's, so the setup timeout runs only outside it, and afresh after each wait.
+   * Mate's, so patience runs only outside it, and afresh after each wait. Only a strictly
+   * advancing stage earns more patience; the finite stages need no whole-attempt ceiling.
    */
   const setupTimeout = Effect.gen(function* () {
     for (;;) {
-      yield* SubscriptionRef.changes(queued).pipe(
-        Stream.filter((waiting) => !waiting),
+      const current = yield* SubscriptionRef.changes(setup).pipe(
+        Stream.filter((progress) => !progress.queued),
         Stream.runHead,
+        Effect.map(Option.getOrThrow),
       );
       const expired = yield* Effect.raceFirst(
-        Effect.sleep(CONNECTION_ESTABLISHMENT_TIMEOUT).pipe(Effect.as(true)),
-        SubscriptionRef.changes(queued).pipe(
-          Stream.filter((waiting) => waiting),
+        Effect.sleep(CONNECTION_SETUP_PATIENCE).pipe(Effect.as(true)),
+        SubscriptionRef.changes(setup).pipe(
+          Stream.filter((progress) => progress.queued || progress.stage > current.stage),
           Stream.runHead,
           Effect.as(false),
         ),
@@ -400,8 +402,15 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
     return yield* driver.connect(
       entry,
       (progress) =>
-        publishProgress ? reportProgress(attempt, generation, lastFailure, progress) : Effect.void,
-      (waiting) => SubscriptionRef.set(queued, waiting),
+        Effect.gen(function* () {
+          // Replacement attempts advance patience without replacing the live connection's face.
+          yield* SubscriptionRef.update(setup, (current) => ({
+            ...current,
+            stage: Math.max(current.stage, SETUP_STAGE_ORDER[progress.stage]),
+          }));
+          if (publishProgress) yield* reportProgress(attempt, generation, lastFailure, progress);
+        }),
+      (queued) => SubscriptionRef.update(setup, (current) => ({ ...current, queued })),
     );
   });
 
@@ -759,7 +768,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
 
     let failureCount = 0;
     for (;;) {
-      yield* SubscriptionRef.set(queued, false);
+      yield* SubscriptionRef.set(setup, { stage: 0, queued: false });
       const candidate = yield* forkScopedTracedConnection(
         failureCount + 1,
         generation,
@@ -861,7 +870,7 @@ export const make = Effect.fn("EnvironmentSupervisor.make")(function* (
   ) {
     const initialGeneration = previousGeneration + 1;
     yield* SubscriptionRef.set(prepared, Option.none());
-    yield* SubscriptionRef.set(queued, false);
+    yield* SubscriptionRef.set(setup, { stage: 0, queued: false });
     const initial = yield* forkScopedTracedConnection(
       attempt,
       initialGeneration,
