@@ -181,6 +181,74 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it.each([
+    { case: "services only", yaml: TIER_YAML },
+    { case: "a bundled project", yaml: `project:\n  name: published\n${TIER_YAML}` },
+    { case: "a chosen region", yaml: TIER_YAML, location: "prg1" },
+    { case: "an explicitly requested agent", yaml: TIER_YAML, withAgent: true },
+    { case: "no recipe" },
+    { case: "an empty recipe", yaml: "" },
+    { case: "an unreadable recipe", yaml: "services: [" },
+  ])(
+    "The browser never imports services into a production environment; creating production reserves the project and access only, and its services arrive with an approved release: $case",
+    async ({ yaml, location, withAgent }) => {
+      const userRoles = [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }];
+      const result = planEnvironmentCreation({
+        clientId: "client-1",
+        role: "prod",
+        name: "Production",
+        recipe: yaml === undefined ? { kind: "none" } : { kind: "tier", tier: "production", yaml },
+        ...(location === undefined ? {} : { location }),
+        ...(withAgent === undefined ? {} : { withAgent }),
+        userRoles,
+      });
+      expect(result.ok).toBe(true);
+      if (!result.ok) return;
+      const { platform, calls } = fakePlatform();
+      const { outcome } = await run(result.steps, platform);
+      expect(calls).toEqual(["create:Production::cu-ada=READ_ONLY", "register:proj-1"]);
+      expect(result.steps[0]).toEqual({
+        kind: "create-project",
+        name: "Production",
+        tagList: [],
+        location,
+        userRoles,
+      });
+      expect(outcome).toEqual({
+        ok: true,
+        projectId: "proj-1",
+        serviceName: undefined,
+        awaitingAgent: false,
+        deployments: [],
+      });
+    },
+  );
+
+  it.each([
+    { case: "services only", yaml: TIER_YAML, bundled: false },
+    { case: "a bundled project", yaml: `project:\n  name: published\n${TIER_YAML}`, bundled: true },
+  ])("A stage environment's creation keeps working as today: $case", async ({ yaml, bundled }) => {
+    const result = planEnvironmentCreation({
+      clientId: "client-1",
+      role: "stage",
+      name: "Stage",
+      recipe: { kind: "tier", tier: "stage", yaml },
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const { platform, calls } = fakePlatform();
+    const { outcome } = await run(result.steps, platform);
+    expect(calls.map((call) => call.split(":")[0])).toEqual(
+      bundled
+        ? ["importProject", "register", "services"]
+        : ["create", "import", "register", "services"],
+    );
+    expect(outcome).toMatchObject({
+      ok: true,
+      deployments: [{ service: "app" }, { service: "db" }],
+    });
+  });
+
   it.each<{ readonly case: string; readonly cause: unknown; readonly uncertain: boolean }>([
     {
       case: "a project the platform may have made anyway",
@@ -235,7 +303,7 @@ describe("runEnvironmentCreation", () => {
         return [{ name: "app", status: "ACTIVE" }];
       },
     });
-    const { outcome } = await run(plan("prod"), platform, { isCurrent: () => current });
+    const { outcome } = await run(plan("stage"), platform, { isCurrent: () => current });
     expect(outcome).toMatchObject({ ok: false, error: "This account session has ended." });
   });
 
@@ -419,9 +487,9 @@ describe("runEnvironmentCreation", () => {
     expect(sent.slice(0, 2)).toEqual(["import-project", "grant-new-project-access"]);
   });
 
-  it("imports a stage's or a production's tier whole, every runtime empty for HQ", async () => {
+  it("imports a stage's tier whole, every runtime empty for HQ", async () => {
     const { platform, calls } = fakePlatform();
-    await run(plan("prod"), platform);
+    await run(plan("stage"), platform);
     expect(calls.filter((call) => call.startsWith("import:"))).toEqual([
       `import:proj-1:${"services:\n  - hostname: api\n    startWithoutCode: true\n  - hostname: db\n    type: postgresql@17\n".length}`,
     ]);
@@ -467,7 +535,7 @@ describe("runEnvironmentCreation", () => {
 
   it("waits for every service of an environment without an agent", async () => {
     const { platform, calls } = fakePlatform();
-    const { outcome, reports } = await run(plan("prod"), platform);
+    const { outcome, reports } = await run(plan("stage"), platform);
 
     expect(outcome).toMatchObject({
       ok: true,
@@ -493,7 +561,7 @@ describe("runEnvironmentCreation", () => {
           { name: "db", status: "ACTIVE" },
         ]),
     });
-    const { outcome } = await run(plan("prod"), platform);
+    const { outcome } = await run(plan("stage"), platform);
     expect(outcome).toMatchObject({
       ok: true,
       awaitingAgent: false,
@@ -529,7 +597,7 @@ describe("runEnvironmentCreation", () => {
       untilServicesSettled: () =>
         Promise.reject(new Error("Zerops' services could not be followed.")),
     });
-    const { outcome } = await run(plan("prod"), platform);
+    const { outcome } = await run(plan("stage"), platform);
     expect(outcome).toMatchObject({
       ok: false,
       failedStep: { kind: "await-ready" },
@@ -844,9 +912,9 @@ describe("runEnvironmentCreation — a press tried again", () => {
     expect(accepted).toEqual(["proj-1"]);
   });
 
-  it("registers a stage or a production before waiting on its services", async () => {
+  it("registers a stage before waiting on its services", async () => {
     const { platform, calls } = fakePlatform();
-    await run(plan("prod"), platform);
+    await run(plan("stage"), platform);
     const registered = calls.indexOf("register:proj-1");
     const firstWait = calls.findIndex((call) => call.startsWith("services:"));
     expect(registered).toBeGreaterThan(-1);

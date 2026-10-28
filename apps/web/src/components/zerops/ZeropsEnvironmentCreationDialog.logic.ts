@@ -15,6 +15,7 @@ import {
   type FlowPullRequest,
   type ZeropsGroupPendingMember,
   type ZeropsMateFace,
+  type ZeropsEnvironmentRole,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
@@ -156,10 +157,13 @@ export function validateCreationForm(
     readonly options: ReadonlyArray<RecipeOption>;
     /** Where the recipe stands (`creationRecipe`). */
     readonly recipe: CreationRecipe;
+    readonly role?: ZeropsEnvironmentRole | undefined;
   },
 ): CreationFormErrors {
   const errors: { name?: string; recipe?: string } = {};
   if (form.name.trim().length === 0) errors.name = "Give the environment a name.";
+
+  if (context.role === "prod") return errors;
 
   // What is created comes from this read: a recipe not read yet, or not read at all, holds it.
   const held = creationRecipeHold(context.recipe);
@@ -193,7 +197,7 @@ export function creationRecipe(read: {
 
 const RECIPE_UNREADABLE = "The project's setup files can't be read right now.";
 
-/** What holds a stage's or a production's form: its recipe still being read, or not readable. */
+/** What holds a form that imports its recipe: still being read, or not readable. */
 export function creationRecipeHold(recipe: CreationRecipe): string | undefined {
   if (recipe === "reading") return READING_RECIPE;
   return recipe === "unreadable" ? RECIPE_UNREADABLE : undefined;
@@ -208,11 +212,12 @@ export const PEOPLE_UNREADABLE = "Who can see the project can't be read right no
 
 /**
  * What a stage's or a production's one sheet sends, or why its button waits. It asks nothing the
- * project already says: its name, the project's setup, and the people who reach the project now, at
+ * project already says: its name, a stage's setup, and the people who reach the project now, at
  * their level there (`draftPeople`) — a Developer or a Guest on the project sees the new
  * environment too.
  */
 export function environmentSheetSubmit(input: {
+  readonly role?: ZeropsEnvironmentRole | undefined;
   readonly name: string;
   readonly withAgent: boolean;
   readonly options: ReadonlyArray<RecipeOption>;
@@ -236,13 +241,13 @@ export function environmentSheetSubmit(input: {
       };
     } {
   const option = input.options[0];
-  // The form's own checks, on what the sheet decided: nothing empty is made with no one to fill it.
+  // The stage needs services now; production reserves its project for the first release.
   const errors = validateCreationForm(
     { name: input.name, withAgent: input.withAgent, recipeId: option?.id ?? "" },
-    { options: input.options, recipe: input.recipe },
+    { options: input.options, recipe: input.recipe, role: input.role },
   );
   const reason = errors.recipe ?? errors.name;
-  if (reason !== undefined || option === undefined)
+  if (reason !== undefined || (option === undefined && input.role !== "prod"))
     return {
       kind: "held",
       reason: reason ?? "Choose what goes in the environment.",
@@ -258,8 +263,8 @@ export function environmentSheetSubmit(input: {
     kind: "create",
     choice: {
       name: input.name,
-      withAgent: input.withAgent,
-      recipe: option.choice,
+      withAgent: input.role === "prod" ? false : input.withAgent,
+      recipe: input.role === "prod" ? { kind: "none" } : (option?.choice ?? { kind: "none" }),
       ...(userRoles.length === 0 ? {} : { userRoles }),
     },
   };

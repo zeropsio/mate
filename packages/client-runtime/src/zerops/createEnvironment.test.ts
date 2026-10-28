@@ -47,6 +47,7 @@ describe("planEnvironmentCreation", () => {
   it("refuses a project whose recipe has not been merged yet", () => {
     const plan = planEnvironmentCreation({
       ...BASE,
+      role: "stage",
       recipe: { ...TIER, yaml: "   " },
     });
     expect(plan.ok).toBe(false);
@@ -76,12 +77,7 @@ describe("planEnvironmentCreation", () => {
   it("gives production no agent container by default", () => {
     const plan = planEnvironmentCreation(BASE);
     if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).toEqual([
-      "create-project",
-      "import-recipe",
-      "register",
-      "await-ready",
-    ]);
+    expect(stepKinds(plan.steps)).toEqual(["create-project", "register"]);
   });
 
   it("gives a dev environment its agent, its key with it, and closes it off before the press returns", () => {
@@ -117,7 +113,7 @@ describe("planEnvironmentCreation", () => {
     {
       case: "a production",
       input: {},
-      steps: ["create-project", "import-recipe", "register", "await-ready"],
+      steps: ["create-project", "register"],
     },
   ])("registers $case in the press, before anything is waited on", ({ input, steps }) => {
     const plan = planEnvironmentCreation({ ...BASE, ...input });
@@ -146,14 +142,14 @@ describe("planEnvironmentCreation", () => {
     expect(container).toMatchObject({ kind: "import-container", agents: [] });
   });
 
-  it("lets a caller ask for an agent in production explicitly", () => {
+  it("reserves production without services even when a caller asks for an agent explicitly", () => {
     const plan = planEnvironmentCreation({ ...BASE, withAgent: true });
     if (!plan.ok) throw new Error("expected a plan");
-    expect(stepKinds(plan.steps)).toContain("import-container");
+    expect(stepKinds(plan.steps)).toEqual(["create-project", "register"]);
   });
 
   it("carries the tier the caller read, byte for byte", () => {
-    const plan = planEnvironmentCreation({ ...BASE, role: "prod" });
+    const plan = planEnvironmentCreation({ ...BASE, role: "stage" });
     if (!plan.ok) throw new Error("expected a plan");
     const step = plan.steps.find((entry) => entry.kind === "import-recipe");
     expect(step?.kind === "import-recipe" && step.yaml).toBe(TIER.yaml);
@@ -252,15 +248,14 @@ describe("the Mate's marker", () => {
       const step = plan.ok ? plan.steps[0] : undefined;
       return step?.kind === "create-project" ? step.tagList : [];
     };
-    // A dev environment gets an agent by default; a stage and a production
-    // do not — and a caller can say so either way.
+    // A dev environment gets an agent by default; stage can opt in. Production stays empty.
     expect(tags(planEnvironmentCreation({ ...BASE, role: "dev" }))).toContain("mate");
     expect(tags(planEnvironmentCreation({ ...BASE, role: "stage" }))).not.toContain("mate");
     expect(tags(planEnvironmentCreation({ ...BASE, role: "stage", withAgent: true }))).toContain(
       "mate",
     );
     expect(tags(planEnvironmentCreation({ ...BASE, role: "prod" }))).not.toContain("mate");
-    expect(tags(planEnvironmentCreation({ ...BASE, role: "prod", withAgent: true }))).toContain(
+    expect(tags(planEnvironmentCreation({ ...BASE, role: "prod", withAgent: true }))).not.toContain(
       "mate",
     );
   });
@@ -325,6 +320,7 @@ describe("the recipe choice", () => {
   it("imports the tier it is handed, each build taken out for an empty start", () => {
     const plan = planEnvironmentCreation({
       ...BASE,
+      role: "stage",
       recipe: {
         ...TIER,
         yaml: "services:\n  - hostname: api\n    buildFromGit: https://hq.test/git/acme/api.git\n    zeropsSetup: api\n",
@@ -356,8 +352,8 @@ describe("the recipe choice", () => {
     expect(container).toEqual({ kind: "import-container", agents: [] });
   });
 
-  it("refuses an environment with neither an agent nor an application", () => {
-    const plan = planEnvironmentCreation({ ...BASE, role: "prod", recipe: { kind: "none" } });
+  it("refuses a stage with neither an agent nor an application", () => {
+    const plan = planEnvironmentCreation({ ...BASE, role: "stage", recipe: { kind: "none" } });
     expect(plan.ok).toBe(false);
   });
 });
@@ -547,7 +543,7 @@ services:
   function plan(recipe: string, extra: Record<string, unknown> = {}) {
     const result = planEnvironmentCreation({
       clientId: "c1",
-      role: "prod",
+      role: "stage",
       name: "Aurora - production",
       recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
       withAgent: false,

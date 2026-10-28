@@ -9,10 +9,7 @@ import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
   scenarioSuite((it) => {
-    for (const [role, tag] of [
-      ["stage", "stage"],
-      ["production", "prod"],
-    ] as const) {
+    for (const [role, tag] of [["stage", "stage"]] as const) {
       // Catches adding an environment under the wrong name or losing the requested role in the project's view.
       it.effect(`add ${role} with an agent to an existing project`, () =>
         Effect.gen(function* () {
@@ -32,7 +29,7 @@ describe("F: creation through the hosted client", () => {
       );
     }
 
-    for (const role of ["stage", "production"] as const) {
+    for (const role of ["stage"] as const) {
       // Catches a valid deployment recipe being refused or silently installing an agent by default.
       it.effect(`add ${role} from its recipe with the agent off by default`, () =>
         Effect.gen(function* () {
@@ -46,15 +43,50 @@ describe("F: creation through the hosted client", () => {
           yield* c.agentIsOff;
           yield* c.text("Same services as the project");
           yield* c.click(`Add ${role} to Shop`);
-          yield* c.environmentAppears("Shop-b", role === "production" ? "prod" : "stage");
-          // A stage's adding ends on its card's Stage line; production's in its set-up card.
-          yield* role === "stage" ? c.stageAdded : c.text("Shop-b is set up");
+          yield* c.environmentAppears("Shop-b", "stage");
+          yield* c.stageAdded;
           yield* c.acceptedOnce("Shop-b");
           yield* c.noAgentImported;
           yield* s.then.noExternalNetwork;
         }),
       );
     }
+
+    it.effect("Production reserves its project and access without browser service imports", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* environmentRecipe(s, "production");
+        yield* s.given.signedIn;
+        const c = creation(s);
+        yield* c.openAdd("production");
+        yield* c.text("Its services arrive with the first approved release.");
+        yield* c.click("Change its name…");
+        yield* c.fill("Environment", "Shop-b");
+        yield* Effect.promise(async () => {
+          expect(
+            await s.page.$('[data-zerops-surface="environment-creation-form"] [role="switch"]'),
+          ).toBeNull();
+          expect(await s.page.$('[aria-label="Starts with"]')).toBeNull();
+        });
+        yield* c.click("Add production to Shop");
+        yield* c.environmentAppears("Shop-b", "prod");
+        yield* c.text("Production and its access are reserved.");
+        yield* c.acceptedOnce("Shop-b");
+        yield* c.noAgentImported;
+        expect(
+          s.drivers.zerops.requests.get("POST /client/ORG/project/import") ?? 0,
+          "ASSERTION: browser production birth never bundles services into project import",
+        ).toBe(0);
+        expect(
+          s.drivers.zerops.requests.get("POST /project/created-1/service-stack/import") ?? 0,
+          "ASSERTION: browser production birth never imports services into the reserved project",
+        ).toBe(0);
+        expect(
+          s.drivers.zerops.rows("service-stack").filter((row) => row.projectId === "created-1"),
+        ).toEqual([]);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
 
     it.effect(
       "An application with no code repositories asks for a repository before a branch",

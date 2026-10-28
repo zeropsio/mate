@@ -66,7 +66,11 @@ function render(
   if (props.git === undefined && props.role !== "dev" && !destination) {
     act(() =>
       [...document.querySelectorAll("button")]
-        .find((button) => button.textContent === "Change its name or services…")!
+        .find(
+          (button) =>
+            button.textContent ===
+            (props.role === "prod" ? "Change its name…" : "Change its name or services…"),
+        )!
         .click(),
     );
   }
@@ -150,9 +154,11 @@ describe("ZeropsEnvironmentCreationForm", () => {
     expect(submitDisabled(html)).toBe(true);
   });
 
-  it("says why production usually runs no agent", () => {
+  it("The person creating production is told that its services come with the first release", () => {
     const html = render({ role: "prod", defaultWithAgent: false });
-    expect(html).toContain("Production usually does not");
+    expect(html).toContain("Its services arrive with the first approved release.");
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Starts with"]')).toBeNull();
   });
 
   it("asks who will reach the stage, and adds it with the access chosen", () => {
@@ -224,13 +230,86 @@ it("Adding a stage is one sheet: what it is for, where, and one button", () => {
   });
 });
 
-it("The sheet waits for the recipe before it adds anything, saying so", () => {
-  const html = render({ role: "prod", recipe: "reading", tier: undefined }, true);
-  expect(html).toContain("Set up production for Acme Docs");
-  const button = [...document.querySelectorAll("button")].find(
-    (entry) => entry.textContent === "Set up production",
+it.each(["reading", "unreadable", "absent", "present"] as const)(
+  "Production reserves its project and access before its recipe is available: %s",
+  (recipe) => {
+    const onCreate = vi.fn();
+    const html = render(
+      {
+        role: "prod",
+        recipe,
+        tier: undefined,
+        onCreate,
+        people: { kind: "ready", userRoles: CHOSEN },
+      },
+      true,
+    );
+    expect(html).toContain("Its services arrive with the first approved release.");
+    const button = [...document.querySelectorAll("button")].find(
+      (entry) => entry.textContent === "Set up production",
+    )!;
+    expect(button.hasAttribute("disabled")).toBe(false);
+    act(() => button.click());
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Acme Docs - stage",
+      withAgent: false,
+      recipe: { kind: "none" },
+      userRoles: CHOSEN,
+    });
+  },
+);
+
+it.each(["reading", "failed"] as const)(
+  "Production waits for its access and keeps the grants when they arrive: %s",
+  (kind) => {
+    const onCreate = vi.fn();
+    render({ role: "prod", recipe: "unreadable", people: { kind }, onCreate }, true);
+    const submit = () =>
+      [...document.querySelectorAll("button")].find(
+        (entry) => entry.textContent === "Set up production",
+      )!;
+    expect(submit().hasAttribute("disabled")).toBe(true);
+    expect(onCreate).not.toHaveBeenCalled();
+    render(
+      {
+        role: "prod",
+        recipe: "unreadable",
+        people: { kind: "ready", userRoles: CHOSEN },
+        onCreate,
+      },
+      true,
+    );
+    expect(submit().hasAttribute("disabled")).toBe(false);
+    act(() => submit().click());
+    expect(onCreate).toHaveBeenCalledWith({
+      name: "Acme Docs - stage",
+      withAgent: false,
+      recipe: { kind: "none" },
+      userRoles: CHOSEN,
+    });
+  },
+);
+
+it("Production's own form reserves the chosen name and access without its recipe", () => {
+  const onCreate = vi.fn();
+  render({
+    role: "prod",
+    recipe: "unreadable",
+    tier: undefined,
+    onCreate,
+    access: (onChange) => <Chosen onChange={onChange} />,
+  });
+  act(() =>
+    host
+      .querySelector('form[data-zerops-surface="environment-creation-form"]')!
+      .dispatchEvent(new Event("submit", { bubbles: true, cancelable: true })),
   );
-  expect(button?.hasAttribute("disabled")).toBe(true);
+  expect(onCreate).toHaveBeenCalledWith({
+    name: "Acme Docs - stage",
+    withAgent: false,
+    recipe: { kind: "none" },
+    userRoles: CHOSEN,
+  });
 });
 
 const gitChoice = () =>
