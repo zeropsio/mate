@@ -47,6 +47,30 @@ describe("settledCreations", () => {
   });
 });
 
+function mountedAccount(
+  data: AccountData["data"],
+  demandDetail: AccountData["demandDetail"],
+): AccountData {
+  const unused = () => {
+    throw new Error("This creation reader must only read projections and demand its import.");
+  };
+  return {
+    data,
+    orgId: ORG,
+    demandDetail,
+    renewHeld: unused,
+    retry: unused,
+    showHq: unused,
+    moveOffers: unused,
+    handoverCandidates: unused,
+    readDetail: unused,
+    revalidate: unused,
+    retryDetail: unused,
+    compare: unused,
+    logs: null,
+  };
+}
+
 let mounted: ReactTestRenderer | undefined;
 afterEach(() => {
   act(() => mounted?.unmount());
@@ -89,14 +113,15 @@ it.each(["FINISHED", "FAILED", "CANCELED"])(
     }).forEach(store.dispatch);
     const release = vi.fn();
     const demand = vi.fn((_demand: DetailDemand) => release);
-    const account = { data: store.data, orgId: ORG, demandDetail: demand } as AccountData;
-    const candidates = [
+    const account = mountedAccount(store.data, demand);
+    const candidates: ReadonlyArray<ZeropsCandidate> = [
       {
         key: "p1",
+        group: "unavailable",
         project: { id: "p1", name: "App", status: "ACTIVE" },
         missingContainer: true,
       },
-    ] as ReadonlyArray<ZeropsCandidate>;
+    ];
     let drawn: ReadonlyMap<string, ZeropsProjectCreation> = new Map();
     function Probe() {
       const result = useProjectCreations(candidates);
@@ -205,15 +230,16 @@ it("an active birth without a recorded import stays awaiting evidence despite un
     ],
   }).forEach(store.dispatch);
   const demand = vi.fn((_demand: DetailDemand) => () => {});
-  const account = { data: store.data, orgId: ORG, demandDetail: demand } as AccountData;
+  const account = mountedAccount(store.data, demand);
   let drawn: ReadonlyMap<string, ZeropsProjectCreation> = new Map();
   function Probe() {
     const result = useProjectCreations([
       {
         key: "p1",
+        group: "unavailable",
         project: { id: "p1", name: "App", status: "ACTIVE" },
         missingContainer: true,
-      } as ZeropsCandidate,
+      },
     ]);
     useLayoutEffect(() => {
       drawn = result;

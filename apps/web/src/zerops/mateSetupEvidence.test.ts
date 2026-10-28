@@ -192,7 +192,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         presses,
         projectId: project.id,
         nowMs,
-        importStatus: "RUNNING",
+        importStatus: presses[project.id]?.importProcessId === undefined ? undefined : "RUNNING",
       }),
     });
   };
@@ -286,7 +286,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         }),
       });
     expect(recovered()).toBeUndefined();
-    expect(recoveredArrival().page.kind).toBe("coming");
+    expect(recoveredArrival().page?.kind).toBe("coming");
     for (const [index, status] of ["RUNNING", "FINISHED"].entries()) {
       observer.dispatch({
         kind: "rows",
@@ -311,7 +311,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         ],
       });
       expect(recovered()).toEqual({ processId: "import-pepa", status, error: null });
-      expect(recoveredArrival().page.kind).toBe("coming");
+      expect(recoveredArrival().page?.kind).toBe("coming");
     }
     expect(observer.state().operations.size).toBe(0);
     expect(importCalls).toHaveLength(1);

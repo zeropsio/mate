@@ -80,17 +80,6 @@ export const processFamily: FamilySpec<"process"> = {
   ended: (value) => !runsStill(value.status),
   details: [
     {
-      // An accepted import keeps its own identity after it leaves the newest project history.
-      suffix: "process",
-      leaving: "absent-unverified",
-      member: true,
-      zerops: {
-        path: ({ ownerId }) => `/process/${encodeURIComponent(ownerId ?? "")}`,
-        items: (answer) =>
-          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
-      },
-    },
-    {
       suffix: HISTORY,
       // A process falls out of the newest hundred by age, which says nothing of its end.
       leaving: "removed",
@@ -103,6 +92,17 @@ export const processFamily: FamilySpec<"process"> = {
           Array.isArray(answer.list)
             ? answer.list
             : undefined,
+      },
+    },
+    {
+      // An accepted import keeps its own identity after it leaves the newest project history.
+      suffix: "process",
+      leaving: "absent-unverified",
+      member: true,
+      zerops: {
+        path: ({ ownerId }) => `/process/${encodeURIComponent(ownerId ?? "")}`,
+        items: (answer) =>
+          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
       },
     },
   ],
