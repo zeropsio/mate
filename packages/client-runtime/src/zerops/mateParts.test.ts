@@ -108,7 +108,7 @@ describe("a Mate's parts", () => {
       },
       rows: [
         "API | dev apipool-c2e4-1-3001.prg1.zerops.app | preview apistage-1df2-80.prg1.zerops.app",
-        "Runner |  | preview (no public address)",
+        "Runner |  | preview (No web address.)",
       ],
     },
     {
@@ -155,6 +155,42 @@ describe("a Mate's parts", () => {
     "a part goes by its friendly name, its dev and its preview beside it: $title",
     ({ input, rows: expected }) => {
       expect(rows(input)).toEqual(expected);
+    },
+  );
+
+  it.each<{ title: string; lease: MatePartLease; why: string }>([
+    {
+      title: "its server stopped",
+      lease: lease("webpool-1", { devServers: [server("stopped")] }),
+      why: "Not running.",
+    },
+    {
+      title: "its server crashed",
+      lease: lease("webpool-1", { devServers: [server("crashed")] }),
+      why: "Not running.",
+    },
+    {
+      title: "its server starting",
+      lease: lease("webpool-1", { devServers: [server("starting")] }),
+      why: "Starting.",
+    },
+    { title: "paused", lease: lease("webpool-1", { state: "parked" }), why: "Paused." },
+    {
+      title: "not confirmed yet",
+      lease: lease("webpool-1", { unverified: true }),
+      why: "Not confirmed yet.",
+    },
+    { title: "no server read on it", lease: lease("webpool-1"), why: "No web address yet." },
+  ])(
+    "a workspace with nothing to open says why in plain words: $title",
+    ({ lease: given, why }) => {
+      const [part] = mateParts({
+        services: hostnames("webpool"),
+        routes: [],
+        pools: ["webpool"],
+        leases: [given],
+      }).parts;
+      expect(part?.dev.map((entry) => entry.why)).toEqual([why]);
     },
   );
 

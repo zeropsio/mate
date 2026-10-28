@@ -731,7 +731,7 @@ describe("groupFlowInputOf", () => {
       input.mates[0]?.parts?.map((part) => [part.name, part.preview?.url ?? part.preview?.why]),
     ).toEqual([
       ["API", "https://apistage-1.prg1.zerops.app"],
-      ["Runner", "no public address"],
+      ["Runner", "No web address."],
     ]);
     expect(input.mates[0]?.previews).toEqual([
       { service: "API", url: "https://apistage-1.prg1.zerops.app" },

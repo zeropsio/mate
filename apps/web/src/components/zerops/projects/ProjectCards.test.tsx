@@ -453,6 +453,7 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
             {
               key: "part:apipool",
               devService: "apipool",
+              pooled: true,
               name: "API",
               dev: [],
               preview: entry("preview:apistage", "preview", "https://apistage.example.app"),
@@ -460,6 +461,7 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
             {
               key: "part:matedev",
               devService: "matedev",
+              pooled: false,
               name: "Mate",
               dev: [entry("dev:matedev", "dev", "https://matedev.example.app")],
               preview: undefined,
@@ -467,6 +469,7 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
             {
               key: "part:runnerpool",
               devService: "runnerpool",
+              pooled: true,
               name: "Runner",
               dev: [],
               preview: entry("preview:runnerstage", "preview", undefined, "no public address"),

@@ -509,8 +509,8 @@ describe("a Mate's dev pools", () => {
     expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
     expect(
       surfaces("sidebar-project-sites-pair").map((row) => row.textContent),
-      "each part by its name, a dev per workspace",
-    ).toEqual(["Embedderdev", "HQdevdev"]);
+      "each part by its name, a dev per workspace, then its preview",
+    ).toEqual(["Embedderdevpreview", "HQdevdevpreview"]);
     for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
     expect(
       surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,

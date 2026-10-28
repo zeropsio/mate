@@ -15,8 +15,9 @@
  *   zcp names a part by (`apiprod`, `boxpreview`) and never a hostname.
  * - **Dev entries**: a plain dev service's own route; for a pool, one per workspace the Mate holds
  *   on it, each by the chat it is for, else "dev" — never numbered. A workspace opens only by the
- *   rule zcp gives (`poolWorkspaceLink`); one that does not says why, muted. A slot nobody leases
- *   shows nothing: a pool's slot routes balance over every container, so they are nobody's.
+ *   rule zcp gives (`poolWorkspaceLink`); one that does not says why in plain words, muted. A slot
+ *   nobody leases shows nothing: a pool's slot routes balance over every container, so they are
+ *   nobody's.
  * - **Preview**: the stage half's first route, labelled "preview"; one with no public address says
  *   so, muted, so a part that serves no page (a runner) still stands.
  *
@@ -43,7 +44,7 @@ export interface MatePartEntry {
   readonly host: string | undefined;
   /** Its other ports' hosts, which a tooltip lists after its own. */
   readonly more: ReadonlyArray<string>;
-  /** Only where it has no address: "starting", "paused", "no public address"… */
+  /** Only where it has no address, in plain words: "Starting.", "Paused.", "No web address."… */
   readonly why: string | undefined;
 }
 
@@ -53,6 +54,11 @@ export interface MatePart {
   readonly name: string;
   /** The service its dev side is: a dev service, or the dev pool its workspaces are on. */
   readonly devService: string;
+  /**
+   * Its dev runs only in a workspace the Mate takes while it works on the part — a dev pool's, or
+   * a repository holder's while pools stand — so with none held, nothing runs.
+   */
+  readonly pooled: boolean;
   readonly dev: ReadonlyArray<MatePartEntry>;
   readonly preview: MatePartEntry | undefined;
 }
@@ -135,6 +141,18 @@ export function isBrowsableUrl(value: string): boolean {
     return false;
   }
 }
+
+/** What a part's side with no address says in its tooltip, where it has no public route. */
+const NO_ADDRESS = "No web address.";
+
+/** `poolWorkspaceLink`'s reason as a person reads it; any server that is not running is "Not running.". */
+const PLAIN_WHY: Readonly<Record<string, string>> = {
+  paused: "Paused.",
+  starting: "Starting.",
+  "not mounted": "Not running yet.",
+  "not confirmed by its pool": "Not confirmed yet.",
+  "no address yet": "No web address yet.",
+};
 
 /** A `{name}dev` runtime is the dev before its stage exists, as every Mate's starts. */
 const isDevHostname = (hostname: string) =>
@@ -265,7 +283,7 @@ export function mateParts(input: MatePartsInput): MateParts {
   const chats = input.leaseChats ?? [];
   const devOf = (dev: string): ReadonlyArray<MatePartEntry> => {
     if (!pools.has(dev)) {
-      const entry = entryOf(`dev:${dev}`, "dev", dev, "no public address");
+      const entry = entryOf(`dev:${dev}`, "dev", dev, NO_ADDRESS);
       return entry.url === undefined ? [] : [entry];
     }
     return [...leases]
@@ -280,7 +298,7 @@ export function mateParts(input: MatePartsInput): MateParts {
           url: link.url,
           host: link.url === undefined ? undefined : hostOf(link.url),
           more: [],
-          why: link.why,
+          why: link.why === undefined ? undefined : (PLAIN_WHY[link.why] ?? "Not running."),
         };
       });
   };
@@ -314,8 +332,9 @@ export function mateParts(input: MatePartsInput): MateParts {
           ? partName(withoutSuffix(preview, STAGE_SUFFIX))
           : nameOf(dev, stemOf.get(dev) ?? dev),
         devService: dev,
+        pooled: pools.has(dev) || holders.has(dev),
         dev: devEntries,
-        preview: entryOf(`preview:${preview}`, "preview", preview, "no public address"),
+        preview: entryOf(`preview:${preview}`, "preview", preview, NO_ADDRESS),
       });
   }
   for (const { hostname } of services) {
@@ -327,6 +346,7 @@ export function mateParts(input: MatePartsInput): MateParts {
         key: `part:${hostname}`,
         name: nameOf(hostname, withoutSuffix(hostname, DEV_SUFFIX)),
         devService: hostname,
+        pooled: pools.has(hostname),
         dev,
         preview: undefined,
       });

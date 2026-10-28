@@ -1,8 +1,8 @@
 /**
  * A project's places on its row — the environment tag and the globe — and the popover they open,
  * in the states a project really reaches: production down with a fix to ask for, a release that
- * failed, a stage coming up, a big project with a dozen addresses (its filter), a project nobody
- * has read yet, and one with no address anywhere.
+ * failed, a stage coming up, a big project with a dozen addresses (its
+ * filter), a Mate on dev pools with no workspace running, and one with no address anywhere.
  *
  * Served by the dev server at `/design-sites.html` (`?theme=dark`). Open it at 1786 × 1000; the
  * menu is the owner's 435 px. Each row shows its hover actions, as a pointed-at row does.

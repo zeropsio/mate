@@ -396,6 +396,53 @@ describe("a Mate's parts", () => {
     },
   );
 
+  it.each<{
+    readonly title: string;
+    readonly facts: Partial<SitesMateFacts>;
+    readonly rows: ReadonlyArray<string>;
+  }>([
+    {
+      title: "a pool whose workspaces are not read",
+      facts: {
+        routes: [...slots("webpool"), route("webstage", "webstage.example.app")],
+        hostnames: ["webpool", "webstage"],
+        pools: ["webpool"],
+        leases: undefined,
+        poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
+      },
+      rows: ["Web | dev (It runs while Kara works on Web.) | preview webstage.example.app"],
+    },
+    {
+      title: "a workspace whose server is not running, beside a stage with no address",
+      facts: {
+        routes: slots("runnerpool"),
+        hostnames: ["runnerpool", "runnerstage"],
+        pools: ["runnerpool"],
+        leases: [lease("runnerpool-2", { devServers: [server("stopped")] })],
+        poolPairs: [{ pool: "runnerpool", stages: [{ hostname: "runnerstage" }] }],
+      },
+      rows: ["Runner | dev (Not running.) | preview (No web address.)"],
+    },
+    {
+      title: "a dev service with no public address",
+      facts: {
+        routes: [route("apistage", "apistage.example.app")],
+        hostnames: ["apidev", "apistage"],
+      },
+      rows: ["API | dev (No web address.) | preview apistage.example.app"],
+    },
+    {
+      title: "a dev with no stage yet",
+      facts: { routes: [route("matedev", "matedev.example.app")], hostnames: ["matedev"] },
+      rows: ["Mate | dev matedev.example.app | preview (Not set up yet.)"],
+    },
+  ])(
+    "every part shows its dev and its preview, one with nothing to open muted and saying why: $title",
+    ({ facts, rows }) => {
+      expect(rowsOf(mate({ name: "Kara", ...facts }))).toEqual(rows);
+    },
+  );
+
   it("a pooled part's dev shows only a workspace zcp holds, never a pool's slot address", () => {
     const kara = mate({
       name: "Kara",
@@ -405,7 +452,9 @@ describe("a Mate's parts", () => {
       leases: [],
       poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
     });
-    expect(rowsOf(kara), "no workspace, no dev").toEqual(["Web |  | preview webstage.example.app"]);
+    expect(rowsOf(kara), "no workspace, no dev to open").toEqual([
+      "Web | dev (Not running now. It runs while Kara works on Web.) | preview webstage.example.app",
+    ]);
     expect(JSON.stringify(mateLinks(kara))).not.toContain("webpool-300");
   });
 
@@ -417,12 +466,12 @@ describe("a Mate's parts", () => {
     {
       title: "stopped",
       given: lease("webpool-3", { devServers: [server("stopped")] }),
-      dev: "dev (stopped)",
+      dev: "dev (Not running.)",
     },
     {
       title: "crashed",
       given: lease("webpool-3", { devServers: [server("crashed")] }),
-      dev: "dev (stopped: crashed)",
+      dev: "dev (Not running.)",
     },
     {
       title: "parked",
@@ -430,9 +479,9 @@ describe("a Mate's parts", () => {
         state: "parked",
         devServers: [server("running", "https://webpool-3001.example.app")],
       }),
-      dev: "dev (paused)",
+      dev: "dev (Paused.)",
     },
-    { title: "unread", given: lease("webpool-3"), dev: "dev (no address yet)" },
+    { title: "unread", given: lease("webpool-3"), dev: "dev (No web address yet.)" },
   ])("a workspace without an address shows its dev muted, saying why: $title", ({ given, dev }) => {
     expect(
       devsOf(mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] })),
@@ -451,7 +500,7 @@ describe("a Mate's parts", () => {
           poolPairs: undefined,
         }),
       ),
-    ).toEqual(["Box | dev (no address yet) | preview boxstage.example.app"]);
+    ).toEqual(["Box | dev (No web address yet.) | preview boxstage.example.app"]);
   });
 });
 
@@ -475,8 +524,8 @@ describe("a Mate's dev pools", () => {
       ],
     });
     expect(rowsOf(kara)).toEqual([
-      "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | ",
-      "Web | dev (starting) | ",
+      "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | preview (Not set up yet.)",
+      "Web | dev (Starting.) | preview (Not set up yet.)",
       "appstage appstage.example.app",
     ]);
   });
@@ -524,7 +573,10 @@ describe("a Mate's dev pools", () => {
           ],
         }),
       ),
-    ).toEqual(["API | dev apipool-1.example.app | ", "Pool | dev pool-2.example.app | "]);
+    ).toEqual([
+      "API | dev apipool-1.example.app | preview (Not set up yet.)",
+      "Pool | dev pool-2.example.app | preview (Not set up yet.)",
+    ]);
   });
 
   it("lists nothing of a pool with no lease, and a service that is no pool keeps its addresses", () => {
@@ -538,7 +590,7 @@ describe("a Mate's dev pools", () => {
           leases: [],
         }),
       ),
-    ).toEqual(["App | dev appdev.example.app | "]);
+    ).toEqual(["App | dev appdev.example.app | preview (Not set up yet.)"]);
   });
 
   it("never lists a pool's per-port addresses while its leases are not read", () => {
@@ -551,7 +603,7 @@ describe("a Mate's dev pools", () => {
           leases: undefined,
         }),
       ),
-    ).toEqual(["App | dev appdev.example.app | "]);
+    ).toEqual(["App | dev appdev.example.app | preview (Not set up yet.)"]);
   });
 
   it("takes a lease's pool for a pool where the services listing has not named it", () => {
@@ -568,7 +620,7 @@ describe("a Mate's dev pools", () => {
           ],
         }),
       ),
-    ).toEqual(["Web | dev webpool-3-1df2-3000.example.app | "]);
+    ).toEqual(["Web | dev webpool-3-1df2-3000.example.app | preview (Not set up yet.)"]);
   });
 });
 
@@ -613,7 +665,7 @@ describe("a Mate's addresses", () => {
     {
       title: "never lists the control plane",
       routes: [route("zcp", "zcp.example.app"), route("appdev", "appdev.example.app")],
-      rows: ["App | dev appdev.example.app | "],
+      rows: ["App | dev appdev.example.app | preview (Not set up yet.)"],
     },
     {
       title: "writes the port where one service answers on a second one",
@@ -621,7 +673,9 @@ describe("a Mate's addresses", () => {
         route("apidev", "apidev-3000.example.app", 3000),
         route("apidev", "apidev-9000.example.app", 9000),
       ],
-      rows: ["API | dev apidev-3000.example.app +apidev-9000.example.app | "],
+      rows: [
+        "API | dev apidev-3000.example.app +apidev-9000.example.app | preview (Not set up yet.)",
+      ],
     },
     {
       title: "names a stage half preview from its routes alone while the services are unread",

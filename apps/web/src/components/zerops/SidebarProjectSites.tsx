@@ -1046,8 +1046,9 @@ function CopyButton({
 
 /**
  * A Mate's parts, one row each: the part's name, then its dev and its preview in fixed columns, so
- * the rows align. Each side with an address is a link that opens in a new tab, its host (and any
- * other port's) in its tooltip, and copies on `c` or ⌘C; one without says why in its tooltip.
+ * the rows align; every part shows both. Each side with an address is a link that opens in a new
+ * tab, its host (and any other port's) in its tooltip, and copies on `c` or ⌘C; a side with none
+ * is its word, muted, its tooltip saying why.
  */
 function SitesPairs({
   pairs,
@@ -1069,9 +1070,7 @@ function SitesPairs({
         ))}
       </span>
       <span className="zerops-sites-side" data-side="preview">
-        {pair.preview === undefined ? null : (
-          <PairSide key={pair.preview.key} onCopy={onCopy} side={pair.preview} />
-        )}
+        <PairSide key={pair.preview.key} onCopy={onCopy} side={pair.preview} />
       </span>
     </div>
   ));
