@@ -17,7 +17,8 @@ import {
   DialogTitle,
 } from "../../ui/dialog";
 import { gitRemoteLabel } from "../GitDeliveryStatus";
-import { githubName, mirrorGateLine, type GitMirrorApp } from "../gitMirror.logic";
+import { githubName, mirrorGateLine, type GitMirrorApp, waitingWords } from "../gitMirror.logic";
+import { GithubInstallOffer } from "../GithubInstallOffer";
 import { type OriginAsk, originAddress, originMountStep } from "./originAsk.logic";
 
 /** What the container reads and does for the GitHub way. */
@@ -36,6 +37,10 @@ export interface OriginGithubProps {
   readonly onCheckAgain: () => void;
   /** Opens Settings › Automation, where GitHub is connected. */
   readonly onOpenAutomation: () => void;
+  /** The person is the organization's Owner or an Admin: they install through HQ's trip. */
+  readonly admin: boolean;
+  /** Leaves for GitHub's install page through HQ's trip, coming back here. */
+  readonly onInstall: () => void;
 }
 
 export function OriginGithubSheet({
@@ -48,6 +53,8 @@ export function OriginGithubSheet({
   onMount,
   onCheckAgain,
   onOpenAutomation,
+  admin,
+  onInstall,
   onClose,
 }: OriginGithubProps & {
   readonly ask: Pick<OriginAsk, "url" | "repo">;
@@ -119,11 +126,26 @@ export function OriginGithubSheet({
                 Check again
               </Button>
             </div>
+          ) : step.kind === "waiting" ? (
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="rv-note">{waitingWords(step.account)}</p>
+              {admin ? (
+                <Button onClick={onOpenAutomation} size="sm" variant="secondary">
+                  Open Settings › Automation
+                </Button>
+              ) : null}
+            </div>
           ) : step.kind === "not-reached" ? (
             <div className="flex flex-wrap items-center gap-2">
               <p className="rv-note">
                 {step.name} doesn't reach {githubName(ask.url) ?? address} yet.{" "}
-                <OutLink href={step.installUrl}>Add it on GitHub</OutLink>
+                {app !== null && app.kind === "connected" ? (
+                  <GithubInstallOffer admin={admin} app={app} onInstall={onInstall}>
+                    Add it on GitHub
+                  </GithubInstallOffer>
+                ) : (
+                  <OutLink href={step.installUrl}>Add it on GitHub</OutLink>
+                )}
               </p>
               <Button onClick={onCheckAgain} size="sm" variant="secondary">
                 Check again

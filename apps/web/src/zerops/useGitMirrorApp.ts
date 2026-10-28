@@ -2,15 +2,21 @@
  * The organization's GitHub app as Git's surfaces read it (`GitMirrorApp`), read while shown:
  * `null` while HQ is still asked, and a way to ask again after the person changed it on GitHub.
  */
-import { appName, appRepositories } from "../components/settings/automationSettings.logic";
+import {
+  appName,
+  appRepositories,
+  installationStanding,
+} from "../components/settings/automationSettings.logic";
 import type { GitMirrorApp } from "../components/zerops/gitMirror.logic";
 import { useGithubApp } from "./useTaskSourceSettings";
 
 export function useGitMirrorApp(shown = true): {
   readonly app: GitMirrorApp | null;
   readonly again: () => void;
+  /** Leaves for GitHub's install page through HQ's trip, coming back to this page. */
+  readonly install: () => void;
 } {
-  const { read, again } = useGithubApp(shown);
+  const { read, again, install } = useGithubApp(shown);
   const setting = read.setting;
   const app: GitMirrorApp | null =
     setting.state === "unread" || setting.state === "reading"
@@ -22,10 +28,25 @@ export function useGitMirrorApp(shown = true): {
             ...(setting.held.appId === undefined ? {} : { appId: setting.held.appId }),
             repositories: appRepositories(setting.held),
             installUrl: setting.held.installUrl,
+            installTrip: setting.held.public !== undefined,
+            waiting: setting.held.installations
+              .filter((installation) => installationStanding(installation) === "waiting")
+              .map((installation) => ({
+                account: installation.account,
+                repositories: installation.repositories.map((repository) => repository.fullName),
+              })),
           }
         : setting.state === "known" || setting.state === "unsupported"
           ? { kind: "none" }
           : // HQ's answer could not be read: nothing is said of an app that may be there.
             { kind: "unknown" };
-  return { app, again };
+  return {
+    app,
+    again,
+    install: () => {
+      void install(window.location.href).then((url) => {
+        if (url !== null) window.location.assign(url);
+      });
+    },
+  };
 }
