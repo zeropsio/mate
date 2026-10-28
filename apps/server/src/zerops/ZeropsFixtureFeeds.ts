@@ -503,6 +503,7 @@ const zeropsMateUpdateFixtureLayer = () =>
       current: Effect.succeed(undefined),
       changes: Stream.make(undefined),
       refresh: Effect.void,
+      reread: Effect.void,
       check: Effect.succeed(undefined),
       restart: Effect.succeed({ started: false, reason: "a fixture scene restarts nothing" }),
     }),

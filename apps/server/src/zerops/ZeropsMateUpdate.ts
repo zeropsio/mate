@@ -109,6 +109,8 @@ export class ZeropsMateUpdate extends Context.Service<
     readonly current: Effect.Effect<ExecutionEnvironmentUpdate | undefined>;
     /** {@link current} now, then every time it changes: the Mate's link to HQ follows it. */
     readonly changes: Stream.Stream<ExecutionEnvironmentUpdate | undefined>;
+    /** Rereads zcp's local status without refreshing releases or starting an update. Never fails. */
+    readonly reread: Effect.Effect<void>;
     /** Runs `zcp mate status` now and updates {@link current}. Never fails. */
     readonly refresh: Effect.Effect<void>;
     /**
@@ -159,6 +161,7 @@ export interface ZeropsMateUpdateOptions {
   readonly watch?: (
     dir: string,
     listener: (event: string, name: string | null) => void,
+    onError: () => void,
   ) => { readonly close: () => void };
   readonly recoverAdmission?: Effect.Effect<void> | undefined;
   /** Absent where this server cannot drain itself: a Mate needing a restart is never restarted. */
@@ -422,6 +425,19 @@ export const make = (options: ZeropsMateUpdateOptions) =>
           ),
         ),
       );
+    const reread: Effect.Effect<void> = options.isZeropsEnvironment
+      ? Effect.suspend(() => readStatus({ local: true })).pipe(
+          Effect.catchTags({
+            ZeropsCliNotFound: () =>
+              Effect.logWarning("zerops mate update: local status unavailable").pipe(
+                Effect.andThen(setReading(undefined)),
+              ),
+            ZeropsCliFailed: () =>
+              Effect.logWarning("zerops mate update: local status read failed"),
+          }),
+        )
+      : Effect.void;
+
     const refresh: Effect.Effect<void> = options.isZeropsEnvironment
       ? Effect.suspend(() => readStatus({ refresh: true })).pipe(
           Effect.catchTags({
@@ -447,12 +463,61 @@ export const make = (options: ZeropsMateUpdateOptions) =>
         )
       : SubscriptionRef.get(state);
 
-    // The first check runs synchronously ("at start") so a descriptor read
-    // right after boot already sees a real answer; only the hourly repeats
-    // run in the background.
-    yield* options.isZeropsEnvironment
-      ? readStatus({ local: true }).pipe(Effect.catch(() => Effect.void))
-      : Effect.void;
+    // zcp's update state and its release manifest cache both change outside
+    // this server (an update, or a refresh by the Mate's agent, a shell or
+    // zcp's boot): a change re-reads the cache-served `mate status --local`.
+    const watched = [options.stateFile, options.manifestFile].filter(
+      (file): file is string => file !== undefined,
+    );
+    if (watched.length > 0 && options.isZeropsEnvironment) {
+      const notices = yield* Queue.unbounded<"change" | "error">();
+      const watch =
+        options.watch ??
+        ((dir, listener, onError) => NodeFS.watch(dir, listener).on("error", onError));
+      for (const dir of new Set(watched.map((file) => NodePath.dirname(file)))) {
+        const names = new Set(
+          watched
+            .filter((file) => NodePath.dirname(file) === dir)
+            .map((file) => NodePath.basename(file)),
+        );
+        yield* Effect.acquireRelease(
+          Effect.try(() =>
+            watch(
+              dir,
+              (_event, name) => {
+                if (name !== null && names.has(name)) Queue.offerUnsafe(notices, "change");
+              },
+              () => {
+                Queue.offerUnsafe(notices, "error");
+              },
+            ),
+          ).pipe(
+            Effect.catch(() =>
+              Effect.logWarning("zerops mate update: status watch could not start", { dir }).pipe(
+                Effect.as(undefined),
+              ),
+            ),
+          ),
+          (watcher) => Effect.sync(() => watcher?.close()),
+        );
+      }
+      // Queue writes during the initial read; consume them only after it has published.
+      yield* reread;
+      yield* forkParked(
+        Effect.gen(function* () {
+          const first = yield* Queue.take(notices);
+          // One write fires several events a few milliseconds apart: one re-read.
+          yield* Effect.sleep(Duration.millis(100));
+          const batch = [first, ...(yield* Queue.clear(notices))];
+          if (batch.includes("error")) {
+            yield* Effect.logWarning("zerops mate update: status watch failed");
+          }
+          if (batch.includes("change")) yield* reread;
+        }).pipe(Effect.forever),
+      );
+    } else {
+      yield* reread;
+    }
     if (options.policy !== undefined && options.isZeropsEnvironment) {
       yield* forkParked(
         options.policy.changes.pipe(
@@ -466,46 +531,6 @@ export const make = (options: ZeropsMateUpdateOptions) =>
                   left.value.enabled === right.value.enabled)),
           ),
           Stream.runForEach(() => refresh),
-        ),
-      );
-    }
-    // zcp's update state and its release manifest cache both change outside
-    // this server (an update, or a refresh by the Mate's agent, a shell or
-    // zcp's boot): a change re-reads the cache-served `mate status --local`.
-    const watched = [options.stateFile, options.manifestFile].filter(
-      (file): file is string => file !== undefined,
-    );
-    if (watched.length > 0 && options.isZeropsEnvironment) {
-      const notices = yield* Queue.unbounded<void>();
-      const watch =
-        options.watch ?? ((dir, listener) => NodeFS.watch(dir, listener).on("error", () => {}));
-      for (const dir of new Set(watched.map((file) => NodePath.dirname(file)))) {
-        const names = new Set(
-          watched
-            .filter((file) => NodePath.dirname(file) === dir)
-            .map((file) => NodePath.basename(file)),
-        );
-        yield* Effect.acquireRelease(
-          Effect.sync(() => {
-            try {
-              return watch(dir, (_event, name) => {
-                if (name !== null && names.has(name)) Queue.offerUnsafe(notices, undefined);
-              });
-            } catch {
-              return undefined;
-            }
-          }),
-          (watcher) => Effect.sync(() => watcher?.close()),
-        );
-      }
-      yield* forkParked(
-        Queue.take(notices).pipe(
-          // One write fires several events a few milliseconds apart: one re-read.
-          Effect.andThen(Effect.sleep(Duration.millis(100))),
-          Effect.andThen(Queue.clear(notices)),
-          Effect.andThen(Effect.suspend(() => readStatus({ local: true }))),
-          Effect.catch(() => Effect.void),
-          Effect.forever,
         ),
       );
     }
@@ -526,6 +551,7 @@ export const make = (options: ZeropsMateUpdateOptions) =>
     return {
       current: SubscriptionRef.get(state),
       changes: SubscriptionRef.changes(state),
+      reread,
       refresh,
       check,
       restart,

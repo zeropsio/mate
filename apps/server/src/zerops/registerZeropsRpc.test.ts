@@ -41,6 +41,7 @@ const stubMateUpdateService = (
 ) => ({
   current,
   changes: Stream.make(undefined),
+  reread: Effect.void,
   refresh,
   check,
   restart,

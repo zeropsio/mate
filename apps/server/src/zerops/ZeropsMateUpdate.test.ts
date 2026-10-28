@@ -11,10 +11,11 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
-import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
+import { EnvironmentId, type ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 
 import {
   ZCP_SELF_RESTART_SINCE,
@@ -24,6 +25,8 @@ import {
   type ZeropsCli,
 } from "./ZeropsCli.ts";
 import { make } from "./ZeropsMateUpdate.ts";
+import { mateOverviewFeed } from "./ZeropsHqLink.ts";
+import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import type { MateStatusResult } from "./zeropsMateUpdateParse.ts";
 
 const STATUS_RESULT: MateStatusResult = {
@@ -272,6 +275,131 @@ describe("ZeropsMateUpdate hears zcp's own reads", () => {
         expect(reads.every((options) => options?.local === true)).toBe(true);
       }).pipe(Effect.scoped),
   );
+});
+
+it.effect(
+  "A status settled between the Mate's first status read and its watch start still reaches HQ.",
+  () =>
+    Effect.gen(function* () {
+      let listener: ((event: string, name: string | null) => void) | undefined;
+      let watchedAtFirstRead = false;
+      let calls = 0;
+      const switching: MateStatusResult = {
+        ...STATUS_RESULT,
+        updater: {
+          protocol: 1,
+          rollbackCompatible: true,
+          phase: "switching",
+          runningVersion: "0.16.17",
+        },
+      };
+      const settled: MateStatusResult = {
+        ...switching,
+        updater: {
+          protocol: 1,
+          rollbackCompatible: true,
+          phase: "updated",
+          runningVersion: "0.16.18",
+        },
+      };
+      const service = yield* make({
+        cli: stubCli(() =>
+          Effect.sync(() => {
+            calls += 1;
+            if (calls !== 1) return settled;
+            watchedAtFirstRead = listener !== undefined;
+            // zcp settles after this read captured switching, before startup completes.
+            listener?.("rename", "state.json");
+            return switching;
+          }),
+        ),
+        isZeropsEnvironment: true,
+        stateFile: "/mate/state.json",
+        watch: (_dir, onChange) => {
+          listener = onChange;
+          return {
+            close: () => {
+              listener = undefined;
+            },
+          };
+        },
+      });
+      expect(watchedAtFirstRead).toBe(true);
+      const feed = yield* mateOverviewFeed({
+        environmentId: EnvironmentId.make("env-1"),
+        serverVersion: "0.16.18",
+        threads: Effect.succeed([]),
+        crew: { snapshot: Stream.make(CREW_OFF_SNAPSHOT) },
+        agentAuth: {
+          latest: Effect.succeed({ available: true, agents: [] }),
+          changes: Stream.never,
+        },
+        agentLogin: { latest: Effect.succeed({}), changes: Stream.never },
+        logins: { latest: Effect.succeed([]), changes: Stream.never },
+        update: service,
+        domainEvents: Stream.never,
+      });
+      const published = yield* feed.changes.pipe(
+        Stream.mapEffect(() => feed.overview),
+        Stream.filter(
+          (overview) =>
+            Option.isSome(overview) &&
+            overview.value.identity.update?.automatic?.phase === "updated",
+        ),
+        Stream.runHead,
+        Effect.forkChild,
+      );
+      yield* TestClock.adjust(Duration.seconds(1));
+      const heard = yield* Fiber.join(published);
+      expect(
+        Option.isSome(heard) &&
+          Option.isSome(heard.value) &&
+          heard.value.value.identity.update?.automatic,
+      ).toEqual(settled.updater);
+      expect(calls).toBe(2);
+    }).pipe(Effect.scoped),
+);
+
+it.effect.each([
+  { failure: "initial read", warning: "zerops mate update: local status read failed" },
+  { failure: "watch setup", warning: "zerops mate update: status watch could not start" },
+  { failure: "watch error", warning: "zerops mate update: status watch failed" },
+  { failure: "watched read", warning: "zerops mate update: local status read failed" },
+])("logs a $failure failure without fabricating an update", ({ failure, warning }) => {
+  const messages: Array<unknown> = [];
+  const logger = Logger.make(({ message }) => {
+    messages.push(message);
+  });
+  return Effect.gen(function* () {
+    let onChange: ((event: string, name: string | null) => void) | undefined;
+    let onError: (() => void) | undefined;
+    let calls = 0;
+    const service = yield* make({
+      isZeropsEnvironment: true,
+      stateFile: "/mate/state.json",
+      cli: stubCli(() =>
+        Effect.suspend(() => {
+          calls += 1;
+          return failure === "initial read" || (failure === "watched read" && calls > 1)
+            ? Effect.fail(new ZeropsCliFailed({ command: "zcp", reason: "timed out" }))
+            : Effect.succeed(STATUS_RESULT);
+        }),
+      ),
+      watch: (_dir, listener, error) => {
+        if (failure === "watch setup") throw new Error("watch unavailable");
+        onChange = listener;
+        onError = error;
+        return { close: () => {} };
+      },
+    });
+    const before = yield* service.current;
+    if (failure === "watch error") onError?.();
+    if (failure === "watched read") onChange?.("rename", "state.json");
+    yield* TestClock.adjust(Duration.seconds(1));
+    expect(messages.flat()).toContain(warning);
+    expect(yield* service.current).toEqual(before);
+    expect(before?.latest).toBe(failure === "initial read" ? undefined : "0.8.1");
+  }).pipe(Effect.scoped, Effect.provide(Logger.layer([logger], { mergeWithExisting: false })));
 });
 
 describe("a Mate that only a restart gets current", () => {
