@@ -113,6 +113,47 @@ describe("changeReview: the verdict comes first (R2)", () => {
       },
     ],
     [
+      "a draft again: HQ couldn't check the push in time",
+      { pull: pull({ ready: false, draftReason: "notes_timed_out" }), commits: 3 },
+      {
+        state: "ready",
+        tone: "quiet",
+        title: "Draft",
+        why: "HQ couldn't check the latest push in time, so Nova needs to describe it again · No conflicts with main · 3 commits",
+        fix: {
+          verb: "describe it again",
+          problem: {
+            what: "Change #2 is a draft again: HQ couldn't check its latest push in time",
+            ask: "Describe the change again as it is now.",
+          },
+        },
+      },
+    ],
+    [
+      "a draft again: HQ couldn't read the push",
+      { pull: pull({ ready: false, draftReason: "notes_unread" }), commits: 3 },
+      {
+        title: "Draft",
+        why: "HQ couldn't read the latest push, so Nova needs to describe it again · No conflicts with main · 3 commits",
+        fix: {
+          verb: "describe it again",
+          problem: {
+            what: "Change #2 is a draft again: HQ couldn't read its latest push",
+            ask: "Describe the change again as it is now.",
+          },
+        },
+      },
+    ],
+    [
+      "a draft for a reason this client does not know: no extra words",
+      { pull: pull({ ready: false, draftReason: "later_reason" }), commits: 3 },
+      {
+        title: "Draft",
+        why: "Nova hasn't described its latest work · No conflicts with main · 3 commits",
+        fix: undefined,
+      },
+    ],
+    [
       "conflict, the files named",
       {
         pull: pull({ mergeability: "conflicting" }),

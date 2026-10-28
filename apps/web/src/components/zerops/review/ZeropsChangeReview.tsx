@@ -18,6 +18,7 @@
  */
 import {
   changeAskPrompt,
+  changeCommitRows,
   changeHandedPrompt,
   changeRemarks,
   changeReview,
@@ -533,6 +534,14 @@ function ChangeReviewData({
         onClose();
       }}
       others={flow === undefined ? NO_OTHERS : otherOpenChanges(pull, flow.pullRequests)}
+      landedTitle={
+        pull.corePush === undefined
+          ? undefined
+          : flow?.merged.find(
+              (other) =>
+                other.repository === pull.repository && other.number === pull.corePush?.landed,
+            )?.title
+      }
       onOpenChange={(number) => {
         const other = {
           kind: "change",
@@ -667,6 +676,11 @@ export interface ChangeReviewViewProps {
    * review; none where it is the Mate's only one there.
    */
   readonly others?: ReadonlyArray<Pick<FlowPullRequest, "number" | "title">> | undefined;
+  /**
+   * The title of the merged change HQ last brought `main` in after (`corePush.landed`), where the
+   * flow holds it: HQ's push names it in the commits.
+   */
+  readonly landedTitle?: string | undefined;
   /** Opens the review of the Mate's other open change `number` in the repository. */
   readonly onOpenChange?: ((number: number) => void) | undefined;
   /** Keeps the words on the change and hands them to its Mate, who changes the code. */
@@ -690,9 +704,21 @@ export interface ChangeReviewViewProps {
 export function ChangeReviewView(props: ChangeReviewViewProps) {
   const { pull, readout, mate, press, closing } = props;
   const read = readout.kind === "read" ? readout.value : undefined;
-  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+  const listed: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
     props.commits ??
     (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
+  // HQ's merge of main on its branch reads as HQ's push, never as its Mate's commit.
+  const commits: ReadoutPart<ReadonlyArray<ChangeReadoutCommit>> =
+    listed.kind === "read"
+      ? {
+          kind: "read",
+          value: changeCommitRows({
+            commits: listed.value,
+            corePush: pull.corePush,
+            landedTitle: props.landedTitle,
+          }),
+        }
+      : listed;
   const history = useReviewFold();
   // A stage picks a merge up only where it deploys merges from `main` (`mainStagesOf`): one that
   // never deployed from it is promised nothing (Larkspur, 2026-10-28).

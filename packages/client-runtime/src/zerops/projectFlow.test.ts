@@ -104,6 +104,44 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
     },
   );
 
+  it.each([
+    ["a change HQ never pushed to, described at its head", {}, {}],
+    [
+      "a stacked change HQ brought main into, a draft again",
+      {
+        corePush: {
+          at: "2026-10-02T09:30:00.000Z",
+          from: "d".repeat(40),
+          head: "e".repeat(40),
+          landed: 3,
+          squash: "f".repeat(40),
+        },
+        ready: false,
+        draftReason: "notes_timed_out",
+      },
+      {
+        corePush: {
+          at: "2026-10-02T09:30:00.000Z",
+          from: "d".repeat(40),
+          head: "e".repeat(40),
+          landed: 3,
+          squash: "f".repeat(40),
+        },
+        draftReason: "notes_timed_out",
+      },
+    ],
+  ] as const)(
+    "carries HQ's own push and why it is a draft again from %s",
+    (_name, over, carried) => {
+      const pull = flowChange(change(over), HQ);
+      expect({ corePush: pull.corePush, draftReason: pull.draftReason }).toEqual({
+        corePush: undefined,
+        draftReason: undefined,
+        ...carried,
+      });
+    },
+  );
+
   // zcp names a lease's repository by the address git reaches it at (spec-mate §2.8a.3 `repo`):
   // for a repository HQ keeps, `<HQ>/git/<appId>/<repo>`, which a lease's change is matched by.
   it("names where git reaches a change's repository at HQ", () => {

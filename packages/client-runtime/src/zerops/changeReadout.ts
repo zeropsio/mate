@@ -7,7 +7,7 @@
  *
  * @module changeReadout
  */
-import type { ChangeReview, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeReview, HqChange, HqCorePush } from "@t3tools/shared/hqChanges";
 import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 
 import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
@@ -26,6 +26,34 @@ export interface ChangeReadoutCommit {
   readonly sha: string;
   readonly subject: string;
   readonly at: string;
+}
+
+/**
+ * HQ's merge of `main` into a change stacked on one that merged, in words: HQ's push, never its
+ * Mate's. The merged change by its title where it was read, else by its number.
+ */
+export function corePushWords(push: HqCorePush, landedTitle: string | undefined): string {
+  const landed = landedTitle === undefined ? `#${String(push.landed)}` : `“${landedTitle}”`;
+  return `HQ brought main in after ${landed} merged`;
+}
+
+/**
+ * A change's commits as its review lists them: the merge commit HQ pushed on its branch
+ * (`corePush.head`, authored by HQ's Core) reads as HQ's push, at the time HQ pushed it.
+ */
+export function changeCommitRows(input: {
+  readonly commits: ReadonlyArray<ChangeReadoutCommit>;
+  readonly corePush: HqCorePush | undefined;
+  /** The title of the change whose merge HQ brought in, where it was read. */
+  readonly landedTitle: string | undefined;
+}): ReadonlyArray<ChangeReadoutCommit> {
+  const push = input.corePush;
+  if (push === undefined) return input.commits;
+  return input.commits.map((commit) =>
+    commit.sha === push.head
+      ? { sha: commit.sha, subject: corePushWords(push, input.landedTitle), at: push.at }
+      : commit,
+  );
 }
 
 export interface ChangeReadout {
