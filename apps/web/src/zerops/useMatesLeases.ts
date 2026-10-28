@@ -9,9 +9,6 @@
  * made no Zerops call reads `undefined` leases: not read, never none. The lifecycles are demanded
  * only while a list that shows them is drawn, and the answer keeps one value while the leases stay
  * the same, so a Zerops call that changes nothing of them draws nothing again.
- *
- * Each Mate's chats bound to a lease (`ThreadLease`) say, by their titles, what each workspace is
- * for (`leaseChatsAtom`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
@@ -20,22 +17,19 @@ import {
   poolPairsOf,
   standInsOf,
 } from "@t3tools/client-runtime/zerops/serviceMap";
-import type { MatePartLeaseChat } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
-import { leaseChatsAtom } from "./useLeaseChats";
 import { zeropsFeeds } from "./feeds";
 
-/** A Mate's leases as read, the pairs its envelope keys by a dev pool, and its chats on leases. */
+/** A Mate's leases as read, the pairs its envelope keys by a dev pool, and its stand-ins. */
 export interface MateLeasesRead {
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   readonly poolPairs: ReadonlyArray<PoolPair>;
   /** The services its envelope marks as a repository's stand-in, which open nothing. */
   readonly standIns: ReadonlyArray<string>;
-  readonly leaseChats: ReadonlyArray<MatePartLeaseChat>;
 }
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
@@ -54,12 +48,10 @@ const matesLeasesAtom = Atom.family((key: string) => {
           input: { threadId: thread.threadId },
         }),
       );
-      const leaseChats = get(leaseChatsAtom(thread.environmentId));
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
         standIns: standInsOf(lifecycle),
-        leaseChats,
       };
     }
     return read;

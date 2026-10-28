@@ -136,7 +136,6 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
-  leaseChats: leases[mate.candidate.project.id]?.leaseChats,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
