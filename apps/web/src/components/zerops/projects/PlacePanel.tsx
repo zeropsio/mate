@@ -24,7 +24,12 @@ import { useProjectRoleOffers } from "~/zerops/usePlatformCapabilities";
 import { useAccountOrgId, useDetailDemand, useProjection } from "~/zerops/ZeropsAccountData";
 
 import { PlaceDot, PlaceWords, ServicesHeld } from "./ProjectCards";
-import { panelAddresses, placeLabel, type PlaceLine } from "./projectCard.logic";
+import {
+  panelAddresses,
+  placeLabel,
+  type PlaceLine,
+  type PlacePanelService,
+} from "./projectCard.logic";
 import { Button } from "~/components/ui/button";
 
 /** Outside an account, or before its place is named: read as its listing says it. */
@@ -58,12 +63,14 @@ function usePlaceAddresses(orgId: string | null, projectId: string | undefined):
   return place;
 }
 
-/** One service of a place, as the platform reads it. */
-export interface PlacePanelService {
-  readonly hostname: string;
-  /** Running; stopped; or failed, as the place's serving says it. */
-  readonly state: "up" | "stopped" | "down";
-}
+export type { PlacePanelService } from "./projectCard.logic";
+
+/** What a service that is not up says to a screen reader beside its name. */
+const SERVICE_STATE_WORDS: Record<Exclude<PlacePanelService["state"], "up">, string> = {
+  idle: " nothing deployed",
+  stopped: " stopped",
+  down: " failed",
+};
 
 export interface PlacePanelModel {
   readonly line: PlaceLine;
@@ -80,13 +87,29 @@ export interface PlacePanelModel {
   readonly services: ReadonlyArray<PlacePanelService>;
 }
 
-export function PlacePanel({
-  model,
-  groupId,
-  actions,
-  onOpenLine,
-  roomy = false,
-}: {
+export function PlacePanel(props: PlacePanelProps) {
+  // Nothing deployed there: its name and its line alone — no services shown as up, no address
+  // doors, no actions on what it does not run.
+  if (props.model.line.nothingDeployed === true) return <EmptyPlacePanel line={props.model.line} />;
+  return <ServingPlacePanel {...props} />;
+}
+
+function EmptyPlacePanel({ line }: { readonly line: PlaceLine }) {
+  const label = placeLabel(line);
+  return (
+    <div aria-label={label} className="ov-panel" data-zerops-surface="place-panel">
+      <div className="ov-panel-head">
+        <b className="ov-panel-name">{label}</b>
+      </div>
+      <p className="ov-panel-state">
+        <PlaceDot dot={line.dot} />
+        <PlaceWords line={line} />
+      </p>
+    </div>
+  );
+}
+
+interface PlacePanelProps {
   readonly model: PlacePanelModel;
   /** Its application, whose places the addresses sheet's switch offers. */
   readonly groupId: string;
@@ -104,19 +127,28 @@ export function PlacePanel({
    * manages the rest), *Manage addresses* otherwise — once it runs something at an address
    * (`panelAddresses`); a stage's address heads its panel, and its page manages it. One name for
    * one door: the run's card said "Put it on your domain" for production and "Manage addresses"
-   * for a stage with no address yet.
+   * for a stage with no address yet. Neither stands until something serves there.
    */
   readonly roomy?: boolean;
-}) {
+}
+
+function ServingPlacePanel({
+  model,
+  groupId,
+  actions,
+  onOpenLine,
+  roomy = false,
+}: PlacePanelProps) {
   const { line } = model;
   const label = placeLabel(line);
   const orgId = useAccountOrgId();
   const { projectId } = line;
+  const runs = model.version !== undefined || line.dot === "running";
   const said = panelAddresses({
     kind: line.kind,
     listed: line.addresses,
     place: usePlaceAddresses(orgId, projectId),
-    runs: model.version !== undefined || line.dot === "running",
+    runs,
   });
   const { head, doors } = said;
   const cardDoor = line.kind === "production" && said.door;
@@ -198,7 +230,7 @@ export function PlacePanel({
               <i aria-hidden="true" className="ov-service-dot" />
               {service.hostname}
               {service.state === "up" ? null : (
-                <span className="sr-only">{service.state === "down" ? " failed" : " stopped"}</span>
+                <span className="sr-only">{SERVICE_STATE_WORDS[service.state]}</span>
               )}
             </span>
           ))}
@@ -238,7 +270,7 @@ export function PlacePanel({
             Put it on your domain
           </Button>
         )}
-        {manage === undefined || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
+        {manage === undefined || !runs || !(roomy || (cardDoor && !said.offerDomain)) ? null : (
           <Button
             onClick={() => {
               manage();

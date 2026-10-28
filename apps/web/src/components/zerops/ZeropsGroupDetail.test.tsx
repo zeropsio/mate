@@ -321,8 +321,8 @@ describe("ZeropsGroupPane", () => {
   it("draws every line's content", () => {
     const markup = render();
 
-    expect(markup).toContain("stage");
-    expect(markup).toContain("production");
+    expect(markup).toContain("Stage");
+    expect(markup).toContain("Production");
     expect(markup).toContain("3f9c1b2");
   });
 
@@ -346,7 +346,7 @@ describe("ZeropsGroupPane", () => {
       withheldNotice: (projectId) => (projectId === "prod" ? CHECKING : null),
     });
 
-    expect(markup).toContain("production");
+    expect(markup).toContain("Production");
     expect(markup).toContain(CHECKING);
     expect(markup).not.toContain("Harbor live");
     expect(markup).not.toContain("9e8d7c6");
@@ -458,7 +458,7 @@ describe("ZeropsGroupPane", () => {
           releaseOffered: true,
         }),
       });
-      expect(markup).toContain("No release yet");
+      expect(markup).toContain("Waiting for its first release");
       expect(markup).not.toContain("Put it live");
     });
   });
@@ -510,7 +510,7 @@ describe("ZeropsGroupPane", () => {
       {
         name: "none once the platform says nothing runs",
         deployment: NONE,
-        expected: "Nothing deployed yet",
+        expected: "Not deployed yet",
       },
     ])("$name", ({ deployment, expected }) => {
       const markup = render(
@@ -520,7 +520,7 @@ describe("ZeropsGroupPane", () => {
       const document = new Window().document;
       document.body.innerHTML = markup;
       const row = Array.from(document.querySelectorAll("button")).find((button) =>
-        button.textContent?.startsWith("stage"),
+        button.textContent?.startsWith("Stage"),
       );
       expect(row?.textContent).toContain(expected);
     });

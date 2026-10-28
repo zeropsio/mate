@@ -431,9 +431,10 @@ function productionNote(input: {
   if (input.releasing !== undefined)
     return { text: `Releasing ${input.releasing}…`, review: false };
   if (input.productionRuns === "empty") {
+    // Its row says it is not released yet; the note says what that waits for, never the same again.
     return input.mainHasCode === false
-      ? { text: "No release yet — waiting for the first merge", review: false }
-      : { text: "No release yet", review: input.releaseOffered };
+      ? { text: "Waiting for the first merge", review: false }
+      : { text: "Waiting for its first release", review: input.releaseOffered };
   }
   if (input.waiting.count > 0)
     return {

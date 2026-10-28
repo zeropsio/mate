@@ -81,6 +81,24 @@ it("a card names what its production runs, its address and its services", () => 
   expect(text).toContain("app db worker failed");
 });
 
+it("a service holding no deploy is never shown as up beside one that runs", () => {
+  const html = renderToStaticMarkup(
+    <PlacePanel
+      actions={null}
+      groupId="shop"
+      model={{
+        ...modelOf([]),
+        services: [
+          { hostname: "app", state: "up" },
+          { hostname: "flip", state: "idle" },
+        ],
+      }}
+    />,
+  );
+  const text = html.replace(/<[^>]+>/gu, " ").replace(/\s+/gu, " ");
+  expect(text).toContain("app flip nothing deployed");
+});
+
 describe("a place's addresses on its panel", () => {
   const unmounts: Array<() => void> = [];
   afterEach(() => {
@@ -177,6 +195,85 @@ describe("a place's addresses on its panel", () => {
     const page = await mount("production", inAccount({ prod: place([]) }), true);
     expect(button(page, "Put it on your domain")).not.toBeNull();
     expect(button(page, "Manage addresses")).not.toBeNull();
+  });
+
+  // The live audit (2026-10-28): Larkspur's empty production stood with green service dots
+  // and *Manage addresses*, like a live one.
+  it.each(["production", "stage"] as const)(
+    "An environment with nothing deployed shows its title and its state word only: %s",
+    async (kind) => {
+      const projectId = kind === "production" ? "prod" : "stage";
+      const model = modelOf([], kind);
+      const container = document.createElement("div");
+      document.body.append(container);
+      vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+      const root = createRoot(container);
+      await act(async () => {
+        root.render(
+          inAccount({ [projectId]: place([]) })(
+            <PlacePanel
+              actions={<button type="button">History</button>}
+              groupId="shop"
+              model={{
+                ...model,
+                version: undefined,
+                line: {
+                  ...model.line,
+                  dot: "none",
+                  words: [kind === "production" ? "Not released yet" : "Not deployed yet"],
+                  nothingDeployed: true,
+                },
+                services: [
+                  { hostname: "db", state: "up" },
+                  { hostname: "flip", state: "idle" },
+                ],
+              }}
+              roomy
+            />,
+          ),
+        );
+      });
+      unmounts.push(() => {
+        act(() => {
+          root.unmount();
+        });
+        container.remove();
+      });
+      expect(container.textContent).toBe(
+        kind === "production" ? "ProductionNot released yet" : "StageNot deployed yet",
+      );
+    },
+  );
+
+  it("offers no Manage addresses on a page until something serves there", async () => {
+    const model = modelOf(LISTED);
+    const container = document.createElement("div");
+    document.body.append(container);
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const root = createRoot(container);
+    await act(async () => {
+      root.render(
+        inAccount({ prod: place([]) })(
+          <PlacePanel
+            actions={null}
+            groupId="shop"
+            model={{
+              ...model,
+              version: undefined,
+              line: { ...model.line, dot: "releasing", words: ["Releasing v0.1.0"] },
+            }}
+            roomy
+          />,
+        ),
+      );
+    });
+    unmounts.push(() => {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    });
+    expect(button(container, "Manage addresses")).toBeNull();
   });
 
   it("offers no Manage addresses outside an account, where no sheet can read a place", async () => {

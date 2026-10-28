@@ -46,7 +46,6 @@ import {
   cannotTellWhatRuns,
   buildZeropsGroupTree,
   heldGroupLabel,
-  deployWord,
   flowVerbKey,
   flowVerbLabel,
   projectNameInApp,
@@ -88,7 +87,6 @@ import {
   stopFailedDeploys,
   stopKeyGap,
   stopTierStops,
-  stopTone,
   stopVerdict,
   stopView,
   type Deployment,
@@ -178,8 +176,11 @@ import {
   placeServiceRows,
   placeStatus,
   placeTitle,
+  environmentTitle,
   rollBackTarget,
+  stopRowSays,
 } from "./place/place.logic";
+import { environmentSlotWord } from "./projects/projectCard.logic";
 
 /** A stop's tone as a dot's. Neutral wears none: nothing has been deployed. */
 const STOP_DOT_TONE: Record<GroupRowTone, ServiceStatusToneId | undefined> = {
@@ -402,12 +403,24 @@ export function ZeropsRuntimeStops({
             row: undefined,
             nowMs: 0,
           });
+          const says = stopRowSays(stop.tier, view);
           const words = (
             <>
-              <span className="text-sm font-medium">{stop.name}</span>
-              <ZeropsRoleTag label={stop.tier === "production" ? "prod" : "stage"} />
-              <Badge dot tone={STATUS_BADGE_TONE[STOP_DOT_TONE[view.tone] ?? "off"]}>
-                {view.line}
+              <span className="text-sm font-medium">{environmentTitle(stop.tier, stop.name)}</span>
+              {says.version === undefined ? null : (
+                <span className="font-mono text-xs text-muted-foreground tabular-nums">
+                  {says.version}
+                </span>
+              )}
+              <Badge
+                dot
+                tone={
+                  STATUS_BADGE_TONE[
+                    says.tone === undefined ? "off" : (STOP_DOT_TONE[says.tone] ?? "off")
+                  ]
+                }
+              >
+                {says.word}
               </Badge>
             </>
           );
@@ -764,7 +777,7 @@ export function ZeropsGroupPane({
                       {slot.name}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-                      {slot.line}
+                      {environmentSlotWord(slot.tier, slot.line)}
                     </span>
                     {slot.add ? (
                       <Button
@@ -2042,10 +2055,6 @@ export function detailTrail(
 
 /** A section with nothing in it yet, and the way to put something there. */
 /** A stop's version column shares its page's runtime answer, including a failure or wait. */
-function stopLineVersion(deployment: Shown<Deployment> | undefined, row: EnvironmentRow): string {
-  return stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row, nowMs: 0 }).line;
-}
-
 function StopLine(props: {
   readonly environment: EnvironmentRow;
   readonly groupId: string;
@@ -2076,7 +2085,7 @@ function GitStopLine({
         });
       }}
     >
-      {environment.name}
+      {environmentTitle(environment.tier, environment.name)}
     </button>
   );
 }
@@ -2101,14 +2110,23 @@ function ZeropsStopLine({
   const deployments = useStopDeploymentsShown(
     useMemo(() => (projectId === undefined ? [] : [projectId]), [projectId]),
   );
-  // The one rule every surface words a stop by (`stopTone`), with the platform's answer beside it.
+  // The platform's answer, said in the words its card and Sites say a place in (`stopRowSays`).
   const deployment = projectId === undefined ? undefined : deployments.get(projectId);
-  const tone = stopTone(deployment, environment);
-  // No word for what runs and a first deploy asked for: the line its cell and its page say.
-  const said = deployWord(tone);
-  const firstWord = said === undefined ? firstDeployLine(firstDeploy) : undefined;
-  const word = said ?? firstWord;
-  const dotTone = firstWord === undefined ? STOP_DOT_TONE[tone] : firstDeployTone(firstDeploy);
+  const says = stopRowSays(
+    environment.tier,
+    stopView({ deployment: deployment ?? UNREAD_DEPLOYMENT, row: environment, nowMs: 0 }),
+  );
+  // Nothing known to run and a first deploy asked for: the line its cell and its page say.
+  const settled = says.tone === "good" || says.tone === "pending" || says.tone === "bad";
+  const firstWord = settled ? undefined : firstDeployLine(firstDeploy);
+  const word = firstWord ?? says.word;
+  const dotTone =
+    firstWord === undefined
+      ? says.tone === undefined
+        ? undefined
+        : (STOP_DOT_TONE[says.tone] ?? "off")
+      : firstDeployTone(firstDeploy);
+  const title = environmentTitle(environment.tier, environment.name);
   const open = useCallback(() => {
     void navigate({
       to: "/group/$groupId/$projectId",
@@ -2118,7 +2136,9 @@ function ZeropsStopLine({
   if (notice !== null) {
     return (
       <li className="flex min-w-0 items-baseline gap-3 px-2 py-2">
-        <span className="shrink-0 text-sm font-medium text-foreground">{environment.tier}</span>
+        <span className="shrink-0 text-sm font-medium text-foreground">
+          {environmentTitle(environment.tier, environment.tier)}
+        </span>
         <span className="truncate text-xs text-muted-foreground">{notice}</span>
         {projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       </li>
@@ -2129,22 +2149,23 @@ function ZeropsStopLine({
       <button
         // Fixed tracks, not a right-ragged flex: a version and a state that
         // start at a different x on every row cannot be read down the column.
-        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_7.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
+        // The state's track holds its longest word whole: the run's column said "Nothing depl…".
+        className="grid w-full min-w-0 cursor-pointer grid-cols-[minmax(0,1fr)_6rem_10.5rem_1rem] items-center gap-3 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted"
         data-zerops-environment-id={environment.id}
         onClick={open}
         type="button"
       >
-        <span className="min-w-0 truncate text-sm font-medium text-foreground">
-          {environment.name}
-        </span>
+        <span className="min-w-0 truncate text-sm font-medium text-foreground">{title}</span>
         <span className="truncate text-end font-mono text-xs text-muted-foreground tabular-nums">
-          {stopLineVersion(deployment, environment)}
+          {says.version}
         </span>
         {/* Never a wordless dot on its own: a colour that has to be learnt is
             a colour nobody reads, and a screen reader gets nothing from it. */}
         {/* The dot carries the state; the word supports it. Unsized, it
             inherited 16px and came out larger than the name it annotates. */}
-        {word === undefined || dotTone === undefined ? null : (
+        {dotTone === undefined ? (
+          <span className="text-xs text-muted-foreground">{word}</span>
+        ) : (
           <span className="shrink-0 text-xs text-muted-foreground">
             <Badge dot tone={STATUS_BADGE_TONE[dotTone]}>
               {word}

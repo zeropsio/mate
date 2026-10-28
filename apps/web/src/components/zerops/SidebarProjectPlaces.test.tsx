@@ -372,7 +372,7 @@ describe("the stages in the globe's popover", () => {
     const container = await mount(
       panel({ stages: stageMenu({ stages: [stageOf("stage")], creating: [], nowMs: 0 }) }),
     );
-    expect(heads(container)).toEqual(["stage3f9c1b2Deployed"]);
+    expect(heads(container)).toEqual(["stage3f9c1b2Running"]);
     expect(hosts(container)).toEqual(["stage.example.app"]);
     expect(doors(container).map((door) => door.getAttribute("href"))).toEqual([
       "https://app.zerops.io/project/shop-stage",
@@ -394,7 +394,7 @@ describe("the stages in the globe's popover", () => {
     });
     vi.setSystemTime(new Date("2026-09-29T12:00:00Z"));
     const container = await mount(element);
-    expect(heads(container)[0]).toContain("Deployed 3 h ago");
+    expect(heads(container)[0]).toContain("Running · deployed 3 h ago");
   });
 
   it("holds several stages, each a group with its links, its fix and its own Open in Zerops", async () => {
@@ -410,7 +410,7 @@ describe("the stages in the globe's popover", () => {
       nowMs: 0,
     });
     const container = await mount(panel({ stages: model }));
-    expect(heads(container)).toEqual(["stage3f9c1b2Deployed", "qa3f9c1b2Deploy failed"]);
+    expect(heads(container)).toEqual(["stage3f9c1b2Running", "qa3f9c1b2Deploy failed"]);
     expect(hosts(container)).toEqual(["stage.example.app", "qa.example.app"]);
     expect(texts(container, "sidebar-project-sites-note")).toEqual([
       "The last deploy failed. 3f9c1b2 is still serving.",

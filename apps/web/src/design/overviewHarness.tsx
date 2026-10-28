@@ -511,6 +511,35 @@ const PROJECTS: ReadonlyArray<Project> = [
     notLive: 1,
     canPutLive: true,
   }),
+  // (g) Production and a stage set up, nothing deployed to either (Larkspur, 2026-10-28): each
+  // its title and its word, no services shown as up, no address doors.
+  project({
+    id: "larkspur",
+    name: "Flip Studio",
+    mates: [mate("filip", "Filip", "sky", { time: "12m" })],
+    production: {
+      kind: "empty",
+      stop: stop("flip-prod", "production", { state: "empty" }),
+      line: "",
+    },
+    stages: [stop("flip-stage", "stage", { state: "empty" })],
+    chip: { label: "prod", state: "empty" },
+    panels: {
+      production: panel({
+        services: [
+          { hostname: "db", state: "up" },
+          { hostname: "flip", state: "idle" },
+        ],
+      }),
+      stage: panel({
+        services: [
+          { hostname: "db", state: "up" },
+          { hostname: "flip", state: "idle" },
+        ],
+      }),
+    },
+    actions: { production: ["History"] },
+  }),
   // (d) Release failed: v0.1.3 did not go live, production still runs v0.1.2.
   project({
     id: "watchlist",

@@ -24,6 +24,7 @@ import {
   cardSecondWords,
   cardPeople,
   cardReady,
+  environmentSlotWord,
   foldMates,
   foldWords,
   mateChangeForReview,
@@ -34,6 +35,7 @@ import {
   productionBuilding,
   releaseProductionRuns,
   placeLines,
+  placeServices,
   putLiveHasChange,
   readyLine,
   readyTitle,
@@ -1791,5 +1793,126 @@ it("Release overview counts distinguish recorded changes from the commits they c
   });
   expect(ready === undefined ? undefined : readyTitle(ready)).toBe(
     "1 change · 6 commits ready to release",
+  );
+});
+
+// The live audit (2026-10-28): Larkspur's production and stage existed with their services and
+// ran nothing, and their panels stood like live ones — green service dots, *Manage addresses*.
+describe("a place with nothing deployed", () => {
+  const empty = stop({ state: "empty", version: undefined, addresses: [] });
+  it.each([
+    {
+      case: "an empty production, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "empty" },
+      },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "an empty production, as the flow says it",
+      input: { flow: { production: { kind: "empty", stop: empty, line: "" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as the flow says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "an empty stage, as its chip says it",
+      input: {
+        flow: { production: LIVE, stages: [{ ...empty, projectId: "stage", name: "stage" }] },
+        stageChips: new Map([["stage", { label: "stage", state: "empty" } as const]]),
+      },
+      name: "stage",
+      nothing: true,
+    },
+    {
+      case: "a production that does not exist",
+      input: { flow: { production: { kind: "absent" }, stages: [] } },
+      name: "prod",
+      nothing: true,
+    },
+    {
+      case: "a running production",
+      input: { flow: { production: LIVE, stages: [] } },
+      name: "prod",
+      nothing: false,
+    },
+    {
+      case: "a production whose first release is on its way",
+      input: {
+        flow: { production: LIVE, stages: [] },
+        chip: { label: "prod", state: "releasing", next: "v0.1.0" },
+      },
+      name: "prod",
+      nothing: false,
+    },
+  ] as const)(
+    "A place says it runs nothing only where nothing was deployed there: $case",
+    ({ input, name, nothing }) => {
+      const line = placeLines({ ...input, nowMs: NOW }).find((each) => each.name === name);
+      expect(line?.nothingDeployed === true).toBe(nothing);
+    },
+  );
+});
+
+describe("a place's services", () => {
+  it.each([
+    {
+      case: "a runtime running a deploy",
+      status: { hostname: "app", status: "ACTIVE", runtime: true },
+      state: "up",
+    },
+    {
+      case: "a runtime whose container runs and holds no deploy",
+      status: { hostname: "flip", status: "ACTIVE", runtime: true, nothingDeployed: true },
+      state: "idle",
+    },
+    {
+      case: "a database the platform runs",
+      status: { hostname: "db", status: "ACTIVE", runtime: false },
+      state: "up",
+    },
+    {
+      case: "a stopped service",
+      status: { hostname: "app", status: "STOPPED", runtime: true },
+      state: "stopped",
+    },
+    {
+      case: "a failed service",
+      status: { hostname: "app", status: "CONTAINER_FAILED", runtime: true },
+      state: "down",
+      down: ["app"],
+    },
+  ] as const)(
+    "A service is shown as up only where it runs deployed code or the platform's own service: $case",
+    ({ status, state, ...rest }) => {
+      const down = "down" in rest ? rest.down : [];
+      expect(placeServices([status], down)).toEqual([{ hostname: status.hostname, state }]);
+    },
+  );
+});
+
+describe("a tier an application does not have, on its page's column", () => {
+  it.each([
+    { tier: "production", line: "Not added", word: "Not released yet" },
+    { tier: "stage", line: "Not added", word: "Not deployed yet" },
+    {
+      tier: "production",
+      line: "Waiting for the Mate's recipe",
+      word: "Waiting for the Mate's recipe",
+    },
+  ] as const)(
+    "An absent environment says the word its card says, beside its way to add it: $tier, $line",
+    ({ tier, line, word }) => {
+      expect(environmentSlotWord(tier, line)).toBe(word);
+    },
   );
 });

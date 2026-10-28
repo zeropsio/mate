@@ -806,17 +806,23 @@ const MENU_TONE: Record<ChipState, ChipMenuStop["tone"]> = {
 const asItStands = (chip: ProductionChip, word: string): string =>
   chip.lastKnown === true ? `Last known: ${word}` : word;
 
-function mainWord(chip: ProductionChip): string {
-  switch (chip.state) {
-    case "unverified":
-      return chip.readLine ?? "Runtime not verified";
+/**
+ * A place's state in one word — production's or a stage's — said the same on every surface that
+ * states it: the overview's card, the project's page and its column, Sites. The live audit
+ * (2026-10-28) read one running production as Running, Healthy and Deployed, and one empty one as
+ * Not added, Not released yet and Nothing deployed yet. Short, so no column truncates it.
+ */
+export function placeStateWord(label: ChipLabel, state: ChipState): string {
+  switch (state) {
     case "ok":
     case "waiting":
-      return chip.untold === undefined ? "Healthy" : cannotTellWhatRuns(chip.untold);
+      return PLACE_RUNNING_WORD;
+    case "unverified":
+      return "Checking what runs…";
     case "releasing":
-      return onItsWayWords(chip) ?? "Deploying…";
+      return "Deploying…";
     case "failed":
-      return chip.label === "prod" ? "Release failed" : "Deploy failed";
+      return label === "prod" ? "Release failed" : "Deploy failed";
     case "down":
       return "Down";
     case "stopped":
@@ -824,7 +830,26 @@ function mainWord(chip: ProductionChip): string {
     case "creating":
       return "Setting up…";
     case "empty":
-      return chip.label === "prod" ? "Not released yet" : "Not deployed yet";
+      return label === "prod" ? "Not released yet" : "Not deployed yet";
+  }
+}
+
+/** A place that runs what was deployed there, nothing wrong: the one word for it. */
+export const PLACE_RUNNING_WORD = "Running";
+
+function mainWord(chip: ProductionChip): string {
+  switch (chip.state) {
+    case "unverified":
+      return chip.readLine ?? placeStateWord(chip.label, chip.state);
+    case "ok":
+    case "waiting":
+      return chip.untold === undefined
+        ? placeStateWord(chip.label, chip.state)
+        : cannotTellWhatRuns(chip.untold);
+    case "releasing":
+      return onItsWayWords(chip) ?? placeStateWord(chip.label, chip.state);
+    default:
+      return placeStateWord(chip.label, chip.state);
   }
 }
 
@@ -844,15 +869,15 @@ function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: nu
   switch (stop.state) {
     case "deployed": {
       const ago = deployedAt === undefined ? undefined : deployedAgo(deployedAt, nowMs);
-      return ago === undefined ? "Deployed" : `Deployed ${ago}`;
+      return ago === undefined ? PLACE_RUNNING_WORD : `${PLACE_RUNNING_WORD} · deployed ${ago}`;
     }
     case "deploying":
-      return "Deploying…";
+      return placeStateWord("stage", "releasing");
     case "failed":
-      return "Deploy failed";
+      return placeStateWord("stage", "failed");
     case "empty":
       // A first deploy asked for says where it stands, as the stage's cell does.
-      return firstDeployLine(stop.firstDeploy) ?? "Not deployed yet";
+      return firstDeployLine(stop.firstDeploy) ?? placeStateWord("stage", "empty");
     case "checking":
       return stop.readLine ?? "Checking what runs here…";
   }

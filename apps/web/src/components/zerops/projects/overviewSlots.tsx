@@ -58,6 +58,7 @@ import {
   broughtBy,
   historyHeld,
   historyOffered,
+  placeServices,
   CARD_CHANGES,
   cardChanges,
   cardPeople,
@@ -319,14 +320,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
               title: pull.title,
             }))
           : [],
-      services: (item?.services?.statuses ?? []).map((service) => ({
-        hostname: service.hostname,
-        state: down.includes(service.hostname)
-          ? ("down" as const)
-          : service.status === "STOPPED"
-            ? ("stopped" as const)
-            : ("up" as const),
-      })),
+      services: placeServices(item?.services?.statuses ?? [], down),
     };
     const problem = menu?.fix;
     const openStop =

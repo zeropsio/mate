@@ -8534,7 +8534,9 @@ button.ov-panel-state:focus-visible {
   background: var(--zerops-status-ok);
 }
 
-.ov-service[data-state="stopped"] .ov-service-dot {
+/* Stopped, or running with nothing deployed in it: hollow, never the green of a service that serves. */
+.ov-service[data-state="stopped"] .ov-service-dot,
+.ov-service[data-state="idle"] .ov-service-dot {
   background: transparent;
   box-shadow: inset 0 0 0 1.25px var(--muted-foreground);
 }
