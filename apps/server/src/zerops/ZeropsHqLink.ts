@@ -274,7 +274,11 @@ const UNREAD_TASK = "This Mate could not read the task as HQ sent it.";
 
 type SocketEvent =
   | { readonly _tag: "open" }
-  | { readonly _tag: "message"; readonly raw: string }
+  | {
+      readonly _tag: "message";
+      readonly raw: string;
+      readonly frame: ReturnType<typeof decodeDown>;
+    }
   | { readonly _tag: "close"; readonly close: LinkClose | undefined };
 
 /** One link while it lives. */
@@ -344,11 +348,26 @@ export const makeZeropsHqLink = (
       const origin = options.publicOrigin;
       const serial = ++linksOpened;
       const events = yield* Queue.unbounded<SocketEvent>();
+      const clock = yield* Clock.Clock;
+      const pingInterval = yield* Deferred.make<number>();
+      let lastInboundAt = clock.monotonicTimeNanosUnsafe();
       const socket = options.connect(url);
       socket.addEventListener("open", () => Queue.offerUnsafe(events, { _tag: "open" }));
-      socket.addEventListener("message", (event) =>
-        Queue.offerUnsafe(events, { _tag: "message", raw: String(event.data) }),
-      );
+      socket.addEventListener("message", (event) => {
+        // Ingress is liveness even while a consumer waits, or this build cannot read the frame.
+        lastInboundAt = clock.monotonicTimeNanosUnsafe();
+        const raw = String(event.data);
+        const frame = decodeDown(raw);
+        if (
+          Result.isSuccess(frame) &&
+          frame.success.type === "state" &&
+          frame.success.pingIntervalMs !== undefined
+        ) {
+          // The first announcement owns this generation's cadence; older HQs never arm it.
+          Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
+        }
+        Queue.offerUnsafe(events, { _tag: "message", raw, frame });
+      });
       socket.addEventListener("close", (event) =>
         Queue.offerUnsafe(events, {
           _tag: "close",
@@ -371,6 +390,18 @@ export const makeZeropsHqLink = (
           socket.close();
         } catch {
           // Gone already.
+        }
+      });
+      const silence = Effect.gen(function* () {
+        const period = yield* Deferred.await(pingInterval);
+        for (;;) {
+          const elapsed = Number(clock.monotonicTimeNanosUnsafe() - lastInboundAt) / 1_000_000;
+          const remaining = 3 * period - elapsed;
+          if (remaining <= 0) {
+            yield* quit;
+            return undefined;
+          }
+          yield* Effect.sleep(Duration.millis(remaining));
         }
       });
       const first = yield* Queue.take(events);
@@ -576,14 +607,14 @@ export const makeZeropsHqLink = (
           const event = yield* Queue.take(events);
           if (event._tag === "close") return event.close;
           if (event._tag !== "message") continue;
-          const frame = decodeDown(event.raw);
+          const frame = event.frame;
           if (Result.isSuccess(frame)) yield* receive(frame.success);
           else yield* undecoded(event.raw, frame.failure);
         }
       });
       const relayed = yield* Effect.forkScoped(
         Effect.raceFirst(
-          Effect.raceFirst(relay, Deferred.await(keyChanged)),
+          Effect.raceFirst(Effect.raceFirst(relay, silence), Deferred.await(keyChanged)),
           Effect.all(
             [
               onceAnswered(overviews),

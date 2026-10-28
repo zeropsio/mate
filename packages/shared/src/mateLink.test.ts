@@ -512,6 +512,23 @@ describe("the keys model's link", () => {
     ).toBe(true);
   });
 
+  it("HQ announces a positive ping period on its state while older HQ states remain readable", () => {
+    for (const pingIntervalMs of [1, 20_000, 600_000, undefined]) {
+      const decoded = decodeKeyDown(JSON.stringify({ type: "state", mate: self, pingIntervalMs }));
+      expect(decoded._tag).toBe("Success");
+      expect(
+        decoded._tag === "Success" &&
+          decoded.value.type === "state" &&
+          decoded.value.pingIntervalMs,
+      ).toBe(pingIntervalMs);
+    }
+    for (const pingIntervalMs of [0, -1, 0.5, "20000", null]) {
+      expect(
+        decodeKeyDown(JSON.stringify({ type: "state", mate: self, pingIntervalMs }))._tag,
+      ).toBe("Failure");
+    }
+  });
+
   it("a state under the keys model brings every open change a Mate holds per branch with its review, and an older HQ's state reads without them", () => {
     const open = {
       repo: "appdev",

@@ -314,6 +314,169 @@ const linked = (sockets: ReadonlyArray<FakeSocket>, index: number) =>
   });
 
 describe("ZeropsHqLink", () => {
+  it.effect(
+    "Decision: A Mate reconnects when its current HQ link stops receiving traffic, even if the socket never reports closed.",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          // Both the normal cadence and a supported slow HQ: no client-side default.
+          for (const pingIntervalMs of [20_000, 600_000]) {
+            yield* Effect.scoped(
+              Effect.gen(function* () {
+                const { sockets } = yield* rig({ everyMs: 10_000_000 });
+                yield* TestClock.adjust(Duration.zero);
+                sockets[0]!.over = "IPv6";
+                const socket = yield* opened(sockets, 0);
+                socket.hear({ type: "state", mate: STATE, pingIntervalMs });
+                yield* TestClock.adjust(Duration.millis(3 * pingIntervalMs - 1));
+                assert.isFalse(socket.closed);
+                assert.lengthOf(sockets, 1);
+                yield* TestClock.adjust(Duration.millis(1));
+                assert.isTrue(socket.closed);
+                yield* TestClock.adjust(Duration.millis(30));
+                const next = yield* opened(sockets, 1);
+                assert.deepStrictEqual(next.sent, [hello("zk-1")]);
+              }),
+            );
+          }
+        }),
+      ),
+  );
+
+  it.effect("Decision: A superseded link's silence deadline cannot close the successor.", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ everyMs: 10_000_000 });
+        const first = yield* opened(sockets, 0);
+        // Rotate before the old generation's silence deadline.
+        first.hear({ type: "state", mate: STATE, pingIntervalMs: MATE_LINK_ROTATE_MS / 2 });
+        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
+        sockets[1]!.over = "IPv6";
+        const successor = yield* opened(sockets, 1);
+        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        yield* TestClock.adjust(Duration.zero);
+        assert.isTrue(first.closed);
+        // The successor has its own short budget, regardless of its predecessor's.
+        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS / 2 + 1));
+        assert.isFalse(successor.closed);
+        assert.lengthOf(sockets, 2);
+        yield* TestClock.adjust(Duration.millis(60_000 - MATE_LINK_ROTATE_MS / 2 - 1));
+        assert.isTrue(successor.closed);
+        yield* TestClock.adjust(Duration.millis(30));
+        sockets[2]!.over = "IPv6";
+        const legacy = yield* opened(sockets, 2);
+        admit(legacy);
+        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
+        assert.isFalse(legacy.closed);
+        assert.lengthOf(sockets, 3);
+      }),
+    ),
+  );
+
+  it.effect(
+    "Decision: Link silence does not revoke the project key, erase remembered Mate identity, authorize an update or execute a task awaiting HQ state.",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets, key, link, taken, autoUpdatePolicy } = yield* rig();
+          yield* TestClock.adjust(Duration.zero);
+          sockets[0]!.over = "IPv6";
+          const first = yield* opened(sockets, 0);
+          first.hear({
+            type: "state",
+            mate: STATE,
+            pingIntervalMs: 1_000,
+            autoUpdate: { orgId: "ORG", enabled: true, revision: 0 },
+          });
+          yield* TestClock.adjust(Duration.zero);
+          const verification = yield* Effect.forkScoped(autoUpdatePolicy.verify);
+          yield* TestClock.adjust(Duration.seconds(3));
+          assert.isTrue(first.closed);
+          assert.strictEqual(yield* Ref.get(key), "zk-1");
+          assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.current));
+          yield* TestClock.adjust(Duration.millis(30));
+          const next = yield* opened(sockets, 1);
+          next.hear({
+            type: "task",
+            task: {
+              id: "held-task",
+              source: {
+                kind: "github-issue",
+                repo: "acme/tea-shop",
+                number: 42,
+                url: "https://github.com/acme/tea-shop/issues/42",
+                title: "The cart forgets its teas",
+                author: null,
+              },
+              body: "",
+              limits: { minutes: 60, costUsd: null },
+            },
+          });
+          yield* TestClock.adjust(Duration.seconds(31));
+          assert.deepStrictEqual(taken, []);
+          assert.isFalse(next.sent.some((frame) => frame.type === "task-state"));
+          assert.isTrue(Option.isNone(yield* Fiber.join(verification)));
+          assert.isTrue(Option.isNone(yield* autoUpdatePolicy.verify));
+          assert.deepStrictEqual(next.sent[0], hello("zk-1"));
+        }),
+      ),
+  );
+
+  it.effect(
+    "inbound traffic near the silence deadline keeps the link alive while a handler waits",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const writing = yield* Deferred.make<void>();
+          const written = yield* Deferred.make<void>();
+          const { sockets } = yield* rig({
+            credentialLands: () =>
+              Deferred.succeed(writing, undefined).pipe(Effect.andThen(Deferred.await(written))),
+          });
+          yield* TestClock.adjust(Duration.zero);
+          sockets[0]!.over = "IPv6";
+          const socket = yield* opened(sockets, 0);
+          socket.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
+          socket.hear({ type: "git-credential", credential: "credential-fixture" });
+          yield* Deferred.await(writing);
+          yield* TestClock.adjust(Duration.millis(2_999));
+          socket.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.millis(2_999));
+          assert.isFalse(socket.closed);
+          assert.lengthOf(sockets, 1);
+          // Unknown frames also prove inbound liveness without claiming domain progress.
+          socket.hear({ type: "future-frame" });
+          yield* TestClock.adjust(Duration.millis(2_999));
+          assert.isFalse(socket.closed);
+          yield* Deferred.succeed(written, undefined);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(socket.sent.at(-1), { type: "pong" });
+          yield* TestClock.adjust(Duration.millis(1));
+          assert.isTrue(socket.closed);
+        }),
+      ),
+  );
+
+  it.effect(
+    "an HQ that announces no period leaves the link unguarded before and after its state",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets } = yield* rig({ everyMs: 10_000_000 });
+          yield* TestClock.adjust(Duration.zero);
+          sockets[0]!.over = "IPv6";
+          const socket = yield* opened(sockets, 0);
+          yield* TestClock.adjust(Duration.minutes(31));
+          assert.isFalse(socket.closed);
+          admit(socket);
+          yield* TestClock.adjust(Duration.minutes(31));
+          assert.isFalse(socket.closed);
+          assert.lengthOf(sockets, 1);
+        }),
+      ),
+  );
+
   it.live(
     "checks the current org policy with a fresh correlated reply before granting update permission",
     () =>
