@@ -27,6 +27,10 @@ export type TaskSourceWrites = Pick<
   | "stopAppTask"
   | "githubManifest"
   | "githubDisconnect"
+  | "githubInstall"
+  | "githubAcceptInstallation"
+  | "githubSuspendInstallation"
+  | "githubResumeInstallation"
 >;
 
 /** The secrets typed for one connection, by their field's name. */
@@ -36,6 +40,17 @@ const UPDATE_HQ = "Update HQ to take tasks from Slack, Discord, webhooks and sch
 const UPDATE_HQ_GITHUB = "Update HQ to connect GitHub.";
 /** What an HQ that predates a task's stop from Mate is asked. */
 export const UPDATE_HQ_TASK_STOP = "Update HQ to stop tasks from Mate.";
+
+/**
+ * HQ's refusal of an install link, an Accept or a Suspend in words: an HQ without the route (a bare
+ * `404`) needs updating, and an installation HQ no longer holds is gone. `undefined`: HQ's own
+ * words stand.
+ */
+function installationRefusal(cause: HqError): string | undefined {
+  if (cause.status === 404 && cause.code !== "not_found") return UPDATE_HQ_GITHUB;
+  if (cause.code === "not_found") return "That installation is gone from GitHub.";
+  return undefined;
+}
 
 /**
  * HQ's refusal of a task's stop in words: an HQ without the route (a bare `404`) needs updating,
@@ -58,6 +73,8 @@ export function makeTaskSourceExecutor(options: {
   readonly revealed: (requestId: string, view: HqWebhookView) => void;
   /** HQ's manifest for the organization's GitHub app, for the screen that asked for it alone. */
   readonly manifested: (requestId: string, view: HqGithubManifestView) => void;
+  /** HQ's install link for the organization's GitHub app, for the screen that asked for it alone. */
+  readonly linked: (requestId: string, url: string) => void;
 }): OperationExecutor {
   const refused = (message: string) => ({ outcome: "definitive-refusal" as const, message });
   return {
@@ -142,13 +159,25 @@ export function makeTaskSourceExecutor(options: {
               );
             case "github-disconnect":
               return api.githubDisconnect?.() ?? null;
+            case "github-install":
+              return (
+                api.githubInstall?.({ returnTo: write.returnTo }).then((view) => {
+                  options.linked(requestId, view.url);
+                }) ?? null
+              );
+            case "github-accept":
+              return api.githubAcceptInstallation?.(write.installationId) ?? null;
+            case "github-suspend":
+              return api.githubSuspendInstallation?.(write.installationId) ?? null;
+            case "github-resume":
+              return api.githubResumeInstallation?.(write.installationId) ?? null;
           }
         };
         const pending = call();
         if (pending === null)
           return yield* Effect.fail(
             refused(
-              write.kind === "github-manifest" || write.kind === "github-disconnect"
+              write.kind.startsWith("github-")
                 ? UPDATE_HQ_GITHUB
                 : write.kind === "task-stop"
                   ? UPDATE_HQ_TASK_STOP
@@ -164,7 +193,14 @@ export function makeTaskSourceExecutor(options: {
               : cause instanceof HqError && cause.kind === "refused"
                 ? // HQ's refusal is said, never words that may echo what was typed.
                   refused(
-                    (write.kind === "task-stop" ? taskStopRefusal(cause) : undefined) ??
+                    (write.kind === "task-stop"
+                      ? taskStopRefusal(cause)
+                      : write.kind === "github-install" ||
+                          write.kind === "github-accept" ||
+                          write.kind === "github-suspend" ||
+                          write.kind === "github-resume"
+                        ? installationRefusal(cause)
+                        : undefined) ??
                       (typed.some((value) => cause.message.includes(value))
                         ? "HQ did not take what was entered."
                         : cause.message),

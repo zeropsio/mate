@@ -177,6 +177,17 @@ describe("keeping an asked origin's code on GitHub", () => {
       step: { kind: "not-reached", name: "Acme Mate" },
     },
     {
+      case: "the app is installed where the repository is, but that installation waits for an OK",
+      github: {
+        ...app(["krls2020/other"]),
+        installTrip: true,
+        waiting: [{ account: "krls2020", repositories: ["krls2020/eval2"] }],
+      },
+      repos: [repo("appdev", null)],
+      mountable: true,
+      step: { kind: "waiting", account: "krls2020" },
+    },
+    {
       case: "the app reaches the repository in another case",
       github: app(["Krls2020/Eval2"]),
       repos: [repo("appdev", null)],

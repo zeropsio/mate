@@ -79,6 +79,8 @@ beforeEach(async () => {
       onMount: vi.fn(async () => null),
       onCheckAgain: vi.fn(),
       onOpenAutomation: vi.fn(),
+      admin: false,
+      onInstall: vi.fn(),
     },
     onAnswer: vi.fn(async () => null),
   };

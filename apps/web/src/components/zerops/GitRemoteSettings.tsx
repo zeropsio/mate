@@ -21,12 +21,14 @@ import {
 } from "~/components/ui/select";
 import { OutLink } from "../settings/automationParts";
 import { gitRemoteLabel } from "./GitDeliveryStatus";
+import { GithubInstallOffer } from "./GithubInstallOffer";
 import {
   githubName,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
   type GitMirrorApp,
+  waitingWords,
 } from "./gitMirror.logic";
 
 /** Optional actions are supplied by the account's operations, never a component's host client. */
@@ -113,6 +115,8 @@ export function GitRemoteSettings({
   now: at,
   github,
   onOpenAutomation,
+  admin = false,
+  onInstall,
 }: {
   readonly appId: string;
   readonly repos: ReadonlyArray<RepoListEntry> | undefined;
@@ -129,6 +133,10 @@ export function GitRemoteSettings({
   readonly github?: GitMirrorApp | null;
   /** Opens Settings › Automation, where GitHub is connected. */
   readonly onOpenAutomation?: () => void;
+  /** The person is the organization's Owner or an Admin: they install through HQ's trip. */
+  readonly admin?: boolean;
+  /** Leaves for GitHub's install page through HQ's trip, coming back here. */
+  readonly onInstall?: () => void;
 }) {
   const clock = useNowMs();
   const now = at ?? clock;
@@ -161,6 +169,8 @@ export function GitRemoteSettings({
               now={now}
               github={github ?? { kind: "unknown" }}
               onOpenAutomation={onOpenAutomation}
+              admin={admin}
+              onInstall={onInstall}
             />
           ))}
         </>
@@ -179,6 +189,8 @@ function Remote({
   now,
   github,
   onOpenAutomation,
+  admin,
+  onInstall,
 }: {
   readonly repo: RepoListEntry;
   readonly appName: string;
@@ -189,6 +201,8 @@ function Remote({
   readonly now: number;
   readonly github: GitMirrorApp;
   readonly onOpenAutomation: (() => void) | undefined;
+  readonly admin: boolean;
+  readonly onInstall: (() => void) | undefined;
 }) {
   const [editing, setEditing] = useState(false);
   const [token, setToken] = useState("");
@@ -438,10 +452,25 @@ function Remote({
       app !== null &&
       !editing ? (
         app.repositories.length === 0 ? (
-          <p className="rv-note">
-            {app.name} reaches no repository yet.{" "}
-            <OutLink href={app.installUrl}>Install it on repositories</OutLink>
-          </p>
+          <div className="grid gap-1">
+            {(app.waiting ?? []).length === 0 ? (
+              <p className="rv-note">
+                {app.name} reaches no repository yet.{" "}
+                <GithubInstallOffer admin={admin} app={app} onInstall={onInstall ?? (() => {})}>
+                  Install it on repositories
+                </GithubInstallOffer>
+              </p>
+            ) : (
+              <>
+                <WaitingAccounts admin={admin} app={app} onOpenAutomation={onOpenAutomation} />
+                <p className="rv-note">
+                  <GithubInstallOffer admin={admin} app={app} onInstall={onInstall ?? (() => {})}>
+                    Install it on more repositories
+                  </GithubInstallOffer>
+                </p>
+              </>
+            )}
+          </div>
         ) : (
           <div className="flex flex-wrap items-end gap-2">
             <div className="grid min-w-56 flex-1 gap-1.5">
@@ -475,6 +504,14 @@ function Remote({
             </Button>
           </div>
         )
+      ) : null}
+      {remote == null &&
+      connectFollowed === undefined &&
+      viaApp !== undefined &&
+      app !== null &&
+      !editing &&
+      app.repositories.length > 0 ? (
+        <WaitingAccounts admin={admin} app={app} onOpenAutomation={onOpenAutomation} />
       ) : null}
       {(remote == null ? viaApp !== undefined : remote.via === "app") && permitted && !editing ? (
         <p className="rv-note">
@@ -727,5 +764,32 @@ function Remote({
         </p>
       )}
     </section>
+  );
+}
+
+/** Each account the app is installed on that waits for an admin's OK, said once each. */
+function WaitingAccounts({
+  app,
+  admin,
+  onOpenAutomation,
+}: {
+  readonly app: Extract<GitMirrorApp, { readonly kind: "connected" }>;
+  readonly admin: boolean;
+  readonly onOpenAutomation: (() => void) | undefined;
+}) {
+  return (
+    <>
+      {(app.waiting ?? []).map((each) => (
+        <p className="rv-note" key={each.account}>
+          {waitingWords(each.account)}
+          {admin && onOpenAutomation !== undefined ? (
+            <>
+              {" "}
+              <InlineButton onClick={onOpenAutomation}>Open Settings › Automation</InlineButton>
+            </>
+          ) : null}
+        </p>
+      ))}
+    </>
   );
 }

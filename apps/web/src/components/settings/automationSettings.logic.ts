@@ -31,14 +31,67 @@ export type GithubSection =
       /** The account that owns the app. */
       readonly owner: string;
       readonly installUrl: string;
+      /** Where it is installed and Mate acts, or GitHub suspended it. */
       readonly installations: ReadonlyArray<{
         readonly id: number;
         readonly line: string;
         readonly manageUrl: string;
+        readonly suspended: boolean;
       }>;
-      /** `manage`: this person may install it further or disconnect it. */
+      /**
+       * Installed where nobody here started it: Mate acts on none of it until an OK. Its page on
+       * GitHub is its account's, which the organization's admins cannot open.
+       */
+      readonly waiting: ReadonlyArray<{
+        readonly id: number;
+        readonly account: string;
+        /** Its repositories, by `owner/name`. */
+        readonly repositories: ReadonlyArray<string>;
+      }>;
+      /**
+       * A private app: installable on its owner alone. `settings`: `url` is the GitHub page that
+       * makes it public; otherwise the app's own page, its owner's kind unknown.
+       */
+      readonly privateTo: {
+        readonly owner: string;
+        readonly url: string;
+        readonly settings: boolean;
+      } | null;
+      /**
+       * HQ hands install trips, accepts, suspends and resumes: one that predates the guard (its view
+       * says nothing of `public`) has GitHub's own install page only.
+       */
+      readonly installTrip: boolean;
+      /** `manage`: this person may install it further, judge what waits, or disconnect it. */
       readonly manage: boolean;
     };
+
+/**
+ * Where an installation stands: what HQ says, or for an HQ that predates the guard, accepted
+ * unless GitHub suspended it — that HQ acts on every installation it lists.
+ */
+export function installationStanding(
+  installation: Pick<HqGithubInstallation, "suspended" | "state">,
+): "accepted" | "waiting" | "suspended" {
+  if (installation.suspended) return "suspended";
+  return installation.state ?? "accepted";
+}
+
+/**
+ * Where a private app is made public: its owner's settings page (an organization's or a person's,
+ * as HQ says), or the app's own page where HQ does not say which.
+ */
+function makePublicAt(view: Extract<HqGithubView, { readonly state: "connected" }>) {
+  const slug = encodeURIComponent(view.slug);
+  if (view.ownerType === "Organization")
+    return {
+      url: `https://github.com/organizations/${encodeURIComponent(view.owner)}/settings/apps/${slug}/advanced`,
+      settings: true,
+    };
+  if (view.ownerType === "User")
+    return { url: `https://github.com/settings/apps/${slug}/advanced`, settings: true };
+  return { url: `https://github.com/apps/${slug}`, settings: false };
+}
 
 /** Where the app is installed, in a line: "acme · 3 repositories". */
 export function installationLine(
@@ -73,26 +126,47 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
         botLogin: view.botLogin,
         owner: view.owner,
         installUrl: view.installUrl,
-        installations: view.installations.map((installation) => ({
-          id: installation.id,
-          line: installation.suspended
-            ? `${installation.account} · suspended`
-            : installationLine(installation),
-          manageUrl: installation.manageUrl,
-        })),
+        installations: view.installations
+          .filter((installation) => installationStanding(installation) !== "waiting")
+          .map((installation) => ({
+            id: installation.id,
+            line:
+              installationStanding(installation) === "suspended"
+                ? `${installation.account} · suspended`
+                : installationLine(installation),
+            manageUrl: installation.manageUrl,
+            suspended: installationStanding(installation) === "suspended",
+          })),
+        waiting: view.installations
+          .filter((installation) => installationStanding(installation) === "waiting")
+          .map((installation) => ({
+            id: installation.id,
+            account: installation.account,
+            repositories: installation.repositories.map((repository) => repository.fullName),
+          })),
+        privateTo: view.public === false ? { owner: view.owner, ...makePublicAt(view) } : null,
+        installTrip: view.public !== undefined,
         manage: admin,
       };
     }
   }
 }
 
-/** How GitHub brought the person back here: the app made, or an owner's approval asked for. */
-export type GithubReturn = "connected" | "requested" | null;
+/**
+ * How GitHub brought the person back here: the app made or installed, an owner's approval asked
+ * for, or installed where nobody here started it.
+ */
+export type GithubReturn = "connected" | "requested" | "waiting" | null;
 
 /** The one line said on the return from GitHub; `null` where there is nothing true to say. */
 export function githubReturnLine(returned: GithubReturn, section: GithubSection): string | null {
   if (returned === "requested")
     return `GitHub asked an owner of ${section.kind === "connected" ? section.owner : "the organization"} to approve the app; it's installed once they do.`;
+  // Said only while an installation waits here: not for another organization, nor after its OK.
+  if (returned === "waiting")
+    return section.kind === "connected" && section.waiting.length > 0
+      ? "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it."
+      : null;
   if (returned === "connected" && section.kind === "connected")
     return `GitHub is connected. Mate acts there as ${section.botLogin} from now on.`;
   return null;
@@ -168,12 +242,16 @@ export function postManifest(
   form.submit();
 }
 
-/** The repositories the app reaches, by `owner/name`, as the mirror dialog offers them. */
+/**
+ * The repositories the app reaches, by `owner/name`, as every picker offers them (the mirror dialog,
+ * the origin sheet).
+ */
 export function appRepositories(view: HqGithubView | null): ReadonlyArray<string> {
   if (view === null || view.state !== "connected") return [];
   const names = new Set<string>();
+  // Only where Mate acts: never a suspended installation's, nor one still waiting for an OK.
   for (const installation of view.installations)
-    if (!installation.suspended)
+    if (installationStanding(installation) === "accepted")
       for (const repository of installation.repositories) names.add(repository.fullName);
   return [...names].toSorted((a, b) => a.localeCompare(b));
 }

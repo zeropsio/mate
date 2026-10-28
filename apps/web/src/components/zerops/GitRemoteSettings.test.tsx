@@ -672,6 +672,61 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  it("an Owner or Admin installs the app on repositories through HQ's install trip; a member gets GitHub's page and is told it waits", async () => {
+    const onInstall = vi.fn();
+    const empty = { ...app, repositories: [], installTrip: true };
+    const admin = await mount({
+      github: empty,
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      admin: true,
+      onInstall,
+    });
+    try {
+      await admin.click("Install it on repositories");
+      expect(onInstall).toHaveBeenCalledTimes(1);
+    } finally {
+      await admin.unmount();
+    }
+    const member = await mount({
+      github: empty,
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      onInstall,
+    });
+    try {
+      expect(
+        [...member.host.querySelectorAll("a")].find(
+          (a) => a.textContent === "Install it on repositories",
+        )?.href,
+      ).toBe(app.installUrl);
+      expect(member.host.textContent).toContain("What you install there waits for an admin's OK.");
+    } finally {
+      await member.unmount();
+    }
+  });
+
+  it("says an account the app is installed on waits for an admin's OK, with the way there for an admin", async () => {
+    const onOpenAutomation = vi.fn();
+    const view = await mount({
+      github: {
+        ...app,
+        installTrip: true,
+        waiting: [{ account: "stranger", repositories: ["stranger/notes"] }],
+      },
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      admin: true,
+      onOpenAutomation,
+    });
+    try {
+      expect(view.host.textContent).toContain(
+        "stranger waits for an admin's OK in Settings › Automation.",
+      );
+      await view.click("Open Settings › Automation");
+      expect(onOpenAutomation).toHaveBeenCalledTimes(1);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it("says Saving… while HQ mirrors it, then where it mirrors to and through which app", async () => {
     let finish!: () => void;
     const viaApp = vi.fn(

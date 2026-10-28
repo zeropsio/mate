@@ -11,7 +11,7 @@ import {
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
-import { githubName, type GitMirrorApp } from "../gitMirror.logic";
+import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
 
 /**
  * Where an origin question stands in the timeline: the run card its first ask was asked in, and
@@ -111,6 +111,8 @@ export type OriginMountStep =
   | { readonly kind: "no-app" }
   | { readonly kind: "unknown" }
   | { readonly kind: "not-reached"; readonly name: string; readonly installUrl: string }
+  /** The app is installed where the repository is, but that installation waits for an OK. */
+  | { readonly kind: "waiting"; readonly account: string }
   | { readonly kind: "ready"; readonly name: string; readonly repository: string };
 
 /**
@@ -135,9 +137,11 @@ export function originMountStep(
   if (github.kind === "unknown") return { kind: "unknown" };
   const wanted = githubName(ask.url)?.toLowerCase();
   const repository = github.repositories.find((name) => name.toLowerCase() === wanted);
-  return repository === undefined
+  if (repository !== undefined) return { kind: "ready", name: github.name, repository };
+  const waiting = wanted === undefined ? null : waitingAccount(github, wanted);
+  return waiting === null
     ? { kind: "not-reached", name: github.name, installUrl: github.installUrl }
-    : { kind: "ready", name: github.name, repository };
+    : { kind: "waiting", account: waiting };
 }
 
 const sameAddress = (a: string, b: string) =>
