@@ -1887,8 +1887,8 @@ describe("environment route target dispatch", () => {
           mounted!.root
             .findAllByType("h1")
             .flatMap((node) => node.children)
-            .filter((text) => text === "Late production"),
-        ).toEqual(["Late production"]);
+            .filter((text) => text === "Production"),
+        ).toEqual(["Production"]);
         expect(platform.projectReads).toEqual([]);
         expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
       }

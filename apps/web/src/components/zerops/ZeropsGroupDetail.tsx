@@ -940,7 +940,7 @@ export function ZeropsStopDetailPage({
     );
     if (notice !== null) {
       return (
-        <DetailShell crumbs={crumbs} title={environment.name}>
+        <DetailShell crumbs={crumbs} title={environmentTitle(environment.tier, environment.name)}>
           <Note>{notice}</Note>
         </DetailShell>
       );
@@ -964,7 +964,7 @@ export function ZeropsStopDetailPage({
     );
   }
   return (
-    <DetailShell crumbs={crumbs} title={environment?.name}>
+    <DetailShell crumbs={crumbs} title={environmentTitle(environment.tier, environment.name)}>
       <GitStopDetailPage
         appId={groupId}
         environment={{ ...environment, target: environment.target }}
@@ -1134,7 +1134,7 @@ function ZeropsProjectStopDetailPage({
   }
   if (withheld !== null) {
     return (
-      <DetailShell crumbs={crumbs} title={stop.tier}>
+      <DetailShell crumbs={crumbs} title={environmentTitle(stop.tier, stop.tier)}>
         <Note>{withheld}</Note>
       </DetailShell>
     );

@@ -63,7 +63,7 @@ const compatibility = Effect.fn("environment.compatibility")(function* (
   yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
   // The project page draws production first, then its stages.
   const rows = [
-    { name: "Shop-production", id: "Shop-production" },
+    { name: "Production", id: "Shop-production" },
     { name: "Shop-stage", id: "Shop-stage" },
   ];
   yield* environmentRows(
@@ -169,7 +169,7 @@ describe("B: environment identity compatibility", () => {
         yield* s.given.signedIn;
         yield* s.menu.opensApplication("Shop");
         const appId = s.appIds.get("Shop")!;
-        const rows = [{ name: "preview", id: "preview" }];
+        const rows = [{ name: "Preview", id: "preview" }];
         yield* environmentRows(
           s.page,
           rows.map((row) => row.name),
@@ -208,7 +208,7 @@ describe("B: environment identity compatibility", () => {
           s.page,
           rows.map((row) => row.name),
         );
-        yield* openEnvironment(s.page, appId, "preview", "preview");
+        yield* openEnvironment(s.page, appId, "Preview", "preview");
         yield* Effect.promise(() =>
           s.page.waitForFunction(
             () => document.querySelector("main")?.innerText.includes("stage-existing"),
@@ -238,21 +238,21 @@ describe("B: environment identity compatibility", () => {
           const a = environmentActions(f);
           yield* f.s.given.signedIn;
           yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
-          yield* environmentRows(f.s.page, ["production", "Shop-stage"]);
+          yield* environmentRows(f.s.page, ["Production", "Shop-stage"]);
           yield* openEnvironment(f.s.page, f.appId, "Shop-stage", "independent-preview");
           yield* a.then.text("web");
           const sha = yield* f.merge();
           yield* a.when.finish("stage");
           yield* a.then.text(sha.slice(0, 7));
-          yield* a.then.text("Deployed");
+          yield* a.then.text("Running");
           expect(new URL(f.s.page.url()).pathname).toBe(`/group/${f.appId}/independent-preview`);
           expect(f.s.drivers.zerops.requests.get("GET /project/Shop-stage")).toBeGreaterThan(0);
           yield* Effect.promise(() => f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/flow`));
-          yield* environmentRows(f.s.page, ["production", "Shop-stage"]);
-          yield* openEnvironment(f.s.page, f.appId, "production", "git-production");
+          yield* environmentRows(f.s.page, ["Production", "Shop-stage"]);
+          yield* openEnvironment(f.s.page, f.appId, "Production", "git-production");
           yield* Effect.promise(() =>
             f.s.page.waitForFunction(
-              () => document.querySelector("h1")?.textContent === "production",
+              () => document.querySelector("h1")?.textContent === "Production",
               { polling: "raf" },
             ),
           );
@@ -302,8 +302,8 @@ describe("B: environment identity compatibility", () => {
           yield* s.when.hq.socket.returns;
           yield* s.when.hq.colleague.renamesProject("Shop", "Shop");
           yield* s.menu.opensApplication("Shop");
-          yield* environmentRows(s.page, ["preview"]);
-          yield* openEnvironment(s.page, appId, "preview", "preview");
+          yield* environmentRows(s.page, ["Preview"]);
+          yield* openEnvironment(s.page, appId, "Preview", "preview");
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => document.querySelector("main")?.innerText.includes("stage-existing"),
@@ -325,8 +325,8 @@ describe("B: environment identity compatibility", () => {
           yield* s.menu.opensApplication("Shop");
           yield* environmentRows(s.page, []);
           yield* s.stage("preview", "Shop");
-          yield* environmentRows(s.page, ["preview"]);
-          yield* openEnvironment(s.page, s.appIds.get("Shop")!, "preview", "preview");
+          yield* environmentRows(s.page, ["Preview"]);
+          yield* openEnvironment(s.page, s.appIds.get("Shop")!, "Preview", "preview");
           yield* Effect.promise(() =>
             s.page.waitForFunction(
               () => document.querySelector("main")?.innerText.includes("stage-existing"),
