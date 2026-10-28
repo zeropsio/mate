@@ -8,6 +8,7 @@ import type { HeadingLanding, HeadingLineInput } from "./SidebarHeadingLine.logi
 import {
   filterSites,
   mateLinks,
+  partEntries,
   productionUrl,
   projectSitesSections,
   projectSitesStatus,
@@ -205,7 +206,7 @@ describe("the environment tag", () => {
       expected: {
         tone: "busy",
         word: "Coming up",
-        sentence: "beta coming up · making the project",
+        sentence: "Beta coming up · making the project",
         section: "stage:beta",
       },
     },
@@ -249,7 +250,7 @@ describe("the environment tag", () => {
         tone: "ok",
         word: "Stage is up",
         sentence: "Stage is up · just now",
-        section: "stage:Stage",
+        section: "stage:stage",
       },
     },
     {
@@ -328,9 +329,11 @@ const rowsOf = (facts: SitesMateFacts) => {
     ? undefined
     : [
         ...addresses.pairs.map((pair) =>
-          [pair.name, pair.dev.map(sideText).join(", "), pair.stage.map(sideText).join(", ")].join(
-            " | ",
-          ),
+          [
+            pair.name,
+            pair.dev.map(sideText).join(", "),
+            pair.preview === undefined ? "" : sideText(pair.preview),
+          ].join(" | "),
         ),
         ...addresses.links.map(
           (link) =>
@@ -357,7 +360,7 @@ describe("a Mate's parts", () => {
         routes: [route("apidev", "apidev.example.app"), route("apistage", "apistage.example.app")],
         hostnames: ["apidev", "apistage"],
       },
-      rows: ["API | dev apidev.example.app | stage apistage.example.app"],
+      rows: ["API | dev apidev.example.app | preview apistage.example.app"],
     },
     {
       title: "a pool with one workspace, beside the stage zcp pairs it with",
@@ -369,7 +372,7 @@ describe("a Mate's parts", () => {
         poolPairs: [{ pool: "embedderpool", stages: [{ hostname: "embedderstage" }] }],
       },
       rows: [
-        "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | stage embedderstage.example.app",
+        "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | preview embedderstage.example.app",
       ],
     },
     {
@@ -384,10 +387,10 @@ describe("a Mate's parts", () => {
         ],
         poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage", part: "web" }] }],
       },
-      rows: ["Web | dev web-2.example.app, dev 2 web-5.example.app | stage webstage.example.app"],
+      rows: ["Web | dev web-2.example.app, dev web-5.example.app | preview webstage.example.app"],
     },
   ])(
-    "a Mate's part shows its dev and its stage side by side, each opening its own address: $title",
+    "a Mate's part shows its dev and its preview side by side, each opening its own address: $title",
     ({ facts, rows }) => {
       expect(rowsOf(mate({ name: "Kara", ...facts }))).toEqual(rows);
     },
@@ -402,7 +405,7 @@ describe("a Mate's parts", () => {
       leases: [],
       poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
     });
-    expect(rowsOf(kara), "no workspace, no dev").toEqual(["Web |  | stage webstage.example.app"]);
+    expect(rowsOf(kara), "no workspace, no dev").toEqual(["Web |  | preview webstage.example.app"]);
     expect(JSON.stringify(mateLinks(kara))).not.toContain("webpool-300");
   });
 
@@ -414,12 +417,12 @@ describe("a Mate's parts", () => {
     {
       title: "stopped",
       given: lease("webpool-3", { devServers: [server("stopped")] }),
-      dev: "dev (not running)",
+      dev: "dev (stopped)",
     },
     {
       title: "crashed",
       given: lease("webpool-3", { devServers: [server("crashed")] }),
-      dev: "dev (not running)",
+      dev: "dev (stopped: crashed)",
     },
     {
       title: "parked",
@@ -448,7 +451,7 @@ describe("a Mate's parts", () => {
           poolPairs: undefined,
         }),
       ),
-    ).toEqual(["Box | dev (no address yet) | stage boxstage.example.app"]);
+    ).toEqual(["Box | dev (no address yet) | preview boxstage.example.app"]);
   });
 });
 
@@ -473,7 +476,7 @@ describe("a Mate's dev pools", () => {
     });
     expect(rowsOf(kara)).toEqual([
       "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | ",
-      "Web | dev webpool-3001.example.app | ",
+      "Web | dev (starting) | ",
       "appstage appstage.example.app",
     ]);
   });
@@ -580,13 +583,13 @@ describe("a Mate's addresses", () => {
       title: "labels the dev service dev and the stage half of its pair preview, dev first",
       routes: [route("appdev", "appdev.example.app"), route("appstage", "appstage.example.app")],
       hostnames: ["appdev", "appstage", "db"],
-      rows: ["App | dev appdev.example.app | stage appstage.example.app"],
+      rows: ["App | dev appdev.example.app | preview appstage.example.app"],
     },
     {
       title: "labels a pair whose dev half is the bare name",
       routes: [route("webstage", "webstage.example.app"), route("web", "web.example.app")],
       hostnames: ["web", "webstage"],
-      rows: ["Web | dev web.example.app | stage webstage.example.app"],
+      rows: ["Web | dev web.example.app | preview webstage.example.app"],
     },
     {
       title: "leaves a service that is neither half of a pair unlabelled, after the pair",
@@ -597,7 +600,7 @@ describe("a Mate's addresses", () => {
       ],
       hostnames: ["admin", "apidev", "apistage"],
       rows: [
-        "API | dev apidev.example.app | stage apistage.example.app",
+        "API | dev apidev.example.app | preview apistage.example.app",
         "admin admin.example.app",
       ],
     },
@@ -605,7 +608,7 @@ describe("a Mate's addresses", () => {
       title: "keeps a stage half's preview while the services list has not shown it yet",
       routes: [route("todoapp", "todoapp.example.app"), route("todoappstage", "stage.example.app")],
       hostnames: ["todoapp"],
-      rows: ["Todoapp | dev todoapp.example.app | stage stage.example.app"],
+      rows: ["Todoapp | dev todoapp.example.app | preview stage.example.app"],
     },
     {
       title: "never lists the control plane",
@@ -623,7 +626,7 @@ describe("a Mate's addresses", () => {
     {
       title: "names a stage half preview from its routes alone while the services are unread",
       routes: [route("appdev", "appdev.example.app"), route("appstage", "appstage.example.app")],
-      rows: ["App | dev appdev.example.app | stage appstage.example.app"],
+      rows: ["App | dev appdev.example.app | preview appstage.example.app"],
     },
   ])("$title", ({ routes, hostnames, rows }) => {
     expect(rowsOf(mate({ name: "Nell", routes, hostnames }))).toEqual(rows);
@@ -658,9 +661,7 @@ const sectionRows = (sections: ReadonlyArray<SitesSection>) =>
       ? "reading"
       : [
           ...(section.kind === "mate" ? section.pairs : []).flatMap((pair) =>
-            [...pair.dev, ...pair.stage].flatMap((side) =>
-              side.host === undefined ? [] : [side.host],
-            ),
+            partEntries(pair).flatMap((side) => (side.host === undefined ? [] : [side.host])),
           ),
           ...section.links.map((link) => link.host),
         ].join(", "),
@@ -688,8 +689,8 @@ describe("the project's addresses", () => {
     ]);
     expect(sections.map((section) => section.title)).toEqual([
       "Production",
-      "stage",
-      "qa",
+      "Stage",
+      "Qa",
       "Nell",
       "Odo",
     ]);
@@ -789,7 +790,7 @@ describe("the project's addresses", () => {
         }),
       ],
     });
-    expect(sections.map((section) => section.title)).toEqual(["Production", "stage", "Nell"]);
+    expect(sections.map((section) => section.title)).toEqual(["Production", "Stage", "Nell"]);
     expect(sectionRows(sections)).toEqual([
       ["production", "shop.example.com, api.shop.example.com"],
       ["stage:stage", "stage.example.app"],

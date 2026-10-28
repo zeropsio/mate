@@ -139,7 +139,6 @@ import {
   defaultAgentForRole,
   hasMate,
   type FlowPullRequest,
-  type GroupFlowPreview,
   projectNameInApp,
   readZeropsMembership,
   type EnvironmentCreationStepProgress,
@@ -153,6 +152,7 @@ import {
   matePoseOf,
   zeropsProjectOf,
 } from "@t3tools/client-runtime/zerops";
+import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { invalidateZerops } from "~/zerops/accountInvalidations";
 
 import { MateFace, STATUS_BADGE_TONE } from "./primitives";
@@ -2309,11 +2309,11 @@ export function ZeropsProjectsContent({
     candidate: ZeropsCandidatePresentation,
     {
       layout,
-      previews,
+      parts,
       review,
     }: {
       readonly layout: "card" | "row";
-      readonly previews: ReadonlyArray<GroupFlowPreview>;
+      readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
     },
   ): React.ReactNode => {
@@ -2392,7 +2392,7 @@ export function ZeropsProjectsContent({
           conversationsRead={conversationsRead(candidate)}
           flow={tags.groupId === undefined ? undefined : projectFlow.flows.get(tags.groupId)}
           groupId={tags.groupId}
-          previews={previews}
+          parts={parts}
           key={candidate.key}
           name={name}
           onOpen={select}

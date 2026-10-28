@@ -22,12 +22,19 @@ import {
   type ReactNode,
 } from "react";
 
-import { REVIEW_LABEL, type GroupFlowPreview } from "@t3tools/client-runtime/zerops";
+import {
+  recipeReach,
+  REVIEW_LABEL,
+  type FlowPullRequest,
+  type RecipeReach,
+} from "@t3tools/client-runtime/zerops";
+import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { mergedMain, useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
@@ -45,6 +52,7 @@ import {
   placeLines,
   readyLine,
   readyTitle,
+  setupChangeWords,
   type CardChange,
   type CardMateReading,
   type PlaceLine,
@@ -60,6 +68,7 @@ import type {
   ZeropsProjectsFlowProps,
 } from "./ZeropsProjectsFlow";
 import { Button } from "~/components/ui/button";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 export const cardId = (groupId: string) => `project-${groupId}`;
 
@@ -184,7 +193,7 @@ function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]>
 export function ServicesHeld() {
   return (
     <p aria-hidden="true" className="ov-panel-services" data-zerops-services-held="">
-      <span className="ov-service">{"\u200b"}</span>
+      <span className="ov-service" />
     </p>
   );
 }
@@ -368,6 +377,7 @@ export function CardChanges({
   mateName,
   onOpen,
   unknown,
+  setupReview,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
   /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
@@ -386,6 +396,8 @@ export function CardChanges({
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
   /** Why its changes are not known, where HQ did not tell them (`changesUnknownOf`). */
   readonly unknown?: string | undefined;
+  /** What a waiting setup change's review is read by, so its row says what it changes. */
+  readonly setupReview?: SetupReview | undefined;
 }) {
   const rows = cardChangeRows(changes, releases);
   return (
@@ -418,11 +430,25 @@ export function CardChanges({
               );
             const { change } = row;
             const by = mateName(change.pull.mateProjectId);
+            const key = `${change.pull.repository}#${String(change.pull.number)}`;
+            if (change.setup === true && setupReview !== undefined)
+              return (
+                <SetupChangeRow
+                  by={by}
+                  change={change}
+                  face={face?.(change.pull.mateProjectId)}
+                  key={key}
+                  onOpen={(from) => {
+                    onOpen(change, from);
+                  }}
+                  review={setupReview}
+                />
+              );
             return (
               <ChangeRow
                 at={change.at}
                 face={face?.(change.pull.mateProjectId)}
-                key={`${change.pull.repository}#${String(change.pull.number)}`}
+                key={key}
                 line={by === undefined ? change.words : `${by} · ${change.words}`}
                 onOpen={(from) => {
                   onOpen(change, from);
@@ -436,6 +462,64 @@ export function CardChanges({
         </ul>
       )}
     </section>
+  );
+}
+
+/** The project a card's setup changes are reviewed in, as their review reads them. */
+export interface SetupReview {
+  readonly appId: string;
+  /** Each repository's `main` as the flow last told it (`mergedMain`). */
+  readonly repos:
+    | ReadonlyArray<{ readonly name: string; readonly mainHead?: string | null | undefined }>
+    | undefined;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  readonly environments: Parameters<typeof recipeReach>[0]["environments"];
+}
+
+/**
+ * A setup change waiting for a person: what it changes, read as its review reads it — the files HQ
+ * recorded (`recipeReach`) — and the project's setup until they are read.
+ */
+function SetupChangeRow({
+  change,
+  review,
+  by,
+  face,
+  onOpen,
+}: {
+  readonly change: CardChange;
+  readonly review: SetupReview;
+  readonly by: string | undefined;
+  readonly face: ReactNode;
+  readonly onOpen: (from: HTMLElement) => void;
+}) {
+  const { pull } = change;
+  const detail = useZeropsChangeDetail({
+    link: { appId: review.appId, repo: pull.repository, number: pull.number },
+    head: pull.headSha,
+    main:
+      review.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
+      mergedMain(pull.repository, review.merged),
+  });
+  const read = detail.readout.kind === "read" ? detail.readout.value : undefined;
+  const reach: RecipeReach | undefined =
+    read?.filesKnown === true
+      ? recipeReach({
+          files: read.files.map((file) => ({ filename: file.path })),
+          environments: review.environments,
+        })
+      : undefined;
+  const words = setupChangeWords(reach);
+  return (
+    <ChangeRow
+      at={change.at}
+      face={face}
+      line={by === undefined ? words : `${by} · ${words}`}
+      onOpen={onOpen}
+      open={change.open}
+      pull={pull}
+      tone={change.tone}
+    />
   );
 }
 
@@ -490,7 +574,7 @@ function CardMates<T>({
       <Fragment key={props.getKey(mate.item)}>
         {props.renderMate(mate.item, {
           layout: "row",
-          previews: mate.mate.previews,
+          parts: mate.mate.parts ?? [],
           // A change is offered for review only once the project's changes are read and known.
           review:
             entry.changesAwaiting || entry.changesUnknown !== undefined
@@ -861,8 +945,11 @@ export interface CardMateProps {
   /** The right of its name: its time, its dot. */
   readonly time: ReactNode;
   readonly reading: CardMateReading;
-  /** Its previews, one per service, each a door on its name's line by the service's name. */
-  readonly previews?: ReadonlyArray<GroupFlowPreview> | undefined;
+  /**
+   * Its parts (`mateParts`), each a chip on its name's line by the part's name: a door to its
+   * preview, or to its dev where it has no preview, or muted with why where it has neither.
+   */
+  readonly parts?: ReadonlyArray<MatePart> | undefined;
   /** Drawn in place of the words where its container has something else to say. */
   readonly line?: ReactNode;
   /** Opens its conversation; `undefined` where it cannot open yet. */
@@ -882,7 +969,7 @@ export function CardMate({
   face,
   time,
   reading,
-  previews = [],
+  parts = [],
   line,
   onOpen,
   actions,
@@ -912,19 +999,13 @@ export function CardMate({
             </button>
           )}
           {mark}
-          {previews.map((preview) => (
-            <a
-              aria-label={`Open ${name}'s ${preview.service} preview`}
-              className="ov-mate-preview"
-              href={preview.url}
-              key={preview.service}
-              rel="noreferrer"
-              target="_blank"
-            >
-              {preview.service}
-              <ArrowUpRightIcon aria-hidden="true" className="size-3" />
-            </a>
-          ))}
+          {parts.length === 0 ? null : (
+            <span className="ov-mate-parts" data-zerops-surface="card-mate-parts">
+              {parts.map((part) => (
+                <CardMatePart key={part.key} mate={name} part={part} />
+              ))}
+            </span>
+          )}
           <span className="ov-mate-time">{time}</span>
         </span>
         {/* Cut at the card's edge, its whole is the row's press away: its conversation. */}
@@ -938,6 +1019,43 @@ export function CardMate({
         {drawn(actions) ? <span className="ov-acts">{actions}</span> : null}
       </span>
     </div>
+  );
+}
+
+/**
+ * A part's chip on a Mate's row: a door to its preview, else to its dev, by the part's name; muted,
+ * with why in its title, where it has neither address.
+ */
+function CardMatePart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
+  const door =
+    part.preview?.url === undefined
+      ? part.dev.find((entry) => entry.url !== undefined)
+      : part.preview;
+  const url = door?.url;
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        render={
+          url === undefined ? (
+            <span className="ov-mate-preview" data-off="" />
+          ) : (
+            <a
+              aria-label={`Open ${mate}'s ${part.name} ${door?.label === "preview" ? "preview" : "dev"}`}
+              className="ov-mate-preview"
+              href={url}
+              rel="noreferrer"
+              target="_blank"
+            />
+          )
+        }
+      >
+        {part.name}
+        {url === undefined ? null : <ArrowUpRightIcon aria-hidden="true" className="size-3" />}
+      </TooltipTrigger>
+      <TooltipPopup side="top">
+        {url === undefined ? (part.preview?.why ?? "no address yet") : door?.host}
+      </TooltipPopup>
+    </Tooltip>
   );
 }
 

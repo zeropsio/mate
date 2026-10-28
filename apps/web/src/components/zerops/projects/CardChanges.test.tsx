@@ -7,6 +7,31 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 // The shared minute clock runs a window timer: a card reads a fixed now here.
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => 0 }));
 
+// A setup change's review as HQ recorded it: its files, or not yet read.
+const recorded = vi.hoisted(() => ({ files: undefined as ReadonlyArray<string> | undefined }));
+vi.mock("~/zerops/useZeropsChangeDetail", async (actual) => ({
+  ...(await actual<typeof import("~/zerops/useZeropsChangeDetail")>()),
+  useZeropsChangeDetail: () => ({
+    readout:
+      recorded.files === undefined
+        ? { kind: "reading" }
+        : {
+            kind: "read",
+            value: {
+              files: recorded.files.map((path) => ({
+                path,
+                status: "modified",
+                additions: 1,
+                deletions: 0,
+              })),
+              filesKnown: true,
+            },
+          },
+    retry: () => {},
+    showFiles: undefined,
+  }),
+}));
+
 import { CardChanges } from "./ProjectCards";
 import type { CardChange } from "./projectCard.logic";
 
@@ -50,7 +75,10 @@ afterEach(() => {
   for (const unmount of unmounts.splice(0)) unmount();
 });
 
-async function mount(onOpen: (change: CardChange) => void) {
+async function mount(
+  onOpen: (change: CardChange) => void,
+  over: Partial<Parameters<typeof CardChanges>[0]> = {},
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
@@ -62,6 +90,7 @@ async function mount(onOpen: (change: CardChange) => void) {
         onOpen={(change) => {
           onOpen(change);
         }}
+        {...over}
       />,
     );
   });
@@ -118,6 +147,44 @@ describe("a card's changes", () => {
     // Outside the row's own press: the link opens GitHub, never the change's review.
     expect(link?.closest("button")).toBeNull();
     expect(second?.querySelector("a")).toBeNull();
+  });
+});
+
+// Larkspur, 2026-10-28: a setup change Core held for a person. Its words come from the files its
+// review recorded, never from which environments the project has.
+describe("a card's waiting setup change", () => {
+  const SETUP: CardChange = {
+    pull: pull({ repository: "group", kind: "recipe", number: 4, title: "Add storage" }),
+    open: true,
+    words: "Changes the project's setup",
+    tone: "off",
+    at: undefined,
+    setup: true,
+  };
+  it.each([
+    { case: "its files unread", files: undefined, line: "Rossy · Changes the project's setup" },
+    {
+      case: "the stage's recipe",
+      files: ["3 — Stage/import.yaml"],
+      line: "Rossy · Changes how Stage is built",
+    },
+    {
+      case: "only a README",
+      files: ["3 — Stage/README.md"],
+      line: "Rossy · Changes the project's setup",
+    },
+  ])("says what it changes by the files its review recorded: $case", async ({ files, line }) => {
+    recorded.files = files;
+    const container = await mount(() => {}, {
+      changes: [SETUP],
+      setupReview: {
+        appId: "g1",
+        repos: [],
+        merged: [],
+        environments: [{ tier: "stage" }, { tier: "production" }],
+      },
+    });
+    expect(container.querySelector("li")?.textContent).toContain(line);
   });
 });
 

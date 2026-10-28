@@ -98,6 +98,7 @@ const UNREAD_ADDRESSES = Atom.make<PlaceAddresses>({
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 
 const SERVICE_OPERATION = {

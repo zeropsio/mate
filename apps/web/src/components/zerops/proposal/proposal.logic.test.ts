@@ -351,6 +351,7 @@ const place = (
   waitingDomains: [],
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
   ...over,
 });
 

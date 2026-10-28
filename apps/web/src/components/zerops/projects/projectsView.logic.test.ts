@@ -704,9 +704,37 @@ describe("groupFlowInputOf", () => {
       pending: [],
     });
     expect(input.mates[0]?.previews.map((preview) => preview.service)).toEqual([
-      "web",
-      "api",
-      "worker",
+      "API",
+      "Web",
+      "Worker",
+    ]);
+  });
+
+  it("A pool-era Mate's row shows every part its pools serve by its friendly name, a part with no public preview too", () => {
+    const [wren] = members;
+    const input = groupFlowInputOf({
+      groupId: "g",
+      members: [
+        {
+          ...wren!,
+          routes: [route("apipool"), route("apistage"), route("zcp")],
+          hostnames: ["noola", "apipool", "apistage", "runnerpool", "runnerstage", "zcp"],
+          pools: ["apipool", "runnerpool"],
+          controlPlane: "zcp",
+        },
+      ],
+      flow: undefined,
+      deployments: new Map(),
+      pending: [],
+    });
+    expect(
+      input.mates[0]?.parts?.map((part) => [part.name, part.preview?.url ?? part.preview?.why]),
+    ).toEqual([
+      ["API", "https://apistage-1.prg1.zerops.app"],
+      ["Runner", "no public address"],
+    ]);
+    expect(input.mates[0]?.previews).toEqual([
+      { service: "API", url: "https://apistage-1.prg1.zerops.app" },
     ]);
   });
 
@@ -718,11 +746,11 @@ describe("groupFlowInputOf", () => {
       deployments: new Map(),
       pending: [],
     });
-    expect(input.mates).toEqual([
+    expect(input.mates.map(({ parts: _parts, ...mate }) => mate)).toEqual([
       {
         projectId: "p-wren",
         name: "Wren",
-        previews: [{ service: "app", url: "https://appstage-1.prg1.zerops.app" }],
+        previews: [{ service: "App", url: "https://appstage-1.prg1.zerops.app" }],
         waiting: false,
         talked: true,
       },

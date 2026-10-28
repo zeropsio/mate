@@ -10,9 +10,10 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * A place's section is what its chip's menu said (`ChipMenu`): its state, what went wrong, the fix
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
- * is one row per part — its name, then its dev and its stage side by side, each a link with its
- * host in its tooltip; a pool's dev is each workspace zcp holds on it, read from a conversation of
- * the Mate (`useMatesLeases`) — then its other addresses. Each address is listed once, opens in a
+ * is one row per part (`mateParts`) — its name, then its dev and its preview side by side, each a
+ * link with its host in its tooltip; a pool's dev is each workspace zcp holds on it, read from a
+ * conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
+ * deployed is its head alone. Each address is listed once, opens in a
  * new tab, and copies from its row or its link (`c`, ⌘C, or the button an address row's hover
  * shows).
  *
@@ -134,6 +135,8 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   pools: mate.candidate.services?.pools,
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
+  standIns: leases[mate.candidate.project.id]?.standIns,
+  leaseChats: leases[mate.candidate.project.id]?.leaseChats,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -614,6 +617,7 @@ export function SitesPanel({
                   groupId={groupId}
                   manage={manage}
                   place={section.place}
+                  quiet={section.quiet}
                   mates={mates}
                   onAskToFix={onAskToFix}
                   onOpenStop={onOpenStop}
@@ -691,6 +695,7 @@ function PlaceSection({
   stop,
   title,
   place,
+  quiet,
   manage,
   groupId,
   mates,
@@ -703,6 +708,8 @@ function PlaceSection({
   readonly stop: ChipMenuStop | undefined;
   readonly title: string;
   readonly place: "production" | "stage";
+  /** Nothing deployed there: its head alone, title and state word. */
+  readonly quiet: boolean;
   /** `undefined` outside an account, where no sheet reads a place. */
   readonly manage: ManageDoor | undefined;
   readonly groupId: string;
@@ -753,6 +760,60 @@ function PlaceSection({
         )}
         {projectId === undefined ? null : <ZeropsDoor name={title} projectId={projectId} />}
       </div>
+      {quiet ? null : (
+        <PlaceBody
+          filtering={filtering}
+          groupId={groupId}
+          manage={manage}
+          mates={mates}
+          onAskToFix={onAskToFix}
+          onRoutes={onRoutes}
+          place={place}
+          projectId={projectId}
+          stop={stop}
+          title={title}
+        >
+          {children}
+        </PlaceBody>
+      )}
+    </>
+  );
+}
+
+/**
+ * What a place with something deployed says under its head: what went wrong and the fix, its
+ * public access, its links — and production's offer of a domain of its own while it has none.
+ */
+function PlaceBody({
+  stop,
+  title,
+  place,
+  projectId,
+  manage,
+  groupId,
+  mates,
+  filtering,
+  onAskToFix,
+  onRoutes,
+  children,
+}: {
+  readonly stop: ChipMenuStop | undefined;
+  readonly title: string;
+  readonly place: "production" | "stage";
+  readonly projectId: string | undefined;
+  readonly manage: ManageDoor | undefined;
+  readonly groupId: string;
+  readonly mates: ReadonlyArray<ChipMate>;
+  readonly filtering: boolean;
+  readonly onAskToFix: ProjectSitesInput["onAskToFix"];
+  readonly onRoutes: (
+    projectId: string,
+    routes: ReadonlyArray<ZeropsPublicRoute> | undefined,
+  ) => void;
+  readonly children: ReactNode;
+}) {
+  return (
+    <>
       {filtering || projectId === undefined ? null : <StopReadAgain projectId={projectId} />}
       {filtering || stop?.note === undefined ? null : (
         <p className="zerops-sites-note" data-zerops-surface="sidebar-project-sites-note">
@@ -985,7 +1046,7 @@ function CopyButton({
 }
 
 /**
- * A Mate's parts, one row each: the part's name, then its dev and its stage in fixed columns, so
+ * A Mate's parts, one row each: the part's name, then its dev and its preview in fixed columns, so
  * the rows align. Each side with an address is a link that opens in a new tab, its host (and any
  * other port's) in its tooltip, and copies on `c` or ⌘C; one without says why in its tooltip.
  */
@@ -1008,10 +1069,10 @@ function SitesPairs({
           <PairSide key={side.key} onCopy={onCopy} side={side} />
         ))}
       </span>
-      <span className="zerops-sites-side" data-side="stage">
-        {pair.stage.map((side) => (
-          <PairSide key={side.key} onCopy={onCopy} side={side} />
-        ))}
+      <span className="zerops-sites-side" data-side="preview">
+        {pair.preview === undefined ? null : (
+          <PairSide key={pair.preview.key} onCopy={onCopy} side={pair.preview} />
+        )}
       </span>
     </div>
   ));
@@ -1052,12 +1113,13 @@ function PairSide({
           )
         }
       >
-        {side.label}
+        <span className="zerops-sites-label">{side.label}</span>
         {url === undefined ? null : (
           <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
         )}
       </TooltipTrigger>
       <TooltipPopup side="top">
+        {side.label === "dev" || side.label === "preview" ? null : <div>{side.label}</div>}
         {url === undefined
           ? side.why
           : [side.host, ...side.more].map((host) => <div key={host}>{host}</div>)}
@@ -1153,7 +1215,6 @@ export function HeaderSites({
   const mates = sites.mates
     .filter((mate) => mate.candidate.project.id === mateProjectId)
     .map((mate) => (threadKey === undefined ? mate : { ...mate, threadKey }));
-  const line = sites.line === undefined ? undefined : { ...sites.line, stages: [] };
   const close = () => {
     setOpen(false);
   };
@@ -1182,7 +1243,7 @@ export function HeaderSites({
             <SitesPanel
               focusSection={undefined}
               groupId={sites.groupId}
-              line={line}
+              line={sites.line}
               mates={mates}
               onAskToFix={
                 sites.onAskToFix === undefined
@@ -1206,7 +1267,7 @@ export function HeaderSites({
               production={sites.production}
               projectName={sites.projectName}
               query={query}
-              stages={undefined}
+              stages={sites.stages}
             />
           </PopoverPrimitive.Popup>
         </PopoverPrimitive.Positioner>

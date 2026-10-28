@@ -246,6 +246,7 @@ const production = (
   waitingDomains,
   waitingPorts: [],
   readsProject: false,
+  nothingDeployed: false,
 });
 
 describe("the Chief's proposal to put a project on a domain", () => {

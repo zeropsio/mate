@@ -197,37 +197,6 @@ describe("mateAddresses", () => {
       ],
     },
     {
-      name: "each named dev server is its own dev address, by its name and port",
-      input: {
-        services: [
-          {
-            ...svc("appdev", ["https://appdev-1df2-3000.prg1.zerops.app"]),
-            devServers: [
-              { name: "web", port: 3000, url: "https://appdev-1df2-3000.prg1.zerops.app" },
-              { name: "api", port: 8080, url: "https://appdev-1df2-8080.prg1.zerops.app" },
-              { name: "worker" },
-            ],
-          },
-        ],
-      },
-      expected: [
-        { service: "web :3000", role: "dev", url: "https://appdev-1df2-3000.prg1.zerops.app" },
-        { service: "api :8080", role: "dev", url: "https://appdev-1df2-8080.prg1.zerops.app" },
-      ],
-    },
-    {
-      name: "a one-part app's dev address is today's: one dev server names nothing",
-      input: {
-        services: [
-          {
-            ...svc("appdev", ["https://appdev-1-3000.example.app"]),
-            devServers: [{ name: "appdev", port: 3000, url: "https://appdev-1-3000.example.app" }],
-          },
-        ],
-      },
-      expected: [{ service: "appdev", role: "dev", url: "https://appdev-1-3000.example.app" }],
-    },
-    {
       name: "one address is listed once, whoever names it",
       input: {
         services: [svc("app", ["https://app-1-3000.example.app"])],
@@ -237,6 +206,41 @@ describe("mateAddresses", () => {
     },
   ])("$name", ({ input, expected }) => {
     expect(brief(input)).toEqual(expected);
+  });
+
+  // A dev service running several dev servers (a monorepo: web and api): each running one is its
+  // own address, by the server's own name, its port where it has none — never "dev 2".
+  const devServer = (name: string, port: number, status = "running") => ({
+    name,
+    port,
+    status,
+    url: `https://appdev-1df2-${String(port)}.prg1.zerops.app`,
+  });
+  const named = (input: MateAddressInput) =>
+    mateAddresses(input).map(({ role, name, url }) => ({ role, name, url }));
+
+  it.each([
+    {
+      name: "a one-part app's dev address is today's: one dev server names nothing",
+      servers: [devServer("web", 3000)],
+      expected: [{ role: "dev", name: "App", url: "https://appdev-1df2-3000.prg1.zerops.app" }],
+    },
+    {
+      name: "each running dev server of a dev service is its own dev address, by its own name, its port where it has none",
+      servers: [devServer("web", 3000), devServer("", 8080), devServer("worker", 9000, "stopped")],
+      expected: [
+        { role: "dev", name: "App · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { role: "dev", name: "App · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+      ],
+    },
+  ])("$name", ({ servers, expected }) => {
+    expect(
+      named({
+        services: [
+          { ...svc("appdev", ["https://appdev-1df2-3000.prg1.zerops.app"]), devServers: servers },
+        ],
+      }),
+    ).toEqual(expected);
   });
 
   it("carries the address without its scheme, what a row shows", () => {
@@ -255,8 +259,8 @@ describe("mateAddresses", () => {
   // rows one space apart meaning different things. A row leads with what the address is; the name
   // after it is the service's own, never one with the role glued on.
   it.each([
-    { name: "the one stage's service", stages: 1, expected: "app" },
-    { name: "one of several stages", stages: 2, expected: "app · stage project" },
+    { name: "the one stage's service", stages: 1, expected: "App" },
+    { name: "one of several stages", stages: 2, expected: "App · stage project" },
   ])(
     "names an environment's address by its service after its role: $name",
     ({ stages, expected }) => {
@@ -352,22 +356,32 @@ describe("groupAddressEnvironments", () => {
 });
 
 describe("a thread's lease's addresses", () => {
-  const pool = svc("webpool", ["https://webpool-1df2-3000.prg1.zerops.app"]);
+  const pool = {
+    ...svc("webpool", ["https://webpool-1df2-3000.prg1.zerops.app"], "infrastructure"),
+    type: "swarm@1",
+  };
   const LEASE_URL = "https://webpool-3-1df2-3000.prg1.zerops.app";
   const lease = (
-    devServers?: NonNullable<MateAddressInput["leases"]>[number]["devServers"],
+    devServers?: NonNullable<NonNullable<MateAddressInput["leases"]>[number]["devServers"]>,
     alias = "webpool-3",
-    label = "Web",
   ) => ({
     alias,
-    label,
+    pool: alias.replace(/-\d+$/u, ""),
+    state: "held",
     ...(devServers === undefined ? {} : { devServers }),
+  });
+  const running = (name: string, port: number, url?: string) => ({
+    name,
+    port,
+    status: "running",
+    readAt: "2026-10-28T10:00:00Z",
+    ...(url === undefined ? {} : { url }),
   });
 
   it("a bound thread lists its lease's dev server under the lease's name, as a dev", () => {
     const addresses = mateAddresses({
       services: [pool],
-      leases: [lease([{ name: "web", port: 3000, url: LEASE_URL }])],
+      leases: [lease([running("web", 3000, LEASE_URL)])],
     });
     expect(addresses).toContainEqual({
       service: "webpool-3",
@@ -378,33 +392,12 @@ describe("a thread's lease's addresses", () => {
     });
   });
 
-  it("each named dev server on a lease is its own address, by the lease and the server", () => {
-    const addresses = mateAddresses({
-      services: [],
-      leases: [
-        lease([
-          { name: "web", port: 3000, url: LEASE_URL },
-          { name: "api", port: 8080, url: "https://webpool-3-1df2-8080.prg1.zerops.app" },
-          { name: "worker" },
-        ]),
-      ],
-    });
-    expect(addresses.map(({ service, name, url }) => ({ service, name, url }))).toEqual([
-      { service: "webpool-3 web", name: "Web · web :3000", url: LEASE_URL },
-      {
-        service: "webpool-3 api",
-        name: "Web · api :8080",
-        url: "https://webpool-3-1df2-8080.prg1.zerops.app",
-      },
-    ]);
-  });
-
   it("a lease the envelope carries no address for adds nothing, and never the pool's own address", () => {
     const before = mateAddresses({ services: [pool] });
     expect(mateAddresses({ services: [pool], leases: [lease()] })).toEqual(before);
-    expect(
-      mateAddresses({ services: [pool], leases: [lease([{ name: "web", port: 3000 }])] }),
-    ).toEqual(before);
+    expect(mateAddresses({ services: [pool], leases: [lease([running("web", 3000)])] })).toEqual(
+      before,
+    );
   });
 
   it("a bound thread lists the dev servers of every lease of its branch, each under its lease's name", () => {
@@ -412,8 +405,8 @@ describe("a thread's lease's addresses", () => {
     const addresses = mateAddresses({
       services: [pool],
       leases: [
-        lease([{ name: "web", port: 3000, url: LEASE_URL }]),
-        lease([{ name: "hq", port: 8080, url: HQ_URL }], "hqpool-2", "Hq"),
+        lease([running("web", 3000, LEASE_URL)]),
+        lease([running("hq", 8080, HQ_URL)], "hqpool-2"),
       ],
     });
     expect(
@@ -421,9 +414,37 @@ describe("a thread's lease's addresses", () => {
         .filter(({ url }) => url === LEASE_URL || url === HQ_URL)
         .map(({ service, role, name, url }) => ({ service, role, name, url })),
     ).toEqual([
+      { service: "hqpool-2", role: "dev", name: "HQ", url: HQ_URL },
       { service: "webpool-3", role: "dev", name: "Web", url: LEASE_URL },
-      { service: "hqpool-2", role: "dev", name: "Hq", url: HQ_URL },
     ]);
+  });
+
+  it("each running dev server of a workspace is its own address, by the chat it is for and the server's own name", () => {
+    const API_URL = "https://webpool-3-1df2-8080.prg1.zerops.app";
+    const addresses = mateAddresses({
+      services: [pool],
+      leases: [
+        lease([
+          running("web", 3000, LEASE_URL),
+          running("api", 8080, API_URL),
+          { ...running("worker", 9000), status: "starting" },
+        ]),
+      ],
+      leaseChats: [{ alias: "webpool-3", title: "Fix the login" }],
+    });
+    expect(addresses.map(({ role, name, url }) => ({ role, name, url }))).toEqual([
+      { role: "dev", name: "Web · Fix the login · web", url: LEASE_URL },
+      { role: "dev", name: "Web · Fix the login · api", url: API_URL },
+    ]);
+  });
+
+  it("a workspace is named by its part and the chat it is for", () => {
+    const addresses = mateAddresses({
+      services: [pool],
+      leases: [lease([running("web", 3000, LEASE_URL)])],
+      leaseChats: [{ alias: "webpool-3", title: "Fix the login" }],
+    });
+    expect(addresses.map(({ name }) => name)).toEqual(["Web · Fix the login"]);
   });
 });
 
@@ -448,7 +469,14 @@ describe("a part migrated to a dev pool", () => {
     ).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
   });
 
-  it("before the envelope pairs it, its stage stands alone, by its name", () => {
-    expect(brief({ services })).toEqual([{ service: "appstage", role: undefined, url: STAGE_URL }]);
+  it("before the envelope pairs it, its stage pairs with the pool of its stem", () => {
+    expect(brief({ services })).toEqual([{ service: "appstage", role: "preview", url: STAGE_URL }]);
+  });
+
+  it("the holder zcp keeps for its repository opens nothing: it holds the code, nothing runs there", () => {
+    const holder = { ...svc("kiln", ["https://kiln-1df2-8080.prg1.zerops.app"]), type: "go@1.22" };
+    expect(brief({ services: [...services, holder], standIns: ["kiln"] })).toEqual([
+      { service: "appstage", role: "preview", url: STAGE_URL },
+    ]);
   });
 });

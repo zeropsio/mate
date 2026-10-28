@@ -46,22 +46,22 @@ describe("browserSiteGroups", () => {
       {
         title: "Development",
         rows: [
-          "medusa medusadev-a1b2-9000.prg1.zerops.app",
-          "nextstore nextstoredev-a1b2-8000.prg1.zerops.app",
+          "Medusa medusadev-a1b2-9000.prg1.zerops.app",
+          "Nextstore nextstoredev-a1b2-8000.prg1.zerops.app",
         ],
       },
       {
         title: "Preview",
         rows: [
-          "medusa medusastage-a1b2-9000.prg1.zerops.app",
-          "nextstore nextstorestage-a1b2-8000.prg1.zerops.app",
+          "Medusa medusastage-a1b2-9000.prg1.zerops.app",
+          "Nextstore nextstorestage-a1b2-8000.prg1.zerops.app",
         ],
       },
       {
         title: "Production",
         rows: [
-          "medusa medusa-c3d4-9000.prg1.zerops.app",
-          "nextstore nextstore-c3d4-8000.prg1.zerops.app",
+          "Medusa medusa-c3d4-9000.prg1.zerops.app",
+          "Nextstore nextstore-c3d4-8000.prg1.zerops.app",
         ],
       },
       { title: "Tools", rows: ["mailpit mailpit-a1b2-8025.prg1.zerops.app"] },
@@ -82,32 +82,34 @@ describe("browserSiteGroups", () => {
     };
     expect(shown(input).map((group) => group.title)).toEqual(["Development", "Preview", "Stage"]);
     expect(shown(input).map((group) => group.rows[0]!.split(" ")[0])).toEqual([
-      "app",
-      "app",
-      "app",
+      "App",
+      "App",
+      "App",
     ]);
   });
 
-  it("names each of a workspace's dev servers by its own name and port", () => {
+  it("names a pool's workspaces by their part, and offers only those that run", () => {
     const input: MateAddressInput = {
-      services: [
-        {
-          ...service("appdev"),
-          devServers: [
-            { name: "web", port: 3000, url: "https://appdev-a1b2-3000.prg1.zerops.app" },
-            { name: "api", port: 8080, url: "https://appdev-a1b2-8080.prg1.zerops.app" },
-          ],
-        },
-      ],
+      services: [{ ...service("webpool", 3001), type: "swarm@1" }, service("webstage")],
+      leases: ["webpool-1", "webpool-2"].map((alias, index) => ({
+        alias,
+        pool: "webpool",
+        state: "held",
+        devServers: [
+          {
+            name: "web",
+            port: 3001,
+            status: index === 0 ? "running" : "starting",
+            readAt: "2026-10-28T10:00:00Z",
+            url: `https://webpool-${String(index + 1)}-a1b2-3001.prg1.zerops.app`,
+          },
+        ],
+      })),
     };
-    expect(shown(input)[0]).toEqual({
-      title: "Development",
-      rows: [
-        "web :3000 appdev-a1b2-3000.prg1.zerops.app",
-        "api :8080 appdev-a1b2-8080.prg1.zerops.app",
-        "app appdev-a1b2-8000.prg1.zerops.app",
-      ],
-    });
+    expect(shown(input).slice(0, 2)).toEqual([
+      { title: "Development", rows: ["Web webpool-1-a1b2-3001.prg1.zerops.app"] },
+      { title: "Preview", rows: ["Web webstage-a1b2-8000.prg1.zerops.app"] },
+    ]);
   });
 
   it("two production projects keep their names beside the service", () => {
@@ -122,7 +124,7 @@ describe("browserSiteGroups", () => {
     };
     expect(shown(input)[1]).toEqual({
       title: "Production",
-      rows: ["app · EU app-eu.prg1.zerops.app", "app · US app-us.prg1.zerops.app"],
+      rows: ["App · EU app-eu.prg1.zerops.app", "App · US app-us.prg1.zerops.app"],
     });
   });
 });

@@ -460,20 +460,17 @@ describe("environmentSlots", () => {
     {
       case: "an empty production, main has code, the person may release: the first release",
       input: withProduction({ productionRuns: "empty", releaseOffered: true }),
-      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", true]],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for its first release", true]],
     },
     {
       case: "an empty production, main has code, the person may not release: only the information",
       input: withProduction({ productionRuns: "empty" }),
-      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "No release yet", false]],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for its first release", false]],
     },
     {
       case: "an empty production while main is empty: waiting for the first merge",
       input: withProduction({ productionRuns: "empty", mainHasCode: false }),
-      rows: [
-        NO_STAGE_RECIPE,
-        ["environment", "p-prod", "No release yet — waiting for the first merge", false],
-      ],
+      rows: [NO_STAGE_RECIPE, ["environment", "p-prod", "Waiting for the first merge", false]],
     },
     {
       case: "production runs and changes wait: the count, with Review release for a releaser",

@@ -11,7 +11,7 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
 import type { ReadoutPart } from "~/zerops/useZeropsChangeDetail";
 
-import { commitFold } from "./ZeropsReview.logic";
+import { commitFold, NOT_RECORDED_ASIDE } from "./ZeropsReview.logic";
 import { ReviewFailed, ReviewSection, type ReviewFoldState } from "./ZeropsReviewSurface";
 import { Button } from "~/components/ui/button";
 
@@ -44,7 +44,7 @@ export function ReviewCommits({
   const [all, setAll] = useState(false);
   if (notRecorded !== undefined) {
     return (
-      <ReviewSection fold={fold} title="Commits">
+      <ReviewSection aside={NOT_RECORDED_ASIDE} fold={fold} title="Commits">
         <p className="rv-diff-note">The commits are not known yet.</p>
         {notRecorded.onShow === undefined ? null : (
           <Button onClick={notRecorded.onShow} size="sm" variant="link">

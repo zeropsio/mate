@@ -265,7 +265,7 @@ describe("the project's addresses", () => {
     expect(surface("sidebar-project-sites-popover")).not.toBeNull();
     expect(listed()).toEqual([
       ["Production", ["https://quill.example.com", "https://api.quill.example.com"]],
-      ["stage", ["https://stage.quill.example.app"]],
+      ["Stage", ["https://stage.quill.example.app"]],
       ["Nell", ["https://quill-nell.example.app"]],
       ["Odo", ["https://quill-odo.example.app"]],
     ]);
@@ -510,7 +510,7 @@ describe("a Mate's dev pools", () => {
     expect(
       surfaces("sidebar-project-sites-pair").map((row) => row.textContent),
       "each part by its name, a dev per workspace",
-    ).toEqual(["Embedderdev", "HQdevdev 2"]);
+    ).toEqual(["Embedderdev", "HQdevdev"]);
     for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
     expect(
       surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,
@@ -555,6 +555,44 @@ describe("a Mate's dev pools", () => {
     });
     await press(document.querySelector<HTMLElement>("[data-trigger]"));
     expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
+  });
+
+  it("the header's Sites show the same places as the menu's", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const sites: ProjectSitesInput = {
+      groupId: "quill",
+      projectName: "Quillmark",
+      production: () => PRODUCTION,
+      stages: () => STAGES,
+      mates: [mate("Nell"), mate("Odo", { mine: false, owner: owner("Pia Lund") })],
+      prodChip: HEALTHY,
+      stageChip: { label: "stage", state: "ok", version: "main" },
+      line: CALM,
+      onAskToFix: undefined,
+      onOpenStop: () => undefined,
+    };
+    await act(async () => {
+      root.render(
+        <HeaderSites
+          mateProjectId="quill-nell"
+          sites={sites}
+          trigger={<button data-trigger="" type="button" />}
+        >
+          Sites
+        </HeaderSites>,
+      );
+    });
+    unmounts.push(() => {
+      act(() => {
+        root.unmount();
+      });
+      container.remove();
+    });
+    await press(document.querySelector<HTMLElement>("[data-trigger]"));
+    expect(listed().map(([title]) => title)).toEqual(["Production", "Stage", "Nell"]);
   });
 
   it("the globe never says there is no address while a Mate's pools hold workspaces not read yet", async () => {
@@ -710,7 +748,7 @@ describe("the addresses sheet's doors", () => {
 
   it.each([
     ["Production", "quill-production"],
-    ["stage", "quill-stage"],
+    ["Stage", "quill-stage"],
     ["Nell", "quill-nell"],
   ])(
     "Manage on %s's head opens the addresses sheet for its project and closes the popover",
@@ -742,7 +780,7 @@ describe("the addresses sheet's doors", () => {
     await press(surface("sidebar-project-sites"));
     expect(sectionOf("Production")).toBeDefined();
     expect(manageIn("Production")).toBeNull();
-    expect(manageIn("stage")).not.toBeNull();
+    expect(manageIn("Stage")).not.toBeNull();
   });
 
   it("offers no Manage outside an account, where no sheet can read a place", async () => {
@@ -764,6 +802,28 @@ describe("the addresses sheet's doors", () => {
       intent: "add-domain",
     });
     expect(surface("sidebar-project-sites-popover")).toBeNull();
+  });
+
+  it("a shared environment with nothing deployed is one quiet row: its title and its state word", async () => {
+    await mount(
+      {
+        production: () => ({
+          stops: [stop({ name: "production", word: "Not released yet", empty: true })],
+        }),
+        stages: () => ({
+          stops: [stop({ name: "stage", word: "Not deployed yet", empty: true })],
+        }),
+      },
+      inAccount({ "quill-production": place([]), "quill-stage": place([]) }),
+    );
+    await press(surface("sidebar-project-sites"));
+    expect(["Production", "Stage"].map((title) => sectionOf(title)?.textContent)).toEqual([
+      "ProductionNot released yet",
+      "StageNot deployed yet",
+    ]);
+    expect(addDomain()).toBeNull();
+    expect(manageIn("Production")).toBeNull();
+    expect(manageIn("Stage")).toBeNull();
   });
 
   it.each([
