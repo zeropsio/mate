@@ -61,6 +61,7 @@ import {
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -68,10 +69,11 @@ import { useFixMates } from "~/zerops/fixMates";
 import { useLacksOwnDomain } from "~/zerops/ownDomain";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
-import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
+import { releaseRequestOf, type HqAppDetailRead } from "@t3tools/client-runtime/data";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
+import { useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -471,13 +473,39 @@ function ReleaseData({
     });
   }, [canCheck, checking]);
 
+  const reviewing = press.kind === "idle" || press.kind === "refused";
+  const plan = useReleaseServicePlan(
+    flow,
+    chosen.error === undefined ? chosen.tag : undefined,
+    reviewing,
+  );
+  const reviewedPlan = plan.required && plan.view.kind === "ready" ? plan.view.plan : undefined;
+  const planPending = reviewing && plan.required && plan.view.kind === "pending";
+  const planFailure =
+    reviewing && plan.required && plan.view.kind === "failed" ? plan.view.reason : undefined;
+  const [heldPlan, setHeldPlan] = useState<ReleaseServicePlan>();
+  const reviewedRequest = releaseRequestOf(flow.release, chosen.tag, reviewedPlan);
+  const releaseGate =
+    "refused" in reviewedRequest
+      ? {
+          allowed: false as const,
+          reason: planPending ? "Reading production operations…" : reviewedRequest.refused,
+        }
+      : { allowed: true as const };
+
   const release = async () => {
     if (chosen.tag === undefined || chosen.error !== undefined) return;
+    if (plan.required && reviewedPlan === undefined) return;
     // Capture the offer in the press. HQ's stream may change it before React draws "running".
+    setHeldPlan(reviewedPlan);
     setHeld({ ...facts, tag: chosen.tag });
     setMade(chosen.tag);
     setPress({ kind: "running" });
-    const answer = await verbs.release(flow, chosen.tag);
+    const answer =
+      reviewedPlan === undefined
+        ? await verbs.release(flow, chosen.tag)
+        : await verbs.release(flow, chosen.tag, reviewedPlan);
+    if (!answer.ok && plan.required) plan.again();
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
@@ -489,6 +517,10 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
+      servicePlan={press.kind === "running" || press.kind === "done" ? heldPlan : reviewedPlan}
+      servicePlanPending={planPending}
+      servicePlanFailure={planFailure}
+      onRetryServicePlan={plan.again}
       git={
         flow.release.git === undefined
           ? undefined
@@ -500,7 +532,7 @@ function ReleaseData({
       changesPending={!contentsKnown}
       comparisonFailure={flow.release.comparisonFailure}
       fixer={fixer?.name}
-      gate={flow.release.gate}
+      gate={releaseGate}
       production={{
         ...productionBefore({
           replaces: facts.replaces,
@@ -713,6 +745,11 @@ function newestLive(
 }
 
 export interface ReleaseReviewViewProps {
+  /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
+  readonly servicePlan?: ReleaseServicePlan | undefined;
+  readonly servicePlanPending?: boolean | undefined;
+  readonly servicePlanFailure?: string | undefined;
+  readonly onRetryServicePlan?: () => void;
   readonly git?: ZeropsProjectFlow["release"]["git"];
   readonly onReplaceToken?: (() => void) | undefined;
   /** HQ has not said what the release carries: no count, no list — "not known yet". */
@@ -933,7 +970,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
               : undefined
           : {
               ...model.primary,
-              enabled: model.primary.enabled && checkedVersion?.error === undefined,
+              enabled:
+                model.primary.enabled &&
+                checkedVersion?.error === undefined &&
+                props.servicePlanPending !== true &&
+                props.servicePlanFailure === undefined,
               busy: press.kind === "running",
               label: press.kind === "running" ? `Releasing ${tag}` : model.primary.label,
               text: `${model.primary.label} to production`,
@@ -997,6 +1038,46 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
             )}
           </ReviewSection>
         </>
+      )}
+      {props.servicePlanPending === true ? (
+        <ReviewSection title="Production operations">
+          <p className="rv-note">Reading production operations…</p>
+        </ReviewSection>
+      ) : props.servicePlanFailure !== undefined ? (
+        <ReviewSection title="Production operations">
+          <ZeropsReadFailure
+            reason={props.servicePlanFailure}
+            action="Review again"
+            again={props.onRetryServicePlan}
+          />
+        </ReviewSection>
+      ) : props.servicePlan === undefined ? null : (
+        <ReviewSection title="Production operations">
+          <ol className="rv-service-plan">
+            {props.servicePlan.operations.map((operation, index) => (
+              <li key={`${index}-${operation.kind}-${operation.service}`}>
+                <p className="rv-words">
+                  {operation.kind === "create" ? "Create" : "Deploy"} {operation.service}
+                </p>
+                {operation.kind === "create" ? (
+                  <>
+                    <dl>
+                      {Object.entries(operation.settings).map(([name, value]) => (
+                        <div key={name}>
+                          <dt>{name}</dt>
+                          <dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd>
+                        </div>
+                      ))}
+                    </dl>
+                    <p className="rv-note">{operation.cost}</p>
+                  </>
+                ) : (
+                  <p className="rv-note">{operation.sha}</p>
+                )}
+              </li>
+            ))}
+          </ol>
+        </ReviewSection>
       )}
       {props.comparisonFailure === undefined ? null : (
         <ZeropsReadFailure action="Compare again" {...props.comparisonFailure} />

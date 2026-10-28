@@ -45,13 +45,15 @@ import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { CanonicalHqNavigationApp, HqNavigationChange } from "@t3tools/shared/hqStream";
 import { canonicalEnvironmentRow, type CanonicalEnvironmentRow } from "../../zerops/groupRows.ts";
 import type { CanonicalGroupEnvironmentRowInput } from "../../zerops/groupDeploys.ts";
-import type { Release } from "@t3tools/shared/hqRelease";
+import type { Release, HqReleaseTarget } from "@t3tools/shared/hqRelease";
 import type { GitReleaseReviewFacts } from "../../zerops/release.ts";
 
 type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefined };
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
+  readonly missingServices?: ReadonlyArray<string> | undefined;
+  readonly releaseTarget?: HqReleaseTarget | undefined;
   readonly git?: GitReleaseReviewFacts | undefined;
   readonly comparisonFailure?:
     | { readonly reason: string; readonly again?: (() => void) | undefined }
@@ -591,6 +593,11 @@ function projectFlow(
       productionWithheld === undefined
         ? {
             ...offer,
+            releaseTarget: attachment,
+            missingServices:
+              navigation != null && !("refused" in navigation)
+                ? navigation.missingServices
+                : undefined,
             gate,
             reviewable:
               gate.allowed ||

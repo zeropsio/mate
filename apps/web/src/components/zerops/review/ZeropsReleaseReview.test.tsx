@@ -6,6 +6,7 @@
 import { RELEASE_CHECKING } from "@t3tools/client-runtime/zerops";
 import { HQ_WRITE_UNCERTAIN } from "@t3tools/client-runtime/zerops/hq";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
+import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import { Window } from "happy-dom";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vite-plus/test";
@@ -61,6 +62,19 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
   );
 }
 
+const CREATION_PLAN: ReleaseServicePlan = {
+  hash: "a".repeat(64),
+  operations: [
+    {
+      kind: "create",
+      service: "worker",
+      settings: { hostname: "worker", type: "nodejs@22", minContainers: 2 },
+      cost: "Creates one additional billed production service: worker.",
+    },
+    { kind: "deploy", service: "worker", sha: "d".repeat(40) },
+  ],
+};
+
 describe("ReleaseReviewView", () => {
   it("names every missing Production service before approval and disables Release", () => {
     const reason =
@@ -70,6 +84,71 @@ describe("ReleaseReviewView", () => {
     expect(page.body.textContent).toContain(reason.replace(/\.$/u, ""));
     expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
   });
+
+  it("shows each ordered production operation, its exact creation settings and billed consequence before enabled approval", () => {
+    const page = new Window().document;
+    page.body.innerHTML = render({ servicePlan: CREATION_PLAN });
+    const operations = [...page.querySelectorAll("section")].find(
+      (section) => section.querySelector("h3")?.textContent === "Production operations",
+    );
+    const rows = [...(operations?.querySelectorAll("ol > li") ?? [])];
+    expect(rows.map((row) => row.querySelector("p")?.textContent)).toEqual([
+      "Create worker",
+      "Deploy worker",
+    ]);
+    expect(
+      [...(rows[0]?.querySelectorAll("dl dt") ?? [])].map((term) => [
+        term.textContent,
+        term.nextElementSibling?.textContent,
+      ]),
+    ).toEqual([
+      ["hostname", "worker"],
+      ["type", "nodejs@22"],
+      ["minContainers", "2"],
+    ]);
+    expect([...rows[0]!.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
+      "Create worker",
+      "Creates one additional billed production service: worker.",
+    ]);
+    expect([...rows[1]!.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
+      "Deploy worker",
+      "dddddddddddddddddddddddddddddddddddddddd",
+    ]);
+    expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(false);
+  });
+
+  it.each([
+    {
+      state: "pending",
+      props: { servicePlanPending: true },
+      message: "Reading production operations…",
+      actions: [],
+    },
+    {
+      state: "failed",
+      props: {
+        servicePlanFailure: "Production plan changed; review it again.",
+        onRetryServicePlan: () => {},
+      },
+      message: "Production plan changed; review it again.",
+      actions: ["Review again"],
+    },
+  ])(
+    "a $state production review withholds the old plan and disables approval",
+    ({ props, message, actions }) => {
+      const page = new Window().document;
+      page.body.innerHTML = render({ servicePlan: CREATION_PLAN, ...props });
+      const operations = [...page.querySelectorAll("section")].find(
+        (section) => section.querySelector("h3")?.textContent === "Production operations",
+      );
+      expect(operations?.textContent).toContain(message);
+      expect(operations?.querySelector("ol")).toBeNull();
+      expect(
+        [...(operations?.querySelectorAll("button") ?? [])].map((button) => button.textContent),
+      ).toEqual(actions);
+      expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
+    },
+  );
 
   // The onboarding run: released, the sheet's one button was "Put it on your domain" and the
   // production address stood small and grey behind the scrim.

@@ -1,3 +1,4 @@
+import { hqReleaseReviewFamily } from "./hqReleaseReview.ts";
 import { agentUsageFamily } from "./agentUsage.ts";
 import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
 import { mateShellFamily } from "./mateConversation.ts";
@@ -210,6 +211,7 @@ export const FAMILIES = defineFamilies([
   hqPictureFamily,
   hqChangeCommitsFamily,
   hqChangeMetadataFamily,
+  hqReleaseReviewFamily,
   projectVariablesFamily,
   serviceVariableFamily,
   databaseFamily,

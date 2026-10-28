@@ -239,6 +239,40 @@ describe("a flow's writes, executed by HQ", () => {
         detail(store, "releases", [release("v1.0.1"), release("v1.0.0")]),
     },
     {
+      name: "a release carrying the reviewed creation hash and production attachment",
+      intent: {
+        ...RELEASE,
+        planHash: "c".repeat(64),
+        releaseTarget: {
+          environmentId: "production",
+          createdAt: "2026-10-28T10:00:00Z",
+          target: { kind: "zerops", projectId: "production-project" },
+        },
+      },
+      answer: { made: release("v1.0.1"), deploys: DEPLOYS },
+      call: [
+        "release",
+        "shop",
+        {
+          tag: "v1.0.1",
+          groupHead: HEAD,
+          entries: [{ service: "api", sha: SHA }],
+          planHash: "c".repeat(64),
+          target: "zerops",
+          releaseTarget: {
+            environmentId: "production",
+            createdAt: "2026-10-28T10:00:00Z",
+            target: { kind: "zerops", projectId: "production-project" },
+          },
+        },
+      ],
+      operationId: "v1.0.1",
+      result: { tag: "v1.0.1", deploys: DEPLOYS },
+      before: (store: AccountStore) => detail(store, "releases", [release("v1.0.0")]),
+      after: (store: AccountStore) =>
+        detail(store, "releases", [release("v1.0.1"), release("v1.0.0")]),
+    },
+    {
       name: "a roll back",
       intent: ROLL_BACK,
       answer: { made: release("v1.0.2", { rollbackOf: "v1.0.0" }), deploys: DEPLOYS },

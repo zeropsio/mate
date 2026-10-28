@@ -84,6 +84,9 @@ export interface HqWire {
   readonly commits?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeCommitsResponse, StreamFault>;
+  readonly releaseReview?: (
+    request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
 }
 
@@ -702,6 +705,12 @@ export function hqNavigationLink(options: {
       wakeAttempt = wake;
       const pictures = yield* makeHqPictureReads({
         refresh,
+        releaseReview: (request) =>
+          wire.releaseReview?.(request) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "HQ cannot review production operations yet.",
+          }),
         metadata: (request) =>
           wire.metadata?.(request) ??
           Effect.fail({

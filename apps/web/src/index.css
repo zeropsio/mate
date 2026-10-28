@@ -9469,6 +9469,33 @@ div.ov-change:hover {
   line-height: 18px;
   color: var(--muted-foreground);
 }
+.rv-service-plan {
+  display: grid;
+  gap: 16px;
+  margin: 0;
+  padding-left: 20px;
+  font-size: 13px;
+}
+.rv-service-plan dl {
+  display: grid;
+  gap: 4px;
+  margin: 8px 0;
+}
+.rv-service-plan dl > div {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 12px;
+}
+.rv-service-plan dt {
+  color: var(--muted-foreground);
+}
+.rv-service-plan dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.rv-service-plan .rv-note {
+  overflow-wrap: anywhere;
+}
 .rv-version {
   display: grid;
   gap: 6px;
