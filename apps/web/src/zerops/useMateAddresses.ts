@@ -6,17 +6,19 @@
  * are the same ones the conversation and project panel read. The Mate's parts
  * come from the one reader (`mateParts`): its dev pools' workspaces are the leases zcp holds for
  * the whole Mate in the lifecycle's newest envelope (`lifecycleLeases`), each by the chat it is for
- * (`useLeaseChats`), and a part migrated to a dev pool pairs its stage with the pool as that
+ * (the conversation's own, `useThreadShell`), and a part migrated to a dev pool pairs its stage with the pool as that
  * envelope keys it (`poolPairsOf`).
  */
+import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
 import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { useContext, useMemo } from "react";
 
+import { useThreadShell } from "../state/entities";
+
 import { InventoryContext } from "./inventoryContext";
 import { groupAddressEnvironments, mateAddresses, type MateAddress } from "./mateAddresses.logic";
-import { useLeaseChats } from "./useLeaseChats";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
 import { useEnvironmentProjectRef, useZeropsLifecycle, useZeropsTopology } from "./useZeropsFeeds";
 
@@ -34,7 +36,30 @@ export function useMateAddresses(
 ): MateAddressesRead {
   const topology = useZeropsTopology(environmentId);
   const lifecycle = useZeropsLifecycle(environmentId, threadId);
-  const leaseChats = useLeaseChats(environmentId);
+  // The conversation's own lease goes by its title; the Mate's other workspaces by "dev". Every
+  // chat's bindings (`useLeaseChats`) are not read here: on a change's review, reloaded, reading
+  // them held the review's files and merge check back (review.scenario's reload cases).
+  const threadRef = useMemo(
+    () =>
+      environmentId === null || threadId === null ? null : scopeThreadRef(environmentId, threadId),
+    [environmentId, threadId],
+  );
+  const shell = useThreadShell(threadRef);
+  const lease = shell?.lease ?? null;
+  const title = shell?.title;
+  const leaseChats = useMemo(
+    () =>
+      lease === null || title === undefined
+        ? []
+        : [
+            {
+              alias: lease.alias,
+              ...(lease.acquiredAt === undefined ? {} : { acquiredAt: lease.acquiredAt }),
+              title,
+            },
+          ],
+    [lease, title],
+  );
   const project = useEnvironmentProjectRef(environmentId);
   const inventory = useContext(InventoryContext);
   const projectIds = useMemo(
