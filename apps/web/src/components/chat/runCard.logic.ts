@@ -17,6 +17,7 @@ import {
   browserPageWords,
   checksStrip,
   devServerRunning,
+  devServerTargetKey,
   formatWorkDuration,
   operationLineWords,
   unrecoveredFailures,
@@ -1181,7 +1182,7 @@ export function recoveredFailures(items: ReadonlyArray<RecordItem>): ReadonlySet
   for (let index = operations.length - 1; index >= 0; index -= 1) {
     const { operation, key } = operations[index]!;
     const found = devServerRunning(operation);
-    const host = operation.target?.hostname ?? operation.subject;
+    const host = devServerTargetKey(operation);
     if (found === true) runningLater.add(host);
     else if (found === false && operation.phase !== "failed" && runningLater.has(host))
       undone.add(key);

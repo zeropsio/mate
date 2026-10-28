@@ -23,6 +23,7 @@ export function drawnSteps<Step extends { readonly state: string }>(
   operation: Pick<ZeropsOperation, "kind">,
   steps: ReadonlyArray<Step>,
 ): ReadonlyArray<Step> {
+  if (operation.kind === "devServer" && steps.length > 1) return steps;
   return RESULT_LINE_KINDS.has(operation.kind) && !steps.some((step) => step.state === "failed")
     ? []
     : steps;

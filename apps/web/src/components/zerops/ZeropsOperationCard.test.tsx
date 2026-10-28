@@ -702,6 +702,52 @@ describe("ZeropsOperationCard — dev server", () => {
     expect(html).not.toContain("apidev-26a7-3000.prg1.zerops.app");
   });
 
+  it("shows the selected dev server stopped while its sibling stays running", () => {
+    const operation = operationFor(
+      zeropsCall({
+        id: "stop",
+        toolName: "zerops_dev_server",
+        startedAt: "2026-10-28T00:50:08Z",
+        status: "completed",
+        input: { action: "stop", hostname: "flipdev", name: "agent-layout-check" },
+        resultText: JSON.stringify({
+          action: "stop",
+          hostname: "flipdev",
+          name: "agent-layout-check",
+          running: false,
+          envelope: {
+            services: [
+              {
+                hostname: "flipdev",
+                devServers: [
+                  {
+                    name: "flipdev",
+                    port: 5195,
+                    status: "running",
+                    readAt: "2026-10-28T00:50:11.134Z",
+                  },
+                  {
+                    name: "agent-layout-check",
+                    port: 5293,
+                    status: "stopped",
+                    readAt: "2026-10-28T00:50:11.134Z",
+                  },
+                ],
+              },
+            ],
+          },
+        }),
+      }),
+    );
+    const html = renderToStaticMarkup(<ZeropsOperationCard operation={operation} />);
+    expect(html).toContain("Stopped");
+    expect(html).toContain("agent-layout-check");
+    expect(html).toContain("flipdev :5195");
+    expect(html).toContain("agent-layout-check :5293");
+    expect(html).toContain("Running");
+    expect(html).not.toContain("Not running");
+  });
+
   it("opens a lease with one dev server at the preview address zcp read on it, no topology needed", () => {
     const readAt = "2026-10-23T12:00:00Z";
     const lease = operationFor(
