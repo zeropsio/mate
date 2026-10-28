@@ -12,6 +12,7 @@ import { useAccountOperationsOptional } from "./accountOperations";
 import { hqProjectIdOf } from "./hqWrites";
 import { gitEnvironmentSetup } from "./setUpEnvironment";
 import { useHqAppDetail } from "./useHqAppDetail";
+import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
 import { useHqOffers } from "./useHqOffers";
 
 export type GitEnvironmentFormInputs = Pick<
@@ -45,8 +46,9 @@ export function useGitEnvironmentFormInputs(
     repos: detail.live ? detail.repos : undefined,
     offered: {
       add: add.kind === "allowed",
-      connect: offered("connect_remote"),
-      replace: offered("replace_remote_token"),
+      // HQ admits connecting a remote and replacing its token on one offer.
+      connect: offered(HQ_REMOTE_WRITE_VERB),
+      replace: offered(HQ_REMOTE_WRITE_VERB),
     },
     unavailableReason: hqOffers.words(add),
     setup: gitEnvironmentSetup({ orgId, appId, hqProjectId, operations }),

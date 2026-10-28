@@ -14,6 +14,7 @@ import {
   projectApplications,
 } from "@t3tools/client-runtime/data";
 import type { CanonicalHqEnvironment } from "@t3tools/client-runtime/zerops/hq";
+import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
 import {
   flowReleaseOf,
   gitProductionRuns,
@@ -496,7 +497,7 @@ export function useProjectFlows(
       const attachment = canonical.flows.get(appId)?.release.git?.attachment;
       if (attachment?.target.kind !== "git") continue;
       const flow = canonical.flows.get(appId);
-      const replacement = offers.state(app?.can, "replace_remote_token");
+      const replacement = offers.state(app?.can, HQ_REMOTE_WRITE_VERB);
       values.set(appId, {
         attachment: { ...attachment, target: attachment.target },
         delivery: flow?.release.git?.delivery,

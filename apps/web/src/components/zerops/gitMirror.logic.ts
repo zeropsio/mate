@@ -3,7 +3,9 @@
  * moves nothing — diverged, its token refused, the app it went through gone — and what mirroring
  * does at all, as the organization's GitHub app is there or not.
  */
+import { hqRefusalWords } from "@t3tools/client-runtime/zerops/hq";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import type { HqOfferState } from "@t3tools/shared/hqOffers";
 
 /**
  * The organization's GitHub app as the mirror dialog reads it: connected, not (`none`: HQ answered
@@ -150,4 +152,31 @@ export function mirrorLeadLine(app: GitMirrorApp): string {
   return app.kind === "connected"
     ? "Mirror a repository to GitHub, and Mate's changes to it open there for review."
     : "Mirror a repository to GitHub or GitLab: Mate pushes what lands on its main there.";
+}
+
+/**
+ * What stands where the way to mirror would, for a person HQ does not let mirror
+ * (`HQ_REMOTE_WRITE_VERB`): who can, HQ's refusal, or that HQ has not said; null for one it does.
+ */
+export function mirrorAuthorityLine(offer: HqOfferState): string | null {
+  switch (offer.kind) {
+    case "allowed":
+      return null;
+    case "refused":
+      return offer.reason === "not_structure_writer"
+        ? "Only an Owner or Admin of the organization can mirror this project's code."
+        : hqRefusalWords({ code: "forbidden", reason: offer.reason });
+    case "unknown":
+      return "HQ hasn't said yet whether you can mirror this project's code.";
+    case "unavailable":
+      return "HQ isn't answering, so mirroring waits until it does.";
+  }
+}
+
+/**
+ * `?mirror=<appId>` on a project's page: the mirror dialog the person left for GitHub's install
+ * page from, opened again over it once HQ's trip brings them back (HQ adds its own `github=`).
+ */
+export function parseMirrorSearch(raw: Record<string, unknown>): { readonly mirror?: string } {
+  return typeof raw.mirror === "string" && raw.mirror.length > 0 ? { mirror: raw.mirror } : {};
 }

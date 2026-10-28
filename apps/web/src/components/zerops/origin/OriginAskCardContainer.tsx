@@ -25,6 +25,7 @@ import { useMateOfEnvironment } from "~/zerops/accountEnvironments";
 import { useApplicationOfProject } from "~/zerops/useGitEnvironmentFormInputs";
 import { useGitMirrorApp } from "~/zerops/useGitMirrorApp";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
+import { HQ_REMOTE_WRITE_VERB } from "@t3tools/shared/hqOffers";
 import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
@@ -106,7 +107,7 @@ function AskCard({
   const repos = detail.live ? detail.repos : undefined;
   const target = useGitTargetOperations(appId ?? "");
   const hqOffers = useHqOffers();
-  const offer = hqOffers.state(target.can, "connect_remote");
+  const offer = hqOffers.state(target.can, HQ_REMOTE_WRITE_VERB);
   const viaApp = target.actions?.viaApp;
   const follow = appId === null ? undefined : target.actions?.follow;
   // The app is read while the GitHub way can still be picked.
