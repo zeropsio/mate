@@ -257,6 +257,7 @@ export {
   projectStandingAtom,
   projectProcessesAtom,
   projectServicesAtom,
+  projectPublicAccessAtom,
   creditForecastAtom,
   creditReadGenerationAtom,
   balanceReadGenerationAtom,

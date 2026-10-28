@@ -60,7 +60,6 @@ import { mateStatus } from "../../zerops/mateStatus.logic";
 import { RunShimmer } from "../chat/RunShimmer";
 import { useWarmIntent } from "../chat/warmTimeline";
 import {
-  addressOffered,
   assignCandidateMateTints,
   buildCanonicalGroupTree,
   groupFlow,
@@ -349,6 +348,8 @@ const menuPersonFactsAtom = Atom.make((get) =>
 type RosterCandidate = ZeropsCandidate & {
   readonly connection?: EnvironmentConnectionPresentation;
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
+  /** Public-access evidence of an address publication in progress; absent while unread. */
+  readonly addressPending?: boolean | undefined;
   /** Ports its public address would open that are not on yet; absent while its services are unread. */
   readonly routeOffers?: ReadonlyArray<unknown>;
   readonly services?: ZeropsEnvironmentServices;
@@ -1458,7 +1459,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         services: item?.services?.statuses,
         building: buildingOf(stopDeployments(stop.projectId)) !== undefined,
         routes: item?.routes?.length ?? 0,
-        addressOffered: item === undefined ? undefined : addressOffered(item),
+        addressPending: item?.addressPending,
       };
     };
     const comingOf = (tier: "stage" | "production", stop: GroupFlowStop): StopComing | undefined =>

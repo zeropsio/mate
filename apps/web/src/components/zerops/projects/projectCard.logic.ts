@@ -259,8 +259,8 @@ function stageLine(
   stop: GroupFlowStop,
   chip: ProductionChip | undefined,
   down: ReadonlyArray<string>,
-  /** It serves a port its public address would open; `undefined` while its services are unread. */
-  offered: boolean | undefined,
+  /** Its public-access projection holds a pending publication; `undefined` while unread. */
+  pending: boolean | undefined,
 ): PlaceLine {
   const base = {
     projectId: stop.projectId,
@@ -289,18 +289,14 @@ function stageLine(
       unnamed.every((name) => word !== name && word !== `still runs ${name}`),
     ),
   };
-  // HQ brings a stage up until its first deploy's address is on (`EnvironmentBirth`): running
-  // with nowhere to open is still coming up, as the menu's heading says (`stopComing`). HQ ends
-  // its bringing up as that deploy ends, and the address comes in the platform's next read: one
-  // it brought up that serves a port its address opens runs once that address is there, and one
-  // serving none runs as it is.
   const turningOn = addressComing({
-    birth: stop.birth,
     addresses: stop.addresses.length,
-    offered,
+    pending,
   });
   if (said.dot === "running" && turningOn)
     return { ...base, dot: "unknown", words: ["Turning its address on…"], trouble: false };
+  if (said.dot === "running" && pending === false && stop.addresses.length === 0)
+    return { ...base, ...said, words: ["No public address yet"] };
   return { ...base, ...said };
 }
 
@@ -351,10 +347,10 @@ export function placeLines(input: {
   /** The services the platform marks failed, by place. */
   readonly down?: ReadonlyMap<string, ReadonlyArray<string>> | undefined;
   /**
-   * Whether each stage serves a port its public address would open (`derivePublicRouteOffers`),
-   * by its project; absent while its services are unread.
+   * Whether each stage has a publication in progress (`publicAccess.pending`),
+   * by its project; absent while public access is unread.
    */
-  readonly addressOffered?: ReadonlyMap<string, boolean> | undefined;
+  readonly addressPending?: ReadonlyMap<string, boolean> | undefined;
   /** The release on its way to production rolls it back to this one (`FlowRelease.rollbackOf`). */
   readonly rollsBackTo?: string | undefined;
   readonly nowMs: number;
@@ -368,7 +364,7 @@ export function placeLines(input: {
         stop,
         input.stageChips?.get(stop.projectId),
         downOf(stop.projectId),
-        input.addressOffered?.get(stop.projectId),
+        input.addressPending?.get(stop.projectId),
       ),
     ),
     ...(input.flow.unreadStages ?? []).map((name): PlaceLine => ({
