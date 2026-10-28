@@ -233,7 +233,7 @@ describe("an environment's row on its project's page", () => {
   it.each<{
     readonly case: string;
     readonly tier: "production" | "stage";
-    readonly view: Pick<StopView, "tone" | "word" | "line">;
+    readonly view: Parameters<typeof stopRowSays>[1];
     readonly says: ReturnType<typeof stopRowSays>;
   }>([
     {
@@ -271,6 +271,17 @@ describe("an environment's row on its project's page", () => {
       tier: "stage",
       view: { tone: "pending", word: "Deploying…", line: "6bc9923" },
       says: { version: "6bc9923", word: "Deploying…", tone: "pending" },
+    },
+    {
+      case: "a running production whose HQ row is unread: what runs there, and that it runs",
+      tier: "production",
+      view: {
+        tone: "neutral",
+        word: "Deployed",
+        line: "v0.1.4",
+        version: version({ label: "v0.1.4" }),
+      },
+      says: { version: "v0.1.4", word: "Running", tone: "neutral" },
     },
     {
       case: "a stage whose answer is still read",

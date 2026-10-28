@@ -698,6 +698,11 @@ describe("the sheet's footnote: what happens next", () => {
       "Lands on main; Stage, Staging and Demo deploy it. Production keeps v2 until you release.",
     ],
     [
+      "a stage HQ names after its project: by its title, as its row reads it",
+      { state: "ready", stages: ["demo-app-stage"], live: undefined },
+      "Lands on main; Stage deploys it.",
+    ],
+    [
       "no stage: the review's own words",
       { state: "ready", stages: [], live: "v1" },
       "Adds this change to main.",

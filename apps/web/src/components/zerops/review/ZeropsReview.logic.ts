@@ -27,6 +27,7 @@ import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
+import { environmentTitle } from "../place/place.logic";
 import { siteOf, soleSite } from "../projects/projectCard.logic";
 
 export type ReviewKind = "change" | "release" | "rollback" | "crew-task";
@@ -665,7 +666,8 @@ export function mergeFoot(input: {
   if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
     input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
-  const stages = input.stages.map(placeName);
+  // Each by its title, as its row reads it: "demo-app-stage" is Stage.
+  const stages = input.stages.map((name) => environmentTitle("stage", name));
   const foot =
     stages.length === 0
       ? input.consequence

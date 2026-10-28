@@ -209,7 +209,7 @@ const CHIP_LABEL: Record<GroupEnvironmentTier, ChipLabel> = { production: "prod"
  */
 export function stopRowSays(
   tier: GroupEnvironmentTier,
-  view: Pick<StopView, "tone" | "word" | "line">,
+  view: Pick<StopView, "tone" | "word" | "line"> & { readonly version?: StopView["version"] },
 ): {
   readonly version: string | undefined;
   readonly word: string;
@@ -226,8 +226,11 @@ export function stopRowSays(
     case "bad":
       return { version: view.line, word: placeStateWord(label, "failed"), tone: "bad" };
     case "neutral":
-      return view.line === NOTHING_DEPLOYED
-        ? { version: undefined, word: placeStateWord(label, "empty"), tone: "neutral" }
-        : { version: undefined, word: view.line, tone: undefined };
+      if (view.line === NOTHING_DEPLOYED)
+        return { version: undefined, word: placeStateWord(label, "empty"), tone: "neutral" };
+      // The platform says what runs; its HQ row, which says how it does, is not read yet.
+      if (view.version !== undefined)
+        return { version: view.line, word: placeStateWord(label, "ok"), tone: "neutral" };
+      return { version: undefined, word: view.line, tone: undefined };
   }
 }
