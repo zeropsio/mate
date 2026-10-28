@@ -5,7 +5,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   environmentTitle,
-  foldedFaces,
   placeAddress,
   placeServiceRows,
   placeStatus,
@@ -197,19 +196,6 @@ describe("a place's services, as one table", () => {
         row.compute,
       ]),
     ).toEqual([["app", "appdev", true]]);
-  });
-});
-
-describe("access folds to its faces until opened", () => {
-  it.each([
-    [15, 8, 8, 7],
-    [3, 8, 3, 0],
-    [0, 8, 0, 0],
-  ])("%i people, %i shown: %i faces and %i more", (count, shown, faces, more) => {
-    const people = Array.from({ length: count }, (_, index) => index);
-    const fold = foldedFaces(people, shown);
-    expect(fold.faces).toHaveLength(faces);
-    expect(fold.more).toBe(more);
   });
 });
 

@@ -379,35 +379,3 @@ describe("adding people already in the organization", () => {
     ).toEqual([expect.stringContaining("Eva Dvořáková")]);
   });
 });
-
-describe("an environment page's access", () => {
-  let root: Root | undefined;
-  afterEach(() => {
-    act(() => root?.unmount());
-    document.body.innerHTML = "";
-  });
-
-  it("access folds to its faces until opened", () => {
-    (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-    const host = document.createElement("div");
-    document.body.append(host);
-    root = createRoot(host);
-    const view = projectPeople(input(KNOWN([ANNA, PETR, IVA])));
-    act(() => root!.render(<ProjectAccessChips fold heading={false} view={view} />));
-    const button = (label: string) =>
-      [...host.querySelectorAll("button")].find((one) => one.textContent === label);
-    expect(host.textContent).toContain("3 people");
-    expect(chipsOf(host.querySelector("section"))).toEqual([]);
-
-    act(() => button("Manage")!.click());
-    expect(chipsOf(host.querySelector("section")).map((chip) => chip.text[0])).toEqual([
-      "Petr N.",
-      "Anna B.",
-      "iva@example.com",
-    ]);
-
-    act(() => button("Done")!.click());
-    expect(host.textContent).toContain("3 people");
-    expect(button("Manage")).toBeDefined();
-  });
-});

@@ -463,28 +463,25 @@ export function PlaceAccess({
   );
 }
 
-/** One Zerops project's access: an environment's page, or a Mate's *Project access…*. */
+/** One Zerops project's access, changed here: a Mate on its own's *Project access…*. */
 export function ProjectAccess({
   projectId,
   kind,
   name,
   heading = true,
-  fold = false,
 }: {
   readonly projectId: string;
   readonly kind: RoleProjectKind;
   readonly name?: string;
   /** Drawn with its own heading; `false` where the host names the section. */
   readonly heading?: boolean;
-  /** Folded to a row of faces until *Manage* opens the chips (`ProjectAccessChips`). */
-  readonly fold?: boolean;
 }) {
   const projects = useMemo(
     () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
     [kind, name, projectId],
   );
   const access = useProjectAccess(projects);
-  return <ProjectAccessChips fold={fold} heading={heading} {...access} />;
+  return <ProjectAccessChips heading={heading} {...access} />;
 }
 
 /**
