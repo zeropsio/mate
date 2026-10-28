@@ -95,16 +95,26 @@ export async function acquirePostgresAdmission(
     socket = await connect(directory);
     if (!socket) {
       NodeFS.rmSync(socketFile(directory), { force: true });
-      daemon = NodeChildProcess.spawn(
-        process.execPath,
-        [NodeURL.fileURLToPath(import.meta.url), "serve", directory, String(capacity)],
-        { detached: true, stdio: ["ignore", "ignore", "inherit", "ipc"] },
-      );
+      const diagnosticsPath = NodePath.join(directory, "broker.log");
+      const diagnostics = NodeFS.openSync(diagnosticsPath, "w", 0o600);
+      try {
+        daemon = NodeChildProcess.spawn(
+          process.execPath,
+          [NodeURL.fileURLToPath(import.meta.url), "serve", directory, String(capacity)],
+          { detached: true, stdio: ["ignore", "ignore", diagnostics, "ipc"] },
+        );
+      } finally {
+        NodeFS.closeSync(diagnostics);
+      }
       await new Promise<void>((resolve, reject) => {
         cancelStartup = reject;
         daemon!.once("error", reject);
-        const exited = (code: number | null) =>
-          reject(new Error(`PostgreSQL admission broker exited: ${code}`));
+        const exited = (code: number | null, signal: NodeJS.Signals | null) =>
+          reject(
+            new Error(
+              `PostgreSQL admission broker exited: ${code ?? signal}\n${NodeFS.readFileSync(diagnosticsPath, "utf8")}`,
+            ),
+          );
         daemon!.once("exit", exited);
         const receive = (message: unknown) => {
           if (message !== "ready") return;
