@@ -20,6 +20,7 @@ import type {
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { AddressDomain, PlaceAddresses } from "@t3tools/client-runtime/data";
+import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { EllipsisIcon } from "lucide-react";
 import type { MateMarkState, MateTintId } from "@t3tools/shared/brand";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
@@ -98,6 +99,18 @@ interface Mate {
 
 const words = (text: string, tone: "muted" | "ink" | "failed" = "muted") =>
   ({ kind: "words", text, tone }) as const;
+
+/** A Mate's parts as the one reader reads them: a dev pool and its stage per part, the runner's unrouted. */
+function partsOf(names: ReadonlyArray<string>, host: string): Partial<GroupFlowMate> {
+  const { parts } = mateParts({
+    services: names.flatMap((name) => [{ hostname: `${name}pool` }, { hostname: `${name}stage` }]),
+    routes: names
+      .filter((name) => name !== "runner")
+      .map((name) => ({ service: `${name}stage`, url: `https://${host}-${name}.prg1.zerops.app` })),
+    pools: names.map((name) => `${name}pool`),
+  });
+  return { parts };
+}
 
 function mate(
   id: string,
@@ -370,9 +383,13 @@ const PROJECTS: ReadonlyArray<Project> = [
     mates: [
       {
         ...working("raya-t", "Raya", "olive", "Gift wrapping at checkout", "3m"),
-        flow: { previews: [{ service: "app", url: "https://raya-teashop-c3d4.prg1.zerops.app" }] },
+        flow: partsOf(["app"], "raya-teashop"),
       },
-      working("vera-t", "Vera", "amber", "Tea of the month email", "11m"),
+      // Seven parts on dev pools, one with no public preview: they wrap inside the card.
+      {
+        ...working("vera-t", "Vera", "amber", "Tea of the month email", "11m"),
+        flow: partsOf(["api", "edge", "embedder", "geo", "runner", "site", "web"], "vera-tea"),
+      },
       {
         ...working("odo", "Odo", "slate", "#42 Prices round wrong in the cart", "12m"),
         automated: true,
@@ -728,7 +745,7 @@ function HarnessPage() {
                   mark={entry.automated === true ? <MateAutomatedMark /> : undefined}
                   name={entry.name}
                   onOpen={() => acted.push(`open:${entry.id}`)}
-                  previews={options.previews}
+                  parts={options.parts}
                   reading={reading}
                   time={<CardMateTime dot={entry.view.dot}>{entry.time}</CardMateTime>}
                 />

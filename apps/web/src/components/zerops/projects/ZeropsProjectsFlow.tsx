@@ -13,11 +13,11 @@
 import type {
   FlowPullRequest,
   GroupFlow,
-  GroupFlowPreview,
   ZeropsEnvironmentRole,
   ZeropsGroup,
 } from "@t3tools/client-runtime/zerops";
 import type { HqAppContents } from "@t3tools/client-runtime/zerops/hq";
+import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { PlusIcon } from "lucide-react";
 import type { ReactNode } from "react";
 
@@ -122,7 +122,7 @@ export interface ZeropsProjectsFlowProps<T> {
     item: T,
     options: {
       readonly layout: "card" | "row";
-      readonly previews: ReadonlyArray<GroupFlowPreview>;
+      readonly parts: ReadonlyArray<MatePart>;
       readonly review?: FlowPullRequest | undefined;
     },
   ) => ReactNode;

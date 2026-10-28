@@ -5,6 +5,7 @@
  */
 
 import type { UnreadEnvironment } from "@t3tools/client-runtime/zerops/hq";
+import { mateParts, type MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import {
   deployWord,
   firstDeployLine,
@@ -14,7 +15,6 @@ import {
   flowVerbLabel,
   hasMate,
   projectNameInApp,
-  pairPreviewRoutes,
   placeAddresses,
   releaseContentsSummary,
   releaseInFlightReason,
@@ -29,6 +29,7 @@ import {
   type GroupFlow,
   type GroupFlowComing,
   type GroupFlowInput,
+  type GroupFlowPreview,
   type GroupFlowStop,
   type GroupFlowStopState,
   type GroupNextStepKind,
@@ -434,8 +435,12 @@ export interface GroupMemberFacts {
       }
     | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
-  /** The developer's services by hostname — the pairs `pairPreviewRoutes` looks for. */
+  /** The developer's services by hostname — the pairs `mateParts` looks for. */
   readonly hostnames: ReadonlyArray<string>;
+  /** Its dev pools by hostname (`ZeropsEnvironmentServices.pools`); none while unread. */
+  readonly pools?: ReadonlyArray<string>;
+  /** The control plane's hostname (the zcp service), never a part. */
+  readonly controlPlane?: string | undefined;
 }
 
 /** A group member as the group tree carries it: a candidate, with what its container serves. */
@@ -494,6 +499,8 @@ export function groupMemberFactsOf<T extends GroupMemberCandidate>(
         : undefined,
       routes: item.routes ?? [],
       hostnames: item.services?.hostnames ?? [],
+      pools: item.services?.pools ?? [],
+      controlPlane: item.service?.name,
     };
   });
 }
@@ -584,6 +591,30 @@ export interface GroupFlowReads {
   };
 }
 
+/**
+ * A Mate row's parts (`mateParts`, the reader the Sites lists and the Browser page share) and its
+ * previews among them, one per part with a public preview, by the part's name. Its leases are not
+ * read here: a pool part's preview is what the row offers.
+ */
+function mateRowParts(
+  member: GroupMemberFacts,
+  tier: string | undefined,
+): { readonly parts: ReadonlyArray<MatePart>; readonly previews: ReadonlyArray<GroupFlowPreview> } {
+  const { parts } = mateParts({
+    services: member.hostnames.map((hostname) => ({ hostname })),
+    routes: member.routes,
+    controlPlane: member.controlPlane,
+    pools: member.pools,
+    tier,
+  });
+  return {
+    parts,
+    previews: parts.flatMap((part) =>
+      part.preview?.url === undefined ? [] : [{ service: part.name, url: part.preview.url }],
+    ),
+  };
+}
+
 /** A release is not offered on a flow nobody has read: there is no gate to open. */
 const FLOW_NOT_READ: ReleaseGate = {
   allowed: false,
@@ -639,7 +670,7 @@ export function groupFlowInputOf(input: {
             {
               projectId: member.projectId,
               name: member.mate.name,
-              previews: pairPreviewRoutes(member.routes, member.hostnames, flow?.mateTier),
+              ...mateRowParts(member, flow?.mateTier),
               waiting: member.mate.waiting,
               ...(member.mate.failed === true ? { failed: true } : {}),
               ...(member.mate.working === true ? { working: true } : {}),

@@ -426,3 +426,69 @@ it("a release in progress shows on the project's production, never in a Mate's c
     container.remove();
   }
 });
+
+it("a Mate's row shows each part by its friendly name: a door to its preview, else to its dev, and a part with no address muted", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const entry = (key: string, label: string, url?: string, why?: string) => ({
+    key,
+    label,
+    service: key,
+    url,
+    host: url?.replace("https://", ""),
+    more: [],
+    why,
+  });
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <CardMate
+          name="Odin"
+          face={null}
+          time={null}
+          onOpen={undefined}
+          parts={[
+            {
+              key: "part:apipool",
+              name: "API",
+              dev: [],
+              preview: entry("preview:apistage", "preview", "https://apistage.example.app"),
+            },
+            {
+              key: "part:matedev",
+              name: "Mate",
+              dev: [entry("dev:matedev", "dev", "https://matedev.example.app")],
+              preview: undefined,
+            },
+            {
+              key: "part:runnerpool",
+              name: "Runner",
+              dev: [],
+              preview: entry("preview:runnerstage", "preview", undefined, "no public address"),
+            },
+          ]}
+          reading={cardMateReading({
+            view: { state: "idle", ask: undefined, reply: undefined },
+            mine: true,
+            review: undefined,
+            status: undefined,
+            read: true,
+          })}
+        />,
+      ),
+    );
+    const chips = [
+      ...container.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
+    ].map((chip) => [chip.textContent, chip.getAttribute("href"), chip.getAttribute("aria-label")]);
+    expect(chips).toEqual([
+      ["API", "https://apistage.example.app", "Open Odin's API preview"],
+      ["Mate", "https://matedev.example.app", "Open Odin's Mate dev"],
+      ["Runner", null, null],
+    ]);
+  } finally {
+    act(() => root.unmount());
+    container.remove();
+  }
+});
