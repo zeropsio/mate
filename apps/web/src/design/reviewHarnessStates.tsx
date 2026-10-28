@@ -974,6 +974,29 @@ export const REVIEW_STATES: ReadonlyArray<{
     ),
   },
   {
+    // Kara's #2: HQ held no record of its files or commits at its head.
+    id: "not-recorded",
+    label: "Files and commits HQ has not recorded",
+    node: (
+      <Change
+        readout={{
+          kind: "read",
+          value: changeReadoutOfRecord(
+            { ...CHANGE, mergeability: "clean", behind: false },
+            {
+              mergeBase: BASE,
+              files: null,
+              filesTruncated: false,
+              conflictPaths: [],
+              commits: null,
+              commitsTruncated: false,
+            },
+          ),
+        }}
+      />
+    ),
+  },
+  {
     id: "many-commits",
     label: "Nineteen commits, the newest five shown",
     node: <Change readout={detail({ commits: commits(19) })} />,
