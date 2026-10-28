@@ -15,9 +15,15 @@ export interface SignalReport {
   errors: string[];
 }
 
+function infrastructureReason(report: SignalReport): string | undefined {
+  return !report.tests.length || report.errors.length
+    ? report.errors.join("; ") || "no tests ran"
+    : undefined;
+}
+
 export function validateReport(report: SignalReport): void {
-  if (!report.tests.length || report.errors.length)
-    throw new Error(`Signal infrastructure failed: ${report.errors.join("; ") || "no tests ran"}`);
+  const reason = infrastructureReason(report);
+  if (reason !== undefined) throw new Error(`Signal infrastructure failed: ${reason}`);
 }
 
 const failedTests = (reports: ReadonlyArray<SignalReport>) => {
@@ -223,15 +229,39 @@ if (import.meta.main) {
     runScenarios(args, NodePath.join(directory, `${group}-${index}.json`));
   } else if (mode === "classify") {
     const killed: string[] = [];
-    const initial = shardReports.map((name) => {
+    const infrastructure: { shard: string; reason: string }[] = [];
+    const initial = shardReports.flatMap((name) => {
       const report = NodePath.join(directory, `${name}.json`);
-      if (NodeFS.existsSync(report))
-        return JSON.parse(NodeFS.readFileSync(report, "utf8")) as SignalReport;
-      const lines = readProgress(report);
-      if (!lines.length) throw new Error(`Signal has no report or progress for shard ${name}`);
-      killed.push(name);
-      return reportFromProgress(lines);
+      let evidence: SignalReport;
+      if (NodeFS.existsSync(report)) {
+        evidence = JSON.parse(NodeFS.readFileSync(report, "utf8")) as SignalReport;
+      } else if (
+        NodeFS.existsSync(`${report}.vitest.json`) &&
+        NodeFS.existsSync(`${report}.errors.json`)
+      ) {
+        evidence = readSignalReport(report);
+      } else {
+        const lines = readProgress(report);
+        if (!lines.length) {
+          infrastructure.push({ shard: name, reason: "no report or progress" });
+          return [];
+        }
+        evidence = reportFromProgress(lines);
+      }
+      const reason = infrastructureReason(evidence);
+      if (reason !== undefined) {
+        infrastructure.push({ shard: name, reason });
+        return [];
+      }
+      if (!NodeFS.existsSync(report)) killed.push(name);
+      return [evidence];
     });
+    NodeFS.writeFileSync(
+      "signal-infrastructure.json",
+      JSON.stringify(infrastructure, null, 2) + "\n",
+    );
+    for (const { shard, reason } of infrastructure)
+      console.log(`::error title=Signal infrastructure::${shard}: ${reason}`);
     const { files, testNamePattern } = failedSelection(initial);
     const rerun = files.length
       ? runScenarios(
@@ -261,6 +291,7 @@ if (import.meta.main) {
       if (reds.length)
         throw new Error(`Signal: ${reds.length} tests fail-fail on two consecutive kh-next runs`);
     } else console.log("Signal has no previous kh-next classification to compare");
+    if (infrastructure.length) process.exitCode = 1;
     if (killed.length)
       throw new Error(`Signal: shards ${killed.join(", ")} ended without writing their report`);
   } else throw new Error("Usage: node scripts/signal.ts shard c|non-c <index/count> | classify");

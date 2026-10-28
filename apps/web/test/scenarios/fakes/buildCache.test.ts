@@ -14,6 +14,20 @@ async function cacheFixture() {
   return root;
 }
 
+it("Decision: the bundle key keeps Node because its version can change the bundle", async () => {
+  const root = await cacheFixture();
+  const version = process.version;
+  try {
+    Object.defineProperty(process, "version", { value: "v24.22.1" });
+    const producer = await bundleKey(root, {});
+    Object.defineProperty(process, "version", { value: "v24.22.2" });
+    expect(await bundleKey(root, {})).not.toBe(producer);
+  } finally {
+    Object.defineProperty(process, "version", { value: version });
+    await NodeFSP.rm(root, { recursive: true, force: true });
+  }
+});
+
 it.each([
   {
     title: "reuses the bundle after a server-only edit",

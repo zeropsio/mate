@@ -1,3 +1,8 @@
+// @effect-diagnostics nodeBuiltinImport:off -- verifies the classifier CLI and its artifacts.
+import * as NodeChildProcess from "node:child_process";
+import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
+import * as NodePath from "node:path";
 import { expect, it } from "vite-plus/test";
 import {
   classifyFailures,
@@ -142,5 +147,63 @@ it.each([
   "Signal fails when the same test fails twice on two consecutive kh-next runs: $case",
   ({ previous, current, standing }) => {
     expect(standingReds(previous, current).map((red) => red.title)).toEqual(standing);
+  },
+);
+
+it.each([
+  { evidence: "no report", reason: "no report or progress" },
+  { evidence: "global setup", reason: "scenario bundle artifact mismatch" },
+])(
+  "Decision: A shard whose global setup failed is classified as infrastructure by the classifier, never a throw that hides the verdict. ($evidence)",
+  ({ evidence, reason }) => {
+    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "signal-classify-"));
+    try {
+      for (const shard of ["c-1", "c-2", "c-4", "non-c-1", "non-c-2", "non-c-3"])
+        NodeFS.writeFileSync(
+          NodePath.join(directory, `${shard}.json`),
+          JSON.stringify(report("passed")),
+        );
+      if (evidence === "global setup") {
+        NodeFS.writeFileSync(
+          NodePath.join(directory, "c-3.json.vitest.json"),
+          JSON.stringify({ testResults: [] }),
+        );
+        NodeFS.writeFileSync(
+          NodePath.join(directory, "c-3.json.errors.json"),
+          JSON.stringify([reason]),
+        );
+      }
+      const result = NodeChildProcess.spawnSync(
+        process.execPath,
+        [NodePath.join(import.meta.dirname, "signal.ts"), "classify"],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: {
+            ...process.env,
+            MATE_SIGNAL_DIRECTORY: directory,
+            MATE_SIGNAL_PREVIOUS: undefined,
+            GITHUB_RUN_ID: "42",
+          },
+          timeout: 30_000,
+        },
+      );
+      expect(
+        result.stdout,
+        "ASSERTION: missing shard evidence must emit an infrastructure verdict before exiting",
+      ).toContain("::error title=Signal infrastructure::c-3:");
+      expect(result.status).toBe(1);
+      expect(result.stderr).not.toContain("Error:");
+      expect(
+        JSON.parse(
+          NodeFS.readFileSync(NodePath.join(directory, "signal-infrastructure.json"), "utf8"),
+        ),
+      ).toEqual([{ shard: "c-3", reason }]);
+      expect(
+        JSON.parse(NodeFS.readFileSync(NodePath.join(directory, "signal-failures.json"), "utf8")),
+      ).toEqual([]);
+    } finally {
+      NodeFS.rmSync(directory, { recursive: true, force: true });
+    }
   },
 );
