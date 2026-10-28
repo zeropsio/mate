@@ -20,7 +20,7 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
   ]);
   expect(selection.matrices.test_web).toEqual({ include: [{ shard: 2, total: 3 }] });
   for (const [job, definition] of Object.entries(workflow.jobs) as [string, { if?: string }][]) {
-    if (job === "prepare" || job === "cache") continue;
+    if (["verification", "prepare", "cache"].includes(job)) continue;
     expect(definition.if, `ASSERTION: ${job} consumes the one selected job verdict`).toContain(
       `contains(fromJSON(needs.prepare.outputs.jobs), '${job}')`,
     );
@@ -88,7 +88,7 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
     expect(selection.narrowed).toBe(false);
     expect(selection.selected.sort()).toEqual(
       Object.keys(workflow.jobs)
-        .filter((job) => job !== "prepare" && job !== "cache")
+        .filter((job) => !["verification", "prepare", "cache"].includes(job))
         .sort(),
     );
     expect(selection.matrices.test_server!.include).toEqual(
@@ -130,7 +130,7 @@ it("A kh-bisect manifest of all selects every job at full partition size", () =>
   expect(selection.narrowed).toBe(false);
   expect(selection.selected.sort()).toEqual(
     Object.keys(workflow.jobs)
-      .filter((job) => job !== "prepare" && job !== "cache")
+      .filter((job) => !["verification", "prepare", "cache"].includes(job))
       .sort(),
   );
   expect(selection.matrices.test_server!.include).toHaveLength(3);
