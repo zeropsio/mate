@@ -1397,7 +1397,8 @@ function recordRowBelow() {
           );
   }).observe({ type: "layout-shift", buffered: true });
   let still = 0;
-  const sample = () => {
+  // The frame's own time, as the browser hands it to the frame: no clock read of the scenario's.
+  const sample = (now: DOMHighResTimeStamp) => {
     const boot = document.getElementById("boot-shell");
     const where: "boot" | "app" =
       boot !== null && !boot.hidden && boot.getBoundingClientRect().width > 0 ? "boot" : "app";
@@ -1412,7 +1413,7 @@ function recordRowBelow() {
     const heading = open?.querySelector('[data-zerops-surface="sidebar-project"]') ?? null;
     const below = sections[1]?.getBoundingClientRect().top;
     const frame: BelowFrame = {
-      at: Math.round(performance.now()),
+      at: Math.round(now),
       where,
       expanded: heading?.getAttribute("aria-expanded") ?? null,
       kids: open?.querySelectorAll("[data-zerops-kids] [data-zerops-row]").length ?? 0,
