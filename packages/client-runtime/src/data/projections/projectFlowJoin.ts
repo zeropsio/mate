@@ -60,6 +60,8 @@ export interface ZeropsReleaseOffer {
   /** "pending" while HQ has not read what a release would carry: `summary` then counts nothing. */
   readonly summaryRead?: "pending" | undefined;
   readonly gate: ReleaseGate;
+  /** A refusal for missing Production services still has a review; approval reads `gate`. */
+  readonly reviewable?: boolean | undefined;
   /**
    * HQ's offer to this person (`can`'s `release`), its refusal in words; `undefined` while HQ
    * has not said. HQ asks it again at the press.
@@ -590,6 +592,14 @@ function projectFlow(
         ? {
             ...offer,
             gate,
+            reviewable:
+              gate.allowed ||
+              // HQ lists absences only for a person it lets release; overview has no detail
+              // permission yet. A later explicit permission refusal still wins.
+              (permission?.allowed !== false &&
+                navigation != null &&
+                !("refused" in navigation) &&
+                (navigation.missingServices?.length ?? 0) > 0),
             suggestion:
               navigation != null && !("refused" in navigation)
                 ? navigation.suggestion
@@ -629,6 +639,7 @@ function projectFlow(
         : {
             ...offer,
             gate: { allowed: false, reason: productionWithheld },
+            reviewable: false,
             permission,
             groupHead: undefined,
             comparison: [],

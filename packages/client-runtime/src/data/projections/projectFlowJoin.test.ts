@@ -110,6 +110,52 @@ function join(input: {
 }
 
 describe("joinProjectFlows", () => {
+  it.each([
+    { missingServices: [], permission: { allowed: true }, reviewable: false },
+    { missingServices: ["agentrunner"], permission: { allowed: true }, reviewable: true },
+    { missingServices: ["agentrunner", "worker"], permission: undefined, reviewable: true },
+    {
+      missingServices: ["agentrunner"],
+      permission: { allowed: false, reason: "not_releaser" },
+      reviewable: false,
+    },
+  ] as const)(
+    "keeps a release with missing Production services reviewable while approval stays refused: %j",
+    ({ missingServices, permission, reviewable }) => {
+      const reason = `Production has no service ${missingServices.join(", ")}. Releases cannot create services in Production yet.`;
+      const flow = join({
+        navigationOffers: {
+          g1: {
+            head: "9".repeat(40),
+            suggestion: "v0.1.1",
+            gate: { allow: false, reason },
+            missingServices,
+            inFlight: null,
+            summary: { total: 1, more: 0, subjects: ["Ship the storefront"], atLeast: false },
+          },
+        },
+        permissions: new Map([["g1", permission]]),
+        review: false,
+      }).get("g1")!;
+      expect(flow.release).toMatchObject({ reviewable });
+      const review = releaseReview({
+        tag: flow.release.suggestion,
+        gate: flow.release.gate,
+        permission: flow.release.permission,
+        changes: 1,
+        onStage: undefined,
+        services: ["agentrunner"],
+        replaces: { kind: "first" },
+        outcome: { kind: "offered" },
+        now: 0,
+      });
+      expect(review.verdict.why).toBe(
+        (permission?.allowed === false ? permission.reason : reason).replace(/\.$/u, ""),
+      );
+      expect(review.primary?.enabled).toBe(false);
+    },
+  );
+
   it("offers the navigation release review before any application detail is read", () => {
     const offer = {
       head: "9".repeat(40),

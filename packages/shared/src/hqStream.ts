@@ -488,6 +488,8 @@ export const HqNavigationReleaseOffer = Schema.Struct({
    */
   summaryRead: Schema.optionalKey(Schema.Literal("pending")),
   gate: HqDecision,
+  /** Release entries absent from Production; their refusal remains reviewable. */
+  missingServices: Schema.optionalKey(Schema.Array(Schema.String)),
   releaseTarget: Schema.optionalKey(HqReleaseTarget),
   inFlight: Schema.NullOr(Schema.String),
 });
