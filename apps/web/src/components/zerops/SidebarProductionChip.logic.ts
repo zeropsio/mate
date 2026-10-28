@@ -874,10 +874,20 @@ export const STOP_DOT: Record<GroupFlowStop["state"], ChipDot> = {
 /** A stage being set up, in the stages' menu: created and not listed yet, or its import running. */
 const STAGE_SETTING_UP_WORD = "Setting up…";
 
-function stopWord(stop: GroupFlowStop, deployedAt: string | undefined, nowMs: number): string {
+/**
+ * A listed stop's word. `confirmed`: its chip read what runs there; until then — its serving answer
+ * unread, or a stage project the viewer cannot read — only the deploy is known, never that it runs.
+ */
+function stopWord(
+  stop: GroupFlowStop,
+  deployedAt: string | undefined,
+  nowMs: number,
+  confirmed: boolean,
+): string {
   switch (stop.state) {
     case "deployed": {
       const ago = deployedAt === undefined ? undefined : deployedAgo(deployedAt, nowMs);
+      if (!confirmed) return ago === undefined ? "Deployed" : `Deployed ${ago}`;
       return ago === undefined ? PLACE_RUNNING_WORD : `${PLACE_RUNNING_WORD} · deployed ${ago}`;
     }
     case "deploying":
@@ -1046,7 +1056,7 @@ export function stageMenu(input: {
       return {
         ...base,
         dot: STOP_DOT[stop.state],
-        word: stopWord(stop, stage.deployedAt, input.nowMs),
+        word: stopWord(stop, stage.deployedAt, input.nowMs, false),
         tone: "muted",
         note: undefined,
         fix: undefined,
@@ -1060,7 +1070,7 @@ export function stageMenu(input: {
       word: asItStands(
         chip,
         chip.state === "ok" || (chip.state === "empty" && stop.state === "empty")
-          ? stopWord(stop, stage.deployedAt, input.nowMs)
+          ? stopWord(stop, stage.deployedAt, input.nowMs, true)
           : mainWord(chip),
       ),
       tone: MENU_TONE[chip.state],

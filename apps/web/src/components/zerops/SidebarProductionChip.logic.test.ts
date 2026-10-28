@@ -1254,6 +1254,22 @@ describe("stageMenu — each stage, as production's menu says production", () =>
     }
   });
 
+  // Its serving answer unread, or a stage project the viewer cannot read: only the deploy is known.
+  it.each([
+    {
+      case: "deployed a while ago",
+      deployedAt: "2026-09-29T10:13:00Z",
+      word: "Deployed 40 min ago",
+    },
+    { case: "deployed at a time unread", deployedAt: undefined, word: "Deployed" },
+  ])(
+    "says a stage nothing confirms runs as deployed, never running: $case",
+    ({ deployedAt, word }) => {
+      const [row] = menu({ stages: [entry("stage", { chip: undefined, deployedAt })] }).stops;
+      expect(row?.word).toBe(word);
+    },
+  );
+
   it("says one stage's state in words, its version, when it was deployed, and its links", () => {
     expect(menu({}).stops).toEqual([
       {
