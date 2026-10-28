@@ -144,6 +144,23 @@ export function openMateReveal(input: {
 }
 
 /**
+ * Whether the open conversation's project opens around it (`groupId`, unknown while its Mate is
+ * not found). It opens unless the menu already drew it folded (`paintedFolded`: the conversation
+ * open when it did; `undefined` where it did not): a reload's Mate, found seconds after the menu
+ * stood, leaves its project as it was drawn, its row marking the conversation, so no row below it
+ * moves under a pointer (Aleš, 2026-10-27: aiming at Jago opened Dara). A conversation opened after
+ * that draw opens its project, as the person asked for it.
+ */
+export function opensOpenProject(input: {
+  readonly groupId: string | undefined;
+  readonly paintedFolded: string | null | undefined;
+  readonly conversation: string | null;
+}): boolean {
+  if (input.groupId === undefined) return false;
+  return input.paintedFolded === undefined || input.paintedFolded !== input.conversation;
+}
+
+/**
  * Whether the menu's list draws its loading rows: nothing of its own to draw yet — no Mate being
  * made, none HQ lists, none among the projects read so far — while its listing is read and says
  * nothing of its own. They stand from the boot frame's until rows replace them: a reload never
