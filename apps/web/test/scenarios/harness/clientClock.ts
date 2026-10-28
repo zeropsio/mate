@@ -11,13 +11,13 @@ export interface ScenarioWallClock {
   setTime(timestamp: number): void;
 }
 
-/** Opt-in clock at the browser API boundary. Install before navigation/sign-in. */
+/** Opt-in clock at the browser API boundary; future documents start with controlled waits. */
 export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
   const settleHttp = completedHttp(page);
   let installed = false;
   let frozenSession: CDPSession | undefined;
   let refreshEpoch = async () => {};
-  const install = async () => {
+  const install = async ({ currentDocument = false }: { currentDocument?: boolean } = {}) => {
     if (installed) return;
     installed = true;
     const initialTime = wallClock?.currentTimeMillis();
@@ -27,124 +27,123 @@ export function clientClock(page: Page, wallClock?: ScenarioWallClock) {
         wallClock.setTime(timestamp),
       );
     }
-    const registerDocument = (initialTime?: number) =>
-      page.evaluateOnNewDocument((initialTime) => {
-        const NativeDate = Date;
-        const nativeTimeout = window.setTimeout.bind(window);
-        const nativeClear = window.clearTimeout.bind(window);
-        const nativeTimers = new Map<number, number>();
-        let now = initialTime ?? NativeDate.now();
-        const setNow = async (timestamp: number) => {
-          now = timestamp;
-          if (initialTime !== undefined)
-            await (
-              window as unknown as { scenarioClockTime(timestamp: number): Promise<void> }
-            ).scenarioClockTime(timestamp);
-        };
-        // A reload starts at this document's clock epoch too.
-        void setNow(now);
-        let serial = 0;
-        const timers = new Map<number, { at: number; interval?: number; callback: () => void }>();
-        window.Date = new Proxy(NativeDate, {
-          construct: (target, args) => Reflect.construct(target, args.length ? args : [now]),
-          apply: () => new NativeDate(now).toString(),
-          get: (target, key) => (key === "now" ? () => now : Reflect.get(target, key)),
-        });
-        const schedule = (
-          callback: TimerHandler,
-          delay = 0,
-          args: unknown[],
-          interval?: number,
-        ) => {
-          if (typeof callback !== "function")
-            throw new Error("Scenario clock requires function timers");
-          const id = ++serial;
-          // Zero-delay jobs are the client's task scheduler, not a timed backoff. Keep that
-          // scheduler live so promises/React can make progress while positive waits are paused.
-          if (delay <= 0 && interval === undefined) {
-            nativeTimers.set(
-              id,
-              nativeTimeout(() => {
-                nativeTimers.delete(id);
-                callback(...args);
-              }, 0),
-            );
-            return id;
-          }
-          timers.set(id, {
-            at: now + Math.max(0, delay),
-            ...(interval === undefined ? {} : { interval }),
-            callback: () => callback(...args),
-          });
+    const initializeDocument = (initialTime?: number) => {
+      const NativeDate = Date;
+      const nativeTimeout = window.setTimeout.bind(window);
+      const nativeClearTimeout = window.clearTimeout.bind(window);
+      const nativeClearInterval = window.clearInterval.bind(window);
+      const nativeTimers = new Map<number, number>();
+      let now = initialTime ?? NativeDate.now();
+      const setNow = async (timestamp: number) => {
+        now = timestamp;
+        if (initialTime !== undefined)
+          await (
+            window as unknown as { scenarioClockTime(timestamp: number): Promise<void> }
+          ).scenarioClockTime(timestamp);
+      };
+      // A reload starts at this document's clock epoch too.
+      void setNow(now);
+      let serial = 0;
+      const timers = new Map<number, { at: number; interval?: number; callback: () => void }>();
+      window.Date = new Proxy(NativeDate, {
+        construct: (target, args) => Reflect.construct(target, args.length ? args : [now]),
+        apply: () => new NativeDate(now).toString(),
+        get: (target, key) => (key === "now" ? () => now : Reflect.get(target, key)),
+      });
+      const schedule = (callback: TimerHandler, delay = 0, args: unknown[], interval?: number) => {
+        if (typeof callback !== "function")
+          throw new Error("Scenario clock requires function timers");
+        // Native timers created before a late installation retain their positive IDs.
+        const id = --serial;
+        // Zero-delay jobs are the client's task scheduler, not a timed backoff. Keep that
+        // scheduler live so promises/React can make progress while positive waits are paused.
+        if (delay <= 0 && interval === undefined) {
+          nativeTimers.set(
+            id,
+            nativeTimeout(() => {
+              nativeTimers.delete(id);
+              callback(...args);
+            }, 0),
+          );
           return id;
-        };
-        Object.assign(window, {
-          setTimeout: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
-            schedule(callback, delay, args),
-          setInterval: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
-            schedule(callback, delay, args, Math.max(1, delay ?? 0)),
-          clearTimeout: (id: number) => {
-            timers.delete(id);
-            const native = nativeTimers.get(id);
-            if (native !== undefined) {
-              nativeClear(native);
-              nativeTimers.delete(id);
-            }
-          },
-          clearInterval: (id: number) => {
-            timers.delete(id);
-            const native = nativeTimers.get(id);
-            if (native !== undefined) {
-              nativeClear(native);
-              nativeTimers.delete(id);
-            }
-          },
+        }
+        timers.set(id, {
+          at: now + Math.max(0, delay),
+          ...(interval === undefined ? {} : { interval }),
+          callback: () => callback(...args),
         });
-        const advance = async (ms: number, coalesce: boolean) => {
-          const end = now + ms;
-          let turns = 0;
-          if (coalesce) await setNow(end);
-          for (;;) {
-            const next = [...timers.entries()]
-              .filter(([, timer]) => timer.at <= end)
-              .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
-            if (!next) break;
-            if (++turns > 10_000)
-              throw new Error("Scenario clock timer loop exceeded 10,000 callbacks");
-            const [id, timer] = next;
-            if (!coalesce) await setNow(timer.at);
-            // A clock acknowledgement can cancel or replace the selected callback.
-            if (timers.get(id) !== timer) continue;
-            timers.delete(id);
-            if (timer.interval !== undefined)
-              timers.set(id, { ...timer, at: now + timer.interval });
-            timer.callback();
-            await Promise.resolve();
-          }
-          await setNow(end);
-        };
-        const step = async (end: number) => {
+        return id;
+      };
+      Object.assign(window, {
+        setTimeout: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
+          schedule(callback, delay, args),
+        setInterval: (callback: TimerHandler, delay?: number, ...args: unknown[]) =>
+          schedule(callback, delay, args, Math.max(1, delay ?? 0)),
+        clearTimeout: (id: number) => {
+          const controlled = timers.delete(id);
+          const native = nativeTimers.get(id);
+          if (native !== undefined) {
+            nativeClearTimeout(native);
+            nativeTimers.delete(id);
+          } else if (!controlled && id >= 0) nativeClearTimeout(id);
+        },
+        clearInterval: (id: number) => {
+          const controlled = timers.delete(id);
+          const native = nativeTimers.get(id);
+          if (native !== undefined) {
+            nativeClearTimeout(native);
+            nativeTimers.delete(id);
+          } else if (!controlled && id >= 0) nativeClearInterval(id);
+        },
+      });
+      const advance = async (ms: number, coalesce: boolean) => {
+        const end = now + ms;
+        let turns = 0;
+        if (coalesce) await setNow(end);
+        for (;;) {
           const next = [...timers.entries()]
             .filter(([, timer]) => timer.at <= end)
-            .sort((a, b) => a[1].at - b[1].at || a[0] - b[0])[0];
-          if (!next) {
-            await setNow(end);
-            return false;
-          }
+            .sort((a, b) => a[1].at - b[1].at || b[0] - a[0])[0];
+          if (!next) break;
+          if (++turns > 10_000)
+            throw new Error("Scenario clock timer loop exceeded 10,000 callbacks");
           const [id, timer] = next;
-          await setNow(timer.at);
-          if (timers.get(id) !== timer) return true;
+          if (!coalesce) await setNow(timer.at);
+          // A clock acknowledgement can cancel or replace the selected callback.
+          if (timers.get(id) !== timer) continue;
           timers.delete(id);
           if (timer.interval !== undefined) timers.set(id, { ...timer, at: now + timer.interval });
           timer.callback();
           await Promise.resolve();
-          return true;
-        };
-        Object.assign(window, {
-          scenarioClock: { advance, step, now: () => now, pending: () => timers.size },
-        });
-      }, initialTime);
+        }
+        await setNow(end);
+      };
+      const step = async (end: number) => {
+        const next = [...timers.entries()]
+          .filter(([, timer]) => timer.at <= end)
+          .sort((a, b) => a[1].at - b[1].at || b[0] - a[0])[0];
+        if (!next) {
+          await setNow(end);
+          return false;
+        }
+        const [id, timer] = next;
+        await setNow(timer.at);
+        if (timers.get(id) !== timer) return true;
+        timers.delete(id);
+        if (timer.interval !== undefined) timers.set(id, { ...timer, at: now + timer.interval });
+        timer.callback();
+        await Promise.resolve();
+        return true;
+      };
+      Object.assign(window, {
+        scenarioClock: { advance, step, now: () => now, pending: () => timers.size },
+      });
+    };
+    const registerDocument = (initialTime?: number) =>
+      page.evaluateOnNewDocument(initializeDocument, initialTime);
     let script = await registerDocument(initialTime);
+    // Existing timers stay native; only waits scheduled after this boundary are controlled.
+    if (currentDocument) await page.evaluate(initializeDocument, initialTime);
     refreshEpoch = async () => {
       if (!wallClock) return;
       // Keep subsequent navigation/reload at the advanced epoch, not the installation epoch.

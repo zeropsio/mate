@@ -29,8 +29,6 @@ const pageOf = (height: PageTall, script = 'fetch("https://example.com/beacon").
 
 /** One frame of the page's place in the conversation: its frame's height, the answer under it. */
 export interface Sample {
-  /** When, in ms since the sampler started. */
-  readonly t: number;
   readonly frame: number;
   /** How far the answer's words stand below the frame's top; null before they show. */
   readonly answer: number | null;
@@ -39,8 +37,7 @@ export interface Sample {
 
 /** Records every frame from the moment the page's frame first paints. */
 const SAMPLER = (title: string, answer: string) => {
-  const samples: Array<{ t: number; frame: number; answer: number | null; loaded: boolean }> = [];
-  const start = performance.now();
+  const samples: Array<{ frame: number; answer: number | null; loaded: boolean }> = [];
   (window as unknown as { pageSamples: typeof samples }).pageSamples = samples;
   const answerTop = () => {
     const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
@@ -61,7 +58,6 @@ const SAMPLER = (title: string, answer: string) => {
       const rect = box.getBoundingClientRect();
       const top = answerTop();
       samples.push({
-        t: performance.now() - start,
         frame: Math.round(rect.height * 10) / 10,
         answer: top === null ? null : Math.round((top - rect.top) * 10) / 10,
         loaded: box.querySelector("iframe") !== null,

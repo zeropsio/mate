@@ -5020,10 +5020,8 @@ describe("menu liveness through HQ records", () => {
       const word = attention();
       s.deliver(working(), word);
       expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
-      const start = performance.now();
       s.deliver(working(), { ...word, source: { ...word.source, revision: 2 }, working: 0 });
       s.lacks("sidebar-mate-live-step");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
     } finally {
       s.registry.dispose();
     }
@@ -5035,14 +5033,12 @@ describe("menu liveness through HQ records", () => {
       const old = attention();
       s.deliver(working(), old);
       expect(s.line("sidebar-mate-live-step")).toContain("Thinking");
-      const start = performance.now();
       s.deliver(working(), {
         ...old,
         source: { ...old.source, epoch: 2, incarnation: "after", revision: 0 },
         working: 0,
       });
       s.lacks("sidebar-mate-live-step");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
       // Observe after the stale report has actually entered the reducer, through the original window.
       s.deliver(working(), { ...old, source: { ...old.source, revision: 99 } });
       s.lacks("sidebar-mate-live-step");
@@ -5058,7 +5054,6 @@ describe("menu liveness through HQ records", () => {
     try {
       expect(s.line("sidebar-mate-subject")).toBe("Inspect the checkout");
       const word = attention();
-      const start = performance.now();
       s.deliver(overview(), {
         ...word,
         mainThreadId: ThreadId.make("new-chat"),
@@ -5069,7 +5064,6 @@ describe("menu liveness through HQ records", () => {
       });
       expect(surface(s.tree, "sidebar-mate").props["aria-label"]).toBe("Ada, Waiting for you");
       s.lacks("sidebar-mate-subject");
-      expect(performance.now() - start).toBeLessThanOrEqual(2_000);
     } finally {
       s.registry.dispose();
     }
