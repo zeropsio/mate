@@ -195,6 +195,7 @@ vi.mock("~/zerops/useHqAppDetail", async () => {
         };
       }, [key]);
     },
+    useHqAppFailure: () => undefined,
   };
 });
 vi.mock("~/zerops/useChangeOffers", () => ({ useChangeOffers: () => () => offers.of() }));
@@ -395,6 +396,25 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
     expect(
       document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
     ).toBe(true);
+  });
+
+  // Lukas, 2026-10-28: a change whose head HQ never said held Merge until a reload, with no way out.
+  it("a change whose head HQ never said offers Try again and never merges blind", () => {
+    const document = new Window().document;
+    document.body.innerHTML = render(merged({ merged: false, headSha: undefined }), [], {
+      readout: { kind: "failed", reason: "HQ hasn't sent them in time." },
+      onRetry: noop,
+    });
+    const retry = [...document.querySelectorAll("button")].find(
+      (button) => button.textContent === "Try again" && button.closest("[hidden]") === null,
+    );
+    expect(retry?.parentElement?.textContent).toContain("HQ hasn't sent them in time.");
+    expect(
+      document.querySelector('[data-zerops-primary-action="Merge"]')?.hasAttribute("disabled"),
+    ).toBe(true);
+    expect(document.body.textContent).toContain(
+      "Nothing merges from here until HQ sends this change's details.",
+    );
   });
 
   it("opening Files or reading each diff is never a prerequisite for Merge", () => {
