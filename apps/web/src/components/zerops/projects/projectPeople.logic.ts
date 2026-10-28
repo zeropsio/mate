@@ -169,6 +169,36 @@ export const levelOf = (role: string | undefined): AccessLevel | null => {
   return held === "BASIC_USER" ? "basic" : held === "READ_ONLY" ? "read" : null;
 };
 
+/** Whether a membership is an invitation not joined yet. */
+export const isPending = (member: ZeropsOrganizationMember): boolean =>
+  (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) !== ZEROPS_ACTIVE_MEMBER_STATUS;
+
+/** Who a member is, as a face and a name: HQ's picture first, as the menu draws them. */
+export function memberFace(
+  member: ZeropsOrganizationMember,
+  pictures: ProjectPeopleInput["pictures"],
+): PersonFace {
+  const userId = member.user?.id ?? member.userId;
+  const name = mateMemberName(member) ?? "Someone";
+  return {
+    userId,
+    name,
+    short: shortName(name),
+    initials: zeropsInitials(name),
+    avatarUrl: memberPicture({
+      hq: userId === undefined ? null : pictures[userId],
+      avatar: member.user?.avatar,
+      email: member.user?.email,
+    }),
+    email: member.user?.email?.trim() || null,
+    role:
+      zeropsRoleWords({
+        roleCode: asOrgRole(member.roleCode),
+        canCreateProjects: member.canCreateProjects,
+      }) ?? "",
+  };
+}
+
 /** "Ada L." — a first name and the last name's initial; a single word or an address as it is. */
 export function shortName(name: string): string {
   if (name.includes("@")) return name;
@@ -326,22 +356,8 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       const level = levelOf(owned.includes(mate.projectId) ? "OWNER" : roleOn(mate.projectId));
       return level === null ? [] : [{ ...mate, level }];
     });
-    const name = mateMemberName(member) ?? "Someone";
-    const pending = (member.status ?? ZEROPS_ACTIVE_MEMBER_STATUS) !== ZEROPS_ACTIVE_MEMBER_STATUS;
-    const avatar = member.user?.avatar;
-    const face: PersonFace = {
-      userId,
-      name,
-      short: shortName(name),
-      initials: zeropsInitials(name),
-      avatarUrl: memberPicture({
-        hq: userId === undefined ? null : input.pictures[userId],
-        avatar,
-        email: member.user?.email,
-      }),
-      email: member.user?.email?.trim() || null,
-      role: zeropsRoleWords({ roleCode: role, canCreateProjects: member.canCreateProjects }) ?? "",
-    };
+    const pending = isPending(member);
+    const face = memberFace(member, input.pictures);
     const access = accessWords(role, onPlaces);
     if (access === null && onMates.length === 0) {
       candidates.push({ ...face, clientUserId: member.id, pending });
