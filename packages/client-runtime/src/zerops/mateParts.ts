@@ -76,7 +76,7 @@ export interface MateParts {
 /** A lease as the reader needs it, from the newest envelope the Mate's conversation read. */
 export type MatePartLease = Pick<
   ZeropsLease,
-  "alias" | "pool" | "state" | "unverified" | "devServers" | "acquiredAt"
+  "alias" | "pool" | "state" | "unverified" | "devServers" | "acquiredAt" | "branch"
 >;
 
 /** A chat bound to a lease (`ThreadLease`), by its title: what the workspace is for. */
@@ -187,6 +187,19 @@ export const leaseChatTitle = (
         chat.acquiredAt === lease.acquiredAt),
   )?.title;
 
+/**
+ * What a workspace goes by: the chat it is for, else the branch checked out there — a helper's or
+ * a task's workspace is bound to no chat — else "dev". A workspace on `main` is plain development.
+ */
+export const leaseLabel = (
+  lease: Pick<ZeropsLease, "alias" | "acquiredAt" | "branch">,
+  chats: ReadonlyArray<MatePartLeaseChat>,
+): string =>
+  leaseChatTitle(lease, chats) ??
+  (lease.branch === undefined || lease.branch === "main" || lease.branch === "master"
+    ? "dev"
+    : lease.branch);
+
 export function mateParts(input: MatePartsInput): MateParts {
   const leases = input.leases ?? [];
   const pools = new Set([
@@ -262,7 +275,7 @@ export function mateParts(input: MatePartsInput): MateParts {
         const link = poolWorkspaceLink(lease);
         return {
           key: `dev:${lease.alias}`,
-          label: leaseChatTitle(lease, chats) ?? "dev",
+          label: leaseLabel(lease, chats),
           service: lease.alias,
           url: link.url,
           host: link.url === undefined ? undefined : hostOf(link.url),

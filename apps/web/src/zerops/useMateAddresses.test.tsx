@@ -105,7 +105,7 @@ it("an ungrouped Mate's conversation still shows its previews, each by its part'
           {
             alias: "embedderpool-3",
             pool: "embedderpool",
-            branch: "feat-x",
+            branch: "main",
             state: "held",
             devServers: [
               { name: "web", port: 8101, url, status: "running", readAt: "2026-10-25T09:00:00Z" },
