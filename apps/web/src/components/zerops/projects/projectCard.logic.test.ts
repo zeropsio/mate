@@ -1006,6 +1006,22 @@ describe("a Mate on a card", () => {
     expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(1);
   });
 
+  // The project's card asks for a recipe change once, as a setup change (`cardChanges`).
+  it("leaves a Mate's recipe change out of its overview row, which reviews its code", () => {
+    const recipe = pull({ number: 7, kind: "recipe", title: "Mate: the group's import files" });
+    const flow = {
+      pullRequests: [
+        { pull: recipe, blocked: null, state: undefined, review: true },
+        { pull: pull({ number: 2 }), blocked: null, state: undefined, review: true },
+      ],
+    };
+    expect(mateChangesForReview(flow, "wren-dev").map((each) => each.number)).toEqual([2]);
+    expect(mateChangeForReview(flow, "wren-dev")?.number).toBe(2);
+    expect(mateChangeForReview({ pullRequests: [flow.pullRequests[0]!] }, "wren-dev")).toBe(
+      undefined,
+    );
+  });
+
   // D7, one rule with the menu (`changeShowsReview`): while Wren works, its changes show no Review.
   it.each([
     { case: "at work", review: false, expected: undefined },

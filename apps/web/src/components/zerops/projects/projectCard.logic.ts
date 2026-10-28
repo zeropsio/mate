@@ -13,6 +13,7 @@ import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/dat
 import {
   addressComing,
   changeAsksForReview,
+  changeInMateReview,
   changeState,
   changesCountWords,
   ENVIRONMENT_NOT_ADDED,
@@ -770,13 +771,20 @@ export function cardSecondWords(input: {
 /**
  * The changes of a Mate's that wait for review, by the rule the menu reads (`changeShowsReview`,
  * the flow's `review`): none while it works. An automated Mate holds one per task, several at once.
+ * Its code only (`changeInMateReview`): its recipe change is the project's setup, which the card
+ * asks for once (`cardChanges`).
  */
 export function mateChangesForReview(
   flow: Pick<GroupFlow, "pullRequests">,
   mateProjectId: string,
 ): ReadonlyArray<FlowPullRequest> {
   return flow.pullRequests
-    .filter((entry) => entry.review && entry.pull.mateProjectId === mateProjectId)
+    .filter(
+      (entry) =>
+        entry.review &&
+        entry.pull.mateProjectId === mateProjectId &&
+        changeInMateReview(entry.pull),
+    )
     .map((entry) => entry.pull);
 }
 
