@@ -211,6 +211,7 @@ function Automation({
         install: async () => null,
         accept: nothing,
         suspend: nothing,
+        resume: nothing,
       }}
       defaultOpen={open}
       onOpen={nothing}

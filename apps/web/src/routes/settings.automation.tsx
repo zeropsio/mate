@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { useEffect, useState } from "react";
 
 import { AutomationSettings } from "../components/settings/AutomationSettings";
 import type { GithubReturn } from "../components/settings/automationSettings.logic";
@@ -7,7 +8,13 @@ type GithubReturned = Exclude<GithubReturn, null>;
 
 function AutomationSettingsPage() {
   const { github } = Route.useSearch();
-  return <AutomationSettings returned={github ?? null} />;
+  // Read once: the address drops it (replaced, not pushed), so a reload or Back says it no more.
+  const [returned] = useState(github ?? null);
+  const navigate = Route.useNavigate();
+  useEffect(() => {
+    if (github !== undefined) void navigate({ search: {}, replace: true });
+  }, [github, navigate]);
+  return <AutomationSettings returned={returned} />;
 }
 
 export const Route = createFileRoute("/settings/automation")({

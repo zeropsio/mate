@@ -49,7 +49,11 @@ export interface GithubAppControls {
   readonly accept: (installationId: number) => void;
   /** GitHub suspends an installation. */
   readonly suspend: (installationId: number) => void;
+  /** GitHub resumes an installation the app suspended. */
+  readonly resume: (installationId: number) => void;
 }
+
+const INSTALL_FURTHER = "Install on another GitHub account or more repositories";
 
 export function GithubAppSettings({
   admin,
@@ -77,6 +81,9 @@ export function GithubAppSettings({
         },
         suspend: (installationId) => {
           write({ kind: "github-suspend", installationId });
+        },
+        resume: (installationId) => {
+          write({ kind: "github-resume", installationId });
         },
       }}
       onOpen={(url) => {
@@ -208,6 +215,21 @@ export function GithubAppView({
                 <span className="text-foreground">{installation.line}</span>
                 <span className="text-muted-foreground">·</span>
                 <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
+                {installation.suspended && section.manage && section.installTrip ? (
+                  <>
+                    <span className="text-muted-foreground">·</span>
+                    <InlineButton
+                      disabled={working}
+                      onClick={() => {
+                        controls.resume(installation.id);
+                      }}
+                    >
+                      {read.action.kind === "working" && read.action.verb === "github-resume"
+                        ? workingWords("github-resume")
+                        : "Resume"}
+                    </InlineButton>
+                  </>
+                ) : null}
               </li>
             ))}
           </ul>
@@ -215,7 +237,16 @@ export function GithubAppView({
             <p className="text-xs text-muted-foreground">
               This app can only be installed on {section.privateTo.owner}. To add other GitHub
               accounts,{" "}
-              <OutLink href={section.privateTo.settingsUrl}>make it public on GitHub</OutLink>.
+              {section.privateTo.settings ? (
+                <>
+                  <OutLink href={section.privateTo.url}>make it public on GitHub</OutLink>.
+                </>
+              ) : (
+                <>
+                  its owner makes it public in the app's settings on GitHub, under Advanced:{" "}
+                  <OutLink href={section.privateTo.url}>the app on GitHub</OutLink>.
+                </>
+              )}
             </p>
           )}
           {section.waiting.length === 0 ? null : (
@@ -228,8 +259,6 @@ export function GithubAppView({
                   <li className="grid gap-0.5 text-xs" key={installation.id}>
                     <span className="flex items-center gap-1.5">
                       <span className="text-foreground">{installation.account}</span>
-                      <span className="text-muted-foreground">·</span>
-                      <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
                       {section.manage ? (
                         <>
                           <span className="text-muted-foreground">·</span>
@@ -275,18 +304,23 @@ export function GithubAppView({
           )}
           {section.manage ? (
             <div className="flex items-center gap-4 text-xs">
-              <InlineButton
-                disabled={working}
-                onClick={() => {
-                  void controls.install(returnTo).then((url) => {
-                    if (url !== null) onOpen(url);
-                  });
-                }}
-              >
-                {read.action.kind === "working" && read.action.verb === "github-install"
-                  ? workingWords("github-install")
-                  : "Install on another GitHub account or more repositories"}
-              </InlineButton>
+              {section.installTrip ? (
+                <InlineButton
+                  disabled={working}
+                  onClick={() => {
+                    void controls.install(returnTo).then((url) => {
+                      if (url !== null) onOpen(url);
+                    });
+                  }}
+                >
+                  {read.action.kind === "working" && read.action.verb === "github-install"
+                    ? workingWords("github-install")
+                    : INSTALL_FURTHER}
+                </InlineButton>
+              ) : (
+                // An HQ before install trips: GitHub's own page, as it always was.
+                <OutLink href={section.installUrl}>{INSTALL_FURTHER}</OutLink>
+              )}
               {confirming ? null : (
                 <InlineButton
                   disabled={working}

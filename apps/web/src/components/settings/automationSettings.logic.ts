@@ -36,17 +36,32 @@ export type GithubSection =
         readonly id: number;
         readonly line: string;
         readonly manageUrl: string;
+        readonly suspended: boolean;
       }>;
-      /** Installed where nobody here started it: Mate acts on none of it until an OK. */
+      /**
+       * Installed where nobody here started it: Mate acts on none of it until an OK. Its page on
+       * GitHub is its account's, which the organization's admins cannot open.
+       */
       readonly waiting: ReadonlyArray<{
         readonly id: number;
         readonly account: string;
         /** Its repositories, by `owner/name`. */
         readonly repositories: ReadonlyArray<string>;
-        readonly manageUrl: string;
       }>;
-      /** A private app: installable on its owner alone, made public on the settings page. */
-      readonly privateTo: { readonly owner: string; readonly settingsUrl: string } | null;
+      /**
+       * A private app: installable on its owner alone. `settings`: `url` is the GitHub page that
+       * makes it public; otherwise the app's own page, its owner's kind unknown.
+       */
+      readonly privateTo: {
+        readonly owner: string;
+        readonly url: string;
+        readonly settings: boolean;
+      } | null;
+      /**
+       * HQ hands install trips, accepts, suspends and resumes: one that predates the guard (its view
+       * says nothing of `public`) has GitHub's own install page only.
+       */
+      readonly installTrip: boolean;
       /** `manage`: this person may install it further, judge what waits, or disconnect it. */
       readonly manage: boolean;
     };
@@ -63,17 +78,19 @@ export function installationStanding(
 }
 
 /**
- * GitHub's page that makes the app public, under its owner's settings: an organization's when an
- * installation on the owner says it is one, else the person's own.
+ * Where a private app is made public: its owner's settings page (an organization's or a person's,
+ * as HQ says), or the app's own page where HQ does not say which.
  */
-function advancedSettingsUrl(view: Extract<HqGithubView, { readonly state: "connected" }>): string {
+function makePublicAt(view: Extract<HqGithubView, { readonly state: "connected" }>) {
   const slug = encodeURIComponent(view.slug);
-  const ownInstallation = view.installations.find(
-    (installation) => installation.account.toLowerCase() === view.owner.toLowerCase(),
-  );
-  return ownInstallation?.accountType === "Organization"
-    ? `https://github.com/organizations/${encodeURIComponent(view.owner)}/settings/apps/${slug}/advanced`
-    : `https://github.com/settings/apps/${slug}/advanced`;
+  if (view.ownerType === "Organization")
+    return {
+      url: `https://github.com/organizations/${encodeURIComponent(view.owner)}/settings/apps/${slug}/advanced`,
+      settings: true,
+    };
+  if (view.ownerType === "User")
+    return { url: `https://github.com/settings/apps/${slug}/advanced`, settings: true };
+  return { url: `https://github.com/apps/${slug}`, settings: false };
 }
 
 /** Where the app is installed, in a line: "acme · 3 repositories". */
@@ -118,6 +135,7 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
                 ? `${installation.account} · suspended`
                 : installationLine(installation),
             manageUrl: installation.manageUrl,
+            suspended: installationStanding(installation) === "suspended",
           })),
         waiting: view.installations
           .filter((installation) => installationStanding(installation) === "waiting")
@@ -125,12 +143,9 @@ export function githubSection(setting: SettingValue<HqGithubView>, admin: boolea
             id: installation.id,
             account: installation.account,
             repositories: installation.repositories.map((repository) => repository.fullName),
-            manageUrl: installation.manageUrl,
           })),
-        privateTo:
-          view.public === false
-            ? { owner: view.owner, settingsUrl: advancedSettingsUrl(view) }
-            : null,
+        privateTo: view.public === false ? { owner: view.owner, ...makePublicAt(view) } : null,
+        installTrip: view.public !== undefined,
         manage: admin,
       };
     }
@@ -147,8 +162,11 @@ export type GithubReturn = "connected" | "requested" | "waiting" | null;
 export function githubReturnLine(returned: GithubReturn, section: GithubSection): string | null {
   if (returned === "requested")
     return `GitHub asked an owner of ${section.kind === "connected" ? section.owner : "the organization"} to approve the app; it's installed once they do.`;
+  // Said only while an installation waits here: not for another organization, nor after its OK.
   if (returned === "waiting")
-    return "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it.";
+    return section.kind === "connected" && section.waiting.length > 0
+      ? "GitHub installed the app. It waits for an Owner's or Admin's OK before Mate uses it."
+      : null;
   if (returned === "connected" && section.kind === "connected")
     return `GitHub is connected. Mate acts there as ${section.botLogin} from now on.`;
   return null;
