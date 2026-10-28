@@ -201,7 +201,7 @@ function observePolicy(
       {
         family: "hqAutoUpdatePolicy",
         id: policy.orgId,
-        value: { epoch: "core", ...policy },
+        value: policy,
         revision: { kind: "hq", incarnation, revision: policy.revision },
       },
     ],
@@ -228,7 +228,7 @@ it.each(["receipt-first", "stream-first"])(
           handles: [],
           acceptance: {
             kind: "accepted",
-            result: { policy: { orgId: "org", enabled: true, revision: 2, epoch: "core" } },
+            result: { policy: { orgId: "org", enabled: true, revision: 2 } },
           },
           outcome: { kind: "succeeded", evidence: "HQ answered" },
         },
@@ -254,7 +254,7 @@ it.each(["receipt-first", "stream-first"])(
 );
 
 it("a completed toggle stays settled when a fresh HQ starts at revision zero", () => {
-  const accepted = { orgId: "org", enabled: false, revision: 5, epoch: "old-core" };
+  const accepted = { orgId: "org", enabled: false, revision: 5 };
   observePolicy(store, accepted, "old-core");
   store.dispatch({
     kind: "operation-recorded",
@@ -274,7 +274,8 @@ it("a completed toggle stays settled when a fresh HQ starts at revision zero", (
     },
   });
   expect(control(render())?.props.disabled).toBe(false);
-  const replacement = { orgId: "org", enabled: true, revision: 0, epoch: "new-core" };
+  // A fresh HQ restarts its stream at zero; the policy keeps the revision HQ stored for it.
+  const replacement = { orgId: "org", enabled: true, revision: 6 };
   store.dispatch({
     kind: "delivery",
     via: "hq-stream",

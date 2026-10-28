@@ -140,7 +140,7 @@ describe("makeHqApi — a connection that drops", () => {
     let calls = 0;
     const answering = async () => {
       calls += 1;
-      return json(503, { code: "not_leader" });
+      return json(503, { code: "unavailable" });
     };
     const api = makeHqApi({
       address: ADDRESS,
