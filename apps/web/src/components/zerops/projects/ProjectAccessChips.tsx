@@ -1,5 +1,5 @@
 /**
- * Who reaches a Zerops project — or every project of an app — as people chips: a face, a short
+ * Who reaches a Zerops project as people chips: a face, a short
  * name and the level they have there, a hover card with who they are, and a ··· for whoever may
  * change it; then *Add access* under them, which picks people already in the organization who reach none of
  * it yet, each at Read or Full. Inviting someone new by e-mail lives on the Team page.
@@ -17,7 +17,6 @@ import {
   LockOpenIcon,
   MoreVerticalIcon,
   PlusIcon,
-  SplitIcon,
 } from "lucide-react";
 import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import { useId, useMemo, useState, type ReactNode } from "react";
@@ -119,7 +118,6 @@ const BADGE_ICON: Readonly<Record<BadgeLevel, typeof LockOpenIcon>> = {
   full: LockOpenIcon,
   basic: CogIcon,
   read: EyeIcon,
-  mixed: SplitIcon,
   hidden: EyeOffIcon,
 };
 
@@ -226,7 +224,6 @@ const BADGE_TONE: Readonly<Record<BadgeLevel, BadgeTone>> = {
   full: "success",
   basic: "info",
   read: "neutral",
-  mixed: "neutral",
   hidden: "neutral",
 };
 
@@ -329,7 +326,7 @@ function AccessChip({
   );
 }
 
-/** Who someone is: full name, e-mail and role — then each project's level where they differ. */
+/** Who someone is: full name, e-mail and role — then what they may do here. */
 function HoverCard({ person }: { readonly person: ProjectPerson }) {
   return (
     <div className="ov-chip-card">
@@ -340,18 +337,7 @@ function HoverCard({ person }: { readonly person: ProjectPerson }) {
       <span className="ov-chip-card-line">
         {[person.role, ...(person.pending ? ["invited, not joined yet"] : [])].join(" · ")}
       </span>
-      {person.across.length > 0 ? (
-        <ul className="ov-chip-card-across">
-          {person.across.map(({ label, level }) => (
-            <li key={label}>
-              <span>{label}</span>
-              <span>{level === null ? "No access" : BADGE_WORDS[level]}</span>
-            </li>
-          ))}
-        </ul>
-      ) : person.line === "" ? null : (
-        <span className="ov-chip-card-line">{person.line}</span>
-      )}
+      {person.line === "" ? null : <span className="ov-chip-card-line">{person.line}</span>}
       {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
     </div>
   );

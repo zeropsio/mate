@@ -59,7 +59,7 @@ const input = (members: ProjectPeopleInput["members"]): ProjectPeopleInput => ({
     { projectId: "m-1", kind: "mate" },
   ],
   grants: {
-    "p-prod": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "READ_ONLY" }] },
+    "p-prod": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "ADMIN" }] },
     "p-stage": { status: "ready", grants: [{ clientUserId: "cu-petr", roleCode: "ADMIN" }] },
   },
   owners: { "m-1": "u-petr" },
@@ -105,7 +105,7 @@ describe("a project's People section", () => {
     expect(rowsOf(KNOWN([ANNA, PETR, IVA]))).toEqual({
       heading: "People",
       rows: [
-        { text: ["Petr N.", "Mixed"], pending: false },
+        { text: ["Petr N.", "Full"], pending: false },
         { text: ["Anna B.", "Full"], pending: false },
         { text: ["iva@example.com", "More than Read"], pending: true },
       ],

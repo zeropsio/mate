@@ -178,7 +178,6 @@ function creatorChip(
     access: "Full access, as its creator",
     line: "Full access, as its creator",
     level: "full",
-    across: [],
     note: null,
     change: null,
   };
@@ -224,11 +223,10 @@ const LEVEL_PHRASE: Readonly<Record<ChipLevel, string>> = {
   full: "Full access",
   basic: "more than Read access",
   read: "Read access",
-  mixed: "mixed access",
   hidden: "no access",
 };
 
-const LEVEL_ORDER: ReadonlyArray<ChipLevel> = ["full", "basic", "read", "mixed"];
+const LEVEL_ORDER: ReadonlyArray<ChipLevel> = ["full", "basic", "read"];
 
 /** "Ada", "Ada and Bo": a level's people named, the creator as you. */
 const named = (people: ReadonlyArray<ProjectPerson>) =>

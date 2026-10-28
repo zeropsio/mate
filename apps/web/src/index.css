@@ -7513,7 +7513,7 @@ a.ov-card-site:hover {
   white-space: nowrap;
 }
 
-/* A chip's hover card: who they are, then each project's level where they differ. */
+/* A chip's hover card: who they are, then what they may do here. */
 .ov-chip-card {
   display: grid;
   gap: 2px;
@@ -7532,24 +7532,6 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
   font-size: 12px;
   line-height: 16px;
-}
-
-.ov-chip-card-across {
-  display: grid;
-  gap: 2px;
-  margin-top: 4px;
-  font-size: 12px;
-  line-height: 16px;
-}
-
-.ov-chip-card-across > li {
-  display: flex;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.ov-chip-card-across > li > :last-child {
-  color: var(--muted-foreground);
 }
 
 /* An app's access as one table: people down, its places across. It scrolls sideways inside its card,

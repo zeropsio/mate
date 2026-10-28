@@ -1,9 +1,9 @@
 /**
- * Who reaches some Zerops projects, and how: the organization's members joined with the grants on
- * each — an app's production, stages and Mates, or one project alone. Each person is a chip: their
- * level on the places (production and stages), or on the Mates where there is no place — or where
- * they reach none of the places; `mixed` where it differs. A Mate is its owner's: no change here
- * touches it.
+ * Who reaches a Zerops project, and how, as people chips: the organization's members joined with
+ * its grants — a Mate on its own, or a project still being made (`accessDraft.logic.ts`). An app's
+ * places side by side are a table (`accessTable.logic.ts`). Given several projects, a chip holds
+ * the most a person has on the places, or on the Mates where there is no place. A Mate is its
+ * owner's: no change here touches it.
  *
  * Zerops grants access per Zerops project: the organization role, unless a project names its own
  * grant for the member (`userRoles`), which wins in both directions (`effectiveProjectRole`).
@@ -57,10 +57,10 @@ export interface ProjectPeopleInput {
   readonly viewer?: { readonly roleCode?: string; readonly membershipId: string } | undefined;
 }
 
-/** A level a chip shows: full access, a developer's, read only — or different from place to place. */
+/** A level a chip shows: full access, a developer's, read only. */
 export type AccessLevel = "full" | "basic" | "read";
 /** `hidden`: a project kept from someone who works on or sees every project. */
-export type ChipLevel = AccessLevel | "mixed" | "hidden";
+export type ChipLevel = AccessLevel | "hidden";
 
 /**
  * The levels a person can be given here: full, read only — or, `none`, hidden from someone who
@@ -131,8 +131,6 @@ export interface ProjectPerson extends PersonFace {
   readonly line: string;
   /** The chip's badge. */
   readonly level: ChipLevel;
-  /** Each project and their level there, where the levels differ. */
-  readonly across: ReadonlyArray<{ readonly label: string; readonly level: AccessLevel | null }>;
   /** What a hidden project means for them: who can show it again. */
   readonly note: string | null;
   /** What the viewer may change of their access; `null` for nothing. */
@@ -375,22 +373,10 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
       : reachesAll
         ? mates.map(({ projectId }) => (owned.includes(projectId) ? "full" : levelOn(projectId)))
         : onMates.map(({ level }) => level);
-    const first = judged[0] ?? levelOf(role);
     const level: ChipLevel =
-      first !== null && judged.every((one) => one === first) ? first : "mixed";
-    const across =
-      level === "mixed"
-        ? [
-            ...places.map((place) => ({
-              label: place.label,
-              level: levelOf(roleOn(place.projectId)),
-            })),
-            ...mates.map((mate) => ({
-              label: mate.label,
-              level: onMates.find((one) => one.projectId === mate.projectId)?.level ?? null,
-            })),
-          ]
-        : [];
+      judged.toSorted((a, b) => CHIP_RANK.indexOf(a) - CHIP_RANK.indexOf(b))[0] ??
+      levelOf(role) ??
+      "hidden";
 
     const mateCount = mateOwners.filter((owner) => owner === userId).length;
     const said = access ?? mateWords(onMates.filter((one) => !owned.includes(one.projectId)));
@@ -459,8 +445,7 @@ export function projectPeople(input: ProjectPeopleInput): ProjectPeopleView {
         ...(mateCount === 0 ? [] : [mateCount === 1 ? "1 Mate" : `${mateCount} Mates`]),
       ].join(" · "),
       level,
-      across,
-      note: level === "hidden" || level === "mixed" ? hiddenNote(judged) : null,
+      note: level === "hidden" ? hiddenNote(judged) : null,
       change,
     };
     return [{ person, rank: [person.you ? 0 : 1, pending ? 1 : 0, best, -roleRank(role)] }];
@@ -494,6 +479,9 @@ function mateWords(
   ].join(" · ");
   return said === "" ? null : said.charAt(0).toUpperCase() + said.slice(1);
 }
+
+/** The most first: a chip given several projects holds the most a person has there. */
+const CHIP_RANK: ReadonlyArray<ChipLevel | null> = ["full", "basic", "read", "hidden", null];
 
 const RANKS: ReadonlyArray<ZeropsOrgRole> = [
   "NO_ACCESS",
@@ -533,7 +521,6 @@ export const BADGE_WORDS: Readonly<Record<ChipLevel, string>> = {
   full: "Full",
   basic: "More than Read",
   read: "Read",
-  mixed: "Mixed",
   hidden: "Hidden",
 };
 
@@ -622,9 +609,7 @@ export const mayHide = (role: string | undefined): boolean =>
 
 /** Whether a choice gives up the viewer's own full access here, which asks first. */
 export const asksFirst = (change: PersonChange, choice: AccessChoiceLike): boolean =>
-  change.self &&
-  (change.level === "full" || change.level === "mixed") &&
-  (choice === "read" || choice === "none");
+  change.self && change.level === "full" && (choice === "read" || choice === "none");
 
 type AccessChoiceLike = GivenLevel | "remove" | "withdraw";
 
