@@ -18,6 +18,10 @@
  *   rule zcp gives (`poolWorkspaceLink`); one that does not says why in plain words, muted. A slot
  *   nobody leases shows nothing: a pool's slot routes balance over every container, so they are
  *   nobody's.
+ * - **Several addresses**: a dev service answering on several ports, or a workspace running several
+ *   dev servers, is an entry per address, so a link opens exactly what it names: the first by the
+ *   dev's own label, the rest by their dev server's name where zcp names one, else their port
+ *   (":5195"), in port order (a workspace's in zcp's).
  * - **Preview**: the stage half's first route, labelled "preview"; one with no public address says
  *   so, muted, so a part that serves no page (a runner) still stands.
  *
@@ -25,16 +29,16 @@
  *
  * @module mateParts
  */
-import { isZeropsLeaseHeld, type ZeropsLease } from "@t3tools/contracts";
+import { isZeropsLeaseHeld, type ZeropsDevServer, type ZeropsLease } from "@t3tools/contracts";
 
 import { isPoolServiceType } from "./infrastructureType.ts";
 import { partName, poolPartName, servicePairs, type PoolPair } from "./servicePairs.ts";
 
 /** One entry of a part: a dev workspace or its preview, with its address or why it has none. */
 export interface MatePartEntry {
-  /** Unique within the Mate: `dev:<alias>`, `dev:<hostname>`, `preview:<hostname>`. */
+  /** Unique within the Mate: `dev:<alias>`, `dev:<hostname>`, `preview:<hostname>`, then a port's. */
   readonly key: string;
-  /** "dev", the chat a workspace is for, or "preview". */
+  /** "dev", the chat a workspace is for, or "preview"; past a dev's first address, `server`. */
   readonly label: string;
   /** The service the entry is on (a dev service, a lease's alias, a preview's hostname). */
   readonly service: string;
@@ -46,6 +50,11 @@ export interface MatePartEntry {
   readonly more: ReadonlyArray<string>;
   /** Only where it has no address, in plain words: "Starting.", "Paused.", "No web address."… */
   readonly why: string | undefined;
+  /**
+   * Which of its dev's addresses it is, where the dev answers on several: its dev server's name,
+   * else its port (":5195"); absent where the dev has one.
+   */
+  readonly server?: string | undefined;
 }
 
 /** A part of a Mate's application: its friendly name, its dev entries and its preview. */
@@ -98,6 +107,8 @@ export interface MatePartsInput {
     readonly hostname: string;
     readonly group?: string;
     readonly type?: string;
+    /** The dev servers zcp last read on it (`devServersOf`), which name its ports; absent unread. */
+    readonly devServers?: ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">> | undefined;
   }>;
   /** Its public routes; a second port of a service is the same page, listed in its tooltip. */
   readonly routes: ReadonlyArray<{
@@ -141,6 +152,12 @@ export function isBrowsableUrl(value: string): boolean {
     return false;
   }
 }
+
+/** A dev server by its own name, by its port where it has none. */
+export const devServerName = (server: Pick<ZeropsDevServer, "name" | "port">): string =>
+  server.name.trim() !== "" || server.port === undefined
+    ? server.name.trim()
+    : `:${String(server.port)}`;
 
 /** What a part's side with no address says in its tooltip, where it has no public route. */
 const NO_ADDRESS = "No web address.";
@@ -266,6 +283,9 @@ export function mateParts(input: MatePartsInput): MateParts {
   };
 
   const routesOf = (service: string) => routes.filter((route) => route.service === service);
+  const serversOf = new Map(
+    input.services.map((service) => [service.hostname, service.devServers ?? []] as const),
+  );
   const entryOf = (key: string, label: string, service: string, why: string): MatePartEntry => {
     const [first, ...rest] = routesOf(service);
     return first === undefined
@@ -280,26 +300,73 @@ export function mateParts(input: MatePartsInput): MateParts {
           why: undefined,
         };
   };
+  /** A dev service's addresses: one entry per port, in port order, each by its server's name. */
+  const serviceDev = (dev: string): ReadonlyArray<MatePartEntry> => {
+    const own = [...routesOf(dev)].sort((left, right) => (left.port ?? 0) - (right.port ?? 0));
+    const several = own.length > 1;
+    return own.map((route, index): MatePartEntry => {
+      const named = (serversOf.get(dev) ?? []).find(
+        (server) => server.port !== undefined && server.port === route.port,
+      );
+      const server = !several
+        ? undefined
+        : named !== undefined && named.name.trim() !== ""
+          ? devServerName(named)
+          : route.port === undefined
+            ? hostOf(route.url)
+            : `:${String(route.port)}`;
+      return {
+        key: index === 0 ? `dev:${dev}` : `dev:${dev}:${route.url}`,
+        label: index === 0 || server === undefined ? "dev" : server,
+        service: dev,
+        url: route.url,
+        host: hostOf(route.url),
+        more: [],
+        why: undefined,
+        server,
+      };
+    });
+  };
   const chats = input.leaseChats ?? [];
   const devOf = (dev: string): ReadonlyArray<MatePartEntry> => {
-    if (!pools.has(dev)) {
-      const entry = entryOf(`dev:${dev}`, "dev", dev, NO_ADDRESS);
-      return entry.url === undefined ? [] : [entry];
-    }
+    if (!pools.has(dev)) return serviceDev(dev);
     return [...leases]
       .filter((lease) => lease.pool === dev && isZeropsLeaseHeld(lease.state))
       .sort((left, right) => left.alias.localeCompare(right.alias, "en", { numeric: true }))
-      .map((lease): MatePartEntry => {
+      .flatMap((lease): ReadonlyArray<MatePartEntry> => {
         const link = poolWorkspaceLink(lease);
-        return {
-          key: `dev:${lease.alias}`,
-          label: leaseLabel(lease, chats),
-          service: lease.alias,
-          url: link.url,
-          host: link.url === undefined ? undefined : hostOf(link.url),
-          more: [],
-          why: link.why === undefined ? undefined : (PLAIN_WHY[link.why] ?? "Not running."),
-        };
+        const label = leaseLabel(lease, chats);
+        // Its running servers, the first the one its link opens (`poolWorkspaceLink`).
+        const running = (lease.devServers ?? []).flatMap((server) =>
+          server.status === "running" && server.url !== undefined && isBrowsableUrl(server.url)
+            ? [{ ...server, url: server.url }]
+            : [],
+        );
+        if (link.url === undefined || running.length < 2)
+          return [
+            {
+              key: `dev:${lease.alias}`,
+              label,
+              service: lease.alias,
+              url: link.url,
+              host: link.url === undefined ? undefined : hostOf(link.url),
+              more: [],
+              why: link.why === undefined ? undefined : (PLAIN_WHY[link.why] ?? "Not running."),
+            },
+          ];
+        return running.map((server, index) => {
+          const name = devServerName(server) || hostOf(server.url);
+          return {
+            key: index === 0 ? `dev:${lease.alias}` : `dev:${lease.alias}:${server.url}`,
+            label: index === 0 ? label : name,
+            service: lease.alias,
+            url: server.url,
+            host: hostOf(server.url),
+            more: [],
+            why: undefined,
+            server: name,
+          };
+        });
       });
   };
   const nameOf = (dev: string, stem: string) =>

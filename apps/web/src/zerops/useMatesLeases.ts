@@ -1,7 +1,8 @@
 /**
  * zcp's leases for each Mate a Sites list shows, as a conversation of that Mate last read them
  * (`leases[]` on its lifecycle's envelope), and the pairs it keys by a dev pool (`poolPairsOf`: each
- * pool's stages, with the part they serve), and the holders it marks as a repository's stand-in. zcp keeps one set for the whole Mate, and every conversation's lifecycle
+ * pool's stages, with the part they serve), the holders it marks as a repository's stand-in, and the
+ * dev servers it read on each service, which name a dev's several ports. zcp keeps one set for the whole Mate, and every conversation's lifecycle
  * carries it as the latest Zerops call read it, whichever conversation made it — so the Mate's
  * conversation the person last visited (`threadKey`) is enough.
  *
@@ -13,12 +14,13 @@
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
+  devServerNamesOf,
   lifecycleLeases,
   poolPairsOf,
   standInsOf,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { ZeropsLease } from "@t3tools/contracts";
+import type { ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
@@ -30,6 +32,10 @@ export interface MateLeasesRead {
   readonly poolPairs: ReadonlyArray<PoolPair>;
   /** The services its envelope marks as a repository's stand-in, which open nothing. */
   readonly standIns: ReadonlyArray<string>;
+  /** The dev servers zcp read on each service, by hostname: their names and ports only. */
+  readonly devServers: Readonly<
+    Record<string, ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">>>
+  >;
 }
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
@@ -52,6 +58,7 @@ const matesLeasesAtom = Atom.family((key: string) => {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
         standIns: standInsOf(lifecycle),
+        devServers: devServerNamesOf(lifecycle),
       };
     }
     return read;

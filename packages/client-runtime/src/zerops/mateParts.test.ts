@@ -158,6 +158,56 @@ describe("a Mate's parts", () => {
     },
   );
 
+  it.each<{ title: string; input: Partial<MatePartsInput>; rows: ReadonlyArray<string> }>([
+    {
+      title: "a dev service on three ports, in port order, named where zcp names its server",
+      input: {
+        services: [
+          {
+            hostname: "flipdev",
+            devServers: [{ ...server("running"), name: "admin", port: 5195 }],
+          },
+          { hostname: "flipstage" },
+        ],
+        routes: [
+          route("flipdev", 5196),
+          route("flipdev", 5193),
+          route("flipdev", 5195),
+          route("flipstage"),
+        ],
+      },
+      rows: [
+        "Flip | dev flipdev-1df2-5193.prg1.zerops.app, admin flipdev-1df2-5195.prg1.zerops.app, :5196 flipdev-1df2-5196.prg1.zerops.app | preview flipstage-1df2-80.prg1.zerops.app",
+      ],
+    },
+    {
+      title: "a workspace running two dev servers",
+      input: {
+        services: hostnames("webpool"),
+        pools: ["webpool"],
+        leases: [
+          lease("webpool-1", {
+            devServers: [
+              { ...server("running", "https://webpool-1-3001.prg1.zerops.app"), name: "web" },
+              {
+                ...server("running", "https://webpool-1-3002.prg1.zerops.app"),
+                name: "",
+                port: 3002,
+              },
+              { ...server("stopped", "https://webpool-1-3003.prg1.zerops.app"), name: "docs" },
+            ],
+          }),
+        ],
+      },
+      rows: ["Web | dev webpool-1-3001.prg1.zerops.app, :3002 webpool-1-3002.prg1.zerops.app | "],
+    },
+  ])(
+    "a dev with several addresses opens each by its own link, the first as dev, the rest by their server's name, else their port: $title",
+    ({ input, rows: expected }) => {
+      expect(rows(input)).toEqual(expected);
+    },
+  );
+
   it.each<{ title: string; lease: MatePartLease; why: string }>([
     {
       title: "its server stopped",

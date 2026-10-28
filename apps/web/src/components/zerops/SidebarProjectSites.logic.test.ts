@@ -443,6 +443,26 @@ describe("a Mate's parts", () => {
     },
   );
 
+  it("a dev on several addresses opens each by its own link: the first dev, the rest by the server zcp names on its port, else the port", () => {
+    expect(
+      rowsOf(
+        mate({
+          name: "Filip",
+          routes: [
+            route("flipdev", "flipdev-5196.example.app", 5196),
+            route("flipdev", "flipdev-5193.example.app", 5193),
+            route("flipdev", "flipdev-5195.example.app", 5195),
+            route("flipstage", "flipstage.example.app"),
+          ],
+          hostnames: ["flipdev", "flipstage"],
+          devServers: { flipdev: [{ name: "admin", port: 5195 }] },
+        }),
+      ),
+    ).toEqual([
+      "Flip | dev flipdev-5193.example.app, admin flipdev-5195.example.app, :5196 flipdev-5196.example.app | preview flipstage.example.app",
+    ]);
+  });
+
   it("a pooled part's dev shows only a workspace zcp holds, never a pool's slot address", () => {
     const kara = mate({
       name: "Kara",
@@ -674,7 +694,7 @@ describe("a Mate's addresses", () => {
         route("apidev", "apidev-9000.example.app", 9000),
       ],
       rows: [
-        "API | dev apidev-3000.example.app +apidev-9000.example.app | preview (Not set up yet.)",
+        "API | dev apidev-3000.example.app, :9000 apidev-9000.example.app | preview (Not set up yet.)",
       ],
     },
     {
@@ -1042,7 +1062,16 @@ describe("the Mates whose leases a Sites list reads", () => {
     { name: "a Mate whose listing names a dev pool", pools: ["webpool"], reads: true },
     { name: "a Mate with no dev pool", pools: [], reads: false },
     { name: "a Mate whose listing is not read yet", pools: undefined, reads: false },
-  ])("reads the leases of $name: $reads", ({ pools, reads }) => {
-    expect(readsLeases({ pools })).toBe(reads);
+    {
+      name: "a Mate whose dev answers on several addresses, which zcp names",
+      pools: [],
+      routes: [
+        route("flipdev", "flipdev-5193.example.app", 5193),
+        route("flipdev", "flipdev-5195.example.app", 5195),
+      ],
+      reads: true,
+    },
+  ])("reads the leases of $name: $reads", ({ pools, routes, reads }) => {
+    expect(readsLeases({ pools, routes })).toBe(reads);
   });
 });

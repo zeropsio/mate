@@ -136,6 +136,7 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
+  devServers: leases[mate.candidate.project.id]?.devServers,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -1047,8 +1048,9 @@ function CopyButton({
 /**
  * A Mate's parts, one row each: the part's name, then its dev and its preview in fixed columns, so
  * the rows align; every part shows both. Each side with an address is a link that opens in a new
- * tab, its host (and any other port's) in its tooltip, and copies on `c` or ⌘C; a side with none
- * is its word, muted, its tooltip saying why.
+ * tab, its host (and any other port's) in its tooltip, and copies on `c` or ⌘C; a dev on several
+ * addresses is a link per address, one under another; a side with none is its word, muted, its
+ * tooltip saying why.
  */
 function SitesPairs({
   pairs,
@@ -1118,6 +1120,7 @@ function PairSide({
       </TooltipTrigger>
       <TooltipPopup side="top">
         {side.label === "dev" || side.label === "preview" ? null : <div>{side.label}</div>}
+        {side.server === undefined || side.server === side.label ? null : <div>{side.server}</div>}
         {url === undefined
           ? side.why
           : [side.host, ...side.more].map((host) => <div key={host}>{host}</div>)}

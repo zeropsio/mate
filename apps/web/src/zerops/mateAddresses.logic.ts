@@ -24,6 +24,7 @@
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
+  devServerName,
   isBrowsableUrl,
   mateParts,
   type MatePartLease,
@@ -76,12 +77,6 @@ function runningServers(
   );
   return running.length > 1 ? running : [];
 }
-
-/** A dev server by its own name, by its port where it has none. */
-const serverName = (server: DevServerAddress): string =>
-  server.name.trim() !== "" || server.port === undefined
-    ? server.name.trim()
-    : `:${String(server.port)}`;
 
 export interface MateAddressInput {
   /** The Mate's own project's services, in topology order. */
@@ -158,17 +153,20 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     input.leases?.find((lease) => lease.alias === service)?.devServers ??
     input.services.find((each) => each.hostname === service)?.devServers;
   for (const part of parts) {
+    // A dev's first address stands for it: its running dev servers are listed from zcp's record.
+    const devs = new Set<string>();
     for (const entry of part.dev) {
-      if (entry.url === undefined) continue;
+      if (entry.url === undefined || devs.has(entry.service)) continue;
+      devs.add(entry.service);
       const name = entry.label === "dev" ? part.name : `${part.name} · ${entry.label}`;
       const several = runningServers(serversOf(entry.service));
       if (several.length === 0) add(entry.service, "dev", entry.url, name);
       for (const server of several)
         add(
-          `${entry.service} ${serverName(server)}`,
+          `${entry.service} ${devServerName(server)}`,
           "dev",
           server.url,
-          `${name} · ${serverName(server)}`,
+          `${name} · ${devServerName(server)}`,
         );
     }
     // A pair's half is the Mate's preview, unless its project is itself the stage or production.
