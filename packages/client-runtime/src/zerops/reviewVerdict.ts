@@ -279,9 +279,10 @@ export interface ChangeReviewInput {
   /**
    * How far its files were read for the head it is at. Merge takes only a head whose change was
    * shown: it waits while they are read, and one that could not be read is merged only by a
-   * deliberate press.
+   * deliberate press. `unread`: HQ never said which head it is at, and the wait for it is over —
+   * Merge would name no head, so it stays off.
    */
-  readonly readout: "reading" | "read" | "failed";
+  readonly readout: "reading" | "read" | "failed" | "unread";
   /** How many commits it squashes, where they were read. */
   readonly commits?: number | undefined;
   /**
@@ -846,8 +847,13 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       secondary,
     };
   }
-  // The automatic metadata read must settle before Merge can use the displayed head safely.
-  const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
+  // Merge takes the head the review shows: none while its details are read, and never one HQ has not
+  // said. A read that failed leaves it to a deliberate press.
+  const enabled =
+    verdictOf.enabled &&
+    input.readout !== "reading" &&
+    input.readout !== "unread" &&
+    input.offered?.merge === true;
   const squash = sentences(
     mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
     afterMain(input),
@@ -861,11 +867,13 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
-  // wrong with — its details still loading, which Merge waits for.
+  // wrong with — its details still loading, or never sent, which Merge waits for.
   const held = verdictOf.enabled
     ? input.readout === "reading"
       ? "Loading change details…"
-      : squash
+      : input.readout === "unread"
+        ? "Nothing merges from here until HQ sends this change's details."
+        : squash
     : (waits[verdict.state] ?? squash);
 
   if (press.kind === "running") {

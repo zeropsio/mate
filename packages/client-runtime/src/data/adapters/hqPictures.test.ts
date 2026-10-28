@@ -138,3 +138,45 @@ describe("HQ picture registration fencing", () => {
       }).pipe(Effect.scoped),
   );
 });
+
+describe("HQ detail reads past their deadline", () => {
+  // A read whose request never answers held its place after its deadline, so the retry the stream
+  // scheduled never ran: a change's record stayed "No answer came in time." until Try again.
+  it.live("reads again once a read that never answered passes its deadline", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const interrupted = yield* Deferred.make<void>();
+      let reads = 0;
+      const signal = (event: Parameters<Parameters<typeof makeHqPictureReads>[0]["signal"]>[1]) =>
+        Effect.map(Clock.currentTimeMillis, (now) =>
+          store.dispatch({ kind: "stream", key: scope, now, event }),
+        );
+      yield* signal({ kind: "demand", demanded: true });
+      const observe = yield* makeHqPictureReads({
+        orgId: key.orgId,
+        store,
+        signal: (_scope, event) => signal(event),
+        read: () =>
+          Effect.suspend(() => {
+            reads += 1;
+            return Effect.never.pipe(
+              Effect.onInterrupt(() => Deferred.succeed(interrupted, undefined)),
+            );
+          }),
+        wake: () => {},
+      });
+      yield* observe([scope]);
+      yield* until(store, () => streamOf(store.state(), scope).phase === "baselining");
+      yield* Effect.sleep("10 millis");
+      expect(reads).toBe(1);
+      yield* signal({ kind: "deadline" });
+      const wakeAt = yield* observe([scope]);
+      yield* Deferred.await(interrupted).pipe(Effect.timeout("1 second"));
+      const now = yield* Clock.currentTimeMillis;
+      yield* Effect.sleep(Math.max(0, wakeAt - now) + 10);
+      yield* observe([scope]);
+      yield* Effect.sleep("10 millis");
+      expect(reads).toBe(2);
+    }).pipe(Effect.scoped),
+  );
+});

@@ -26,7 +26,6 @@ import {
   reviewOrigin,
   outsideCommitsWords,
   rollbackListNote,
-  runWords,
   sizeWords,
   changeChecks,
   changeReceipt,
@@ -87,31 +86,23 @@ describe("pressesPrimary: ⌘↵ presses it when it is safe (R5)", () => {
   });
 });
 
-describe("reviewDescription: the change's own words first, the run's when it wrote none", () => {
+// Lukas, 2026-10-28: change #4's "What it does" opened with its Mate's reply about #1 and #3. A
+// run's reply may describe other changes; only the change's own description says what it does.
+describe("reviewDescription: what a change does is its own description, never a run's reply", () => {
   it.each([
     [
-      "its description, whatever the run said",
-      { description: "Adds a /status page.", run: { words: "Added it.", reading: false } },
+      "its description",
+      { description: "Adds a /status page.", reading: false },
       { kind: "body", text: "Adds a /status page." },
     ],
     [
-      "its description while the run is still read",
-      { description: "Adds a /status page.", run: { words: undefined, reading: true } },
-      { kind: "body", text: "Adds a /status page." },
-    ],
-    [
-      "what the run said, where it wrote no description",
-      { description: undefined, run: { words: "Added it.", reading: false } },
-      { kind: "run", words: "Added it." },
-    ],
-    [
-      "the room of the run's words while its conversation is read",
-      { description: undefined, run: { words: undefined, reading: true } },
+      "the room of its description while the change's record is read",
+      { description: undefined, reading: true },
       { kind: "reading" },
     ],
     [
-      "nothing at all where neither said anything: no empty heading",
-      { description: undefined, run: { words: undefined, reading: false } },
+      "nothing at all where its Mate wrote none: no empty heading, no borrowed words",
+      { description: undefined, reading: false },
       { kind: "none" },
     ],
   ] as const)("%s", (_case, input, shown) => {
@@ -269,50 +260,6 @@ describe("remarkFold: the dialog, a quick look, shows the newest of a long conve
     ["a long one, opened", "dialog", 9, true, { hidden: 0 }],
   ] as const)("%s", (_case, frame, total, all, fold) => {
     expect(remarkFold({ frame, total, all })).toEqual(fold);
-  });
-});
-
-describe("runWords: what it does, in the Mate's words (R3)", () => {
-  const link = "https://hq.example.test/changes/g1/appdev/2";
-  it("keeps the run's own sentences and leaves the link to the change out", () => {
-    const text = `Added a **/status** route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.\n\nThe change carrying this to main, ready for a person to merge: ${link}`;
-    expect(runWords(text)).toBe(
-      "Added a /status route that lists the app's uptime and its last deploy, refreshed on each visit. It stays behind the sign-in, like the rest of the admin pages.",
-    );
-  });
-
-  it("stops at a sentence once four lines' worth is said", () => {
-    const sentence = "This sentence is exactly seventy-five characters long, give or take a few.";
-    const words = runWords(Array.from({ length: 12 }, () => sentence).join(" "));
-    expect(words?.length).toBeLessThanOrEqual(400);
-    expect(words?.endsWith(".")).toBe(true);
-  });
-
-  it("says nothing where the run said only the link", () => {
-    expect(runWords(`Opened ${link}`)).toBeUndefined();
-  });
-
-  it("reads a list as sentences, not as its bullets", () => {
-    expect(runWords("- Added the route.\n- Wrote a test for it.\n")).toBe(
-      "Added the route. Wrote a test for it.",
-    );
-  });
-
-  it("reads a quote as its words, not as its markers", () => {
-    expect(
-      runWords("Added the route.\n\n> It stays behind the sign-in.\n> > Like the rest.\n"),
-    ).toBe("Added the route. It stays behind the sign-in. Like the rest.");
-  });
-
-  // e2e 2026-10-03: "What it does" printed "> [!WARNING] > My earlier claim was incorrect…".
-  it("says a callout's word into its first line, as the chat draws it", () => {
-    expect(
-      runWords(
-        `Opened change #2 for review.\n\n> [!WARNING]\n> My earlier claim was incorrect: the scaling option supports this update.\n\n${link}`,
-      ),
-    ).toBe(
-      "Opened change #2 for review. Warning: My earlier claim was incorrect: the scaling option supports this update.",
-    );
   });
 });
 

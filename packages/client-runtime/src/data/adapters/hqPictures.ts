@@ -50,7 +50,14 @@ export const makeHqPictureReads = (options: {
         ),
       );
       for (const [scope, entry] of active) {
-        if (wanted.has(scope) && streamOf(store.state(), scope).generation === entry.generation)
+        const stream = streamOf(store.state(), scope);
+        // A read whose attempt is over — let go, moved on, or past its deadline with its request
+        // still unanswered — gives way, so the stream's retry reads anew.
+        if (
+          wanted.has(scope) &&
+          stream.generation === entry.generation &&
+          stream.phase === "baselining"
+        )
           continue;
         active.delete(scope);
         yield* Fiber.interrupt(entry.fiber);

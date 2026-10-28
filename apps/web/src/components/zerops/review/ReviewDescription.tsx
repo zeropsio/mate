@@ -1,7 +1,7 @@
 /**
- * What a change does, first: the description its author wrote, rendered as the Mate's other words
- * are — Markdown, its pictures in it — or, where it wrote none, what the run that made it said of
- * it; and the way back to that run, where it is known (`reviewDescription`).
+ * What a change does, first: the description its Mate wrote, rendered as the Mate's other words
+ * are — Markdown, its pictures in it — and the way back to the run that made it, where it is known;
+ * where it wrote none, nothing (`reviewDescription`).
  *
  * The description's pictures are the change's own, kept by the organization's HQ. Each is read as
  * the person from HQ's picture projection (`useProjectedHqPicture`). Once read it is drawn from its bytes, at most
@@ -57,17 +57,17 @@ export type ChangeCodeAt = GitRepoAt & { readonly sha: string };
 export function ReviewDescription({
   description,
   code,
-  run,
+  reading,
   hqAddress,
   pictures,
   onOpenRun,
 }: {
   /** Where a file it names opens; absent, such a file opens nothing. */
   readonly code?: ChangeCodeAt | undefined;
-  /** The change's description as its author wrote it. */
+  /** The change's description as its Mate wrote it. */
   readonly description: string | undefined;
-  /** What the run that made it said of it, while its conversation is read. */
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
+  /** The change's record, which may hold its description, is still read. */
+  readonly reading: boolean;
   /** The organization's official HQ, which keeps the change's pictures. */
   readonly hqAddress: string | undefined;
   /** Where its pictures are read from, as the person. */
@@ -75,7 +75,7 @@ export function ReviewDescription({
   /** Opens the run that made it, where one is known. */
   readonly onOpenRun: (() => void) | undefined;
 }) {
-  const shown = reviewDescription({ description, run });
+  const shown = reviewDescription({ description, reading });
   if (shown.kind === "none") return null;
   return (
     <ReviewSection
@@ -98,8 +98,6 @@ export function ReviewDescription({
             pictures={pictures}
             text={shown.text}
           />
-        ) : shown.kind === "run" ? (
-          <p className="rv-words">{shown.words}</p>
         ) : (
           <ReviewSkeleton lines={2} />
         )}

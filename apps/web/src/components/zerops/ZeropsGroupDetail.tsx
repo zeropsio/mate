@@ -120,7 +120,7 @@ import {
 import { useKeepDeployKeyOffer } from "~/zerops/useChangeOffers";
 import { useOpenReview } from "~/zerops/review";
 import { useReleaseComparisons, type ComparedCommits } from "~/zerops/useReleaseComparisons";
-import { useHqRecipeFailure } from "~/zerops/useHqAppDetail";
+import { useHqAppFailure } from "~/zerops/useHqAppDetail";
 import {
   useAddEnvironment,
   useGroupPendingEnvironments,
@@ -483,7 +483,7 @@ const NO_SEARCH = {};
 
 /** The page's column: what the project's card has no room for, once its flow is read. */
 function ZeropsGroupAside({ groupId }: { readonly groupId: string }) {
-  const recipeFailure = useHqRecipeFailure(groupId);
+  const recipeFailure = useHqAppFailure(groupId);
   const { flows } = useProjectFlows(useMemo(() => [groupId], [groupId]));
   const flow = flows.get(groupId);
   if (flow === undefined) return null;
@@ -526,7 +526,7 @@ function KnownGroupAside({
 }: {
   readonly groupId: string;
   readonly flow: ZeropsProjectFlow;
-  readonly recipeFailure: ReturnType<typeof useHqRecipeFailure>;
+  readonly recipeFailure: ReturnType<typeof useHqAppFailure>;
 }) {
   const deployments = useStopDeploymentsShown();
   const spend = use(ProjectPageSpend);
@@ -1019,7 +1019,7 @@ function ZeropsProjectStopDetailPage({
   readonly groupId: string;
   readonly projectId: ProjectId;
 }) {
-  const recipeFailure = useHqRecipeFailure(groupId);
+  const recipeFailure = useHqAppFailure(groupId);
   // The environment's vault beside its page, where the account reads its organization.
   const orgId = useAccountOrgId();
   const [vaultOpen, toggleVault] = useStopVaultOpen();
@@ -2354,7 +2354,7 @@ function ProjectReadFailures({
   recipe,
   comparison,
 }: {
-  readonly recipe: ReturnType<typeof useHqRecipeFailure>;
+  readonly recipe: ReturnType<typeof useHqAppFailure>;
   readonly comparison: ZeropsProjectFlow["release"]["comparisonFailure"];
 }) {
   return (
