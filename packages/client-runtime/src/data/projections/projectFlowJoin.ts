@@ -16,6 +16,7 @@ import {
   releaseDeploys,
   releaseInFlight,
   releaseInFlightReason,
+  releaseLanding,
   releaseStalled,
   releaseCandidate,
   compareForRelease,
@@ -328,9 +329,19 @@ export function joinProjectFlows(input: {
       }),
     );
     const { rollouts } = git ? { rollouts: [] } : releaseDeploys(stops?.environments ?? []);
-    const newest = records?.[0] === undefined ? undefined : flowReleaseOf(records[0]);
+    const listed = (records ?? []).map(flowReleaseOf);
+    const newest = listed[0];
     const deploy = {
-      inFlight: releaseInFlight({ newest, rollouts }) ?? acceptedRelease,
+      // A release HQ ended landed stays on its way until production's own services run it.
+      inFlight:
+        releaseInFlight({ newest, rollouts }) ??
+        releaseLanding({
+          newest,
+          rollouts,
+          earlier: listed.slice(1),
+          productions: git ? [] : productionsRunning(stops?.environments ?? []),
+        }) ??
+        acceptedRelease,
       stalled: releaseStalled({ newest, rollouts }),
     };
     const repos = input.repos.get(group.groupId);
@@ -380,6 +391,24 @@ export function joinProjectFlows(input: {
     flows.set(group.groupId, flow);
   }
   return flows;
+}
+
+/** What each production's services run (`releaseLanding`): a commit, `null` for another name. */
+function productionsRunning(
+  environments: ReadonlyArray<Pick<GroupEnvironmentRowInput, "tier" | "services">>,
+): ReadonlyArray<ReadonlyMap<string, string | null>> {
+  return environments
+    .filter((environment) => environment.tier === "production")
+    .map(
+      (environment) =>
+        new Map(
+          environment.services.flatMap((service) =>
+            !service.appVersionName?.trim()
+              ? []
+              : [[service.hostname, deployedCommit(service.appVersionName) ?? null] as const],
+          ),
+        ),
+    );
 }
 
 /**
