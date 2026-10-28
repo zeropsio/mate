@@ -574,6 +574,7 @@ export interface GroupFlowReads {
   readonly merged: ReadonlyArray<FlowPullRequest>;
   readonly release: {
     readonly gate: ReleaseGate;
+    readonly reviewable?: boolean | undefined;
     readonly suggestion: string;
     /** The release on its way; the menu, which is told only whether Release is offered, has none. */
     readonly inFlight?: string | undefined;
@@ -631,6 +632,7 @@ function releaseInputOf(release: GroupFlowReads["release"]): GroupFlowInput["rel
   const { total, atLeast } = release.summary ?? releaseContentsSummary(release.contents);
   return {
     gate: release.gate,
+    reviewable: release.reviewable,
     suggestion: release.suggestion,
     waiting: total,
     ...(release.summary?.changeCount === undefined

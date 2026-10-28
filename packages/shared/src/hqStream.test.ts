@@ -374,6 +374,18 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
   });
 });
 
+it("The navigation release offer retains missing Production service names for its review.", () => {
+  const value = {
+    head: "a".repeat(40),
+    suggestion: "v1.0.0",
+    summary: { subjects: [], total: 1, more: 0, atLeast: false },
+    gate: { allow: false, reason: "Production has no service agentrunner." },
+    missingServices: ["agentrunner"],
+    inFlight: null,
+  };
+  expect(Schema.decodeUnknownSync(Stream.HqNavigationReleaseOffer)(value)).toEqual(value);
+});
+
 it("The navigation release offer retains a reviewed destination without deriving it from a project id.", () => {
   const value = {
     head: "a".repeat(40),

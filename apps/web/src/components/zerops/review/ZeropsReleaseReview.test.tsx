@@ -62,6 +62,15 @@ function render(over: Partial<ReleaseReviewViewProps>): string {
 }
 
 describe("ReleaseReviewView", () => {
+  it("names every missing Production service before approval and disables Release", () => {
+    const reason =
+      "Production has no services agentrunner, worker. Releases cannot create services in Production yet.";
+    const page = new Window().document;
+    page.body.innerHTML = render({ gate: { allowed: false, reason } });
+    expect(page.body.textContent).toContain(reason.replace(/\.$/u, ""));
+    expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
+  });
+
   // The onboarding run: released, the sheet's one button was "Put it on your domain" and the
   // production address stood small and grey behind the scrim.
   it("ends a release on the live app: Open its address, a domain of its own beside it", () => {

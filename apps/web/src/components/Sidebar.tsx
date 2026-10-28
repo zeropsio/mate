@@ -1344,7 +1344,10 @@ export default function Sidebar() {
         // never sees a group's own merged code, so it read `main` as empty.
         merged: flow.merged,
         environments: new Map(flow.environments.map((entry) => [entry.id, entry])),
-        releaseOffered: releaseOfferedIn(groupId, flow.release.gate.allowed),
+        releaseOffered: releaseOfferedIn(
+          groupId,
+          flow.release.reviewable ?? flow.release.gate.allowed,
+        ),
         // What a release would put in front of people: the count the
         // chips' menus say waits for production.
         releaseContents: flow.release.contents,
@@ -1848,7 +1851,8 @@ export default function Sidebar() {
     () =>
       zeropsMenuProjects.flatMap((project) => {
         const release = zeropsProjectFlows.get(project.id)?.release;
-        return release !== undefined && releaseOfferedIn(project.id, release.gate.allowed)
+        return release !== undefined &&
+          releaseOfferedIn(project.id, release.reviewable ?? release.gate.allowed)
           ? [
               {
                 groupId: project.id,

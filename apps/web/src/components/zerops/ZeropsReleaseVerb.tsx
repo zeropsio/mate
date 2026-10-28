@@ -27,7 +27,10 @@ export function useReleaseOffer(
   const making = putLiveHoldsRelease(usePutLiveRun(groupId));
   return {
     // A branch refused by an earlier preflight may be settled since: its review checks it again.
-    offered: !making && (gate?.allowed === true || flow?.release.git?.delivery?.recheck === true),
+    offered:
+      !making &&
+      ((flow?.release.reviewable ?? gate?.allowed) === true ||
+        flow?.release.git?.delivery?.recheck === true),
     reason: gate === undefined || gate.allowed ? undefined : gate.reason,
     releasing:
       flow?.release.inFlight !== undefined ||
