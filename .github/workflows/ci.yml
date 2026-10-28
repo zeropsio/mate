@@ -24,42 +24,22 @@ concurrency:
   cancel-in-progress: ${{ github.ref == 'refs/heads/kh-next' || github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
-  prepare:
-    name: CI promotion
+  verification:
+    name: Prior CI verification
     runs-on: ubuntu-latest
-    # Leave State Smoke's plan its execution headroom after the bounded verification step.
-    timeout-minutes: 16
+    timeout-minutes: 3
     permissions:
       actions: read
       contents: read
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
-      jobs: ${{ steps.blame.outputs.jobs }}
-      blame: ${{ steps.blame.outputs.blame }}
-      test_scripts: ${{ steps.blame.outputs.test_scripts }}
-      test_client_runtime: ${{ steps.blame.outputs.test_client_runtime }}
-      test_web: ${{ steps.blame.outputs.test_web }}
-      test_server: ${{ steps.blame.outputs.test_server }}
-      state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
-      state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
+      failed: ${{ steps.verdict.outputs.failed }}
     steps:
-      - name: Checkout CI selector
+      - name: Checkout CI receipt
         uses: actions/checkout@v6
         with:
-          sparse-checkout: |
-            /package.json
-            /scripts/ci-blame.ts
-            /.ci-blame-jobs
+          sparse-checkout: /package.json
           sparse-checkout-cone-mode: false
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version-file: package.json
-
-      - name: Select failed jobs for blame
-        id: blame
-        run: node scripts/ci-blame.ts
 
       - name: Check kh-next verification
         id: verdict
@@ -148,6 +128,7 @@ jobs:
                     fi
                   elif [[ "$(gh run view "$run" --json conclusion --jq .conclusion)" == failure ]]; then
                     printf 'Main CI run %s failed on this tree; fix main, not kh-next.\n' "$run" >&2
+                    echo "failed=true" >> "$GITHUB_OUTPUT"
                     exit 1
                   fi
                 done
@@ -157,9 +138,53 @@ jobs:
           echo "skip=${skip}" >> "$GITHUB_OUTPUT"
           echo "Already verified: ${skip}"
 
+  prepare:
+    name: CI promotion
+    needs: verification
+    # Optional receipt failures fall back to full verification; a failed main receipt stops below.
+    if: ${{ !cancelled() }}
+    runs-on: ubuntu-latest
+    # The GitHub wait owns another job's deadline; setup and planning retain their full budget.
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    outputs:
+      skip: ${{ needs.verification.outputs.skip }}
+      jobs: ${{ steps.blame.outputs.jobs }}
+      blame: ${{ steps.blame.outputs.blame }}
+      test_scripts: ${{ steps.blame.outputs.test_scripts }}
+      test_client_runtime: ${{ steps.blame.outputs.test_client_runtime }}
+      test_web: ${{ steps.blame.outputs.test_web }}
+      test_server: ${{ steps.blame.outputs.test_server }}
+      state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
+      state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
+    steps:
+      - name: Reject failed main verification
+        env:
+          MAIN_FAILED: ${{ needs.verification.outputs.failed }}
+        run: test "$MAIN_FAILED" != true
+
+      - name: Checkout CI selector
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: |
+            /package.json
+            /scripts/ci-blame.ts
+            /.ci-blame-jobs
+          sparse-checkout-cone-mode: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
+      - name: Select failed jobs for blame
+        id: blame
+        run: node scripts/ci-blame.ts
+
       # State Smoke's affected selection is computed once here; its size sets the shard count.
       - name: Checkout for State Smoke's plan
-        if: &plans_state_smoke steps.verdict.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
+        if: &plans_state_smoke needs.verification.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')
         uses: actions/checkout@v6
         with:
           fetch-depth: 0

@@ -792,13 +792,13 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
   expect(workflow.jobs.prepare.outputs).toMatchObject({
-    skip: "${{ steps.verdict.outputs.skip }}",
+    skip: "${{ needs.verification.outputs.skip }}",
   });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
   ][]) {
-    if (name === "prepare") continue;
+    if (name === "prepare" || name === "verification") continue;
     expect([job.needs].flat(), `ASSERTION: ${name} reads the one promotion verdict`).toContain(
       "prepare",
     );
@@ -815,7 +815,7 @@ it("CI runs full verification on integration pushes and preserves PR change sele
       (step: { name: string }) => step.name === "Test resource monitor",
     ).if,
   ).toContain("needs.changes.outputs.resource_monitor != 'false'");
-  expect(workflow.jobs.prepare.permissions.actions).toBe("read");
+  expect(workflow.jobs.verification.permissions.actions).toBe("read");
 });
 
 it("main promotion reports successful required checks without repeating verified work", () => {
@@ -868,7 +868,7 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
     string,
     { if?: string; steps: { name: string; if?: string }[] },
   ][]) {
-    if (["prepare", "test", "release_smoke"].includes(id)) continue;
+    if (["verification", "prepare", "test", "release_smoke"].includes(id)) continue;
     expect(
       job.if,
       `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
@@ -1019,8 +1019,9 @@ it.each([
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.prepare, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
-  const run = workflow.jobs.prepare.steps.find((step: { id?: string }) => step.id === "verdict")
-    .run as string;
+  const run = workflow.jobs.verification.steps.find(
+    (step: { id?: string }) => step.id === "verdict",
+  ).run as string;
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-promotion-"));
   const output = NodePath.join(directory, "output");
   const called = NodePath.join(directory, "called");
@@ -1677,8 +1678,7 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     string,
     { needs?: string | string[]; "timeout-minutes": number }
   >;
-  // prepare waits for main's in-flight run of the same tree; a wait followed by a full run happens
-  // only after main's run was cancelled, so the wait is not counted as execution.
+  // Preparation stays outside suite execution; its optional GitHub wait owns a separate job.
   const budget = (id: string): number => {
     if (id === "prepare") return 0;
     const job = jobs[id]!;
@@ -1807,6 +1807,13 @@ it.each([
     skip: false,
   },
   {
+    title: "a wait that times out runs the full suite",
+    runs: [pendingRun(1, "same", "in_progress")],
+    jobs: {},
+    watch: { 1: "timeout" },
+    skip: false,
+  },
+  {
     title: "a kh-next push does not wait for an in-progress main run of another tree",
     runs: [pendingRun(1, "other", "in_progress")],
     jobs: { 1: [hqJob("success")] },
@@ -1821,12 +1828,12 @@ it.each([
     skip: false,
   },
 ])("CI verification reuse: $title", ({ runs, jobs, skip, ...rest }) => {
-  const watch: Record<number, number> = "watch" in rest ? rest.watch : {};
+  const watch: Record<number, number | string> = "watch" in rest ? rest.watch : {};
   const conclusions: Record<number, string> = "conclusions" in rest ? rest.conclusions : {};
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const step = workflow.jobs.prepare.steps.find(
+  const step = workflow.jobs.verification.steps.find(
     (candidate: { id?: string }) => candidate.id === "verdict",
   );
   const dir = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "ci-reuse-"));
@@ -1847,7 +1854,12 @@ it.each([
 printf '%s\n' "$1 $2 $3" >> "${dir}/calls"
 if [[ "$1 $2" == "run watch" ]]; then
   [[ "$4" == "--exit-status" ]] || exit 98
-  exit "$(cat "${dir}/watch-$3")"
+  code=$(cat "${dir}/watch-$3")
+  if [[ "$code" == timeout ]]; then
+    kill -TERM "$PPID"
+    exit 0
+  fi
+  exit "$code"
 fi
 if [[ "$1 $2" == "run view" ]]; then
   cat "${dir}/conclusion-$3"
@@ -1907,11 +1919,35 @@ fi
     if (skip === "red") {
       expect(result.status).toBe(1);
       expect(result.stderr).toContain("Main CI run 1 failed on this tree");
+      expect(NodeFS.readFileSync(output, "utf8")).toBe("failed=true\n");
+    } else if (Object.values(watch).includes("timeout")) {
+      expect(result.signal, "ASSERTION: a deadline terminates the waiting step").toBe("SIGTERM");
       expect(NodeFS.readFileSync(output, "utf8")).toBe("");
     } else {
       expect(result.status, result.stderr).toBe(0);
       expect(NodeFS.readFileSync(output, "utf8")).toBe(`skip=${skip}\n`);
     }
+    const outputs = Object.fromEntries(
+      NodeFS.readFileSync(output, "utf8")
+        .trim()
+        .split("\n")
+        .filter(Boolean)
+        .map((line) => line.split("=")),
+    );
+    const guard = workflow.jobs.prepare.steps.find(
+      (candidate: { name: string }) => candidate.name === "Reject failed main verification",
+    );
+    expect(guard.env.MAIN_FAILED).toBe("${{ needs.verification.outputs.failed }}");
+    const preparation = NodeChildProcess.spawnSync("bash", ["-e", "-c", guard.run], {
+      env: { ...process.env, MAIN_FAILED: outputs.failed ?? "" },
+    });
+    expect(
+      preparation.status,
+      "ASSERTION: preparation rejects main's failure but accepts a timed-out optional receipt",
+    ).toBe(skip === "red" ? 1 : 0);
+    expect(outputs.skip === "true", "ASSERTION: only a verified receipt skips the full suite").toBe(
+      skip === true,
+    );
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
@@ -1922,7 +1958,8 @@ it("Decision: a step that waits on GitHub has its own timeout and leaves setup a
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   const prepare = workflow.jobs.prepare;
-  const verdict = prepare.steps.find((step: { id?: string }) => step.id === "verdict");
+  const verification = workflow.jobs.verification;
+  const verdict = verification.steps.find((step: { id?: string }) => step.id === "verdict");
   expect(
     verdict["timeout-minutes"],
     "ASSERTION: GitHub verification cannot consume the preparation job's deadline",
@@ -1931,5 +1968,16 @@ it("Decision: a step that waits on GitHub has its own timeout and leaves setup a
     verdict["continue-on-error"],
     "ASSERTION: an unavailable receipt runs verification in full",
   ).toBe(true);
-  expect(prepare["timeout-minutes"] - verdict["timeout-minutes"]).toBeGreaterThanOrEqual(9);
+  expect(prepare["timeout-minutes"]).toBeGreaterThanOrEqual(9);
+  expect(verification["timeout-minutes"]).toBeGreaterThan(verdict["timeout-minutes"]);
+  expect(prepare.needs).toBe("verification");
+  expect(prepare.if).toBe("${{ !cancelled() }}");
+  expect(verification.outputs).toEqual({
+    skip: "${{ steps.verdict.outputs.skip }}",
+    failed: "${{ steps.verdict.outputs.failed }}",
+  });
+  expect(
+    prepare.steps,
+    "ASSERTION: the GitHub wait must run in a separate job from preparation",
+  ).not.toContainEqual(expect.objectContaining({ id: "verdict" }));
 });
