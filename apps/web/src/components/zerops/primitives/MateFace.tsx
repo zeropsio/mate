@@ -137,8 +137,9 @@ const BROWSER_GAZE: GazeHost = {
   reducedMotion: prefersStill,
   observeVisible: (element, onChange) => {
     if (typeof IntersectionObserver === "undefined") return () => {};
+    // A busy page gets several reports in one call, oldest first: the last says where it is now.
     const observer = new IntersectionObserver((entries) =>
-      onChange(entries.some((entry) => entry.isIntersecting)),
+      onChange(entries.at(-1)?.isIntersecting === true),
     );
     observer.observe(element);
     return () => observer.disconnect();

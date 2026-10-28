@@ -95,7 +95,8 @@ function useNearView(ref: React.RefObject<HTMLElement | null>): boolean {
     const element = ref.current;
     if (element === null || typeof IntersectionObserver === "undefined") return;
     const observer = new IntersectionObserver(
-      (entries) => setNear(entries.some((entry) => entry.isIntersecting)),
+      // A busy page gets several reports in one call, oldest first: the last says where it is now.
+      (entries) => setNear(entries.at(-1)?.isIntersecting === true),
       { root: scrollParentOf(element), rootMargin: "100% 0px" },
     );
     observer.observe(element);
