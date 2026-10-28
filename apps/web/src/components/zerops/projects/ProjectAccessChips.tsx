@@ -427,7 +427,7 @@ const matches = (candidate: AccessCandidate, query: string) => {
 };
 
 /** *Add access*: a quiet button opening the organization's people who reach none of it yet. */
-function AddAccess({
+export function AddAccess({
   candidates,
   adding,
   onAdd,

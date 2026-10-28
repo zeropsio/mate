@@ -7552,6 +7552,271 @@ a.ov-card-site:hover {
   color: var(--muted-foreground);
 }
 
+/* An app's access as one table: people down, its places across. It scrolls sideways inside its card,
+   never the page, the people column standing still on the card's own ground. */
+.ov-acc-scroll {
+  /* Holds its own screen-reader words, which would otherwise widen the page from off its edge. */
+  position: relative;
+  max-width: 100%;
+  margin: 2px -6px 0;
+  overflow-x: auto;
+  overscroll-behavior-x: contain;
+}
+
+.ov-acc {
+  min-width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc th,
+.ov-acc td {
+  padding: 0 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.ov-acc thead th {
+  height: 32px;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  font-weight: 500;
+  vertical-align: bottom;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--ov-rule);
+}
+
+.ov-acc tbody tr + tr > * {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.ov-acc tbody td,
+.ov-acc tbody th {
+  height: 44px;
+}
+
+/* The places share the width the people leave; each column at least its level's menu. */
+.ov-acc thead th:not(.ov-acc-who) {
+  min-width: 112px;
+}
+
+.ov-acc-who {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  width: 1%;
+  min-width: 220px;
+  background: var(--ov-ground);
+  font-weight: 400;
+}
+
+.ov-acc [data-focus] {
+  background: color-mix(in oklab, var(--primary) 7%, transparent);
+}
+
+.ov-acc thead th[data-focus] {
+  color: var(--foreground);
+}
+
+.ov-acc-head {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ov-acc-person {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ov-acc-face {
+  display: grid;
+  grid-template-columns: 24px minmax(0, 1fr);
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  cursor: default;
+}
+
+a.ov-acc-face {
+  cursor: pointer;
+}
+
+a.ov-acc-face:hover [data-part="name"] {
+  text-decoration: underline;
+}
+
+.ov-acc-name {
+  display: grid;
+  min-width: 0;
+}
+
+.ov-acc-name > [data-part="name"] {
+  overflow: hidden;
+  color: var(--foreground);
+  font-weight: 500;
+  text-overflow: ellipsis;
+}
+
+.ov-acc-note {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+}
+
+/* An invitation is dimmed; its menu stays at full ink. */
+.ov-acc tr[data-pending] .ov-acc-face,
+.ov-acc-stack-row[data-pending] .ov-acc-open > :not(.ov-acc-caret) {
+  opacity: 0.55;
+}
+
+.ov-acc-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 28px;
+  margin-inline-start: -6px;
+  padding: 0 4px 0 6px;
+  border-radius: 8px;
+  cursor: default;
+}
+
+.ov-acc-cell[data-editable] {
+  cursor: pointer;
+  transition: background-color 150ms var(--ease-out-strong);
+}
+
+.ov-acc-cell[data-editable]:hover,
+.ov-acc-cell[data-editable][data-popup-open] {
+  background: var(--ov-hover);
+}
+
+.ov-acc-cell[data-editable]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.ov-acc-caret {
+  width: 14px;
+  height: 14px;
+  color: var(--muted-foreground);
+  opacity: 0;
+  transition: opacity 150ms var(--ease-out-strong);
+}
+
+.ov-acc-cell:hover .ov-acc-caret,
+.ov-acc-cell:focus-visible .ov-acc-caret,
+.ov-acc-cell[data-popup-open] .ov-acc-caret,
+.ov-acc-open .ov-acc-caret {
+  opacity: 1;
+}
+
+/* A level from the organization's role alone: muted words, no badge; a set one is the badge. */
+.ov-acc-level {
+  color: var(--foreground);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ov-acc-level[data-muted] {
+  color: var(--muted-foreground);
+  font-weight: 400;
+}
+
+/* A phone's table: each person a row that opens to their places. */
+.ov-acc-stack {
+  display: grid;
+  margin: 2px -6px 0;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc-stack-row + .ov-acc-stack-row {
+  border-top: 1px solid var(--ov-rule);
+}
+
+.ov-acc-stack-row > .ov-acc-person {
+  min-height: 52px;
+  padding: 0 6px;
+}
+
+.ov-acc-open {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 24px minmax(0, 1fr) 14px;
+  column-gap: 10px;
+  align-items: center;
+  min-width: 0;
+  padding: 6px 0;
+  text-align: left;
+}
+
+.ov-acc-stack-row[data-open] .ov-acc-caret {
+  transform: rotate(180deg);
+}
+
+.ov-acc-places {
+  display: grid;
+  gap: 2px;
+  padding: 0 6px 10px 40px;
+}
+
+.ov-acc-places > div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 32px;
+  font-size: 13px;
+}
+
+.ov-acc-places dt {
+  overflow: hidden;
+  color: var(--muted-foreground);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One place's people, read only: faces with their level there, then the way to change it. */
+.ov-reach {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.ov-reach > li {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-reach > li[data-pending] > :not(.ov-acc-level) {
+  opacity: 0.55;
+}
+
+.ov-acc-link {
+  justify-self: start;
+  color: var(--primary);
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.ov-acc-link:hover {
+  text-decoration: underline;
+}
+
 /* *Add access*: a search, the organization's people with Read and Full to tick, *Add people*. */
 .ov-pick {
   display: grid;

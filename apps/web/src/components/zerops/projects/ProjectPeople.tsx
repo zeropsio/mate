@@ -14,6 +14,7 @@
  * said under the chips.
  */
 import { useAtomValue } from "@effect/atom-react";
+import { Link, useRouterState } from "@tanstack/react-router";
 import {
   accountReadsAtom,
   initialStream,
@@ -69,6 +70,16 @@ import {
   type ProjectPeopleInput,
   type ProjectPerson,
 } from "./projectPeople.logic";
+import {
+  accessTable,
+  cellChange,
+  columnPeople,
+  everywhereChanges,
+  type AccessColumn,
+  type AccessRow,
+  type CellChoice,
+} from "./accessTable.logic";
+import { cellKey, PlaceAccessSummary, ProjectAccessTable } from "./ProjectAccessTable";
 
 /** Outside an account nothing is read: every project's grants are still to come. */
 const UNREAD_GRANTS = Atom.make<Readonly<Record<string, ProjectGrantsRead>>>({});
@@ -176,21 +187,21 @@ function useGroupProjects(groupId: string | null): AccessProjects {
   );
 }
 
+type WriteIntent = Parameters<
+  NonNullable<ReturnType<typeof useAccountOperationsOptional>>["submit"]
+>[0];
+
 /**
- * Who reaches `projects`, and the changes the viewer makes to it: a choice applies to every one of
- * them but the Mates the person owns.
+ * Access writes, each under a key: saving until Zerops answered and the people were read again,
+ * a refusal said by its key until the next write under it.
  */
-function useProjectAccess(projects: AccessProjects) {
-  const { base, clientId } = useAccessReads(projects);
-  const view = useMemo(() => projectPeople({ ...base, projects }), [base, projects]);
+function useAccessWrites() {
   const operations = useAccountOperationsOptional();
   const [saving, setSaving] = useState<ReadonlySet<string>>(() => new Set());
   const [troubles, setTroubles] = useState<Readonly<Record<string, string>>>({});
-  const projectIds = useMemo(() => projects.map(({ projectId }) => projectId), [projects]);
 
-  /** Runs one write under `key`: saving until it ends, its refusal said under the chips. */
   const write = useCallback(
-    (key: string, intent: Parameters<NonNullable<typeof operations>["submit"]>[0]) => {
+    (key: string, intent: WriteIntent) => {
       if (operations === null) return;
       const isCurrent = captureAccountLifetime();
       const said = (trouble: string | null) =>
@@ -220,6 +231,48 @@ function useProjectAccess(projects: AccessProjects) {
     },
     [operations],
   );
+  return { write, saving, troubles, writable: operations !== null };
+}
+
+/** People added from *Add access*: each at their level on every project here but their own Mates. */
+function useAddPeople(
+  projects: AccessProjects,
+  owners: Readonly<Record<string, string | null | undefined>>,
+  clientId: string | null,
+  write: (key: string, intent: WriteIntent) => void,
+) {
+  return useCallback(
+    (picks: ReadonlyArray<AccessPick>) => {
+      if (clientId === null) return;
+      const projectIds = projects.map(({ projectId }) => projectId);
+      const changes = picks.flatMap(({ candidate, level }): ReadonlyArray<ProjectAccessChange> =>
+        accessChanges({
+          clientUserId: candidate.clientUserId,
+          projectIds,
+          // A Mate of their own stays theirs, as HQ names its owner.
+          owned: projects.flatMap(({ projectId }) =>
+            candidate.userId !== undefined && owners[projectId] === candidate.userId
+              ? [projectId]
+              : [],
+          ),
+          choice: level,
+        }),
+      );
+      write(ADD_TROUBLE, { kind: "set-project-access", orgId: clientId, changes });
+    },
+    [clientId, owners, projects, write],
+  );
+}
+
+/**
+ * Who reaches `projects`, and the changes the viewer makes to it: a choice applies to every one of
+ * them but the Mates the person owns.
+ */
+function useProjectAccess(projects: AccessProjects) {
+  const { base, clientId } = useAccessReads(projects);
+  const view = useMemo(() => projectPeople({ ...base, projects }), [base, projects]);
+  const { write, saving, troubles, writable } = useAccessWrites();
+  const projectIds = useMemo(() => projects.map(({ projectId }) => projectId), [projects]);
 
   const choose = useCallback(
     (person: ProjectPerson, choice: AccessChoice) => {
@@ -249,29 +302,8 @@ function useProjectAccess(projects: AccessProjects) {
     },
     [clientId, projectIds, projects, write],
   );
+  const add = useAddPeople(projects, base.owners, clientId, write);
 
-  const add = useCallback(
-    (picks: ReadonlyArray<AccessPick>) => {
-      if (clientId === null) return;
-      const changes = picks.flatMap(({ candidate, level }): ReadonlyArray<ProjectAccessChange> =>
-        accessChanges({
-          clientUserId: candidate.clientUserId,
-          projectIds,
-          // A Mate of their own stays theirs, as HQ names its owner.
-          owned: projects.flatMap(({ projectId }) =>
-            candidate.userId !== undefined && base.owners[projectId] === candidate.userId
-              ? [projectId]
-              : [],
-          ),
-          choice: level,
-        }),
-      );
-      write(ADD_TROUBLE, { kind: "set-project-access", orgId: clientId, changes });
-    },
-    [base.owners, clientId, projectIds, projects, write],
-  );
-
-  const writable = operations !== null && clientId !== null;
   return {
     view,
     saving,
@@ -279,17 +311,156 @@ function useProjectAccess(projects: AccessProjects) {
     adding: saving.has(ADD_TROUBLE),
     // An owner or admin opens a person's own Team page from their chip.
     ...(view.kind === "people" && view.invite ? { personPage: LINKED } : {}),
-    ...(writable ? { onChoose: choose, onAdd: add } : {}),
+    ...(writable && clientId !== null ? { onChoose: choose, onAdd: add } : {}),
   };
 }
 
 const LINKED = () => true;
 
-/** The People on an app's page, for the group `groupId`: every project of the app at once. */
+/** The link from a place to its column: to change it, or — for whoever can't — to see the rest. */
+const placeLinkWords = (groupName: string | undefined, editable: boolean): string => {
+  const page = groupName === undefined ? "the project’s page" : `${groupName}’s page`;
+  return editable ? `Change on ${page}` : `Every place’s access on ${page}`;
+};
+
+/** The column a place's page linked to (`#access-<projectId>`), if any. */
+function useFocusedColumn(): string | undefined {
+  const hash = useRouterState({ select: (state) => state.location.hash });
+  return hash.startsWith("access-") ? hash.slice("access-".length) : undefined;
+}
+
+/**
+ * The People on an app's page, for the group `groupId`: its people by its places, one place's
+ * level changed at a time, or the same everywhere from a person's row.
+ */
 export function ProjectPeople({ groupId }: { groupId: string }) {
   const projects = useGroupProjects(groupId);
-  const access = useProjectAccess(projects);
-  return <ProjectAccessChips label="People" {...access} />;
+  const { base, clientId } = useAccessReads(projects);
+  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  const { write, saving, troubles, writable } = useAccessWrites();
+  const focus = useFocusedColumn();
+
+  const onCell = useCallback(
+    (row: AccessRow, column: AccessColumn, choice: CellChoice) => {
+      if (clientId === null) return;
+      write(cellKey(row, column.projectId), {
+        kind: "set-project-access",
+        orgId: clientId,
+        changes: [
+          cellChange({
+            clientUserId: row.key,
+            memberRole: row.roleCode,
+            projectId: column.projectId,
+            choice,
+          }),
+        ],
+      });
+    },
+    [clientId, write],
+  );
+  const onEverywhere = useCallback(
+    (row: AccessRow, choice: CellChoice) => {
+      if (clientId === null || view.kind !== "table") return;
+      write(row.key, {
+        kind: "set-project-access",
+        orgId: clientId,
+        changes: everywhereChanges({ row, columns: view.columns, choice }),
+      });
+    },
+    [clientId, view, write],
+  );
+  const onWithdraw = useCallback(
+    (row: AccessRow) => {
+      if (clientId === null) return;
+      write(row.key, {
+        kind: "set-app-access",
+        orgId: clientId,
+        clientUserId: row.key,
+        change: "withdraw",
+        projects: appProjectsOf(projects),
+        owned: row.cells.flatMap(({ projectId, level }) => (level === "owner" ? [projectId] : [])),
+      });
+    },
+    [clientId, projects, write],
+  );
+  const onAdd = useAddPeople(projects, base.owners, clientId, write);
+
+  return (
+    <ProjectAccessTable
+      adding={saving.has(ADD_TROUBLE)}
+      focus={focus}
+      saving={saving}
+      troubles={troubles}
+      view={view}
+      {...(view.kind === "table" && view.invite ? { personPage: LINKED } : {})}
+      {...(writable && clientId !== null ? { onCell, onEverywhere, onWithdraw, onAdd } : {})}
+    />
+  );
+}
+
+/** The app a project is part of, as HQ's structure places it; `undefined` for one on its own. */
+export function useProjectGroup(
+  projectId: string,
+): { readonly groupId: string; readonly name: string } | undefined {
+  const { registry } = useZeropsRegistry();
+  return useMemo(() => {
+    const group = registry.groups.find((one) =>
+      one.projects.some((project) => project.projectId === projectId),
+    );
+    return group === undefined ? undefined : { groupId: group.groupId, name: group.name };
+  }, [projectId, registry]);
+}
+
+/**
+ * Who reaches one place of an app, read only, and the link to its column on the app's page,
+ * where it is changed: a place's own page, a grouped Mate's *Access*.
+ */
+export function PlaceAccess({
+  groupId,
+  groupName,
+  projectId,
+  kind,
+  name,
+  onLeave,
+}: {
+  readonly groupId: string;
+  /** The app's name, for the link: "Change on kite.works’s page". */
+  readonly groupName: string | undefined;
+  readonly projectId: string;
+  readonly kind: RoleProjectKind;
+  readonly name?: string;
+  /** Called as the link is followed: a dialog closes. */
+  readonly onLeave?: () => void;
+}) {
+  const projects = useMemo(
+    () => [{ projectId, kind, ...(name === undefined ? {} : { name }) }],
+    [kind, name, projectId],
+  );
+  const { base } = useAccessReads(projects);
+  const view = useMemo(() => accessTable({ ...base, projects }), [base, projects]);
+  return (
+    <PlaceAccessSummary
+      change={
+        <Link
+          className="ov-acc-link"
+          hash={`access-${projectId}`}
+          onClick={onLeave}
+          params={{ groupId }}
+          to="/group/$groupId/flow"
+        >
+          {placeLinkWords(groupName, view.kind === "table" && view.editable)}
+        </Link>
+      }
+      line={
+        view.kind === "reading"
+          ? "Reading who has access…"
+          : view.kind === "unreadable"
+            ? view.line
+            : null
+      }
+      summary={columnPeople(view, projectId)}
+    />
+  );
 }
 
 /** One Zerops project's access: an environment's page, or a Mate's *Project access…*. */
