@@ -12,10 +12,12 @@
 import { lacksOwnDomain, type PlaceAddresses } from "@t3tools/client-runtime/data";
 import {
   addressComing,
+  changeAsksForReview,
   changeState,
   changesCountWords,
   placeAddresses,
   PRODUCTION_DEPLOYING,
+  pullRequestBlocked,
   type FlowPullRequest,
   type FlowReleaseRow,
   type GroupFlow,
@@ -912,6 +914,28 @@ function holds(
 }
 
 /**
+ * A recipe change that waits for a person: nothing stops its merge, so Core held it — its merge
+ * would change an environment built from the recipe. Its Mate's Review leaves it out
+ * (`changeInMateReview`); the project's card asks for it, here, once.
+ */
+function setupChangeWaits(pull: FlowPullRequest): boolean {
+  return (
+    pull.kind === "recipe" &&
+    pull.mateGone !== true &&
+    changeAsksForReview(pull) &&
+    pullRequestBlocked(pull) === null
+  );
+}
+
+/** What a waiting setup change does, by the environments the project has: "Changes how Stage is built". */
+function setupChangeWords(has: { readonly stage: boolean; readonly production: boolean }): string {
+  if (has.stage && has.production) return "Changes how Stage and Production are built";
+  if (has.stage) return "Changes how Stage is built";
+  if (has.production) return "Changes how Production is built";
+  return "Changes the project's setup";
+}
+
+/**
  * A card's latest changes (the owner, 2026-10-11: "quick history of latest PRs"): the open ones
  * first, each with what stops it, then the merged ones, each with where it went — in the oldest
  * release made after it landed, else on stage where the stage runs it, deploying to it where it is
@@ -945,7 +969,9 @@ export function cardChanges(input: {
       return {
         pull,
         open: true,
-        words: state?.word ?? "Open",
+        words: setupChangeWaits(pull)
+          ? setupChangeWords({ stage: input.stage !== undefined, production: input.production })
+          : (state?.word ?? "Open"),
         tone: state?.tone ?? "off",
         at: pull.updatedAt,
       };

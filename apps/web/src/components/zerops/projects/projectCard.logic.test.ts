@@ -1432,6 +1432,55 @@ describe("a card's latest changes", () => {
       stage: stageOn(6),
       rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
+    // Larkspur, 2026-10-28: Core held Filip's zcp's import files for a person, as their merge
+    // would change the stage and production built from them. Its Mate's Review leaves it out.
+    {
+      case: "a setup change waiting for a person: how the environments it changes are built",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Mate: the group's import files",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [
+        ["Mate: the group's import files", true, "Changes how Stage and Production are built"],
+      ],
+    },
+    {
+      case: "a setup change waiting where only a stage stands: how Stage is built",
+      open: [pull({ repository: "group", kind: "recipe", number: 2, title: "Add storage" })],
+      merged: [],
+      stage: stageOn(6),
+      production: false,
+      rows: [["Add storage", true, "Changes how Stage is built"]],
+    },
+    {
+      case: "a setup change waiting where no environment stands: the project's setup",
+      open: [pull({ repository: "group", kind: "recipe", number: 2, title: "Add storage" })],
+      merged: [],
+      stage: undefined,
+      production: false,
+      rows: [["Add storage", true, "Changes the project's setup"]],
+    },
+    {
+      case: "a setup change that does not merge: what stops it",
+      open: [
+        pull({
+          repository: "group",
+          kind: "recipe",
+          number: 2,
+          title: "Add storage",
+          mergeability: "conflicting",
+        }),
+      ],
+      merged: [],
+      stage: stageOn(6),
+      rows: [["Add storage", true, "Conflicts with main"]],
+    },
   ])("says $case", ({ open, merged: landed, stage, production = true, noReleases, rows }) => {
     expect(
       cardChanges({
