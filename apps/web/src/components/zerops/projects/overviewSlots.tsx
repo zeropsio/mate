@@ -11,6 +11,7 @@ import { useAtomValue } from "@effect/atom-react";
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
 import { shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
 import {
+  addressOffered as addressOfferedBy,
   formatRunClock,
   stageMarks,
   stageStandings,
@@ -77,8 +78,6 @@ import { Button } from "~/components/ui/button";
 export interface PlaceItem {
   readonly project: { readonly id: string; readonly status?: string | undefined };
   readonly routes?: ReadonlyArray<ZeropsPublicRoute> | undefined;
-  /** Public-access evidence of an address publication in progress; absent while unread. */
-  readonly addressPending?: boolean | undefined;
   /** Ports its public address would open that are not on yet; absent while its services are unread. */
   readonly routeOffers?: ReadonlyArray<unknown> | undefined;
   readonly services?:
@@ -177,14 +176,14 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
     );
     const stageChips = new Map<string, ProductionChip | undefined>();
     const down = new Map<string, ReadonlyArray<string>>();
-    const addressPending = new Map<string, boolean>();
+    const addressOffered = new Map<string, boolean>();
     if (prodStop !== undefined) down.set(prodStop.projectId, downOf(prodServing));
     for (const stop of entry.flow.stages) {
       const item = itemOf(entry, stop.projectId);
       const serving = servingOf(item);
       down.set(stop.projectId, downOf(serving));
-      const pending = item?.addressPending;
-      if (pending !== undefined) addressPending.set(stop.projectId, pending);
+      const offered = item === undefined ? undefined : addressOfferedBy(item);
+      if (offered !== undefined) addressOffered.set(stop.projectId, offered);
       stageChips.set(stop.projectId, drawnChip(stageStopChip({ stop, serving, releases })));
     }
     const since =
@@ -199,7 +198,7 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
       chip,
       stageChips,
       down,
-      addressPending,
+      addressOffered,
       rollsBackTo,
       since,
       prodItem,
@@ -235,12 +234,12 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
   };
 
   const cardPlaces = (entry: ProjectsFlowGroup<T>) => {
-    const { chip, stageChips, down, addressPending, rollsBackTo, since } = placesOf(entry);
+    const { chip, stageChips, down, addressOffered, rollsBackTo, since } = placesOf(entry);
     return {
       chip,
       stageChips,
       down,
-      addressPending,
+      addressOffered,
       rollsBackTo,
       since,
       releaseOnStage: stageOf(entry)?.runsRelease,

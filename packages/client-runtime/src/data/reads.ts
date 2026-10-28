@@ -28,8 +28,6 @@ import { projectProcesses, type ProjectProcesses } from "./projections/processes
 import type { ProjectValue } from "./families/project.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
-import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
-import { PROJECT_ROUTINGS_LISTING } from "./families/publicRouting.ts";
 import { creditForecast } from "./projections/creditForecast.ts";
 import { balanceScope } from "./families/organizationBalance.ts";
 import { creditScope } from "./families/organizationCredit.ts";
@@ -118,41 +116,6 @@ export const projectServicesAtom = Atom.family((projectId: string) =>
     return get(account.data.project(projectServices, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:project-services:${projectId}`)),
 );
-
-const NOT_READ_PUBLIC_ACCESS: PublicAccess = {
-  state: "reading",
-  routes: [],
-  pending: [],
-  offers: [],
-  readsProject: false,
-};
-
-/** One project's public access, with its fallback listing held while a consumer reads it. */
-export const projectPublicAccessAtom = Atom.family((projectId: string) => {
-  const source = Atom.make((get): PublicAccess => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return NOT_READ_PUBLIC_ACCESS;
-    return get(account.data.project(publicAccess, { orgId: account.orgId, projectId }));
-  });
-  const readsProject = Atom.make((get) => get(source).readsProject).pipe(
-    Atom.withEquality((left, right) => left === right),
-  );
-  const demand = Atom.make((get) => {
-    const account = get(accountReadsAtom);
-    if (account !== null && get(readsProject))
-      get.addFinalizer(
-        account.demandDetail({
-          family: "publicRouting",
-          listing: PROJECT_ROUTINGS_LISTING,
-          ownerId: projectId,
-        }),
-      );
-  });
-  return Atom.make((get): PublicAccess => {
-    get(demand);
-    return get(source);
-  });
-});
 
 /**
  * The organization's credit read as far as it went: its generation, which a create dialog holds

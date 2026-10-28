@@ -8,6 +8,8 @@ import type {
 import { useCallback, useMemo } from "react";
 
 import {
+  derivePublicRouteOffers,
+  derivePublicRoutes,
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
   type ZeropsPublicRoute,
@@ -24,7 +26,6 @@ import {
 } from "@t3tools/client-runtime/zerops/projections";
 import {
   projectServicesAtom,
-  projectPublicAccessAtom,
   shownHqMateDirectoryAtom,
   isListedMateProject,
 } from "@t3tools/client-runtime/data";
@@ -46,13 +47,12 @@ import { useZeropsData } from "./zeropsDataContext";
 export interface ZeropsCandidatePresentation extends CandidateRow {
   readonly connection?: EnvironmentConnectionPresentation;
   /**
-   * Where the environment is reachable from outside, from the account's public-access
-   * projection. Absent while its services or addresses are unread, so a row can tell
-   * "unknown" from "none".
+   * Where the environment is reachable from outside, read off the same
+   * service list the candidate came from. Absent while that list is unread
+   * (a project whose services failed to load), so a row can tell "unknown"
+   * from "none".
    */
   readonly routes?: ReadonlyArray<ZeropsPublicRoute>;
-  /** Whether a public address is being published; absent while publication is unread. */
-  readonly addressPending?: boolean;
   /** Services that serve HTTP with their subdomain off (`publicRoutes.ts`). */
   readonly routeOffers?: ReadonlyArray<ZeropsRouteOffer>;
   /**
@@ -154,8 +154,8 @@ const NO_SERVICES: ZeropsEnvironmentServices = {
 /**
  * The active organization's candidates as knowledge (DESIGN §3): the rows
  * (`mateRowsAtom`), each ready one joined with the environment connected
- * at its origin, and presented with its public access and services from the account's
- * projections; withheld as the rows are. Derived, with no writer: it reads the
+ * at its origin, and presented with its routes and services off the organization's
+ * services listing; withheld as the rows are. Derived, with no writer: it reads the
  * account's registry, which starts over when the account closes.
  */
 export const allCandidateListingAtom = Atom.make(
@@ -167,10 +167,9 @@ export const allCandidateListingAtom = Atom.make(
     const presented = presentCandidates(rows, (row): ZeropsCandidatePresentation => {
       const candidate = withZeropsConnection(row, connectedOrigins);
       const resolved = get(projectServicesAtom(candidate.project.id)).services ?? null;
-      const access = get(projectPublicAccessAtom(candidate.project.id));
-      const routes = access.routes;
-      const addressPending =
-        access.pending.length > 0 ? true : access.state === "ready" ? false : undefined;
+      const routes =
+        resolved === null ? undefined : derivePublicRoutes(candidate.project, resolved);
+      const routeOffers = resolved === null ? undefined : derivePublicRouteOffers(resolved);
       const held = resolved === null ? undefined : summarizeEnvironmentServices(resolved);
       const origin = candidate.containerOrigin ? normalizeOrigin(candidate.containerOrigin) : null;
       // The environment it is connected to speaks for its connection; else the one at its origin.
@@ -182,15 +181,10 @@ export const allCandidateListingAtom = Atom.make(
       return {
         ...candidate,
         ...(candidate.project.status === "ACTIVE"
-          ? held === undefined
+          ? routes === undefined || held === undefined
             ? {}
-            : {
-                ...(access.state === "ready" || routes.length > 0 ? { routes } : {}),
-                routeOffers: access.offers,
-                ...(addressPending === undefined ? {} : { addressPending }),
-                services: held,
-              }
-          : { routes: [], addressPending: false, services: NO_SERVICES }),
+            : { routes, routeOffers: routeOffers ?? [], services: held }
+          : { routes: [], services: NO_SERVICES }),
         ...(connection === undefined ? {} : { connection }),
       };
     });

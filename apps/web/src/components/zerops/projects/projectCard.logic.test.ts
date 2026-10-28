@@ -445,81 +445,62 @@ describe("a card's places", () => {
     ]);
   });
 
-  // A pending publication retains address progress; published stages keep their running label.
+  // A stage waits for its address only while HQ still brings it up (`EnvironmentBirth`). Once HQ
+  // is done, one still without its address runs without one: a beat of "Running" before a late
+  // address is true, a "turning on" that never ends is not. One serving no such port runs as is.
   it.each([
     {
       case: "while HQ still brings it up",
       birth: { ended: false },
-      pending: true,
-      published: false,
+      offered: undefined,
       words: "Turning its address on…",
     },
     {
       case: "once HQ has brought it up",
       birth: { ended: true },
-      pending: false,
-      published: true,
+      offered: undefined,
       words: "Running",
     },
-    {
-      case: "once HQ has brought it up, while the address its app serves is still being turned on",
-      birth: { ended: true },
-      pending: true,
-      published: false,
-      words: "Turning its address on…",
-    },
-    // Without public-access evidence, a finished birth and an open port promise no publication.
+    // a project's stage, 2026-10-28: its import never built, so nothing turned its address on.
     {
       case: "once HQ has brought it up, its address still off: running, never turning it on for ever",
       birth: { ended: true },
-      pending: undefined,
-      published: false,
+      offered: true,
       words: "Running",
     },
     {
       case: "once HQ has brought it up, serving nothing an address would open",
       birth: { ended: true },
-      pending: false,
-      published: true,
+      offered: false,
       words: "Running",
     },
     {
       case: "while HQ still brings it up, serving nothing an address would open",
       birth: { ended: false },
-      pending: false,
-      published: true,
+      offered: false,
       words: "Running",
     },
-    {
-      case: "where HQ did not bring it up",
-      birth: undefined,
-      pending: false,
-      published: true,
-      words: "Running",
-    },
-  ])(
-    "says a stage runs only with its address, $case",
-    ({ birth, pending, published, words: said }) => {
-      const lines = placeLines({
-        addressPending: pending === undefined ? new Map() : new Map([["stage", pending]]),
-        flow: {
-          production: { kind: "absent" },
-          stages: [
-            stop({
-              projectId: "stage",
-              name: "stage",
-              source: "main",
-              addresses: published ? [{ service: "app", url: "https://stage.example.com/" }] : [],
-              ...(birth === undefined ? {} : { birth }),
-            }),
-          ],
-        },
-        stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
-        nowMs: NOW,
-      });
-      expect(lines[0]?.words.join(" · ")).toBe(said);
-    },
-  );
+    { case: "where HQ did not bring it up", birth: undefined, offered: true, words: "Running" },
+  ])("says a stage runs only with its address, $case", ({ birth, offered, words: said }) => {
+    const lines = placeLines({
+      ...(offered === undefined ? {} : { addressOffered: new Map([["stage", offered]]) }),
+      flow: {
+        production: { kind: "absent" },
+        stages: [
+          stop({
+            projectId: "stage",
+            name: "stage",
+            source: "main",
+            addresses: [],
+            ...(birth === undefined ? {} : { birth }),
+          }),
+        ],
+      },
+      stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
+      nowMs: NOW,
+    });
+    expect(lines[0]?.words.join(" · ")).toBe(said);
+  });
 });
 
 describe("since when production runs what it runs", () => {
@@ -2037,41 +2018,3 @@ describe("a tier an application does not have, on its page's column", () => {
     },
   );
 });
-
-it.each([
-  {
-    publication: "pending",
-    addressPending: true,
-    addresses: [],
-    dot: "unknown",
-    words: ["Turning its address on…"],
-  },
-  {
-    publication: "none",
-    addressPending: false,
-    addresses: [],
-    dot: "running",
-    words: ["No public address yet"],
-  },
-  {
-    publication: "present",
-    addressPending: false,
-    addresses: [{ service: "app", url: "https://stage.example.com/" }],
-    dot: "running",
-    words: ["Running", "v2.3.1"],
-  },
-] as const)(
-  "a finished stage's card reflects its address publication: $publication",
-  ({ addressPending, addresses, dot, words }) => {
-    const [line] = placeLines({
-      flow: {
-        production: { kind: "absent" },
-        stages: [stop({ name: "stage", projectId: "stage", birth: { ended: true }, addresses })],
-      },
-      addressPending: new Map([["stage", addressPending]]),
-      nowMs: NOW,
-    });
-    expect(line?.words).toEqual(words);
-    expect(line?.dot).toBe(dot);
-  },
-);
