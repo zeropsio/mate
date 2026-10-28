@@ -28,6 +28,7 @@ import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 
 import {
   chipFace,
+  placeTitle,
   type ChipDot,
   type ChipMenuModel,
   type ChipMenuStop,
@@ -51,7 +52,8 @@ export interface SitesStatus {
 }
 
 const PRODUCTION = "production";
-const stageKey = (name: string) => `stage:${name}`;
+/** A stage's section, by its name in any case: the heading line speaks of it by its title. */
+const stageKey = (name: string) => `stage:${name.toLocaleLowerCase("en")}`;
 const mateKey = (projectId: string) => `mate:${projectId}`;
 
 const DOT: Record<SitesTone, ChipDot> = {
@@ -79,7 +81,7 @@ const asKnown = (chip: ProductionChip, words: string) =>
 
 /** "Stage", or the stage's own name where the project has several. */
 const stageWord = (stages: HeadingLineInput["stages"], name: string) =>
-  stages.length > 1 ? name : "Stage";
+  stages.length > 1 ? placeTitle(name) : "Stage";
 
 /** The environment tag, or nothing while every place is calm. */
 export function projectSitesStatus(input: {
@@ -263,9 +265,6 @@ const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<Sit
     host,
     url,
   }));
-
-/** A shared environment's title: its HQ name, its first letter capitalised ("Stage", "Client demo"). */
-const placeTitle = (name: string) => name.charAt(0).toLocaleUpperCase("en") + name.slice(1);
 
 /** A part's entries as its row lists them: its dev entries, then its preview. */
 export const partEntries = (pair: SitesPair): ReadonlyArray<SitesSide> =>

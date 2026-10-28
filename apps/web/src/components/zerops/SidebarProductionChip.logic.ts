@@ -836,6 +836,13 @@ export function placeStateWord(label: ChipLabel, state: ChipState): string {
   }
 }
 
+/**
+ * A shared environment's title, wherever a person reads it: its HQ name, first letter capitalised —
+ * "Production", "Stage", "Client demo". The live audit (2026-10-28) read "Production" beside "stage".
+ */
+export const placeTitle = (name: string): string =>
+  name.charAt(0).toLocaleUpperCase("en") + name.slice(1);
+
 /** A place that runs what was deployed there, nothing wrong: the one word for it. */
 export const PLACE_RUNNING_WORD = "Running";
 

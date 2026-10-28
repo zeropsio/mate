@@ -206,7 +206,7 @@ describe("the environment tag", () => {
       expected: {
         tone: "busy",
         word: "Coming up",
-        sentence: "beta coming up · making the project",
+        sentence: "Beta coming up · making the project",
         section: "stage:beta",
       },
     },
@@ -250,7 +250,7 @@ describe("the environment tag", () => {
         tone: "ok",
         word: "Stage is up",
         sentence: "Stage is up · just now",
-        section: "stage:Stage",
+        section: "stage:stage",
       },
     },
     {
