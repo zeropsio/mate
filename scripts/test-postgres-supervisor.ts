@@ -12,7 +12,6 @@ import {
   postgresBinDir,
   postgresHome,
   pruneStaleClusters,
-  reclaimDeadRuns,
   startCluster,
   startRecord,
 } from "./test-postgres.ts";
@@ -85,7 +84,9 @@ async function guardPostgres() {
   // The guard holds the reservation until it ends, so no other test is handed PostgreSQL's port.
   const { port, release } = await reservePort();
   try {
-    startCluster(data, { initialise, start: () => start(port), report });
+    // server.lock excludes every previous guard. Live leases join their existing supervisor,
+    // so only this startup can discard the disposable cluster, including retained databases/roles.
+    startCluster(data, { initialise, start: () => start(port), report, discardRetained: true });
     const postmaster = NodeFS.readFileSync(NodePath.join(data, "postmaster.pid"), "utf8");
     NodeFS.writeFileSync(startRecord(data), `${postmaster.split("\n")[0]}\n`);
   } catch (error) {
@@ -157,8 +158,6 @@ async function supervise() {
       guard.stdin!.end();
       await exited;
     };
-    const sql = (query: string) =>
-      run("psql", [urlOf(port, "postgres"), "-X", "-v", "ON_ERROR_STOP=1", "-Atc", query]);
     // Lease DDL runs off the event loop, so admission never waits behind another lease's DDL.
     const ddl = async (query: string) => {
       await execFile(
@@ -197,8 +196,6 @@ async function supervise() {
         END LOOP; END $$`,
       ]);
     };
-    // A healed cluster has none; a reused one still holds what its killed runs left.
-    reclaimDeadRuns(sql);
     const owners = new Set<NodeNet.Socket>();
     let shutdown: Promise<void> | undefined;
     const idle = (): Promise<void> => {
@@ -302,7 +299,7 @@ async function supervise() {
         lines.close();
         try {
           // Other workers still run here. Database drops wait for checkpoints, so reclaim them
-          // only through reclaimDeadRuns at the next supervisor startup, before admitting tests.
+          // only by rebuilding at the next supervisor startup, before admitting tests.
           owners.delete(socket);
           await idle();
           if (requested) socket.write(`${JSON.stringify({ url: "" })}\n`);

@@ -8,6 +8,7 @@ import * as NodeReadline from "node:readline";
 import * as NodeURL from "node:url";
 import { testRamdiskRoot } from "./lib/test-scratch-root.ts";
 import { acquireProcessLock } from "./test-process-lock.ts";
+import { acquirePostgresAdmission } from "./test-postgres-admission.ts";
 
 /**
  * Shared by worktrees by default; MATE_TEST_PG_HOME isolates protocol testing from their leases.
@@ -191,9 +192,13 @@ export function startCluster(
     readonly start: () => void;
     readonly report: (line: string) => void;
     readonly alive?: (pid: number) => boolean;
+    /** Only the exclusive supervisor guard may discard a cluster with no surviving leases. */
+    readonly discardRetained?: boolean;
   },
 ): void {
-  if (prepareClusterDirectory(data, io.report) === "initialise") {
+  const prepared = prepareClusterDirectory(data, io.report);
+  if (io.discardRetained) NodeFS.rmSync(data, { recursive: true, force: true });
+  if (prepared === "initialise" || io.discardRetained) {
     io.initialise();
     io.start();
     return;
@@ -213,27 +218,6 @@ export function startCluster(
   }
   io.initialise();
   io.start();
-}
-
-/** initdb's own databases and roles (PostgreSQL's FirstNormalObjectId): everything above is a run's. */
-const FIRST_RUN_OID = 16384;
-
-/**
- * No lease survives the supervisor that granted it, so when one starts every database and role a
- * run made belongs to a dead run, whatever it is named: a killed lease's databases, one a run made
- * beside its lease, and roles named apart from any database. Drop them all; keep initdb's own.
- */
-export function reclaimDeadRuns(sql: (query: string) => string): void {
-  const made = (catalog: "pg_database" | "pg_roles", column: "datname" | "rolname") =>
-    sql(`SELECT oid, quote_ident(${column}) FROM ${catalog}`)
-      .split("\n")
-      .filter(Boolean)
-      .map((row) => row.split("|") as [string, string])
-      .filter(([oid]) => Number(oid) >= FIRST_RUN_OID)
-      .map(([, name]) => name);
-  for (const name of made("pg_database", "datname")) sql(`DROP DATABASE ${name} WITH (FORCE)`);
-  // A role still owning objects in `postgres` would refuse DROP ROLE alone.
-  for (const name of made("pg_roles", "rolname")) sql(`DROP OWNED BY ${name}; DROP ROLE ${name}`);
 }
 
 /** A test cluster home unused this long is abandoned, whether or not its checkout still exists. */
@@ -397,11 +381,18 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
     const pending: { resolve: (reply: SupervisorReply) => void; reject: (error: Error) => void }[] =
       [];
     let failed: Error | undefined;
+    const admissionAbort = new AbortController();
+    let admission: ReturnType<typeof acquirePostgresAdmission> | undefined;
+    let admitted = false;
     const fail = (error: Error) => {
       failed = error;
+      admissionAbort.abort(error);
+      // Keep admission until close/process exit: caught errors do not prove the worker's SQL
+      // pools or application work have stopped, including after the admission broker dies.
       for (const reply of pending.splice(0)) reply.reject(error);
     };
     socket.on("error", fail);
+    replies.on("error", fail);
     socket.on("close", () => fail(new Error("PostgreSQL supervisor connection closed")));
     replies.on("line", (line) => {
       const reply = pending.shift();
@@ -448,11 +439,21 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
         throw error;
       },
     );
-    const database = (command: string) =>
-      request(command).then((reply) => {
-        if (typeof reply.url !== "string") throw new Error("Invalid PostgreSQL database reply");
-        return reply.url;
-      });
+    const database = async (command: string) => {
+      // Setup leases only keep the cluster alive. Charge the host budget when work first starts,
+      // independently of cluster homes, and retain that admission through the lease's final drain.
+      await (admission ??= acquirePostgresAdmission({
+        signal: admissionAbort.signal,
+        onLost: (error) => socket.destroy(error),
+      }).then((holder) => {
+        admitted = true;
+        return holder;
+      }));
+      if (closing) throw new Error("PostgreSQL owner is released");
+      const reply = await request(command);
+      if (typeof reply.url !== "string") throw new Error("Invalid PostgreSQL database reply");
+      return reply.url;
+    };
     if (daemon?.connected) daemon.disconnect();
     daemon?.unref();
     return {
@@ -468,10 +469,19 @@ export async function acquireTestPostgres(): Promise<TestPostgresLease> {
           ? Promise.reject(new Error("PostgreSQL owner is released"))
           : request(`freeze ${url}`).then(() => undefined),
       close: () =>
-        (closing ??= request("release").then(() => {
-          replies.close();
-          socket.end();
-        })),
+        (closing ??= (async () => {
+          if (!admitted) admissionAbort.abort(new Error("PostgreSQL owner is released"));
+          try {
+            await request("release");
+            replies.close();
+            socket.end();
+          } finally {
+            await admission?.then(
+              (holder) => holder.release(),
+              () => undefined,
+            );
+          }
+        })()),
     };
   } catch (error) {
     opened?.destroy();
