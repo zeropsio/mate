@@ -1208,6 +1208,28 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
     expect(holder?.routes).toEqual([]);
   });
 
+  // Sites (`mateParts`) names a pool by its stem; the panel named it by zcp's setup ("boxpreview").
+  it("names a pool's part as Sites does, by its stem, never the setup zcp names its stage by", () => {
+    const view = buildZeropsServiceMap(
+      topology([pool("boxpool"), stage("boxstage")]),
+      lifecycle({
+        envelope: {
+          services: [
+            {
+              hostname: "boxpool",
+              typeVersion: "swarm@1",
+              runtimeClass: "pool",
+              stages: [{ hostname: "boxstage", part: "boxpreview" }],
+            },
+          ],
+          leases: [{ alias: "boxpool-1", pool: "boxpool", state: "held", part: "boxpreview" }],
+        },
+      } as unknown as Partial<ZeropsLifecycle>),
+    );
+
+    expect(view?.groups[0]?.rows.map((row) => row.title)).toEqual(["Box"]);
+  });
+
   it("a stand-in in a project with no pool yet is still where the code runs", () => {
     const view = buildZeropsServiceMap(
       topology([service({ hostname: "noola", type: "ubuntu/go@1.22" })]),

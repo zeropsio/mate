@@ -693,17 +693,11 @@ export function buildZeropsServiceMap(
   const folded = new Set(stageOf.values());
   const leases = lifecycleLeases(lifecycle) ?? [];
 
-  // A part's friendly name: the part zcp names for its pool's pair or leases, else the pool's
-  // stem; a dev service's pair by its stem (`flipdev` is Flip).
+  // A part's friendly name, as Sites names it (`mateParts`): a pool by its stem (`boxpool` is
+  // Box), never the setup zcp names its stage by (`boxpreview`); a dev service's pair by its stem
+  // (`flipdev` is Flip).
   const partOf = (entry: ZeropsTopologyService): string | undefined => {
-    if (isPoolServiceType(entry.type)) {
-      const named =
-        poolPairs
-          .find((pair) => pair.pool === entry.hostname)
-          ?.stages.find((stage) => stage.part !== undefined)?.part ??
-        leases.find((lease) => lease.pool === entry.hostname && lease.part !== undefined)?.part;
-      return named === undefined ? poolPartName(entry.hostname) : partName(named);
-    }
+    if (isPoolServiceType(entry.type)) return poolPartName(entry.hostname);
     const name = pairNames.get(entry.hostname);
     return name === undefined || !stageOf.has(entry.hostname) ? undefined : partName(name);
   };
