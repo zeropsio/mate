@@ -3076,18 +3076,31 @@ describe("a group of Mates folded to its row", () => {
   });
 
   it("opens a collapsed project when one of its Mates' conversations opens, and lets it collapse again", () => {
-    const mounted = mount(tree({ activeProjectId: null }));
+    const mounted = mount(tree({ activeProjectId: null, activeConversation: null }));
     expect(mates(mounted)).toHaveLength(0);
+    // Its conversation opens: the route names it, and its Mate is the one open.
+    const opened = { activeProjectId: "crm-dev", activeConversation: "env:crm-dev/thread" };
     act(() => {
-      mounted.update(tree({ activeProjectId: "crm-dev" }));
+      mounted.update(tree(opened));
     });
     expect(mates(mounted)).toHaveLength(2);
     expect(stored.writtenOpened).toEqual(new Set(["aaa"]));
     press(mounted, "sidebar-project");
     act(() => {
-      mounted.update(tree({ activeProjectId: "crm-dev" }));
+      mounted.update(tree(opened));
     });
     expect(mates(mounted)).toHaveLength(0);
+  });
+
+  it("leaves a project folded when the Mate of the conversation a reload opened on is found after the menu drew it", () => {
+    const reloaded = { activeConversation: "env:crm-dev/thread" };
+    const mounted = mount(tree({ ...reloaded, activeProjectId: null }));
+    expect(mates(mounted)).toHaveLength(0);
+    act(() => {
+      mounted.update(tree({ ...reloaded, activeProjectId: "crm-dev" }));
+    });
+    expect(mates(mounted)).toHaveLength(0);
+    expect(surface(mounted, "sidebar-project").props["aria-current"]).toBe("true");
   });
 
   it("opens a collapsed project whose Mate's conversation is already open when the menu mounts", () => {
