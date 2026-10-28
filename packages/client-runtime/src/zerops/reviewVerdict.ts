@@ -846,8 +846,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
       secondary,
     };
   }
-  // A head whose files are still being read was not shown: it waits for them, as it waits for the
-  // facts HQ's rule is asked over.
+  // The automatic metadata read must settle before Merge can use the displayed head safely.
   const enabled = verdictOf.enabled && input.readout !== "reading" && input.offered?.merge === true;
   const squash = sentences(
     mergeSentence(pull, verdict.state === "behind-clean", input.readout === "failed"),
@@ -862,10 +861,10 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
     "checks-unknown": "Merging waits for evidence of the repository's required checks.",
   };
   // What holds it back, said beside it: the change's own trouble, or — for a change nothing is
-  // wrong with — its files still being read, which Merge waits for.
+  // wrong with — its details still loading, which Merge waits for.
   const held = verdictOf.enabled
     ? input.readout === "reading"
-      ? "Merging waits until its files are read."
+      ? "Loading change details…"
       : squash
     : (waits[verdict.state] ?? squash);
 
