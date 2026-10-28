@@ -1,8 +1,9 @@
 /**
- * A dev pool's workspaces as a person opens them: one per container zcp leases for one of the
- * Mate's chats, each by the preview zcp last read there (zcp `docs/spec-workflows.md` §8
- * DP-13/25/28/34, `docs/spec-mate.md` §2.8a.3). Never the pool's own slot routes: they balance over
- * every container, and a free or warm one answers nothing.
+ * A dev pool's workspaces as the Zerops panel opens them: one per preview zcp read on each container
+ * it leases for one of the Mate's chats (zcp `docs/spec-workflows.md` §8 DP-13/25/28/34,
+ * `docs/spec-mate.md` §2.8a.3). Never the pool's own slot routes: they balance over every
+ * container, and a free or warm one answers nothing. Whether a preview opens is the one rule every
+ * surface reads (`poolWorkspaceLink`); a workspace goes by the chat it is for (`leaseChatTitle`).
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
@@ -10,27 +11,16 @@
  */
 import { isZeropsLeaseHeld, type ZeropsDevServer, type ZeropsLease } from "@t3tools/contracts";
 
-/**
- * Whether a lease's dev server is a link: the newest envelope lists the lease held and confirmed
- * by the pool, and the server running at an address. Starting, crashed or parked open nothing.
- */
+import { leaseChatTitle, poolWorkspaceLink, type MatePartLeaseChat } from "./mateParts.ts";
+
+/** A chat bound to a lease, by its title: what the workspace is for. */
+export type LeaseChat = MatePartLeaseChat;
+
+/** Whether one of a lease's dev servers is a link, by the one rule (`poolWorkspaceLink`). */
 export const leaseServerOpens = (
   lease: Pick<ZeropsLease, "state" | "unverified">,
-  server: Pick<ZeropsDevServer, "status" | "url">,
-): boolean =>
-  lease.state === "held" &&
-  lease.unverified !== true &&
-  server.status === "running" &&
-  server.url !== undefined;
-
-/** A chat and the lease it is bound to, if any: its title names the workspace. */
-export interface LeaseChat {
-  readonly title: string;
-  readonly lease?:
-    | { readonly alias: string; readonly acquiredAt?: string | undefined }
-    | null
-    | undefined;
-}
+  server: ZeropsDevServer,
+): boolean => poolWorkspaceLink({ ...lease, devServers: [server] }).url !== undefined;
 
 /** One preview of a pool's workspace: its link, or in words why it has none. */
 export interface PoolWorkspace {
@@ -42,38 +32,9 @@ export interface PoolWorkspace {
   readonly why?: string;
 }
 
-/** Why a held workspace's preview has no link, by the server's status. */
-const SERVER_WHY: Readonly<Record<string, string>> = {
-  starting: "starting",
-  crashed: "crashed",
-  stopped: "stopped",
-};
-
-const chatTitle = (
-  lease: Pick<ZeropsLease, "alias" | "acquiredAt">,
-  chats: ReadonlyArray<LeaseChat>,
-): string | undefined =>
-  chats.find(
-    (chat) =>
-      chat.lease?.alias === lease.alias &&
-      (chat.lease.acquiredAt === undefined ||
-        lease.acquiredAt === undefined ||
-        chat.lease.acquiredAt === lease.acquiredAt),
-  )?.title;
-
-/** Why the lease itself opens nothing, whatever its servers say. */
-const leaseWhy = (lease: Pick<ZeropsLease, "state" | "unverified">): string | undefined =>
-  lease.state === "parked"
-    ? "paused"
-    : lease.state === "unmounted"
-      ? "not mounted"
-      : lease.unverified === true
-        ? "pool not answering"
-        : undefined;
-
 /**
- * The workspaces zcp holds on one pool, in alias order: each preview a link where it answers
- * (`leaseServerOpens`), else the reason in words. A lease zcp no longer holds is none.
+ * The workspaces zcp holds on one pool, in alias order: each preview a link where it opens
+ * (`poolWorkspaceLink`), else the reason in words. A lease zcp no longer holds is none.
  */
 export function poolWorkspaces(input: {
   readonly pool: string;
@@ -85,18 +46,20 @@ export function poolWorkspaces(input: {
     .filter((lease) => lease.pool === input.pool && isZeropsLeaseHeld(lease.state))
     .sort((left, right) => left.alias.localeCompare(right.alias, "en", { numeric: true }))
     .flatMap((lease): ReadonlyArray<PoolWorkspace> => {
-      const title = chatTitle(lease, input.chats) ?? "dev";
+      const title = leaseChatTitle(lease, input.chats) ?? "dev";
       const previews = (lease.devServers ?? []).filter((server) => server.url !== undefined);
-      const held = leaseWhy(lease);
-      if (previews.length === 0)
-        return [{ key: lease.alias, label: title, why: held ?? "no address yet" }];
+      if (previews.length === 0) {
+        const { why } = poolWorkspaceLink(lease);
+        return [{ key: lease.alias, label: title, why: why ?? "no address yet" }];
+      }
       return previews.map((server): PoolWorkspace => {
         const key = `${lease.alias}:${server.name}`;
         const label = previews.length > 1 ? `${title} · ${server.name}` : title;
         const port = server.port === undefined ? {} : { port: server.port };
-        if (server.url !== undefined && leaseServerOpens(lease, server))
-          return { key, label, url: server.url, ...port };
-        return { key, label, ...port, why: held ?? SERVER_WHY[server.status] ?? server.status };
+        const link = poolWorkspaceLink({ ...lease, devServers: [server] });
+        return link.url === undefined
+          ? { key, label, ...port, why: link.why }
+          : { key, label, url: link.url, ...port };
       });
     });
 }

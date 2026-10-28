@@ -16,7 +16,7 @@ import { useContext, useMemo } from "react";
 
 import { InventoryContext } from "./inventoryContext";
 import { groupAddressEnvironments, mateAddresses, type MateAddress } from "./mateAddresses.logic";
-import { useLeaseChats } from "./useMatesLeases";
+import { useLeaseChats } from "./useLeaseChats";
 import { useProjectsServiceValues } from "./ZeropsAccountData";
 import { useEnvironmentProjectRef, useZeropsLifecycle, useZeropsTopology } from "./useZeropsFeeds";
 

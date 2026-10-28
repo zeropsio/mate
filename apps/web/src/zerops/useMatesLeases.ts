@@ -11,18 +11,18 @@
  * the same, so a Zerops call that changes nothing of them draws nothing again.
  *
  * Each Mate's chats bound to a lease (`ThreadLease`) say, by their titles, what each workspace is
- * for (`leaseChats`).
+ * for (`leaseChatsAtom`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { MatePartLeaseChat } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { EnvironmentId, ZeropsLease } from "@t3tools/contracts";
+import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
-import { environmentThreadShells } from "../state/threads";
+import { leaseChatsAtom } from "./useLeaseChats";
 import { zeropsFeeds } from "./feeds";
 
 /** A Mate's leases as read, the pairs its envelope keys by a dev pool, and its chats on leases. */
@@ -34,30 +34,6 @@ export interface MateLeasesRead {
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
 export type MatesLeases = Readonly<Record<string, MateLeasesRead | undefined>>;
-
-/** A Mate's chats bound to a lease (`ThreadLease`), by title, unarchived: what each workspace is for. */
-const leaseChatsAtom = Atom.family((environmentId: EnvironmentId) =>
-  Atom.make((get): ReadonlyArray<MatePartLeaseChat> =>
-    get(environmentThreadShells.environmentThreadRefsAtom(environmentId)).flatMap(
-      (ref): ReadonlyArray<MatePartLeaseChat> => {
-        const shell = get(environmentThreadShells.threadShellAtom(ref));
-        const lease = shell?.archivedAt === null ? shell.lease : undefined;
-        return shell === null || lease === undefined || lease === null
-          ? []
-          : [{ alias: lease.alias, acquiredAt: lease.acquiredAt, title: shell.title }];
-      },
-    ),
-  ).pipe(Atom.withEquality(sameValue), Atom.withLabel("zerops:lease-chats")),
-);
-
-const NO_CHATS = Atom.make<ReadonlyArray<MatePartLeaseChat>>([]);
-
-/** A Mate's chats bound to a lease, by title; none without an environment. */
-export function useLeaseChats(
-  environmentId: EnvironmentId | null,
-): ReadonlyArray<MatePartLeaseChat> {
-  return useAtomValue(environmentId === null ? NO_CHATS : leaseChatsAtom(environmentId));
-}
 
 const matesLeasesAtom = Atom.family((key: string) => {
   const threads = JSON.parse(key) as ReadonlyArray<readonly [projectId: string, threadKey: string]>;

@@ -48,7 +48,7 @@ describe("poolWorkspaces", () => {
         }),
         lease({ alias: "apipool-1", pool: "apipool" }),
       ],
-      chats: [{ title: "Fix the login form", lease: { alias: "webpool-2" } }],
+      chats: [{ title: "Fix the login form", alias: "webpool-2" }],
     });
 
     expect(workspaces.map(({ label, url, why }) => [label, url, why])).toEqual([
@@ -59,9 +59,9 @@ describe("poolWorkspaces", () => {
 
   it.each([
     ["parked", lease({ state: "parked" }), "paused"],
-    ["unconfirmed", lease({ unverified: true }), "pool not answering"],
+    ["unconfirmed", lease({ unverified: true }), "not confirmed by its pool"],
     ["starting", lease({ devServers: [server({ status: "starting" })] }), "starting"],
-    ["crashed", lease({ devServers: [server({ status: "crashed" })] }), "crashed"],
+    ["crashed", lease({ devServers: [server({ status: "crashed" })] }), "stopped: crashed"],
     ["unread", lease({ devServers: undefined }), "no address yet"],
   ])("says in words why a %s workspace has no link", (_, held, why) => {
     const [workspace] = poolWorkspaces({ pool: "webpool", leases: [held], chats: [] });
@@ -84,9 +84,7 @@ describe("poolWorkspaces", () => {
     const [workspace] = poolWorkspaces({
       pool: "webpool",
       leases: [lease({ acquiredAt: "2026-10-28T09:00:00Z" })],
-      chats: [
-        { title: "Old chat", lease: { alias: "webpool-1", acquiredAt: "2026-10-20T09:00:00Z" } },
-      ],
+      chats: [{ title: "Old chat", alias: "webpool-1", acquiredAt: "2026-10-20T09:00:00Z" }],
     });
 
     expect(workspace?.label).toBe("dev");

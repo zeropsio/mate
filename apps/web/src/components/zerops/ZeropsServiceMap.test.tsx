@@ -845,12 +845,12 @@ describe("ZeropsServiceMap — a pool-era Mate's parts", () => {
       liveLifecycle(leased),
       undefined,
       undefined,
-      [{ title: "Fix the login form", lease: { alias: "webpool-1" } }],
+      [{ title: "Fix the login form", alias: "webpool-1" }],
     )?.groups[0]?.rows[0];
     const html = renderToStaticMarkup(<ZeropsServiceDetail row={row!} />);
 
     expect(html).toContain("Fix the login form · webpool-1-3000.zerops.app</span>");
-    expect(html).toContain("dev · crashed");
+    expect(html).toContain("dev · stopped: crashed");
     expect(html).not.toContain("webpool-2-3000");
     expect(html).not.toContain("webpool-8101");
   });

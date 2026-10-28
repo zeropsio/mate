@@ -33,7 +33,7 @@ vi.mock("./useZeropsFeeds", () => ({
   useZeropsLifecycle: () => mate.lifecycle,
   useEnvironmentProjectRef: () => null,
 }));
-vi.mock("./useMatesLeases", () => ({ useLeaseChats: () => [] }));
+vi.mock("./useLeaseChats", () => ({ useLeaseChats: () => [] }));
 vi.mock("./inventoryContext", () => ({ InventoryContext: createContext(null) }));
 vi.mock("./ZeropsAccountData", () => ({ useProjectsServiceValues: () => ({}) }));
 

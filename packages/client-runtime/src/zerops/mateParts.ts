@@ -163,9 +163,12 @@ export function poolWorkspaceLink(
   return { why: first.status === "stopped" ? "stopped" : `stopped: ${first.status}` };
 }
 
-/** The chat a lease is for: one bound to its alias, acquired when it was. */
-const chatOf = (
-  lease: MatePartLease,
+/**
+ * The chat a lease is for: one bound to its alias, acquired when it was — a pool hands a released
+ * container out again under the same alias.
+ */
+export const leaseChatTitle = (
+  lease: Pick<ZeropsLease, "alias" | "acquiredAt">,
   chats: ReadonlyArray<MatePartLeaseChat>,
 ): string | undefined =>
   chats.find(
@@ -248,7 +251,7 @@ export function mateParts(input: MatePartsInput): MateParts {
         const link = poolWorkspaceLink(lease);
         return {
           key: `dev:${lease.alias}`,
-          label: chatOf(lease, chats) ?? "dev",
+          label: leaseChatTitle(lease, chats) ?? "dev",
           service: lease.alias,
           url: link.url,
           host: link.url === undefined ? undefined : hostOf(link.url),

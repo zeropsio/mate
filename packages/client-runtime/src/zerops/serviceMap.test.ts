@@ -1248,7 +1248,7 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
       } as unknown as Partial<ZeropsLifecycle>),
       undefined,
       undefined,
-      [{ title: "Fix the login form", lease: { alias: "webpool-1" } }],
+      [{ title: "Fix the login form", alias: "webpool-1" }],
     );
     const row = view?.groups[0]?.rows[0];
 
