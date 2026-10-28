@@ -343,7 +343,10 @@ export function attentionActivity(input: {
   };
   return input.live
     ? activity
-    : restingActivity(activity, words === undefined ? read.at : words.updatedAt);
+    : restingActivity(
+        activity,
+        row !== undefined ? new Date(row.at).toISOString() : (words?.updatedAt ?? read.at),
+      );
 }
 
 /**

@@ -548,6 +548,34 @@ describe("matesActivityOf — an engine Mate whose rows HQ relays", () => {
     expect(words).toMatch(/…$/u);
   });
 
+  it('"Last known <time>" on an unreachable Mate shows when HQ last observed that activity (the engine row\'s update time), never when the activity started; a running duration keeps the run-start clock.', () => {
+    const started = new Date(2026, 9, 28, 22, 35, 43).getTime();
+    const observed = new Date(2026, 9, 28, 23, 4, 10).getTime();
+    const overviews = onEngine(
+      engineRow("t1", {
+        state: { kind: "working", since: started, waitsOnHelpers: false },
+        activeRunId: "t1/r/25",
+        latestRun: { id: "t1/r/25", end: null, endedAt: null },
+        at: observed,
+      }),
+    );
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 28, 23, 6));
+    try {
+      const live = read({ attention: attention(said({ working: 1 })), overviews });
+      expect(mateRowView(live, "working").slot).toEqual({
+        kind: "clock",
+        since: new Date(started).toISOString(),
+      });
+      const held = read({ attention: attention(said({ working: 1 }), false), overviews });
+      expect(lastKnownMateWords(held, "Pepa", "24-hour")).toBe(
+        "Last known 23:04: Pepa was working on: Ship the release",
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("a working Mate's menu clock counts from this run's start and only moves forward", () => {
     // Recorded 2026-10-09: the clock opened at the previous run's end (14:23), then jumped six
     // times as the queue's, the provider's and the relay's dates arrived.
