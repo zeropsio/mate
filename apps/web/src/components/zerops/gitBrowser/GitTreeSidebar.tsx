@@ -12,11 +12,11 @@ import { T3_PIERRE_ICONS } from "~/pierre-icons";
 import { useGitBrowseReads } from "~/zerops/useGitBrowse";
 import type { RepoPathTarget } from "./RepoMarkdown";
 import {
-  folderRow,
   foldersOpenedAt,
   foldersToAsk,
   rowPath,
   treeShape,
+  syncTree,
 } from "./GitTreeSidebar.logic";
 
 export function GitTreeSidebar({
@@ -51,7 +51,7 @@ export function GitTreeSidebar({
     setOpenedAt(at);
     open(foldersOpenedAt(at));
   }
-  // Folders the person closed stay closed when the tree redraws, but for the page's own way down.
+  // Folders the person closed stay closed when listings arrive.
   const collapsed = useRef(new Set<string>());
 
   const { views } = useGitBrowseReads(
@@ -86,6 +86,7 @@ export function GitTreeSidebar({
   const syncing = useRef(false);
   const { model } = useFileTree({
     density: "compact",
+    initialExpansion: "closed",
     flattenEmptyDirectories: false,
     icons: T3_PIERRE_ICONS,
     paths: [],
@@ -99,24 +100,14 @@ export function GitTreeSidebar({
   });
   useEffect(() => {
     syncing.current = true;
-    const wayDown = new Set(foldersOpenedAt(at).map(folderRow));
-    model.resetPaths(shape.rows, {
-      initialExpandedPaths: shape.expanded.filter(
-        (row) => wayDown.has(row) || !collapsed.current.has(row),
-      ),
-    });
-    if (shape.selected !== null) {
-      model.getItem(shape.selected)?.select();
-      model.scrollToPath(shape.selected, { offset: "center" });
-    }
-    queueMicrotask(() => {
-      syncing.current = false;
-    });
+    syncTree(model, shape, at, collapsed.current);
+    syncing.current = false;
   }, [model, shape, at]);
   // A folder opened in the tree is read then: the tree tells no one, so its rows are watched.
   useEffect(
     () =>
       model.subscribe(() => {
+        if (syncing.current) return;
         const expanded: Array<string> = [];
         for (const row of shape.rows) {
           const item = row.endsWith("/") ? model.getItem(row) : null;
