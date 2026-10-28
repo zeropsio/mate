@@ -1077,17 +1077,17 @@ jobs:
           # Derive imported workspace paths from the apps' manifests. Renamed
           # paths participate above, so removing an input also selects the jobs.
           native_packages=$(node --input-type=module <<'NODE'
-          import { readFileSync, readdirSync } from 'node:fs';
+          import { readFileSync, globSync } from 'node:fs';
           const manifest = (path) => JSON.parse(readFileSync(`${path}/package.json`, 'utf8'));
           const imports = new Set(['apps/mobile', 'apps/desktop'].flatMap((path) => {
             const pkg = manifest(path);
             return Object.keys({ ...pkg.dependencies, ...pkg.devDependencies, ...pkg.optionalDependencies });
           }));
-          const paths = readdirSync('packages').filter((name) => imports.has(manifest(`packages/${name}`).name));
-          process.stdout.write(paths.map((name) => `^packages/${name}/`).join('|'));
+          const paths = globSync('packages/*/package.json').map((path) => path.slice(0, -'/package.json'.length));
+          process.stdout.write(paths.filter((path) => imports.has(manifest(path).name)).map((path) => `^${path}/`).join('|'));
           NODE
           ) || fail_open "Could not resolve native client dependencies."
-          gate native_clients "^apps/(mobile|desktop)/|${native_packages}"
+          gate native_clients "^apps/(mobile|desktop)/${native_packages:+|${native_packages}}"
 
           # The bundle feeds every scenario area, all of which run real HQ Core.
           gate chat "${shared}|^apps/(server|web)/|^packages/(effect-codex-app-server|effect-acp)/|^scripts/(chat-gate|gate-changed|test-postgres|test-ports)"
