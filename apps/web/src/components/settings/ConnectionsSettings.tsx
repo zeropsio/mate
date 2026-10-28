@@ -4,6 +4,7 @@ import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { ProductionRemoval } from "../zerops/GitStopDetail";
 import { Link } from "@tanstack/react-router";
 import { SettingsPageContainer, SettingsSection } from "./settingsLayout";
+import { sharedEnvironmentRows } from "./ConnectionsSettings.logic";
 
 const NONE = Atom.make(null);
 
@@ -15,20 +16,23 @@ export function ConnectionsSettings() {
       <SettingsSection title="Zerops environments">
         <p>Mate uses your Zerops account to connect to projects you can operate.</p>
         <Link to="/zerops">Open your projects</Link>
-        {navigation?.structure?.apps.flatMap((app) =>
-          app.environments === undefined || "refused" in app.environments
-            ? []
-            : app.environments
-                .filter((environment) => environment.tier === "production")
-                .map((environment) => (
-                  <div key={environment.id}>
-                    <h3>
-                      {app.name} · {environment.name}
-                    </h3>
-                    <ProductionRemoval appId={app.id} environmentId={environment.id} />
-                  </div>
-                )),
-        )}
+        {/* Nothing listed until HQ's structure is read, as before: an unread one is no empty one. */}
+        {navigation?.structure?.apps !== undefined &&
+          sharedEnvironmentRows(navigation.structure.apps).map((row) => (
+            <div key={row.environmentId}>
+              <h3>
+                <Link
+                  params={{ groupId: row.appId, projectId: row.environmentId }}
+                  to="/group/$groupId/$projectId"
+                >
+                  {row.title}
+                </Link>
+              </h3>
+              {row.tier === "production" ? (
+                <ProductionRemoval appId={row.appId} environmentId={row.environmentId} />
+              ) : null}
+            </div>
+          ))}
       </SettingsSection>
     </SettingsPageContainer>
   );
