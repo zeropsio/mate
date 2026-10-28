@@ -254,12 +254,6 @@ export const crewEngineHooksLayer = Layer.effectContext(
 
 /* ------------------------------------------------------------ the front */
 
-/** How long a discard's press waits for its copy's work to be kept aside. */
-const DISCARD_WAIT_MS = 30_000;
-
-/** How long a press waits for its crewmate's copy to come back before it is asked anyway. */
-const PRESS_WAIT_MS = 120_000;
-
 /** The crew's timing as this server runs it (tests shorten a redeploy's reads). */
 export const CrewTimingConfig = Context.Reference<CrewTiming>(
   "t3/zerops/crew/engine/CrewEngineLayer/CrewTimingConfig",
@@ -772,13 +766,20 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           (effect.kind === "crew.recover" && member.host !== null && effect.host === member.host),
       );
     };
-    const waitsItsTurn = (press: CrewCommand) =>
+    /** Reread the owner's state after durable commits; the cursor closes the read/subscribe gap. */
+    const stateWhere = (ready: (current: CrewState) => boolean) =>
       Effect.gen(function* () {
-        for (let waited = 0; waited < PRESS_WAIT_MS; waited += 50) {
-          if (!copyHeld(yield* state, press)) return;
-          yield* Effect.sleep("50 millis");
-        }
+        const current = yield* state;
+        if (ready(current)) return current;
+        return yield* door.subscribe(CREW_OWNER_ID, current.headSeq).pipe(
+          Stream.mapEffect(() => state),
+          Stream.filter(ready),
+          Stream.runHead,
+          Effect.map(Option.getOrThrow),
+          Effect.orDie,
+        );
       });
+    const waitsItsTurn = (press: CrewCommand) => stateWhere((current) => !copyHeld(current, press));
 
     const withFiles = <A, E>(
       effect: Effect.Effect<A, E, FileSystem.FileSystem | Path.Path | ServerConfig>,
@@ -878,13 +879,9 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
           Object.values(current.effects).some(
             (effect) => effect.kind === "crew.lane.keep" && effect.taskId === taskId,
           );
-        for (let waited = 0; waited < DISCARD_WAIT_MS; waited += 50) {
-          if (!keeping(yield* state)) break;
-          yield* Effect.sleep("50 millis");
-        }
-        const after = yield* state;
+        const after = yield* stateWhere((current) => !keeping(current));
         const task = after.tasks[taskId];
-        if (keeping(after) || task === undefined || task.state === "discarded") return;
+        if (task === undefined || task.state === "discarded") return;
         const words = after.lastError?.startsWith(`#${task.number} was not discarded`)
           ? after.lastError
           : null;

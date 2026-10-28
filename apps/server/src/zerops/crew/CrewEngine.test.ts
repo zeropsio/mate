@@ -6,7 +6,7 @@ import * as NodeUtil from "node:util";
 import { assert, describe, it } from "@effect/vitest";
 import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
 import * as Deferred from "effect/Deferred";
-import * as Clock from "effect/Clock";
+import * as TestClock from "effect/testing/TestClock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -1220,32 +1220,20 @@ describe("CrewEngine", () => {
           const hold = yield* world.hold({ step: "recover" });
           yield* world.deploy("finished");
           yield* hold.reached;
-          const waiting = yield* Deferred.make<void>();
-          const clock = yield* Clock.Clock;
-          const press = yield* world
-            .press({
-              _tag: "message",
-              handle: "backend",
-              text: "Work",
-              attachments: [],
-            })
-            .pipe(
-              Effect.provideService(Clock.Clock, {
-                currentTimeMillisUnsafe: () => clock.currentTimeMillisUnsafe(),
-                currentTimeMillis: clock.currentTimeMillis,
-                currentTimeNanosUnsafe: () => clock.currentTimeNanosUnsafe(),
-                currentTimeNanos: clock.currentTimeNanos,
-                monotonicTimeNanosUnsafe: () => clock.monotonicTimeNanosUnsafe(),
-                monotonicTimeNanos: clock.monotonicTimeNanos,
-                sleep: (duration) =>
-                  Deferred.succeed(waiting, undefined).pipe(Effect.andThen(clock.sleep(duration))),
-              }),
-              Effect.forkChild({ startImmediately: true }),
-            );
-          yield* Effect.raceFirst(Deferred.await(waiting), Fiber.await(press));
-          assert.isTrue(press.pollUnsafe() === undefined);
-          yield* hold.release;
-          yield* Fiber.join(press);
+          yield* Effect.gen(function* () {
+            const press = yield* world
+              .press({
+                _tag: "message",
+                handle: "backend",
+                text: "Work",
+                attachments: [],
+              })
+              .pipe(Effect.forkChild({ startImmediately: true }));
+            yield* TestClock.adjust(0);
+            assert.isTrue(press.pollUnsafe() === undefined);
+            yield* hold.release;
+            yield* Fiber.join(press);
+          }).pipe(Effect.provide(TestClock.layer()));
           yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
         }),
       ),
