@@ -754,6 +754,8 @@ export interface ChipMenuStop {
   /** What "Ask <your Mate> to fix it" writes, while it is broken. */
   readonly fix: FixProblem | undefined;
   readonly routes: ReadonlyArray<ZeropsPublicRoute>;
+  /** Nothing is deployed there yet: its word says so, and it is one quiet row. */
+  readonly empty?: true;
 }
 
 export interface ChipMenuModel {
@@ -946,6 +948,7 @@ export function productionMenu(input: {
         note: troubleNote({ ...input, serving: chip.version }),
         fix: fixProblemOf(input),
         routes: input.routes,
+        ...(chip.state === "empty" ? { empty: true as const } : {}),
       },
     ],
   };
@@ -1015,6 +1018,7 @@ export function stageMenu(input: {
         tone: "muted",
         note: undefined,
         fix: undefined,
+        ...(stop.state === "empty" ? { empty: true as const } : {}),
       };
     }
     const problem = { chip, failure: undefined, down: stage.down, serving };
@@ -1030,6 +1034,7 @@ export function stageMenu(input: {
       tone: MENU_TONE[chip.state],
       note: troubleNote({ ...problem, nowMs: input.nowMs }),
       fix: fixProblemOf({ ...problem, name: stage.name }),
+      ...(chip.state === "empty" ? { empty: true as const } : {}),
     };
   });
   const coming = input.creating.map((stage): ChipMenuStop => ({

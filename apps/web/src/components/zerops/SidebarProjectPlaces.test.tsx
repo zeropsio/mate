@@ -372,7 +372,7 @@ describe("the stages in the globe's popover", () => {
     const container = await mount(
       panel({ stages: stageMenu({ stages: [stageOf("stage")], creating: [], nowMs: 0 }) }),
     );
-    expect(heads(container)).toEqual(["stage3f9c1b2Deployed"]);
+    expect(heads(container)).toEqual(["Stage3f9c1b2Deployed"]);
     expect(hosts(container)).toEqual(["stage.example.app"]);
     expect(doors(container).map((door) => door.getAttribute("href"))).toEqual([
       "https://app.zerops.io/project/shop-stage",
@@ -410,7 +410,7 @@ describe("the stages in the globe's popover", () => {
       nowMs: 0,
     });
     const container = await mount(panel({ stages: model }));
-    expect(heads(container)).toEqual(["stage3f9c1b2Deployed", "qa3f9c1b2Deploy failed"]);
+    expect(heads(container)).toEqual(["Stage3f9c1b2Deployed", "Qa3f9c1b2Deploy failed"]);
     expect(hosts(container)).toEqual(["stage.example.app", "qa.example.app"]);
     expect(texts(container, "sidebar-project-sites-note")).toEqual([
       "The last deploy failed. 3f9c1b2 is still serving.",

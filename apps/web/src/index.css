@@ -5671,11 +5671,12 @@ code {
   white-space: nowrap;
 }
 
-/* A Mate's part: its name, then its dev and its stage in fixed columns, so every row's sides align
-   under each other; on the names' edge, as its addresses are. Each column fits "dev 2 ↗". */
+/* A Mate's part: its name, then its dev and its preview in fixed columns, so every row's entries
+   align under each other; on the names' edge, as its addresses are. The dev column fits a short
+   chat title, cut at its edge; the preview's fits "preview ↗". */
 .zerops-sites-pair {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 64px 64px;
+  grid-template-columns: minmax(0, 1fr) 104px 76px;
   column-gap: 4px;
   align-items: center;
   padding: 4px 38px 4px 36px;
@@ -5694,6 +5695,18 @@ code {
 }
 
 /* A side that opens: the address row's link, compact — its label in the row's text, the ↗ after. */
+.zerops-sites-side > * {
+  max-width: 100%;
+}
+
+.zerops-sites-label {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .zerops-sites-side > .zerops-sites-link {
   gap: 4px;
   padding: 2px 6px;

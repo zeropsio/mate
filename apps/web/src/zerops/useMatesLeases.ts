@@ -9,21 +9,27 @@
  * made no Zerops call reads `undefined` leases: not read, never none. The lifecycles are demanded
  * only while a list that shows them is drawn, and the answer keeps one value while the leases stay
  * the same, so a Zerops call that changes nothing of them draws nothing again.
+ *
+ * Each Mate's chats bound to a lease (`ThreadLease`) say, by their titles, what each workspace is
+ * for (`leaseChats`).
  */
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import { lifecycleLeases, poolPairsOf } from "@t3tools/client-runtime/zerops/serviceMap";
+import type { MatePartLeaseChat } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
+import { environmentThreadShells } from "../state/threads";
 import { zeropsFeeds } from "./feeds";
 
-/** A Mate's leases as read, and the pairs its envelope keys by a dev pool. */
+/** A Mate's leases as read, the pairs its envelope keys by a dev pool, and its chats on leases. */
 export interface MateLeasesRead {
   readonly leases: ReadonlyArray<ZeropsLease> | undefined;
   readonly poolPairs: ReadonlyArray<PoolPair>;
+  readonly leaseChats: ReadonlyArray<MatePartLeaseChat>;
 }
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
@@ -42,9 +48,19 @@ const matesLeasesAtom = Atom.family((key: string) => {
           input: { threadId: thread.threadId },
         }),
       );
+      const leaseChats = get(
+        environmentThreadShells.environmentThreadRefsAtom(thread.environmentId),
+      ).flatMap((ref): ReadonlyArray<MatePartLeaseChat> => {
+        const shell = get(environmentThreadShells.threadShellAtom(ref));
+        const lease = shell?.archivedAt === null ? shell.lease : undefined;
+        return shell === null || lease === undefined || lease === null
+          ? []
+          : [{ alias: lease.alias, acquiredAt: lease.acquiredAt, title: shell.title }];
+      });
       read[projectId] = {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
+        leaseChats,
       };
     }
     return read;
