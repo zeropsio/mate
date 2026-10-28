@@ -50,9 +50,11 @@ export type HqMoveRefusals = typeof HqMoveRefusals.Type;
 export type HqOffersOf<V extends string> = { readonly [K in V]: Decision };
 
 /**
- * An application's verbs as HQ streams them (`mate-hq apps/hq/src/offers.ts` `applicationOffers`,
- * `offers/environments.ts` `environmentCreationOffers`). A fixture typed so cannot offer a verb HQ
- * never sends.
+ * An application's verbs as every HQ in service streams them (`mate-hq apps/hq/src/offers.ts`
+ * `applicationOffers`, `offers/environments.ts` `environmentCreationOffers`). A fixture typed so
+ * cannot offer a verb an HQ may not send: a newer HQ repeats `structure`'s verdict under
+ * `connect_remote`, `replace_remote_token`, `update_remote_address` and `disconnect_remote`; an
+ * older one sends none of them.
  */
 export type HqApplicationVerb =
   | "add_mate"
@@ -66,7 +68,8 @@ export type HqApplicationOffers = { readonly [K in HqApplicationVerb]?: HqDecisi
 /**
  * The verb HQ admits every write to a repository's remote on: mirroring it through the GitHub app
  * or with a token, its token, its address, disconnecting it, following a GitHub repository
- * (`mate-hq apps/hq/src/repoRemotes.ts` `structureWriter`). HQ has no remote verb of its own.
+ * (`mate-hq apps/hq/src/repoRemotes.ts` `structureWriter`). Read rather than the remote verbs,
+ * which only a newer HQ sends.
  */
 export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 
