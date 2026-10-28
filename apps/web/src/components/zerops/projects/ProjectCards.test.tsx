@@ -101,6 +101,45 @@ it("paints a card once, whole: it stands in until HQ said its detail, never an e
   }
 });
 
+// State Smoke, 2026-10-27: the overview mounted its card under its wait, out of sight; on a busy
+// page the browser told "hidden" and "on screen" in one callback, and the card read the first and
+// stood in for good, never asking HQ for its detail.
+it("a card that comes into sight holds its detail, even when the browser tells its hidden first sight in the same report", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal(
+    "IntersectionObserver",
+    class {
+      constructor(private readonly on: IntersectionObserverCallback) {}
+      observe(target: Element) {
+        this.on(
+          [
+            { target, isIntersecting: false, time: 1 } as IntersectionObserverEntry,
+            { target, isIntersecting: true, time: 2 } as IntersectionObserverEntry,
+          ],
+          this as unknown as IntersectionObserver,
+        );
+      }
+      disconnect() {}
+    },
+  );
+  detail.org = "org";
+  const groups = [entry([item("Ada", placed("shop", "Shop"))])];
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  try {
+    await act(async () =>
+      root.render(
+        <ProjectCards focusGroup={undefined} groups={groups} props={{ ...FLOW_PROPS, groups }} />,
+      ),
+    );
+    expect([...detail.held]).toEqual(["shop"]);
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
+});
+
 it("an unrelated Mate attention update leaves the other Projects row unchanged", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   vi.stubGlobal("IntersectionObserver", VisibleCard);
