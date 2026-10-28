@@ -983,6 +983,7 @@ const endRun = (
     )
       continue;
     b.emit({ _tag: "RequestClosed", runId: run.id, requestId: request.id, state: "lapsed" });
+    askAgainByMessage(b, run, request, end);
   }
   const carried = answerCarried(b, run);
   // A message a restart cut mid-flight goes again, marked, by the run continuing it (rule: a cut
@@ -1564,6 +1565,42 @@ const questionAnswer = (
       : { attachmentsByQuestionId: given.attachmentsByQuestionId }),
   };
 };
+
+/** The ends that take the session a question waits in, not the person's or the agent's choice. */
+const SESSION_ENDS: ReadonlySet<RunEnd["kind"]> = new Set(["cut-by-restart", "crashed"]);
+
+/**
+ * A question whose turn waited on it, cut with its session (a restart, a crash): the session
+ * that would take the answer is gone, so the question is asked again by message, for every
+ * driver alike. It stays on the person's screen, and their answer reaches the agent as their
+ * message (`answerByMessage`) — never lost with the turn, never typed again from memory.
+ */
+const askAgainByMessage = (
+  b: StepBuilder,
+  run: RunRecord,
+  request: OpenRequest,
+  end: RunEnd,
+): void => {
+  if (!SESSION_ENDS.has(end.kind) || request.kind !== "question" || request.asked === undefined)
+    return;
+  b.emit({
+    _tag: "RequestOpened",
+    runId: run.id,
+    requestId: deriveRequestId(run.id, b.run(run.id).nextRequestOrdinal),
+    key: `${request.key}/by-message`,
+    ask: { kind: "question", questions: [...request.asked], dismissible: true },
+    answerable: true,
+    principal: request.principal,
+  });
+};
+
+/** Whether the run waits on a question a session's end asks again by message. */
+const waitsOnQuestion = (state: ConversationState, run: RunRecord): boolean =>
+  run.state === "waiting" &&
+  Object.values(state.requests).some(
+    (request) =>
+      request.runId === run.id && request.kind === "question" && request.asked !== undefined,
+  );
 
 const resumeIfAnswered = (b: StepBuilder, id: RunId): void => {
   // A question asked by message outlives its run, which the state may no longer hold.
@@ -2916,6 +2953,8 @@ export const continuationRefusal = (state: ConversationState, run: RunRecord): s
   if (run.stopAsked !== null) return "a Stop was asked";
   if (run.maintenance) return "a maintenance turn";
   if (state.lastPersonSeq > run.sinceSeq) return "a newer person message";
+  // The person's answer goes on with it, as their message: a continuation would go on without it.
+  if (waitsOnQuestion(state, run)) return "its question waits for your answer";
   return null;
 };
 

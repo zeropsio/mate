@@ -1533,6 +1533,74 @@ describe("decide: a question's answer carries its pictures", () => {
   });
 });
 
+// Filip's Mate, 2026-10-27: a restart cut the turn that waited on its question; the question
+// lapsed, the restart's continuation went on without it, and the person typed the answer later.
+describe("decide: a question its turn waited on outlives the session that asked it", () => {
+  const questions = [
+    { id: "0", question: "Which package manager?", options: [{ label: "pnpm" }] },
+    { id: "1", question: "What should it be named?" },
+  ];
+  const asked = signal({
+    kind: "request-opened",
+    turn: T(1),
+    key: "ask-1",
+    ask: { kind: "question", questions, dismissible: false },
+  });
+  const cuts = [
+    ["a restart", recovered()],
+    ["a crash", signal({ kind: "session-exited", reason: "exit 137" })],
+  ] as const;
+  const again = requestId(r(1), 2);
+  const answer: Command = {
+    _tag: "Answer",
+    requestId: again,
+    answer: { answers: { "0": "pnpm", "1": "api" } },
+    summary: "Answered",
+  };
+  const closes = (log: ReadonlyArray<KnownEngineEvent>) =>
+    log.flatMap((e) => (e._tag === "RequestClosed" ? [`${e.requestId} ${e.state}`] : []));
+
+  it.each(cuts)("cut by %s, it stays open for the person, asked again by message", (_, cut) => {
+    const { state, log } = playAll([...proofRunning, asked, cut]);
+    expect(closes(log)).toEqual([`${requestId(r(1), 1)} lapsed`]);
+    expect(state.requests[again]).toMatchObject({ answerable: true, dismissible: true });
+    expect(log.find((e) => e._tag === "RequestOpened" && e.requestId === again)).toMatchObject({
+      ask: { kind: "question", questions, dismissible: true },
+    });
+  });
+
+  it("a restart does not carry its turn on without the answer", () => {
+    const { state, log } = playAll([...proofRunning, asked, recovered()]);
+    expect(state.runs[r(1)]?.end).toMatchObject({ kind: "cut-by-restart" });
+    expect(state.runs[r(1)]?.end).toHaveProperty("notContinued");
+    expect(log.some((e) => e._tag === "WakeArmed" && e.kind === "restart-continuation")).toBe(
+      false,
+    );
+  });
+
+  it.each(cuts)("cut by %s, its answer reaches the agent as the person's message", (_, cut) => {
+    const scene = play([...proofRunning, asked, cut, answer]);
+    expect(scene.events.find((e) => e._tag === "ItemOpened")).toMatchObject({
+      runId: r(2),
+      body: {
+        kind: "person",
+        text: "Which package manager?\npnpm\n\nWhat should it be named?\napi",
+      },
+    });
+  });
+
+  it("a Stop still ends the question with its turn", () => {
+    const { state, log } = playAll([
+      ...proofRunning,
+      asked,
+      stop(1),
+      ended(1, { kind: "interrupted" }, "stop-confirmed"),
+    ]);
+    expect(closes(log)).toEqual([`${requestId(r(1), 1)} lapsed`]);
+    expect(state.requests).toEqual({});
+  });
+});
+
 describe("decide: a dismissible question is dismissed unanswered", () => {
   const question = (dismissible: boolean) =>
     signal({
