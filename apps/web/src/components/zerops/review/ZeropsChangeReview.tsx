@@ -976,7 +976,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
         run={props.run}
       />
       {props.previews === undefined || props.previews.length === 0 ? null : (
-        <ReviewTry previews={props.previews} />
+        <ReviewTry mateName={mate.name} previews={props.previews} />
       )}
       {receipt === undefined ? null : (
         <ReviewSection aside={String(receipt.parts.length)} title="Parts">

@@ -549,7 +549,6 @@ const PREVIEWS = [
   {
     service: "app",
     url: "https://appstage-beviro.prg1.zerops.app",
-    host: "appstage-beviro.prg1.zerops.app",
   },
 ];
 

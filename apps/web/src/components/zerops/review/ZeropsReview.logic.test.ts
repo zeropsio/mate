@@ -32,6 +32,7 @@ import {
   changeReceipt,
   mergeFoot,
   stageDeploysMerges,
+  tryItWords,
   productionNow,
   productionNowLine,
   releaseFoot,
@@ -1179,5 +1180,23 @@ describe("stageDeploysMerges: a stage the foot names", () => {
     },
   ] as const)("$case: $names", ({ row, names }) => {
     expect(stageDeploysMerges(row)).toBe(names);
+  });
+});
+
+// Larkspur, 2026-10-28: Kaďák's review offered "flip flipstage-7c1e-5195.prg1.zerops.app".
+describe("tryItWords: Try it names whose preview it opens, and which part", () => {
+  it.each([
+    { case: "a Mate's one part", mate: "Kaďák", part: "flip", words: "Kaďák's preview · Flip" },
+    { case: "one of several parts", mate: "Odin", part: "api", words: "Odin's preview · Api" },
+    { case: "a name ending in s", mate: "Ines", part: "app", words: "Ines' preview · App" },
+    {
+      case: "a Mate not named yet",
+      mate: "the Mate",
+      part: "app",
+      words: "The Mate's preview · App",
+    },
+  ])("$case: $words", ({ mate, part, words }) => {
+    const said = tryItWords(mate, part);
+    expect(`${said.preview} · ${said.part}`).toBe(words);
   });
 });

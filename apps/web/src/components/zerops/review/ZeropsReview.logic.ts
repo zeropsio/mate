@@ -21,6 +21,7 @@ import {
   type ReviewVerdict,
   type ReleaseReplaces,
 } from "@t3tools/client-runtime/zerops";
+import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
 import { quoteWords } from "@t3tools/shared/messagePreview";
 import { siteOf, soleSite } from "../projects/projectCard.logic";
@@ -683,6 +684,17 @@ export function stageDeploysMerges(row: {
     row.commit !== undefined ||
     row.deploys.some((job) => job.kind === "deploy" && job.state === "live")
   );
+}
+
+/**
+ * What a "Try it" pill says: whose preview it opens, then which part, by its friendly name —
+ * "Kaďák's preview · Flip" — never the preview's hostname and address, which named neither.
+ */
+export function tryItWords(
+  mateName: string,
+  part: string,
+): { readonly preview: string; readonly part: string } {
+  return { preview: `${placeName(crewPossessive(mateName))} preview`, part: placeName(part) };
 }
 
 /** One part's preview in a change's review, as its receipt left it. */
