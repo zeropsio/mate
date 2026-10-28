@@ -1879,7 +1879,7 @@ function resultOutcome(
   // reported its cause (expired login, rejected usage window).
   const successTaggedFailure = result.subtype === "success" && result.is_error === true;
   const structuredError = isOverloadedResult(result)
-    ? "Claude API is overloaded (529). Try again shortly."
+    ? "Claude is at capacity right now. Try again in a minute: send a message to pick up where it left off."
     : (terminalResultError(result.terminal_reason, failureHint) ??
       (successTaggedFailure ? failureHint : undefined));
   // CLI diagnostic entries must not become the error banner. Success results

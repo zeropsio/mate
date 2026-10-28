@@ -4450,7 +4450,7 @@ describe("ClaudeAdapterLive", () => {
         api_error_status: 529,
         errors: [],
       },
-      expected: /overloaded \(529\)/,
+      expected: /at capacity right now/,
       expectedState: "failed",
     },
     {
@@ -4488,7 +4488,7 @@ describe("ClaudeAdapterLive", () => {
         api_error_status: 529,
         errors: [],
       },
-      expected: /overloaded \(529\)/,
+      expected: /at capacity right now/,
       expectedState: "failed",
     },
     {
@@ -4927,7 +4927,7 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(turnCompleted.payload.state, "failed");
         assert.equal(
           turnCompleted.payload.errorMessage,
-          "Claude API is overloaded (529). Try again shortly.",
+          "Claude is at capacity right now. Try again in a minute: send a message to pick up where it left off.",
         );
       }
     }).pipe(
