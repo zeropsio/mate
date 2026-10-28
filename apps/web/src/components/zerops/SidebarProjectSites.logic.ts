@@ -22,7 +22,6 @@ import {
   type MatePart,
   type MatePartEntry,
   type MatePartLease,
-  type MatePartLeaseChat,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 
@@ -229,8 +228,6 @@ export interface SitesMateFacts {
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
   /** The services its envelope marks as a repository's stand-in (`standInsOf`); none unread. */
   readonly standIns?: ReadonlyArray<string> | undefined;
-  /** The Mate's chats bound to its leases, by title: what each workspace is for. */
-  readonly leaseChats?: ReadonlyArray<MatePartLeaseChat> | undefined;
 }
 
 /**
@@ -243,7 +240,8 @@ export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
 /**
  * A Mate's addresses: its parts (`mateParts`, the one reader every surface shows them from), then
  * every other public service by its name alone. Never the control plane. `undefined` while its
- * routes are unread — never none before the answer.
+ * routes are unread — never none before the answer. Sites is addresses only (Aleš, 2026-10-27): a
+ * workspace is "dev" here, never the chat or the branch it is for; its address says which.
  */
 export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
@@ -255,9 +253,14 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
     poolPairs: mate.poolPairs,
     standIns: mate.standIns,
     leases: mate.leases,
-    leaseChats: mate.leaseChats,
   });
-  return { pairs: parts, links: others };
+  return {
+    pairs: parts.map((part) => ({
+      ...part,
+      dev: part.dev.map((side) => (side.label === "dev" ? side : { ...side, label: "dev" })),
+    })),
+    links: others,
+  };
 }
 
 const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<SitesLink> =>

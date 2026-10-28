@@ -321,6 +321,34 @@ it("Decision: supersede pending main runs; never cancel a running deploy", () =>
   ).toBe(false);
 });
 
+const selectionPath = [NodePath.dirname(process.execPath), "/usr/bin", "/bin"].join(
+  NodePath.delimiter,
+);
+
+const selectionWorkspace = () => {
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-selection-"));
+  for (const [path, pkg] of [
+    [
+      "apps/mobile",
+      {
+        dependencies: {
+          "@fixture/client-runtime": "workspace:*",
+          "@fixture/contracts": "workspace:*",
+          "@fixture/shared": "workspace:*",
+        },
+      },
+    ],
+    ["apps/desktop", {}],
+    ["packages/client-runtime", { name: "@fixture/client-runtime" }],
+    ["packages/contracts", { name: "@fixture/contracts" }],
+    ["packages/shared", { name: "@fixture/shared" }],
+  ] as const) {
+    NodeFS.mkdirSync(NodePath.join(directory, path), { recursive: true });
+    NodeFS.writeFileSync(NodePath.join(directory, path, "package.json"), JSON.stringify(pkg));
+  }
+  return directory;
+};
+
 const scenarioPaths = NodeFS.readdirSync(NodePath.join(root, "apps/web/test/scenarios/areas"), {
   withFileTypes: true,
 })
@@ -337,15 +365,15 @@ it.each([
   "apps/server/src/engine/engine.ts",
   "packages/client-runtime/src/data.ts",
 ])("PR scenarios run when their input %s changes", (path) => {
-  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-selection-"));
+  const directory = selectionWorkspace();
   const output = NodePath.join(directory, "output");
   try {
     const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
     const selection = run.slice(run.indexOf("          paths=".trimStart()));
-    const result = NodeChildProcess.spawnSync("bash", ["-c", selection], {
-      cwd: root,
+    const result = NodeChildProcess.spawnSync("/bin/bash", ["-c", selection], {
+      cwd: directory,
       encoding: "utf8",
-      env: { ...process.env, rows: path, PR_NUMBER: "1", GITHUB_OUTPUT: output },
+      env: { PATH: selectionPath, rows: path, PR_NUMBER: "1", GITHUB_OUTPUT: output },
     });
     expect(result.status, result.stderr).toBe(0);
     expect(
@@ -370,7 +398,7 @@ it.each([
 ])(
   "Decision: scoping by path, never by disabling the jobs: %s selects native clients = %s",
   (path, selected) => {
-    const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-native-"));
+    const directory = selectionWorkspace();
     const output = NodePath.join(directory, "output");
     try {
       const workflow = parse(
@@ -380,10 +408,10 @@ it.each([
         (step: { name: string }) => step.name === "Detect changed areas",
       ).run;
       const selection = run.slice(run.indexOf("paths="));
-      const result = NodeChildProcess.spawnSync("bash", ["-c", selection], {
-        cwd: root,
+      const result = NodeChildProcess.spawnSync("/bin/bash", ["-c", selection], {
+        cwd: directory,
         encoding: "utf8",
-        env: { ...process.env, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+        env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
       });
       expect(result.status, result.stderr).toBe(0);
       expect(
@@ -418,22 +446,56 @@ it("native client selection follows app manifest dependencies without a pinned p
       NodeFS.mkdirSync(NodePath.join(directory, path), { recursive: true });
       NodeFS.writeFileSync(NodePath.join(directory, path, "package.json"), JSON.stringify(pkg));
     }
+    NodeFS.mkdirSync(NodePath.join(directory, "packages/leftover/node_modules"), {
+      recursive: true,
+    });
     const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
     for (const [path, selected] of [
       ["packages/new-reader/src/index.ts", true],
       ["packages/unrelated/src/index.ts", false],
     ] as const) {
       NodeFS.writeFileSync(output, "");
-      const result = NodeChildProcess.spawnSync("bash", ["-c", run.slice(run.indexOf("paths="))], {
-        cwd: directory,
-        encoding: "utf8",
-        env: { ...process.env, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
-      });
+      const result = NodeChildProcess.spawnSync(
+        "/bin/bash",
+        ["-c", run.slice(run.indexOf("paths="))],
+        {
+          cwd: directory,
+          encoding: "utf8",
+          env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+        },
+      );
       expect(result.status, result.stderr).toBe(0);
       expect(NodeFS.readFileSync(output, "utf8")).toMatch(
         new RegExp(`^native_clients=${selected}$`, "mu"),
       );
     }
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it.each([
+  ["apps/mobile/src/main.tsx", true],
+  ["packages/unrelated/src/index.ts", false],
+])("native clients without workspace imports select %s = %s", (path, selected) => {
+  const directory = selectionWorkspace();
+  const output = NodePath.join(directory, "output");
+  try {
+    NodeFS.writeFileSync(NodePath.join(directory, "apps/mobile/package.json"), "{}");
+    const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
+    const result = NodeChildProcess.spawnSync(
+      "/bin/bash",
+      ["-c", run.slice(run.indexOf("paths="))],
+      {
+        cwd: directory,
+        encoding: "utf8",
+        env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(NodeFS.readFileSync(output, "utf8")).toMatch(
+      new RegExp(`^native_clients=${selected}$`, "mu"),
+    );
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }

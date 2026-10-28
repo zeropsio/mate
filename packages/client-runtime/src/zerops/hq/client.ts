@@ -133,6 +133,8 @@ export interface HqMateSetUp extends HqNewMate {
  */
 export interface HqMate extends Partial<HqMateRecord> {
   readonly birthId?: string | null;
+  /** The accepted setup import, retained after its browser press ends. */
+  readonly importProcessId?: string | undefined;
   readonly signers?: Readonly<Record<string, string>>;
   /**
    * Who made it — whoever set its record up: a Mate recorded before HQ kept it is null; an older
@@ -263,6 +265,7 @@ export interface HqAttach {
  */
 export interface HqBirth {
   readonly projectId?: string | null;
+  readonly importProcessId?: string;
   readonly id: string;
   /** Its face as its attach records it: empty where it wears its name's tint. */
   readonly face: string;

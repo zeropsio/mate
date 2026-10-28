@@ -57,6 +57,7 @@ const Birth = Schema.Struct({
   id: Schema.String,
   face: Schema.String,
   projectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
+  importProcessId: Schema.optionalKey(Schema.String),
 });
 // The old outward reader remains Zerops-only; the account admits each target's own job contract.
 const DeliveryEnvironments = Schema.Union([
