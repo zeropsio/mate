@@ -60,13 +60,10 @@ import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 
 import { ZeropsGroupPane, ZeropsStopPane } from "~/components/zerops/ZeropsGroupDetail";
 import type { ZeropsServiceRow } from "@t3tools/client-runtime/zerops/serviceMap";
-import { ProjectAccessChips } from "~/components/zerops/projects/ProjectAccessChips";
+import { PlaceAccessSummary } from "~/components/zerops/projects/ProjectAccessTable";
 import { VaultPanelBody } from "~/components/zerops/vault/VaultPanel";
 import { VAULT_FIXTURE, vaultFixtureImpact } from "~/components/zerops/vault/vaultFixture";
-import type {
-  ProjectPeopleView,
-  ProjectPerson,
-} from "~/components/zerops/projects/projectPeople.logic";
+import type { columnPeople } from "~/components/zerops/projects/accessTable.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import type { CompareCommit } from "@t3tools/shared/hqChanges";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -443,11 +440,9 @@ const ACME_RELEASES: ReadonlyArray<FlowRelease> = BEVIRO_RELEASES.map((release) 
   })),
 }));
 
-/** Fifteen people who reach Acme's production, as its access reads them. */
-const ACME_PEOPLE: ProjectPeopleView = {
-  kind: "people",
-  invite: true,
-  candidates: [],
+/** Fifteen people who reach Acme's production, as its access reads them: two set, the rest by default. */
+const ACME_PEOPLE: ReturnType<typeof columnPeople> = {
+  label: "Production",
   people: [
     "Juno Park",
     "Raya Stone",
@@ -466,6 +461,7 @@ const ACME_PEOPLE: ProjectPeopleView = {
     "Tom Gale",
   ].map((name, index) => ({
     key: `cu-${String(index)}`,
+    userId: `u-${String(index)}`,
     name,
     short: `${name.split(" ")[0] ?? name} ${name.split(" ")[1]?.[0] ?? ""}.`,
     initials: name
@@ -474,17 +470,11 @@ const ACME_PEOPLE: ProjectPeopleView = {
       .join(""),
     avatarUrl: null,
     email: null,
-    role: "Member",
-    you: index === 0,
-    creator: false,
+    role: "Developer",
     pending: false,
-    access: "Full access",
-    line: "Full access",
-    level: "full",
-    across: [],
-    note: null,
-    change: null,
-  })) as unknown as ReadonlyArray<ProjectPerson>,
+    level: index === 3 ? "read" : "full",
+    byDefault: index > 4,
+  })),
 };
 
 /** Acme's six-service production at the widths a page has beside the 435 px menu. */
@@ -1439,7 +1429,17 @@ function Harness() {
                 routes: ACME_ROUTES,
                 releases: ACME_RELEASES,
                 platformServices: ACME_SERVICES,
-                access: <ProjectAccessChips fold heading={false} view={ACME_PEOPLE} />,
+                access: (
+                  <PlaceAccessSummary
+                    change={
+                      <a className="ov-acc-link" href="#access-prod">
+                        Change on Acme’s page
+                      </a>
+                    }
+                    line={null}
+                    summary={ACME_PEOPLE}
+                  />
+                ),
                 vault: true,
               }}
             />

@@ -222,7 +222,7 @@ describe("a new project's access, in one line", () => {
       title: "Everyone in the organization, counted by level, the exception named",
       input: team([]),
       organization: "Mate s.r.o.",
-      line: "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+      line: "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with Edit access.",
     },
     {
       title: "Everyone at one level is said once",
@@ -248,13 +248,13 @@ describe("a new project's access, in one line", () => {
         ],
       ),
       organization: "Mate s.r.o.",
-      line: "Everyone in Mate s.r.o. can open it: 15 with Full access, 3 with more than Read access, Ada L. and Bo H. with Read access.",
+      line: "Everyone in Mate s.r.o. can open it: 15 with Full access, 3 with Edit access, Ada L. and Bo H. with Read access.",
     },
     {
       title: "Whoever cannot open it is left out of everyone",
       input: team([member("nobody", "Nora Quill", "NO_ACCESS")]),
       organization: "Mate s.r.o.",
-      line: "18 of 19 people in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+      line: "18 of 19 people in Mate s.r.o. can open it: 17 with Full access, Karlos with Edit access.",
     },
     {
       title: "Alone on it, the creator reads only you",
@@ -274,7 +274,7 @@ describe("a new project's access, in one line", () => {
       title: "An organization not yet named is the organization",
       input: team([]),
       organization: null,
-      line: "Everyone in the organization can open it: 17 with Full access, Karlos with more than Read access.",
+      line: "Everyone in the organization can open it: 17 with Full access, Karlos with Edit access.",
     },
   ])("$title", ({ input, organization, line }) => {
     expect(

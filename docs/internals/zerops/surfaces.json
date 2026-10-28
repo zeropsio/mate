@@ -1230,6 +1230,7 @@
         "apps/web/src/components/zerops/projects/projectsView.logic.ts",
         "apps/web/src/components/zerops/projects/ProjectPeople.tsx",
         "apps/web/src/components/zerops/projects/ProjectAccessChips.tsx",
+        "apps/web/src/components/zerops/projects/ProjectAccessTable.tsx",
         "apps/web/src/components/zerops/projects/ProjectSpend.tsx",
         "apps/web/src/components/zerops/projects/projectSpend.logic.ts",
         "apps/web/src/components/zerops/projects/ChangeRow.tsx",
