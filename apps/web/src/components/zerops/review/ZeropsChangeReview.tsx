@@ -353,6 +353,8 @@ function ChangeReviewData({
     main:
       flow?.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
       mergedMain(pull.repository, flow?.merged),
+    // A record read while HQ still checked it is read again once the live change says it judged.
+    mergeability: pull.mergeability,
   });
   // The recorded review holds no diff: a file's is read when the person unfolds it.
   const fileDiffs = useZeropsChangeFileDiffs({

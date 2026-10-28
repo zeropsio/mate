@@ -28,6 +28,11 @@ export interface ZeropsChangeDetailRequest {
   readonly head: string | undefined;
   /** What `main` was as the flow last told it: the newest landed change's commit. */
   readonly main: string | undefined;
+  /**
+   * Whether it merges, as the live change last told it. HQ records the review as it judges the
+   * change, so a record read while HQ still checked is read again once it has judged.
+   */
+  readonly mergeability?: FlowPullRequest["mergeability"] | undefined;
 }
 
 export interface ZeropsChangeDetail {
@@ -53,16 +58,22 @@ export function useZeropsChangeDetail(
   request: ZeropsChangeDetailRequest | null,
 ): ZeropsChangeDetail {
   const account = useAccountDataOptional();
-  const owner =
+  const at =
     request === null || request.head === undefined
       ? null
-      : changeReadOwner({
+      : {
           link: request.link,
           snapshot: {
             expectedHead: request.head,
             ...(request.main === undefined ? {} : { expectedMain: request.main }),
           },
-        });
+        };
+  // The head and main the person is shown; the read also names HQ's judgement of them.
+  const shownAt = at === null ? null : changeReadOwner(at);
+  const owner =
+    at === null || request?.mergeability === undefined
+      ? shownAt
+      : changeReadOwner({ ...at, judged: request.mergeability });
   const [shownFor, setShownFor] = useState<string | null>(null);
   useDetailDemand("hqChangeMetadata", undefined, owner);
   useDetailDemand("hqAppDetail", undefined, request?.link.appId ?? null);
@@ -111,6 +122,16 @@ export function useZeropsChangeDetail(
       return { kind: "failed", reason: comparison.words };
     return READING;
   }, [owner, recorded, compareWanted, comparison]);
+  // Read again only because HQ judged it: the record of the same head and main stays on screen
+  // until the newer one is read.
+  const [held, setHeld] = useState<{
+    readonly at: string;
+    readonly readout: ReadoutPart<ChangeReadout>;
+  } | null>(null);
+  if (readout.kind === "read" && shownAt !== null && held?.readout !== readout)
+    setHeld({ at: shownAt, readout });
+  const shown =
+    readout === READING && held !== null && held.at === shownAt ? held.readout : readout;
   const retry = useCallback(() => {
     if (owner === null || readout.kind !== "failed") return;
     if (compareWanted) compared.again();
@@ -120,7 +141,7 @@ export function useZeropsChangeDetail(
     setShownFor(owner);
   }, [owner]);
   return {
-    readout,
+    readout: shown,
     retry,
     showFiles: review !== undefined && review.files === null && !filesAsked ? showFiles : undefined,
   };
