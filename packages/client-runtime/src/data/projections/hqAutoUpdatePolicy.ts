@@ -55,8 +55,6 @@ export const autoUpdatePolicySettings: Projection<
       result !== undefined &&
       "policy" in result &&
       fact.kind === "known" &&
-      result.policy.epoch !== undefined &&
-      result.policy.epoch === fact.value.epoch &&
       result.policy.revision > fact.value.revision
         ? result.policy
         : null;
