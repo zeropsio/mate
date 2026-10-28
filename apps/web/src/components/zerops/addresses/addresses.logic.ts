@@ -470,6 +470,30 @@ export function removeWrite(
 }
 
 /** One of the application's places the sheet's switch offers. */
+/**
+ * Whether a place's addresses say only "Nothing runs in <place> yet.": production or a stage with
+ * nothing deployed, and nothing of its addresses to see or remove — no domain (one may be added
+ * before the first release), no port opened, no own IPv4, no change on its way. A Mate's own
+ * project never: its workspace runs without a deploy.
+ */
+export function placeRunsNothing(
+  place: Pick<
+    PlaceAddresses,
+    "nothingDeployed" | "domains" | "ports" | "ips" | "waitingDomains" | "waitingPorts"
+  >,
+  kind: PlaceChoice["kind"] | undefined,
+): boolean {
+  return (
+    place.nothingDeployed &&
+    (kind === "production" || kind === "stage") &&
+    place.domains.length === 0 &&
+    place.ports.length === 0 &&
+    place.ips.ownV4 === undefined &&
+    place.waitingDomains.length === 0 &&
+    place.waitingPorts.length === 0
+  );
+}
+
 export interface PlaceChoice {
   readonly projectId: string;
   /** A shared environment, or a Mate's own project. */

@@ -365,7 +365,7 @@ describe("the addresses sheet", () => {
       const { container } = await mount({
         placeName,
         places: [{ projectId: "p1", kind, label: placeName, name: placeName }],
-        place: { ...ADDRESSES_FIXTURE, nothingDeployed: true },
+        place: { ...ADDRESSES_FIXTURE, nothingDeployed: true, domains: [], ports: [] },
       });
       const said = text(container);
       expect(said.includes(`Nothing runs in ${placeName} yet.`)).toBe(alone);
@@ -373,6 +373,17 @@ describe("the addresses sheet", () => {
       expect(said.includes("Open a port")).toBe(!alone);
     },
   );
+
+  it("An environment with nothing deployed still lists a domain added before its first release, to see or remove", async () => {
+    const { container } = await mount({
+      placeName: "Production",
+      places: [{ projectId: "p1", kind: "production", label: "Production", name: "Production" }],
+      place: { ...ADDRESSES_FIXTURE, nothingDeployed: true, ports: [] },
+    });
+    const said = text(container);
+    expect(said.includes("Nothing runs in Production yet.")).toBe(false);
+    expect(said).toContain("shop.com");
+  });
 
   it("the shared IPv4 is said to be shared across Zerops", async () => {
     const { container } = await mount();

@@ -16,7 +16,12 @@ import { Button } from "../../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../../ui/menu";
 import { Spinner } from "../../ui/spinner";
 import { ZeropsMark } from "../../ZeropsMark";
-import { priceWords, type AddressWrite, type PlaceChoice } from "./addresses.logic";
+import {
+  placeRunsNothing,
+  priceWords,
+  type AddressWrite,
+  type PlaceChoice,
+} from "./addresses.logic";
 import { AddressesDirect, type DirectMode } from "./AddressesDirect";
 import {
   Confirm,
@@ -96,10 +101,10 @@ export function AddressesSheetBody(props: AddressesSheetBodyProps) {
   };
   const web = isWeb(mode) ? mode : LIST;
   const direct = isDirect(mode) ? mode : LIST;
-  // Production or a stage that runs nothing deployed has no address to manage yet: no own IPv4 to
-  // buy, no port to open. A Mate's own project is left as it is: its workspace runs without one.
+  // Production or a stage that runs nothing deployed and holds no address yet has none to manage:
+  // no own IPv4 to buy, no port to open (`placeRunsNothing`).
   const kind = props.places.find((place) => place.projectId === props.projectId)?.kind;
-  const runsNothing = props.place.nothingDeployed && (kind === "production" || kind === "stage");
+  const runsNothing = placeRunsNothing(props.place, kind);
   return (
     <div className="flex min-h-0 flex-1 flex-col" data-addresses-sheet={props.projectId}>
       <SheetHeader {...props} />

@@ -12,6 +12,7 @@ import {
   normalizeDomain,
   normalizeRange,
   othersWaiting,
+  placeRunsNothing,
   portFaceWords,
   portProblem,
   priceWords,
@@ -418,6 +419,54 @@ describe("removing a domain", () => {
       sslEnabled: true,
     });
   });
+});
+
+// The live audit (2026-10-28): an empty production offered an IPv4 to buy and a port to open. Its
+// one line hid a domain added before the first release, which then could not be seen or removed.
+describe("an environment with nothing deployed", () => {
+  const { ips } = ADDRESSES_FIXTURE;
+  const empty = { ...ADDRESSES_FIXTURE, nothingDeployed: true, domains: [], ports: [] };
+  const waiting = [{ id: "rt-1", label: "shop.example → app · port 3000" }];
+  it.each([
+    { case: "production holding nothing", kind: "production", place: empty, alone: true },
+    { case: "a stage holding nothing", kind: "stage", place: empty, alone: true },
+    { case: "a Mate's own project", kind: "mate", place: empty, alone: false },
+    {
+      case: "a domain added before the first release",
+      kind: "production",
+      place: { ...empty, domains: ADDRESSES_FIXTURE.domains },
+      alone: false,
+    },
+    {
+      case: "a port opened",
+      kind: "stage",
+      place: { ...empty, ports: ADDRESSES_FIXTURE.ports },
+      alone: false,
+    },
+    {
+      case: "its own IPv4",
+      kind: "production",
+      place: { ...empty, ips: { ...ips, ownV4: "198.51.100.7" } },
+      alone: false,
+    },
+    {
+      case: "a domain change on its way",
+      kind: "production",
+      place: { ...empty, waitingDomains: waiting },
+      alone: false,
+    },
+    {
+      case: "a port change on its way",
+      kind: "production",
+      place: { ...empty, waitingPorts: waiting },
+      alone: false,
+    },
+  ] as const)(
+    "says only that nothing runs there while it holds no address to see or remove: $case",
+    ({ kind, place, alone }) => {
+      expect(placeRunsNothing(place, kind)).toBe(alone);
+    },
+  );
 });
 
 describe("the project's places", () => {
