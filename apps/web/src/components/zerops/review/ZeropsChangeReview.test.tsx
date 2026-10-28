@@ -730,7 +730,7 @@ describe("ChangeReviewView: an open change", () => {
       expect(prLink(html)).toBeNull();
       expect(textOf(footOf(html))).toContain("Merge");
       expect(textOf(footOf(html))).not.toContain("Merge to");
-      expect(textOf(footOf(html))).toContain("Lands on main; appstage deploys it.");
+      expect(textOf(footOf(html))).toContain("Lands on main; Appstage deploys it.");
     });
   });
 
@@ -743,6 +743,14 @@ describe("ChangeReviewView: an open change", () => {
     expect(textOf(html)).toContain(
       "You need more than Read access to one of this project's Zerops projects to do this.",
     );
+  });
+
+  // Larkspur, 2026-10-28: "stage deploys it" over a stage that had never deployed a merge.
+  it("promises no deploy where no stage deploys what merges into main", () => {
+    const html = render(open, files, { environments: [{ tier: "stage" }], stages: [] });
+    expect(textOf(footOf(html))).toContain("Adds this change to main.");
+    expect(textOf(footOf(html))).not.toContain("deploys it");
+    expect(textOf(footOf(html))).not.toContain("picks it up");
   });
 
   it("says it is merging while the press runs, the button held", () => {

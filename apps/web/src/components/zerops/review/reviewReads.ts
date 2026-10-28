@@ -14,6 +14,7 @@ import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { useMemo } from "react";
 
 import type { ZeropsProjectFlow } from "~/zerops/projectFlows";
+import { stageDeploysMerges } from "./ZeropsReview.logic";
 import { useZeropsCandidates, useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 
 /** The project's name, as the menu names it. */
@@ -83,18 +84,21 @@ export function useProductionAddresses(
 }
 const NO_ADDRESSES: ReadonlyArray<GroupFlowAddress> = [];
 
-/** The stage that follows `main`: where a merge lands first. */
-/** Every stage that follows `main`, each deploying what merges into it. */
+/**
+ * Every stage that deploys what merges into `main` (`stageDeploysMerges`): it follows `main` and
+ * has deployed from it.
+ */
 export function mainStagesOf(
   flow: ZeropsProjectFlow,
 ): ReadonlyArray<ZeropsProjectFlow["environmentInputs"][number]> {
-  return flow.environmentInputs.filter(
-    (entry) =>
-      entry.tier === "stage" &&
-      flow.environments.find((row) => row.id === entry.id)?.source === "main",
-  );
+  return flow.environmentInputs.filter((entry) => {
+    if (entry.tier !== "stage") return false;
+    const row = flow.environments.find((candidate) => candidate.id === entry.id);
+    return row !== undefined && stageDeploysMerges(row);
+  });
 }
 
+/** The stage that follows `main`: where a merge lands first. */
 export function mainStageOf(
   flow: ZeropsProjectFlow,
 ): ZeropsProjectFlow["environmentInputs"][number] | undefined {

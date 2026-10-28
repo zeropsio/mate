@@ -624,7 +624,7 @@ export interface ChangeReviewViewProps {
   readonly project?: string | undefined;
   /** The change's application at HQ: where its code opens in the Git browser; absent, it opens nowhere. */
   readonly appId?: string | undefined;
-  /** The stages that follow `main`, by name: each deploys what merges. */
+  /** The stages that deploy what merges into `main`, by name (`mainStagesOf`). */
   readonly stages?: ReadonlyArray<string>;
   /** The Mate's previews, each pair's stage half by its service: "Try it". */
   readonly previews?: ReadonlyArray<ReviewPreview> | undefined;
@@ -679,9 +679,11 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
     props.commits ??
     (readout.kind === "read" ? { kind: "read", value: readout.value.commits } : readout);
   const history = useReviewFold();
+  // A stage picks a merge up only where it deploys merges from `main` (`mainStagesOf`): one that
+  // never deployed from it is promised nothing (Larkspur, 2026-10-28).
   const downstream = {
     production: props.environments.some((entry) => entry.tier === "production"),
-    stage: props.environments.some((entry) => entry.tier === "stage"),
+    stage: (props.stages ?? NO_STAGES).length > 0,
   };
   const model = changeReview({
     // How it merges, and whether `main` moved on under it, are the flow's until HQ's record of it
@@ -821,6 +823,7 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
                 stages: props.stages ?? NO_STAGES,
                 live: props.live,
                 warning: receipt?.warning,
+                recipe: pull.kind === "recipe",
               })
       }
       dismiss={over && !fromRelease ? "Close" : undefined}

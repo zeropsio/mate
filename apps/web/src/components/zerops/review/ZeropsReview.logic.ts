@@ -633,29 +633,56 @@ export function whySaid(verdict: ReviewVerdict, draft: boolean): boolean {
 const listed = (names: ReadonlyArray<string>): string =>
   names.length <= 1 ? (names[0] ?? "") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 
+/** An environment's name as a sentence names it: "Stage", a shared place, capitalised. */
+const placeName = (name: string): string => `${name.charAt(0).toUpperCase()}${name.slice(1)}`;
+
 /**
- * What merging does, said under the buttons: a merge lands on `main`, each stage that follows it
- * deploys it, and production keeps its release — after the receipt's warning, while the change
- * waits on its press.
+ * What merging does, said under the buttons: a merge lands on `main`, each stage that deploys
+ * merges from it deploys it (`stageDeploysMerges`) — no other is promised one — and production
+ * keeps its release — after the receipt's warning, while the change waits on its press. Where no
+ * stage deploys it, and for a setup change, which deploys nothing, the review's own words say what
+ * merging does: they also say where merging is not offered, or its files were never shown.
  */
 export function mergeFoot(input: {
   readonly state: ReviewState;
   readonly consequence: string;
-  /** The stages that follow `main`, by name; none, one or several. */
+  /** The stages that deploy what merges into `main`, by name; none, one or several. */
   readonly stages: ReadonlyArray<string>;
   /** The release production runs. */
   readonly live: string | undefined;
   /** {@link changeReceipt}'s warning: parts not tried at the change. */
   readonly warning?: string | undefined;
+  /** A recipe change: what its merge does is the review's to say. */
+  readonly recipe?: boolean | undefined;
 }): string {
-  if (!CHECKS_SAID.has(input.state)) return input.consequence;
+  if (!CHECKS_SAID.has(input.state) || input.recipe === true) return input.consequence;
   const keeps =
     input.live === undefined ? "" : ` Production keeps ${input.live} until you release.`;
+  const stages = input.stages.map(placeName);
   const foot =
-    input.stages.length === 0
+    stages.length === 0
       ? input.consequence
-      : `Lands on main; ${listed(input.stages)} ${input.stages.length === 1 ? "deploys" : "deploy"} it.${keeps}`;
+      : `Lands on main; ${listed(stages)} ${stages.length === 1 ? "deploys" : "deploy"} it.${keeps}`;
   return input.warning === undefined ? foot : `${input.warning} ${foot}`;
+}
+
+/**
+ * Whether a stage deploys what merges into `main`, so the merge foot may say so: it follows
+ * `main`, and it has deployed from it — it runs a commit, or HQ took a deploy of it live. A stage
+ * that follows `main` and never deployed (Larkspur's, 2026-10-28: its stage tier waited in a
+ * setup change) is promised nothing.
+ */
+export function stageDeploysMerges(row: {
+  readonly tier: string;
+  readonly source: string;
+  readonly commit: string | undefined;
+  readonly deploys: ReadonlyArray<{ readonly kind: string; readonly state: string }>;
+}): boolean {
+  if (row.tier !== "stage" || row.source !== "main") return false;
+  return (
+    row.commit !== undefined ||
+    row.deploys.some((job) => job.kind === "deploy" && job.state === "live")
+  );
 }
 
 /** One part's preview in a change's review, as its receipt left it. */
