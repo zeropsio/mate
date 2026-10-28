@@ -518,7 +518,15 @@ function Remote({
       app !== null &&
       !editing &&
       app.repositories.length > 0 ? (
-        <WaitingAccounts admin={admin} app={app} onOpenAutomation={onOpenAutomation} />
+        <>
+          {/* The person's own repository may sit on an account the app is not installed on. */}
+          <p className="rv-note">
+            <GithubInstallOffer admin={admin} app={app} onInstall={onInstall ?? (() => {})}>
+              Add a GitHub account or repository…
+            </GithubInstallOffer>
+          </p>
+          <WaitingAccounts admin={admin} app={app} onOpenAutomation={onOpenAutomation} />
+        </>
       ) : null}
       {(remote == null ? viaApp !== undefined : remote.via === "app") && permitted && !editing ? (
         <p className="rv-note">

@@ -455,8 +455,16 @@ export function ZeropsRuntimeStops({
  * beside it with what a card has no room for: the people on it, its environments, its
  * repositories and its history.
  */
-export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string }) {
+export function ZeropsGroupDetailPage({
+  groupId,
+  mirrorReturned = false,
+}: {
+  readonly groupId: string;
+  /** Back from GitHub's install page, which the mirror dialog left for: it opens again. */
+  readonly mirrorReturned?: boolean;
+}) {
   const groupName = useGroupName(groupId);
+  const [mirroring, setMirroring] = useState(mirrorReturned);
   const crumbs = useCrumbs({ groupId, name: groupName });
   // The New Mate dialog over this page, as from every "Add a Mate" (`ZeropsNewMateHost`).
   const addMate = useAddMate();
@@ -475,6 +483,15 @@ export function ZeropsGroupDetailPage({ groupId }: { readonly groupId: string })
   return (
     <ZeropsHostedFrame breadcrumb={<Crumbs crumbs={crumbs.slice(0, -1)} />} width="full">
       <ZeropsProjectsContent project={project} search={NO_SEARCH} />
+      {mirroring && groupName !== undefined ? (
+        <GitMirrorDialog
+          appId={groupId}
+          appName={groupName}
+          onClose={() => {
+            setMirroring(false);
+          }}
+        />
+      ) : null}
     </ZeropsHostedFrame>
   );
 }

@@ -720,6 +720,30 @@ describe("mirroring through the organization's GitHub app", () => {
     }
   });
 
+  it("offers a person whose GitHub account the app does not reach yet to add one, through HQ's install trip, beside the repositories it reaches", async () => {
+    const onInstall = vi.fn();
+    const view = await mount({
+      github: {
+        ...app,
+        installTrip: true,
+        waiting: [{ account: "lukas-dev", repositories: ["lukas-dev/tea-shop"] }],
+      },
+      actions: { ...actions, viaApp: vi.fn(async () => {}) },
+      admin: true,
+      onInstall,
+    });
+    try {
+      expect(view.buttons()).toContain("Mirror here");
+      expect(view.host.textContent).toContain(
+        "lukas-dev waits for an admin's OK in Settings › Automation.",
+      );
+      await view.click("Add a GitHub account or repository…");
+      expect(onInstall).toHaveBeenCalledTimes(1);
+    } finally {
+      await view.unmount();
+    }
+  });
+
   it.each([
     { case: "the app connected", github: app },
     { case: "no app", github: { kind: "none" } as const },

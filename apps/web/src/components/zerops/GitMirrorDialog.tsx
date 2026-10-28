@@ -4,7 +4,7 @@
  * address reviewed or disconnected, as HQ offers it (`GitRemoteSettings`). The page's column says
  * only the remotes that are connected.
  */
-import { useNavigate } from "@tanstack/react-router";
+import { useNavigate, useRouter } from "@tanstack/react-router";
 import { useMemo } from "react";
 
 import { useProjectFlows } from "~/zerops/projectFlows";
@@ -40,6 +40,17 @@ export function GitMirrorDialog({
   const github = mirrorApp.app;
   const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
+  const router = useRouter();
+  // Back from GitHub's install page, the project's page opens this dialog again (`?mirror=`).
+  const returnTo = () =>
+    new URL(
+      router.buildLocation({
+        to: "/group/$groupId/flow",
+        params: { groupId: appId },
+        search: { mirror: appId },
+      }).href,
+      window.location.origin,
+    ).toString();
   return (
     <Dialog
       onOpenChange={(open) => {
@@ -62,7 +73,7 @@ export function GitMirrorDialog({
             can={git.can}
             github={github}
             admin={admin}
-            onInstall={mirrorApp.install}
+            onInstall={() => mirrorApp.install(returnTo())}
             onOpenAutomation={() => {
               onClose();
               void navigate({ to: "/settings/automation" });

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   installOffer,
   mirrorAuthorityLine,
+  parseMirrorSearch,
   mirrorGateLine,
   mirrorLeadLine,
   mirrorStateLine,
@@ -231,5 +232,20 @@ describe("installing the app on another account or more repositories", () => {
     };
     expect(waitingAccount(waiting, "stranger/notes")).toBe("Stranger");
     expect(waitingAccount(waiting, "acme/api")).toBeNull();
+  });
+});
+
+describe("back from GitHub's install page, the mirror dialog opens again over its project", () => {
+  it.each([
+    { case: "the project it left from", raw: { mirror: "app-1" }, opens: "app-1" },
+    {
+      case: "beside what HQ adds to the return",
+      raw: { mirror: "app-1", github: "connected" },
+      opens: "app-1",
+    },
+    { case: "nothing without one", raw: { github: "connected" }, opens: undefined },
+    { case: "nothing for an empty one", raw: { mirror: "" }, opens: undefined },
+  ])("$case", ({ raw, opens }) => {
+    expect(parseMirrorSearch(raw).mirror).toBe(opens);
   });
 });

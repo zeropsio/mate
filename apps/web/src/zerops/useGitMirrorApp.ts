@@ -13,8 +13,8 @@ import { useGithubApp } from "./useTaskSourceSettings";
 export function useGitMirrorApp(shown = true): {
   readonly app: GitMirrorApp | null;
   readonly again: () => void;
-  /** Leaves for GitHub's install page through HQ's trip, coming back to this page. */
-  readonly install: () => void;
+  /** Leaves for GitHub's install page through HQ's trip, coming back to `returnTo` (this page). */
+  readonly install: (returnTo?: string) => void;
 } {
   const { read, again, install } = useGithubApp(shown);
   const setting = read.setting;
@@ -43,8 +43,8 @@ export function useGitMirrorApp(shown = true): {
   return {
     app,
     again,
-    install: () => {
-      void install(window.location.href).then((url) => {
+    install: (returnTo = window.location.href) => {
+      void install(returnTo).then((url) => {
         if (url !== null) window.location.assign(url);
       });
     },
