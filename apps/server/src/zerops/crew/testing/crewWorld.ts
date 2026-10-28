@@ -119,7 +119,7 @@ export interface CrewHold {
  * - `send`: a turn on its way into a crewmate's conversation, before its agent gets it.
  */
 export type CrewHoldStep =
-  | { readonly step: "save" | "check" | "land" | "recover" | "sweep" | "send" }
+  | { readonly step: "save" | "keep" | "check" | "land" | "recover" | "sweep" | "send" }
   | { readonly step: "verdict"; readonly nth: number };
 
 /** A task as the crew holds it, not as a frame showed it. */

@@ -110,6 +110,8 @@ const holdMatcher = (hold: CrewHoldStep): ((script: string) => boolean) => {
   switch (hold.step) {
     case "save":
       return (script) => script.includes("): turn ");
+    case "keep":
+      return (script) => script.includes(": keep attempt ");
     case "check":
       return (script) => script.includes("test -f ok.txt");
     case "land":
