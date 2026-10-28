@@ -2,6 +2,7 @@
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeFSP from "node:fs/promises";
+import * as NodeHttp from "node:http";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeReadline from "node:readline";
@@ -327,13 +328,17 @@ export const startExternalCore = (
     const { origin, database } = yield* Effect.promise(() =>
       deadline(process.ready, "External Core readiness"),
     );
+    const agent = yield* Effect.acquireRelease(
+      Effect.sync(() => new NodeHttp.Agent({ keepAlive: true })),
+      (agent) => Effect.sync(() => agent.destroy()),
+    );
     return {
       origin,
       /** The Core's database as its owner, for a case's held row state. */
       url: database,
       clock: { advance: clock.advance, waits: clock.waits, until: clock.until },
       periods,
-      call: makeHttpCall(new URL(origin).host),
+      call: makeHttpCall(new URL(origin).host, agent),
       fake: zeropsHttp.world,
       stop: process.stop,
       /** The Core's process down, then up again on its origin: as it was, or as a redeployed build. */

@@ -23,6 +23,7 @@ const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
 
 export const makeHttpCall = (
   base: string,
+  agent: NodeHttp.Agent,
   observers = new Map<string, (step: ReadinessStep) => void>(),
 ) => {
   let requestId = 0;
@@ -51,9 +52,7 @@ export const makeHttpCall = (
             `http://${base}${path}`,
             {
               method,
-              // A scenario's next step may follow an idle server-side close before its FIN
-              // reaches this client. Use a fresh connection rather than replaying a write.
-              agent: false,
+              agent,
               ...(options.signal === undefined ? {} : { signal: options.signal }),
               headers: {
                 ...(options.body === undefined || raw

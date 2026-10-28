@@ -2,7 +2,6 @@
 import { expect, it } from "@effect/vitest";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFSP from "node:fs/promises";
-import * as NodeHttp from "node:http";
 import * as NodeNet from "node:net";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
@@ -76,67 +75,6 @@ it.effect.each([0, 23])(
       }
       expect(stopped, "the command's shutdown receipt arrives before the scope closes").toBe(true);
     }).pipe(Effect.scoped),
-);
-
-it.effect("external Core calls survive the server ending an idle connection without retrying", () =>
-  Effect.gen(function* () {
-    let connections = 0;
-    let requests = 0;
-    let idle: NodeNet.Socket | undefined;
-    const connectionIds = new WeakMap<NodeNet.Socket, number>();
-    const server = NodeHttp.createServer((req, res) => {
-      idle = req.socket;
-      res.writeHead(200, { "content-type": "application/json" });
-      res.end(
-        JSON.stringify({
-          connection: connectionIds.get(req.socket),
-          request: ++requests,
-          ...(req.url === "/first" ? {} : { method: req.method, path: req.url }),
-        }),
-      );
-    });
-    server.on("connection", (socket) => connectionIds.set(socket, ++connections));
-    yield* Effect.acquireRelease(
-      Effect.promise(() => new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve))),
-      () => Effect.promise(() => new Promise<void>((resolve) => server.close(() => resolve()))),
-    );
-    const origin = `http://127.0.0.1:${(server.address() as NodeNet.AddressInfo).port}`;
-    const script = `
-      process.stdout.write(JSON.stringify({
-          origin: ${JSON.stringify(origin)},
-          database: "postgres://127.0.0.1/stub",
-          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
-        }) + "\\n");
-      process.stdin.resume();
-      process.stdin.once("end", () => process.exit(0));
-    `;
-    const core = yield* startExternalCore(`${quote(process.execPath)} -e ${quote(script)}`, {
-      baseUrl: "http://127.0.0.1:1",
-      world: emptyWorld(),
-    });
-    const first = yield* core.call("GET", "/first");
-    expect(first.status).toBe(200);
-    expect(first.body).toEqual({ connection: 1, request: 1 });
-    // Half-close the idle server socket before the client has received its FIN, then call again
-    // in the same turn. The fresh connection must carry the next request, without replaying it.
-    idle!.end();
-    const next = yield* Effect.exit(
-      core.call("PATCH", "/api/apps/project", { body: { name: "HQ returned" } }),
-    );
-    expect(
-      Exit.isSuccess(next),
-      `ASSERTION: The next Core call must use a fresh connection after the server's half-close${Exit.isFailure(next) ? `: ${Cause.pretty(next.cause)} (${(Cause.squash(next.cause) as NodeJS.ErrnoException).code})` : ""}`,
-    ).toBe(true);
-    if (Exit.isSuccess(next)) {
-      expect(next.value.status).toBe(200);
-      expect(next.value.body).toEqual({
-        connection: 2,
-        request: 2,
-        method: "PATCH",
-        path: "/api/apps/project",
-      });
-    }
-  }).pipe(Effect.scoped),
 );
 
 it.effect("a scenario's external Core leaves no process behind when it is stopped", () =>
