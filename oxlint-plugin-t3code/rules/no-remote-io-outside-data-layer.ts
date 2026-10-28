@@ -261,6 +261,7 @@ export const HQ_CLIENT_VERBS = [
   "githubInstall",
   "githubAcceptInstallation",
   "githubSuspendInstallation",
+  "githubResumeInstallation",
   "repoRemoteViaApp",
   "followRepoUpstream",
   "unfollowRepoUpstream",

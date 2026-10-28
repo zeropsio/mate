@@ -30,6 +30,7 @@ export type TaskSourceWrites = Pick<
   | "githubInstall"
   | "githubAcceptInstallation"
   | "githubSuspendInstallation"
+  | "githubResumeInstallation"
 >;
 
 /** The secrets typed for one connection, by their field's name. */
@@ -168,6 +169,8 @@ export function makeTaskSourceExecutor(options: {
               return api.githubAcceptInstallation?.(write.installationId) ?? null;
             case "github-suspend":
               return api.githubSuspendInstallation?.(write.installationId) ?? null;
+            case "github-resume":
+              return api.githubResumeInstallation?.(write.installationId) ?? null;
           }
         };
         const pending = call();
@@ -194,7 +197,8 @@ export function makeTaskSourceExecutor(options: {
                       ? taskStopRefusal(cause)
                       : write.kind === "github-install" ||
                           write.kind === "github-accept" ||
-                          write.kind === "github-suspend"
+                          write.kind === "github-suspend" ||
+                          write.kind === "github-resume"
                         ? installationRefusal(cause)
                         : undefined) ??
                       (typed.some((value) => cause.message.includes(value))

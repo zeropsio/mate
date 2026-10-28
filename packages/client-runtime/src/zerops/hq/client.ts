@@ -512,6 +512,8 @@ export interface HqApi {
   readonly githubAcceptInstallation?: (installationId: number) => Promise<void>;
   /** GitHub suspends an installation of the app (`POST …/installations/:id/suspend`). */
   readonly githubSuspendInstallation?: (installationId: number) => Promise<void>;
+  /** GitHub resumes an installation the app suspended (`POST …/installations/:id/resume`). */
+  readonly githubResumeInstallation?: (installationId: number) => Promise<void>;
   /**
    * A repository mirrors to one the organization's GitHub app is installed on, with no token
    * (`PUT /api/apps/:appId/repos/:repo/remote/app`).
@@ -693,6 +695,14 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     });
   }
   const reason = typeof body.reason === "string" ? body.reason : undefined;
+  // GitHub refused what HQ asked it for the person (resuming an installation its account
+  // suspended): its own words say why.
+  const githubSaid =
+    reason === "github_unavailable" &&
+    typeof body.message === "string" &&
+    body.message.trim().length > 0
+      ? `GitHub refused: ${body.message.trim()}`
+      : undefined;
   return new HqError({
     kind: "refused",
     code,
@@ -700,6 +710,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     status: response.status,
     message:
       probeMessage ??
+      githubSaid ??
       hqRefusalWords({
         code,
         reason,
@@ -1685,6 +1696,13 @@ export function makeHqApi(input: {
     githubSuspendInstallation: async (installationId) => {
       await authorized(
         `/api/org/github/installations/${String(installationId)}/suspend`,
+        { method: "POST" },
+        true,
+      );
+    },
+    githubResumeInstallation: async (installationId) => {
+      await authorized(
+        `/api/org/github/installations/${String(installationId)}/resume`,
         { method: "POST" },
         true,
       );

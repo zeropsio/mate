@@ -13,8 +13,8 @@
  * - `POST /api/org/github/install` {@link HqGithubInstallRequest} → {@link HqGithubInstallView},
  *   owner or admin: GitHub's install page with a one-time state, so what is installed from it
  *   comes back accepted;
- * - `POST /api/org/github/installations/:id/accept` | `…/suspend` → 204, owner or admin: HQ acts on
- *   a waiting installation's repositories, or GitHub suspends it;
+ * - `POST /api/org/github/installations/:id/accept` | `…/suspend` | `…/resume` → 204, owner or
+ *   admin: HQ acts on a waiting installation's repositories, or GitHub suspends or resumes it;
  * - `DELETE /api/org/github` → 204, owner or admin: HQ forgets the app (deleting it is GitHub's);
  * - `PUT /api/apps/:appId/repos/:repo/remote/app` {@link HqRepoRemoteViaAppRequest} → 204, a
  *   structure writer: the repository mirrors to one the app is installed on, with no token.
@@ -67,6 +67,8 @@ export const HqGithubView = Schema.Union([
     botLogin: Schema.String,
     /** The account that owns the app (an organization or a person). */
     owner: Schema.String,
+    /** Whether `owner` is an organization or a person; absent while HQ does not know. */
+    ownerType: Schema.optionalKey(Schema.Literals(["User", "Organization"])),
     /** The app's page on GitHub. */
     appUrl: Schema.String,
     /** GitHub's page to install it on more repositories; what is installed from it waits. */
