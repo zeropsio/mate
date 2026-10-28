@@ -109,6 +109,7 @@ function mateOf(
     closedOff: mate.closedOff,
     setupMarker: mate.setupMarker,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
+    ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
     // Who last signed each of its agents in, as HQ's record keeps it (`Mine` without an owner).

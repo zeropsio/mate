@@ -703,6 +703,69 @@ describe("a demanded detail", () => {
     fixture.requests.filter((request) => request.method === "GET" && request.path === HISTORY_PATH)
       .length;
 
+  it.effect(
+    "follows an exact import beyond project history through a late answer and its terminal update",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const answered = yield* Deferred.make<void>();
+        const importId = "accepted-import";
+        const path = `/process/${importId}`;
+        const imported = {
+          ...finished,
+          id: importId,
+          actionName: "project.create",
+          status: "RUNNING",
+        };
+        const fixture = fixtureWire((request) =>
+          request.method === "GET" && request.path === path
+            ? Effect.as(Deferred.await(answered), { status: 200, body: imported })
+            : request.method === "GET" && request.path === HISTORY_PATH
+              ? Effect.succeed({
+                  status: 200,
+                  body: { list: [{ ...finished, id: "newest", status: "FAILED" }] },
+                })
+              : answers(() => [])(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(DEMAND);
+        const demand = { family: "process", listing: "process", ownerId: importId } as const;
+        const release = link.demandDetail(demand);
+        const releaseSecond = link.demandDetail(demand);
+        yield* settle;
+        expect(fixture.requests.filter((request) => request.path === path)).toHaveLength(1);
+        expect(factOf(store.state(), "process", importId)).toBeUndefined();
+        expect(factOf(store.state(), "process", "newest")?.content).toMatchObject({
+          value: { status: "FAILED" },
+        });
+        yield* Deferred.succeed(answered, undefined);
+        yield* settle;
+        expect(factOf(store.state(), "process", importId)?.content).toMatchObject({
+          value: { id: importId, status: "RUNNING" },
+        });
+        yield* fixture.push(fixture.subscription(PROCESS_SEARCH, "updateStream"), {
+          update: [{ ...imported, status: "FINISHED", _version: 2 }],
+        });
+        yield* settle;
+        expect(factOf(store.state(), "process", importId)?.content).toMatchObject({
+          value: { id: importId, status: "FINISHED" },
+        });
+        expect(fixture.requests.filter((request) => request.path === path)).toHaveLength(1);
+        expect(
+          fixture.requests.every(
+            (request) => request.method === "GET" || request.path.endsWith("/search"),
+          ),
+        ).toBe(true);
+        release();
+        yield* settle;
+        expect(store.state().streams.get(detailScopeOf(ORG, demand))?.demanded).toBe(true);
+        releaseSecond();
+        yield* settle;
+        expect(store.state().streams.get(detailScopeOf(ORG, demand))?.demanded).toBe(false);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("repairs a refused history session while an unrelated baseline is still opening", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
