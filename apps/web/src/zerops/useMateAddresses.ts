@@ -7,11 +7,13 @@
  * come from the one reader (`mateParts`): its dev pools' workspaces are the leases zcp holds for
  * the whole Mate in the lifecycle's newest envelope (`lifecycleLeases`), each by the chat it is for
  * (the conversation's own, `useThreadShell`), and a part migrated to a dev pool pairs its stage with the pool as that
- * envelope keys it (`poolPairsOf`).
+ * envelope keys it (`poolPairsOf`). Where a dev service or a workspace runs several dev servers,
+ * each running one is listed (`devServersOf`, the leases' own).
  */
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { derivePublicRoutes } from "@t3tools/client-runtime/zerops";
 import {
+  devServersOf,
   lifecycleLeases,
   poolPairsOf,
   standInsOf,
@@ -85,7 +87,11 @@ export function useMateAddresses(
             },
           });
     const addresses = mateAddresses({
-      services: topology.services,
+      // A dev service running several dev servers lists each running one (`mateAddresses`).
+      services: topology.services.map((service) => ({
+        ...service,
+        devServers: devServersOf(service.hostname, lifecycle),
+      })),
       leases: lifecycleLeases(lifecycle),
       leaseChats,
       poolPairs: poolPairsOf(lifecycle),

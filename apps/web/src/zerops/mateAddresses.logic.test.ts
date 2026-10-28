@@ -208,6 +208,41 @@ describe("mateAddresses", () => {
     expect(brief(input)).toEqual(expected);
   });
 
+  // A dev service running several dev servers (a monorepo: web and api): each running one is its
+  // own address, by the server's own name, its port where it has none — never "dev 2".
+  const devServer = (name: string, port: number, status = "running") => ({
+    name,
+    port,
+    status,
+    url: `https://appdev-1df2-${String(port)}.prg1.zerops.app`,
+  });
+  const named = (input: MateAddressInput) =>
+    mateAddresses(input).map(({ role, name, url }) => ({ role, name, url }));
+
+  it.each([
+    {
+      name: "a one-part app's dev address is today's: one dev server names nothing",
+      servers: [devServer("web", 3000)],
+      expected: [{ role: "dev", name: "App", url: "https://appdev-1df2-3000.prg1.zerops.app" }],
+    },
+    {
+      name: "each running dev server of a dev service is its own dev address, by its own name, its port where it has none",
+      servers: [devServer("web", 3000), devServer("", 8080), devServer("worker", 9000, "stopped")],
+      expected: [
+        { role: "dev", name: "App · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { role: "dev", name: "App · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+      ],
+    },
+  ])("$name", ({ servers, expected }) => {
+    expect(
+      named({
+        services: [
+          { ...svc("appdev", ["https://appdev-1df2-3000.prg1.zerops.app"]), devServers: servers },
+        ],
+      }),
+    ).toEqual(expected);
+  });
+
   it("carries the address without its scheme, what a row shows", () => {
     expect(mateAddresses({ services: [svc("app", ["https://app-1-3000.example.app/"])] })).toEqual([
       {
@@ -381,6 +416,25 @@ describe("a thread's lease's addresses", () => {
     ).toEqual([
       { service: "hqpool-2", role: "dev", name: "HQ", url: HQ_URL },
       { service: "webpool-3", role: "dev", name: "Web", url: LEASE_URL },
+    ]);
+  });
+
+  it("each running dev server of a workspace is its own address, by the chat it is for and the server's own name", () => {
+    const API_URL = "https://webpool-3-1df2-8080.prg1.zerops.app";
+    const addresses = mateAddresses({
+      services: [pool],
+      leases: [
+        lease([
+          running("web", 3000, LEASE_URL),
+          running("api", 8080, API_URL),
+          { ...running("worker", 9000), status: "starting" },
+        ]),
+      ],
+      leaseChats: [{ alias: "webpool-3", title: "Fix the login" }],
+    });
+    expect(addresses.map(({ role, name, url }) => ({ role, name, url }))).toEqual([
+      { role: "dev", name: "Web · Fix the login · web", url: LEASE_URL },
+      { role: "dev", name: "Web · Fix the login · api", url: API_URL },
     ]);
   });
 

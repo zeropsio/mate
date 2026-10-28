@@ -15,19 +15,23 @@
  * Mate rows read too): each part's dev entries — a dev service's route, or each workspace the Mate
  * holds on a dev pool that opens by zcp's rule — and its preview, by the part's friendly name; then
  * every other public service by its name. A service's first route is its address: a second port
- * is the same page. The control plane serves Mate itself; browsing it from inside Mate is noise.
+ * is the same page — except where a dev entry runs several dev servers (a monorepo's web and api):
+ * then each running one is its own address, by the server's own name (its port where it has none),
+ * never numbered. One dev server names nothing. The control plane serves Mate itself; browsing it from inside Mate is noise.
  *
  * Pure: no React, no store.
  */
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import type { HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import {
+  isBrowsableUrl,
   mateParts,
   type MatePartLease,
   type MatePartLeaseChat,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import { partName, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
+import type { ZeropsDevServer } from "@t3tools/contracts";
 
 import { isServiceBrowserUrl } from "./serviceBrowserPolicy";
 
@@ -55,6 +59,30 @@ export interface MateAddress {
 
 type GroupRole = "stage" | "prod";
 
+/** A dev server as zcp read it on a dev service or a workspace. */
+type DevServerAddress = Pick<ZeropsDevServer, "name" | "port" | "url" | "status">;
+
+/**
+ * A dev entry's running dev servers, each with an address, where it runs several; none where it
+ * runs one or none, as its entry's own address is then the one.
+ */
+function runningServers(
+  servers: ReadonlyArray<DevServerAddress> | undefined,
+): ReadonlyArray<DevServerAddress & { readonly url: string }> {
+  const running = (servers ?? []).flatMap((server) =>
+    server.status === "running" && server.url !== undefined && isBrowsableUrl(server.url)
+      ? [{ ...server, url: server.url }]
+      : [],
+  );
+  return running.length > 1 ? running : [];
+}
+
+/** A dev server by its own name, by its port where it has none. */
+const serverName = (server: DevServerAddress): string =>
+  server.name.trim() !== "" || server.port === undefined
+    ? server.name.trim()
+    : `:${String(server.port)}`;
+
 export interface MateAddressInput {
   /** The Mate's own project's services, in topology order. */
   readonly services: ReadonlyArray<{
@@ -63,6 +91,8 @@ export interface MateAddressInput {
     /** The type-version, which tells a pool or a Box from a runtime (`servicePairs`). */
     readonly type?: string;
     readonly routes: ReadonlyArray<{ readonly url: string }>;
+    /** The dev servers zcp last read on it (`devServersOf`); absent while unread. */
+    readonly devServers?: ReadonlyArray<DevServerAddress> | undefined;
   }>;
   /** zcp's leases for the whole Mate, in the newest envelope its conversation read; absent unread. */
   readonly leases?: ReadonlyArray<MatePartLease> | undefined;
@@ -123,15 +153,24 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
   };
 
   const projectRole = input.ownRole === undefined ? undefined : ADDRESS_ROLE[input.ownRole];
+  // A dev entry's dev servers: a workspace's by its lease's alias, a dev service's by its hostname.
+  const serversOf = (service: string) =>
+    input.leases?.find((lease) => lease.alias === service)?.devServers ??
+    input.services.find((each) => each.hostname === service)?.devServers;
   for (const part of parts) {
-    for (const entry of part.dev)
-      if (entry.url !== undefined)
+    for (const entry of part.dev) {
+      if (entry.url === undefined) continue;
+      const name = entry.label === "dev" ? part.name : `${part.name} · ${entry.label}`;
+      const several = runningServers(serversOf(entry.service));
+      if (several.length === 0) add(entry.service, "dev", entry.url, name);
+      for (const server of several)
         add(
-          entry.service,
+          `${entry.service} ${serverName(server)}`,
           "dev",
-          entry.url,
-          entry.label === "dev" ? part.name : `${part.name} · ${entry.label}`,
+          server.url,
+          `${name} · ${serverName(server)}`,
         );
+    }
     // A pair's half is the Mate's preview, unless its project is itself the stage or production.
     if (part.preview?.url !== undefined)
       add(part.preview.service, projectRole ?? "preview", part.preview.url, part.name);
