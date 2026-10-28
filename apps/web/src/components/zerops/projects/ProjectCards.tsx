@@ -22,13 +22,19 @@ import {
   type ReactNode,
 } from "react";
 
-import { REVIEW_LABEL } from "@t3tools/client-runtime/zerops";
+import {
+  recipeReach,
+  REVIEW_LABEL,
+  type FlowPullRequest,
+  type RecipeReach,
+} from "@t3tools/client-runtime/zerops";
 import type { MatePart } from "@t3tools/client-runtime/zerops/mateParts";
 import { Link } from "@tanstack/react-router";
 import { useHqAppDetailHold, useHqAppDetails } from "~/zerops/useHqAppDetail";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
 import { rememberOverviewCards } from "~/zerops/overviewCardCount";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
+import { mergedMain, useZeropsChangeDetail } from "~/zerops/useZeropsChangeDetail";
 import { formatElapsed } from "~/components/ui/progress.logic";
 import { MateDot } from "../MateDot";
 import { StopReadAgain } from "../StopReadAgain";
@@ -46,6 +52,7 @@ import {
   placeLines,
   readyLine,
   readyTitle,
+  setupChangeWords,
   type CardChange,
   type CardMateReading,
   type PlaceLine,
@@ -370,6 +377,7 @@ export function CardChanges({
   mateName,
   onOpen,
   unknown,
+  setupReview,
 }: {
   readonly changes: ReadonlyArray<CardChange>;
   /** HQ has told the project's changes: until then none listed is no answer (`changesKnown`). */
@@ -388,6 +396,8 @@ export function CardChanges({
   readonly onOpen: (change: CardChange, from: HTMLElement) => void;
   /** Why its changes are not known, where HQ did not tell them (`changesUnknownOf`). */
   readonly unknown?: string | undefined;
+  /** What a waiting setup change's review is read by, so its row says what it changes. */
+  readonly setupReview?: SetupReview | undefined;
 }) {
   const rows = cardChangeRows(changes, releases);
   return (
@@ -420,11 +430,25 @@ export function CardChanges({
               );
             const { change } = row;
             const by = mateName(change.pull.mateProjectId);
+            const key = `${change.pull.repository}#${String(change.pull.number)}`;
+            if (change.setup === true && setupReview !== undefined)
+              return (
+                <SetupChangeRow
+                  by={by}
+                  change={change}
+                  face={face?.(change.pull.mateProjectId)}
+                  key={key}
+                  onOpen={(from) => {
+                    onOpen(change, from);
+                  }}
+                  review={setupReview}
+                />
+              );
             return (
               <ChangeRow
                 at={change.at}
                 face={face?.(change.pull.mateProjectId)}
-                key={`${change.pull.repository}#${String(change.pull.number)}`}
+                key={key}
                 line={by === undefined ? change.words : `${by} · ${change.words}`}
                 onOpen={(from) => {
                   onOpen(change, from);
@@ -438,6 +462,64 @@ export function CardChanges({
         </ul>
       )}
     </section>
+  );
+}
+
+/** The project a card's setup changes are reviewed in, as their review reads them. */
+export interface SetupReview {
+  readonly appId: string;
+  /** Each repository's `main` as the flow last told it (`mergedMain`). */
+  readonly repos:
+    | ReadonlyArray<{ readonly name: string; readonly mainHead?: string | null | undefined }>
+    | undefined;
+  readonly merged: ReadonlyArray<FlowPullRequest>;
+  readonly environments: Parameters<typeof recipeReach>[0]["environments"];
+}
+
+/**
+ * A setup change waiting for a person: what it changes, read as its review reads it — the files HQ
+ * recorded (`recipeReach`) — and the project's setup until they are read.
+ */
+function SetupChangeRow({
+  change,
+  review,
+  by,
+  face,
+  onOpen,
+}: {
+  readonly change: CardChange;
+  readonly review: SetupReview;
+  readonly by: string | undefined;
+  readonly face: ReactNode;
+  readonly onOpen: (from: HTMLElement) => void;
+}) {
+  const { pull } = change;
+  const detail = useZeropsChangeDetail({
+    link: { appId: review.appId, repo: pull.repository, number: pull.number },
+    head: pull.headSha,
+    main:
+      review.repos?.find((repo) => repo.name === pull.repository)?.mainHead ??
+      mergedMain(pull.repository, review.merged),
+  });
+  const read = detail.readout.kind === "read" ? detail.readout.value : undefined;
+  const reach: RecipeReach | undefined =
+    read?.filesKnown === true
+      ? recipeReach({
+          files: read.files.map((file) => ({ filename: file.path })),
+          environments: review.environments,
+        })
+      : undefined;
+  const words = setupChangeWords(reach);
+  return (
+    <ChangeRow
+      at={change.at}
+      face={face}
+      line={by === undefined ? words : `${by} · ${words}`}
+      onOpen={onOpen}
+      open={change.open}
+      pull={pull}
+      tone={change.tone}
+    />
   );
 }
 

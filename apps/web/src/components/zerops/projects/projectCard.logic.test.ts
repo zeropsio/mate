@@ -6,6 +6,7 @@ import {
   PRODUCTION_DEPLOYING,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
 import type { AddressDomain, DomainFace, PlaceAddresses } from "@t3tools/client-runtime/data";
 import { HqEnvironmentId } from "@t3tools/contracts";
@@ -40,6 +41,7 @@ import {
   readyLine,
   readyTitle,
   rollBackTarget,
+  setupChangeWords,
   siteOf,
   sinceWords,
   soleSite,
@@ -1451,9 +1453,10 @@ describe("a card's latest changes", () => {
       rows: [["Raise the stage's memory", false, "Setup files, not part of a release"]],
     },
     // Larkspur, 2026-10-28: Core held Filip's zcp's import files for a person, as their merge
-    // would change the stage and production built from them. Its Mate's Review leaves it out.
+    // would change the stage and production built from them. Its Mate's Review leaves it out; its
+    // row says what it changes once its review's files are read (`setupChangeWords`).
     {
-      case: "a setup change waiting for a person: how the environments it changes are built",
+      case: "a setup change waiting for a person: the project's setup, until its files are read",
       open: [
         pull({
           repository: "group",
@@ -1464,17 +1467,7 @@ describe("a card's latest changes", () => {
       ],
       merged: [],
       stage: stageOn(6),
-      rows: [
-        ["Mate: the group's import files", true, "Changes how Stage and Production are built"],
-      ],
-    },
-    {
-      case: "a setup change waiting where only a stage stands: how Stage is built",
-      open: [pull({ repository: "group", kind: "recipe", number: 2, title: "Add storage" })],
-      merged: [],
-      stage: stageOn(6),
-      production: false,
-      rows: [["Add storage", true, "Changes how Stage is built"]],
+      rows: [["Mate: the group's import files", true, "Changes the project's setup"]],
     },
     {
       case: "a setup change waiting where no environment stands: the project's setup",
@@ -1511,6 +1504,45 @@ describe("a card's latest changes", () => {
       }).map((change) => [change.pull.title, change.open, change.words]),
     ).toEqual(rows);
   });
+});
+
+// What its review reads of its files (`recipeReach`), never which environments the project has.
+describe("setupChangeWords", () => {
+  const reach = (over: Partial<RecipeReach> = {}): RecipeReach => ({
+    stages: 0,
+    production: false,
+    later: [],
+    unused: [],
+    ...over,
+  });
+  it.each([
+    { case: "its files unread", reach: undefined, words: "Changes the project's setup" },
+    {
+      case: "the stage's recipe and production's",
+      reach: reach({ stages: 1, production: true }),
+      words: "Changes how Stage and Production are built",
+    },
+    {
+      case: "the stage's recipe, where two stages are made from it",
+      reach: reach({ stages: 2 }),
+      words: "Changes how the stages are built",
+    },
+    {
+      case: "only production's recipe, where a stage stands too",
+      reach: reach({ production: true }),
+      words: "Changes how Production is built",
+    },
+    {
+      case: "only the recipe new Mates are made from",
+      reach: reach({ later: ["mate"] }),
+      words: "Changes the project's setup",
+    },
+  ])(
+    "says what a waiting setup change does by the recipes it changes: $case",
+    ({ reach, words }) => {
+      expect(setupChangeWords(reach)).toBe(words);
+    },
+  );
 });
 
 describe("cardChangeRows", () => {

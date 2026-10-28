@@ -456,6 +456,16 @@ export function useOverviewSlots<T extends PlaceItem>(input: {
         changes={changes}
         changesFailure={read?.changesFailure}
         changesKnown={read?.changesKnown === true}
+        setupReview={
+          read === undefined
+            ? undefined
+            : {
+                appId: entry.group.groupId,
+                repos: read.repos,
+                merged: read.merged,
+                environments: read.environmentInputs,
+              }
+        }
         face={(projectId) => {
           const item = entry.mates.get(projectId);
           return item === undefined ? undefined : input.mateFace(item);

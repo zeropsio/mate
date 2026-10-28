@@ -27,6 +27,7 @@ import {
   type GroupFlowMate,
   type GroupFlowProduction,
   type GroupFlowStop,
+  type RecipeReach,
 } from "@t3tools/client-runtime/zerops";
 import { UNREAD_ENVIRONMENT_LINE } from "@t3tools/client-runtime/zerops/hq";
 import type { ThreadStatusKind } from "@t3tools/shared/threadStatus";
@@ -954,6 +955,11 @@ export interface CardChange {
   readonly tone: NonNullable<ReturnType<typeof changeState>>["tone"];
   /** When it last moved: updated while open, merged once landed. */
   readonly at: string | undefined;
+  /**
+   * A setup change waiting for a person: its row reads what it does from its review
+   * (`setupChangeWords`), its `words` until then.
+   */
+  readonly setup?: true;
 }
 
 const newestFirst = (left: string | undefined, right: string | undefined) =>
@@ -1007,11 +1013,20 @@ function setupChangeWaits(pull: FlowPullRequest): boolean {
   );
 }
 
-/** What a waiting setup change does, by the environments the project has: "Changes how Stage is built". */
-function setupChangeWords(has: { readonly stage: boolean; readonly production: boolean }): string {
-  if (has.stage && has.production) return "Changes how Stage and Production are built";
-  if (has.stage) return "Changes how Stage is built";
-  if (has.production) return "Changes how Production is built";
+/**
+ * What a waiting setup change does, by what its review reads of it (`recipeReach`, from the files
+ * HQ recorded): "Changes how Stage is built". Never guessed from which environments exist: until its
+ * files are read, or where it changes none of them, it changes the project's setup.
+ */
+export function setupChangeWords(reach: RecipeReach | undefined): string {
+  const stages = reach?.stages ?? 0;
+  if (stages > 0 && reach?.production === true)
+    return stages > 1
+      ? "Changes how the stages and Production are built"
+      : "Changes how Stage and Production are built";
+  if (stages > 0)
+    return stages > 1 ? "Changes how the stages are built" : "Changes how Stage is built";
+  if (reach?.production === true) return "Changes how Production is built";
   return "Changes the project's setup";
 }
 
@@ -1049,11 +1064,10 @@ export function cardChanges(input: {
       return {
         pull,
         open: true,
-        words: setupChangeWaits(pull)
-          ? setupChangeWords({ stage: input.stage !== undefined, production: input.production })
-          : (state?.word ?? "Open"),
+        words: setupChangeWaits(pull) ? setupChangeWords(undefined) : (state?.word ?? "Open"),
         tone: state?.tone ?? "off",
         at: pull.updatedAt,
+        ...(setupChangeWaits(pull) ? { setup: true as const } : {}),
       };
     });
   const merged = input.merged
