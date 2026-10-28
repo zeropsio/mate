@@ -51,10 +51,11 @@ import {
   type AccessRow,
   type AccessTableView,
   type CellChoice,
+  type CellLevel,
   type columnPeople,
 } from "./accessTable.logic";
 import { ADD_TROUBLE, AccessBadge, AddAccess, type AccessPick } from "./ProjectAccessChips";
-import { selfLowerWords } from "./projectPeople.logic";
+import { LEVEL_MEANING, selfLowerWords } from "./projectPeople.logic";
 
 /** The key a cell's write is held under while it saves, and its refusal said by. */
 export const cellKey = (row: Pick<AccessRow, "key">, projectId: string): string =>
@@ -175,6 +176,11 @@ export function ProjectAccessTable({
           saving={saving}
         />
       )}
+      {view.kind === "table" && rows.length > 0 ? (
+        <p className="ov-acc-legend">
+          Plain: what the organization gives. Highlighted: set for this place.
+        </p>
+      ) : null}
       {said.map(({ key, line }) => (
         <p className="ov-sec-empty" data-tone="failed" key={key} role="alert">
           {line}
@@ -448,12 +454,23 @@ function Level({ cell, busy }: { readonly cell: AccessCell; readonly busy: boole
   return <AccessBadge level={cell.level} />;
 }
 
-/** What a cell says when hovered: its level, where it comes from, and why it's fixed. */
-const cellTip = (cell: AccessCell, column: AccessColumn, row: AccessRow): string =>
-  cell.fixed ??
-  (cell.level === "owner"
-    ? `${column.label} is ${row.name}’s Mate.`
-    : `${CELL_WORDS[cell.level]} on ${column.label}${cell.byDefault ? " · organization default" : ""}`);
+/** What a level means, in one line: owner and unknown cells say why they stand as they do. */
+const meaningOf = (level: CellLevel): string | null =>
+  level === "owner" || level === "unknown" ? null : LEVEL_MEANING[level];
+
+/**
+ * What a cell says when hovered: its level and what it lets them do, then where it comes from —
+ * the organization, by their role, or this place — and why it's fixed.
+ */
+const cellTip = (cell: AccessCell, column: AccessColumn, row: AccessRow): string => {
+  const meaning = meaningOf(cell.level);
+  if (meaning === null) return cell.fixed ?? `${column.label} is ${row.name}’s Mate.`;
+  return [
+    `${CELL_WORDS[cell.level]} on ${column.label}: ${meaning}`,
+    cell.byDefault ? `From the organization (${row.role}).` : "Set for this place.",
+    ...(cell.fixed === null ? [] : [cell.fixed]),
+  ].join(" ");
+};
 
 function Cell({
   row,
@@ -599,6 +616,19 @@ function StackedRow({
   );
 }
 
+/** A face's hover on a place's page: what their level lets them do, and where it comes from. */
+function summaryTip(
+  person: NonNullable<ReturnType<typeof columnPeople>>["people"][number],
+  label: string,
+): string {
+  const meaning = meaningOf(person.level);
+  if (meaning === null) return `${label} is ${person.name}’s Mate.`;
+  return [
+    `${person.name}, ${CELL_WORDS[person.level]}: ${meaning}`,
+    person.byDefault ? `From the organization (${person.role}).` : "Set for this place.",
+  ].join(" ");
+}
+
 /**
  * Who reaches one place, read only: faces with their level there, and the way to change it on the
  * app's page — a place's own page, a Mate's *Access*.
@@ -626,18 +656,23 @@ export function PlaceAccessSummary({
       ) : (
         <ul aria-label="Who has access" className="ov-reach">
           {summary.people.map((person) => (
-            <li data-pending={person.pending || undefined} key={person.key}>
-              <PersonAvatar name={person.name} picture={person.avatarUrl} size={20} />
-              <span data-part="name">{person.short}</span>
-              <span
-                className="ov-acc-level"
-                data-muted={person.byDefault || undefined}
-                data-part="level"
-              >
-                {CELL_WORDS[person.level]}
-                {person.byDefault ? <span className="sr-only">, organization default</span> : null}
-              </span>
-            </li>
+            <Tooltip key={person.key}>
+              <TooltipTrigger render={<li data-pending={person.pending || undefined} />}>
+                <PersonAvatar name={person.name} picture={person.avatarUrl} size={20} />
+                <span data-part="name">{person.short}</span>
+                <span
+                  className="ov-acc-level"
+                  data-muted={person.byDefault || undefined}
+                  data-part="level"
+                >
+                  {CELL_WORDS[person.level]}
+                  {person.byDefault ? (
+                    <span className="sr-only">, organization default</span>
+                  ) : null}
+                </span>
+              </TooltipTrigger>
+              <TooltipPopup side="top">{summaryTip(person, summary.label)}</TooltipPopup>
+            </Tooltip>
           ))}
         </ul>
       )}

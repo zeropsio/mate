@@ -51,6 +51,7 @@ import {
   ACCESS_LEVEL_LINES,
   asksFirst,
   BADGE_WORDS,
+  LEVEL_MEANING,
   personMenu,
   type AccessCandidate,
   type ChipLevel,
@@ -294,6 +295,10 @@ function HoverCard({ person }: { readonly person: ProjectPerson }) {
         {[person.role, ...(person.pending ? ["invited, not joined yet"] : [])].join(" · ")}
       </span>
       {person.line === "" ? null : <span className="ov-chip-card-line">{person.line}</span>}
+      <span className="ov-chip-card-line">
+        {BADGE_WORDS[person.level]}:{" "}
+        {LEVEL_MEANING[person.level === "hidden" ? "none" : person.level]}
+      </span>
       {person.note === null ? null : <span className="ov-chip-card-line">{person.note}</span>}
     </div>
   );

@@ -519,9 +519,17 @@ export const LEVEL_WORDS: Readonly<Record<GivenLevel, string>> = {
 /** A badge in words, for a hover card's list and for a screen reader. */
 export const BADGE_WORDS: Readonly<Record<ChipLevel, string>> = {
   full: "Full",
-  basic: "More than Read",
+  basic: "Edit",
   read: "Read",
   hidden: "Hidden",
+};
+
+/** What each level lets someone do, in one line: said where a level is hovered. */
+export const LEVEL_MEANING: Readonly<Record<AccessLevel | "none", string>> = {
+  full: "Changes anything here, including who has access.",
+  basic: "Deploys and changes services, but not who has access.",
+  read: "Sees it, changes nothing.",
+  none: "Doesn’t see it.",
 };
 
 /** A person's menu: the levels they may be given, theirs checked, then the way out. */

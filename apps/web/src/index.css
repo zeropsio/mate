@@ -7769,6 +7769,13 @@ a.ov-acc-face:hover [data-part="name"] {
   white-space: nowrap;
 }
 
+/* What plain and highlighted levels mean, said once under the table. */
+.ov-acc-legend {
+  color: var(--muted-foreground);
+  font-size: 12px;
+  line-height: 16px;
+}
+
 /* One place's people, read only: faces with their level there, then the way to change it. */
 .ov-reach {
   display: flex;

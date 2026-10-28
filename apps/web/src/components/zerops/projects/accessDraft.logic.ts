@@ -221,7 +221,7 @@ export function draftSpeaks(view: ProjectPeopleView): boolean {
 /** A level as a sentence says it: "with Full access". */
 const LEVEL_PHRASE: Readonly<Record<ChipLevel, string>> = {
   full: "Full access",
-  basic: "more than Read access",
+  basic: "Edit access",
   read: "Read access",
   hidden: "no access",
 };

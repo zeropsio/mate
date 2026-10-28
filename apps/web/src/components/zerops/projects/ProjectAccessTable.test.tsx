@@ -68,6 +68,13 @@ describe("an app's access table", () => {
     ]);
   });
 
+  it("One line under the table says what plain and highlighted levels mean", () => {
+    const body = parse(renderToStaticMarkup(<ProjectAccessTable view={accessTable(INPUT)} />));
+    expect(body.textContent).toContain(
+      "Plain: what the organization gives. Highlighted: set for this place.",
+    );
+  });
+
   it("A Mate's owner cell and a viewer who changes nothing get no menu", () => {
     const editable = parse(
       renderToStaticMarkup(<ProjectAccessTable onCell={() => {}} view={accessTable(INPUT)} />),

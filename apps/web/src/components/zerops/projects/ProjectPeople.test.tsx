@@ -107,7 +107,7 @@ describe("a project's People section", () => {
       rows: [
         { text: ["Petr N.", "Full"], pending: false },
         { text: ["Anna B.", "Full"], pending: false },
-        { text: ["iva@example.com", "More than Read"], pending: true },
+        { text: ["iva@example.com", "Edit"], pending: true },
       ],
       note: undefined,
     });
@@ -227,7 +227,7 @@ describe("changing who can work on a project", () => {
     expect(chipsOf(section).map(({ text }) => text)).toEqual([
       ["Anna B.", "Full"],
       ["Petr N.", "Saving…"],
-      ["iva@example.com", "More than Read"],
+      ["iva@example.com", "Edit"],
     ]);
     expect(section?.querySelector('[role="alert"]')?.textContent).toBe(
       "iva@example.com: Only an organization owner or admin can change who has access.",

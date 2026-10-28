@@ -390,7 +390,7 @@ describe("ZeropsNewProjectForm — who can open the project", () => {
         (node) => node.props["aria-label"] === "Project access" && node.type === "ul",
       );
     expect(spoken(host(tree, (node) => node.props["data-zerops-access"] === "line"))).toBe(
-      "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with more than Read access.",
+      "Everyone in Mate s.r.o. can open it: 17 with Full access, Karlos with Edit access.",
     );
     expect(chips()).toHaveLength(0);
     const change = host(

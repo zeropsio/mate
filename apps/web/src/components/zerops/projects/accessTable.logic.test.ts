@@ -123,7 +123,7 @@ describe("an app's access, people by places", () => {
       cells: ["full·", "full·", "full·"],
     },
     {
-      sentence: "A developer of the organization has more than Read everywhere, by default",
+      sentence: "A developer of the organization has Edit everywhere, by default",
       member: member("cy", "Cy", "BASIC_USER"),
       projects: [PROD, STAGE, FEN],
       cells: ["basic·", "basic·", "basic·"],
@@ -217,7 +217,7 @@ describe("changing one place's access from its cell", () => {
       member: member("cy", "Cy", "BASIC_USER"),
       project: PROD,
       viewer: OWNER_VIEWER,
-      offered: ["Full", "Read", "None", "[Organization default (More than Read)]"],
+      offered: ["Full", "Read", "None", "[Organization default (Edit)]"],
     },
     {
       sentence: "A level set on a place is checked, the default a way back",
@@ -288,7 +288,7 @@ describe("the same level everywhere for one person", () => {
       "Full",
       "Read",
       "None",
-      "Organization default (More than Read)",
+      "Organization default (Edit)",
     ]);
     expect(everywhereChanges({ row: ada, columns: view.columns, choice: "read" })).toEqual([
       { clientUserId: "cu-ada", projectId: "p-prod", roleCode: "READ_ONLY" },
@@ -327,7 +327,7 @@ describe("a person's places on a phone", () => {
       accessTable(input([ADA], [PROD, with_(STAGE, [["ada", "READ_ONLY"]]), FEN, JUNO])),
     );
     expect(rowSummary(rowOf(view, "Ada Lindqvist")!, view.columns)).toBe(
-      "Owner: Fen · More than Read: Production, Juno · Read: Stage",
+      "Owner: Fen · Edit: Production, Juno · Read: Stage",
     );
   });
 });
