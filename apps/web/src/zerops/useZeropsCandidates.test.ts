@@ -1,3 +1,8 @@
+import { AtomRegistry } from "effect/reactivity";
+import { accountReadsAtom, makeAccountStore } from "@t3tools/client-runtime/data";
+import { liveZerops, ORG, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
+import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
+import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
 import { EnvironmentId } from "@t3tools/contracts";
 import { act, createElement, useEffect } from "react";
 import { createRoot } from "react-dom/client";
@@ -19,10 +24,22 @@ import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { onZeropsInvalidation } from "./accountInvalidations";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import {
+  allCandidateListingAtom,
   authenticatedZeropsOrigins,
   useZeropsCandidates,
   withZeropsConnection,
 } from "./useZeropsCandidates";
+
+const candidateSource = vi.hoisted(() => ({
+  rows: (_registry: AtomRegistry.AtomRegistry, _rows: Shown<ReadonlyArray<CandidateRow>>) => {},
+}));
+vi.mock("../state/zerops", async (importOriginal) => {
+  const original = await importOriginal<object>();
+  const { Atom } = await import("effect/reactivity");
+  const rows = Atom.make<Shown<ReadonlyArray<CandidateRow>>>({ state: "unread", waitingFor: null });
+  candidateSource.rows = (registry, value) => registry.set(rows, value);
+  return { ...original, mateRowsAtom: rows, zeropsEnvironmentsAtom: Atom.make([]) };
+});
 
 const organizationRef = (organizationId: string): OrganizationRef => ({
   kind: "organization",
@@ -87,6 +104,97 @@ const READY = {
   ...deriveZeropsCandidates(PROJECT, [SERVICE], new Map())[0]!,
   presence: "known" as const,
 };
+
+describe("allCandidateListingAtom public access", () => {
+  it.each([
+    { publication: "none", routing: false, synced: false, pending: false, urls: [] },
+    { publication: "pending", routing: true, synced: false, pending: true, urls: [] },
+    {
+      publication: "serving",
+      routing: true,
+      synced: true,
+      pending: false,
+      urls: ["https://stage.example.com"],
+    },
+  ])(
+    "a candidate reads $publication publication arriving after its first paint",
+    ({ routing, synced, pending, urls }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      liveZerops({
+        running: [],
+        projects: [{ ...PROJECT }],
+        services: [
+          {
+            id: "app",
+            projectId: PROJECT.id,
+            name: "app",
+            subdomainAccess: false,
+            ports: [{ port: 80, scheme: "http" }],
+          },
+        ],
+      }).forEach(store.dispatch);
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId: ORG,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      candidateSource.rows(registry, {
+        state: "known",
+        value: [READY],
+        coverage: "complete",
+        asOf: { ordinal: 1, atMs: 0 },
+        freshness: { kind: "live" },
+      });
+      const stop = registry.mount(allCandidateListingAtom);
+      const candidate = () => {
+        const listing = registry.get(allCandidateListingAtom);
+        expect(listing.state).toBe("known");
+        if (listing.state !== "known") throw new Error("Expected the recorded candidate listing");
+        return listing.value[0]!;
+      };
+      expect(candidate().addressPending).toBeUndefined();
+      expect(candidate().routes).toBeUndefined();
+      const scope = `zerops:${ORG}:routings` as const;
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        { kind: "handshake" },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+      store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation: 1,
+        via: "zerops-realtime",
+        members: routing ? ["public-route"] : [],
+        rows: routing
+          ? [
+              {
+                family: "publicRouting",
+                id: "public-route",
+                revision: zeropsVersion(1),
+                value: {
+                  projectId: PROJECT.id,
+                  isSynced: synced,
+                  sslEnabled: true,
+                  domains: [{ domainName: "stage.example.com" }],
+                  locations: [{ path: "/", port: 80, serviceStackId: "app" }],
+                },
+              },
+            ]
+          : [],
+      });
+      store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+      expect(candidate().addressPending).toBe(pending);
+      expect(candidate().routes?.map(({ url }) => url)).toEqual(urls);
+      stop();
+      registry.dispose();
+    },
+  );
+});
 
 describe("authenticatedZeropsOrigins", () => {
   it("does not group a registered same-origin environment as connected until it authenticates", () => {

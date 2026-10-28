@@ -2,7 +2,7 @@ import { seedHqNavigation } from "./__fixtures__/hqNavigation.ts";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveZerops, ORG } from "./__fixtures__/account.ts";
+import { liveZerops, ORG, zeropsVersion } from "./__fixtures__/account.ts";
 import { detailScopeOf } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
@@ -18,10 +18,12 @@ import {
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
+  projectPublicAccessAtom,
   projectsServicesAtom,
   projectStandingAtom,
 } from "./reads.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
+import { projectRoutingsScope, routingsScope } from "./families/publicRouting.ts";
 import { usageOwnerOf, usageScope } from "./families/usage.ts";
 
 describe("projectProcessesAtom", () => {
@@ -137,6 +139,165 @@ describe("projectServicesAtom", () => {
       renewHeld: () => {},
     });
     expect(registry.get(atom)).toEqual(NOT_READ_SERVICES);
+  });
+});
+
+describe("projectPublicAccessAtom", () => {
+  it.each([
+    {
+      publication: "none",
+      subdomainAccess: false,
+      routing: false,
+      isSynced: false,
+      routes: [],
+      pending: [],
+    },
+    {
+      publication: "pending",
+      subdomainAccess: false,
+      routing: true,
+      isSynced: false,
+      routes: [],
+      pending: ["https://shop.example.com"],
+    },
+    {
+      publication: "serving",
+      subdomainAccess: false,
+      routing: true,
+      isSynced: true,
+      routes: ["https://shop.example.com"],
+      pending: [],
+    },
+  ])(
+    "reads $publication publication from the mounted account's routing evidence",
+    ({ subdomainAccess, routing, isSynced, routes, pending }) => {
+      const registry = AtomRegistry.make();
+      const store = makeAccountStore(registry);
+      const atom = projectPublicAccessAtom("p1");
+      expect(registry.get(atom).state).toBe("reading");
+      liveZerops({
+        running: [],
+        projects: [{ id: "p1" }],
+        services: [
+          {
+            id: "app",
+            projectId: "p1",
+            name: "app",
+            subdomainAccess,
+            ports: [{ port: 80, scheme: "http" }],
+          },
+        ],
+      }).forEach(store.dispatch);
+      registry.set(accountReadsAtom, {
+        data: store.data,
+        orgId: ORG,
+        demandDetail: () => () => {},
+        renewHeld: () => {},
+      });
+      const unmount = registry.mount(atom);
+      expect(registry.get(atom).state).toBe("reading");
+      const scope = routingsScope(ORG);
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        { kind: "handshake" },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+      store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation: 1,
+        via: "zerops-realtime",
+        members: routing ? ["route"] : [],
+        rows: routing
+          ? [
+              {
+                family: "publicRouting",
+                id: "route",
+                revision: zeropsVersion(1),
+                value: {
+                  projectId: "p1",
+                  isSynced,
+                  sslEnabled: true,
+                  domains: [{ domainName: "shop.example.com" }],
+                  locations: [{ path: "/", port: 80, serviceStackId: "app" }],
+                },
+              },
+            ]
+          : [],
+      });
+      store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+      const access = registry.get(atom);
+      expect(access.state).toBe("ready");
+      expect(access.routes.map(({ url }) => url)).toEqual(routes);
+      expect(access.pending.map(({ url }) => url)).toEqual(pending);
+      registry.set(accountReadsAtom, null);
+      expect(registry.get(atom).state).toBe("reading");
+      unmount();
+      registry.dispose();
+    },
+  );
+
+  it("holds a refused organization routing's project fallback once until the account closes", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1" }], services: [] }).forEach(store.dispatch);
+    const demands: Array<import("./demand.ts").DetailDemand> = [];
+    let released = 0;
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: (demand) => {
+        demands.push(demand);
+        return () => {
+          released++;
+        };
+      },
+      renewHeld: () => {},
+    });
+    const atom = projectPublicAccessAtom("p1");
+    const stop = registry.mount(atom);
+    const scope = routingsScope(ORG);
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      {
+        kind: "fault",
+        fault: { outcome: "authoritative-denial", message: "Insufficient permissions" },
+        jitter: 0,
+      },
+    ] as const)
+      store.dispatch({ kind: "stream", key: scope, now: 0, event });
+    expect(registry.get(atom).readsProject).toBe(true);
+    expect(demands).toEqual([
+      { family: "publicRouting", listing: "projectRoutings", ownerId: "p1" },
+    ]);
+    const own = projectRoutingsScope(ORG, "p1");
+    for (const event of [
+      { kind: "demand", demanded: true },
+      { kind: "attempt" },
+      { kind: "handshake" },
+    ] as const)
+      store.dispatch({ kind: "stream", key: own, now: 0, event });
+    store.dispatch({ kind: "baseline-begin", scope: own, generation: 1 });
+    store.dispatch({
+      kind: "baseline-commit",
+      scope: own,
+      generation: 1,
+      via: "zerops-realtime",
+      members: [],
+      rows: [],
+    });
+    store.dispatch({ kind: "stream", key: own, now: 0, event: { kind: "baseline-committed" } });
+    expect(registry.get(atom).state).toBe("ready");
+    expect(demands).toHaveLength(1);
+    expect(released).toBe(0);
+    registry.set(accountReadsAtom, null);
+    expect(registry.get(atom).readsProject).toBe(false);
+    expect(released).toBe(1);
+    stop();
+    registry.dispose();
   });
 });
 

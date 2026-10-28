@@ -87,7 +87,7 @@ describe("stopComing — where a stage or a production coming up has got", () =>
     },
     {
       case: "running after a deploy, no address yet",
-      over: { routes: 0 },
+      over: { routes: 0, addressPending: true },
       coming: { kind: "coming", step: "address" },
     },
     {
@@ -216,19 +216,18 @@ describe("stopComing — where a stage or a production coming up has got", () =>
     },
     {
       case: "a birth HQ still runs, however long ago it began: still coming up",
-      over: { birth: { ended: false }, routes: 0 },
+      over: { birth: { ended: false }, routes: 0, addressPending: true },
       coming: { kind: "coming", step: "address" },
     },
-    // HQ ends its bringing up as the first deploy ends, and the platform turns the address on in
-    // its next read, about 0.8 s later: the menu's heading read Running with nowhere to open.
+    // Finishing the deploy and publishing its address are separate owner evidence.
     {
       case: "a stage HQ brought up serving a port its address would open: turning its address on until it is there",
-      over: { birth: { ended: true }, routes: 0, addressOffered: true },
+      over: { birth: { ended: true }, routes: 0, addressPending: true },
       coming: { kind: "coming", step: "address" },
     },
     {
       case: "a stage HQ brought up serving no port its address would open: running as it is",
-      over: { birth: { ended: false }, routes: 0, addressOffered: false },
+      over: { birth: { ended: false }, routes: 0, addressPending: false },
       coming: undefined,
     },
     {
@@ -237,7 +236,7 @@ describe("stopComing — where a stage or a production coming up has got", () =>
         birth: { ended: true },
         services: [db("STOPPED"), app("ACTIVE")],
         routes: 0,
-        addressOffered: true,
+        addressPending: true,
       },
       coming: undefined,
     },
@@ -278,26 +277,25 @@ describe("stopComing — where a stage or a production coming up has got", () =>
 
 describe("addressComing — a place HQ brought up turns its address on, the card's and the menu's one rule", () => {
   it.each([
-    { case: "brought up, a port to open, no address yet", over: {}, coming: true },
+    { case: "brought up, a port to open, no address yet", over: { pending: true }, coming: true },
     { case: "brought up, its address there", over: { addresses: 1 }, coming: false },
-    { case: "brought up, no port its address would open", over: { offered: false }, coming: false },
+    { case: "brought up, no port its address would open", over: { pending: false }, coming: false },
     {
       case: "its ports unread while HQ still brings it up: still coming",
-      over: { offered: undefined, birth: { ended: false } },
+      over: { pending: true },
       coming: true,
     },
     {
       case: "its ports unread once HQ is done bringing it up: HQ's word, done",
-      over: { offered: undefined },
+      over: { pending: undefined },
       coming: false,
     },
-    { case: "one HQ did not bring up", over: { birth: null }, coming: false },
+    { case: "one HQ did not bring up", over: { pending: false }, coming: false },
   ])("$case", ({ over, coming }) => {
     expect(
       addressComing({
-        birth: { ended: true } as EnvironmentBirth | null,
         addresses: 0,
-        offered: true as boolean | undefined,
+        pending: false as boolean | undefined,
         ...over,
       }),
     ).toBe(coming);
@@ -513,6 +511,7 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
     if (!("stop" in flow.production)) throw new Error("the production is listed");
     return listedStopComing("production", {
       stop: flow.production.stop,
+      addressPending: true,
       projectStatus: "ACTIVE",
       services: [db("ACTIVE"), app("ACTIVE")],
       building: false,
@@ -555,22 +554,48 @@ describe("listedStopComing — a production, read the way the menu reads it", ()
 });
 
 describe("listedStopComing — a stage, read the way the menu reads it", () => {
-  // The menu's heading read "Running" for the beat between HQ's bringing up ending and the
-  // platform turning the address on, as the card's line did before.
+  // HQ brought the stage up and its publication is in progress.
   it("keeps a stage HQ brought up turning its address on until it is there, as its card does", () => {
-    const listed = (routes: number, offered: boolean | undefined) =>
+    const listed = (routes: number, pending: boolean | undefined) =>
       listedStopComing("stage", {
         stop: { state: "deployed", version: { label: "v1" }, birth: { ended: true } },
         projectStatus: "ACTIVE",
         services: [db("ACTIVE"), app("ACTIVE")],
         building: false,
         routes,
-        addressOffered: offered,
+        addressPending: pending,
       });
     expect(listed(0, true)).toEqual({ kind: "coming", step: "address" });
     expect(listed(1, true)).toBeUndefined();
     expect(listed(0, false)).toBeUndefined();
   });
+});
+
+describe("a finished stage's address publication", () => {
+  it.each([
+    {
+      publication: "pending",
+      addressPending: true,
+      routes: 0,
+      coming: { kind: "coming", step: "address" },
+    },
+    { publication: "none", addressPending: false, routes: 0, coming: undefined },
+    { publication: "present", addressPending: false, routes: 1, coming: undefined },
+  ] as const)(
+    "shows address progress only for a pending publication: $publication",
+    ({ addressPending, routes, coming }) => {
+      expect(
+        listedStopComing("stage", {
+          stop: { state: "deployed", version: { label: "v1" }, birth: { ended: true } },
+          projectStatus: "ACTIVE",
+          services: [db("ACTIVE"), app("ACTIVE")],
+          building: false,
+          routes,
+          addressPending,
+        }),
+      ).toEqual(coming);
+    },
+  );
 });
 
 describe("comingLine — the line an environment coming up says", () => {

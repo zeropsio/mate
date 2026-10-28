@@ -446,61 +446,73 @@ describe("a card's places", () => {
   });
 
   // The onboarding run: "Running · main" stood two seconds with nowhere to go before the stage's
-  // address came. HQ brings a stage up until its address is on (`EnvironmentBirth`) — and marks it
-  // up as its first deploy ends, the address coming ~0.8 s later in the platform's next read: a
-  // stage that serves a port its address opens still turns it on. One serving none runs as is.
+  // A pending publication retains address progress; published stages keep their running label.
   it.each([
     {
       case: "while HQ still brings it up",
       birth: { ended: false },
-      offered: undefined,
+      pending: true,
+      published: false,
       words: "Turning its address on…",
     },
     {
       case: "once HQ has brought it up",
       birth: { ended: true },
-      offered: undefined,
+      pending: false,
+      published: true,
       words: "Running",
     },
     {
       case: "once HQ has brought it up, while the address its app serves is still being turned on",
       birth: { ended: true },
-      offered: true,
+      pending: true,
+      published: false,
       words: "Turning its address on…",
     },
     {
       case: "once HQ has brought it up, serving nothing an address would open",
       birth: { ended: true },
-      offered: false,
+      pending: false,
+      published: true,
       words: "Running",
     },
     {
       case: "while HQ still brings it up, serving nothing an address would open",
       birth: { ended: false },
-      offered: false,
+      pending: false,
+      published: true,
       words: "Running",
     },
-    { case: "where HQ did not bring it up", birth: undefined, offered: true, words: "Running" },
-  ])("says a stage runs only with its address, $case", ({ birth, offered, words: said }) => {
-    const lines = placeLines({
-      ...(offered === undefined ? {} : { addressOffered: new Map([["stage", offered]]) }),
-      flow: {
-        production: { kind: "absent" },
-        stages: [
-          stop({
-            projectId: "stage",
-            name: "stage",
-            source: "main",
-            addresses: [],
-            ...(birth === undefined ? {} : { birth }),
-          }),
-        ],
-      },
-      stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
-      nowMs: NOW,
-    });
-    expect(lines[0]?.words.join(" · ")).toBe(said);
-  });
+    {
+      case: "where HQ did not bring it up",
+      birth: undefined,
+      pending: false,
+      published: true,
+      words: "Running",
+    },
+  ])(
+    "says a stage runs only with its address, $case",
+    ({ birth, pending, published, words: said }) => {
+      const lines = placeLines({
+        addressPending: new Map([["stage", pending]]),
+        flow: {
+          production: { kind: "absent" },
+          stages: [
+            stop({
+              projectId: "stage",
+              name: "stage",
+              source: "main",
+              addresses: published ? [{ service: "app", url: "https://stage.example.com/" }] : [],
+              ...(birth === undefined ? {} : { birth }),
+            }),
+          ],
+        },
+        stageChips: new Map([["stage", chip({ label: "stage", version: "main" })]]),
+        nowMs: NOW,
+      });
+      expect(lines[0]?.words.join(" · ")).toBe(said);
+    },
+  );
 });
 
 describe("since when production runs what it runs", () => {
@@ -2018,3 +2030,41 @@ describe("a tier an application does not have, on its page's column", () => {
     },
   );
 });
+
+it.each([
+  {
+    publication: "pending",
+    addressPending: true,
+    addresses: [],
+    dot: "unknown",
+    words: ["Turning its address on…"],
+  },
+  {
+    publication: "none",
+    addressPending: false,
+    addresses: [],
+    dot: "running",
+    words: ["No public address yet"],
+  },
+  {
+    publication: "present",
+    addressPending: false,
+    addresses: [{ service: "app", url: "https://stage.example.com/" }],
+    dot: "running",
+    words: ["Running", "v2.3.1"],
+  },
+] as const)(
+  "a finished stage's card reflects its address publication: $publication",
+  ({ addressPending, addresses, dot, words }) => {
+    const [line] = placeLines({
+      flow: {
+        production: { kind: "absent" },
+        stages: [stop({ name: "stage", projectId: "stage", birth: { ended: true }, addresses })],
+      },
+      addressPending: new Map([["stage", addressPending]]),
+      nowMs: NOW,
+    });
+    expect(line?.words).toEqual(words);
+    expect(line?.dot).toBe(dot);
+  },
+);

@@ -257,6 +257,7 @@ function said(moment: Moment) {
     services,
     building: moment.deployment?.state === "known" && moment.deployment.value.kind === "deploying",
     routes: moment.routes ?? 0,
+    addressPending: true,
   };
   const heading: HeadingLineInput = {
     production: undefined,
