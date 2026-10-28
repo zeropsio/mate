@@ -64,6 +64,27 @@ function play(moments: ReadonlyArray<Moment>, until: number) {
 }
 
 describe("the live slot's schedule", () => {
+  it.each([
+    {
+      title: "words already shown stay until their record arrives while nothing else is live",
+      live: [],
+    },
+    {
+      title: "words already shown stay until their record arrives while a steer is live",
+      live: ["person:steer"],
+    },
+  ])("$title", ({ live }) => {
+    const shown = slotStart({ at: 0, live: ["note:words"], record: [] });
+    const advancing = slotOffer(shown, { at: 1000, live, record: [], final: false });
+    const waiting = slotSettle(advancing, 10000);
+    expect(
+      [...slotHolds(waiting)],
+      "ASSERTION: words cannot plop into a record that has not arrived",
+    ).toContain("note:words");
+    const recorded = slotOffer(waiting, { at: 10010, live, record: ["note:words"], final: false });
+    expect([...slotHolds(slotSettle(recorded, 20000))]).not.toContain("note:words");
+  });
+
   it.each<{
     readonly name: string;
     readonly moments: ReadonlyArray<Moment>;

@@ -308,7 +308,7 @@ export function slotSettle(slot: LiveSlot, at: number): LiveSlot {
 
 /**
  * What is live and what the record holds, at `at`: an item no longer live
- * ended; a record item that was never shown waits its turn; then what is due
+ * ended, a note once its record arrives; an unseen record item waits its turn; then what is due
  * plops. An offer that changes nothing returns the slot it was given.
  */
 export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
@@ -330,10 +330,16 @@ export function slotOffer(slot: LiveSlot, offer: SlotOffer): LiveSlot {
   // What left the card has no line to plop into: it leaves the slot as it leaves the card,
   // never drawn twice.
   const stays = (key: string) => offer.turnOver !== true || live.has(key) || held.has(key);
+  // The live header may advance before its note arrives in the record. Keep its words
+  // until they can land; calls can instead be folded or filed elsewhere.
   const entries = slot.entries
     .filter((entry) => stays(entry.key))
     .map((entry) =>
-      entry.endedAt === null && !live.has(entry.key) ? { ...entry, endedAt: offer.at } : entry,
+      entry.endedAt === null &&
+      !live.has(entry.key) &&
+      (!entry.key.startsWith("note:") || held.has(entry.key))
+        ? { ...entry, endedAt: offer.at }
+        : entry,
     );
   const fresh = offer.record.filter((key) => !slot.seen.has(key));
   // What arrives before the newest line the slot has seen is the run's earlier lines read in (a
