@@ -105,6 +105,9 @@ function EmptyPlacePanel({ line }: { readonly line: PlaceLine }) {
         <PlaceDot dot={line.dot} />
         <PlaceWords line={line} />
       </p>
+      {/* A stage keeps its services line's room, unread: set up, empty and running, its card's
+          Mates never move (the run's new stage pushed them three times). */}
+      {line.kind === "stage" ? <ServicesHeld /> : null}
     </div>
   );
 }

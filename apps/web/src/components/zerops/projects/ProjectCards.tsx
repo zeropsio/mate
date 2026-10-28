@@ -186,7 +186,7 @@ function PlaceClock({ clock }: { readonly clock: NonNullable<PlaceLine["clock"]>
 export function ServicesHeld() {
   return (
     <p aria-hidden="true" className="ov-panel-services" data-zerops-services-held="">
-      <span className="ov-service">{"\u200b"}</span>
+      <span className="ov-service" />
     </p>
   );
 }

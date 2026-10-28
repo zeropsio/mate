@@ -8550,6 +8550,12 @@ button.ov-panel-state:focus-visible {
   background: var(--zerops-status-ok);
 }
 
+/* A services line held while its services are read, or while a stage runs nothing yet: a line's
+   room with nothing in it to read. */
+.ov-panel-services[data-zerops-services-held] > .ov-service::before {
+  content: "\200b";
+}
+
 /* Stopped, or running with nothing deployed in it: hollow, never the green of a service that serves. */
 .ov-service[data-state="stopped"] .ov-service-dot,
 .ov-service[data-state="idle"] .ov-service-dot {
