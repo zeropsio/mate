@@ -32,18 +32,15 @@ export function pressElsewhere(input: {
   readonly presses: HqPresses | null;
   readonly projectId: string;
   readonly nowMs: number;
-  /** The exact import named by the press or HQ birth/Mate; absent until its owner answers. */
+  /** Where the press's import's process stands, as its project's processes read it; none unread. */
   readonly importStatus?: string | undefined;
 }): PressElsewhere {
   if (input.presses === null) return "unknown";
   const held = input.presses[input.projectId];
-  if (
-    input.importStatus !== undefined &&
-    (held === undefined || held.importProcessId !== undefined)
-  ) {
+  if (held === undefined) return "unknown";
+  if (held.importProcessId !== undefined && input.importStatus !== undefined) {
     return IMPORT_FAILED.has(input.importStatus) ? "stopped" : "pressing";
   }
-  if (held === undefined) return "unknown";
   return input.nowMs < held.expiresAtMs ? "pressing" : "unknown";
 }
 

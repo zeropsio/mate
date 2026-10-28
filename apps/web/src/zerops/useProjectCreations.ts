@@ -1,9 +1,14 @@
 /**
- * Setup verdicts follow HQ's recorded import process while the project comes up or lacks its
- * container. A missing identity or unread process stays pending; neither project age nor a
- * different project.create result settles this accepted setup.
+ * The platform's verdict on every project still on its way up.
+ *
+ * A project in NEW or CREATING is a boot until its `project.create` process says otherwise — and
+ * when that process has FAILED the project never leaves NEW (measured 2026-09-16). Its project's
+ * process history is held while it is on its way, and the account's store says how its creation
+ * went (`projectCreations`); the organization's running work carries every later change of that
+ * process, so a creation that fails late turns "Coming up." into "Could not be created." on its
+ * own — nothing asks again on a timer.
  */
-import { creationImports, projectCreations } from "@t3tools/client-runtime/data";
+import { projectCreations } from "@t3tools/client-runtime/data";
 import { projectCreationOutcome, type ZeropsProjectCreation } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { Atom } from "effect/reactivity";
@@ -15,14 +20,11 @@ const ON_ITS_WAY = new Set(["NEW", "CREATING"]);
 
 /** The projects whose creation is worth asking about: on their way up, each once. */
 export function creationVerdictTargets(
-  candidates: ReadonlyArray<
-    Pick<ZeropsCandidate, "project"> & Partial<Pick<ZeropsCandidate, "missingContainer">>
-  >,
+  candidates: ReadonlyArray<Pick<ZeropsCandidate, "project">>,
 ): ReadonlyArray<string> {
   const ids = new Set<string>();
   for (const candidate of candidates) {
-    if (ON_ITS_WAY.has(candidate.project.status) || candidate.missingContainer === true)
-      ids.add(candidate.project.id);
+    if (ON_ITS_WAY.has(candidate.project.status)) ids.add(candidate.project.id);
   }
   return [...ids].sort();
 }
@@ -39,36 +41,24 @@ export function settledCreations(
 }
 
 const NO_CREATIONS = Atom.make<Readonly<Record<string, ZeropsProjectCreation>>>({});
-const NO_IMPORTS = Atom.make<Readonly<Record<string, string | null>>>({});
 
 export function useProjectCreations(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): ReadonlyMap<string, ZeropsProjectCreation> {
   const account = useAccountDataOptional();
-  const imports = useProjection(creationImports, account?.orgId ?? null, NO_IMPORTS);
   const targets = creationVerdictTargets(candidates);
   const key = targets.join(",");
   const demandDetail = account?.demandDetail;
-  const processIds = useMemo(
-    () =>
-      key === ""
-        ? []
-        : key.split(",").flatMap((projectId) => {
-            const id = imports[projectId];
-            return id == null ? [] : [id];
-          }),
-    [imports, key],
-  );
-  // HQ setup follows its exact import; an unrecorded identity cannot be guessed from history.
+  // Each project on its way has its process history held: where its creation process is read.
   useEffect(() => {
-    if (demandDetail === undefined) return;
-    const releases = processIds.map((ownerId) =>
-      demandDetail({ family: "process", listing: "process", ownerId }),
-    );
+    if (demandDetail === undefined || key === "") return;
+    const releases = key
+      .split(",")
+      .map((ownerId) => demandDetail({ family: "process", listing: "history", ownerId }));
     return () => {
       for (const release of releases) release();
     };
-  }, [demandDetail, processIds]);
+  }, [demandDetail, key]);
   const orgId = account?.orgId ?? null;
   const creations = useProjection(
     projectCreations,

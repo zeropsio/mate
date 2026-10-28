@@ -1,7 +1,6 @@
 import {
   creationPressStoreAtom,
   creationSteps,
-  projectCreations,
   makeAccountStore,
   makeOperations,
   mateArrival,
@@ -10,12 +9,7 @@ import {
   runToEnd,
   type RunToEnd,
 } from "@t3tools/client-runtime/data";
-import {
-  liveZerops,
-  ORG,
-  seedHqNavigation,
-  zeropsVersion,
-} from "@t3tools/client-runtime/data/fixtures";
+import { liveZerops, ORG, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
 import type { ZeropsProject, ZeropsService } from "@t3tools/client-runtime/zerops";
 import { deriveBirthProgress } from "@t3tools/client-runtime/zerops/birthProgress";
 import { deriveZeropsCandidates } from "@t3tools/client-runtime/zerops/candidates";
@@ -192,7 +186,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         presses,
         projectId: project.id,
         nowMs,
-        importStatus: presses[project.id]?.importProcessId === undefined ? undefined : "RUNNING",
+        importStatus: "RUNNING",
       }),
     });
   };
@@ -252,70 +246,6 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
     expect(later.coming?.kind).toBe("coming");
     imported.resolve({ serviceName: "zcp", imported: true, processId: "import-pepa" });
     expect(await press).toMatchObject({ ok: true, projectId: project.id });
-    // The creator has finished. This account has neither its press nor its local operations.
-    const observer = makeAccountStore(registry);
-    liveZerops({ running: [] }).forEach(observer.dispatch);
-    seedHqNavigation(observer, ORG, {
-      structure: {
-        apps: [],
-        ungrouped: [
-          {
-            projectId: project.id,
-            name: mate.name,
-            mate: { face: "", importProcessId: "import-pepa" },
-          },
-        ],
-      },
-      presses: {},
-    });
-    const recovered = () =>
-      projectCreations.derive(readsOfState(observer.state()), {
-        orgId: ORG,
-        projectIds: [project.id],
-      })[project.id];
-    const recoveredArrival = () =>
-      mateArrival({
-        candidate: deriveZeropsCandidates(project, [], new Map())[0],
-        press: undefined,
-        nowMs,
-        pressElsewhere: pressElsewhere({
-          presses: {},
-          projectId: project.id,
-          nowMs,
-          importStatus: recovered()?.status,
-        }),
-      });
-    expect(recovered()).toBeUndefined();
-    expect(recoveredArrival().page?.kind).toBe("coming");
-    for (const [index, status] of ["RUNNING", "FINISHED"].entries()) {
-      observer.dispatch({
-        kind: "rows",
-        scope: runningScope(ORG),
-        generation: 1,
-        method: "push",
-        via: "zerops-realtime",
-        rows: [
-          {
-            family: "process",
-            id: "import-pepa",
-            revision: zeropsVersion(index + 10),
-            value: {
-              id: "import-pepa",
-              projectId: project.id,
-              actionName: "stack.create",
-              serviceStackIds: [],
-              status,
-              created: new Date(START).toISOString(),
-            },
-          },
-        ],
-      });
-      expect(recovered()).toEqual({ processId: "import-pepa", status, error: null });
-      expect(recoveredArrival().page?.kind).toBe("coming");
-    }
-    expect(observer.state().operations.size).toBe(0);
-    expect(importCalls).toHaveLength(1);
-    observer.close();
     const up = mateArrival({
       press: undefined,
       candidate: deriveZeropsCandidates(project, services, new Map())[0],

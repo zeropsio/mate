@@ -253,47 +253,6 @@ const removed = apply(read, [
 
 const navigation = (state: AccountState) => hqNavigation.derive(readsOfState(state), ORG);
 
-it("navigation keeps each accepted import identity after the browser press is gone", () => {
-  const birth = {
-    id: "birth-ada",
-    face: "ada",
-    projectId: "ada",
-    importProcessId: "birth-import",
-  };
-  const nextRows = rows.flatMap((row): ReadonlyArray<Row> => {
-    if (row.family === "hqPress") return [];
-    if (row.family === "hqApp") {
-      const value = hqAppFamily.hq!.decode({ ...row.value, births: [birth] }, "app:shop")!;
-      return [{ ...row, value }];
-    }
-    if (row.family === "placement" && row.value.mate !== null) {
-      const value = placementFamily.hq!.decode(
-        { ...row.value, mate: { ...row.value.mate, importProcessId: `${row.id}-import` } },
-        `project:${row.id}`,
-      )!;
-      return [{ ...row, value }];
-    }
-    return [row];
-  });
-  const state = apply(demanded, [
-    {
-      kind: "delivery",
-      via: "hq-stream",
-      scopes: generations,
-      reset: true,
-      rows: nextRows,
-      removals: [],
-    },
-  ]);
-  const view = navigation(state);
-  expect(view.presses).toEqual({});
-  expect(view.structure?.apps[0]?.births).toEqual([birth]);
-  expect(view.structure?.apps[0]?.projects[0]?.mate).toMatchObject({
-    importProcessId: "ada-import",
-  });
-  expect(view.structure?.ungrouped[0]?.mate).toMatchObject({ importProcessId: "lone-import" });
-});
-
 describe("hqNavigation", () => {
   it.each([
     {

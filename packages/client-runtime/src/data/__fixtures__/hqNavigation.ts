@@ -136,7 +136,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     closedOff: mate.closedOff ?? false,
     setupMarker: mate.setupMarker ?? null,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
-    ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
   });

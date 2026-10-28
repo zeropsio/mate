@@ -94,17 +94,6 @@ export const processFamily: FamilySpec<"process"> = {
             : undefined,
       },
     },
-    {
-      // An accepted import keeps its own identity after it leaves the newest project history.
-      suffix: "process",
-      leaving: "absent-unverified",
-      member: true,
-      zerops: {
-        path: ({ ownerId }) => `/process/${encodeURIComponent(ownerId ?? "")}`,
-        items: (answer) =>
-          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
-      },
-    },
   ],
 };
 

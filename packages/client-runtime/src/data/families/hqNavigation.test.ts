@@ -71,25 +71,6 @@ it("slice one admits direct branches only and never invents a PR target", () => 
 });
 
 describe("navigation record decoding", () => {
-  it("a fresh observer retains the accepted import identity from an HQ birth without a press", () => {
-    const birth = {
-      id: "birth-ada",
-      face: "ada",
-      projectId: "ada",
-      importProcessId: "accepted-import",
-    };
-    expect(hqAppFamily.hq!.decode({ ...app, births: [birth] }, "app:shop")?.births).toEqual([
-      birth,
-    ]);
-  });
-  it("a fresh observer retains the accepted import identity after HQ attaches the Mate", () => {
-    const mate = {
-      ...project.mate,
-      birthId: "birth-ada",
-      importProcessId: "accepted-import",
-    };
-    expect(placementFamily.hq!.decode({ ...project, mate }, "project:ada")?.mate).toEqual(mate);
-  });
   it.each([undefined, "unreadable", { head: 42 }])(
     "keeps an app with an unknown release offer: %s",
     (releaseOffer) => {

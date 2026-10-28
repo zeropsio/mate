@@ -4,8 +4,7 @@
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { accountReadsAtom, runningScope, type HqPressValue } from "@t3tools/client-runtime/data";
-import { liveZerops, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
+import type { HqPressValue } from "@t3tools/client-runtime/data";
 import { AtomRegistry } from "effect/reactivity";
 import { act, createElement, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -116,101 +115,3 @@ describe("usePressesElsewhere", () => {
     expect(said("p-una")).toBe("unknown");
   });
 });
-
-it.each(["birth", "mate"] as const)(
-  "a fresh %s observer demands HQ's exact import without a press or local history and follows its late answer",
-  (owner) => {
-    const registry = AtomRegistry.make();
-    const structure = (importProcessId?: string) => ({
-      apps:
-        owner === "birth"
-          ? [
-              {
-                id: "app",
-                name: "App",
-                projects: [],
-                births: [
-                  {
-                    id: "birth",
-                    face: "",
-                    projectId: "p-una",
-                    ...(importProcessId === undefined ? {} : { importProcessId }),
-                  },
-                ],
-              },
-            ]
-          : [],
-      ungrouped:
-        owner === "mate"
-          ? [
-              {
-                projectId: "p-una",
-                name: "Una",
-                mate: { face: "", ...(importProcessId === undefined ? {} : { importProcessId }) },
-              },
-            ]
-          : [],
-    });
-    const { store, seed } = mountHqNavigation(registry, "org-1", {
-      structure: structure("imp-original"),
-      presses: {},
-    });
-    liveZerops({ running: [] }).forEach(store.dispatch);
-    const releases = vi.fn();
-    const demand = vi.fn(() => releases);
-    registry.set(accountReadsAtom, { ...registry.get(accountReadsAtom)!, demandDetail: demand });
-    let revision = 10;
-    const answer = (id: string, status: string) =>
-      store.dispatch({
-        kind: "rows",
-        scope: runningScope("org"),
-        generation: 1,
-        method: "push",
-        via: "zerops-realtime",
-        rows: [
-          {
-            family: "process",
-            id,
-            value: {
-              id,
-              projectId: "p-una",
-              status,
-              serviceStackIds: [],
-              created: "2026-10-28T10:00:00Z",
-              actionName: id === "imp-original" ? "stack.create" : "project.create",
-            },
-            revision: zeropsVersion(revision++),
-          },
-        ],
-      });
-    answer("newest-unrelated", "FAILED");
-    act(() => {
-      tree = create(
-        createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)),
-      );
-    });
-    expect(demand.mock.calls).toEqual([
-      [{ family: "process", listing: "process", ownerId: "imp-original" }],
-    ]);
-    expect(said("p-una")).toBe("unknown");
-    expect(store.state().operations.size).toBe(0);
-    act(() => {
-      answer("imp-original", "RUNNING");
-    });
-    expect(said("p-una")).toBe("pressing");
-    act(() => {
-      answer("imp-original", "FINISHED");
-    });
-    expect(said("p-una")).toBe("pressing");
-    act(() => {
-      answer("imp-original", "FAILED");
-    });
-    expect(said("p-una")).toBe("stopped");
-    act(() => {
-      seed({ structure: structure(), presses: {} });
-    });
-    expect(said("p-una")).toBe("unknown");
-    expect(releases).toHaveBeenCalledTimes(1);
-    expect(store.state().operations.size).toBe(0);
-  },
-);

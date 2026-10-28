@@ -7,7 +7,7 @@
  * @module data/operations/createProject
  */
 import type { OperationReceipt } from "../model.ts";
-import { latestProjectCreation } from "../projections/creation.ts";
+import { projectCreations } from "../projections/creation.ts";
 import {
   projectCreationFailureSentence,
   projectCreationOutcome,
@@ -38,9 +38,11 @@ export const createProject: OperationKind<"create-project"> = {
   kind: "create-project",
   executor: "zerops",
   reflected: (read, _intent, receipt) => read.fact("project", projectOf(receipt)).kind === "known",
-  settledBy: (read, _intent, receipt) => {
+  settledBy: (read, intent, receipt) => {
     const projectId = projectOf(receipt);
-    const outcome = projectCreationOutcome(latestProjectCreation(read, projectId));
+    const outcome = projectCreationOutcome(
+      projectCreations.derive(read, { orgId: intent.orgId, projectIds: [projectId] })[projectId],
+    );
     if (outcome.kind === "running") return null;
     return outcome.kind === "finished"
       ? { kind: "succeeded" }

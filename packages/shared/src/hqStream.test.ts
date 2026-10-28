@@ -169,19 +169,6 @@ it.each([true, false, null])("navigation carries setup marker evidence %s", (set
   expect(readMate(value)).toEqual(value);
 });
 
-it("navigation retains the accepted import identity on an attached Mate after its press ends", () => {
-  const value = {
-    face: "ada",
-    madeBy: null,
-    standupRequestedBy: null,
-    closedOff: false,
-    setupMarker: null,
-    birthId: "birth-ada",
-    importProcessId: "accepted-import",
-  };
-  expect(readMate(value)).toEqual(value);
-});
-
 it.each(["forbidden", "zerops_refused", "scope_not_found"])(
   "keeps scope-error code %s in the wire for worded refusals",
   (code) => {
