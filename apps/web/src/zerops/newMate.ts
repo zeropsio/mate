@@ -14,6 +14,8 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { create } from "zustand";
 import { useCallback } from "react";
 import { useAddMateOffer } from "./useHqOffers";
+import { onAccountLifetimeClose } from "./accountLifetime";
+import { randomUUID } from "../lib/utils";
 
 /**
  * What an Add is asked with: started over, the Mate's own name and the face it was asked with;
@@ -61,15 +63,38 @@ interface MateHandOverState {
    * frame the view last showed, never a loading pane.
    */
   readonly handOver: ScopedThreadRef | null;
-  readonly handingOver: (conversation: ScopedThreadRef | null) => void;
+  readonly handOverId: string | null;
+  readonly handingOver: (conversation: ScopedThreadRef | null) => string;
+  readonly acquired: (id: string, conversation: ScopedThreadRef) => void;
+  readonly cancel: (id: string) => void;
 }
 
-export const useMateHandOver = create<MateHandOverState>((set) => ({
+export const useMateHandOver = create<MateHandOverState>((set, get) => ({
   handOver: null,
+  handOverId: null,
   handingOver: (conversation) => {
-    set({ handOver: conversation });
+    // Navigation state survives reloads; a fresh handover must never reuse its token.
+    const handOverId = randomUUID();
+    set({ handOver: conversation, handOverId });
+    return handOverId;
+  },
+  acquired: (id, conversation) => {
+    const pending = get();
+    if (
+      pending.handOverId === id &&
+      pending.handOver?.environmentId === conversation.environmentId &&
+      pending.handOver.threadId === conversation.threadId
+    )
+      set({ handOver: null });
+  },
+  cancel: (id) => {
+    if (get().handOverId === id) set({ handOver: null });
   },
 }));
+
+onAccountLifetimeClose(() => {
+  useMateHandOver.getState().handingOver(null);
+});
 
 /** Asks for a Mate in a project: the New Mate dialog opens over the view on screen. */
 export function useAddMate(): (groupId: string) => void {

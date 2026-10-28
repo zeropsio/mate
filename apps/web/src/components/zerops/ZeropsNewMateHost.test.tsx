@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import { creationPressStoreAtom, makeAccountStore } from "@t3tools/client-runtime/data";
-import { act, createElement as h } from "react";
+import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
+import { act, createElement as h, useEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { closeAccountLifetime, openAccountLifetime } from "~/zerops/accountLifetime";
 import { beginPress, forgetPress } from "~/zerops/matePress";
-import { useNewMateDialog } from "~/zerops/newMate";
+import { useMateHandOver, useNewMateDialog } from "~/zerops/newMate";
 
 import { ZeropsNewMateHost } from "./ZeropsNewMateHost";
 import { appAtomRegistry, AppAtomRegistryProvider } from "~/rpc/atomRegistry";
@@ -16,15 +17,32 @@ const ORGANIZATION = { id: "org-acme", name: "acme", roleCode: "OWNER" };
 /** The dialog as the host draws it: its props, read. */
 const app = vi.hoisted(() => ({
   dialog: undefined as Record<string, unknown> | undefined,
+  holders: new Map<string, number>(),
 }));
+
+function useHeldResource(key: string | null) {
+  useEffect(() => {
+    if (key === null) return;
+    app.holders.set(key, (app.holders.get(key) ?? 0) + 1);
+    return () => {
+      const left = (app.holders.get(key) ?? 1) - 1;
+      if (left === 0) app.holders.delete(key);
+      else app.holders.set(key, left);
+    };
+  }, [key]);
+}
+
+function useHeldConversation(ref: ScopedThreadRef | null) {
+  useHeldResource(ref === null ? null : `conversation:${ref.environmentId}/${ref.threadId}`);
+}
 
 vi.mock("@tanstack/react-router", () => ({
   useNavigate: () => async () => undefined,
   useRouter: () => ({ routesById: {}, loadRouteChunk: () => undefined }),
 }));
 vi.mock("~/state/entities", () => ({
-  useThreadDetail: () => undefined,
-  useThreadStatus: () => undefined,
+  useThreadDetail: (ref: ScopedThreadRef | null) => useHeldConversation(ref),
+  useThreadStatus: (ref: ScopedThreadRef | null) => useHeldConversation(ref),
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
   useZeropsSession: () => ({ status: "signed-in", activeOrganization: ORGANIZATION }),
@@ -61,7 +79,8 @@ vi.mock("~/zerops/useZeropsGroupRecipe", () => ({
 }));
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => () => undefined }));
 vi.mock("~/zerops/useZeropsFeeds", () => ({
-  useZeropsAgentAuth: () => undefined,
+  useZeropsAgentAuth: (environmentId: EnvironmentId | null) =>
+    useHeldResource(environmentId === null ? null : `auth:${environmentId}`),
   useEnvironmentProjectRef: () => null,
 }));
 vi.mock("./ZeropsEnvironmentCreationDialog", () => ({
@@ -77,6 +96,7 @@ beforeEach(() => {
   openAccountLifetime("u-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   app.dialog = undefined;
+  app.holders.clear();
   // Acme CRM, as the menu draws it: its first Mate on its way.
   beginPress({
     projectId: "p-vera",
@@ -98,9 +118,49 @@ afterEach(() => {
   appAtomRegistry.get(creationPressStoreAtom)?.close();
   appAtomRegistry.set(creationPressStoreAtom, null);
   useNewMateDialog.setState({ asked: null });
+  useMateHandOver.setState({ handOver: null });
   closeAccountLifetime();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
+  vi.useRealTimers();
+});
+
+describe("A new Mate's demand handover", () => {
+  const conversation: ScopedThreadRef = {
+    environmentId: EnvironmentId.make("env-new-mate"),
+    threadId: ThreadId.make("thread-first"),
+  };
+  const held = () => Object.fromEntries(app.holders);
+  const expectedHolders = {
+    "conversation:env-new-mate/thread-first": 2,
+    "auth:env-new-mate": 1,
+  };
+
+  const begin = () => {
+    act(() => useMateHandOver.getState().handingOver(conversation));
+    act(() => {
+      tree = create(h(AppAtomRegistryProvider, null, h(ZeropsNewMateHost)));
+    });
+    expect(held()).toEqual(expectedHolders);
+  };
+
+  it("Opening a newly created Mate keeps its source demand until that destination has acquired the same Mate and conversation.", async () => {
+    vi.useFakeTimers();
+    begin();
+    await act(async () => vi.advanceTimersByTimeAsync(3_001));
+    expect(useMateHandOver.getState().handOver).toEqual(conversation);
+    expect(held()).toEqual(expectedHolders);
+  });
+
+  it("A stale or cancelled destination does not release another handover's source demand.", async () => {
+    vi.useFakeTimers();
+    begin();
+    await act(async () => vi.advanceTimersByTimeAsync(2_999));
+    act(() => useMateHandOver.getState().handingOver({ ...conversation }));
+    await act(async () => vi.advanceTimersByTimeAsync(2));
+    expect(useMateHandOver.getState().handOver).toEqual(conversation);
+    expect(held()).toEqual(expectedHolders);
+  });
 });
 
 const open = (again?: Parameters<ReturnType<typeof useNewMateDialog.getState>["ask"]>[1]) => {

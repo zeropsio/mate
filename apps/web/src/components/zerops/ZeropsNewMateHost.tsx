@@ -31,7 +31,7 @@ import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
 import { usePreloadMateViews } from "~/zerops/usePreloadMateViews";
 import { useAtomValue } from "@effect/atom-react";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useContext, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
@@ -103,9 +103,6 @@ function HoldAutomatedKey() {
   return null;
 }
 
-/** How long a hand-over's conversation is kept read from here, across the route changing. */
-const HAND_OVER_KEPT_MS = 3_000;
-
 /**
  * A new Mate's conversation, and its agents' sign-in, kept read while its own view hands over to
  * it: the view let go of them as the route changed and the conversation picked them up in the same
@@ -116,11 +113,6 @@ function KeepHandOverRead({ conversation }: { readonly conversation: ScopedThrea
   useThreadStatus(conversation);
   useThreadDetail(conversation);
   useZeropsAgentAuth(conversation.environmentId);
-  const handingOver = useMateHandOver((state) => state.handingOver);
-  useEffect(() => {
-    const timer = setTimeout(() => handingOver(null), HAND_OVER_KEPT_MS);
-    return () => clearTimeout(timer);
-  }, [handingOver]);
   return null;
 }
 
