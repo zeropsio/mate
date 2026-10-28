@@ -2,9 +2,12 @@
  * Settings › Automation › GitHub: the organization's own GitHub app, which everything Mate writes
  * on GitHub comes from. Not connected, the Owner and Admins make it in two fields and one press —
  * HQ's manifest goes to GitHub's own "new app" page in this tab, and GitHub brings the person back
- * here (`?github=connected`). Connected, it says the bot it writes as and where it is installed,
- * each with its page on GitHub; *Disconnect* makes HQ forget it, after saying the app stays on
- * GitHub to delete there.
+ * here (`?github=connected`). Connected, it says the bot it writes as and each account it is
+ * installed on, with its page on GitHub. The app is public, so people install it on their own
+ * accounts and organizations too: one installed from here comes back accepted, any other waits
+ * apart for the Owner's or an Admin's Accept or Suspend, and Mate acts on none of its repositories
+ * meanwhile. A private app says it installs only on its owner, and where to make it public.
+ * *Disconnect* makes HQ forget it, after saying the app stays on GitHub to delete there.
  */
 import type { TaskSourceSettingValue } from "@t3tools/client-runtime/data";
 import type { HqGithubManifestRequest, HqGithubManifestView } from "@t3tools/shared/hqGithub";
@@ -40,6 +43,12 @@ export interface GithubAppControls {
   /** Reads the app again, where HQ's answer failed. */
   readonly again: () => void;
   readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
+  /** GitHub's install page with a one-time state from HQ, or `null` where HQ refused. */
+  readonly install: (returnTo: string) => Promise<string | null>;
+  /** Mate acts on a waiting installation's repositories. */
+  readonly accept: (installationId: number) => void;
+  /** GitHub suspends an installation. */
+  readonly suspend: (installationId: number) => void;
 }
 
 export function GithubAppSettings({
@@ -50,7 +59,7 @@ export function GithubAppSettings({
   /** How GitHub brought the person back here, if it did. */
   readonly returned: GithubReturn;
 }) {
-  const { read, write, manifest, again } = useGithubApp();
+  const { read, write, manifest, install, again } = useGithubApp();
   const { activeOrganization } = useZeropsSession();
   return (
     <GithubAppView
@@ -58,10 +67,20 @@ export function GithubAppSettings({
       controls={{
         read,
         manifest,
+        install,
         again,
         disconnect: () => {
           write({ kind: "github-disconnect" });
         },
+        accept: (installationId) => {
+          write({ kind: "github-accept", installationId });
+        },
+        suspend: (installationId) => {
+          write({ kind: "github-suspend", installationId });
+        },
+      }}
+      onOpen={(url) => {
+        window.location.assign(url);
       }}
       onPost={(view) => {
         postManifest(document, view);
@@ -80,6 +99,7 @@ export function GithubAppView({
   returnTo,
   returned,
   onPost,
+  onOpen,
   defaultOpen = false,
 }: {
   readonly controls: GithubAppControls;
@@ -92,6 +112,8 @@ export function GithubAppView({
   readonly returned: GithubReturn;
   /** Hands GitHub the manifest: the page leaves for GitHub's. */
   readonly onPost: (view: HqGithubManifestView) => void;
+  /** Opens GitHub's install page in this tab: GitHub brings the person back here. */
+  readonly onOpen: (url: string) => void;
 }) {
   const { read } = controls;
   const section = githubSection(read.setting, admin);
@@ -118,6 +140,7 @@ export function GithubAppView({
         {section.installations.length === 0
           ? " · installed nowhere yet"
           : ` · ${section.installations.map((installation) => installation.line).join(", ")}`}
+        {section.waiting.length === 0 ? null : ` · ${section.waiting.length} waiting for an OK`}
       </>
     ) : section.kind === "none" ? (
       section.connect ? (
@@ -188,13 +211,82 @@ export function GithubAppView({
               </li>
             ))}
           </ul>
+          {section.privateTo === null ? null : (
+            <p className="text-xs text-muted-foreground">
+              This app can only be installed on {section.privateTo.owner}. To add other GitHub
+              accounts,{" "}
+              <OutLink href={section.privateTo.settingsUrl}>make it public on GitHub</OutLink>.
+            </p>
+          )}
+          {section.waiting.length === 0 ? null : (
+            <div className="grid gap-1.5" data-zerops-surface="settings-github-waiting">
+              <p className="text-xs font-medium text-foreground">
+                {section.manage ? "Waiting for your OK" : "Waiting for an admin's OK"}
+              </p>
+              <ul className="grid gap-1.5">
+                {section.waiting.map((installation) => (
+                  <li className="grid gap-0.5 text-xs" key={installation.id}>
+                    <span className="flex items-center gap-1.5">
+                      <span className="text-foreground">{installation.account}</span>
+                      <span className="text-muted-foreground">·</span>
+                      <OutLink href={installation.manageUrl}>Manage on GitHub</OutLink>
+                      {section.manage ? (
+                        <>
+                          <span className="text-muted-foreground">·</span>
+                          <InlineButton
+                            disabled={working}
+                            onClick={() => {
+                              controls.accept(installation.id);
+                            }}
+                          >
+                            Accept
+                          </InlineButton>
+                          <InlineButton
+                            disabled={working}
+                            onClick={() => {
+                              controls.suspend(installation.id);
+                            }}
+                            tone="destructive"
+                          >
+                            Suspend
+                          </InlineButton>
+                        </>
+                      ) : null}
+                    </span>
+                    <span className="text-muted-foreground">
+                      {installation.repositories.length === 0
+                        ? "No repositories"
+                        : installation.repositories.join(", ")}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+              {section.manage ? (
+                <p className="text-xs text-muted-foreground">
+                  Mate uses none of these repositories until you accept. Suspend stops the app there
+                  on GitHub.
+                </p>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Organization admins and the owner can change this.
+                </p>
+              )}
+            </div>
+          )}
           {section.manage ? (
             <div className="flex items-center gap-4 text-xs">
-              <OutLink href={section.installUrl}>
-                {section.installations.length === 0
-                  ? "Install it on repositories"
-                  : "Install on more repositories"}
-              </OutLink>
+              <InlineButton
+                disabled={working}
+                onClick={() => {
+                  void controls.install(returnTo).then((url) => {
+                    if (url !== null) onOpen(url);
+                  });
+                }}
+              >
+                {read.action.kind === "working" && read.action.verb === "github-install"
+                  ? workingWords("github-install")
+                  : "Install on another GitHub account or more repositories"}
+              </InlineButton>
               {confirming ? null : (
                 <InlineButton
                   disabled={working}

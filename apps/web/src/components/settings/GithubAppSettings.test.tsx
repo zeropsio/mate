@@ -9,7 +9,7 @@ import { act, type ComponentProps } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { GithubAppView } from "./GithubAppSettings";
+import { type GithubAppControls, GithubAppView } from "./GithubAppSettings";
 
 const CONNECTED: HqGithubView = {
   state: "connected",
@@ -54,7 +54,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-async function render(props: Partial<ComponentProps<typeof GithubAppView>> = {}) {
+async function render(
+  props: Partial<Omit<ComponentProps<typeof GithubAppView>, "controls">> & {
+    readonly controls?: Partial<GithubAppControls>;
+  } = {},
+) {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const host = document.createElement("div");
   document.body.append(host);

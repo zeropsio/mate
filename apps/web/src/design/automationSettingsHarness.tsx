@@ -75,6 +75,39 @@ const CONNECTED: HqGithubView = {
     },
   ],
 };
+// One app on two accounts, a third waiting for an OK (`?view=many`, `?view=many-member`), or a
+// private app only its owner installs (`?view=private`).
+const MANY: HqGithubView = {
+  ...CONNECTED,
+  public: true,
+  installations: [
+    ...(CONNECTED.state === "connected" ? CONNECTED.installations : []),
+    {
+      id: 2,
+      account: "jane",
+      accountType: "User",
+      repositorySelection: "all",
+      repositories: [{ fullName: "jane/notes", private: true, defaultBranch: "main" }],
+      suspended: false,
+      state: "accepted",
+      manageUrl: "https://github.com/settings/installations/2",
+    },
+    {
+      id: 3,
+      account: "stranger-labs",
+      accountType: "Organization",
+      repositorySelection: "selected",
+      repositories: [
+        { fullName: "stranger-labs/site", private: false, defaultBranch: "main" },
+        { fullName: "stranger-labs/api", private: true, defaultBranch: "main" },
+      ],
+      suspended: false,
+      state: "waiting",
+      manageUrl: "https://github.com/organizations/stranger-labs/settings/installations/3",
+    },
+  ],
+} as HqGithubView;
+const PRIVATE: HqGithubView = { ...CONNECTED, public: false } as HqGithubView;
 const SLACK = {
   connected: true,
   workspace: "Acme",
@@ -175,8 +208,12 @@ function Automation({
         disconnect: nothing,
         again: nothing,
         manifest: async () => null,
+        install: async () => null,
+        accept: nothing,
+        suspend: nothing,
       }}
       defaultOpen={open}
+      onOpen={nothing}
       onPost={nothing}
       organization="Acme"
       returnTo="https://acme.example/mate/settings/automation?github=connected"
@@ -466,9 +503,9 @@ if (host) {
         <Dialogs />
       ) : (
         <Automation
-          admin={view !== "member"}
+          admin={view !== "member" && view !== "many-member"}
           checking={view === "checking"}
-          open={view === "open"}
+          open={view === "open" || view.startsWith("many") || view === "private"}
           github={
             view === "none" || view === "open"
               ? known({ state: "none" })
@@ -478,7 +515,11 @@ if (host) {
                   ? known({ ...CONNECTED, installations: [] })
                   : view === "older"
                     ? { state: "unsupported" }
-                    : known(CONNECTED)
+                    : view.startsWith("many")
+                      ? known(MANY)
+                      : view === "private"
+                        ? known(PRIVATE)
+                        : known(CONNECTED)
           }
         />
       )}

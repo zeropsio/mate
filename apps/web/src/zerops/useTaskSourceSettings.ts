@@ -171,9 +171,14 @@ export interface GithubAppControls extends TaskSourceControls<"hqGithub"> {
    * GitHub, or `null` where HQ refused or did not answer — its words are `read.action`'s.
    */
   readonly manifest: (request: HqGithubManifestRequest) => Promise<HqGithubManifestView | null>;
+  /**
+   * Asks HQ for GitHub's page installing the app further, with a one-time state: its address to
+   * open, or `null` where HQ refused or did not answer — its words are `read.action`'s.
+   */
+  readonly install: (returnTo: string) => Promise<string | null>;
 }
 
-/** The organization's GitHub app, read while `shown`; made and forgotten from here. */
+/** The organization's GitHub app, read while `shown`; made, installed and forgotten from here. */
 export function useGithubApp(shown = true): GithubAppControls {
   const controls = useOrgTaskSource("hqGithub", shown);
   const { host, orgId } = useHost();
@@ -181,5 +186,7 @@ export function useGithubApp(shown = true): GithubAppControls {
     ...controls,
     manifest: async (request) =>
       host === null || orgId === null ? null : host.githubManifest({ orgId }, request),
+    install: async (returnTo) =>
+      host === null || orgId === null ? null : host.githubInstall({ orgId }, returnTo),
   };
 }
