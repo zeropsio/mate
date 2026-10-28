@@ -26,7 +26,6 @@ import {
 import { crewPossessive } from "@t3tools/client-runtime/zerops/crew/phrases";
 import { mateParts } from "@t3tools/client-runtime/zerops/mateParts";
 import { parseAttachmentUrl, type ChangeLink, type ChangeReceipt } from "@t3tools/shared/hqChanges";
-import { quoteWords } from "@t3tools/shared/messagePreview";
 import { environmentTitle } from "../place/place.logic";
 import { siteOf, soleSite } from "../projects/projectCard.logic";
 
@@ -111,23 +110,22 @@ export function keyStaysInReview(key: string): boolean {
 }
 
 /**
- * What a change's review says it does, first: the description its author wrote; where it wrote
- * none, what the run that made it said of it; while that run's conversation is read, the room its
- * words will take; and where neither said anything, nothing at all — no heading over no words.
+ * What a change's review says it does, first: the description its Mate wrote of it; while the
+ * change's record is read, the room its words will take; and where it wrote none, nothing at all —
+ * no heading over no words. A run's reply is never borrowed: it may be about other changes.
  */
 export type ReviewDescription =
   | { readonly kind: "body"; readonly text: string }
-  | { readonly kind: "run"; readonly words: string }
   | { readonly kind: "reading" }
   | { readonly kind: "none" };
 
 export function reviewDescription(input: {
   readonly description: string | undefined;
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
+  /** The change's record, which may hold its description, is still read. */
+  readonly reading: boolean;
 }): ReviewDescription {
   if (input.description !== undefined) return { kind: "body", text: input.description };
-  if (input.run.words !== undefined) return { kind: "run", words: input.run.words };
-  return input.run.reading ? { kind: "reading" } : { kind: "none" };
+  return input.reading ? { kind: "reading" } : { kind: "none" };
 }
 
 /**
@@ -284,48 +282,6 @@ export function changeRunMessage<M extends { readonly role: string; readonly tex
   return messages.findLast(
     (message) => message.role === "assistant" && linksChange(message.text, change, hqAddress),
   );
-}
-
-/** How much of what the Mate said stands in the review: four lines of it, about. */
-const RUN_WORDS_MAX = 400;
-
-/**
- * A message's markdown read as plain sentences: no code blocks, marks, links, bullets or quote
- * markers. A GitHub callout keeps its word, run into its first line as the chat draws it
- * (`quoteWords`).
- */
-function plainText(text: string): string {
-  return quoteWords(text)
-    .replace(/```[\s\S]*?```/gu, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/gu, " ")
-    .replace(/\[([^\]]*)\]\([^)]*\)/gu, "$1")
-    .replace(/^\s{0,3}#{1,6}\s+/gmu, "")
-    .replace(/^\s*(?:[-*+]|\d+[.)])\s+/gmu, "")
-    .replace(/(\*\*|__|`)/gu, "")
-    .replace(/\s+/gu, " ")
-    .trim();
-}
-
-/**
- * What a change does, in the words of the run that made it: the sentences of the Mate's
- * message that links it, every sentence with an address left out — the link's own among them —
- * up to about four lines. The rest is the run's, one click away.
- */
-export function runWords(text: string): string | undefined {
-  const sentences = plainText(text)
-    .split(/(?<=[.!?])\s+/u)
-    .map((sentence) => sentence.trim())
-    .filter((sentence) => sentence.length > 0 && !/https?:\/\//u.test(sentence));
-  const kept: Array<string> = [];
-  let length = 0;
-  for (const sentence of sentences) {
-    const next = length + (kept.length === 0 ? 0 : 1) + sentence.length;
-    if (next > RUN_WORDS_MAX && kept.length > 0) break;
-    kept.push(sentence);
-    length = next;
-  }
-  const words = kept.join(" ");
-  return words.length === 0 ? undefined : words.slice(0, RUN_WORDS_MAX);
 }
 
 /** How many lines of one file's diff stand before "Show all N lines" opens the rest. */

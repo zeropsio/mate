@@ -113,8 +113,6 @@ import {
 const NO_STAGES: ReadonlyArray<string> = [];
 
 const KIND: ReviewKind = "change";
-/** How long a change with no description holds the room of its run's words for them. */
-const RUN_WORDS_WAIT_MS = 3_000;
 
 type ChangeTarget = Extract<ReviewTarget, { readonly kind: "change" }>;
 
@@ -414,25 +412,10 @@ function ChangeReviewData({
         : NO_REMARKS,
     [comments.state, me, nameOf, mateNameOf],
   );
-  // A conversation that never answers is not waited on for ever: its lines give way.
-  const [runGaveUp, setRunGaveUp] = useState(false);
-  useEffect(() => {
-    if (!run.reading) return;
-    const timer = setTimeout(() => {
-      setRunGaveUp(true);
-    }, RUN_WORDS_WAIT_MS);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [run.reading]);
   const runRef = run.threadRef;
-  // The sheet slides in once it can say all of it: its files and commits, how it merges, whether
-  // HQ offers Merge, and its words — or after a moment, each part still read standing in its shape.
-  useReviewHold(
-    detail.readout.kind === "reading" ||
-      reviewOffers === undefined ||
-      (pull.description === undefined && run.reading && !runGaveUp),
-  );
+  // The sheet slides in once it can say all of it: its description, files and commits, how it
+  // merges, whether HQ offers Merge — or after a moment, each part still read standing in its shape.
+  useReviewHold(detail.readout.kind === "reading" || reviewOffers === undefined);
   const project = useGroupName(target.groupId);
   // A recipe change is no pair's code: it offers every preview.
   const previews = useMatePreviews(
@@ -552,7 +535,6 @@ function ChangeReviewData({
       pictures={pictures}
       pull={pull}
       readout={detail.readout}
-      run={{ words: run.words, reading: run.reading && !runGaveUp }}
       titleId={titleId}
       waitingForProduction={waitingForProduction({
         summary: flow?.release.summary,
@@ -602,7 +584,6 @@ export interface ChangeReviewViewProps {
   /** Handing it to one of them, as pressed. */
   readonly hand?: ReviewHand | undefined;
   readonly onHand?: ((mateProjectId: string) => void) | undefined;
-  readonly run: { readonly words: string | undefined; readonly reading: boolean };
   /** The organization's official HQ, which its description's pictures and links are on. */
   readonly hqAddress: string | undefined;
   /** Where its description's pictures are read from, as the person. */
@@ -981,11 +962,13 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       )}
       <ReviewDescription
         code={filesAt}
-        description={pull.description}
+        // The live change's description, else the one its record holds: a change drawn from the
+        // menu's row carries none until the application's detail says it.
+        description={pull.description ?? read?.description}
         hqAddress={props.hqAddress}
         onOpenRun={props.onOpenRun}
         pictures={props.pictures}
-        run={props.run}
+        reading={pull.description === undefined && readout.kind === "reading"}
       />
       {props.previews === undefined || props.previews.length === 0 ? null : (
         <ReviewTry mateName={mate.name} previews={props.previews} />

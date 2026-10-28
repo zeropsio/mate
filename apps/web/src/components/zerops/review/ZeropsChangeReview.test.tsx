@@ -126,7 +126,7 @@ vi.mock("~/zerops/useChangeDiscussion", () => ({
   }),
 }));
 vi.mock("~/zerops/useZeropsChangeRun", () => ({
-  useZeropsChangeRun: () => ({ words: undefined, reading: false, threadRef: undefined }),
+  useZeropsChangeRun: () => ({ threadRef: undefined }),
 }));
 vi.mock("~/zerops/useProjectedHqPicture", () => ({
   useHqPictureSource: () => undefined,
@@ -275,7 +275,7 @@ function viewProps(
     readout: {
       kind: "read",
       value: changeReadoutOfRecord(
-        { mergeability: "clean", behind: false } as HqChange,
+        { mergeability: "clean", behind: false, body: "" } as HqChange,
         review({ files }),
       ),
     },
@@ -293,7 +293,6 @@ function viewProps(
     offers: DEVELOPS,
     press: { kind: "idle" },
     closing: { kind: "idle" },
-    run: { words: undefined, reading: false },
     hqAddress: undefined,
     pictures: undefined,
     environments: [{ tier: "stage" }, { tier: "production" }],
@@ -345,6 +344,7 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
       {
         mergeability: "clean",
         behind: false,
+        body: "",
       } as HqChange,
       {
         mergeBase: MAIN,
@@ -362,6 +362,28 @@ describe("ChangeReviewView: a change review from what HQ recorded", () => {
         commitsTruncated: false,
       },
     );
+
+  // Lukas, 2026-10-28: change #4's "What it does" opened with its Mate's reply about #1 and #3.
+  it.each([
+    [
+      "the description its Mate wrote",
+      "Adds a tip jar under the total.",
+      "Adds a tip jar under the total.",
+    ],
+    ["nothing where its Mate wrote none", "", undefined],
+  ])("What it does says, from the change's own record, %s", (_case, body, said) => {
+    const markup = render(merged({ merged: false, description: undefined }), [], {
+      readout: {
+        kind: "read",
+        value: changeReadoutOfRecord(
+          { mergeability: "clean", behind: false, body } as HqChange,
+          review(),
+        ),
+      },
+    });
+    if (said === undefined) expect(textOf(markup)).not.toContain("What it does");
+    else expect(textOf(markup)).toContain(`What it does ${said}`);
+  });
 
   it("While the review waits for HQ's record it says Loading change details…", () => {
     const document = new Window().document;
@@ -651,7 +673,7 @@ describe("ChangeReviewView: an open change", () => {
       readout: {
         kind: "read",
         value: changeReadoutOfRecord(
-          { mergeability: "empty", behind: false } as HqChange,
+          { mergeability: "empty", behind: false, body: "" } as HqChange,
           review({
             commits: Array.from({ length: 20 }, (_, i) => ({
               sha: String(i),
