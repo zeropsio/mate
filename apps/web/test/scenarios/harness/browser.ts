@@ -509,13 +509,9 @@ export async function menuMateIn(page: Page, name: string, app: string) {
  * every group is opened once.
  */
 export async function menuMateRow(page: Page, name: string) {
-  const literal = (value: string) => {
-    const parts = value.split('"').map((part) => `"${part}"`);
-    return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
-  };
   const words = `normalize-space(translate(., "\u00a0", " "))`;
-  const suffix = literal(` · ${name}`);
-  const named = `${words}=${literal(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
+  const suffix = xpathLiteral(` · ${name}`);
+  const named = `${words}=${xpathLiteral(name)} or substring(${words}, string-length(${words}) - string-length(${suffix}) + 1)=${suffix}`;
   const path = `//*[@data-zerops-surface="sidebar-mate"][.//*[@data-zerops-surface="sidebar-mate-name"][${named}]]`;
   const row = page.locator(`::-p-xpath(${path})`).filter(
     (row) =>
@@ -603,9 +599,13 @@ export async function openAccountMenu(page: Page) {
   await page.mouse.click(x, y);
 }
 
+export function xpathLiteral(value: string) {
+  const parts = value.split('"').map((part) => `"${part}"`);
+  return parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+}
+
 export async function clickText(page: Page, surface: string, text: string) {
-  const parts = text.split('"').map((part) => `"${part}"`);
-  const literal = parts.length === 1 ? parts[0] : `concat(${parts.join(`, '"', `)})`;
+  const literal = xpathLiteral(text);
   await page
     .locator(
       `::-p-xpath(//*[@data-zerops-surface="${surface}"][.//text()[normalize-space(.)=${literal}]])`,

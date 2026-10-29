@@ -33,7 +33,7 @@ export const signInOrganization = Effect.fn("signin.chooseOrganization")(functio
       { polling: "raf" },
     );
     const authorization = await page.$("::-p-aria(Continue with your Zerops account)");
-    if (authorization) await authorization.click();
+    if (authorization) await page.locator("::-p-aria(Continue with your Zerops account)").click();
     await page.waitForFunction(
       () =>
         [...document.querySelectorAll("button")].some((button) =>

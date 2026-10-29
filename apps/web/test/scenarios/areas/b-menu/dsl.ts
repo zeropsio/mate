@@ -2,8 +2,7 @@ import type { MateFake } from "../../fakes/mate.ts";
 import { expect } from "@effect/vitest";
 import type { Page } from "puppeteer-core";
 import * as Effect from "effect/Effect";
-import type { ElementHandle } from "puppeteer-core";
-import { clickText, menuMateIn } from "../../harness/browser.ts";
+import { clickText, menuMateIn, xpathLiteral } from "../../harness/browser.ts";
 import type { ScenarioExtension, ScenarioOptions } from "../../harness/scenario.ts";
 import type { OverviewMain, MateThreadKind } from "@t3tools/shared/mateLink";
 import { createScenario } from "../../harness/scenario.ts";
@@ -76,22 +75,13 @@ export function environmentRows(page: Page, expected: ReadonlyArray<string>) {
 
 export function openEnvironment(page: Page, appId: string, name: string, id: string) {
   return Effect.promise(async () => {
-    const button = await page.waitForFunction(
-      (name) => {
-        // The rows paint beside the card's stand-in; where the column stacks under the card, the
-        // answered card pushes them down, and a click aimed before that lands on the card.
-        if (document.querySelector('main [aria-busy="true"]') !== null) return undefined;
-        const section = [...document.querySelectorAll("main section")].find(
-          (section) => section.querySelector("h2")?.textContent === "Environments",
-        );
-        return [...(section?.querySelectorAll("button[data-zerops-environment-id]") ?? [])].find(
-          (row) => row.firstChild?.textContent?.trim() === name,
-        );
-      },
-      { polling: "raf" },
-      name,
-    );
-    await (button.asElement() as ElementHandle<HTMLElement>).click();
+    await page
+      .locator(
+        `::-p-xpath(//main//section[h2="Environments"]//button[@data-zerops-environment-id][normalize-space(text()[1])=${xpathLiteral(name)} or normalize-space(*[1])=${xpathLiteral(name)}])`,
+      )
+      // The answered card can push these rows down after their first paint.
+      .filter(() => document.querySelector('main [aria-busy="true"]') === null)
+      .click();
     await page
       .waitForFunction(
         (path) => location.pathname === path,
@@ -270,32 +260,16 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     opensApplication: (name: string) =>
       Effect.promise(async () => {
         // The project's ···: its group's, or the one its only Mate's row shares with it.
-        const more = await s.page.waitForFunction(
-          (name) => {
-            const said = (node: Element | null) =>
-              node?.textContent
-                ?.replaceAll("\u00a0", " ")
-                .replace(/, \d+ Mates$/, "")
-                .trim();
-            const row = [
-              ...document.querySelectorAll<HTMLElement>(
-                // A lone Mate's ··· sits in its row's box, beside the row's own button.
-                '[data-zerops-surface="sidebar-project-row"], [data-zerops-surface="sidebar-mate-row"]',
-              ),
-            ].find((row) => {
-              const words = said(
-                row.querySelector(
-                  '[data-zerops-surface="sidebar-project-name"], [data-zerops-surface="sidebar-mate-name"]',
-                ),
-              );
-              return words === name || words?.startsWith(`${name} · `) === true;
-            });
-            return row?.querySelector<HTMLElement>('button[aria-label^="More for"]') ?? null;
-          },
-          { polling: "raf" },
-          name,
-        );
-        await (more.asElement() as ElementHandle<HTMLElement>).click();
+        const words = `normalize-space(translate(., "\u00a0", " "))`;
+        // A grouped project's direct text excludes its screen-reader-only Mate count; a lone
+        // Mate's label nests the project's name beside the Mate's, so read that label whole.
+        const project = `normalize-space(translate(text()[1], "\u00a0", " "))`;
+        const named = `${project}=${xpathLiteral(name)} or ${words}=${xpathLiteral(name)} or starts-with(${words}, ${xpathLiteral(`${name} · `)})`;
+        await s.page
+          .locator(
+            `::-p-xpath(//*[@data-zerops-surface="sidebar-project-row" or @data-zerops-surface="sidebar-mate-row"][.//*[@data-zerops-surface="sidebar-project-name" or @data-zerops-surface="sidebar-mate-name"][${named}]]//button[starts-with(@aria-label,"More for")])`,
+          )
+          .click();
         await s.page.locator("::-p-aria(Open project)").click();
         await s.page.waitForFunction(
           (name) =>
