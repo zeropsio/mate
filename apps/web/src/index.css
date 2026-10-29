@@ -5622,8 +5622,7 @@ code {
     color 150ms var(--ease-out-strong);
 }
 
-.zerops-sites-linkrow:hover > .zerops-sites-link,
-.zerops-sites-side > .zerops-sites-link:hover,
+.zerops-sites-linkrow:hover > a.zerops-sites-link,
 .zerops-sites-link:focus-visible {
   background-color: var(--accent);
   color: var(--foreground);
@@ -5671,59 +5670,14 @@ code {
   white-space: nowrap;
 }
 
-/* A Mate's part: its name, then its dev and its preview in fixed columns, so every row's entries
-   align under each other; on the names' edge, as its addresses are. The dev column fits a short
-   chat title, cut at its edge; the preview's fits "preview ↗". A dev's further addresses hang
-   under its first, so the pair stays on the row's first line. */
-.zerops-sites-pair {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 104px 76px;
-  column-gap: 4px;
-  align-items: baseline;
-  padding: 4px 38px 4px 36px;
-}
-
-.zerops-sites-pair > .zerops-sites-service {
-  max-width: none;
-}
-
-/* A side's links, a pool's several workspaces one under another. */
-.zerops-sites-side {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  min-width: 0;
-}
-
-/* A side that opens: the address row's link, compact — its label in the row's text, the ↗ after. */
-.zerops-sites-side > * {
-  max-width: 100%;
-}
-
-.zerops-sites-label {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.zerops-sites-side > .zerops-sites-link {
-  gap: 4px;
-  padding: 2px 6px;
-  border-radius: 6px;
-  color: var(--foreground);
-}
-
-.zerops-sites-side > .zerops-sites-link > .zerops-sites-arrow {
-  color: var(--muted-foreground);
-}
-
-/* A side with no address: its label, muted, with no ↗ — nothing to open — its tooltip saying why. */
+/* A Mate's service with nothing to open: its hostname, muted, with no host and no ↗ — its tooltip
+   saying why. */
 .zerops-sites-off {
-  padding: 2px 6px;
-  color: var(--muted-foreground);
   cursor: default;
+}
+
+.zerops-sites-off > .zerops-sites-service {
+  color: var(--muted-foreground);
 }
 
 .zerops-sites-host {

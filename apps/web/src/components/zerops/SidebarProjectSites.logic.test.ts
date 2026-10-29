@@ -8,7 +8,6 @@ import type { HeadingLanding, HeadingLineInput } from "./SidebarHeadingLine.logi
 import {
   filterSites,
   mateLinks,
-  partEntries,
   productionUrl,
   projectSitesSections,
   projectSitesStatus,
@@ -17,7 +16,7 @@ import {
   type SitesLease,
   type SitesMateFacts,
   type SitesSection,
-  type SitesSide,
+  type SitesService,
 } from "./SidebarProjectSites.logic";
 
 const route = (service: string, host: string, port = 80): ZeropsPublicRoute => ({
@@ -316,35 +315,30 @@ const server = (status: string, url?: string): ZeropsDevServer => ({
 const slots = (pool: string) =>
   [3001, 3002, 3003].map((port) => route(pool, `${pool}-${String(port)}.example.app`, port));
 
-/** A side as a row shows it: its label and host (and its other ports'), or its label and why not. */
-const sideText = (side: SitesSide) =>
-  side.url === undefined
-    ? `${side.label} (${side.why ?? ""})`
-    : `${side.label} ${side.host ?? ""}${side.more.length === 0 ? "" : ` +${side.more.join(" +")}`}`;
+/**
+ * A service as its row shows it: its hostname (and which of its addresses), then its host (and its
+ * other ports'), or why it has none.
+ */
+const serviceText = (row: SitesService) =>
+  `${row.service} ${
+    row.url === undefined
+      ? `(${row.why ?? ""})`
+      : `${row.host ?? ""}${row.more.length === 0 ? "" : ` +${row.more.join(" +")}`}`
+  }`;
 
-/** A Mate's addresses as its section reads them: each part's row, then each other address. */
+/** A Mate's addresses as its section reads them: each of its services' rows, then each other address. */
 const rowsOf = (facts: SitesMateFacts) => {
   const addresses = mateLinks(facts);
   return addresses === undefined
     ? undefined
     : [
-        ...addresses.pairs.map((pair) =>
-          [
-            pair.name,
-            pair.dev.map(sideText).join(", "),
-            pair.preview === undefined ? "" : sideText(pair.preview),
-          ].join(" | "),
-        ),
+        ...addresses.services.map(serviceText),
         ...addresses.links.map(
           (link) =>
             `${link.service}${link.port === undefined ? "" : `:${String(link.port)}`} ${link.host}`,
         ),
       ];
 };
-
-/** A Mate's parts' dev sides, each as its row shows it. */
-const devsOf = (facts: SitesMateFacts) =>
-  (mateLinks(facts)?.pairs ?? []).flatMap((pair) => pair.dev.map(sideText));
 
 const EMBEDDER = "https://embedderpool-c2e4-8101.prg1.zerops.app";
 
@@ -360,7 +354,12 @@ describe("a Mate's parts", () => {
         routes: [route("apidev", "apidev.example.app"), route("apistage", "apistage.example.app")],
         hostnames: ["apidev", "apistage"],
       },
-      rows: ["API | dev apidev.example.app | preview apistage.example.app"],
+      rows: ["apidev apidev.example.app", "apistage apistage.example.app"],
+    },
+    {
+      title: "a dev with no stage yet",
+      facts: { routes: [route("matedev", "matedev.example.app")], hostnames: ["matedev"] },
+      rows: ["matedev matedev.example.app"],
     },
     {
       title: "a pool with one workspace, beside the stage zcp pairs it with",
@@ -372,7 +371,8 @@ describe("a Mate's parts", () => {
         poolPairs: [{ pool: "embedderpool", stages: [{ hostname: "embedderstage" }] }],
       },
       rows: [
-        "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | preview embedderstage.example.app",
+        "embedderpool-3 embedderpool-c2e4-8101.prg1.zerops.app",
+        "embedderstage embedderstage.example.app",
       ],
     },
     {
@@ -387,10 +387,14 @@ describe("a Mate's parts", () => {
         ],
         poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage", part: "web" }] }],
       },
-      rows: ["Web | dev web-2.example.app, dev web-5.example.app | preview webstage.example.app"],
+      rows: [
+        "webpool-2 web-2.example.app",
+        "webpool-5 web-5.example.app",
+        "webstage webstage.example.app",
+      ],
     },
   ])(
-    "a Mate's part shows its dev and its preview side by side, each opening its own address: $title",
+    "a Mate's service shows its real hostname, a workspace its alias, each opening its own address: $title",
     ({ facts, rows }) => {
       expect(rowsOf(mate({ name: "Kara", ...facts }))).toEqual(rows);
     },
@@ -410,7 +414,7 @@ describe("a Mate's parts", () => {
         leases: undefined,
         poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
       },
-      rows: ["Web | dev (It runs while Kara works on Web.) | preview webstage.example.app"],
+      rows: ["webpool (It runs while Kara works on it.)", "webstage webstage.example.app"],
     },
     {
       title: "a workspace whose server is not running, beside a stage with no address",
@@ -421,7 +425,7 @@ describe("a Mate's parts", () => {
         leases: [lease("runnerpool-2", { devServers: [server("stopped")] })],
         poolPairs: [{ pool: "runnerpool", stages: [{ hostname: "runnerstage" }] }],
       },
-      rows: ["Runner | dev (Not running.) | preview (No web address.)"],
+      rows: ["runnerpool-2 (Not running.)", "runnerstage (No web address.)"],
     },
     {
       title: "a dev service with no public address",
@@ -429,15 +433,10 @@ describe("a Mate's parts", () => {
         routes: [route("apistage", "apistage.example.app")],
         hostnames: ["apidev", "apistage"],
       },
-      rows: ["API | dev (No web address.) | preview apistage.example.app"],
-    },
-    {
-      title: "a dev with no stage yet",
-      facts: { routes: [route("matedev", "matedev.example.app")], hostnames: ["matedev"] },
-      rows: ["Mate | dev matedev.example.app | preview (Not set up yet.)"],
+      rows: ["apidev (No web address.)", "apistage apistage.example.app"],
     },
   ])(
-    "every part shows its dev and its preview, one with nothing to open muted and saying why: $title",
+    "a Mate's service with nothing to open shows its real hostname muted, saying why: $title",
     ({ facts, rows }) => {
       expect(rowsOf(mate({ name: "Kara", ...facts }))).toEqual(rows);
     },
@@ -458,7 +457,8 @@ describe("a Mate's parts", () => {
         }),
       ),
     ).toEqual([
-      "Shop | dev shopdev-5195.example.app +shopdev-5193.example.app +shopdev-5196.example.app | preview shopstage-5195.example.app",
+      "shopdev shopdev-5195.example.app +shopdev-5193.example.app +shopdev-5196.example.app",
+      "shopstage shopstage-5195.example.app",
     ]);
   });
 
@@ -472,7 +472,8 @@ describe("a Mate's parts", () => {
       poolPairs: [{ pool: "webpool", stages: [{ hostname: "webstage" }] }],
     });
     expect(rowsOf(kara), "no workspace, no dev to open").toEqual([
-      "Web | dev (Not running now. It runs while Kara works on Web.) | preview webstage.example.app",
+      "webpool (Not running now. It runs while Kara works on it.)",
+      "webstage webstage.example.app",
     ]);
     expect(JSON.stringify(mateLinks(kara))).not.toContain("webpool-300");
   });
@@ -485,12 +486,12 @@ describe("a Mate's parts", () => {
     {
       title: "stopped",
       given: lease("webpool-3", { devServers: [server("stopped")] }),
-      dev: "dev (Not running.)",
+      dev: "webpool-3 (Not running.)",
     },
     {
       title: "crashed",
       given: lease("webpool-3", { devServers: [server("crashed")] }),
-      dev: "dev (Not running.)",
+      dev: "webpool-3 (Not running.)",
     },
     {
       title: "parked",
@@ -498,12 +499,12 @@ describe("a Mate's parts", () => {
         state: "parked",
         devServers: [server("running", "https://webpool-3001.example.app")],
       }),
-      dev: "dev (Paused.)",
+      dev: "webpool-3 (Paused.)",
     },
-    { title: "unread", given: lease("webpool-3"), dev: "dev (No web address yet.)" },
+    { title: "unread", given: lease("webpool-3"), dev: "webpool-3 (No web address yet.)" },
   ])("a workspace without an address shows its dev muted, saying why: $title", ({ given, dev }) => {
     expect(
-      devsOf(mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] })),
+      rowsOf(mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] })),
     ).toEqual([dev]);
   });
 
@@ -519,12 +520,12 @@ describe("a Mate's parts", () => {
           poolPairs: undefined,
         }),
       ),
-    ).toEqual(["Box | dev (No web address yet.) | preview boxstage.example.app"]);
+    ).toEqual(["boxpool-2 (No web address yet.)", "boxstage boxstage.example.app"]);
   });
 });
 
 describe("a Mate's dev pools", () => {
-  it("lists a part's preview once, by the part's name, never its pool's per-port addresses", () => {
+  it("lists each workspace once, by its alias, never its pool's per-port addresses", () => {
     const kara = mate({
       name: "Kara",
       routes: [
@@ -543,8 +544,8 @@ describe("a Mate's dev pools", () => {
       ],
     });
     expect(rowsOf(kara)).toEqual([
-      "Embedder | dev embedderpool-c2e4-8101.prg1.zerops.app | preview (Not set up yet.)",
-      "Web | dev (Starting.) | preview (Not set up yet.)",
+      "embedderpool-3 embedderpool-c2e4-8101.prg1.zerops.app",
+      "webpool-3 (Starting.)",
       "appstage appstage.example.app",
     ]);
   });
@@ -570,15 +571,14 @@ describe("a Mate's dev pools", () => {
       }),
     },
   ])("lists no preview of a part with $title", ({ given }) => {
-    const [dev] = (
+    const [dev] =
       mateLinks(
         mate({ name: "Kara", routes: slots("webpool"), pools: ["webpool"], leases: [given] }),
-      )?.pairs ?? []
-    ).flatMap((pair) => pair.dev);
-    expect([dev?.label, dev?.url]).toEqual(["dev", undefined]);
+      )?.services ?? [];
+    expect([dev?.service, dev?.url]).toEqual(["webpool-3", undefined]);
   });
 
-  it("names a part by its pool's hostname, the pool left off", () => {
+  it("a Mate's workspace shows its real alias, never its pool's hostname cut short", () => {
     expect(
       rowsOf(
         mate({
@@ -592,10 +592,7 @@ describe("a Mate's dev pools", () => {
           ],
         }),
       ),
-    ).toEqual([
-      "API | dev apipool-1.example.app | preview (Not set up yet.)",
-      "Pool | dev pool-2.example.app | preview (Not set up yet.)",
-    ]);
+    ).toEqual(["apipool-1 apipool-1.example.app", "pool-2 pool-2.example.app"]);
   });
 
   it("lists nothing of a pool with no lease, and a service that is no pool keeps its addresses", () => {
@@ -609,7 +606,7 @@ describe("a Mate's dev pools", () => {
           leases: [],
         }),
       ),
-    ).toEqual(["App | dev appdev.example.app | preview (Not set up yet.)"]);
+    ).toEqual(["appdev appdev.example.app"]);
   });
 
   it("never lists a pool's per-port addresses while its leases are not read", () => {
@@ -622,7 +619,7 @@ describe("a Mate's dev pools", () => {
           leases: undefined,
         }),
       ),
-    ).toEqual(["App | dev appdev.example.app | preview (Not set up yet.)"]);
+    ).toEqual(["appdev appdev.example.app"]);
   });
 
   it("takes a lease's pool for a pool where the services listing has not named it", () => {
@@ -639,7 +636,7 @@ describe("a Mate's dev pools", () => {
           ],
         }),
       ),
-    ).toEqual(["Web | dev webpool-3-1df2-3000.example.app | preview (Not set up yet.)"]);
+    ).toEqual(["webpool-3 webpool-3-1df2-3000.example.app"]);
   });
 });
 
@@ -651,19 +648,19 @@ describe("a Mate's addresses", () => {
     readonly rows: ReadonlyArray<string>;
   }>([
     {
-      title: "labels the dev service dev and the stage half of its pair preview, dev first",
+      title: "lists the dev service, then the stage half of its pair, each by its hostname",
       routes: [route("appdev", "appdev.example.app"), route("appstage", "appstage.example.app")],
       hostnames: ["appdev", "appstage", "db"],
-      rows: ["App | dev appdev.example.app | preview appstage.example.app"],
+      rows: ["appdev appdev.example.app", "appstage appstage.example.app"],
     },
     {
-      title: "labels a pair whose dev half is the bare name",
+      title: "lists a pair whose dev half is the bare name",
       routes: [route("webstage", "webstage.example.app"), route("web", "web.example.app")],
       hostnames: ["web", "webstage"],
-      rows: ["Web | dev web.example.app | preview webstage.example.app"],
+      rows: ["web web.example.app", "webstage webstage.example.app"],
     },
     {
-      title: "leaves a service that is neither half of a pair unlabelled, after the pair",
+      title: "lists a service that is neither half of a pair after the pair",
       routes: [
         route("admin", "admin.example.app"),
         route("apidev", "apidev.example.app"),
@@ -671,7 +668,8 @@ describe("a Mate's addresses", () => {
       ],
       hostnames: ["admin", "apidev", "apistage"],
       rows: [
-        "API | dev apidev.example.app | preview apistage.example.app",
+        "apidev apidev.example.app",
+        "apistage apistage.example.app",
         "admin admin.example.app",
       ],
     },
@@ -679,17 +677,17 @@ describe("a Mate's addresses", () => {
       title: "keeps a stage half's preview while the services list has not shown it yet",
       routes: [route("todoapp", "todoapp.example.app"), route("todoappstage", "stage.example.app")],
       hostnames: ["todoapp"],
-      rows: ["Todoapp | dev todoapp.example.app | preview stage.example.app"],
+      rows: ["todoapp todoapp.example.app", "todoappstage stage.example.app"],
     },
     {
       title: "never lists the control plane",
       routes: [route("zcp", "zcp.example.app"), route("appdev", "appdev.example.app")],
-      rows: ["App | dev appdev.example.app | preview (Not set up yet.)"],
+      rows: ["appdev appdev.example.app"],
     },
     {
-      title: "names a stage half preview from its routes alone while the services are unread",
+      title: "lists a stage half from its routes alone while the services are unread",
       routes: [route("appdev", "appdev.example.app"), route("appstage", "appstage.example.app")],
-      rows: ["App | dev appdev.example.app | preview appstage.example.app"],
+      rows: ["appdev appdev.example.app", "appstage appstage.example.app"],
     },
   ])("$title", ({ routes, hostnames, rows }) => {
     expect(rowsOf(mate({ name: "Nell", routes, hostnames }))).toEqual(rows);
@@ -716,15 +714,15 @@ const STAGES: ChipMenuModel = {
   ],
 };
 
-/** Each section by its key, with the hosts it lists: a Mate's parts' sides first, then its others. */
+/** Each section by its key, with the hosts it lists: a Mate's services first, then its others. */
 const sectionRows = (sections: ReadonlyArray<SitesSection>) =>
   sections.map((section) => [
     section.key,
     section.links === undefined
       ? "reading"
       : [
-          ...(section.kind === "mate" ? section.pairs : []).flatMap((pair) =>
-            partEntries(pair).flatMap((side) => (side.host === undefined ? [] : [side.host])),
+          ...(section.kind === "mate" ? section.services : []).flatMap((row) =>
+            row.host === undefined ? [] : [row.host],
           ),
           ...section.links.map((link) => link.host),
         ].join(", "),
@@ -997,7 +995,7 @@ describe("the addresses filter", () => {
     expect(sitesLinkCount(sections)).toBe(5);
   });
 
-  it("finds a part's preview by the part's name", () => {
+  it("finds a Mate's service by its real hostname", () => {
     const withPools = projectSitesSections({
       production: PROD,
       productionUnread: false,

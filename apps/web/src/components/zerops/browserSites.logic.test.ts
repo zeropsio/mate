@@ -46,22 +46,22 @@ describe("browserSiteGroups", () => {
       {
         title: "Development",
         rows: [
-          "Medusa medusadev-a1b2-9000.prg1.zerops.app",
-          "Nextstore nextstoredev-a1b2-8000.prg1.zerops.app",
+          "medusadev medusadev-a1b2-9000.prg1.zerops.app",
+          "nextstoredev nextstoredev-a1b2-8000.prg1.zerops.app",
         ],
       },
       {
         title: "Preview",
         rows: [
-          "Medusa medusastage-a1b2-9000.prg1.zerops.app",
-          "Nextstore nextstorestage-a1b2-8000.prg1.zerops.app",
+          "medusastage medusastage-a1b2-9000.prg1.zerops.app",
+          "nextstorestage nextstorestage-a1b2-8000.prg1.zerops.app",
         ],
       },
       {
         title: "Production",
         rows: [
-          "Medusa medusa-c3d4-9000.prg1.zerops.app",
-          "Nextstore nextstore-c3d4-8000.prg1.zerops.app",
+          "medusa medusa-c3d4-9000.prg1.zerops.app",
+          "nextstore nextstore-c3d4-8000.prg1.zerops.app",
         ],
       },
       { title: "Tools", rows: ["mailpit mailpit-a1b2-8025.prg1.zerops.app"] },
@@ -82,13 +82,13 @@ describe("browserSiteGroups", () => {
     };
     expect(shown(input).map((group) => group.title)).toEqual(["Development", "Preview", "Stage"]);
     expect(shown(input).map((group) => group.rows[0]!.split(" ")[0])).toEqual([
-      "App",
-      "App",
-      "App",
+      "appdev",
+      "appstage",
+      "app",
     ]);
   });
 
-  it("names a pool's workspaces by their part, and offers only those that run", () => {
+  it("names a pool's workspaces by their real alias, and offers only those that run", () => {
     const input: MateAddressInput = {
       services: [{ ...service("webpool", 3001), type: "swarm@1" }, service("webstage")],
       leases: ["webpool-1", "webpool-2"].map((alias, index) => ({
@@ -107,8 +107,8 @@ describe("browserSiteGroups", () => {
       })),
     };
     expect(shown(input).slice(0, 2)).toEqual([
-      { title: "Development", rows: ["Web webpool-1-a1b2-3001.prg1.zerops.app"] },
-      { title: "Preview", rows: ["Web webstage-a1b2-8000.prg1.zerops.app"] },
+      { title: "Development", rows: ["webpool-1 webpool-1-a1b2-3001.prg1.zerops.app"] },
+      { title: "Preview", rows: ["webstage webstage-a1b2-8000.prg1.zerops.app"] },
     ]);
   });
 
@@ -124,7 +124,7 @@ describe("browserSiteGroups", () => {
     };
     expect(shown(input)[1]).toEqual({
       title: "Production",
-      rows: ["App · EU app-eu.prg1.zerops.app", "App · US app-us.prg1.zerops.app"],
+      rows: ["app · EU app-eu.prg1.zerops.app", "app · US app-us.prg1.zerops.app"],
     });
   });
 });

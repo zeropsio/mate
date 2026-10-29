@@ -1136,17 +1136,32 @@ describe("stageDeploysMerges: a stage the foot names", () => {
   });
 });
 
-// Larkspur, 2026-10-28: Kaďák's review offered "flip flipstage-7c1e-5195.prg1.zerops.app".
+// Larkspur, 2026-10-28: Wren's review offered "shop shopstage-7c1e-5195.prg1.zerops.app".
 describe("tryItWords: Try it names whose preview it opens, and which part", () => {
   it.each([
-    { case: "a Mate's one part", mate: "Kaďák", part: "flip", words: "Kaďák's preview · Flip" },
-    { case: "one of several parts", mate: "Odin", part: "api", words: "Odin's preview · Api" },
-    { case: "a name ending in s", mate: "Ines", part: "app", words: "Ines' preview · App" },
+    {
+      case: "a Mate's one part",
+      mate: "Wren",
+      part: "shopstage",
+      words: "Wren's preview · shopstage",
+    },
+    {
+      case: "one of several parts",
+      mate: "Odin",
+      part: "apistage",
+      words: "Odin's preview · apistage",
+    },
+    {
+      case: "a name ending in s",
+      mate: "Ines",
+      part: "appstage",
+      words: "Ines' preview · appstage",
+    },
     {
       case: "a Mate not named yet",
       mate: "the Mate",
-      part: "app",
-      words: "The Mate's preview · App",
+      part: "appstage",
+      words: "The Mate's preview · appstage",
     },
   ])("$case: $words", ({ mate, part, words }) => {
     const said = tryItWords(mate, part);
@@ -1156,7 +1171,7 @@ describe("tryItWords: Try it names whose preview it opens, and which part", () =
 
 // The live audit, 2026-10-28: Kara's and Odin's reviews offered no Try it, their previews paired with
 // dev pools the old reading never looked at, and Noola's named its parts by their setups (apiprod).
-describe("tryItPreviews: Try it offers each part's preview by its friendly name", () => {
+describe("tryItPreviews: Try it offers each part's preview by its real hostname", () => {
   const route = (service: string) => ({
     service,
     port: 80,
@@ -1182,7 +1197,7 @@ describe("tryItPreviews: Try it offers each part's preview by its friendly name"
         tier: undefined,
         repository: "noola",
       },
-      offered: ["API", "Web"],
+      offered: ["apistage", "webstage"],
     },
     {
       case: "a change of one repository offers its own pair's preview",
@@ -1194,7 +1209,7 @@ describe("tryItPreviews: Try it offers each part's preview by its friendly name"
         tier: undefined,
         repository: "docsdev",
       },
-      offered: ["Docs"],
+      offered: ["docsstage"],
     },
   ])("$case", ({ input, offered }) => {
     expect(tryItPreviews(input).map((preview) => preview.service)).toEqual(offered);

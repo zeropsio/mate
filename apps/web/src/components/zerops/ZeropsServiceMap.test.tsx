@@ -339,19 +339,19 @@ describe("ZeropsServiceMap — the card", () => {
       ]),
     );
 
-    expect(html).toContain(">Kanban<");
+    expect(html).toContain(">kanbandev<");
     expect(html).toContain("data-zerops-service-stage");
-    expect(html).toContain(">Preview<");
+    expect(html).toContain(">kanbanstage<");
     expect(html).toContain("Creating");
     expect(html.match(/data-zerops-service-row=/gu)).toHaveLength(1);
   });
 
-  it("names a pair's nested half the Mate's preview, never its project's stage", () => {
+  it("a Mate's service shows its real hostname: a pair's nested half by its own, never a made-up name or the word stage", () => {
     const html = render(
       topology([service({ hostname: "kanbandev" }), service({ hostname: "kanbanstage" })]),
     );
-    expect(html).toContain(">Preview<");
-    expect(html).not.toContain(">kanbanstage<");
+    expect(html).toContain(">kanbanstage<");
+    expect(html).not.toContain(">Preview<");
     expect(html).not.toContain("<span>stage</span>");
   });
 
@@ -678,7 +678,7 @@ describe("ZeropsServiceDetail — the pop", () => {
     );
 
     expect(html).toContain("appdev-1-3000.zerops.app</span>");
-    expect(html).toContain("Preview · appstage-1-3000.zerops.app</span>");
+    expect(html).toContain("appstage · appstage-1-3000.zerops.app</span>");
   });
 
   it("offers a production project as a linked route", () => {
@@ -835,7 +835,7 @@ describe("ZeropsServiceMap — a pool-era Mate's parts", () => {
 
     expect(html).toContain('data-zerops-service-group="runtimes"');
     expect(html).not.toContain('data-zerops-service-group="infrastructure"');
-    expect(html).toContain(">Web<");
+    expect(html).toContain(">webpool<");
     expect(html).not.toContain(":8101");
   });
 

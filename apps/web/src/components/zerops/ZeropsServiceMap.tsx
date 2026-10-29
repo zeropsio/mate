@@ -683,7 +683,7 @@ export function ZeropsServiceDetail({ row }: { row: ZeropsServiceRow }) {
         <PoolWorkspaces workspaces={row.workspaces} />
       )}
       {row.stage === undefined ? null : (
-        <ServiceRoutes of={row.stageTitle ?? row.stage.hostname} routes={row.stage.routes} />
+        <ServiceRoutes of={row.stage.hostname} routes={row.stage.routes} />
       )}
       {row.metrics.length === 0 ? null : (
         <div
@@ -818,7 +818,7 @@ function ServiceCardBody({
           folded={row.stageRoutesFolded ?? false}
           routes={row.stageRoutes ?? []}
           stage={row.stage}
-          title={row.stageTitle ?? row.stage.hostname}
+          title={row.stage.hostname}
           tone={row.stageTone}
           trends={row.stageTrends}
           usageRead={usageRead}

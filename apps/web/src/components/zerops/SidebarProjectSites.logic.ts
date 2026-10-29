@@ -4,12 +4,12 @@
  * once.
  *
  * Sites is addresses: the places a person opens to follow along. Shared environments keep their
- * own sections. Under each Mate, one row per part, its pair side by side: the part's name, its dev
- * (the dev service's own address, or for a dev pool each workspace zcp holds on it, by the preview
- * zcp read there) and its stage; then the Mate's other addresses. Every part shows both halves in
- * their columns, a half with nothing to open muted, its tooltip saying why. A dev on several
- * addresses is a link per address. A pool's per-slot routes are never a workspace's address, and no
- * work, status or lease shows outside a muted half's tooltip.
+ * own sections. Under each Mate, one row per service by its real hostname, as production's and a
+ * stage's are (Aleš, 2026-10-29): each part's dev (the dev service, or for a dev pool each
+ * workspace zcp holds on it, by its alias) then its stage; then the Mate's other addresses. A
+ * service with nothing to open is its hostname, muted, its tooltip saying why. A dev on several
+ * addresses is a row per address. A pool's per-slot routes are never a workspace's address, and no
+ * work, status or lease shows outside a muted row's tooltip.
  *
  * The tag says one thing, the highest of: production down; an environment that did not come up;
  * the newest release failed while the old one serves; a release going out or production
@@ -22,7 +22,6 @@ import { comingLine, placeAddresses, type ZeropsPublicRoute } from "@t3tools/cli
 import {
   mateParts,
   type MatePart,
-  type MatePartEntry,
   type MatePartLease,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
@@ -194,15 +193,25 @@ export interface SitesLink {
 /** A lease zcp holds on one of a Mate's dev pools, as its newest envelope names it (`leases[]`). */
 export type SitesLease = MatePartLease;
 
-/** One entry of a part: its dev workspace or its preview (`MatePartEntry`). */
-export type SitesSide = MatePartEntry;
+/**
+ * One of a Mate's services as its section lists it, by its real hostname — a dev pool's workspace
+ * by its alias — with its address, or with why it has none.
+ */
+export interface SitesService {
+  readonly key: string;
+  /** The service's hostname; a workspace's alias. */
+  readonly service: string;
+  readonly url: string | undefined;
+  readonly host: string | undefined;
+  /** Its other ports' hosts, which its tooltip lists after its own. */
+  readonly more: ReadonlyArray<string>;
+  /** Only where it has no address, in plain words: its tooltip. */
+  readonly why: string | undefined;
+}
 
-/** A part of a Mate's application: its friendly name, its dev entries and its preview, always both. */
-export type SitesPair = Omit<MatePart, "preview"> & { readonly preview: SitesSide };
-
-/** A Mate's addresses: its parts, then its other addresses. */
+/** A Mate's addresses: its parts' services, then its other addresses. */
 export interface SitesMateAddresses {
-  readonly pairs: ReadonlyArray<SitesPair>;
+  readonly services: ReadonlyArray<SitesService>;
   readonly links: ReadonlyArray<SitesLink>;
 }
 
@@ -240,10 +249,10 @@ export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
   (mate.pools ?? []).length > 0;
 
 /**
- * A Mate's addresses: its parts (`mateParts`, the one reader every surface shows them from), then
- * every other public service by its name alone. Never the control plane. `undefined` while its
- * routes are unread — never none before the answer. Sites is addresses only (Aleš, 2026-10-27): a
- * workspace is "dev" here, never the chat or the branch it is for; its address says which.
+ * A Mate's addresses: its parts' services (`mateParts`, the one reader every surface shows them
+ * from), each part's dev then its stage, then every other public service. Never the control plane.
+ * `undefined` while its routes are unread — never none before the answer. Sites is addresses only
+ * (Aleš, 2026-10-27): a workspace is its alias here, never the chat or the branch it is for.
  */
 export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
@@ -256,41 +265,33 @@ export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined 
     standIns: mate.standIns,
     leases: mate.leases,
   });
-  return {
-    pairs: parts.map((part) => ({
-      ...part,
-      // A dev's first address is "dev"; the rest go by the server or port that tells them apart.
-      dev:
-        part.dev.length === 0
-          ? [devPlaceholder(mate, part)]
-          : part.dev.map((side, index) =>
-              side.label === "dev" || part.dev[index - 1]?.service === side.service
-                ? side
-                : { ...side, label: "dev" },
-            ),
-      preview: part.preview ?? {
-        key: `preview:${part.key}`,
-        label: "preview",
-        service: part.devService,
-        url: undefined,
-        host: undefined,
-        more: [],
-        why: "Not set up yet.",
-      },
-    })),
-    links: others,
-  };
+  // One row per service: a dev several parts share is listed once.
+  const services = new Map<string, SitesService>();
+  for (const part of parts)
+    for (const entry of [
+      ...(part.dev.length === 0 ? [devPlaceholder(mate, part)] : part.dev),
+      ...(part.preview === undefined ? [] : [part.preview]),
+    ])
+      if (!services.has(entry.key))
+        services.set(entry.key, {
+          key: entry.key,
+          service: entry.service,
+          url: entry.url,
+          host: entry.host,
+          more: entry.more,
+          why: entry.why,
+        });
+  return { services: [...services.values()], links: others };
 }
 
 /**
  * A part's dev with nothing to open: a pool's (or a holder's) runs only while the Mate works on
- * the part; a dev service's has no public address.
+ * it; a dev service's has no public address.
  */
-function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesSide {
-  const runs = `It runs while ${mate.name} works on ${part.name}.`;
+function devPlaceholder(mate: SitesMateFacts, part: MatePart): SitesService {
+  const runs = `It runs while ${mate.name} works on it.`;
   return {
     key: `dev:${part.devService}`,
-    label: "dev",
     service: part.devService,
     url: undefined,
     host: undefined,
@@ -311,12 +312,6 @@ const placeLinks = (routes: ReadonlyArray<ZeropsPublicRoute>): ReadonlyArray<Sit
     host,
     url,
   }));
-
-/** A part's entries as its row lists them: its dev entries, then its preview. */
-export const partEntries = (pair: SitesPair): ReadonlyArray<SitesSide> => [
-  ...pair.dev,
-  pair.preview,
-];
 
 /** One section of the popover: a place with its state, or a Mate. */
 export type SitesSection =
@@ -343,14 +338,14 @@ export type SitesSection =
       readonly owner: string | undefined;
       /** Its other addresses; `undefined` while unread. */
       readonly links: ReadonlyArray<SitesLink> | undefined;
-      /** Its parts, each with its dev and its stage. */
-      readonly pairs: ReadonlyArray<SitesPair>;
+      /** Its parts' services, each part's dev then its stage. */
+      readonly services: ReadonlyArray<SitesService>;
     };
 
 /**
  * The popover's sections, in order: production, each stage (and each being created), then each
  * Mate in the order given. Every address appears once, where it first appears. A Mate with no
- * address and no part's preview shows no section; one not read yet shows a reading one, as does a place
+ * address and no part's service shows no section; one not read yet shows a reading one, as does a place
  * the project has but has not read.
  */
 export function projectSitesSections(input: {
@@ -402,8 +397,8 @@ export function projectSitesSections(input: {
     const addresses = mateLinks(mate);
     // Its parts, then its other addresses; while those are unread, it reads.
     const kept = addresses === undefined ? undefined : once(addresses.links);
-    const pairs = addresses?.pairs ?? [];
-    if (kept !== undefined && kept.length === 0 && pairs.length === 0) return [];
+    const services = addresses?.services ?? [];
+    if (kept !== undefined && kept.length === 0 && services.length === 0) return [];
     return [
       {
         kind: "mate",
@@ -412,25 +407,21 @@ export function projectSitesSections(input: {
         projectId: mate.projectId,
         owner: mate.owner,
         links: kept,
-        pairs,
+        services,
       },
     ];
   });
   return [...places, ...mates];
 }
 
-/** How many addresses the sections list: every address, and each side of a part that has one. */
+/** How many addresses the sections list: every address, and each Mate's service that has one. */
 export function sitesLinkCount(sections: ReadonlyArray<SitesSection>): number {
   return sections.reduce(
     (count, section) =>
       count +
       (section.links?.length ?? 0) +
       (section.kind === "mate"
-        ? section.pairs.reduce(
-            (sides, pair) =>
-              sides + partEntries(pair).filter((side) => side.url !== undefined).length,
-            0,
-          )
+        ? section.services.filter((row) => row.url !== undefined).length
         : 0),
     0,
   );
@@ -451,9 +442,9 @@ export function sitesHoldNothing(
 }
 
 /**
- * The sections a filter leaves: the addresses whose service, host, section or owner holds every
- * word of it, and the parts whose name, sides or hosts do; a section left with nothing hides. An
- * empty filter keeps everything.
+ * The sections a filter leaves: the addresses and a Mate's services whose hostname, host, section
+ * or owner holds every word of it; a section left with nothing hides. An empty filter keeps
+ * everything.
  */
 export function filterSites(
   sections: ReadonlyArray<SitesSection>,
@@ -472,10 +463,8 @@ export function filterSites(
     };
     const links = (section.links ?? []).filter((link) => holds([link.service, link.host]));
     if (section.kind === "place") return links.length === 0 ? [] : [{ ...section, links }];
-    const pairs = section.pairs.filter((pair) =>
-      holds([pair.name, ...partEntries(pair).flatMap((side) => [side.label, side.host])]),
-    );
-    return links.length === 0 && pairs.length === 0 ? [] : [{ ...section, links, pairs }];
+    const services = section.services.filter((row) => holds([row.service, row.host]));
+    return links.length === 0 && services.length === 0 ? [] : [{ ...section, links, services }];
   });
 }
 

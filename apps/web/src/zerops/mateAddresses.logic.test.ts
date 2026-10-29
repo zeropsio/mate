@@ -223,14 +223,14 @@ describe("mateAddresses", () => {
     {
       name: "a one-part app's dev address is today's: one dev server names nothing",
       servers: [devServer("web", 3000)],
-      expected: [{ role: "dev", name: "App", url: "https://appdev-1df2-3000.prg1.zerops.app" }],
+      expected: [{ role: "dev", name: "appdev", url: "https://appdev-1df2-3000.prg1.zerops.app" }],
     },
     {
       name: "each running dev server of a dev service is its own dev address, by its own name, its port where it has none",
       servers: [devServer("web", 3000), devServer("", 8080), devServer("worker", 9000, "stopped")],
       expected: [
-        { role: "dev", name: "App · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
-        { role: "dev", name: "App · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
+        { role: "dev", name: "appdev · web", url: "https://appdev-1df2-3000.prg1.zerops.app" },
+        { role: "dev", name: "appdev · :8080", url: "https://appdev-1df2-8080.prg1.zerops.app" },
       ],
     },
   ])("$name", ({ servers, expected }) => {
@@ -259,8 +259,8 @@ describe("mateAddresses", () => {
   // rows one space apart meaning different things. A row leads with what the address is; the name
   // after it is the service's own, never one with the role glued on.
   it.each([
-    { name: "the one stage's service", stages: 1, expected: "App" },
-    { name: "one of several stages", stages: 2, expected: "App · stage project" },
+    { name: "the one stage's service", stages: 1, expected: "app" },
+    { name: "one of several stages", stages: 2, expected: "app · stage project" },
   ])(
     "names an environment's address by its service after its role: $name",
     ({ stages, expected }) => {
@@ -388,7 +388,7 @@ describe("a thread's lease's addresses", () => {
       role: "dev",
       url: LEASE_URL,
       host: "webpool-3-1df2-3000.prg1.zerops.app",
-      name: "Web",
+      name: "webpool-3",
     });
   });
 
@@ -414,8 +414,8 @@ describe("a thread's lease's addresses", () => {
         .filter(({ url }) => url === LEASE_URL || url === HQ_URL)
         .map(({ service, role, name, url }) => ({ service, role, name, url })),
     ).toEqual([
-      { service: "hqpool-2", role: "dev", name: "HQ", url: HQ_URL },
-      { service: "webpool-3", role: "dev", name: "Web", url: LEASE_URL },
+      { service: "hqpool-2", role: "dev", name: "hqpool-2", url: HQ_URL },
+      { service: "webpool-3", role: "dev", name: "webpool-3", url: LEASE_URL },
     ]);
   });
 
@@ -433,18 +433,18 @@ describe("a thread's lease's addresses", () => {
       leaseChats: [{ alias: "webpool-3", title: "Fix the login" }],
     });
     expect(addresses.map(({ role, name, url }) => ({ role, name, url }))).toEqual([
-      { role: "dev", name: "Web · Fix the login · web", url: LEASE_URL },
-      { role: "dev", name: "Web · Fix the login · api", url: API_URL },
+      { role: "dev", name: "webpool-3 · Fix the login · web", url: LEASE_URL },
+      { role: "dev", name: "webpool-3 · Fix the login · api", url: API_URL },
     ]);
   });
 
-  it("a workspace is named by its part and the chat it is for", () => {
+  it("a workspace is named by its real alias and the chat it is for", () => {
     const addresses = mateAddresses({
       services: [pool],
       leases: [lease([running("web", 3000, LEASE_URL)])],
       leaseChats: [{ alias: "webpool-3", title: "Fix the login" }],
     });
-    expect(addresses.map(({ name }) => name)).toEqual(["Web · Fix the login"]);
+    expect(addresses.map(({ name }) => name)).toEqual(["webpool-3 · Fix the login"]);
   });
 });
 

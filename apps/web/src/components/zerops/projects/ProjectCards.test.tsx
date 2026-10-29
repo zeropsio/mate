@@ -427,12 +427,12 @@ it("a release in progress shows on the project's production, never in a Mate's c
   }
 });
 
-it("a Mate's row shows each part by its friendly name: a door to its preview, else to its dev, and a part with no address muted", async () => {
+it("a Mate's row shows each part by its real hostname: a door to its preview, else to its dev, and a part with no address muted", async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const entry = (key: string, label: string, url?: string, why?: string) => ({
     key,
     label,
-    service: key,
+    service: key.slice(key.indexOf(":") + 1),
     url,
     host: url?.replace("https://", ""),
     more: [],
@@ -454,7 +454,6 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
               key: "part:apipool",
               devService: "apipool",
               pooled: true,
-              name: "API",
               dev: [],
               preview: entry("preview:apistage", "preview", "https://apistage.example.app"),
             },
@@ -462,7 +461,6 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
               key: "part:matedev",
               devService: "matedev",
               pooled: false,
-              name: "Mate",
               dev: [entry("dev:matedev", "dev", "https://matedev.example.app")],
               preview: undefined,
             },
@@ -470,7 +468,6 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
               key: "part:runnerpool",
               devService: "runnerpool",
               pooled: true,
-              name: "Runner",
               dev: [],
               preview: entry("preview:runnerstage", "preview", undefined, "no public address"),
             },
@@ -489,9 +486,9 @@ it("a Mate's row shows each part by its friendly name: a door to its preview, el
       ...container.querySelectorAll('[data-zerops-surface="card-mate-parts"] > *'),
     ].map((chip) => [chip.textContent, chip.getAttribute("href"), chip.getAttribute("aria-label")]);
     expect(chips).toEqual([
-      ["API", "https://apistage.example.app", "Open Odin's API preview"],
-      ["Mate", "https://matedev.example.app", "Open Odin's Mate dev"],
-      ["Runner", null, null],
+      ["apistage", "https://apistage.example.app", "Open Odin's apistage"],
+      ["matedev", "https://matedev.example.app", "Open Odin's matedev"],
+      ["runnerstage", null, null],
     ]);
   } finally {
     act(() => root.unmount());
