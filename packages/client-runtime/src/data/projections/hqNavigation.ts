@@ -153,7 +153,6 @@ function structureOf(
       id,
       name: app.name ?? "Unknown",
       ...(app.can === undefined ? {} : { can: app.can }),
-      ...(app.problems === undefined ? {} : { problems: app.problems }),
       ...(app.contents === undefined ? {} : { contents: app.contents }),
       ...(app.births === undefined ? {} : { births: app.births }),
       ...(app.intake === undefined ? {} : { intake: app.intake }),

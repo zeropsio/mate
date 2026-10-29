@@ -1,6 +1,5 @@
 import { MateHealth } from "@t3tools/contracts";
 import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
-import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
 import { hqEnvironmentCodec, HqDirectGitTarget } from "./hqEnvironment.ts";
@@ -472,7 +471,6 @@ export const HqNavigationChanges = Schema.Union([
 ]);
 /** Compact navigation offer; review contents and service entries remain in detail. */
 export const HqNavigationReleaseOffer = Schema.Struct({
-  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   head: Schema.NullOr(Schema.String),
   suggestion: Schema.String,
   summary: Schema.Struct({
@@ -525,7 +523,6 @@ export type HqNavigationRollout = typeof HqNavigationRollout.Type;
 
 /** @deprecated Use CanonicalHqNavigationApp at the HQ read boundary. */
 export const HqNavigationApp = Schema.Struct({
-  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   id: Schema.String,
   name: Schema.String,
   can: Decisions,
@@ -573,7 +570,6 @@ export const HqNavigationProject = Schema.Struct({
 export type HqNavigationProject = typeof HqNavigationProject.Type;
 /** Independent app-detail record values keyed by the fields below. */
 export const HqAppDetailFields = {
-  problems: Schema.Array(HqProblem),
   releases: AppReadValue.fields.releases,
   repos: AppReadValue.fields.repos,
   "recipe:mate": RecipeTierResponse,

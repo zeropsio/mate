@@ -36,20 +36,6 @@ const project = {
   everSignedIn: {},
 };
 
-it("Navigation retains HQ's finding without deriving a surface-owned classification.", () => {
-  const problem = {
-    code: "invalid_recipe",
-    what: "Invalid setting",
-    where: { appId: "shop", service: "api" },
-    rule: { source: "hq", code: "invalid_recipe" },
-    next: { actor: "mate", action: "Propose a corrected recipe" },
-  } as const;
-  expect(hqAppFamily.hq!.decode({ ...app, problems: [problem] }, "app:shop")?.problems).toEqual([
-    problem,
-  ]);
-  expect(hqAppFamily.hq!.decode(app, "app:shop")?.problems).toBeUndefined();
-});
-
 it("admits Git identity and exact confirmed release beside a Zerops target", () => {
   const zerops = {
     ...gitEnvironment,

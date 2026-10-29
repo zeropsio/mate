@@ -1,4 +1,3 @@
-import type { HqProblem } from "@t3tools/shared/hqProblems";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 /**
  * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
@@ -42,7 +41,7 @@ export type FlowVerbOutcome =
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
     }
-  | { readonly ok: false; readonly reason: string; readonly problems?: ReadonlyArray<HqProblem> };
+  | { readonly ok: false; readonly reason: string };
 
 export interface FlowVerbs {
   /** The verbs on their way, by `flowVerbKey`: a row shows its own and takes no second press. */
@@ -188,13 +187,7 @@ export function useFlowVerbs(): FlowVerbs {
       else void operations.untilEnd(requestId, orgId).then(done);
       if (reason !== null) {
         if (says) publish(board, { trouble: reason });
-        return {
-          ok: false,
-          reason,
-          ...(progress.stage === "refused" && progress.problems !== undefined
-            ? { problems: progress.problems }
-            : {}),
-        };
+        return refused(reason);
       }
       if (says) publish(board, { trouble: null });
       const answer = registry.get(data.project(flowAnswer, requestId));

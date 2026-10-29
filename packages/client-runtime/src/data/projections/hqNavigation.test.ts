@@ -575,35 +575,6 @@ describe("hqNavigation", () => {
     });
   });
 
-  it("Navigation projects HQ's actionable finding for the same application.", () => {
-    const problem = {
-      code: "invalid_recipe",
-      what: "Invalid setting",
-      where: { appId: "shop", service: "api" },
-      rule: { source: "hq", code: "invalid_recipe" },
-      next: { actor: "mate", action: "Propose a corrected recipe" },
-    } as const;
-    const held = rows.find((row) => row.family === "hqApp")!;
-    const next = apply(read, [
-      {
-        kind: "delivery",
-        via: "hq-stream",
-        scopes: generations,
-        reset: false,
-        rows: [
-          {
-            ...held,
-            revision: { ...revision, revision: 2 },
-            value: { ...held.value, problems: [problem] },
-          } as Row,
-        ],
-        removals: [],
-      },
-    ]);
-    expect(navigation(next).structure?.apps[0]?.problems).toEqual([problem]);
-    expect(navigation(read).structure?.apps[0]?.problems).toBeUndefined();
-  });
-
   it("keeps what it read through an outage", () => {
     expect(navigation(down).structure).toEqual(navigation(read).structure);
   });

@@ -599,36 +599,3 @@ describe("a release's code in the Git browser", () => {
     expect(gitLinks(markup)).toEqual([]);
   });
 });
-
-it("a release-review refusal carrying problems shows them; one with only code/reason renders as today", () => {
-  const problem = {
-    code: "invalid_recipe",
-    what: "Unsupported field minCpu",
-    where: { appId: "shop", service: "worker", tier: "production", file: "production.yaml" },
-    rule: { source: "zerops-schema" as const, schemaPath: "#/additionalProperties" },
-    next: { actor: "Mate", action: "Remove minCpu and use verticalAutoscaling" },
-  };
-  const page = new Window().document;
-  for (const state of [
-    { servicePlanFailure: "Recipe refused", servicePlanProblems: [problem] },
-    { press: { kind: "refused" as const, reason: "Approval refused", problems: [problem] } },
-    { problems: [problem] },
-  ]) {
-    page.body.innerHTML = render({ ...state, fixer: "Wren" });
-    for (const value of [
-      problem.what,
-      "worker",
-      "production.yaml",
-      "#/additionalProperties",
-      problem.next.action,
-    ])
-      expect(page.body.textContent).toContain(value);
-    expect(page.body.textContent).toContain("Ask Wren to address it");
-  }
-  page.body.innerHTML = render({
-    servicePlanFailure: "Legacy refusal",
-    onRetryServicePlan: () => {},
-  });
-  expect(page.body.textContent).toContain("Legacy refusal");
-  expect(page.body.textContent).toContain("Review again");
-});

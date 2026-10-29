@@ -227,7 +227,6 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
     return {
       outcome: "definitive-refusal",
       message,
-      ...(cause.problems === undefined ? {} : { problems: cause.problems }),
       ...(keepCode ? { code: cause.reason ?? cause.code } : {}),
     };
   return { outcome: "transient", message };
@@ -237,7 +236,7 @@ const write = <A>(call: () => Promise<A>) =>
   Effect.tryPromise({
     try: call,
     catch: (cause) =>
-      cause instanceof HqError && cause.code === "conflict" && !cause.problems?.length
+      cause instanceof HqError && cause.code === "conflict"
         ? { outcome: "uncertain-acceptance" as const, message: cause.message }
         : faultOf(cause),
   });

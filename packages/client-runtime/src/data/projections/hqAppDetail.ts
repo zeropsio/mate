@@ -6,7 +6,6 @@
  *
  * @module data/projections/hqAppDetail
  */
-import type { HqProblem } from "@t3tools/shared/hqProblems";
 import type { HqAppDetailFields } from "@t3tools/shared/hqStream";
 import type { HqChange, RepoListEntry } from "@t3tools/shared/hqChanges";
 import type { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
@@ -29,7 +28,6 @@ export interface HqAppRecipes {
 }
 
 export interface HqAppDetailRead extends Omit<ScopeFreshness, "complete"> {
-  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   readonly delivery?: HqDeliveryAnswer | undefined;
   readonly preflight?: Readonly<Record<string, HqGitReleasePreflight>>;
   readonly probes?: Readonly<Record<string, HqRemoteProbe>>;
@@ -63,9 +61,6 @@ export interface HqAppKey {
   readonly orgId: string;
   readonly appId: string;
 }
-
-const problemsOf = (value: HqAppDetailValue | undefined): ReadonlyArray<HqProblem> | undefined =>
-  value?.kind === "problems" ? value.value : undefined;
 
 const releasesOf = (value: HqAppDetailValue | undefined): ReadonlyArray<Release> | undefined =>
   value?.kind === "releases" ? value.value : undefined;
@@ -124,7 +119,6 @@ export const hqAppDetail: Projection<HqAppKey, HqAppDetailRead> = {
       if (value !== undefined) recipes[tier] = value;
     }
     return {
-      problems: problemsOf(records.get("problems")),
       delivery,
       preflight,
       probes,

@@ -134,7 +134,6 @@ export function makeOperations(options: {
                 acceptance: {
                   kind: "refused",
                   reason: fault.message,
-                  ...(fault.problems === undefined ? {} : { problems: fault.problems }),
                   ...(fault.code === undefined ? {} : { code: fault.code }),
                 },
                 outcome: { kind: "pending" },

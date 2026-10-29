@@ -22,8 +22,6 @@
 
 import { tokenExpiryLabel, type HqRepoRemote } from "@t3tools/shared/hqChanges";
 import type { ChangePipeline } from "@t3tools/shared/hqChanges";
-import type { HqProblem, HqRecipeValidation } from "@t3tools/shared/hqProblems";
-import { problemPresentation, problemsFix } from "./hq/problems.ts";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
 
 import type { AppDeployRollout } from "./hq/deployHandover.logic.ts";
@@ -108,7 +106,6 @@ export type ReviewState =
  * the shape `fixRequest.ts` writes into the Mate's composer (S6).
  */
 export interface ReviewFixProblem {
-  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   readonly what: string;
   readonly at?: string | undefined;
   readonly error?: string | undefined;
@@ -176,7 +173,6 @@ export interface ReviewQuestion {
 }
 
 export interface ReviewModel {
-  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   readonly pipeline?:
     | {
         readonly checks: ChangePipeline["checks"];
@@ -197,11 +193,7 @@ export interface ReviewModel {
 export type ReviewPress =
   | { readonly kind: "idle" }
   | { readonly kind: "running" }
-  | {
-      readonly kind: "refused";
-      readonly reason: string;
-      readonly problems?: ReadonlyArray<HqProblem> | undefined;
-    }
+  | { readonly kind: "refused"; readonly reason: string }
   /**
    * Done: where HQ answered the deploys it asked for stand, where it answered (`hqDeploys`), and
    * the rollout they are of, which an answer that handed planning over is followed by.
@@ -259,8 +251,6 @@ export interface ChangeReviewInput {
   readonly pull: {
     readonly number: number;
     readonly headSha?: string | undefined;
-    readonly recipeValidation?: HqRecipeValidation | undefined;
-    readonly problems?: ReadonlyArray<HqProblem> | undefined;
     /** Open with nothing pushed yet (`FlowPullRequest.unpushed`). */
     readonly unpushed?: true | undefined;
     readonly pipeline?: ChangePipeline | undefined;
@@ -583,36 +573,6 @@ export function changeMergeVerdict(
   const { pull } = input;
   const base = pull.baseBranch;
   const who = input.mateName;
-
-  const validation = pull.kind === "recipe" ? pull.recipeValidation : undefined;
-  if (
-    validation !== undefined &&
-    (validation.head !== pull.headSha || validation.state !== "valid")
-  ) {
-    const current = validation.head === pull.headSha;
-    const invalid = current && validation.state === "invalid";
-    const unavailable = current && validation.state === "unavailable";
-    const problems = current ? validation.problems : [];
-    return {
-      enabled: false,
-      verdict: {
-        state: invalid ? "checks-failed" : unavailable ? "checks-unknown" : "checking",
-        tone: invalid ? "failed" : unavailable ? "quiet" : "busy",
-        title: invalid
-          ? "Recipe validation failed"
-          : unavailable
-            ? "Validation unavailable"
-            : "Recipe validation pending",
-        why:
-          problems.length > 0
-            ? problems.map((problem) => problemPresentation(problem).what).join(" · ")
-            : unavailable
-              ? "HQ could not validate this recipe against the published schema."
-              : "HQ has not validated this recipe head yet.",
-        fix: problemsFix(problems),
-      },
-    };
-  }
 
   if (pull.mergeability === "conflicting") {
     const files = input.conflict?.files ?? [];
@@ -971,7 +931,7 @@ function changeReviewModel(input: ChangeReviewInput): ReviewModel {
         tone: "attention",
         title: "Not merged",
         why: press.reason,
-        fix: problemsFix(press.problems ?? []) ?? verdict.fix,
+        fix: verdict.fix,
       },
       consequence: enabled ? squash : held,
       // A second try is the person's deliberate press, never ⌘↵'s.
@@ -1045,14 +1005,6 @@ function orphanOf(input: ChangeReviewInput): ReviewOrphan | undefined {
 export function changeReview(input: ChangeReviewInput): ChangeReviewModel {
   return {
     ...changeReviewModel(input),
-    problems:
-      input.press?.kind === "refused" && input.press.problems !== undefined
-        ? input.press.problems
-        : input.pull.recipeValidation?.head === input.pull.headSha
-          ? (input.pull.recipeValidation?.problems ?? input.pull.problems)
-          : input.pull.recipeValidation === undefined
-            ? input.pull.problems
-            : undefined,
     pipeline: changePipelineOf(input.pull),
     orphan: orphanOf(input),
   };
@@ -1080,7 +1032,6 @@ export type ReleaseOutcome =
   | { readonly kind: "superseded"; readonly by: string; readonly live: string | undefined }
   | {
       readonly kind: "failed";
-      readonly problems?: ReadonlyArray<HqProblem> | undefined;
       readonly detail?: string | undefined;
       /** The services whose deploys failed, by the order the release lists them. */
       readonly services?: ReadonlyArray<string> | undefined;
@@ -1184,7 +1135,6 @@ export function releaseReview(input: ReleaseReviewInput): ReleaseReviewModel {
         ? `roll back to ${replaces.tag} from production's menu`
         : "roll back from production's menu";
   const facts = {
-    problems: input.outcome.kind === "failed" ? input.outcome.problems : undefined,
     meta: [
       replaces.kind === "first"
         ? "the first release"
@@ -1359,7 +1309,7 @@ function releaseVerdictOf(input: ReleaseReviewInput, back: string | undefined): 
           tone: "failed",
           title: `${tag} didn't go out`,
           why: outcome.detail ?? "Its deploy failed",
-          fix: problemsFix(outcome.problems ?? []) ?? {
+          fix: {
             verb: "fix it",
             problem: {
               what,

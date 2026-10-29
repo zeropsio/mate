@@ -122,32 +122,3 @@ describe("fixMateChoice", () => {
     expect(fixMateChoice([mate("colleague", false)])).toEqual([]);
   });
 });
-
-it("Where a person can send a fix request to the Mate, it carries the finding's what/where/rule/next so the agent gets the same context.", () => {
-  const prompt = fixRequestPrompt({
-    what: "HQ refused this recipe",
-    ask: "Address HQ's finding.",
-    problems: [
-      {
-        code: "invalid_recipe",
-        what: "Unsupported field minCpu",
-        where: { appId: "shop", service: "worker", tier: "production", file: "production.yaml" },
-        rule: {
-          source: "zerops-schema",
-          schemaPath: "#/additionalProperties",
-          instancePath: "/services/0/minCpu",
-        },
-        next: { actor: "Mate", action: "Remove minCpu and use verticalAutoscaling" },
-      },
-    ],
-  });
-  for (const value of [
-    "Unsupported field minCpu",
-    "worker",
-    "production.yaml",
-    "#/additionalProperties",
-    "/services/0/minCpu",
-    "Remove minCpu and use verticalAutoscaling",
-  ])
-    expect(prompt).toContain(value);
-});

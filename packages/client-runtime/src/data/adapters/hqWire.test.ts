@@ -152,38 +152,6 @@ describe("classifyHqCall", () => {
   ])("$name is $outcome", ({ cause, outcome }) => {
     expect(classifyHqCall(cause).outcome).toBe(outcome);
   });
-  it("A refused review carries HQ's finding through the existing data path unchanged.", () => {
-    const problem = {
-      code: "invalid_recipe",
-      what: "Invalid service settings",
-      where: { appId: "shop", service: "api", file: "production.yaml" },
-      rule: { source: "zerops-schema", instancePath: "/services/0/minCpu" },
-      next: { actor: "mate", action: "Propose a corrected recipe" },
-    } as const;
-    expect(
-      classifyHqCall(
-        new HqError({
-          kind: "refused",
-          code: "conflict",
-          status: 409,
-          message: "Review refused",
-          problems: [problem],
-        }),
-      ).problems,
-    ).toEqual([problem]);
-    expect(
-      classifyHqCall(
-        new HqError({
-          kind: "unavailable",
-          code: "repo_unavailable",
-          status: 503,
-          message: "Repository unavailable",
-          problems: [problem],
-        }),
-      ).problems,
-    ).toEqual([problem]);
-    expect(classifyHqCall(refused("conflict")).problems).toBeUndefined();
-  });
   it("an unreadable version names reload as the next action", () => {
     expect(classifyHqCall(refused("unreadable"))).toMatchObject({
       outcome: "definitive-refusal",

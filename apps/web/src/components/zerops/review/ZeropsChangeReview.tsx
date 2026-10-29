@@ -1,4 +1,3 @@
-import { HqProblems } from "./HqProblems";
 /**
  * A change's review: a pull request, read before it is merged (R2–R6).
  *
@@ -307,7 +306,7 @@ function ChangeReviewData({
     setPress(
       outcome.ok
         ? { kind: "done", deploys: outcome.deploys, rollout: outcome.rollout }
-        : { kind: "refused", reason: outcome.reason, problems: outcome.problems },
+        : { kind: "refused", reason: outcome.reason },
     );
   };
   const close = async () => {
@@ -973,7 +972,6 @@ export function ChangeReviewView(props: ChangeReviewViewProps) {
       verdict={model.verdict}
       whySaid={!onLine && whySaid(model.verdict, pull.ready === false)}
     >
-      <HqProblems problems={model.problems} />
       {readout.kind === "failed" ? (
         <ReviewFailed
           onRetry={props.onRetry}

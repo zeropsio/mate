@@ -1,6 +1,5 @@
 import { HqEnvironmentId } from "@t3tools/contracts";
 import type { HqChange } from "@t3tools/shared/hqChanges";
-import { releaseOutcomeOf } from "./releaseFacts.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
 // @effect-diagnostics globalDate:off -- fixture timestamps are offsets from a fixed instant, not wall-clock reads.
 import { describe, expect, it } from "vite-plus/test";
@@ -1909,70 +1908,5 @@ describe("Git release review evidence", () => {
     expect(model.primary).toBeUndefined();
     expect(model.ifWrong).toBeUndefined();
     expect(model.verdict.fix).toBeUndefined();
-  });
-});
-
-const HQ_PROBLEM = {
-  code: "schema_invalid",
-  what: "minCpu is not accepted",
-  where: { appId: "app", service: "api", tier: "production", file: "production.yaml" },
-  rule: {
-    source: "zerops-schema",
-    schemaPath: "/properties/services",
-    instancePath: "/services/0/minCpu",
-  },
-  next: { actor: "mate", action: "Use verticalAutoscaling and propose a corrected recipe." },
-} as const;
-
-describe("HQ actionable findings in change review", () => {
-  it("Validation that is pending or unavailable is never shown as passing, and live code with a failed endpoint is not labelled a failed deploy.", () => {
-    expect(
-      releaseOutcomeOf({
-        tagged: {
-          tag: "v1",
-          verdict: "approved",
-          detail: "The live endpoint refused a connection",
-          line: "api head",
-          entries: [{ service: "api", commit: "head" }],
-          taggedAt: "2026-09-29T10:00:00Z",
-          standing: "live",
-          word: "Live",
-          rollBack: false,
-          failedEntries: [],
-        },
-        releasing: false,
-        pressing: false,
-        tag: "v1",
-        clockMs: NOW,
-      }),
-    ).toEqual({ kind: "released", at: "2026-09-29T10:00:00Z" });
-    for (const validation of [
-      { head: "head", state: "unavailable", problems: [] },
-      { head: "old-head", state: "valid", problems: [] },
-    ] as const) {
-      const model = changeReview(
-        change({
-          pull: { ...pull({ kind: "recipe", headSha: "head" }), recipeValidation: validation },
-        }),
-      );
-      expect(model.primary?.enabled).toBe(false);
-      expect(model.verdict.title).toBe(
-        validation.state === "unavailable" ? "Validation unavailable" : "Recipe validation pending",
-      );
-    }
-  });
-  it("A refusal shows what failed, where, by which rule and the concrete next step from HQ's finding; repeating the same invalid recipe is never its only action.", () => {
-    const model = changeReview(
-      change({
-        pull: {
-          ...pull({ kind: "recipe", headSha: "head" }),
-          recipeValidation: { head: "head", state: "invalid", problems: [HQ_PROBLEM] },
-        },
-      }),
-    );
-    expect(model.primary?.enabled).toBe(false);
-    expect(model.problems).toEqual([HQ_PROBLEM]);
-    expect(model.verdict.fix?.problem.problems).toEqual([HQ_PROBLEM]);
-    expect(model.verdict.fix?.problem.ask).toContain(HQ_PROBLEM.next.action);
   });
 });

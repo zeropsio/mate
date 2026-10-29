@@ -1,6 +1,3 @@
-import type { HqProblem } from "@t3tools/shared/hqProblems";
-import { problemsFix } from "@t3tools/client-runtime/zerops/hq";
-import { HqProblems } from "./HqProblems";
 import { GitDeliveryStatus, gitWhereLine } from "../GitDeliveryStatus";
 /**
  * A release's review, and a roll back's (R5, R6).
@@ -512,7 +509,7 @@ function ReleaseData({
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
-        : { kind: "refused", reason: answer.reason, problems: answer.problems },
+        : { kind: "refused", reason: answer.reason },
     );
     // The tag it made is the one the review follows from here.
     setMade(answer.ok ? (answer.tag ?? chosen.tag) : undefined);
@@ -522,11 +519,7 @@ function ReleaseData({
     <ReleaseReviewView
       servicePlan={press.kind === "running" || press.kind === "done" ? heldPlan : reviewedPlan}
       servicePlanPending={planPending}
-      problems={flow.release.problems}
       servicePlanFailure={planFailure}
-      servicePlanProblems={
-        reviewing && plan.required && plan.view.kind === "failed" ? plan.view.problems : undefined
-      }
       onRetryServicePlan={plan.again}
       git={
         flow.release.git === undefined
@@ -752,12 +745,10 @@ function newestLive(
 }
 
 export interface ReleaseReviewViewProps {
-  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
   readonly servicePlan?: ReleaseServicePlan | undefined;
   readonly servicePlanPending?: boolean | undefined;
   readonly servicePlanFailure?: string | undefined;
-  readonly servicePlanProblems?: ReadonlyArray<HqProblem> | undefined;
   readonly onRetryServicePlan?: () => void;
   readonly git?: ZeropsProjectFlow["release"]["git"];
   readonly onReplaceToken?: (() => void) | undefined;
@@ -868,12 +859,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
     now: props.now,
   });
   const answered = new Set(answer?.jobs.map(({ service }) => service));
-  const problems =
-    press.kind === "refused"
-      ? press.problems
-      : (props.servicePlanProblems ??
-        (props.outcome.kind === "failed" ? props.outcome.problems : props.problems));
-  const fix = problemsFix(problems ?? []) ?? model.verdict.fix;
+  const fix = model.verdict.fix;
   const refused = press.kind === "refused" ? press.reason : undefined;
   // While it releases, a service it redeploys is deploying: its version names what is going, or
   // nothing yet, and is no fact to be unable to tell.
@@ -1053,7 +1039,6 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
           </ReviewSection>
         </>
       )}
-      <HqProblems problems={problems} />
       {props.servicePlanPending === true ? (
         <ReviewSection title="Production operations">
           <p className="rv-note">Reading production operations…</p>
@@ -1437,7 +1422,7 @@ function RollbackData({
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
-        : { kind: "refused", reason: answer.reason, problems: answer.problems },
+        : { kind: "refused", reason: answer.reason },
     );
     if (answer.ok) setMade(answer.tag);
     else setAsked(undefined);
@@ -1585,13 +1570,7 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
     outcome: props.outcome,
     now: props.now,
   });
-  const problems =
-    press.kind === "refused"
-      ? press.problems
-      : props.outcome.kind === "failed"
-        ? props.outcome.problems
-        : undefined;
-  const fix = problemsFix(problems ?? []) ?? model.verdict.fix;
+  const fix = model.verdict.fix;
   const onFix = props.onFix;
   const answer = useReviewDeploys(press);
   const answered = new Set(answer?.jobs.map(({ service }) => service));
@@ -1639,7 +1618,6 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       titleId={props.titleId}
       verdict={model.verdict}
     >
-      <HqProblems problems={problems} />
       <RollbackListSection
         appId={props.appId}
         list={props.leaving}

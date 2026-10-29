@@ -13,8 +13,6 @@
  * @module data/streamMachine
  */
 
-import type { HqProblem } from "@t3tools/shared/hqProblems";
-
 export type Phase =
   | "idle"
   | "connecting"
@@ -54,7 +52,6 @@ export type StreamOutcome = Extract<
 >;
 
 export interface StreamFault {
-  readonly problems?: ReadonlyArray<HqProblem>;
   readonly outcome: StreamOutcome;
   readonly message: string;
   /** The source's own code for it (HQ's `scope-error` code), where it named one. */

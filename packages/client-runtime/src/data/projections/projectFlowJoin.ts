@@ -52,7 +52,6 @@ type ComparedCommits = MovedCommits & { readonly again?: (() => void) | undefine
 
 /** What *Release* offers on a project, when it is offered at all. */
 export interface ZeropsReleaseOffer {
-  readonly problems?: CanonicalHqNavigationApp["problems"] | undefined;
   readonly missingServices?: ReadonlyArray<string> | undefined;
   readonly releaseTarget?: HqReleaseTarget | undefined;
   readonly git?: GitReleaseReviewFacts | undefined;
@@ -594,11 +593,6 @@ function projectFlow(
       productionWithheld === undefined
         ? {
             ...offer,
-            ...(navigation != null &&
-            !("refused" in navigation) &&
-            navigation.problems !== undefined
-              ? { problems: navigation.problems }
-              : {}),
             releaseTarget: attachment,
             missingServices:
               navigation != null && !("refused" in navigation)

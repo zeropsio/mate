@@ -291,41 +291,6 @@ describe("a creation's writes at HQ", () => {
     }),
   );
 
-  it.effect.each(["conflict", "forbidden"] as const)(
-    "HQ's %s finding reaches the operation's real consumer with what, where, rule and next step.",
-    (code) =>
-      Effect.gen(function* () {
-        const problem = {
-          code: "invalid_recipe",
-          what: "Invalid service settings",
-          where: { appId: "app-1", service: "api", tier: "production", file: "production.yaml" },
-          rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
-          next: { actor: "mate", action: "Propose a corrected group change" },
-        } as const;
-        const store = account();
-        yield* operationsOf(store, {
-          createApp: async () => {
-            throw new HqError({
-              kind: "refused",
-              code,
-              message: "HQ refused the settings.",
-              problems: [problem],
-            });
-          },
-        }).operations.submit({ kind: "create-app", orgId: ORG, name: "Garden" });
-        expect(progress(store)).toEqual({
-          stage: "refused",
-          reason: "HQ refused the settings.",
-          problems: [problem],
-        });
-        expect(record(store)?.receipt?.acceptance).toEqual({
-          kind: "refused",
-          reason: "HQ refused the settings.",
-          problems: [problem],
-        });
-      }),
-  );
-
   it.effect("a refusal keeps HQ's words; an HQ out of reach did not take it", () =>
     Effect.gen(function* () {
       for (const [error, stage] of [
