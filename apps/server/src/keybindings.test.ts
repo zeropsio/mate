@@ -282,6 +282,43 @@ it.layer(NodeServices.layer)("keybindings", (it) => {
       }).pipe(Effect.provide(makeKeybindingsLayer())),
   );
 
+  it.effect(
+    "drops bindings to commands that no longer exist on startup, so the defaults sync again",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const { keybindingsConfigPath } = yield* ServerConfig.ServerConfig;
+        yield* fs.writeFileString(
+          keybindingsConfigPath,
+          JSON.stringify([
+            { key: "mod+shift+y", command: "terminal.toggle" },
+            { key: "mod+shift+s", command: "thread.settle", when: "!terminalFocus" },
+          ]),
+        );
+
+        const configState = yield* Effect.gen(function* () {
+          const keybindings = yield* Keybindings.Keybindings;
+          yield* keybindings.syncDefaultKeybindingsOnStartup;
+          return yield* keybindings.loadConfigState;
+        });
+
+        const persisted = yield* readKeybindingsConfig(keybindingsConfigPath);
+        assert.isFalse(persisted.some((entry) => String(entry.command) === "thread.settle"));
+        assert.equal(
+          persisted.find((entry) => entry.command === "terminal.toggle")?.key,
+          "mod+shift+y",
+        );
+        for (const defaultRule of Keybindings.DEFAULT_KEYBINDINGS) {
+          if (defaultRule.command === "terminal.toggle") continue;
+          assert.isTrue(
+            persisted.some((entry) => entry.command === defaultRule.command),
+            `expected ${defaultRule.command}`,
+          );
+        }
+        assert.deepEqual(configState.issues, []);
+      }).pipe(Effect.provide(makeKeybindingsLayer())),
+  );
+
   it.effect("skips conflicting default keybindings on startup and logs a detailed warning", () => {
     const messages: string[] = [];
     const logger = Logger.make(({ message }) => {
