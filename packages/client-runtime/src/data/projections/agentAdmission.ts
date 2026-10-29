@@ -65,6 +65,17 @@ export function admissionNeedsSignIn(
   return snapshot !== null && zeropsAgentSignInRequired(snapshot, providers);
 }
 
+/**
+ * Whether the viewer only reads along: a colleague's Mate as HQ records it, or a project they may
+ * not operate. Admission's read-only, without its auth read.
+ */
+export function readsAlong(input: {
+  readonly operate?: boolean | undefined;
+  readonly owner?: { readonly mine: boolean } | null | undefined;
+}): boolean {
+  return input.owner?.mine === false || input.operate === false;
+}
+
 /** Auth establishes admission; a signer's identity establishes no client permission. */
 export function agentAdmission(input: {
   readonly environmentId: string;
@@ -93,8 +104,7 @@ export function agentAdmission(input: {
   readonly automated?: boolean | undefined;
 }) {
   if (input.automated === true) return automatedAdmission(input);
-  const colleagues = input.owner?.mine === false;
-  const readOnly = colleagues || input.operate === false;
+  const readOnly = readsAlong(input);
   const snapshot = input.read?.state === "known" ? input.read.value : null;
   const provider = input.providers.find((p) => p.instanceId === input.instanceId) ?? null;
   const spent = resolveSpentLogin(input.instanceId, snapshot, input.providers);
@@ -198,7 +208,7 @@ export function automatedAgentUsable(providers: ReadonlyArray<ServerProvider>): 
 
 /** `agentAdmission` for an automated Mate: nobody signs it in; the organization's key runs it. */
 function automatedAdmission(input: Parameters<typeof agentAdmission>[0]) {
-  const readOnly = input.owner?.mine === false || input.operate === false;
+  const readOnly = readsAlong(input);
   const cold = input.owner === undefined;
   const usable = automatedAgentUsable(input.providers);
   const holdsComposer = input.standUpHolds === true;

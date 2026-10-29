@@ -18,6 +18,7 @@
  * @module ZeropsMateAccessList
  */
 import type { KeyLinkAccess, LinkAccessMember } from "@t3tools/shared/mateLink";
+import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as Duration from "effect/Duration";
@@ -27,6 +28,8 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+
+import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
 
 /**
  * How long the latest list holds from the frame that brought it: the cap a person stays at their
@@ -95,6 +98,21 @@ const reachOf = (list: AccessList | undefined): string =>
         list.refused,
         list.members.map((member) => [member.userId, member.role, member.visibility]),
       ]);
+
+/**
+ * Whether the session's `subject` administers the Mate's project: a Zerops person the list opens
+ * it for at Admin or above. Nobody does without a list that holds, or while the key is refused.
+ */
+export const administersProject = (list: Option.Option<AccessList>, subject: string): boolean =>
+  Option.isSome(list) &&
+  !list.value.refused &&
+  subject.startsWith(ZEROPS_SUBJECT_PREFIX) &&
+  list.value.members.some(
+    (member) =>
+      member.userId === zeropsUserIdOf(subject) &&
+      member.visibility === "open" &&
+      roleAtLeast(member.role, "ADMIN"),
+  );
 
 export class ZeropsMateAccessList extends Context.Service<
   ZeropsMateAccessList,

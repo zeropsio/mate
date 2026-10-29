@@ -727,6 +727,7 @@ export {
 export {
   admissionNeedsSignIn,
   agentAdmission,
+  readsAlong,
   resolveZeropsProviderAvailability,
   isZeropsInstanceRunnable,
   admissionRefusalWords,

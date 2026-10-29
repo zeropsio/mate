@@ -36,6 +36,7 @@ import {
   mateUpdateStatusBeside,
   NEWEST_MATE_VERSION,
 } from "../../zerops/mateUpdate";
+import { useMayUpdateMate } from "../../zerops/useMateReadOnly";
 import { useMateUpdate } from "../../zerops/useMateUpdate";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateUpdateLine, MateUpdateStatusText } from "./MateUpdateLine";
@@ -76,9 +77,11 @@ export function ZeropsMateUpdateControl({
   const environment = useEnvironment(environmentId)?.serverConfig?.environment;
   const mateUpdate = useMateUpdate(environmentId, environment ?? null);
   const { check, update } = mateUpdate;
-  const capable = environment?.capabilities.mateUpdate === true;
+  // Someone who only reads along in another's Mate sees its version, never a press it refuses.
+  const mayUpdate = useMayUpdateMate(environmentId);
+  const capable = environment?.capabilities.mateUpdate === true && mayUpdate;
 
-  const canCheck = environment?.capabilities.mateUpdateCheck === true;
+  const canCheck = environment?.capabilities.mateUpdateCheck === true && mayUpdate;
 
   const ask = useCallback(
     (latest: string | null, restart?: { readonly zcp?: string | undefined }) => {

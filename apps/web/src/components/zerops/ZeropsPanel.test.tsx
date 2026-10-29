@@ -85,6 +85,9 @@ vi.mock("~/state/environments", () => ({
   }),
 }));
 
+vi.mock("../../zerops/useMateReadOnly", () => ({
+  useMayUpdateMate: () => true,
+}));
 vi.mock("../../zerops/useMateUpdate", () => ({
   useMateUpdate: () => ({
     state: { phase: "idle" },
