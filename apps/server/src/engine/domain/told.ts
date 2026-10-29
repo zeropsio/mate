@@ -23,6 +23,24 @@ const OPEN = "<zerops-update>";
 const CLOSE = "</zerops-update>";
 
 /**
+ * What the agent hears after a person's message that goes into its running turn. A driver
+ * surfaces such a message beside its next tool result, and an agent may answer it in its
+ * thinking alone, which the person never sees: a compaction's summary then counts it answered
+ * (Filip's Mate, 2026-10-28, two questions never answered across two compactions).
+ */
+export const STEERED_NOTE =
+  "<zerops-note>The person sent this while you work. Answer it now, in words the person reads, before you carry on: your thinking never reaches them.</zerops-note>";
+
+/**
+ * The words a running turn takes from the person: the note after them, so the agent answers
+ * where the person reads. A slash command goes alone, as `toldWith` keeps it.
+ */
+export function steeredWith(told: string): string {
+  if (isSlashCommand(told)) return told;
+  return told.trim().length === 0 ? STEERED_NOTE : `${told}\n\n${STEERED_NOTE}`;
+}
+
+/**
  * The person's words with the context in front of them, or the words exactly as they were when
  * there is none. A slash command goes alone: an agent runs one only when it opens the message, and
  * a block in front turns it into prose the model answers.

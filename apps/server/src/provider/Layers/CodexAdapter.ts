@@ -94,6 +94,12 @@ const isCodexSessionRuntimeThreadIdMissingError = Schema.is(
 const isCodexResumeCursorSchema = Schema.is(CodexResumeCursorSchema);
 
 const PROVIDER = ProviderDriverKind.make("codex");
+/**
+ * Codex's `serverOverloaded` failure, for the person: its own words ("Selected model is at
+ * capacity. Please try a different model.") left a person asking "What?" (2026-10-28).
+ */
+const CODEX_AT_CAPACITY =
+  "Codex is at capacity right now. Try again in a minute: send a message to pick up where it left off.";
 
 export interface CodexAdapterLiveOptions {
   readonly instanceId?: ProviderInstanceId;
@@ -1183,7 +1189,10 @@ function mapToRuntimeEvents(
     if (!payload) {
       return [];
     }
-    const errorMessage = trimText(payload.turn.error?.message);
+    const errorMessage =
+      payload.turn.error?.codexErrorInfo === "serverOverloaded"
+        ? CODEX_AT_CAPACITY
+        : trimText(payload.turn.error?.message);
     return [
       {
         ...runtimeEventBase(event, canonicalThreadId),
@@ -1695,7 +1704,10 @@ function mapToRuntimeEvents(
 
   if (event.method === "error") {
     const payload = readPayload(EffectCodexSchema.V2ErrorNotification, event.payload);
-    const message = payload?.error.message ?? event.message ?? "Provider runtime error";
+    const message =
+      payload?.error.codexErrorInfo === "serverOverloaded"
+        ? CODEX_AT_CAPACITY
+        : (payload?.error.message ?? event.message ?? "Provider runtime error");
     const willRetry = payload?.willRetry === true;
     return [
       {

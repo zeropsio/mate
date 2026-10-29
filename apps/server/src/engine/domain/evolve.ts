@@ -397,8 +397,10 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             answers: 0,
             kind: event.ask.kind,
             ...(event.byHelper === true ? { byHelper: true as const } : {}),
-            ...(event.ask.kind === "question" && event.ask.dismissible
-              ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
+            ...(event.ask.kind === "question"
+              ? event.ask.dismissible
+                ? { dismissible: true, questions: askedQuestions(event.ask.questions) }
+                : { asked: event.ask.questions }
               : {}),
             ...(event.ask.kind === "vault"
               ? { vault: { key: event.ask.key, scope: event.ask.scope } }
@@ -443,6 +445,7 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
             ...(answered?.dismissible === true ? { dismissible: true } : {}),
             ...(answered?.byHelper === true ? { byHelper: true as const } : {}),
             ...(answered?.questions === undefined ? {} : { questions: answered.questions }),
+            ...(answered?.asked === undefined ? {} : { asked: answered.asked }),
             ...(answered?.vault === undefined ? {} : { vault: answered.vault }),
             ...(answered?.origin === undefined ? {} : { origin: answered.origin }),
           },
