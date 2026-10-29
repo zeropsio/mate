@@ -1765,6 +1765,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
                 ? {
                     waiting: projectFlow.main.notLive,
                     atLeast: projectFlow.main.notLiveAtLeast,
+                    changeCount: projectFlow.main.changeCount,
                   }
                 : undefined,
           });
