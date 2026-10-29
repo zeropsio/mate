@@ -66,6 +66,13 @@ vi.mock("../../zerops/useMateUpdate", () => ({
   }),
 }));
 
+/** Whether the viewer may update the Mate: its owner, or an admin of its project. */
+const viewer = vi.hoisted(() => ({ mayUpdate: true }));
+
+vi.mock("../../zerops/useMateReadOnly", () => ({
+  useMayUpdateMate: () => viewer.mayUpdate,
+}));
+
 vi.mock("../../confirmDialog", () => ({
   requestConfirmDialog: verbs.confirm,
 }));
@@ -119,6 +126,7 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     verbs.update.mockReset();
     verbs.check.mockReset();
     verbs.confirm.mockReset();
+    viewer.mayUpdate = true;
   });
 
   it("renders nothing before the environment's descriptor has been read", () => {
@@ -178,6 +186,25 @@ describe("ZeropsMateUpdateControl — the verb's presence rules (spec-mate.md §
     expect(html).toContain('data-zerops-surface="mate-update-menu-action-check-for-updates"');
     expect(html).toContain("Check for updates");
   });
+
+  it.each([
+    { who: "its owner or an admin of its project", mayUpdate: true, offered: true },
+    { who: "a colleague reading along", mayUpdate: false, offered: false },
+  ])(
+    "a Mate's update is offered to its owner or an admin of its project: $who",
+    ({ mayUpdate, offered }) => {
+      environmentState.environment = {
+        serverVersion: "0.8.0",
+        capabilities: { mateUpdate: true, mateUpdateCheck: true },
+        update: { installed: "0.8.0", latest: "0.8.1", available: true, checkedAt: "now" },
+      };
+      viewer.mayUpdate = mayUpdate;
+      const html = render();
+      expect(html).toContain("Server 0.8.0");
+      expect(html.includes("Update to 0.8.1")).toBe(offered);
+      expect(html.includes("Check for updates")).toBe(offered);
+    },
+  );
 
   // The bug this replaces: *Update to x.y.z* in a Mate's menu armed a
   // question drawn only on the update line, and the menus draw no line — the

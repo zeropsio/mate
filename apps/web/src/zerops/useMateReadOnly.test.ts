@@ -24,8 +24,8 @@ vi.mock("./ZeropsSessionProvider", () => ({
   useZeropsSessionOptional: () => ({ user: { id: facts.viewerSubject } }),
 }));
 
-function Reader({ instanceId }: { instanceId: string | undefined }) {
-  return String(useMateReadOnly(EnvironmentId.make("rig"), instanceId));
+function Reader() {
+  return String(useMateReadOnly(EnvironmentId.make("rig")));
 }
 
 // Decision: admission does not invent signer ownership. Drop unrecorded-login and any blocking derived from who signed in.
@@ -47,7 +47,7 @@ const mateReadOnly = (input: {
           freshness: { kind: "live" },
         };
   facts.viewerSubject = input.viewerSubject;
-  return renderToStaticMarkup(createElement(Reader, { instanceId: input.instanceId })) === "true";
+  return renderToStaticMarkup(createElement(Reader)) === "true";
 };
 
 const claude = (overrides: Partial<ZeropsAgentAuth> = {}): ZeropsAgentAuth => ({
