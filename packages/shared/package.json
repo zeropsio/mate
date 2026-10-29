@@ -135,6 +135,10 @@
       "types": "./src/hqGitBrowse/*.ts",
       "import": "./src/hqGitBrowse/*.ts"
     },
+    "./hqProblems": {
+      "types": "./src/hqProblems.ts",
+      "import": "./src/hqProblems.ts"
+    },
     "./hqChanges": {
       "types": "./src/hqChanges.ts",
       "import": "./src/hqChanges.ts"
