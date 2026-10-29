@@ -1,9 +1,10 @@
-import type { ChangeReview, HqChange } from "@t3tools/shared/hqChanges";
+import type { ChangeReview, HqChange, Mergeability } from "@t3tools/shared/hqChanges";
 import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   changeCommitRows,
+  changeReadoutJudged,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
 } from "./changeReadout.ts";
@@ -193,6 +194,40 @@ describe("changeReadoutOfCompare: files HQ never recorded, read on the person's 
       commitsKnown: false,
     });
   });
+});
+
+describe("changeReadoutJudged: HQ's judgement now, where its record has none yet", () => {
+  const recorded: ChangeReview = {
+    mergeBase: BASE,
+    files: [],
+    filesTruncated: false,
+    conflictPaths: [],
+    commits: [],
+    commitsTruncated: false,
+  };
+  const CLEAN: Mergeability = { kind: "clean" };
+  it.each([
+    ["a recorded verdict stands", "conflict", CLEAN, "conflicting", []],
+    ["unrecorded, a clean judgement merges", "unknown", CLEAN, "mergeable", []],
+    [
+      "unrecorded, a conflict names its files",
+      "unknown",
+      { kind: "conflict", paths: ["src/a.ts"] },
+      "conflicting",
+      ["src/a.ts"],
+    ],
+    ["unrecorded, nothing pushed is empty", "unknown", { kind: "no_change" }, "empty", []],
+    ["unrecorded and not judged yet, it is still checked", "unknown", undefined, "checking", []],
+  ] as const)(
+    "A change's review says whether it merges from HQ's record, else from HQ's judgement of the shown head and main: %s",
+    (_case, stored, judged: Mergeability | undefined, mergeability, conflict) => {
+      const read = changeReadoutJudged(
+        changeReadoutOfRecord({ ...change, mergeability: stored }, recorded),
+        judged,
+      );
+      expect(read).toMatchObject({ mergeability, conflict });
+    },
+  );
 });
 
 describe("changeCommitRows: HQ's merge of main reads as HQ's push", () => {

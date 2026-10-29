@@ -517,6 +517,7 @@ export {
 export { formatRunClock } from "./runClock.ts";
 export {
   changeCommitRows,
+  changeReadoutJudged,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
   corePushWords,

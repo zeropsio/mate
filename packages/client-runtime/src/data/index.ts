@@ -797,6 +797,9 @@ export { changeMetadataScope } from "./families/hqChangeMetadata.ts";
 export { hqChangeCommits, type HqChangeCommits } from "./projections/hqChangeCommits.ts";
 export { changeCommitsScope } from "./families/hqChangeCommits.ts";
 
+export { hqChangeVerdict, type HqChangeVerdict } from "./projections/hqChangeVerdict.ts";
+export { changeVerdictScope } from "./families/hqChangeVerdict.ts";
+
 export {
   releaseReviewOwner,
   releaseReviewRequest,
