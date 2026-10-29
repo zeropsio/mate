@@ -7,7 +7,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 
-import { layerTest } from "../config.ts";
+import { layerTest, ServerConfig } from "../config.ts";
+import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import {
   layer,
   makeObserveCredentialFile,
@@ -97,5 +98,41 @@ describe("ZeropsObserveCredentialFile", () => {
       Effect.scoped,
       Effect.provide(NodeServices.layer),
     ),
+  );
+
+  it.effect(
+    "writes the container's Observe credential under its configured HOME rather than Mate secrets",
+    () =>
+      Effect.gen(function* () {
+        const config = yield* ServerConfig;
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const file = yield* ZeropsObserveCredentialFile;
+        assert.isTrue(yield* file.write("zobs.org.profile"));
+        assert.strictEqual(
+          yield* fs.readFileString(path.join(config.homeDir, ".zcp", "hq", "observe-credential")),
+          "zobs.org.profile",
+        );
+        assert.isFalse(yield* fs.exists(path.join(config.secretsDir, "observe-credential")));
+      }).pipe(
+        Effect.provide(
+          layer.pipe(
+            Layer.provideMerge(
+              Layer.effect(
+                ServerConfig,
+                Effect.gen(function* () {
+                  const config = yield* ServerConfig;
+                  return {
+                    ...config,
+                    zerops: resolveZeropsEnvironment({ projectId: "project", apiHost: undefined }),
+                  };
+                }),
+              ).pipe(Layer.provide(layerTest("/tmp", { prefix: "observe-home-" }))),
+            ),
+          ),
+        ),
+        Effect.scoped,
+        Effect.provide(NodeServices.layer),
+      ),
   );
 });
