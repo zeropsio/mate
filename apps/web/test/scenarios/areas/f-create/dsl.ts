@@ -161,7 +161,7 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
                 (button) =>
                   button.closest('[data-sidebar="sidebar"]') === null &&
                   button.getBoundingClientRect().width > 0,
-              ),
+              )!,
             )
             .click();
         });

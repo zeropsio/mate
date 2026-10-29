@@ -260,8 +260,11 @@ export const menuScenario = Effect.fn("menu.scenario")(function* (
     opensApplication: (name: string) =>
       Effect.promise(async () => {
         // The project's ···: its group's, or the one its only Mate's row shares with it.
-        const words = `normalize-space(translate(text()[1], "\u00a0", " "))`;
-        const named = `${words}=${xpathLiteral(name)} or starts-with(${words}, ${xpathLiteral(`${name} · `)})`;
+        const words = `normalize-space(translate(., "\u00a0", " "))`;
+        // A grouped project's direct text excludes its screen-reader-only Mate count; a lone
+        // Mate's label nests the project's name beside the Mate's, so read that label whole.
+        const project = `normalize-space(translate(text()[1], "\u00a0", " "))`;
+        const named = `${project}=${xpathLiteral(name)} or ${words}=${xpathLiteral(name)} or starts-with(${words}, ${xpathLiteral(`${name} · `)})`;
         await s.page
           .locator(
             `::-p-xpath(//*[@data-zerops-surface="sidebar-project-row" or @data-zerops-surface="sidebar-mate-row"][.//*[@data-zerops-surface="sidebar-project-name" or @data-zerops-surface="sidebar-mate-name"][${named}]]//button[starts-with(@aria-label,"More for")])`,
