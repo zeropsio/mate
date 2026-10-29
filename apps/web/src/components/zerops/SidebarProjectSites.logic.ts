@@ -26,7 +26,6 @@ import {
   type MatePartLease,
 } from "@t3tools/client-runtime/zerops/mateParts";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { ZeropsDevServer } from "@t3tools/contracts";
 
 import {
   chipFace,
@@ -231,26 +230,14 @@ export interface SitesMateFacts {
   readonly poolPairs: ReadonlyArray<PoolPair> | undefined;
   /** The services its envelope marks as a repository's stand-in (`standInsOf`); none unread. */
   readonly standIns?: ReadonlyArray<string> | undefined;
-  /** The dev servers its envelope read on each service, by hostname, which name a dev's ports. */
-  readonly devServers?:
-    | Readonly<Record<string, ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">>>>
-    | undefined;
 }
 
 /**
  * Whether a Sites list reads a Mate's lifecycle: only a dev pool's workspaces come from its leases,
- * and only a dev on several addresses needs the names zcp gives its servers, so any other Mate (or
- * one whose listing is not read yet) holds no lifecycle feed open.
+ * so any other Mate (or one whose listing is not read yet) holds no lifecycle feed open.
  */
-export const readsLeases = (
-  mate: Pick<SitesMateFacts, "pools"> & {
-    readonly routes?: ReadonlyArray<Pick<ZeropsPublicRoute, "service">> | undefined;
-  },
-): boolean => {
-  if ((mate.pools ?? []).length > 0) return true;
-  const services = (mate.routes ?? []).map((route) => route.service);
-  return new Set(services).size < services.length;
-};
+export const readsLeases = (mate: Pick<SitesMateFacts, "pools">): boolean =>
+  (mate.pools ?? []).length > 0;
 
 /**
  * A Mate's addresses: its parts (`mateParts`, the one reader every surface shows them from), then
@@ -261,10 +248,7 @@ export const readsLeases = (
 export function mateLinks(mate: SitesMateFacts): SitesMateAddresses | undefined {
   if (mate.routes === undefined) return undefined;
   const { parts, others } = mateParts({
-    services: (mate.hostnames ?? []).map((hostname) => ({
-      hostname,
-      devServers: mate.devServers?.[hostname],
-    })),
+    services: (mate.hostnames ?? []).map((hostname) => ({ hostname })),
     routes: mate.routes,
     controlPlane: mate.controlPlane,
     pools: mate.pools,
