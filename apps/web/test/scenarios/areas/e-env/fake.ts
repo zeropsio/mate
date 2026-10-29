@@ -105,7 +105,7 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
   const tierYaml = [
     "services:",
     "  - hostname: web",
-    "    type: nodejs@22",
+    "    type: ubuntu/nodejs@22",
     `    buildFromGit: ${access.url(appId, "web")}`,
     "    zeropsSetup: web",
     "",

@@ -119,7 +119,7 @@ export const publishRecipe = Effect.fn("scenarios.publishRecipe")(function* (
   const path = NodePath.join(work, RECIPE_TIER_PATHS[tier]);
   yield* Effect.sync(() => {
     NodeFS.mkdirSync(NodePath.dirname(path), { recursive: true });
-    NodeFS.writeFileSync(path, "services:\n  - hostname: api\n    type: nodejs@22\n");
+    NodeFS.writeFileSync(path, "services:\n  - hostname: api\n    type: ubuntu/nodejs@22\n");
   });
   yield* git.checked(["add", "-A"], work);
   yield* git.checked(["commit", "-q", "-m", `Add the ${tier} recipe`], work);
