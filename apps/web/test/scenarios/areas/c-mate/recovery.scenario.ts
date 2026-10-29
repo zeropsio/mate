@@ -3,7 +3,7 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { HTTPRequest } from "puppeteer-core";
 
-import { completedHttp } from "../../harness/completedHttp.ts";
+import { rendered } from "../../harness/completedHttp.ts";
 import { createScenario } from "../../harness/scenario.ts";
 import { installArea, reportContainer } from "./fake.ts";
 import { mateChat } from "./dsl.ts";
@@ -58,6 +58,8 @@ describe("C: source failures keep the conversation", () => {
           // passes only when advanced. The attempt it starts asks HQ for a ticket, then runs on
           // its own deadlines (the admission's unclaimed ticket, 1 s): from that ask the clock
           // holds until the stale Stop control is gone, so no advance expires them under it.
+          // Stop at that receipt within the rung too; completing it would keep stepping the
+          // recovered page's unrelated timers and repeat renderer waits after recovery.
           yield* Effect.promise(async () => {
             const stop = '::-p-aria([name="Stop generation"][role="button"])';
             const returned = () => s.page.waitForSelector(stop, { hidden: true });
@@ -69,23 +71,19 @@ describe("C: source failures keep the conversation", () => {
               )
                 asked = true;
             };
-            const http = completedHttp(s.page);
             s.page.on("request", ticket);
             try {
               for (let rung = 0; !asked; rung++) {
                 if (rung === 40)
                   throw new Error("Wren asked for no ticket over 40 reconnect rungs");
                 await s.clock.advanceStepped(FIRST_RECONNECT_RUNG_MS, {
-                  settle: async () => {
-                    await http();
-                    if (asked) await returned();
-                  },
+                  until: () => asked,
+                  settle: () => rendered(s.page),
                 });
               }
               await returned();
             } finally {
               s.page.off("request", ticket);
-              http.close();
             }
           });
           yield* chat.then.once("The existing conversation is still here");
