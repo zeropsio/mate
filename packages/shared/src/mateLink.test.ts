@@ -461,6 +461,8 @@ describe("the keys model's link", () => {
       },
       { type: "pong" },
       { type: "ticket-ack", ticket: "tk-1" },
+      { type: "observe-credential-ack", id: "obs-1", ok: true },
+      { type: "observe-credential-ack", id: "obs-2", ok: false },
       { type: "key-refused" },
       { type: "auto-update-policy", requestId: "r1" },
     ];
@@ -491,6 +493,8 @@ describe("the keys model's link", () => {
       { type: "close-session", sessionId: "hs-1" },
       { type: "git-credential", credential: "gc-1" },
       { type: "git-credential", credential: null },
+      { type: "observe-credential", id: "obs-1", credential: "zobs.value" },
+      { type: "observe-credential", id: "obs-2", credential: null },
       // Today's frames a Mate keeps: its tasks, its usage and its update policy.
       { type: "task-stop", taskId: "task-1", reason: "closed" },
       { type: "provider-keys", keys: [] },
