@@ -378,8 +378,13 @@ describe("C: an engine Mate's run card in a live conversation", () => {
           yield* chat.when.send("also tell me the page title");
           yield* chat.when.press("Send now");
           const steered = yield* provider.received;
+          // The agent gets the person's words first, then the engine's note to answer them where
+          // the person reads; the record keeps only what they typed.
           expect(
-            { turnId: steered.turnId, text: steered.input.input },
+            {
+              turnId: steered.turnId,
+              text: steered.input.input?.split("\n\n<zerops-note>")[0],
+            },
             "ASSERTION: the message was steered into the running run",
           ).toEqual({ turnId: running.turnId, text: "also tell me the page title" });
           const frames = yield* readTrace(s.page);

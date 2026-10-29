@@ -20,6 +20,7 @@ import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
 import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
+import { steeredWith } from "./domain/told.ts";
 import { rowStateOf } from "./read/conversationRow.ts";
 import { readConversationView } from "./read/conversationView.ts";
 import { DRIVERS, makeEngineWorld, mate, type EngineWorld } from "./testing/pump/engineWorld.ts";
@@ -154,7 +155,10 @@ describe("the running engine", () => {
         const w = yield* world(driver);
         yield* send(w);
         yield* w.tell({ _tag: "Steer", runId: r(1), text: "And the api too", context: CONTEXT });
-        assert.deepStrictEqual(w.provider.calls.at(-1), sendLine(w, told("And the api too")));
+        assert.deepStrictEqual(
+          w.provider.calls.at(-1),
+          sendLine(w, steeredWith(told("And the api too"))),
+        );
         assert.deepStrictEqual(yield* personWords(w, r(1)), ["hello", "And the api too"]);
         yield* w.shutdown;
       }),
@@ -1413,7 +1417,7 @@ describe("the running engine", () => {
           yield* w.agent((agent, thread) => agent.endWork(thread, work));
           yield* w.agent((agent, thread) => agent.selfTurn(thread));
           yield* w.settle;
-          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, "carry on"));
+          assert.strictEqual(w.provider.calls.at(-1), sendLine(w, steeredWith("carry on")));
           assert.deepStrictEqual(
             [(yield* w.run(r(2)))?.state, yield* w.run(r(3))],
             ["running", undefined],
@@ -1424,7 +1428,7 @@ describe("the running engine", () => {
           yield* w.settle;
           assert.deepStrictEqual(yield* ending(w, 2), ["ended", "completed", "agent"]);
           assert.strictEqual(
-            w.provider.calls.filter((call) => call === sendLine(w, "carry on")).length,
+            w.provider.calls.filter((call) => call === sendLine(w, steeredWith("carry on"))).length,
             1,
           );
           yield* w.shutdown;

@@ -161,6 +161,11 @@ export interface OpenRequest {
   readonly dismissible?: boolean;
   /** Asked by a helper: it outlives its run while the session that asked lives. */
   readonly byHelper?: true;
+  /**
+   * A question its agent waits on: its questions as asked, so a session's end can ask them again
+   * by message (`endRun`). Absent in a snapshot taken before it was kept.
+   */
+  readonly asked?: ReadonlyArray<unknown>;
   /** A question asked by message: what it asks, by question id, to word the answer's message. */
   readonly questions?: ReadonlyArray<{ readonly id: string; readonly question: string }>;
   /** A value asked of the person: its key and vault, to word the agent's line on the answer. */

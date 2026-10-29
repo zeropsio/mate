@@ -14,6 +14,10 @@ describe("CONTENT_CONTRACT", () => {
     ["no internal names unless asked", /environment variables, hashes or query strings unless/],
     ["structure only for length", /more than three sections.*two levels deep.*comparisons/],
     ["messages sent mid-work join the task list", /task list.*one progress line.*quoting it/],
+    [
+      "a mid-work answer goes where the person reads it",
+      /answer in your thinking never reaches them/,
+    ],
   ])("tells the agent %s", (_, rule) => {
     expect(CONTENT_CONTRACT).toMatch(rule);
   });

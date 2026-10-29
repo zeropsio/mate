@@ -2675,6 +2675,47 @@ usageLimitLayer("CodexAdapterLive usage limits", (it) => {
     }),
   );
 
+  // Kaďák's run, 2026-10-28: Codex's own words told the person to pick another model, and they
+  // answered "What?".
+  it.effect("Codex at capacity says what happened and to try again in a minute", () =>
+    Effect.gen(function* () {
+      const { adapter, runtime } = yield* startUsageLimitRuntime();
+      const eventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.take(2),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
+      const busy = "Selected model is at capacity. Please try a different model.";
+      yield* runtime.emit(
+        codexErrorNotification({
+          id: "evt-capacity",
+          message: busy,
+          codexErrorInfo: "serverOverloaded",
+        }),
+      );
+      const failed = codexUsageLimitTurnFailed("evt-capacity-turn");
+      yield* runtime.emit({
+        ...failed,
+        payload: {
+          threadId: "thread-1",
+          turn: {
+            id: "turn-limit",
+            items: [],
+            status: "failed",
+            error: { message: busy, codexErrorInfo: "serverOverloaded" },
+          },
+        },
+      });
+      const events = Array.from(yield* Fiber.join(eventsFiber));
+      const words =
+        "Codex is at capacity right now. Try again in a minute: send a message to pick up where it left off.";
+      const runtimeError = events.find((event) => event.type === "runtime.error");
+      NodeAssert.equal(runtimeError?.payload.message, words);
+      const completed = events.find((event) => event.type === "turn.completed");
+      NodeAssert.equal(completed?.payload.errorMessage, words);
+    }),
+  );
+
   it.effect("still relays other provider errors as they arrive", () =>
     Effect.gen(function* () {
       const { adapter, runtime } = yield* startUsageLimitRuntime();
