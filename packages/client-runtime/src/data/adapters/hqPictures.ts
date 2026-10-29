@@ -10,9 +10,11 @@ import { changeReadId, changeReadRequest } from "../families/hqChangeRead.ts";
 import type { ChangeReadRequest } from "../families/hqChangeRead.ts";
 import { hqChangeMetadataFamily } from "../families/hqChangeMetadata.ts";
 import { hqChangeCommitsFamily } from "../families/hqChangeCommits.ts";
+import { hqChangeVerdictFamily } from "../families/hqChangeVerdict.ts";
 import type {
   ChangeMetadataResponse,
   ChangeCommitsResponse,
+  ChangeDetailResponse,
   AttachmentLink,
 } from "@t3tools/shared/hqChanges";
 import * as Clock from "effect/Clock";
@@ -39,6 +41,9 @@ export const makeHqPictureReads = (options: {
   readonly commits?: (
     request: ChangeReadRequest,
   ) => Effect.Effect<ChangeCommitsResponse, StreamFault>;
+  readonly verdict?: (
+    request: ChangeReadRequest,
+  ) => Effect.Effect<ChangeDetailResponse, StreamFault>;
   readonly signal: (scope: ScopeKey, event: StreamEvent) => Effect.Effect<unknown>;
   readonly wake: () => void;
   readonly refresh?: Set<ScopeKey>;
@@ -57,6 +62,7 @@ export const makeHqPictureReads = (options: {
             hqReleaseReviewFamily.scope.suffix,
             hqChangeMetadataFamily.scope.suffix,
             hqChangeCommitsFamily.scope.suffix,
+            hqChangeVerdictFamily.scope.suffix,
           ].includes(scope.split(":")[2]!),
         ),
       );
@@ -91,9 +97,14 @@ export const makeHqPictureReads = (options: {
               ? hqChangeMetadataFamily
               : suffix === hqChangeCommitsFamily.scope.suffix
                 ? hqChangeCommitsFamily
-                : hqPictureFamily;
+                : suffix === hqChangeVerdictFamily.scope.suffix
+                  ? hqChangeVerdictFamily
+                  : hqPictureFamily;
         const isReview = spec === hqReleaseReviewFamily;
-        const isChange = spec === hqChangeMetadataFamily || spec === hqChangeCommitsFamily;
+        const isChange =
+          spec === hqChangeMetadataFamily ||
+          spec === hqChangeCommitsFamily ||
+          spec === hqChangeVerdictFamily;
         const family = spec.family;
         const link = isReview
           ? releaseReviewRequest(owner)
@@ -128,9 +139,18 @@ export const makeHqPictureReads = (options: {
           continue;
         }
         store.dispatch({ kind: "baseline-begin", scope, generation });
-        const readChange = spec === hqChangeMetadataFamily ? options.metadata : options.commits;
+        const readChange =
+          spec === hqChangeMetadataFamily
+            ? options.metadata
+            : spec === hqChangeVerdictFamily
+              ? options.verdict
+              : options.commits;
         const request: Effect.Effect<
-          Blob | ChangeMetadataResponse | ChangeCommitsResponse | ReleaseServicePlan,
+          | Blob
+          | ChangeMetadataResponse
+          | ChangeCommitsResponse
+          | ChangeDetailResponse
+          | ReleaseServicePlan,
           StreamFault
         > = isReview
           ? (options.releaseReview?.(link as ReleaseReviewRequest) ??
@@ -182,9 +202,18 @@ export const makeHqPictureReads = (options: {
                         : isChange
                           ? [
                               id,
-                              (blob as ChangeMetadataResponse | ChangeCommitsResponse).change
-                                .updatedAt,
-                              (blob as ChangeMetadataResponse | ChangeCommitsResponse).change.head,
+                              (
+                                blob as
+                                  | ChangeMetadataResponse
+                                  | ChangeCommitsResponse
+                                  | ChangeDetailResponse
+                              ).change.updatedAt,
+                              (
+                                blob as
+                                  | ChangeMetadataResponse
+                                  | ChangeCommitsResponse
+                                  | ChangeDetailResponse
+                              ).change.head,
                               "mainHead" in blob ? blob.mainHead : null,
                             ].join("/")
                           : id,

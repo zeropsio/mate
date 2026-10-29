@@ -8,7 +8,10 @@
  *
  * @module changeMergeability
  */
-import type { MergeabilityKind as HqMergeabilityKind } from "@t3tools/shared/hqChanges";
+import type {
+  Mergeability as HqMergeability,
+  MergeabilityKind as HqMergeabilityKind,
+} from "@t3tools/shared/hqChanges";
 
 /**
  * - `checking`: not said yet;
@@ -32,4 +35,9 @@ export function mergeabilityKindOf(kind: HqMergeabilityKind): MergeabilityKind {
     case "already_merged":
       return "empty";
   }
+}
+
+/** HQ's judgement of a change now, in those words: it always has one, nothing pushed reads empty. */
+export function judgedMergeabilityOf(judged: HqMergeability): MergeabilityKind {
+  return judged.kind === "no_change" ? "empty" : mergeabilityKindOf(judged.kind);
 }

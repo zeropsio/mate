@@ -61,6 +61,7 @@ import { mateBrowserFrameFamily } from "./mateBrowserFrame.ts";
 import { mateMacViewFamily } from "./mateMacView.ts";
 import { hqChangeMetadataFamily } from "./hqChangeMetadata.ts";
 import { hqChangeCommitsFamily } from "./hqChangeCommits.ts";
+import { hqChangeVerdictFamily } from "./hqChangeVerdict.ts";
 import type { Family, MemberState, ScopeKey } from "../model.ts";
 import {
   hqAppFamily,
@@ -211,6 +212,7 @@ export const FAMILIES = defineFamilies([
   hqPictureFamily,
   hqChangeCommitsFamily,
   hqChangeMetadataFamily,
+  hqChangeVerdictFamily,
   hqReleaseReviewFamily,
   projectVariablesFamily,
   serviceVariableFamily,

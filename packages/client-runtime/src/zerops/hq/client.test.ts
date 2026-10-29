@@ -1421,6 +1421,27 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
+  it("HQ's judgement of a change is read at the displayed head and main, without its files or commits", async () => {
+    const judged = {
+      change: CHANGE,
+      mainHead: MAIN_HEAD,
+      mergeBase: MAIN_HEAD,
+      mergeability: { kind: "clean" },
+    };
+    const { hq, api: hqApi } = api((seen) =>
+      seen.path === "/api/apps/app-1/changes/app/3" ? json(200, judged) : undefined,
+    );
+    const snapshot = { expectedHead: SHA, expectedMain: MAIN_HEAD };
+    await expect(hqApi.changeVerdict(LINK, undefined, snapshot)).resolves.toEqual(judged);
+    expect(hq.seen.filter((request) => request.path.includes("/changes/"))).toEqual([
+      expect.objectContaining({
+        path: "/api/apps/app-1/changes/app/3",
+        method: "GET",
+        search: `?expectedHead=${SHA}&expectedMain=${MAIN_HEAD}`,
+      }),
+    ]);
+  });
+
   it("reads a change with what its review reads, as the person", async () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.path === "/api/apps/app-1/changes/app/3/metadata"

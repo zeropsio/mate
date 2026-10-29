@@ -1,6 +1,7 @@
 import { Atom } from "effect/reactivity";
 /** Review bodies and commits are demanded HQ facts keyed by the displayed head and main. */
 import {
+  changeReadoutJudged,
   changeReadoutOfCompare,
   changeReadoutOfRecord,
   type ChangeReadout,
@@ -9,7 +10,9 @@ import {
 import {
   changeReadOwner,
   hqChangeMetadata,
+  hqChangeVerdict,
   type HqChangeMetadata,
+  type HqChangeVerdict,
 } from "@t3tools/client-runtime/data";
 import type { ChangeLink } from "@t3tools/shared/hqChanges";
 import { useCallback, useMemo, useState } from "react";
@@ -48,10 +51,12 @@ export interface ZeropsChangeDetail {
 
 const READING = { kind: "reading" } as const;
 const UNRECORDED = Atom.make<HqChangeMetadata>(READING);
+const UNJUDGED = Atom.make<HqChangeVerdict>(READING);
 
 /**
  * A change's review: what HQ recorded when the change last moved (`/metadata`: files, sizes, merge
- * base, verdict) — no repository is read to draw it. A person who asks for the files of a change
+ * base, verdict) — no repository is read to draw it. A record with no verdict yet also reads HQ's
+ * judgement of the shown head and main (`GET …/:n`). A person who asks for the files of a change
  * that has none recorded reads them from its repository: `main` compared with its head.
  */
 export function useZeropsChangeDetail(
@@ -84,6 +89,17 @@ export function useZeropsChangeDetail(
     UNRECORDED,
   );
   const review = recorded.kind === "read" ? recorded.detail.review : undefined;
+  // A record with no verdict yet is checked by HQ's judgement of the shown head and main, read
+  // while it says so: HQ may never judge the record again. Unread or failed, it stays checked.
+  const judgedAt =
+    recorded.kind === "read" && recorded.detail.change.mergeability === "unknown" ? shownAt : null;
+  useDetailDemand("hqChangeVerdict", undefined, judgedAt);
+  const judgement = useProjection(
+    hqChangeVerdict,
+    judgedAt === null || orgId === null ? null : { orgId, owner: judgedAt },
+    UNJUDGED,
+  );
+  const judged = judgement.kind === "read" ? judgement.detail.mergeability : undefined;
   const filesAsked = owner !== null && shownFor === owner;
   const compareWanted = review?.files === null && filesAsked;
   // HQ's `main` is the base when the flow has not told one yet: the compare answers the commit it named.
@@ -114,14 +130,17 @@ export function useZeropsChangeDetail(
               ? recorded.reason
               : "",
       };
-    const record = changeReadoutOfRecord(recorded.detail.change, recorded.detail.review);
+    const record = changeReadoutJudged(
+      changeReadoutOfRecord(recorded.detail.change, recorded.detail.review),
+      judged,
+    );
     if (!compareWanted) return { kind: "read", value: record };
     if (comparison?.state === "known")
       return { kind: "read", value: changeReadoutOfCompare(record, comparison.answer) };
     if (comparison?.state === "failed" || comparison?.state === "refused")
       return { kind: "failed", reason: comparison.words };
     return READING;
-  }, [owner, recorded, compareWanted, comparison]);
+  }, [owner, recorded, judged, compareWanted, comparison]);
   // Read again only because HQ judged it: the record of the same head and main stays on screen
   // until the newer one is read.
   const [held, setHeld] = useState<{
