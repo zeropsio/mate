@@ -7,6 +7,7 @@
  * @module Keybindings
  */
 import {
+  KeybindingCommand,
   KeybindingRule,
   KeybindingsConfig,
   KeybindingsConfigError,
@@ -174,6 +175,18 @@ const decodeKeybindingRuleExit = Schema.decodeUnknownExit(KeybindingRule);
 const decodeResolvedKeybindingFromConfigExit = Schema.decodeExit(ResolvedKeybindingFromConfig);
 const decodeRawKeybindingsEntriesExit = Schema.decodeUnknownExit(RawKeybindingsEntries);
 const encodeKeybindingsConfigPrettyJson = Schema.encodeEffect(KeybindingsConfigPrettyJson);
+const encodeRawKeybindingsPrettyJson = Schema.encodeEffect(
+  fromJsonStringPretty(Schema.Array(Schema.Unknown)),
+);
+const isKeybindingCommand = Schema.is(KeybindingCommand);
+
+/** An entry bound to a command no build has any more (V1's `thread.settle`) can never work. */
+const isGoneCommandEntry = (entry: unknown) =>
+  typeof entry === "object" &&
+  entry !== null &&
+  "command" in entry &&
+  typeof entry.command === "string" &&
+  !isKeybindingCommand(entry.command);
 
 export interface KeybindingsConfigState {
   readonly keybindings: ResolvedKeybindingsConfig;
@@ -453,6 +466,38 @@ const make = Effect.gen(function* () {
     }),
   );
 
+  // Bindings to gone commands would hold every later default out of the file: they are dropped
+  // first, and the rest of the file is kept as written.
+  const dropGoneCommandEntries = Effect.gen(function* () {
+    const entries = decodeRawKeybindingsEntriesExit(yield* readRawConfig);
+    if (entries._tag === "Failure") return;
+    const kept = entries.value.filter((entry) => !isGoneCommandEntry(entry));
+    if (kept.length === entries.value.length) return;
+    yield* encodeRawKeybindingsPrettyJson(kept).pipe(
+      Effect.flatMap((encoded) =>
+        writeFileStringAtomically({
+          filePath: keybindingsConfigPath,
+          contents: `${encoded}\n`,
+        }).pipe(
+          Effect.provideService(FileSystem.FileSystem, fs),
+          Effect.provideService(Path.Path, path),
+        ),
+      ),
+      Effect.mapError(
+        (cause) =>
+          new KeybindingsConfigError({
+            configPath: keybindingsConfigPath,
+            detail: "failed to write keybindings config",
+            cause,
+          }),
+      ),
+    );
+    yield* Effect.logInfo("dropped keybindings to commands that no longer exist", {
+      path: keybindingsConfigPath,
+      dropped: entries.value.length - kept.length,
+    });
+  });
+
   const syncDefaultKeybindingsOnStartup = upsertSemaphore.withPermits(1)(
     Effect.gen(function* () {
       const configExists = yield* readConfigExists;
@@ -461,6 +506,7 @@ const make = Effect.gen(function* () {
         yield* Cache.invalidate(resolvedConfigCache, resolvedConfigCacheKey);
         return;
       }
+      yield* dropGoneCommandEntries;
 
       const runtimeConfig = yield* loadRuntimeCustomKeybindingsConfig();
       if (runtimeConfig.issues.length > 0) {
