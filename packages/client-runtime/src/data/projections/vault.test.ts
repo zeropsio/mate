@@ -398,35 +398,25 @@ describe("vault", () => {
 
   it("says who reads a value and whether each runs it", () => {
     expect(value(ready, "shared", "LOG_LEVEL").readers).toEqual([
-      { serviceId: "s-app", hostname: "appdev", via: ["LOG"], state: "restart" },
-      { serviceId: "s-stage", hostname: "appstage", via: ["LOG"], state: "live" },
+      { serviceId: "s-app", hostname: "appdev", via: ["LOG", "LOG_LEVEL"], state: "restart" },
+      { serviceId: "s-stage", hostname: "appstage", via: ["LOG", "LOG_LEVEL"], state: "live" },
     ]);
     expect(value(ready, "s-db", "password").readers).toEqual([
       { serviceId: "s-app", hostname: "appdev", via: ["DB_PASS"], state: "live" },
     ]);
   });
 
-  it("lists what is not live: restarts by service, literal references, values nothing reads yet", () => {
+  it("lists what is not live: restarts by service and literal references", () => {
     expect(ready.notLive).toEqual([
-      { kind: "restart", serviceId: "s-app", hostname: "appdev", keys: ["LOG_LEVEL"] },
+      // STRIPE_KEY no entry names: appdev has it by name, and runs the one before it changed.
+      {
+        kind: "restart",
+        serviceId: "s-app",
+        hostname: "appdev",
+        keys: ["LOG_LEVEL", "STRIPE_KEY"],
+      },
       { kind: "missing", serviceId: "s-app", hostname: "appdev", entry: "GONE", name: "NOPE" },
       { kind: "self", serviceId: "s-app", hostname: "appdev", entry: "SELF" },
-      // OLD_FLAG was written before the newest deploy: not waiting for one.
-      { kind: "unread", scope: { kind: "shared" }, key: "STRIPE_KEY" },
-    ]);
-  });
-
-  it("calls every value nothing reads unread while no deploy is known", () => {
-    const view = viewOf(
-      liveZerops({ running: [], projects: [{ id: PROJECT }], services: SERVICES }),
-      membershipInputs("ADMIN"),
-      historyAnswer([]),
-      sharedAnswer,
-      servicesAnswer,
-    );
-    expect(view.notLive.filter((each) => each.kind === "unread")).toEqual([
-      { kind: "unread", scope: { kind: "shared" }, key: "OLD_FLAG" },
-      { kind: "unread", scope: { kind: "shared" }, key: "STRIPE_KEY" },
     ]);
   });
 
