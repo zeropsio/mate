@@ -594,7 +594,7 @@ export interface GroupFlowReads {
 
 /**
  * A Mate row's parts (`mateParts`, the reader the Sites lists and the Browser page share) and its
- * previews among them, one per part with a public preview, by the part's name. Its leases are not
+ * previews among them, one per part with a public preview, by its real hostname. Its leases are not
  * read here: a pool part's preview is what the row offers.
  */
 function mateRowParts(
@@ -611,7 +611,9 @@ function mateRowParts(
   return {
     parts,
     previews: parts.flatMap((part) =>
-      part.preview?.url === undefined ? [] : [{ service: part.name, url: part.preview.url }],
+      part.preview?.url === undefined
+        ? []
+        : [{ service: part.preview.service, url: part.preview.url }],
     ),
   };
 }

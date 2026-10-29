@@ -1,8 +1,8 @@
 /**
  * The Browser tab's list of a Mate's sites (`mateAddresses`), grouped by where each one runs:
  * Development, the Mate's Preview, the group's Stage, Production, then the tools beside the app
- * (mailpit, adminer). Under a group's heading a row needs only its name — a part's friendly name
- * (`mateParts`), or a tool's service — since the heading already says which one it is.
+ * (mailpit, adminer). Under a group's heading a row needs only its name — its service's real
+ * hostname (`mateParts`) — since the heading already says which one it is.
  *
  * Pure: no React, no store.
  */

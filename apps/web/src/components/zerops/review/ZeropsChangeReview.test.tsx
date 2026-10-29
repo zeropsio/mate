@@ -964,8 +964,8 @@ describe("ChangeReviewView: an open change", () => {
   // Larkspur, 2026-10-28: "Try it: flip flipstage-7c1e-5195.prg1.zerops.app".
   it("names Try it by whose preview it opens and its part, never by its address", () => {
     const url = "https://flipstage-7c1e-5195.prg1.zerops.app";
-    const html = render(open, files, { previews: [{ service: "flip", url }] });
-    expect(textOf(html)).toContain("Try it Wren's preview · Flip");
+    const html = render(open, files, { previews: [{ service: "flipstage", url }] });
+    expect(textOf(html)).toContain("Try it Wren's preview · flipstage");
     expect(textOf(html)).not.toContain("flipstage-7c1e-5195");
     expect(html).toContain(`href="${url}"`);
   });

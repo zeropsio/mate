@@ -286,7 +286,6 @@ export const FLOW_PROPS: ZeropsProjectsFlowProps<Item> = {
     h("div", {
       "data-test-mate": value.project.id,
       "data-test-layout": options.layout,
-      "data-test-parts": options.parts.map((part) => part.name).join(" "),
       "data-test-review": options.review?.number,
     }),
   renderMateFace: (value, size) =>

@@ -1,9 +1,9 @@
 /**
  * A Mate's parts, the one reader every surface that shows them reads: the menu's Sites, the
  * conversation header's Sites, the Mate rows on the overview and a project's page, and the Browser
- * page. Each part is a piece of the application — API, Web, Runner — by its friendly name, with its
- * dev entries (where the Mate works on it) and its preview (the stage half of its pair, which runs
- * what the Mate built).
+ * page. Each part is a piece of the application — its dev entries (where the Mate works on it) and
+ * its preview (the stage half of its pair, which runs what the Mate built) — each by its service's
+ * real hostname: a surface never names a service anything else (Aleš, 2026-10-29).
  *
  * - **Parts** come from `servicePairs` — the tier, zcp's envelope, the stem — with one override: a
  *   preview a dev pool serves is that pool's, whatever repository holder the tier names as its dev
@@ -11,8 +11,9 @@
  *   A dev with no stage yet is a part all the same; a pool with neither a workspace nor a stage is
  *   none. A holder zcp keeps for a repository (its envelope's `standIn`) runs nothing while a
  *   pool stands: it has no link and no part of its own.
- * - **Names** are the pair's stem (`partName`): `apipool` and `apistage` are API. Never the setup
- *   zcp names a part by (`apiprod`, `boxpreview`) and never a hostname.
+ * - **Names** are hostnames: a dev entry is its dev service's, or its workspace's alias
+ *   (`apipool-1`); a preview its stage's (`apistage`). Never a name made up for the part, nor the
+ *   setup zcp names it by (`apiprod`, `boxpreview`).
  * - **Dev entries**: a plain dev service's own route; for a pool, one per workspace the Mate holds
  *   on it, each by the chat it is for, else "dev" — never numbered. A workspace opens only by the
  *   rule zcp gives (`poolWorkspaceLink`); one that does not says why in plain words, muted. A slot
@@ -32,7 +33,7 @@
 import { isZeropsLeaseHeld, type ZeropsDevServer, type ZeropsLease } from "@t3tools/contracts";
 
 import { isPoolServiceType } from "./infrastructureType.ts";
-import { partName, poolPartName, servicePairs, type PoolPair } from "./servicePairs.ts";
+import { servicePairs, type PoolPair } from "./servicePairs.ts";
 
 /** One entry of a part: a dev workspace or its preview, with its address or why it has none. */
 export interface MatePartEntry {
@@ -57,10 +58,9 @@ export interface MatePartEntry {
   readonly server?: string | undefined;
 }
 
-/** A part of a Mate's application: its friendly name, its dev entries and its preview. */
+/** A part of a Mate's application: its dev entries and its preview, each by its service. */
 export interface MatePart {
   readonly key: string;
-  readonly name: string;
   /** The service its dev side is: a dev service, or the dev pool its workspaces are on. */
   readonly devService: string;
   /**
@@ -83,7 +83,7 @@ export interface MateOtherAddress {
 }
 
 export interface MateParts {
-  /** In name order. */
+  /** By their dev service's hostname, then their preview's. */
   readonly parts: ReadonlyArray<MatePart>;
   readonly others: ReadonlyArray<MateOtherAddress>;
 }
@@ -369,18 +369,12 @@ export function mateParts(input: MatePartsInput): MateParts {
         });
       });
   };
-  const nameOf = (dev: string, stem: string) =>
-    pools.has(dev) ? poolPartName(dev) : partName(stem);
-
   // Each preview with the dev that serves it: the pool where one does, else its pair's dev.
   const previewsOf = new Map<string, Array<string>>();
-  const stemOf = new Map<string, string>();
   for (const pair of pairs)
     for (const preview of pair.previews) {
-      const pool = servingPool(preview.hostname);
-      const dev = pool ?? pair.dev;
+      const dev = servingPool(preview.hostname) ?? pair.dev;
       previewsOf.set(dev, [...(previewsOf.get(dev) ?? []), preview.hostname]);
-      if (!stemOf.has(dev)) stemOf.set(dev, pool === undefined ? pair.name : dev);
     }
 
   const used = new Set<string>();
@@ -389,15 +383,10 @@ export function mateParts(input: MatePartsInput): MateParts {
     used.add(dev);
     for (const preview of previews) used.add(preview);
     const devEntries = devOf(dev);
-    // Several previews of one dev are several parts of one codebase, each by its own stem; so is
-    // a holder's, which is the whole repository and no part of its own.
-    const byPreview = previews.length > 1 || holders.has(dev);
+    // Several previews of one dev are several parts of one codebase.
     for (const preview of previews)
       parts.push({
         key: `part:${previews.length > 1 ? preview : dev}`,
-        name: byPreview
-          ? partName(withoutSuffix(preview, STAGE_SUFFIX))
-          : nameOf(dev, stemOf.get(dev) ?? dev),
         devService: dev,
         pooled: pools.has(dev) || holders.has(dev),
         dev: devEntries,
@@ -411,7 +400,6 @@ export function mateParts(input: MatePartsInput): MateParts {
     if (dev.length > 0)
       parts.push({
         key: `part:${hostname}`,
-        name: nameOf(hostname, withoutSuffix(hostname, DEV_SUFFIX)),
         devService: hostname,
         pooled: pools.has(hostname),
         dev,
@@ -428,8 +416,16 @@ export function mateParts(input: MatePartsInput): MateParts {
       host: hostOf(route.url),
       url: route.url,
     }));
+  const order = (part: MatePart) => [part.devService, part.preview?.service ?? ""] as const;
   return {
-    parts: parts.sort((left, right) => left.name.localeCompare(right.name, "en")),
+    parts: parts.sort((left, right) => {
+      const [leftDev, leftPreview] = order(left);
+      const [rightDev, rightPreview] = order(right);
+      return (
+        leftDev.localeCompare(rightDev, "en", { numeric: true }) ||
+        leftPreview.localeCompare(rightPreview, "en", { numeric: true })
+      );
+    }),
     others,
   };
 }

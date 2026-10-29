@@ -651,19 +651,19 @@ export function stageDeploysMerges(row: {
 }
 
 /**
- * What a "Try it" pill says: whose preview it opens, then which part, by its friendly name —
- * "Kaďák's preview · Flip" — never the preview's hostname and address, which named neither.
+ * What a "Try it" pill says: whose preview it opens, then which part, by its service's real
+ * hostname — "Kaďák's preview · flipstage".
  */
 export function tryItWords(
   mateName: string,
   part: string,
 ): { readonly preview: string; readonly part: string } {
-  return { preview: `${placeName(crewPossessive(mateName))} preview`, part: placeName(part) };
+  return { preview: `${placeName(crewPossessive(mateName))} preview`, part };
 }
 
 /**
  * "Try it"'s previews: a Mate's parts (`mateParts`, the reader every surface shows them from), each
- * part with a public preview by its friendly name. A change of one repository offers that pair's
+ * part with a public preview by its real hostname. A change of one repository offers that pair's
  * parts; where no part's dev is that repository — a pool-era Mate, whose parts' devs are pools — it
  * offers every part, as a recipe change does.
  */
@@ -686,7 +686,9 @@ export function tryItPreviews(input: {
   });
   const own = parts.filter((part) => part.devService === input.repository);
   return (own.length === 0 ? parts : own).flatMap((part) =>
-    part.preview?.url === undefined ? [] : [{ service: part.name, url: part.preview.url }],
+    part.preview?.url === undefined
+      ? []
+      : [{ service: part.preview.service, url: part.preview.url }],
   );
 }
 

@@ -946,7 +946,7 @@ export interface CardMateProps {
   readonly time: ReactNode;
   readonly reading: CardMateReading;
   /**
-   * Its parts (`mateParts`), each a chip on its name's line by the part's name: a door to its
+   * Its parts (`mateParts`), each a chip on its name's line by its real hostname: a door to its
    * preview, or to its dev where it has no preview, or muted with why where it has neither.
    */
   readonly parts?: ReadonlyArray<MatePart> | undefined;
@@ -1023,8 +1023,8 @@ export function CardMate({
 }
 
 /**
- * A part's chip on a Mate's row: a door to its preview, else to its dev, by the part's name; muted,
- * with why in its title, where it has neither address.
+ * A part's chip on a Mate's row: a door to its preview, else to its dev, by that service's real
+ * hostname; muted, with why in its title, where it has neither address.
  */
 function CardMatePart({ mate, part }: { readonly mate: string; readonly part: MatePart }) {
   const door =
@@ -1032,6 +1032,7 @@ function CardMatePart({ mate, part }: { readonly mate: string; readonly part: Ma
       ? part.dev.find((entry) => entry.url !== undefined)
       : part.preview;
   const url = door?.url;
+  const service = door?.service ?? part.preview?.service ?? part.devService;
   return (
     <Tooltip>
       <TooltipTrigger
@@ -1040,7 +1041,7 @@ function CardMatePart({ mate, part }: { readonly mate: string; readonly part: Ma
             <span className="ov-mate-preview" data-off="" />
           ) : (
             <a
-              aria-label={`Open ${mate}'s ${part.name} ${door?.label === "preview" ? "preview" : "dev"}`}
+              aria-label={`Open ${mate}'s ${service}`}
               className="ov-mate-preview"
               href={url}
               rel="noreferrer"
@@ -1049,7 +1050,7 @@ function CardMatePart({ mate, part }: { readonly mate: string; readonly part: Ma
           )
         }
       >
-        {part.name}
+        {service}
         {url === undefined ? null : <ArrowUpRightIcon aria-hidden="true" className="size-3" />}
       </TooltipTrigger>
       <TooltipPopup side="top">

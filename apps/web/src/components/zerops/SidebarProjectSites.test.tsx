@@ -479,11 +479,9 @@ const KARA_LEASES = [
 const karaSays = () =>
   document.querySelector<HTMLElement>('[data-sites-section="mate:quill-kara"]')?.textContent ?? "";
 
-/** What a person must never be shown of a workspace: zcp's lease, its container, its holder. */
+/** What a person must never be shown of a workspace beyond its alias: zcp's lease, its work, its state. */
 const WORKSPACE_WORDS = [
   "pool ·",
-  "embedderpool-7",
-  "hqpool",
   "feat-x",
   "parked",
   "no preview yet",
@@ -497,7 +495,7 @@ const WORKSPACE_WORDS = [
 ];
 
 describe("a Mate's dev pools", () => {
-  it("a Mate's Sites list each part's preview by the part's name, and nothing about its workspace", async () => {
+  it("a Mate's Sites list each of its services by its real hostname, a workspace by its alias, and nothing else about it", async () => {
     lifecycles.set("env-kara:thread-kara", KARA_LEASES);
     await mount({
       production: undefined,
@@ -508,9 +506,9 @@ describe("a Mate's dev pools", () => {
     await press(surface("sidebar-project-sites"));
     expect(listed()).toEqual([["Kara", [EMBEDDER_URL, "https://kara-stage.example.app"]]]);
     expect(
-      surfaces("sidebar-project-sites-pair").map((row) => row.textContent),
-      "each part by its name, a dev per workspace, then its preview",
-    ).toEqual(["Embedderdevpreview", "HQdevdevpreview"]);
+      surfaces("sidebar-project-sites-service").map((row) => row.textContent),
+      "a row per workspace by its alias, its host where it has one",
+    ).toEqual(["embedderpool-7embedderpool-c2e4-8101.prg1.zerops.app", "hqpool-3", "hqpool-4"]);
     for (const word of WORKSPACE_WORDS) expect(karaSays(), word).not.toContain(word);
     expect(
       surface("sidebar-project-sites-popover")?.querySelector(".zerops-sites-count")?.textContent,
@@ -651,9 +649,9 @@ async function openHeaderSites() {
   await press(document.querySelector<HTMLElement>("[data-trigger]"));
 }
 
-// Aleš 2026-10-27: Sites is addresses only.
+// Aleš 2026-10-27: Sites is addresses only; 2026-10-29: each by its real hostname.
 describe("what Sites name", () => {
-  it("Sites name no work, no status and no workspace", async () => {
+  it("Sites name a workspace by its alias alone: no work, no status, no lease", async () => {
     lifecycles.set("env-kara:thread-names", KARA_LEASES);
     await mount({
       production: undefined,
@@ -665,7 +663,6 @@ describe("what Sites name", () => {
     for (const word of [
       ...WORKSPACE_WORDS,
       "feat-y",
-      "embedderpool",
       "running",
       "starting",
       "crashed",

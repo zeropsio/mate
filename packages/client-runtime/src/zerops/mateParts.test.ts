@@ -37,11 +37,17 @@ const running = (alias: string) =>
     ],
   });
 
-/** A part as a row reads it: "Name | dev entries | preview". */
-const text = ({ name, dev, preview }: MatePart) => {
-  const entry = (side: MatePart["dev"][number]) =>
-    side.url === undefined ? `${side.label} (${String(side.why)})` : `${side.label} ${side.host}`;
-  return `${name} | ${dev.map(entry).join(", ")} | ${preview === undefined ? "" : entry(preview)}`;
+/**
+ * A part as a row reads it: "dev service | dev entries | preview", each entry by its service's
+ * hostname (a workspace's alias), then what it is for where that is not plain dev or preview.
+ */
+const text = ({ devService, dev, preview }: MatePart) => {
+  const entry = (side: MatePart["dev"][number]) => {
+    const what = side.label === "dev" || side.label === "preview" ? "" : ` · ${side.label}`;
+    const where = side.url === undefined ? `(${String(side.why)})` : side.host;
+    return `${side.service}${what} ${String(where)}`;
+  };
+  return `${devService} | ${dev.map(entry).join(", ")} | ${preview === undefined ? "" : entry(preview)}`;
 };
 
 const rows = (input: Partial<MatePartsInput>) =>
@@ -73,15 +79,17 @@ describe("a Mate's parts", () => {
         services: hostnames("apidev", "apistage", "db"),
         routes: [route("apidev"), route("apistage")],
       },
-      rows: ["API | dev apidev-1df2-80.prg1.zerops.app | preview apistage-1df2-80.prg1.zerops.app"],
+      rows: [
+        "apidev | apidev apidev-1df2-80.prg1.zerops.app | apistage apistage-1df2-80.prg1.zerops.app",
+      ],
     },
     {
       title: "a pair whose dev half is the bare name",
       input: { services: hostnames("web", "webstage"), routes: [route("web"), route("webstage")] },
-      rows: ["Web | dev web-1df2-80.prg1.zerops.app | preview webstage-1df2-80.prg1.zerops.app"],
+      rows: ["web | web web-1df2-80.prg1.zerops.app | webstage webstage-1df2-80.prg1.zerops.app"],
     },
     {
-      title: "a pool beside its stage, named by the stem, never the setup zcp names it by",
+      title: "a pool beside its stage, by the pool's hostname, never the setup zcp names it by",
       input: {
         services: hostnames("boxpool", "boxstage"),
         routes: [route("boxpool", 3001), route("boxstage")],
@@ -94,7 +102,7 @@ describe("a Mate's parts", () => {
         ],
         leases: [],
       },
-      rows: ["Box |  | preview boxstage-1df2-80.prg1.zerops.app"],
+      rows: ["boxpool |  | boxstage boxstage-1df2-80.prg1.zerops.app"],
     },
     {
       title:
@@ -107,14 +115,14 @@ describe("a Mate's parts", () => {
         leases: [running("apipool-1")],
       },
       rows: [
-        "API | dev apipool-c2e4-1-3001.prg1.zerops.app | preview apistage-1df2-80.prg1.zerops.app",
-        "Runner |  | preview (No web address.)",
+        "apipool | apipool-1 apipool-c2e4-1-3001.prg1.zerops.app | apistage apistage-1df2-80.prg1.zerops.app",
+        "runnerpool |  | runnerstage (No web address.)",
       ],
     },
     {
       title: "a dev with no stage yet",
       input: { services: hostnames("matedev"), routes: [route("matedev")] },
-      rows: ["Mate | dev matedev-1df2-80.prg1.zerops.app | "],
+      rows: ["matedev | matedev matedev-1df2-80.prg1.zerops.app | "],
     },
     {
       title: "a pool with neither a workspace nor a stage is no part",
@@ -127,7 +135,7 @@ describe("a Mate's parts", () => {
       rows: [],
     },
     {
-      title: "one dev serving several previews is a part per preview, each by its own stem",
+      title: "one dev serving several previews is a part per preview",
       input: {
         services: hostnames("appdev", "apistage", "webstage"),
         routes: [route("appdev"), route("apistage"), route("webstage")],
@@ -147,12 +155,12 @@ describe("a Mate's parts", () => {
         ].join("\n"),
       },
       rows: [
-        "API | dev appdev-1df2-80.prg1.zerops.app | preview apistage-1df2-80.prg1.zerops.app",
-        "Web | dev appdev-1df2-80.prg1.zerops.app | preview webstage-1df2-80.prg1.zerops.app",
+        "appdev | appdev appdev-1df2-80.prg1.zerops.app | apistage apistage-1df2-80.prg1.zerops.app",
+        "appdev | appdev appdev-1df2-80.prg1.zerops.app | webstage webstage-1df2-80.prg1.zerops.app",
       ],
     },
   ])(
-    "a part goes by its friendly name, its dev and its preview beside it: $title",
+    "a Mate's service shows its real hostname: a part is its dev and its preview, each by its own service: $title",
     ({ input, rows: expected }) => {
       expect(rows(input)).toEqual(expected);
     },
@@ -177,7 +185,7 @@ describe("a Mate's parts", () => {
         ],
       },
       rows: [
-        "Flip | dev flipdev-1df2-5193.prg1.zerops.app, admin flipdev-1df2-5195.prg1.zerops.app, :5196 flipdev-1df2-5196.prg1.zerops.app | preview flipstage-1df2-80.prg1.zerops.app",
+        "flipdev | flipdev flipdev-1df2-5193.prg1.zerops.app, flipdev · admin flipdev-1df2-5195.prg1.zerops.app, flipdev · :5196 flipdev-1df2-5196.prg1.zerops.app | flipstage flipstage-1df2-80.prg1.zerops.app",
       ],
     },
     {
@@ -199,7 +207,9 @@ describe("a Mate's parts", () => {
           }),
         ],
       },
-      rows: ["Web | dev webpool-1-3001.prg1.zerops.app, :3002 webpool-1-3002.prg1.zerops.app | "],
+      rows: [
+        "webpool | webpool-1 webpool-1-3001.prg1.zerops.app, webpool-1 · :3002 webpool-1-3002.prg1.zerops.app | ",
+      ],
     },
   ])(
     "a dev with several addresses opens each by its own link, the first as dev, the rest by their server's name, else their port: $title",
@@ -260,7 +270,7 @@ describe("a Mate's parts", () => {
         leaseChats: [{ alias: "hqpool-3", title: "Fix the login" }],
       }),
     ).toEqual([
-      "HQ | dev hqpool-c2e4-1-3001.prg1.zerops.app, Fix the login hqpool-c2e4-3-3001.prg1.zerops.app, build-stamp hqpool-c2e4-4-3001.prg1.zerops.app, dev hqpool-c2e4-5-3001.prg1.zerops.app | preview hqstage-1df2-80.prg1.zerops.app",
+      "hqpool | hqpool-1 hqpool-c2e4-1-3001.prg1.zerops.app, hqpool-3 · Fix the login hqpool-c2e4-3-3001.prg1.zerops.app, hqpool-4 · build-stamp hqpool-c2e4-4-3001.prg1.zerops.app, hqpool-5 hqpool-c2e4-5-3001.prg1.zerops.app | hqstage hqstage-1df2-80.prg1.zerops.app",
     ]);
   });
 
@@ -272,7 +282,7 @@ describe("a Mate's parts", () => {
         leases: [{ ...running("webpool-1"), acquiredAt: "2026-10-28T09:00:00Z" }],
         leaseChats: [{ alias: "webpool-1", acquiredAt: "2026-10-27T09:00:00Z", title: "Old work" }],
       }),
-    ).toEqual(["Web | dev webpool-c2e4-1-3001.prg1.zerops.app | "]);
+    ).toEqual(["webpool | webpool-1 webpool-c2e4-1-3001.prg1.zerops.app | "]);
   });
 
   // zcp's envelope marks a holder `standIn: { for: "pool-migrate" }`; the Zerops panel rests it.
@@ -286,7 +296,7 @@ describe("a Mate's parts", () => {
         standIns: ["kiln", "toolsdev"],
         leases: [],
       },
-      rows: ["API |  | preview apistage-1df2-80.prg1.zerops.app"],
+      rows: ["apipool |  | apistage apistage-1df2-80.prg1.zerops.app"],
     },
     {
       title: "a holder the tier still pairs a stage with keeps its preview, never its dev link",
@@ -299,8 +309,8 @@ describe("a Mate's parts", () => {
         leases: [],
       },
       rows: [
-        "API |  | preview apistage-1df2-80.prg1.zerops.app",
-        "Runner |  | preview runnerstage-1df2-80.prg1.zerops.app",
+        "apipool |  | apistage apistage-1df2-80.prg1.zerops.app",
+        "noola |  | runnerstage runnerstage-1df2-80.prg1.zerops.app",
       ],
     },
     {
@@ -310,7 +320,7 @@ describe("a Mate's parts", () => {
         routes: [route("toolsdev")],
         standIns: ["toolsdev"],
       },
-      rows: ["Tools | dev toolsdev-1df2-80.prg1.zerops.app | "],
+      rows: ["toolsdev | toolsdev toolsdev-1df2-80.prg1.zerops.app | "],
     },
   ])(
     "a holder zcp keeps for a repository holds the code; nothing runs there: $title",

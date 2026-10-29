@@ -13,8 +13,8 @@
  *
  * The Mate's own addresses are its parts (`mateParts`, the one reader the menu's Sites and the
  * Mate rows read too): each part's dev entries — a dev service's route, or each workspace the Mate
- * holds on a dev pool that opens by zcp's rule — and its preview, by the part's friendly name; then
- * every other public service by its name. A service's first route is its address: a second port
+ * holds on a dev pool that opens by zcp's rule — and its preview, each by its real hostname (a
+ * workspace by its alias, and the chat it is for); then every other public service by its name. A service's first route is its address: a second port
  * is the same page — except where a dev entry runs several dev servers (a monorepo's web and api):
  * then each running one is its own address, by the server's own name (its port where it has none),
  * never numbered. One dev server names nothing. The control plane serves Mate itself; browsing it from inside Mate is noise.
@@ -30,7 +30,7 @@ import {
   type MatePartLease,
   type MatePartLeaseChat,
 } from "@t3tools/client-runtime/zerops/mateParts";
-import { partName, type PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
+import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
 import type { ZeropsTopologyGroup } from "@t3tools/client-runtime/zerops/topology";
 import type { ZeropsDevServer } from "@t3tools/contracts";
 
@@ -51,9 +51,9 @@ export interface MateAddress {
   /** The address without its scheme — what a row shows and what a person copies. */
   readonly host: string;
   /**
-   * What a row names after the address's role: a part's friendly name (and the chat a workspace is
-   * for), another service's own hostname, with its environment's name only where its role has
-   * several — never the role again.
+   * What a row names after the address's role: the service's real hostname (a workspace's alias,
+   * and the chat it is for), with its environment's name only where its role has several — never
+   * the role again.
    */
   readonly name: string;
 }
@@ -158,7 +158,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     for (const entry of part.dev) {
       if (entry.url === undefined || devs.has(entry.service)) continue;
       devs.add(entry.service);
-      const name = entry.label === "dev" ? part.name : `${part.name} · ${entry.label}`;
+      const name = entry.label === "dev" ? entry.service : `${entry.service} · ${entry.label}`;
       const several = runningServers(serversOf(entry.service));
       if (several.length === 0) add(entry.service, "dev", entry.url, name);
       for (const server of several)
@@ -171,7 +171,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
     }
     // A pair's half is the Mate's preview, unless its project is itself the stage or production.
     if (part.preview?.url !== undefined)
-      add(part.preview.service, projectRole ?? "preview", part.preview.url, part.name);
+      add(part.preview.service, projectRole ?? "preview", part.preview.url);
   }
   // A service's first route is its address: a second port is the same page.
   const listed = new Set<string>();
@@ -197,7 +197,7 @@ export function mateAddresses(input: MateAddressInput): ReadonlyArray<MateAddres
           `${service} ${suffix}`,
           role,
           url,
-          ofRole.length === 1 ? partName(service) : `${partName(service)} · ${environment.name}`,
+          ofRole.length === 1 ? service : `${service} · ${environment.name}`,
         );
     }
   }
