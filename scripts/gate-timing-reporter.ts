@@ -11,8 +11,9 @@ export interface TimeoutRisk {
 
 export default class GateTimingReporter implements Reporter {
   private readonly output: string | undefined;
-  constructor(output = process.env.MATE_GATE_TIMINGS) {
-    this.output = output;
+  constructor(output?: string | Record<string, unknown>) {
+    // Vitest passes an options object when loading a reporter from the CLI.
+    this.output = typeof output === "string" ? output : process.env.MATE_GATE_TIMINGS;
   }
   onTestCaseResult(test: {
     fullName: string;
