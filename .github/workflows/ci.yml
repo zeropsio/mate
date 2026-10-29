@@ -158,6 +158,7 @@ jobs:
       test_server: ${{ steps.blame.outputs.test_server }}
       state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
       state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
+      node_version: ${{ steps.node.outputs.version }}
     steps:
       - name: Reject failed main verification
         env:
@@ -209,6 +210,11 @@ jobs:
           echo "store=$(vp pm cache dir)" >> "$GITHUB_OUTPUT"
           echo "arch=$(node -p 'process.arch')" >> "$GITHUB_OUTPUT"
 
+      - name: Record the producer's resolved Node version
+        if: *plans_state_smoke
+        id: node
+        run: echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+
       - name: Restore pnpm store
         if: *plans_state_smoke
         uses: actions/cache/restore@v4
@@ -232,6 +238,22 @@ jobs:
           MATE_SCENARIO_BASE: ${{ github.event.pull_request.base.sha || github.event.before || '0000000000000000000000000000000000000000' }}
           MATE_STATE_SMOKE_SHARDS: ${{ steps.blame.outputs.state_smoke_shards }}
         run: node scripts/state-smoke.ts --plan --base "$MATE_SCENARIO_BASE" --shards "$MATE_STATE_SMOKE_SHARDS"
+
+      - name: Build the shared scenario bundle
+        if: *plans_state_smoke
+        env:
+          MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
+        run: vp exec node apps/web/test/scenarios/harness/build.ts
+
+      - name: Upload the content-addressed scenario bundle
+        if: *plans_state_smoke
+        uses: actions/upload-artifact@v4
+        with:
+          name: state-smoke-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 1
 
   cache:
     name: Check cache (${{ matrix.os }})
@@ -594,11 +616,10 @@ jobs:
       - name: Exercise release-only workflow steps
         run: node scripts/release-smoke.ts
 
-  # Each State Smoke shard builds its scenario bundles; sign-in, fixed smoke
+  # prepare builds the shared scenario bundle once; sign-in, fixed smoke
   # and the shared graph's affected scenarios all block CI. They run against
   # the test HQ of zeropsio/mate-hq (private), read with a deploy key.
-  # It needs only prepare, so the long shards take hosted runner slots in the
-  # first wave instead of queuing behind shorter jobs.
+  # Shards need only prepare and download its content-addressed bundle.
   state_smoke:
     name: State Smoke ${{ matrix.shard }}
     needs: prepare
@@ -652,7 +673,7 @@ jobs:
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
         with:
-          node-version-file: package.json
+          node-version: ${{ needs.prepare.outputs.node_version }}
           cache: false
           run-install: false
 
@@ -683,8 +704,11 @@ jobs:
           path: ~/.cache/mate-test-browser
           key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
 
-      - name: Build the shared scenario bundle
-        run: vp exec node apps/web/test/scenarios/harness/build.ts
+      - name: Download the shared scenario bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: state-smoke-scenario-bundle
+          path: node_modules/.cache/mate-scenario-web
 
       - name: Certify sign-in, fixed smoke and affected scenarios
         env:

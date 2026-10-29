@@ -653,13 +653,86 @@ it("Decision: every workflow sharing the scenario bundle uses one resolved Node 
   );
   const steps: { uses?: string; run?: string; env?: Record<string, string> }[] =
     jobs.state_smoke.steps;
-  const build = steps.findIndex((step) => step.run?.includes("scenarios/harness/build.ts"));
+  const build = steps.findIndex((step) => step.uses?.startsWith("actions/download-artifact@"));
   const consume = steps.findIndex((step) => step.env?.MATE_SCENARIO_REQUIRE_BUNDLE === "1");
   expect(build).toBeGreaterThan(-1);
   expect(consume).toBeGreaterThan(build);
   expect(steps.slice(build + 1, consume).filter((step) => step.uses?.includes("setup-"))).toEqual(
     [],
   );
+});
+
+it("Decision: One State Smoke run builds the shared scenario bundle once and every shard uses that artefact.", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const builds = Object.entries(jobs).flatMap(([id, job]) =>
+    (job as { steps: { run?: string; if?: string }[] }).steps
+      .filter((step) => step.run?.includes("scenarios/harness/build.ts"))
+      .map((step) => ({ id, step })),
+  );
+  expect(
+    builds.map(({ id }) => id),
+    "ASSERTION: prepare builds once; State Smoke shards never rebuild the shared bundle",
+  ).toEqual(["prepare"]);
+  const producer = jobs.prepare;
+  const plan = producer.steps.find((step: { id?: string }) => step.id === "state_smoke_plan");
+  const upload = producer.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("actions/upload-artifact@"),
+  );
+  expect(builds[0]!.step.if).toBe(plan.if);
+  expect(upload.if).toBe(plan.if);
+  expect(upload.with).toMatchObject({
+    name: "state-smoke-scenario-bundle",
+    path: "node_modules/.cache/mate-scenario-web",
+    "include-hidden-files": true,
+    "if-no-files-found": "error",
+  });
+  const consumer = jobs.state_smoke;
+  expect([consumer.needs].flat()).toContain("prepare");
+  const download = consumer.steps.find((step: { uses?: string }) =>
+    step.uses?.startsWith("actions/download-artifact@"),
+  );
+  expect(download.with).toEqual({ name: upload.with.name, path: upload.with.path });
+  expect(producer.outputs.node_version).toBe("${{ steps.node.outputs.version }}");
+  const node = producer.steps.find((step: { id?: string }) => step.id === "node");
+  expect(node.if).toBe(plan.if);
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "smoke-node-"));
+  try {
+    const output = NodePath.join(directory, "output");
+    const result = NodeChildProcess.spawnSync("bash", ["-eu", "-c", node.run], {
+      env: { ...process.env, GITHUB_OUTPUT: output },
+    });
+    expect(result.status).toBe(0);
+    expect(NodeFS.readFileSync(output, "utf8")).toBe(`version=${process.versions.node}\n`);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it("Decision: The scenario selection and verdict of State Smoke stay exactly as today.", () => {
+  const { jobs } = parseYaml(
+    NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
+  );
+  const consumer = jobs.state_smoke;
+  expect(consumer.if).toBe(
+    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}",
+  );
+  expect(consumer.needs).toBe("prepare");
+  expect(consumer.strategy).toEqual({
+    "fail-fast": false,
+    matrix: "${{ fromJSON(needs.prepare.outputs.state_smoke) }}",
+  });
+  expect(consumer["timeout-minutes"]).toBe(14);
+  const certify = consumer.steps.at(-1);
+  expect(certify.env).toEqual({
+    MATE_SCENARIO_REQUIRE_BUNDLE: "1",
+    MATE_STATE_SMOKE_SELECTION: "${{ needs.prepare.outputs.state_smoke_selection }}",
+  });
+  expect(certify.run).toBe(
+    'vp run test:browser\nnode scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}\n',
+  );
+  expect(consumer["continue-on-error"]).toBeUndefined();
 });
 
 it("CI builds once and certifies both complete C shards from that artifact", () => {
