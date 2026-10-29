@@ -10,6 +10,7 @@ import * as TestClock from "effect/testing/TestClock";
 import {
   ACCESS_LIST_HOLDS,
   type AccessList,
+  administersProject,
   make as makeAccessList,
   nextAccessList,
 } from "./ZeropsMateAccessList.ts";
@@ -139,5 +140,28 @@ describe("ZeropsMateAccessList", () => {
       yield* list.heard(full(6, [JAN]));
       assert.lengthOf(yield* Fiber.join(told), 4);
     }),
+  );
+});
+
+describe("administersProject", () => {
+  const list = (members: AccessList["members"], refused = false): Option.Option<AccessList> =>
+    Option.some({ version: 1, members, refused, heardAtMs: 0, expiresAtMs: 1 });
+  const ADA = { userId: "ada", role: "ADMIN", visibility: "open" } as const;
+  const BEN = { userId: "ben", role: "BASIC_USER", visibility: "open" } as const;
+  const ADA_LISTED = { ...ADA, visibility: "listed" } as const;
+
+  it.each([
+    ["its organisation's owner", list([JAN, ADA]), "zerops-user:jan", true],
+    ["an admin it opens for", list([JAN, ADA]), "zerops-user:ada", true],
+    ["a basic user", list([JAN, BEN]), "zerops-user:ben", false],
+    ["an admin it only lists", list([ADA_LISTED]), "zerops-user:ada", false],
+    ["an admin while the key is refused", list([ADA], true), "zerops-user:ada", false],
+    ["an admin without a list that holds", Option.none<AccessList>(), "zerops-user:ada", false],
+    ["a session that is no Zerops person", list([ADA]), "ada", false],
+  ] as const)(
+    "an admin of the Mate's project is one the list opens it for at Admin or above: %s",
+    (_, held, subject, admin) => {
+      assert.strictEqual(administersProject(held, subject), admin);
+    },
   );
 });

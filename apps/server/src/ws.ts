@@ -7,6 +7,7 @@ import { ZEROPS_SUBJECT_PREFIX } from "./zerops/zeropsSubject.ts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";
+import { administersProject, ZeropsMateAccessList } from "./zerops/ZeropsMateAccessList.ts";
 import { ThreadFileWrites } from "./zerops/ThreadFileWrites.ts";
 import {
   sameUsageLimitCommandCoverage,
@@ -2045,6 +2046,12 @@ export const websocketRpcRouteLayer = HttpRouter.add(
       hqLink === undefined
         ? Effect.succeed(false)
         : Effect.map(hqLink.standing, (standing) => readsAlongOnly(standing, session.subject));
+    // An admin of the Mate's project keeps someone else's Mate current: asked per call too.
+    const accessList = Option.getOrUndefined(yield* Effect.serviceOption(ZeropsMateAccessList));
+    const administers =
+      accessList === undefined
+        ? Effect.succeed(false)
+        : Effect.map(accessList.current, (list) => administersProject(list, session.subject));
     const rpcWebSocketHttpEffect = yield* Effect.gen(function* () {
       const { protocol, httpEffect } = yield* RpcServer.makeProtocolWithHttpEffectWebsocket;
       // Terminal output streams run ahead of the client's acks inside a small
@@ -2053,7 +2060,7 @@ export const websocketRpcRouteLayer = HttpRouter.add(
         Effect.provideService(RpcServer.Protocol, withTerminalOutputWindow(protocol)),
         Effect.provide(
           Layer.merge(
-            rpcScopeAuthorizationLayer(currentScopes, readsAlong),
+            rpcScopeAuthorizationLayer(currentScopes, readsAlong, administers),
             rpcInstrumentationLayer,
           ),
         ),

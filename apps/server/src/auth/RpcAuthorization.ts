@@ -234,19 +234,33 @@ const WATCHING_UNDER_OPERATE: ReadonlySet<string> = new Set([
 export const ownerOnlyRpcMethod = (method: string): boolean =>
   OPERATING_SCOPES.has(requiredScopeForRpcMethod(method)) && !WATCHING_UNDER_OPERATE.has(method);
 
+/**
+ * The acting calls an admin of the Mate's project may make on someone else's Mate too: keeping
+ * it current. The update waits for the Mate to be idle and keeps its conversations.
+ */
+const ADMINISTERED_UNDER_OPERATE: ReadonlySet<string> = new Set([WS_METHODS.zeropsMateUpdate]);
+
 export const rpcReadAlongError = (requiredScope: AuthEnvironmentScope) =>
   new EnvironmentAuthorizationError({
     message: "Only this Mate's owner can do this here; you can read along.",
     requiredScope,
   });
 
+const rpcAdministeredError = (requiredScope: AuthEnvironmentScope) =>
+  new EnvironmentAuthorizationError({
+    message: "Only this Mate's owner or an admin of its project can do this.",
+    requiredScope,
+  });
+
 /**
  * Authorizes every RPC on one connection against that connection's session scopes, and refuses
- * an acting call while `readsAlong` says the session's person is not the Mate's owner.
+ * an acting call while `readsAlong` says the session's person is not the Mate's owner, unless
+ * the call is one `administers` (an admin of the Mate's project) lets them make.
  */
 export const rpcScopeAuthorizationLayer = (
   scopes: ReadonlyArray<AuthEnvironmentScope> | Effect.Effect<ReadonlyArray<AuthEnvironmentScope>>,
   readsAlong: Effect.Effect<boolean>,
+  administers: Effect.Effect<boolean> = Effect.succeed(false),
 ) =>
   Layer.succeed(RpcScopeAuthorization)((effect, { rpc }) => {
     const requiredScope = requiredScopeForRpcMethod(rpc._tag);
@@ -254,8 +268,13 @@ export const rpcScopeAuthorizationLayer = (
       if (!current.includes(requiredScope))
         return Effect.fail(rpcAuthorizationError(requiredScope));
       if (!ownerOnlyRpcMethod(rpc._tag)) return effect;
-      return Effect.flatMap(readsAlong, (along) =>
-        along ? Effect.fail(rpcReadAlongError(requiredScope)) : effect,
-      );
+      return Effect.flatMap(readsAlong, (along) => {
+        if (!along) return effect;
+        if (!ADMINISTERED_UNDER_OPERATE.has(rpc._tag))
+          return Effect.fail(rpcReadAlongError(requiredScope));
+        return Effect.flatMap(administers, (admin) =>
+          admin ? effect : Effect.fail(rpcAdministeredError(requiredScope)),
+        );
+      });
     });
   });

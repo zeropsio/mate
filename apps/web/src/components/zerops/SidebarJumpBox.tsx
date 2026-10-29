@@ -217,7 +217,7 @@ function useJumpWrite(
     target?.conversation === undefined ? null : ThreadId.make(target.conversation.threadId);
   const write = useMateWrite(environmentId, threadId);
   const { shell, detail, requests } = write;
-  const readOnly = useMateReadOnly(environmentId, shell?.modelSelection.instanceId);
+  const readOnly = useMateReadOnly(environmentId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   // Words sent while the conversation was still being read: they go once it is.
   const queued = useRef<string | null>(null);

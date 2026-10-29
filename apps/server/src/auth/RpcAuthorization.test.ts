@@ -1,4 +1,5 @@
 import {
+  AuthExecOperateScope,
   AuthOrchestrationOperateScope,
   AuthOrchestrationReadScope,
   AuthRelayReadScope,
@@ -136,7 +137,7 @@ describe("someone else's Mate", () => {
         !(tested as ReadonlyArray<string>).includes(tag),
     ),
   );
-  const clientFor = (readsAlong: boolean, ran: Deferred.Deferred<void>) =>
+  const clientFor = (readsAlong: boolean, ran: Deferred.Deferred<void>, administers = false) =>
     RpcTest.makeClient(group).pipe(
       Effect.provide(
         Layer.mergeAll(
@@ -147,6 +148,7 @@ describe("someone else's Mate", () => {
           rpcScopeAuthorizationLayer(
             [AuthOrchestrationReadScope, AuthOrchestrationOperateScope],
             Effect.succeed(readsAlong),
+            Effect.succeed(administers),
           ),
           rpcInstrumentationLayer,
         ),
@@ -178,6 +180,66 @@ describe("someone else's Mate", () => {
       const client = yield* clientFor(false, ran);
       yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(Effect.forkScoped);
       yield* Deferred.await(ran);
+    }).pipe(Effect.scoped),
+  );
+
+  const updateGroup = WsRpcGroup.omit(
+    ...[...WsRpcGroup.requests.keys()].filter(
+      (tag): tag is Exclude<keyof typeof RPC_REQUIRED_SCOPES, typeof WS_METHODS.zeropsMateUpdate> =>
+        tag !== WS_METHODS.zeropsMateUpdate,
+    ),
+  );
+
+  it.effect.each([
+    { who: "its owner", along: false, admin: false, updates: true },
+    { who: "an admin of its project", along: true, admin: true, updates: true },
+    { who: "a colleague", along: true, admin: false, updates: false },
+  ])(
+    "a Mate is updated by its owner or an admin of its project: $who",
+    ({ along, admin, updates }) =>
+      Effect.gen(function* () {
+        const ran = yield* Deferred.make<void>();
+        const client = yield* RpcTest.makeClient(updateGroup).pipe(
+          Effect.provide(
+            Layer.mergeAll(
+              updateGroup.toLayerHandler(WS_METHODS.zeropsMateUpdate, () =>
+                Deferred.succeed(ran, undefined).pipe(
+                  Effect.as({ action: "none" as const, restarted: false, serverVersion: "0.0.0" }),
+                ),
+              ),
+              rpcScopeAuthorizationLayer(
+                [AuthExecOperateScope],
+                Effect.succeed(along),
+                Effect.succeed(admin),
+              ),
+              rpcInstrumentationLayer,
+            ),
+          ),
+        );
+        const answer = yield* client[WS_METHODS.zeropsMateUpdate]({}).pipe(Effect.result);
+        expect(yield* Deferred.isDone(ran)).toBe(updates);
+        if (!updates)
+          expect(answer).toMatchObject({
+            failure: {
+              _tag: "EnvironmentAuthorizationError",
+              message: "Only this Mate's owner or an admin of its project can do this.",
+              requiredScope: AuthExecOperateScope,
+            },
+          });
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("an admin of its project still only reads along in someone else's Mate", () =>
+    Effect.gen(function* () {
+      const ran = yield* Deferred.make<void>();
+      const client = yield* clientFor(true, ran, true);
+      const refused = yield* client[WS_METHODS.serverRetryResourceTelemetry]({}).pipe(
+        Effect.result,
+      );
+      expect(yield* Deferred.isDone(ran)).toBe(false);
+      expect(refused).toMatchObject({
+        failure: { message: "Only this Mate's owner can do this here; you can read along." },
+      });
     }).pipe(Effect.scoped),
   );
 });
