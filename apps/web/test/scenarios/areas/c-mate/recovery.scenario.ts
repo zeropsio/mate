@@ -27,25 +27,22 @@ const setup = () =>
 
 describe("C: source failures keep the conversation", () => {
   scenarioSuite((it) => {
-    it.effect(
-      "a stopped container offers Start beside retained history",
-      () =>
-        Effect.gen(function* () {
-          const { s, chat, wire } = yield* setup();
-          reportContainer(s.drivers, "Wren", "STOPPED");
-          wire.disconnect();
-          yield* chat.then.text("Wren's container is stopped.");
-          yield* chat.then.control("Start");
-          yield* chat.then.once("The existing conversation is still here");
-          yield* chat.when.press("Start");
-          yield* Effect.promise(() =>
-            s.drivers.zerops.waitForRequest("PUT /service-stack/service-Wren/start"),
-          );
-          expect(s.drivers.zerops.requests.get("PUT /service-stack/service-Wren/start")).toBe(1);
-          yield* chat.then.once("The existing conversation is still here");
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
+    it.effect("a stopped container offers Start beside retained history", () =>
+      Effect.gen(function* () {
+        const { s, chat, wire } = yield* setup();
+        reportContainer(s.drivers, "Wren", "STOPPED");
+        wire.disconnect();
+        yield* chat.then.text("Wren's container is stopped.");
+        yield* chat.then.control("Start");
+        yield* chat.then.once("The existing conversation is still here");
+        yield* chat.when.press("Start");
+        yield* Effect.promise(() =>
+          s.drivers.zerops.waitForRequest("PUT /service-stack/service-Wren/start"),
+        );
+        expect(s.drivers.zerops.requests.get("PUT /service-stack/service-Wren/start")).toBe(1);
+        yield* chat.then.once("The existing conversation is still here");
+        yield* s.then.noExternalNetwork;
+      }),
     );
     it.effect(
       "an active run interrupted during transport loss returns with history and draft",
@@ -96,7 +93,6 @@ describe("C: source failures keep the conversation", () => {
           expect(wire.sentTurnCount()).toBe(0);
           yield* s.then.noExternalNetwork;
         }),
-      10_000,
     );
     // Expiry of a recorded provider login must offer sign-in without hiding history.
     it.effect("an expired Codex login blocks sending and preserves the conversation", () =>

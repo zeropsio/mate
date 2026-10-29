@@ -30,67 +30,64 @@ const setup = Effect.gen(function* () {
 
 describe("D: change review, comments and merge", () => {
   scenarioSuite((it) => {
-    it.effect(
-      "opens the menu change with its description and files",
-      () =>
-        Effect.gen(function* () {
-          const s = yield* createScenario([installArea], { mate: "real" });
-          const change = yield* sourceChange(s, {
-            title: `Order summary ${"checkout".repeat(12)}`,
-            summary: `Order total: ${"1234567890".repeat(80)}\n`,
-          });
-          const r = review(s);
-          yield* Effect.promise(async () => {
-            await s.page.setViewport({ width: 1786, height: 1000 });
-          });
-          yield* s.given.signedIn;
-          yield* Effect.promise(() => resizeMenu(s.page, 435));
-          yield* r.open;
-          yield* r.text(change.title);
-          yield* r.text(change.description);
-          yield* r.file("summary.txt");
-          yield* r.mergeEnabled;
-          yield* Effect.promise(async () => {
-            await s.page.locator(".rv-file").click();
-            await s.page.waitForSelector(".rv-dl");
-            await s.page.evaluate(() => document.fonts.ready);
-            for (const width of [1786, 390]) {
-              await s.page.setViewport({ width, height: 1000 });
-              const overflow = await s.page.evaluate(() => {
-                const review = document.querySelector('[data-zerops-surface="review"]')!;
-                const regions = [".rv-title", ".rv-diff"].map((selector) =>
-                  review.querySelector<HTMLElement>(selector),
-                );
-                return {
-                  visible: regions.every((node) => {
-                    if (!node?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
-                      return false;
-                    const box = node.getBoundingClientRect();
-                    return box.width > 32 && box.height > 8;
-                  }),
-                  excess: regions.map((node) =>
-                    node === null
-                      ? 0
-                      : Math.max(
-                          node.scrollWidth - node.clientWidth,
-                          node.getBoundingClientRect().right - review.getBoundingClientRect().right,
-                        ),
-                  ),
-                };
-              });
-              expect(
-                overflow.visible,
-                "ASSERTION: review title and expanded diff are visible with nonzero geometry",
-              ).toBe(true);
-              expect(
-                Math.max(...overflow.excess),
-                "ASSERTION: long review headings and diffs have no horizontal overflow",
-              ).toBeLessThanOrEqual(4);
-            }
-          });
-          yield* s.then.noExternalNetwork;
-        }),
-      10_000,
+    it.effect("opens the menu change with its description and files", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installArea], { mate: "real" });
+        const change = yield* sourceChange(s, {
+          title: `Order summary ${"checkout".repeat(12)}`,
+          summary: `Order total: ${"1234567890".repeat(80)}\n`,
+        });
+        const r = review(s);
+        yield* Effect.promise(async () => {
+          await s.page.setViewport({ width: 1786, height: 1000 });
+        });
+        yield* s.given.signedIn;
+        yield* Effect.promise(() => resizeMenu(s.page, 435));
+        yield* r.open;
+        yield* r.text(change.title);
+        yield* r.text(change.description);
+        yield* r.file("summary.txt");
+        yield* r.mergeEnabled;
+        yield* Effect.promise(async () => {
+          await s.page.locator(".rv-file").click();
+          await s.page.waitForSelector(".rv-dl");
+          await s.page.evaluate(() => document.fonts.ready);
+          for (const width of [1786, 390]) {
+            await s.page.setViewport({ width, height: 1000 });
+            const overflow = await s.page.evaluate(() => {
+              const review = document.querySelector('[data-zerops-surface="review"]')!;
+              const regions = [".rv-title", ".rv-diff"].map((selector) =>
+                review.querySelector<HTMLElement>(selector),
+              );
+              return {
+                visible: regions.every((node) => {
+                  if (!node?.checkVisibility({ checkOpacity: true, checkVisibilityCSS: true }))
+                    return false;
+                  const box = node.getBoundingClientRect();
+                  return box.width > 32 && box.height > 8;
+                }),
+                excess: regions.map((node) =>
+                  node === null
+                    ? 0
+                    : Math.max(
+                        node.scrollWidth - node.clientWidth,
+                        node.getBoundingClientRect().right - review.getBoundingClientRect().right,
+                      ),
+                ),
+              };
+            });
+            expect(
+              overflow.visible,
+              "ASSERTION: review title and expanded diff are visible with nonzero geometry",
+            ).toBe(true);
+            expect(
+              Math.max(...overflow.excess),
+              "ASSERTION: long review headings and diffs have no horizontal overflow",
+            ).toBeLessThanOrEqual(4);
+          }
+        });
+        yield* s.then.noExternalNetwork;
+      }),
     );
 
     // Catches a bookmarked change URL losing the review after reload.
