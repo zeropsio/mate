@@ -1,3 +1,4 @@
+import { ObserveCredential } from "./observeCredential.ts";
 import type { KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
@@ -541,6 +542,10 @@ export interface HqApi {
   /** The repository and its code are deleted from Mate (`DELETE /api/apps/:appId/repos/:repo`). */
   readonly deleteRepo?: (appId: string, repo: string) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
+  /** Reads metadata only; authority changes require an explicit person's action. */
+  readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
+  readonly authorizeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
+  readonly revokeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
@@ -1744,6 +1749,26 @@ export function makeHqApi(input: {
         true,
       );
     },
+    observeCredential: async (projectId) =>
+      decoded(ObserveCredential)(
+        await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
+      ),
+    authorizeObserveCredential: async (projectId) =>
+      decoded(ObserveCredential)(
+        await authorized(
+          `/api/mates/${encodeURIComponent(projectId)}/observe-credential`,
+          { method: "POST" },
+          true,
+        ),
+      ),
+    revokeObserveCredential: async (projectId) =>
+      decoded(ObserveCredential)(
+        await authorized(
+          `/api/mates/${encodeURIComponent(projectId)}/observe-credential`,
+          { method: "DELETE" },
+          true,
+        ),
+      ),
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(
