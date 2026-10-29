@@ -233,6 +233,7 @@ export function releaseOutcomeOf(input: {
     const services = tagged.failedEntries.map((entry) => entry.service);
     return {
       kind: "failed",
+      ...(tagged.problems === undefined ? {} : { problems: tagged.problems }),
       detail:
         tagged.verdict === "refused"
           ? (tagged.detail ?? "HQ refused the release")

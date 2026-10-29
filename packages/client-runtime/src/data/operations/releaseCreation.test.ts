@@ -1,3 +1,5 @@
+import { HqError } from "../../zerops/hq/client.ts";
+import { classifyHqCall } from "../adapters/hqWire.ts";
 import { expect, it } from "@effect/vitest";
 import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import * as Clock from "effect/Clock";
@@ -282,4 +284,30 @@ it.live.each(["changed input", "released account", "superseded attempt"] as cons
       yield* until(live.store, () => readCurrent().kind === "ready");
       expect(readCurrent()).toEqual({ kind: "ready", plan: { ...PLAN, hash: "b".repeat(64) } });
     }).pipe(Effect.scoped),
+);
+
+it.live("Release review renders HQ's refusal findings without inventing a failed release.", () =>
+  Effect.gen(function* () {
+    const live = yield* review;
+    const problems = [
+      {
+        code: "invalid_recipe",
+        what: "Correct the production service declaration",
+        where: { appId: "shop", service: "worker", tier: "production", file: "production.yaml" },
+        rule: { source: "zerops-schema", schemaPath: "/services/0" },
+        next: {
+          actor: "mate",
+          action: "Propose a corrected declaration, merge it and review the new head.",
+        },
+      },
+    ] as const;
+    yield* live.signal({
+      kind: "fault",
+      jitter: 0,
+      fault: classifyHqCall(
+        new HqError({ kind: "refused", code: "conflict", message: "Review refused", problems }),
+      ),
+    });
+    expect(live.read()).toEqual({ kind: "failed", reason: "Review refused", problems });
+  }).pipe(Effect.scoped),
 );

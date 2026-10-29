@@ -23,6 +23,7 @@
  *
  * @module hqRelease
  */
+import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
 
 import { HqRepoRemote, RepoName, Sha } from "./hqChanges.ts";
@@ -119,6 +120,7 @@ export type ReleaseHistory = typeof ReleaseHistory.Type;
  * and, for a rollback, the release it goes back to.
  */
 export const Release = Schema.Struct({
+  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   tag: ReleaseTag,
   sha: Sha,
   entries: Schema.Array(GitReleaseEntry),

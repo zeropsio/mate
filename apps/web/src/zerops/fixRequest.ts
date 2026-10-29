@@ -10,11 +10,14 @@
  * the person's own Mates are offered, since nobody writes to a colleague's;
  * with several, the one they used last in that project comes first.
  */
+import type { HqProblem } from "@t3tools/shared/hqProblems";
+import { problemPresentation } from "@t3tools/client-runtime/zerops/hq";
 import { useCallback } from "react";
 
 import { useAskMate } from "./useAskMate";
 
 export interface FixProblem {
+  readonly problems?: ReadonlyArray<HqProblem> | undefined;
   /** What is broken, as a sentence: "Production's release v0.1.57 failed in the build step." */
   readonly what: string;
   /**
@@ -73,6 +76,12 @@ export function fixRequestPrompt(problem: FixProblem, now: Date = new Date()): s
     const name = problem.logName?.trim();
     const head = name === undefined || name.length === 0 ? "The log's last lines" : name;
     parts.push(`${head}:\n\`\`\`\n${lines.join("\n")}\n\`\`\``);
+  }
+  for (const finding of problem.problems ?? []) {
+    const shown = problemPresentation(finding);
+    parts.push(
+      `${shown.what}\nWhere: ${shown.where}\nRule: ${shown.rule}\nNext: ${shown.next}${shown.evidence === undefined ? "" : `\nEvidence: ${shown.evidence}`}`,
+    );
   }
   parts.push(problem.ask.trim());
   return parts.join("\n\n");

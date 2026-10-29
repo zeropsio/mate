@@ -1,3 +1,4 @@
+import type { HqProblem } from "@t3tools/shared/hqProblems";
 /**
  * Where one operation stands, as the person sees it: accepted by its owner, then
  * reflected in the scope it changes, then done — the end only as the owner says it. A lost answer
@@ -23,6 +24,7 @@ export type OperationProgress =
   | { readonly stage: "uncertain"; readonly next: "asking-owner" | "ask-owner-again" }
   | {
       readonly stage: "refused";
+      readonly problems?: ReadonlyArray<HqProblem>;
       readonly reason: string;
       /** The owner's own code for it (`userDataDuplicateKey`), where it named one. */
       readonly code?: string;
@@ -78,8 +80,13 @@ export const operationProgressOf = (
           return { stage: "submitting" };
       }
     if (receipt.acceptance.kind === "refused") {
-      const { reason, code } = receipt.acceptance;
-      return { stage: "refused", reason, ...(code === undefined ? {} : { code }) };
+      const { reason, code, problems } = receipt.acceptance;
+      return {
+        stage: "refused",
+        reason,
+        ...(problems === undefined ? {} : { problems }),
+        ...(code === undefined ? {} : { code }),
+      };
     }
     const kind = operationKind(kinds, record.intent);
     // The owner's facts may say the end before — or instead of — its receipt.

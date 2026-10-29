@@ -139,6 +139,32 @@ describe("hqAppDetail", () => {
     expect(detail(state)).toMatchObject(expected);
   });
 
+  it("An HQ response without any problems field decodes and renders unchanged.", () => {
+    expect(detail(read).problems).toBeUndefined();
+    const problem = {
+      code: "schema_invalid",
+      what: "Correct the service settings",
+      where: { appId: "shop", service: "api", tier: "production", file: "production.yaml" },
+      rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
+      next: { actor: "mate", action: "Propose a corrected group change" },
+    } as const;
+    const arrived = apply(read, [
+      deliver([row("problems", { kind: "problems", value: [problem] })]),
+    ]);
+    expect(detail(arrived).problems).toEqual([problem]);
+    const cleared = apply(arrived, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: [{ scope: SCOPE, generation: 1 }],
+        reset: false,
+        rows: [],
+        removals: [{ family: "hqAppDetail", id: "shop/problems", reason: "deleted" }],
+      },
+    ]);
+    expect(detail(cleared).problems).toBeUndefined();
+  });
+
   it("knows only the records HQ said, each apart", () => {
     expect(detail(partial)).toMatchObject({
       releases: undefined,

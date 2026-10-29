@@ -112,6 +112,28 @@ describe("what a release lists, from HQ's repositories", () => {
 });
 
 describe("a release as HQ records it", () => {
+  it("A recorded release carries HQ's finding unchanged to its outcome consumer.", () => {
+    const problem = {
+      code: "release_refused",
+      what: "Correct the production recipe",
+      where: { appId: "shop", service: "api", file: "production.yaml" },
+      rule: { source: "hq", code: "release_refused" },
+      next: { actor: "mate", action: "Propose a corrected group change" },
+    } as const;
+    expect(
+      flowReleaseOf({
+        tag: "v0.1.2",
+        sha: OLD,
+        entries: [],
+        by: "u1",
+        at: "2026-10-02T10:00:00.000Z",
+        state: "refused",
+        reason: "Correct the recipe",
+        rollbackOf: null,
+        problems: [problem],
+      }).problems,
+    ).toEqual([problem]);
+  });
   it("reads as the flow lists it: its verdict, its entries and when it was made", () => {
     expect(
       flowReleaseOf({
