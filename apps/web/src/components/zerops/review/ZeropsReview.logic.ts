@@ -652,7 +652,7 @@ export function stageDeploysMerges(row: {
 
 /**
  * What a "Try it" pill says: whose preview it opens, then which part, by its service's real
- * hostname — "Kaďák's preview · flipstage".
+ * hostname — "Wren's preview · shopstage".
  */
 export function tryItWords(
   mateName: string,

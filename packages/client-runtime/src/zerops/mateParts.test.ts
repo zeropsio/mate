@@ -166,27 +166,27 @@ describe("a Mate's parts", () => {
     },
   );
 
-  it.each<{ title: string; input: Partial<MatePartsInput>; rows: ReadonlyArray<string> }>([
+  it.each<{ title: string; input: Partial<MatePartsInput>; dev: string }>([
     {
-      title: "a dev service on three ports, in port order, named where zcp names its server",
+      title: "a dev service on three ports, its preview on one of them",
       input: {
-        services: [
-          {
-            hostname: "flipdev",
-            devServers: [{ ...server("running"), name: "admin", port: 5195 }],
-          },
-          { hostname: "flipstage" },
-        ],
+        services: hostnames("shopdev", "shopstage"),
         routes: [
-          route("flipdev", 5196),
-          route("flipdev", 5193),
-          route("flipdev", 5195),
-          route("flipstage"),
+          route("shopdev", 5196),
+          route("shopdev", 5193),
+          route("shopdev", 5195),
+          route("shopstage", 5195),
         ],
       },
-      rows: [
-        "flipdev | flipdev flipdev-1df2-5193.prg1.zerops.app, flipdev · admin flipdev-1df2-5195.prg1.zerops.app, flipdev · :5196 flipdev-1df2-5196.prg1.zerops.app | flipstage flipstage-1df2-80.prg1.zerops.app",
-      ],
+      dev: "dev shopdev-1df2-5195.prg1.zerops.app +shopdev-1df2-5193.prg1.zerops.app +shopdev-1df2-5196.prg1.zerops.app",
+    },
+    {
+      title: "a dev service whose preview opens none of its ports",
+      input: {
+        services: hostnames("shopdev", "shopstage"),
+        routes: [route("shopdev", 5196), route("shopdev", 5193), route("shopstage")],
+      },
+      dev: "dev shopdev-1df2-5193.prg1.zerops.app +shopdev-1df2-5196.prg1.zerops.app",
     },
     {
       title: "a workspace running two dev servers",
@@ -207,14 +207,18 @@ describe("a Mate's parts", () => {
           }),
         ],
       },
-      rows: [
-        "webpool | webpool-1 webpool-1-3001.prg1.zerops.app, webpool-1 · :3002 webpool-1-3002.prg1.zerops.app | ",
-      ],
+      dev: "dev webpool-1-3001.prg1.zerops.app +webpool-1-3002.prg1.zerops.app",
     },
   ])(
-    "a dev with several addresses opens each by its own link, the first as dev, the rest by their server's name, else their port: $title",
-    ({ input, rows: expected }) => {
-      expect(rows(input)).toEqual(expected);
+    "a dev on several addresses is one link, the one its preview opens, its other addresses in its tooltip: $title",
+    ({ input, dev }) => {
+      const [part] = mateParts({ services: [], routes: [], ...input }).parts;
+      expect(
+        part?.dev.map(
+          (side) =>
+            `${side.label} ${String(side.host)}${side.more.map((host) => ` +${host}`).join("")}`,
+        ),
+      ).toEqual([dev]);
     },
   );
 

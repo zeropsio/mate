@@ -14,13 +14,12 @@
 import { useAtomValue } from "@effect/atom-react";
 import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
 import {
-  devServerNamesOf,
   lifecycleLeases,
   poolPairsOf,
   standInsOf,
 } from "@t3tools/client-runtime/zerops/serviceMap";
 import type { PoolPair } from "@t3tools/client-runtime/zerops/servicePairs";
-import type { ZeropsDevServer, ZeropsLease } from "@t3tools/contracts";
+import type { ZeropsLease } from "@t3tools/contracts";
 import { Atom } from "effect/reactivity";
 
 import { sameValue } from "../lib/sameValue";
@@ -32,10 +31,6 @@ export interface MateLeasesRead {
   readonly poolPairs: ReadonlyArray<PoolPair>;
   /** The services its envelope marks as a repository's stand-in, which open nothing. */
   readonly standIns: ReadonlyArray<string>;
-  /** The dev servers zcp read on each service, by hostname: their names and ports only. */
-  readonly devServers: Readonly<
-    Record<string, ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">>>
-  >;
 }
 
 /** Each Mate's read by its Zerops project; a Mate with no conversation to read is absent. */
@@ -58,7 +53,6 @@ const matesLeasesAtom = Atom.family((key: string) => {
         leases: lifecycleLeases(lifecycle),
         poolPairs: poolPairsOf(lifecycle),
         standIns: standInsOf(lifecycle),
-        devServers: devServerNamesOf(lifecycle),
       };
     }
     return read;

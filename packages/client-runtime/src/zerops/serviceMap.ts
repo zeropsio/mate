@@ -607,31 +607,6 @@ export const devServersOf = (
     : undefined;
 
 /**
- * The names and ports of the dev servers zcp last read on each service, by hostname, which name a
- * dev's several addresses; none while the lifecycle is not known. A server's status is left out,
- * so a read that only changes one draws nothing again.
- */
-export const devServerNamesOf = (
-  lifecycle: Known<ZeropsLifecycle> | undefined,
-): Readonly<Record<string, ReadonlyArray<Pick<ZeropsDevServer, "name" | "port">>>> =>
-  lifecycle?.state === "known"
-    ? Object.fromEntries(
-        (lifecycle.value.envelope?.services ?? []).flatMap((service) =>
-          service.devServers === undefined
-            ? []
-            : [
-                [
-                  service.hostname,
-                  service.devServers.map(({ name, port }) =>
-                    port === undefined ? { name } : { name, port },
-                  ),
-                ],
-              ],
-        ),
-      )
-    : {};
-
-/**
  * The dev servers zcp last read on a lease (`leases[].devServers`, by alias), never a service's of
  * its name; none while the lifecycle is not known or nothing read them.
  */

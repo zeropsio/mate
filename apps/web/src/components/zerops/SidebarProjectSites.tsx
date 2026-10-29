@@ -135,7 +135,6 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
-  devServers: leases[mate.candidate.project.id]?.devServers,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -1048,9 +1047,8 @@ function CopyButton({
 }
 
 /**
- * A Mate's services, one row each as a place's addresses are: its hostname (and which of its
- * addresses, where it has several), its host, ↗ — opening in a new tab, its other ports' hosts in
- * its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname alone, muted,
+ * A Mate's services, one row each as a place's addresses are: its hostname, its host, ↗ — opening
+ * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname alone, muted,
  * its tooltip saying why.
  */
 function SitesServices({
@@ -1064,14 +1062,7 @@ function SitesServices({
 }) {
   return services.map((row) => {
     const { url } = row;
-    const name = (
-      <span className="zerops-sites-service">
-        {row.service}
-        {row.server === undefined ? null : (
-          <span className="zerops-envpop-port">{` ${row.server}`}</span>
-        )}
-      </span>
-    );
+    const name = <span className="zerops-sites-service">{row.service}</span>;
     if (url === undefined)
       return (
         <div

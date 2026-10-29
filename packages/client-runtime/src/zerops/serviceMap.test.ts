@@ -1173,10 +1173,10 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
     },
     {
       generation: "legacy: the dev and its stage are one part, read the same way",
-      services: [zcp, db, service({ hostname: "flipdev" }), service({ hostname: "flipstage" })],
+      services: [zcp, db, service({ hostname: "shopdev" }), service({ hostname: "shopstage" })],
       lifecycle: undefined,
       expected: [
-        ["Runtimes", [["flipdev", "flipdev", "flipstage", "part"]]],
+        ["Runtimes", [["shopdev", "shopdev", "shopstage", "part"]]],
         ["Data", [["db", "db", undefined, "service"]]],
         ["Infrastructure", [["Zerops Control Plane", "zcp", undefined, "service"]]],
       ],

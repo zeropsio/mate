@@ -1136,14 +1136,14 @@ describe("stageDeploysMerges: a stage the foot names", () => {
   });
 });
 
-// Larkspur, 2026-10-28: Kaďák's review offered "flip flipstage-7c1e-5195.prg1.zerops.app".
+// Larkspur, 2026-10-28: Wren's review offered "shop shopstage-7c1e-5195.prg1.zerops.app".
 describe("tryItWords: Try it names whose preview it opens, and which part", () => {
   it.each([
     {
       case: "a Mate's one part",
-      mate: "Kaďák",
-      part: "flipstage",
-      words: "Kaďák's preview · flipstage",
+      mate: "Wren",
+      part: "shopstage",
+      words: "Wren's preview · shopstage",
     },
     {
       case: "one of several parts",

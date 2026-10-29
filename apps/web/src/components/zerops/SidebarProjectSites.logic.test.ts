@@ -320,7 +320,7 @@ const slots = (pool: string) =>
  * other ports'), or why it has none.
  */
 const serviceText = (row: SitesService) =>
-  `${row.service}${row.server === undefined ? "" : ` ${row.server}`} ${
+  `${row.service} ${
     row.url === undefined
       ? `(${row.why ?? ""})`
       : `${row.host ?? ""}${row.more.length === 0 ? "" : ` +${row.more.join(" +")}`}`
@@ -442,26 +442,23 @@ describe("a Mate's parts", () => {
     },
   );
 
-  it("a dev on several addresses opens each by its own link, by its hostname and the server zcp names on its port, else the port", () => {
+  it("a dev on several ports is one link, on the port its preview opens, its other ports in its tooltip", () => {
     expect(
       rowsOf(
         mate({
-          name: "Filip",
+          name: "Tom",
           routes: [
-            route("flipdev", "flipdev-5196.example.app", 5196),
-            route("flipdev", "flipdev-5193.example.app", 5193),
-            route("flipdev", "flipdev-5195.example.app", 5195),
-            route("flipstage", "flipstage.example.app"),
+            route("shopdev", "shopdev-5196.example.app", 5196),
+            route("shopdev", "shopdev-5193.example.app", 5193),
+            route("shopdev", "shopdev-5195.example.app", 5195),
+            route("shopstage", "shopstage-5195.example.app", 5195),
           ],
-          hostnames: ["flipdev", "flipstage"],
-          devServers: { flipdev: [{ name: "admin", port: 5195 }] },
+          hostnames: ["shopdev", "shopstage"],
         }),
       ),
     ).toEqual([
-      "flipdev :5193 flipdev-5193.example.app",
-      "flipdev admin flipdev-5195.example.app",
-      "flipdev :5196 flipdev-5196.example.app",
-      "flipstage flipstage.example.app",
+      "shopdev shopdev-5195.example.app +shopdev-5193.example.app +shopdev-5196.example.app",
+      "shopstage shopstage-5195.example.app",
     ]);
   });
 
@@ -686,14 +683,6 @@ describe("a Mate's addresses", () => {
       title: "never lists the control plane",
       routes: [route("zcp", "zcp.example.app"), route("appdev", "appdev.example.app")],
       rows: ["appdev appdev.example.app"],
-    },
-    {
-      title: "writes the port where one service answers on a second one",
-      routes: [
-        route("apidev", "apidev-3000.example.app", 3000),
-        route("apidev", "apidev-9000.example.app", 9000),
-      ],
-      rows: ["apidev :3000 apidev-3000.example.app", "apidev :9000 apidev-9000.example.app"],
     },
     {
       title: "lists a stage half from its routes alone while the services are unread",
@@ -1060,16 +1049,7 @@ describe("the Mates whose leases a Sites list reads", () => {
     { name: "a Mate whose listing names a dev pool", pools: ["webpool"], reads: true },
     { name: "a Mate with no dev pool", pools: [], reads: false },
     { name: "a Mate whose listing is not read yet", pools: undefined, reads: false },
-    {
-      name: "a Mate whose dev answers on several addresses, which zcp names",
-      pools: [],
-      routes: [
-        route("flipdev", "flipdev-5193.example.app", 5193),
-        route("flipdev", "flipdev-5195.example.app", 5195),
-      ],
-      reads: true,
-    },
-  ])("reads the leases of $name: $reads", ({ pools, routes, reads }) => {
-    expect(readsLeases({ pools, routes })).toBe(reads);
+  ])("reads the leases of $name: $reads", ({ pools, reads }) => {
+    expect(readsLeases({ pools })).toBe(reads);
   });
 });
