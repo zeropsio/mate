@@ -512,6 +512,11 @@ export const KeyLinkUp = Schema.Union([
   }),
   ...MateLinkUp.members,
   Schema.Struct({ type: Schema.Literal("ticket-ack"), ticket: Ticket }),
+  Schema.Struct({
+    type: Schema.Literal("observe-credential-ack"),
+    id: Schema.String,
+    ok: Schema.Boolean,
+  }),
   Schema.Struct({ type: Schema.Literal("key-refused") }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
@@ -554,6 +559,11 @@ export const KeyLinkDown = Schema.Union([
   Schema.Struct({ type: Schema.Literal("close-session"), sessionId: Schema.String }),
   Schema.Struct({
     type: Schema.Literal("git-credential"),
+    credential: Schema.NullOr(Schema.String),
+  }),
+  Schema.Struct({
+    type: Schema.Literal("observe-credential"),
+    id: Schema.String,
     credential: Schema.NullOr(Schema.String),
   }),
   TaskDown,

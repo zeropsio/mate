@@ -99,6 +99,7 @@ import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
+import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
@@ -197,6 +198,8 @@ export interface ZeropsHqLinkOptions {
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
+  /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
+  readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
@@ -330,6 +333,7 @@ export const makeZeropsHqLink = (
     let linksOpened = 0;
     let currentLink = 0;
     const credentialWrites = yield* Semaphore.make(1);
+    const observeWrites = yield* Semaphore.make(1);
     const delays = options.reconnectDelaysMs ?? DEFAULT_RECONNECT_DELAYS_MS;
     const overviewEvery = Duration.millis(options.overviewEveryMs ?? MATE_OVERVIEW_EVERY_MS);
     const url = `${options.hqOrigin.replace(/^http/u, "ws").replace(/\/+$/u, "")}/api/mate/link`;
@@ -561,6 +565,16 @@ export const makeZeropsHqLink = (
             return credentialWrites.withPermits(1)(
               Effect.suspend(() =>
                 serial < currentLink ? Effect.void : options.gitCredential(frame.credential),
+              ),
+            );
+          case "observe-credential":
+            return observeWrites.withPermits(1)(
+              Effect.suspend(() =>
+                serial < currentLink
+                  ? Effect.succeed(false)
+                  : (options.observeCredential?.(frame.credential) ?? Effect.succeed(false)),
+              ).pipe(
+                Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
               ),
             );
           case "provider-keys":
@@ -875,6 +889,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const connections = yield* ZeropsConnections;
       const tickets = yield* ZeropsTicketDoor;
       const credential = yield* ZeropsGitCredentialFile;
+      const observeCredential = yield* ZeropsObserveCredentialFile;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -912,6 +927,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ticket: tickets.heard,
         closeSession: connections.closeSession,
         gitCredential: credential.write,
+        observeCredential: observeCredential.write,
         gitFingerprint: credential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({

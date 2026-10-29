@@ -189,6 +189,7 @@ const rig = (
     readonly publicOrigin?: string | undefined;
     /** What a credential's write waits on before it lands, as a file write in flight does. */
     readonly credentialLands?: (credential: string | null) => Effect.Effect<void>;
+    readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -240,6 +241,9 @@ const rig = (
             Effect.andThen(Effect.sync(() => void credentials.push(credential))),
           ),
         ),
+      ...(options.observeCredential === undefined
+        ? {}
+        : { observeCredential: options.observeCredential }),
       gitFingerprint: Ref.get(fingerprint),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
@@ -743,6 +747,103 @@ describe("ZeropsHqLink", () => {
         assert.deepEqual(closed, ["browser"]);
         assert.isTrue(Option.isNone(yield* connections.current("browser-ticket")));
       }).pipe(Effect.scoped),
+  );
+
+  it.effect("acknowledges Observe writes and revocation only after their truthful receipt", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const lands = yield* Deferred.make<void>();
+        const written: Array<string | null> = [];
+        const { sockets } = yield* rig({
+          observeCredential: (credential) =>
+            Effect.uninterruptible(
+              (credential === "zobs.delayed" ? Deferred.await(lands) : Effect.void).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    written.push(credential);
+                    return credential !== "zobs.failed";
+                  }),
+                ),
+              ),
+            ),
+        });
+        const socket = yield* linked(sockets, 0);
+        const acks = () =>
+          socket.sent.filter((message) => message.type === "observe-credential-ack");
+        socket.hear({ type: "observe-credential", id: "write", credential: "zobs.delayed" });
+        socket.hear({ type: "observe-credential", id: "revoke", credential: null });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(acks(), []);
+        assert.deepStrictEqual(written, []);
+        yield* Deferred.succeed(lands, undefined);
+        yield* TestClock.adjust(Duration.zero);
+        socket.hear({ type: "observe-credential", id: "failed", credential: "zobs.failed" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(written, ["zobs.delayed", null, "zobs.failed"]);
+        assert.deepStrictEqual(acks(), [
+          { type: "observe-credential-ack", id: "write", ok: true },
+          { type: "observe-credential-ack", id: "revoke", ok: true },
+          { type: "observe-credential-ack", id: "failed", ok: false },
+        ]);
+      }),
+    ),
+  );
+
+  it.effect("refuses Observe delivery when no credential writer is available", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig();
+        const socket = yield* linked(sockets, 0);
+        socket.hear({ type: "observe-credential", id: "absent", credential: "zobs.value" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(socket.sent.at(-1), {
+          type: "observe-credential-ack",
+          id: "absent",
+          ok: false,
+        });
+      }),
+    ),
+  );
+
+  it.effect("an Observe write from an old link cannot land after its successor's credential", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const oldLands = yield* Deferred.make<void>();
+        const written: Array<string | null> = [];
+        const { sockets } = yield* rig({
+          observeCredential: (credential) =>
+            Effect.uninterruptible(
+              (credential === "zobs.old" ? Deferred.await(oldLands) : Effect.void).pipe(
+                Effect.andThen(
+                  Effect.sync(() => {
+                    written.push(credential);
+                    return true;
+                  }),
+                ),
+              ),
+            ),
+        });
+        const first = yield* linked(sockets, 0);
+        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
+        const successor = yield* opened(sockets, 1);
+        first.hear({ type: "observe-credential", id: "old", credential: "zobs.old" });
+        // A second old frame is queued behind the in-flight write; it must never land.
+        first.hear({ type: "observe-credential", id: "stale", credential: "zobs.stale" });
+        yield* TestClock.adjust(Duration.zero);
+        admit(successor);
+        successor.hear({ type: "observe-credential", id: "new", credential: "zobs.new" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(written, []);
+        yield* Deferred.succeed(oldLands, undefined);
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(written, ["zobs.old", "zobs.new"]);
+        assert.deepStrictEqual(successor.sent.at(-1), {
+          type: "observe-credential-ack",
+          id: "new",
+          ok: true,
+        });
+      }),
+    ),
   );
 
   it.effect("keeps the Git credential HQ sends, and lets it go when HQ revokes it", () =>
