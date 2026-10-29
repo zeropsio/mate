@@ -48,13 +48,7 @@ import type { Known } from "./knowledge/index.ts";
 import { isPoolServiceType } from "./infrastructureType.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import { poolWorkspaces, type LeaseChat, type PoolWorkspace } from "./poolWorkspaces.logic.ts";
-import {
-  partName,
-  poolPairsIn,
-  poolPartName,
-  servicePairs,
-  type PoolPair,
-} from "./servicePairs.ts";
+import { poolPairsIn, servicePairs, type PoolPair } from "./servicePairs.ts";
 import { isZcpServiceType } from "./topology.ts";
 import type {
   ZeropsScalingRange,
@@ -173,8 +167,7 @@ export interface ZeropsServiceRow {
    */
   readonly typeShort?: string;
   /**
-   * The row's name: a part's friendly name (`API`, `Runner`), the glossary word for the control
-   * plane, else the hostname.
+   * The row's name: the service's hostname, or the glossary word for the control plane.
    */
   readonly title: string;
   /** The service's declared ports after its name, `:80` or `:80, :443`. */
@@ -193,8 +186,6 @@ export interface ZeropsServiceRow {
   readonly trends?: ZeropsServiceTrends;
   /** The paired stage service, folded into its dev row. */
   readonly stage?: ZeropsTopologyService;
-  /** What a person calls the folded stage: the Mate's preview, never its hostname. */
-  readonly stageTitle?: string;
   readonly stageTone?: ZeropsServiceTone;
   readonly stageStatusLabel?: string;
   /**
@@ -308,9 +299,6 @@ export function zeropsStatusWord(status: string): string {
 
 /** The glossary word for the zcp container (`design-system.md` §2). */
 const CONTROL_PLANE_TITLE = "Zerops Control Plane";
-
-/** A part's folded stage, as a person reads it. */
-const PREVIEW_TITLE = "Preview";
 
 /** A pool's kind, where a dev service says what it runs. */
 const POOL_TYPE_SHORT = "dev pool";
@@ -725,18 +713,13 @@ export function buildZeropsServiceMap(
       only === undefined || more.length > 0 ? [] : [[dev, only.hostname] as const],
     ),
   );
-  const pairNames = new Map(pairs.map((pair) => [pair.dev, pair.name]));
   const folded = new Set(stageOf.values());
   const leases = lifecycleLeases(lifecycle) ?? [];
 
-  // A part's friendly name, as Sites names it (`mateParts`): a pool by its stem (`boxpool` is
-  // Box), never the setup zcp names its stage by (`boxpreview`); a dev service's pair by its stem
-  // (`flipdev` is Flip).
-  const partOf = (entry: ZeropsTopologyService): string | undefined => {
-    if (isPoolServiceType(entry.type)) return poolPartName(entry.hostname);
-    const name = pairNames.get(entry.hostname);
-    return name === undefined || !stageOf.has(entry.hostname) ? undefined : partName(name);
-  };
+  // A part of the app: a dev pool, or a dev service with the stage folded under it. It goes by
+  // its real hostname, as every other service does.
+  const isPart = (entry: ZeropsTopologyService): boolean =>
+    isPoolServiceType(entry.type) || stageOf.has(entry.hostname);
   // A holder: a dev zcp keeps as its repository's stand-in (its envelope's `standIn`) while the
   // project's parts run on their own pools, with no part of its own. Before any pool stands it is
   // still where the code runs.
@@ -750,9 +733,9 @@ export function buildZeropsServiceMap(
       (candidate) => candidate.hostname === stageOf.get(entry.hostname),
     );
     const isPool = isPoolServiceType(entry.type);
-    const part = partOf(entry);
-    const holder = part === undefined && isHolder(entry);
-    const kind: ZeropsServiceRowKind = part !== undefined ? "part" : holder ? "holder" : "service";
+    const part = isPart(entry);
+    const holder = !part && isHolder(entry);
+    const kind: ZeropsServiceRowKind = part ? "part" : holder ? "holder" : "service";
     const crew = crewPorts?.get(entry.hostname);
     // A pool's ports are its slots', balanced over every container: nobody's workspace.
     const portLabel = isPool ? undefined : zeropsPortLabel(entry, crew);
@@ -779,14 +762,13 @@ export function buildZeropsServiceMap(
         : holder
           ? []
           : zeropsRouteChoices(entry, crew);
-    // The control plane is named by its glossary word, a part by its name; the hostname and port
-    // move down a line so the name reads as one thing.
+    // The control plane is named by its glossary word, its hostname and port a line down; every
+    // other service by its hostname.
     const isControlPlane = isZcpServiceType(entry.type);
-    const title = isControlPlane ? CONTROL_PLANE_TITLE : (part ?? entry.hostname);
-    const hostnameFact: ReadonlyArray<ZeropsServiceFact> =
-      isControlPlane || part !== undefined
-        ? [{ id: "hostname", label: `${entry.hostname}${portLabel ?? ""}` }]
-        : [];
+    const title = isControlPlane ? CONTROL_PLANE_TITLE : entry.hostname;
+    const hostnameFact: ReadonlyArray<ZeropsServiceFact> = isControlPlane
+      ? [{ id: "hostname", label: `${entry.hostname}${portLabel ?? ""}` }]
+      : [];
     return {
       isControlPlane,
       kind,
@@ -812,7 +794,6 @@ export function buildZeropsServiceMap(
         ? {}
         : {
             stage,
-            stageTitle: PREVIEW_TITLE,
             stageTone: serviceStatusTone(stage),
             stageStatusLabel: zeropsStatusWord(stage.status),
             stageStatusNeedsWord: serviceStatusNeedsWord(stage),
@@ -837,7 +818,7 @@ export function buildZeropsServiceMap(
     rows: topology.services
       .filter((entry) => groupOf(entry) === group && !folded.has(entry.hostname))
       .map(rowOf)
-      // Total order within a section: the parts lead Runtimes by name and a holder rests last;
+      // Total order within a section: the parts lead Runtimes and a holder rests last;
       // the control plane leads Infrastructure (it is not a service the user created); then
       // hostname, locale-aware/case-insensitive/numeric-aware (`compareZeropsHostnames` — `db` <
       // `db2` < `db10`), tiebroken by `serviceId` so two services can never tie. A folded stage
@@ -846,9 +827,6 @@ export function buildZeropsServiceMap(
         (left, right) =>
           KIND_ORDER[left.kind] - KIND_ORDER[right.kind] ||
           Number(right.isControlPlane) - Number(left.isControlPlane) ||
-          (left.kind === "part" && right.kind === "part"
-            ? compareZeropsHostnames(left.title, right.title)
-            : 0) ||
           compareZeropsHostnames(left.service.hostname, right.service.hostname) ||
           left.service.serviceId.localeCompare(right.service.serviceId),
       ),
