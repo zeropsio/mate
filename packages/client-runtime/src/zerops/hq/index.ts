@@ -101,3 +101,5 @@ export {
   type HqChiefCalls,
   type HqProposalDecisionWrite,
 } from "./chief.ts";
+
+export { problemPresentation, problemsFix } from "./problems.ts";

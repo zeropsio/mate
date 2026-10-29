@@ -1,3 +1,4 @@
+import { HqProblem } from "@t3tools/shared/hqProblems";
 import type { KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
@@ -201,6 +202,7 @@ export interface HqStructure {
     } & HqMateOffers
   >;
   readonly apps: ReadonlyArray<{
+    readonly problems?: ReadonlyArray<HqProblem> | undefined;
     readonly id: string;
     readonly name: string;
     readonly projects: ReadonlyArray<
@@ -283,12 +285,14 @@ export class HqError extends Error {
   /** HQ's reason code beside it, where it named one (`tag_taken`, `change_not_open`, …). */
   readonly reason: string | undefined;
   readonly status: number | undefined;
+  readonly problems: ReadonlyArray<HqProblem> | undefined;
   constructor(input: {
     readonly kind: HqError["kind"];
     readonly code: string;
     readonly reason?: string | undefined;
     readonly status?: number | undefined;
     readonly message: string;
+    readonly problems?: ReadonlyArray<HqProblem> | undefined;
   }) {
     super(input.message);
     this.name = "HqError";
@@ -296,6 +300,7 @@ export class HqError extends Error {
     this.code = input.code;
     this.reason = input.reason;
     this.status = input.status;
+    this.problems = input.problems;
   }
 }
 
@@ -664,6 +669,7 @@ const uncertain = () =>
 /** HQ's refusal evidence; a body that is not HQ's JSON names none. */
 function said(text: string): {
   readonly code?: unknown;
+  readonly problems?: unknown;
   readonly reason?: unknown;
   readonly message?: unknown;
   readonly repository?: unknown;
@@ -685,6 +691,8 @@ const isRemoteRefusal = Schema.is(HqRemoteRefusal);
 
 async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
   const body = said(await response.text());
+  const decodedProblems = Schema.decodeUnknownOption(Schema.Array(HqProblem))(body.problems);
+  const problems = Option.getOrUndefined(decodedProblems);
   const code = typeof body.code === "string" ? body.code : `http_${response.status}`;
   // ProbeRefused owns the host-specific remedy; other refusals keep the client's wording.
   const probeMessage =
@@ -697,6 +705,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     return new HqError({
       kind: "unavailable",
       code,
+      problems,
       status: response.status,
       message:
         probeMessage ??
@@ -716,6 +725,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
     kind: "refused",
     code,
     reason,
+    problems,
     status: response.status,
     message:
       probeMessage ??

@@ -46,6 +46,8 @@ export type FlowPullRequestKind = "code" | "recipe";
 /** One open pull request of the project, as every surface shows it. */
 export interface FlowPullRequest {
   readonly pipeline?: HqChange["pipeline"] | undefined;
+  readonly recipeValidation?: HqChange["recipeValidation"] | undefined;
+  readonly problems?: HqChange["problems"] | undefined;
   /** The repository's name in the group's org. */
   readonly repository: string;
   /**
@@ -216,6 +218,8 @@ export function flowChange(change: HqChange, hqAddress: string): FlowPullRequest
   const merged = change.state === "merged";
   return {
     pipeline: change.pipeline,
+    ...(change.recipeValidation === undefined ? {} : { recipeValidation: change.recipeValidation }),
+    ...(change.problems === undefined ? {} : { problems: change.problems }),
     repository: change.repo,
     repositoryUrl: repoUrl(hqAddress, change.appId, change.repo),
     number: change.number,

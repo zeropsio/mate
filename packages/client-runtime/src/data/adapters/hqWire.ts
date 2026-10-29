@@ -29,7 +29,13 @@ export function classifyHqCall(cause: unknown): StreamFault {
         ? cause.message
         : "HQ could not be reached.";
   if (!(cause instanceof HqError) || cause.kind !== "refused")
-    return { outcome: "transient", message };
+    return {
+      outcome: "transient",
+      message,
+      ...(cause instanceof HqError && cause.problems !== undefined
+        ? { problems: cause.problems }
+        : {}),
+    };
   return {
     outcome: "definitive-refusal",
     message:
@@ -37,6 +43,7 @@ export function classifyHqCall(cause: unknown): StreamFault {
         ? "HQ refused the renewed session. Try again, or sign in to Zerops again."
         : message,
     code: cause.code,
+    ...(cause.problems === undefined ? {} : { problems: cause.problems }),
   };
 }
 

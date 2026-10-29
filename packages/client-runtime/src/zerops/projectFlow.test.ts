@@ -91,6 +91,21 @@ describe("a Mate's changes in HQ, as the flow shows them", () => {
   });
   const flow = (changes: ReadonlyArray<HqChange>) => flowChanges({ changes, hqAddress: `${HQ}/` });
 
+  it("Group change review receives HQ's exact-head validation and findings unchanged.", () => {
+    const problem = {
+      code: "invalid_recipe",
+      what: "The service setting is invalid",
+      where: { appId: "g1", service: "api", tier: "production", file: "production.yaml" },
+      rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
+      next: { actor: "mate", action: "Correct the production tier and propose a new change" },
+    } as const;
+    const recipeValidation = { head: SHA, state: "invalid", problems: [problem] } as const;
+    const pull = flowChange(change({ repo: "group", recipeValidation, problems: [problem] }), HQ);
+    expect(pull.recipeValidation).toEqual(recipeValidation);
+    expect(pull.problems).toEqual([problem]);
+    expect(flowChange(change(), HQ).recipeValidation).toBeUndefined();
+  });
+
   it.each(["required", "advisory", "unknown"] as const)(
     "carries exact-head %s pipeline evidence into review",
     (requirement) => {

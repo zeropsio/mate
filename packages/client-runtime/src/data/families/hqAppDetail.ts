@@ -22,6 +22,7 @@ const KEYS: ReadonlySet<string> = new Set(Object.keys(HqAppDetailFields));
 
 /** A record as it reads, told by the key HQ holds it under. */
 export type HqAppDetailValue =
+  | { readonly kind: "problems"; readonly value: typeof HqAppDetailFields.problems.Type }
   | { readonly kind: "releases"; readonly value: typeof HqAppDetailFields.releases.Type }
   | { readonly kind: "repos"; readonly value: typeof HqAppDetailFields.repos.Type }
   | { readonly kind: "changes"; readonly value: typeof HqAppDetailFields.changes.Type }
@@ -36,6 +37,7 @@ export type HqAppDetailValue =
   | { readonly kind: "recipe"; readonly value: (typeof HqAppDetailFields)["recipe:stage"]["Type"] }
   | HqGitTargetRecord;
 
+const readProblems = Schema.decodeUnknownOption(HqAppDetailFields.problems);
 const readReleases = Schema.decodeUnknownOption(HqAppDetailFields.releases);
 const readRepos = Schema.decodeUnknownOption(HqAppDetailFields.repos);
 const readChanges = Schema.decodeUnknownOption(HqAppDetailFields.changes);
@@ -45,6 +47,11 @@ const readTier = Schema.decodeUnknownOption(HqAppDetailFields["recipe:stage"]);
 
 function decodeDetail(raw: unknown, key: string): HqAppDetailValue | null {
   if (isHqGitTargetKey(key)) return decodeHqGitTarget(raw, key);
+  if (key === "problems")
+    return Option.match(readProblems(raw), {
+      onNone: () => null,
+      onSome: (value) => ({ kind: "problems", value }),
+    });
   if (key === "releases")
     return Option.match(readReleases(raw), {
       onNone: () => null,
