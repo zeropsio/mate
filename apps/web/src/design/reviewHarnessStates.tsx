@@ -1354,6 +1354,7 @@ export const REVIEW_STATES: ReadonlyArray<{
       <Release
         over={{
           servicePlan: CREATION_PLAN,
+          onImportServices: async () => {},
         }}
       />
     ),

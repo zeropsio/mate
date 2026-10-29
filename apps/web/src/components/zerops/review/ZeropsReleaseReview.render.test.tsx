@@ -56,6 +56,7 @@ vi.mock("@t3tools/client-runtime/zerops/projections", () => ({
 }));
 vi.mock("~/zerops/useZeropsReviewMates", () => ({ useZeropsReviewMates: () => new Map() }));
 vi.mock("~/zerops/fixMates", () => ({ useFixMates: () => [] }));
+vi.mock("~/zerops/importServices", () => ({ useImportServices: () => vi.fn() }));
 vi.mock("~/zerops/fixRequest", () => ({ useAskMateToFix: () => vi.fn() }));
 vi.mock("~/zerops/useNowMs", () => ({ useNowMs: () => NOW, useSecondsNowMs: () => NOW }));
 const compared = vi.hoisted(() => ({ asks: [] as Array<unknown> }));
