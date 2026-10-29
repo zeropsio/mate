@@ -1,12 +1,12 @@
 /**
- * The engine crew's part in an update's drain: what in its own record still holds an update back.
- * The crew's work and requests read as V1's do (`crewUpdateBlockers`); its turns, carry-ons and
- * effects in flight are its own record's.
+ * The engine crew's part in an update's drain: only work in flight holds an update back — an
+ * effect, a crewmate's turn or carry-on, a running operation. The run and its board are the crew's
+ * record: a run waiting on its person, a queued task or an open question outlives the restart as it
+ * stands, so it never holds an update, however long the person takes.
  */
-import type { CrewOperation, CrewRunState, CrewTaskState } from "@t3tools/contracts";
+import type { CrewOperation } from "@t3tools/contracts";
 
 import type { UpdateIdleFacts } from "../../../update/MateUpdateDrain.ts";
-import { crewUpdateBlockers } from "../crewUpdateIdle.ts";
 
 export interface CrewUpdateRecord {
   readonly effects: Readonly<Record<string, unknown>>;
@@ -16,8 +16,6 @@ export interface CrewUpdateRecord {
 }
 
 export interface CrewUpdateFrame {
-  readonly run: { readonly state: CrewRunState } | null;
-  readonly board: { readonly tasks: ReadonlyArray<{ readonly state: CrewTaskState }> };
   readonly operations?: ReadonlyArray<Pick<CrewOperation, "status">> | undefined;
 }
 
@@ -25,14 +23,10 @@ export const crewEngineUpdateFacts = (
   record: CrewUpdateRecord,
   frame: CrewUpdateFrame,
 ): UpdateIdleFacts => {
-  const blockers = [
-    ...crewUpdateBlockers({
-      active: Object.keys(record.effects).length,
-      run: frame.run?.state,
-      tasks: frame.board.tasks,
-      operations: frame.operations ?? [],
-    }),
-  ];
+  const blockers: string[] = [];
+  if (Object.keys(record.effects).length > 0) blockers.push("crew process or callback");
+  if ((frame.operations ?? []).some((operation) => operation.status === "running"))
+    blockers.push("crew operation running");
   if (
     Object.values(record.members).some(
       (member) => member.active !== null || member.carryOn !== null,

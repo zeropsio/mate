@@ -45,12 +45,30 @@ describe("the engine crew's update facts", () => {
       ["crew turn or continuation"],
     ],
     ["a crew effect in flight holds an update", { effects: 2 }, ["crew process or callback"]],
-    ["a running crew run holds an update", { run: "running" }, ["active crew run"]],
-    ["a task at work holds an update", { task: "checking" }, ["accepted crew task"]],
-    ["a question to the person holds an update", { task: "waiting-on-you" }, ["open crew request"]],
+    [
+      "a task at work holds an update while its crewmate's turn runs",
+      { run: "running", task: "working", running: true },
+      ["crew turn or continuation"],
+    ],
+    [
+      "a crew waiting on its person lets an update go: the question outlives the restart",
+      { run: "running", task: "waiting-on-you" },
+      [],
+    ],
+    [
+      "a run no crewmate is working in lets an update go: its board outlives the restart",
+      { run: "running", task: "queued" },
+      [],
+    ],
     ["a running operation holds an update", { operation: "running" }, ["crew operation running"]],
     ["a failed operation waits on the person, not the update", { operation: "failed" }, []],
   ])("%s", (_, input, blockers) => {
+    // The engine's whole frame, run and board included: only what is in flight may count.
+    const frame = {
+      run: input.run === undefined ? null : { state: input.run },
+      board: { tasks: input.task === undefined ? [] : [{ state: input.task }] },
+      operations: input.operation === undefined ? [] : [{ status: input.operation }],
+    };
     const facts = crewEngineUpdateFacts(
       {
         effects: Object.fromEntries(
@@ -58,11 +76,7 @@ describe("the engine crew's update facts", () => {
         ),
         members: { backend: member(input.running ?? false, input.carryOn ?? false) },
       },
-      {
-        run: input.run === undefined ? null : { state: input.run },
-        board: { tasks: input.task === undefined ? [] : [{ state: input.task }] },
-        operations: input.operation === undefined ? [] : [{ status: input.operation }],
-      },
+      frame,
     );
     assert.deepStrictEqual(facts, { idle: blockers.length === 0, blockers });
   });
