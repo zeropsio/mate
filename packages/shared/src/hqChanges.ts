@@ -187,6 +187,28 @@ export const ChangeReceipt = Schema.Struct({
 });
 export type ChangeReceipt = typeof ChangeReceipt.Type;
 
+/**
+ * HQ's latest own push on a change's branch: right after change `landed` was squashed onto `main`
+ * as `squash`, HQ brought `main` into this change stacked on it, moving its branch from `from` to
+ * its merge commit `head` (authored `Core <core@hq.invalid>`) at `at`.
+ */
+export const HqCorePush = Schema.Struct({
+  at: Instant,
+  from: Sha,
+  head: Sha,
+  landed: ChangeNumber,
+  squash: Sha,
+});
+export type HqCorePush = typeof HqCorePush.Type;
+
+/**
+ * Why an open change described before a push is a draft though HQ never compared its own diff:
+ * `notes_timed_out` (its check of the push ran out of time) or `notes_unread` (it could not read
+ * it). Open, so a reason a later HQ adds still decodes.
+ */
+export const HqDraftReason = Schema.String;
+export type HqDraftReason = typeof HqDraftReason.Type;
+
 export const HqChange = Schema.Struct({
   pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
@@ -244,6 +266,13 @@ export const HqChange = Schema.Struct({
    * and never asks. Added after the rest: an older HQ's change, which knows no drafts, is ready.
    */
   ready: Schema.Boolean.pipe(Schema.withDecodingDefaultKey(Effect.succeed(true))),
+  /** HQ's latest own push on its branch ({@link HqCorePush}); absent where HQ never moved it. */
+  corePush: Schema.optionalKey(HqCorePush),
+  /**
+   * On an open change described before a push: why it is a draft again ({@link HqDraftReason}).
+   * Absent otherwise, and gone once it is described again.
+   */
+  draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * How many comments were said on it: the room its review's conversation holds while it reads
    * them. Added after the rest: an older HQ's change counts none.
@@ -586,6 +615,10 @@ export const MateChange = Schema.Struct({
    * which this Mate pushes from then on. Absent otherwise.
    */
   handed: Schema.optionalKey(Schema.Literal(true)),
+  /** HQ's latest own push on its branch, as {@link HqChange} `corePush`. */
+  corePush: Schema.optionalKey(HqCorePush),
+  /** Why a described change is a draft again, as {@link HqChange} `draftReason`. */
+  draftReason: Schema.optionalKey(HqDraftReason),
   /**
    * On an open change: whether it asks for review, described at its head ({@link HqChange}
    * `ready`); a draft otherwise. Absent on a merged or closed one, and from an older HQ.

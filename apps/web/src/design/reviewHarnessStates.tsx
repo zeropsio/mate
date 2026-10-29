@@ -202,6 +202,21 @@ function commits(count: number): ReadonlyArray<ChangeCommit> {
   }));
 }
 
+/** HQ's merge of main on the change's branch, after the change under it merged. */
+const CORE_MERGE: ChangeCommit = {
+  sha: `2c0e${"d".repeat(36)}`,
+  subject: "Merge main as #1 landed it",
+  authorName: "Core",
+  at: minutesAgo(2),
+};
+const CORE_PUSH = {
+  at: minutesAgo(2),
+  from: commits(1)[0]?.sha ?? HEAD,
+  head: CORE_MERGE.sha,
+  landed: 1,
+  squash: `5e1f${"a".repeat(36)}`,
+};
+
 const CHANGE: HqChange = {
   appId: "g-snap",
   repo: "appdev",
@@ -483,8 +498,11 @@ function Change({
   mate = NOVA,
   heirs,
   hand,
+  landedTitle,
 }: {
   readonly over?: Partial<FlowPullRequest>;
+  /** The merged change HQ brought main in after, by its title. */
+  readonly landedTitle?: string;
   /** What HQ recorded of it, where it is not the one every state shares. */
   readonly readout?: ChangeReviewViewProps["readout"];
   readonly open?: ReadonlyArray<string>;
@@ -518,6 +536,7 @@ function Change({
       mate={mate}
       heirs={heirs}
       hand={hand}
+      landedTitle={landedTitle}
       onHand={noop}
       now={NOW}
       onAsk={async () => {}}
@@ -950,6 +969,22 @@ export const REVIEW_STATES: ReadonlyArray<{
     node: <Settling after={SETTLE_MS} frame="dialog" />,
   },
   { id: "ready", label: "A change, ready", node: <Change open={["src/server/index.ts"]} /> },
+  {
+    id: "core-push",
+    label: "HQ brought main in after the change under it merged",
+    node: (
+      <Change
+        landedTitle="Show the order list"
+        over={{ corePush: CORE_PUSH, headSha: CORE_MERGE.sha }}
+        readout={detail({ commits: [CORE_MERGE, ...commits(3)] })}
+      />
+    ),
+  },
+  {
+    id: "draft-again",
+    label: "A draft again: HQ couldn't check the push in time",
+    node: <Change over={{ ready: false, draftReason: "notes_timed_out" }} />,
+  },
   {
     id: "description",
     label: "Its description, two pictures in it",

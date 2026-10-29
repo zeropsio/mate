@@ -1395,6 +1395,17 @@ const settleOrigins = (
   }
 };
 
+/** Whether a card still asks the person for `ask`'s value in `ask`'s vault. */
+const vaultAskOpen = (state: ConversationState, ask: Pick<VaultAsk, "key" | "scope">): boolean =>
+  Object.values(state.requests).some(
+    ({ vault }) =>
+      vault !== undefined &&
+      vault.key === ask.key &&
+      vault.scope.kind === ask.scope.kind &&
+      (vault.scope.kind === "shared" ||
+        (ask.scope.kind === "service" && vault.scope.hostname === ask.scope.hostname)),
+  );
+
 /** Where an asked value goes, as people and the agent read it: `Shared/KEY`, `api/KEY`. */
 const vaultPlace = (ask: Pick<VaultAsk, "key" | "scope">): string =>
   `${ask.scope.kind === "shared" ? "Shared" : ask.scope.hostname}/${ask.key}`;
@@ -2385,6 +2396,9 @@ const signalOne = (b: StepBuilder, sessionId: SessionId, signal: ProviderSignal)
     case "request-opened": {
       // A request is asked once: one delivered again, open or answered, is the same request.
       if (b.state.askedKeys[signal.key] !== undefined) return;
+      // A value asked again for the same vault while its card is open is the one question: the
+      // person may already be typing it there (a Mate asked twice for one secret, 2026-10-28).
+      if (signal.ask.kind === "vault" && vaultAskOpen(b.state, signal.ask)) return;
       const owner = routed(b, signal.turn);
       if (owner === undefined) return;
       const run = isLive(owner) ? awaken(b, owner) : owner;
