@@ -4,7 +4,7 @@ import { expect } from "@effect/vitest";
 import type { createScenario } from "../../harness/scenario.ts";
 import { creationNetwork } from "../../fakes/f-create/browserDrain.ts";
 import { creationOf } from "./fake.ts";
-import type { Dialog, ElementHandle } from "puppeteer-core";
+import type { Dialog } from "puppeteer-core";
 import { visibleText } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 
@@ -155,16 +155,15 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         // never the menu heading's of the same name. Shop holds only its setup files, so its
         // card's Production offers no Put it live (it waits for a change); the ··· still does.
         yield* Effect.promise(async () => {
-          const more = await page.waitForFunction(
-            () =>
+          await page
+            .locator(() =>
               [...document.querySelectorAll<HTMLElement>('[aria-label="More for Shop"]')].find(
                 (button) =>
                   button.closest('[data-sidebar="sidebar"]') === null &&
                   button.getBoundingClientRect().width > 0,
               ),
-            { polling: "raf" },
-          );
-          await (more.asElement() as ElementHandle<Element>).click();
+            )
+            .click();
         });
         // Production is put live from its sheet; its own form — a name, an agent, a Git branch —
         // is the sheet's quiet way out.
