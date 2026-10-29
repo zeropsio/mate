@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   changeReviewItem,
   crewTaskReviewItem,
+  releaseCount,
   releaseTagTip,
   reviewItemByline,
   reviewListWithLeaving,
@@ -268,6 +269,27 @@ describe("the Release tag's tooltip", () => {
     { waiting: 20, atLeast: true, says: "At least 20 changes wait for production" },
   ])("says what waits for production: $says", ({ waiting, atLeast, says }) => {
     expect(releaseTagTip({ waiting, atLeast })).toBe(says);
+  });
+});
+
+describe("the Release tag's count", () => {
+  it.each([
+    { waiting: 700, atLeast: false, changeCount: 1, count: 1, plus: false },
+    { waiting: 40, atLeast: true, changeCount: 3, count: 3, plus: false },
+    { waiting: 5, atLeast: false, changeCount: undefined, count: 5, plus: false },
+    { waiting: 20, atLeast: true, changeCount: undefined, count: 20, plus: true },
+    { waiting: 2, atLeast: false, changeCount: 0, count: 2, plus: false },
+  ])(
+    "counts the changes HQ counted, never every commit a history brought: $waiting commits, $changeCount changes",
+    ({ waiting, atLeast, changeCount, count, plus }) => {
+      expect(releaseCount({ waiting, atLeast, changeCount })).toEqual({ count, atLeast: plus });
+    },
+  );
+
+  it("its tooltip names the changes, not the commits", () => {
+    expect(releaseTagTip({ waiting: 700, atLeast: false, changeCount: 1 })).toBe(
+      "1 change waits for production",
+    );
   });
 });
 
