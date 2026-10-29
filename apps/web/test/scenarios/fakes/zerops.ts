@@ -3,6 +3,9 @@ import { scenarioWorld, type ScenarioWorld } from "./zeropsWorld.ts";
 import { ZeropsWrites } from "./zeropsWrites.ts";
 import { ZeropsDeviceLogin } from "./zeropsDeviceLogin.ts";
 import { FakeClock } from "./fakeClock.ts";
+// Zerops' published import schema, as the platform serves it to whoever validates an import (HQ
+// checks every group recipe tier against it before a recipe change merges).
+import importSchema from "./import-project-yml-json-schema.json" with { type: "json" };
 import * as NodeEvents from "node:events";
 import { WebSocket } from "ws";
 import type { FakeWorld } from "../harness/fakeWorld.ts";
@@ -452,6 +455,8 @@ export class ZeropsFake {
         headers: fault.status === 429 ? { "Retry-After": String(fault.retryAfter ?? 1) } : {},
       };
     if (request.method === "OPTIONS") return { body: {} };
+    if (request.method === "GET" && path === "/settings/import-project-yml-json-schema.json")
+      return { body: importSchema };
     const device = await this.deviceLogin.handle(request, path);
     if (device) return device;
     // A device-login session acts as its person; one refused (expired, rotated, ended) is refused.

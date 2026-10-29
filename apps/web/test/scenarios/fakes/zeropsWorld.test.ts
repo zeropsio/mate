@@ -5,6 +5,26 @@ import { serve } from "../harness/http.ts";
 import { ZeropsFake } from "./zerops.ts";
 import { definePerson, projectRoles } from "./zeropsWorld.ts";
 
+describe("the Zerops import schema", () => {
+  // HQ validates every group recipe tier against it before a recipe change merges; without it,
+  // no fixture's recipe change ever merged (mate-hq 2f23a813, 2026-10-29).
+  it("is served as the platform publishes it, to whatever key HQ reads it with", async () => {
+    const server = await serve(new ZeropsFake(emptyWorld()).handle);
+    try {
+      const answer = await fetch(
+        `${server.origin}/api/rest/public/settings/import-project-yml-json-schema.json`,
+        { headers: { authorization: "Bearer org-key" } },
+      );
+      expect(answer.status).toBe(200);
+      const schema = (await answer.json()) as Record<string, unknown>;
+      expect(schema["$schema"]).toBe("https://json-schema.org/draft/2020-12/schema");
+      expect(Object.keys(schema)).toContain("properties");
+    } finally {
+      await server.close();
+    }
+  });
+});
+
 describe("Zerops world organizations and people", () => {
   it("exposes Developer creation rights, READ_ONLY and explicit membership/grant overrides", async () => {
     const fake = new ZeropsFake(emptyWorld());
