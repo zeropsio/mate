@@ -32,10 +32,8 @@ export function makeObserveCredential(options: {
       const held = following.get(id);
       if (held !== undefined) held.count++;
       else {
-        const signature = () => {
-          const fact = readsOfState(store.state()).fact("hqObserveCredentialRequest", id);
-          return fact.kind === "known" ? fact.value.requestId : undefined;
-        };
+        const signature = () =>
+          JSON.stringify(readsOfState(store.state()).fact("hqObserveCredentialRequest", id));
         let seen = signature();
         const stop = store.subscribe(() => {
           const next = signature();
