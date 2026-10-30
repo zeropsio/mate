@@ -93,7 +93,7 @@ export interface GroupFlowPreview {
 export interface GroupFlowMate {
   readonly projectId: string;
   readonly name: string;
-  /** Its previews, one per part with a public preview, by the part's name. */
+  /** Its previews, one per part with a public preview, by its service's hostname. */
   readonly previews: ReadonlyArray<GroupFlowPreview>;
   /** Its parts (`mateParts`), each with its preview where it has one; absent where unread. */
   readonly parts?: ReadonlyArray<MatePart>;

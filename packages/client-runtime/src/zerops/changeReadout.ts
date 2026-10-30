@@ -7,10 +7,14 @@
  *
  * @module changeReadout
  */
-import type { ChangeReview, HqChange, HqCorePush } from "@t3tools/shared/hqChanges";
+import type { ChangeReview, HqChange, HqCorePush, Mergeability } from "@t3tools/shared/hqChanges";
 import type { GitCompare } from "@t3tools/shared/hqGitBrowse/compare";
 
-import { mergeabilityKindOf, type MergeabilityKind } from "./changeMergeability.ts";
+import {
+  judgedMergeabilityOf,
+  mergeabilityKindOf,
+  type MergeabilityKind,
+} from "./changeMergeability.ts";
 
 /** A file it changes, as its row draws it. */
 export interface ChangeReadoutFile {
@@ -120,6 +124,23 @@ export function changeReadoutOfRecord(change: HqChange, review: ChangeReview): C
     conflict: review.conflictPaths,
     behind: change.behind,
     description: change.body.trim().length === 0 ? undefined : change.body,
+  };
+}
+
+/**
+ * Whether a change merges, from HQ's record while it has a verdict, else from HQ's judgement of the
+ * shown head and `main` where that was read: a record HQ never judged again would say it is checked
+ * for good. A conflict judged so names its files from the judgement.
+ */
+export function changeReadoutJudged(
+  readout: ChangeReadout,
+  judged: Mergeability | undefined,
+): ChangeReadout {
+  if (readout.mergeability !== "checking" || judged === undefined) return readout;
+  return {
+    ...readout,
+    mergeability: judgedMergeabilityOf(judged),
+    conflict: judged.kind === "conflict" ? judged.paths : readout.conflict,
   };
 }
 

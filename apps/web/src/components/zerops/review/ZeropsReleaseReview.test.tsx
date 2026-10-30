@@ -96,26 +96,34 @@ describe("ReleaseReviewView", () => {
       "Create worker",
       "Deploy worker",
     ]);
-    expect(
-      [...(rows[0]?.querySelectorAll("dl dt") ?? [])].map((term) => [
-        term.textContent,
-        term.nextElementSibling?.textContent,
-      ]),
-    ).toEqual([
-      ["hostname", "worker"],
-      ["type", "nodejs@22"],
-      ["minContainers", "2"],
-    ]);
-    expect([...rows[0]!.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
-      "Create worker",
-      "Creates one additional billed production service: worker.",
-    ]);
     expect([...rows[1]!.querySelectorAll("p")].map((line) => line.textContent)).toEqual([
       "Deploy worker",
       "dddddddddddddddddddddddddddddddddddddddd",
     ]);
+    const creation = operations?.querySelector("[data-zerops-surface=release-import]");
+    expect(creation?.querySelector("pre")?.textContent).toBe(
+      "services:\n  - hostname: worker\n    type: nodejs@22\n    minContainers: 2\n",
+    );
+    expect(creation?.querySelector(".rv-note")?.textContent).toBe(
+      "Adds one billed service; Zerops charges their resources by these settings. Release runs it before it deploys.",
+    );
     expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(false);
   });
+
+  it.each([
+    { who: "who may release", run: async () => {}, actions: ["Create in production", "Copy YAML"] },
+    { who: "who may not", run: undefined, actions: ["Copy YAML"] },
+  ])(
+    "the import that creates production's missing services is run from the review by whoever may release: $who",
+    ({ run, actions }) => {
+      const page = new Window().document;
+      page.body.innerHTML = render({ servicePlan: CREATION_PLAN, onImportServices: run });
+      const creation = page.querySelector("[data-zerops-surface=release-import]");
+      expect([...(creation?.querySelectorAll("button") ?? [])].map((b) => b.textContent)).toEqual(
+        actions,
+      );
+    },
+  );
 
   it.each([
     {

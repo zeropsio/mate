@@ -92,7 +92,7 @@ it("a conversation that carries no envelope yet pairs a migrated part's stage wi
 });
 
 // The menu draws no Sites for a Mate in no project: its conversation's header lists these.
-it("an ungrouped Mate's conversation still shows its previews, each by its part's name", () => {
+it("an ungrouped Mate's conversation still shows its previews, each by its real hostname", () => {
   const url = "https://embedderpool-c2e4-8101.prg1.zerops.app";
   mate.lifecycle = {
     state: "known",
@@ -120,5 +120,5 @@ it("an ungrouped Mate's conversation still shows its previews, each by its part'
     read.addresses
       .filter((address) => address.url === url)
       .map(({ name, host }) => ({ name, host })),
-  ).toEqual([{ name: "Embedder", host: "embedderpool-c2e4-8101.prg1.zerops.app" }]);
+  ).toEqual([{ name: "embedderpool-3", host: "embedderpool-c2e4-8101.prg1.zerops.app" }]);
 });

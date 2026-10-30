@@ -30,6 +30,7 @@ import { MateOwnerMark } from "./MateOwnerMark";
 import { MateFace } from "./primitives";
 import { ownerMark } from "./SidebarMateRow.logic";
 import {
+  releaseCount,
   releaseTagTip,
   reviewItemByline,
   reviewListWithLeaving,
@@ -37,6 +38,7 @@ import {
   reviewPopoverTitle,
   reviewTagLabel,
   type ProjectReviewItem,
+  type ReleaseWaiting,
 } from "./SidebarProjectReview.logic";
 
 export {
@@ -108,7 +110,7 @@ export function ProjectReviewTags({
   /** Oldest first, as the project's flow lists them. */
   readonly items: ReadonlyArray<ProjectReviewItem>;
   /** HQ offers the viewer the release (`releaseOffered`): what waits for production. */
-  readonly release: { readonly waiting: number; readonly atLeast: boolean } | undefined;
+  readonly release: ReleaseWaiting | undefined;
 }): ReactNode {
   const review = usePresence(items.length > 0 ? items : undefined);
   const offer = usePresence(release);
@@ -236,13 +238,16 @@ export function ProjectReviewMarks({
           role="img"
         >
           <RocketIcon aria-hidden="true" className="menu-mark-icon" />
-          {release.waiting > 1 ? (
-            <span>{`${String(release.waiting)}${release.atLeast ? "+" : ""}`}</span>
-          ) : null}
+          <ReleaseMarkCount release={release} />
         </span>
       )}
     </span>
   );
+}
+
+function ReleaseMarkCount({ release }: { readonly release: ReleaseWaiting }) {
+  const { count, atLeast } = releaseCount(release);
+  return count > 1 ? <span>{`${String(count)}${atLeast ? "+" : ""}`}</span> : null;
 }
 
 function ReleaseTag({
@@ -251,11 +256,12 @@ function ReleaseTag({
   phase,
 }: {
   readonly groupId: string;
-  readonly release: { readonly waiting: number; readonly atLeast: boolean };
+  readonly release: ReleaseWaiting;
   readonly phase: Phase;
 }) {
   const openReview = useOpenReview();
   const tip = releaseTagTip(release);
+  const { count } = releaseCount(release);
   return (
     <Tooltip>
       <TooltipTrigger
@@ -276,7 +282,7 @@ function ReleaseTag({
         {/* In a narrow menu the word gives way to its mark, so the project's name keeps its room. */}
         <RocketIcon aria-hidden="true" className="menu-tag-icon" />
         <span className="menu-tag-word">Release</span>
-        <TagCount count={release.waiting > 1 ? release.waiting : undefined} />
+        <TagCount count={count > 1 ? count : undefined} />
       </TooltipTrigger>
       <TooltipPopup side="bottom">{tip}</TooltipPopup>
     </Tooltip>

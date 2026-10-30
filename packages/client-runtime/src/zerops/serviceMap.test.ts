@@ -1109,7 +1109,7 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
 
   it.each([
     {
-      generation: "pool-era: each pool and its stage are one part, named by the part",
+      generation: "pool-era: each pool and its stage are one part, by the pool's hostname",
       services: [
         zcp,
         pool("webpool"),
@@ -1128,9 +1128,9 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
         [
           "Runtimes",
           [
-            ["Box", "boxpool", "boxstage", "part"],
-            ["HQ", "hqpool", "hqstage", "part"],
-            ["Web", "webpool", "webstage", "part"],
+            ["boxpool", "boxpool", "boxstage", "part"],
+            ["hqpool", "hqpool", "hqstage", "part"],
+            ["webpool", "webpool", "webstage", "part"],
           ],
         ],
         ["Infrastructure", [["Zerops Control Plane", "zcp", undefined, "service"]]],
@@ -1155,8 +1155,8 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
         [
           "Runtimes",
           [
-            ["API", "apipool", "apistage", "part"],
-            ["Runner", "runnerpool", "runnerstage", "part"],
+            ["apipool", "apipool", "apistage", "part"],
+            ["runnerpool", "runnerpool", "runnerstage", "part"],
             ["mailpit", "mailpit", undefined, "service"],
             ["noola", "noola", undefined, "holder"],
           ],
@@ -1173,10 +1173,10 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
     },
     {
       generation: "legacy: the dev and its stage are one part, read the same way",
-      services: [zcp, db, service({ hostname: "flipdev" }), service({ hostname: "flipstage" })],
+      services: [zcp, db, service({ hostname: "shopdev" }), service({ hostname: "shopstage" })],
       lifecycle: undefined,
       expected: [
-        ["Runtimes", [["Flip", "flipdev", "flipstage", "part"]]],
+        ["Runtimes", [["shopdev", "shopdev", "shopstage", "part"]]],
         ["Data", [["db", "db", undefined, "service"]]],
         ["Infrastructure", [["Zerops Control Plane", "zcp", undefined, "service"]]],
       ],
@@ -1208,8 +1208,7 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
     expect(holder?.routes).toEqual([]);
   });
 
-  // Sites (`mateParts`) names a pool by its stem; the panel named it by zcp's setup ("boxpreview").
-  it("names a pool's part as Sites does, by its stem, never the setup zcp names its stage by", () => {
+  it("a Mate's service shows its real hostname, never a name made up for its part or the setup zcp names its stage by", () => {
     const view = buildZeropsServiceMap(
       topology([pool("boxpool"), stage("boxstage")]),
       lifecycle({
@@ -1227,7 +1226,7 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
       } as unknown as Partial<ZeropsLifecycle>),
     );
 
-    expect(view?.groups[0]?.rows.map((row) => row.title)).toEqual(["Box"]);
+    expect(view?.groups[0]?.rows.map((row) => row.title)).toEqual(["boxpool"]);
   });
 
   it("a stand-in in a project with no pool yet is still where the code runs", () => {
@@ -1284,12 +1283,12 @@ describe("buildZeropsServiceMap — an app's parts come first, as runtimes", () 
     expect(row).not.toHaveProperty("portLabel");
   });
 
-  it("names a part's preview half Preview, never its stage hostname", () => {
+  it("a Mate's service shows its real hostname, its folded stage by its own: botdev beside botstage", () => {
     const row = buildZeropsServiceMap(
-      topology([service({ hostname: "flipdev" }), service({ hostname: "flipstage" })]),
+      topology([service({ hostname: "botdev" }), service({ hostname: "botstage" })]),
     )?.groups[0]?.rows[0];
 
-    expect([row?.title, row?.stageTitle]).toEqual(["Flip", "Preview"]);
-    expect(row?.meta[0]).toEqual({ id: "hostname", label: "flipdev" });
+    expect([row?.title, row?.stage?.hostname]).toEqual(["botdev", "botstage"]);
+    expect(row?.meta.map((fact) => fact.id)).not.toContain("hostname");
   });
 });

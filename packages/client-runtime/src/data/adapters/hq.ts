@@ -84,6 +84,9 @@ export interface HqWire {
   readonly commits?: (
     request: import("../families/hqChangeRead.ts").ChangeReadRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeCommitsResponse, StreamFault>;
+  readonly verdict?: (
+    request: import("../families/hqChangeRead.ts").ChangeReadRequest,
+  ) => Effect.Effect<import("@t3tools/shared/hqChanges").ChangeDetailResponse, StreamFault>;
   readonly releaseReview?: (
     request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
@@ -720,6 +723,12 @@ export function hqNavigationLink(options: {
         commits: (request) =>
           wire.commits?.(request) ??
           Effect.fail({ outcome: "definitive-refusal", message: "HQ cannot read change history." }),
+        verdict: (request) =>
+          wire.verdict?.(request) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "HQ cannot judge this change.",
+          }),
         orgId,
         store,
         signal,

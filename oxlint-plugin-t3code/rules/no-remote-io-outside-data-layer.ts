@@ -278,6 +278,7 @@ export const HQ_CLIENT_VERBS = [
   "changeAttachment",
   "changeCommits",
   "changeMetadata",
+  "changeVerdict",
   "mateRecipe",
   "release",
   "reviewRelease",

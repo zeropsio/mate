@@ -60,6 +60,7 @@ import {
   type ReleaseReplaces,
   type ReleaseVersionSuggestion,
   type ReviewPress,
+  productionProjectOf,
 } from "@t3tools/client-runtime/zerops";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
@@ -77,6 +78,9 @@ import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useAskMateToFix, type FixProblem } from "~/zerops/fixRequest";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import { useReleaseServicePlan } from "~/zerops/useReleaseServicePlan";
+import { useImportServices } from "~/zerops/importServices";
+import { servicePlanImportYaml } from "~/zerops/releaseImport.logic";
+import { useCopyToClipboard } from "~/hooks/useCopyToClipboard";
 import { useMateNames, useProjectFlows, type ZeropsProjectFlow } from "~/zerops/projectFlows";
 import type { ReviewTarget } from "~/zerops/review";
 import { useNowMs, useSecondsNowMs } from "~/zerops/useNowMs";
@@ -487,6 +491,20 @@ function ReleaseData({
   const planFailure =
     reviewing && plan.required && plan.view.kind === "failed" ? plan.view.reason : undefined;
   const [heldPlan, setHeldPlan] = useState<ReleaseServicePlan>();
+  const importServices = useImportServices();
+  const productionProjectId = productionProjectOf(flow.environments);
+  const importYaml = reviewedPlan === undefined ? undefined : servicePlanImportYaml(reviewedPlan);
+  // The person's own Zerops access runs it; HQ's release permission says they may write production.
+  const runImport =
+    reviewing &&
+    importYaml !== undefined &&
+    productionProjectId !== undefined &&
+    flow.release.permission?.allowed === true
+      ? async () => {
+          await importServices(productionProjectId, importYaml);
+          plan.again();
+        }
+      : undefined;
   const reviewedRequest = releaseRequestOf(flow.release, chosen.tag, reviewedPlan);
   const releaseGate =
     "refused" in reviewedRequest
@@ -528,6 +546,7 @@ function ReleaseData({
         reviewing && plan.required && plan.view.kind === "failed" ? plan.view.problems : undefined
       }
       onRetryServicePlan={plan.again}
+      onImportServices={runImport}
       git={
         flow.release.git === undefined
           ? undefined
@@ -759,6 +778,8 @@ export interface ReleaseReviewViewProps {
   readonly servicePlanFailure?: string | undefined;
   readonly servicePlanProblems?: ReadonlyArray<HqProblem> | undefined;
   readonly onRetryServicePlan?: () => void;
+  /** Runs the plan's import into production now; offered to whoever may release. */
+  readonly onImportServices?: (() => Promise<void>) | undefined;
   readonly git?: ZeropsProjectFlow["release"]["git"];
   readonly onReplaceToken?: (() => void) | undefined;
   /** HQ has not said what the release carries: no count, no list — "not known yet". */
@@ -824,6 +845,66 @@ export interface ReleaseReviewViewProps {
   /** A change row pressed: its review, in place. */
   readonly onOpenChange?: ((row: ReviewReleaseRow) => void) | undefined;
   readonly onClose: () => void;
+}
+
+type ImportPress =
+  | { readonly kind: "idle" | "running" | "done" }
+  | { readonly kind: "failed"; readonly reason: string };
+
+/**
+ * The plan's creations as the import that makes them: Release runs it before it deploys, and whoever
+ * may release can run it now, or copy it.
+ */
+function ProductionImport(props: {
+  readonly plan: ReleaseServicePlan;
+  readonly run: (() => Promise<void>) | undefined;
+}) {
+  const [press, setPress] = useState<ImportPress>({ kind: "idle" });
+  const { copyToClipboard, isCopied } = useCopyToClipboard();
+  const yaml = servicePlanImportYaml(props.plan);
+  if (yaml === undefined) return null;
+  const created = props.plan.operations.filter((operation) => operation.kind === "create").length;
+  const { run } = props;
+  const create = () => {
+    setPress({ kind: "running" });
+    run?.().then(
+      () => setPress({ kind: "done" }),
+      (error: unknown) =>
+        setPress({
+          kind: "failed",
+          reason: error instanceof Error ? error.message : "Zerops did not create them.",
+        }),
+    );
+  };
+  const billed = `${created === 1 ? "Adds one billed service" : `Adds ${String(created)} billed services`}; Zerops charges their resources by these settings.`;
+  return (
+    <div className="rv-import" data-zerops-surface="release-import">
+      <p className="rv-words">Run this import in production</p>
+      <pre className="rv-import-yaml">{yaml}</pre>
+      <div className="rv-import-actions">
+        {run === undefined ? null : (
+          <Button
+            disabled={press.kind === "running" || press.kind === "done"}
+            onClick={create}
+            size="sm"
+            variant="secondary"
+          >
+            {press.kind === "running" ? "Creating…" : "Create in production"}
+          </Button>
+        )}
+        <Button onClick={() => copyToClipboard(yaml)} size="sm" variant="ghost">
+          {isCopied ? "Copied" : "Copy YAML"}
+        </Button>
+      </div>
+      <p className="rv-note">
+        {press.kind === "failed"
+          ? press.reason
+          : press.kind === "done"
+            ? "Zerops is creating them. Release then only deploys."
+            : `${billed} Release runs it before it deploys.`}
+      </p>
+    </div>
+  );
 }
 
 export function ReleaseReviewView(props: ReleaseReviewViewProps) {
@@ -1074,24 +1155,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
                 <p className="rv-words">
                   {operation.kind === "create" ? "Create" : "Deploy"} {operation.service}
                 </p>
-                {operation.kind === "create" ? (
-                  <>
-                    <dl>
-                      {Object.entries(operation.settings).map(([name, value]) => (
-                        <div key={name}>
-                          <dt>{name}</dt>
-                          <dd>{typeof value === "string" ? value : JSON.stringify(value)}</dd>
-                        </div>
-                      ))}
-                    </dl>
-                    <p className="rv-note">{operation.cost}</p>
-                  </>
-                ) : (
-                  <p className="rv-note">{operation.sha}</p>
-                )}
+                {operation.kind === "create" ? null : <p className="rv-note">{operation.sha}</p>}
               </li>
             ))}
           </ol>
+          <ProductionImport plan={props.servicePlan} run={props.onImportServices} />
         </ReviewSection>
       )}
       {props.comparisonFailure === undefined ? null : (

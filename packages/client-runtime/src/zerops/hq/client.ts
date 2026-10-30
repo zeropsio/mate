@@ -33,6 +33,7 @@ import {
   attachmentPath,
   ChangeMetadataResponse,
   ChangeCommitsResponse,
+  ChangeDetailResponse,
   type ChangeDetailQuery,
   HqChange,
   HqChangeComment,
@@ -580,6 +581,15 @@ export interface HqApi {
     signal?: AbortSignal,
     snapshot?: ChangeDetailQuery,
   ) => Promise<ChangeCommitsResponse>;
+  /**
+   * Reads whether the change merges as HQ judges it now, at the displayed head and main: no file or
+   * commit is read.
+   */
+  readonly changeVerdict: (
+    link: ChangeLink,
+    signal?: AbortSignal,
+    snapshot?: ChangeDetailQuery,
+  ) => Promise<ChangeDetailResponse>;
   /** Says `body` on a change, as the person. */
   readonly commentOnChange: (link: ChangeLink, body: string) => Promise<HqChangeComment>;
   /**
@@ -824,6 +834,7 @@ const unreadable = () =>
 
 const readChangeMetadata = decoded(ChangeMetadataResponse);
 const readChangeCommits = decoded(ChangeCommitsResponse);
+const readChangeVerdict = decoded(ChangeDetailResponse);
 const readIntakeView = decoded(HqIntakeView);
 const readAiKeys = decoded(Schema.Array(HqAiKeyView));
 const readAiKey = decoded(HqAiKeyView);
@@ -1491,6 +1502,15 @@ export function makeHqApi(input: {
       return readChangeCommits(
         await authorized(
           `${changePath(link)}/commits${search === "" ? "" : `?${search}`}`,
+          signal === undefined ? {} : { signal },
+        ),
+      );
+    },
+    changeVerdict: async (link, signal, snapshot = {}) => {
+      const search = new URLSearchParams(snapshot).toString();
+      return readChangeVerdict(
+        await authorized(
+          `${changePath(link)}${search === "" ? "" : `?${search}`}`,
           signal === undefined ? {} : { signal },
         ),
       );

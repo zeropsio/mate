@@ -961,12 +961,12 @@ describe("ChangeReviewView: an open change", () => {
     expect(textOf(footOf(html))).not.toContain("picks it up");
   });
 
-  // Larkspur, 2026-10-28: "Try it: flip flipstage-7c1e-5195.prg1.zerops.app".
+  // Larkspur, 2026-10-28: "Try it: shop shopstage-7c1e-5195.prg1.zerops.app".
   it("names Try it by whose preview it opens and its part, never by its address", () => {
-    const url = "https://flipstage-7c1e-5195.prg1.zerops.app";
-    const html = render(open, files, { previews: [{ service: "flip", url }] });
-    expect(textOf(html)).toContain("Try it Wren's preview · Flip");
-    expect(textOf(html)).not.toContain("flipstage-7c1e-5195");
+    const url = "https://shopstage-7c1e-5195.prg1.zerops.app";
+    const html = render(open, files, { previews: [{ service: "shopstage", url }] });
+    expect(textOf(html)).toContain("Try it Wren's preview · shopstage");
+    expect(textOf(html)).not.toContain("shopstage-7c1e-5195");
     expect(html).toContain(`href="${url}"`);
   });
 

@@ -38,7 +38,8 @@
  *   commits between two of a repository's commits, each with the change that landed it;
  * - `GET /api/apps/:appId/changes` → {@link ChangeListResponse};
  * - `GET /api/apps/:appId/changes/:repo/:n/metadata` → {@link ChangeMetadataResponse}; `GET …/commits`
- *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse};
+ *   {@link ChangeDetailQuery} → {@link ChangeCommitsResponse}; `GET …/:n` {@link ChangeDetailQuery}
+ *   → {@link ChangeDetailResponse};
  * - `GET`, `POST /api/apps/:appId/changes/:repo/:n/comments` → {@link CommentListResponse},
  *   {@link HqChangeComment};
  * - `POST /api/apps/:appId/changes/:repo/:n/merge` {@link MergeChangeRequest} and `POST …/close`,
@@ -773,6 +774,30 @@ export const ChangeMetadataResponse = Schema.Struct({
   review: ChangeReview,
 });
 export type ChangeMetadataResponse = typeof ChangeMetadataResponse.Type;
+
+/**
+ * Whether a change merges into `main` now, as Git judges it on the box: never `unknown`. `no_change`:
+ * nothing was pushed to it; a conflict names its files.
+ */
+export const Mergeability = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literals(["clean", "empty", "already_merged", "no_change", "unrelated"]),
+  }),
+  Schema.Struct({ kind: Schema.Literal("conflict"), paths: Schema.Array(Schema.String) }),
+]);
+export type Mergeability = typeof Mergeability.Type;
+
+/**
+ * What Git judges of a change now, at the head and `main` asked ({@link ChangeDetailQuery}; `409
+ * conflict` `head_moved` / `main_moved` where either moved): no file or commit is read.
+ */
+export const ChangeDetailResponse = Schema.Struct({
+  change: HqChange,
+  mainHead: Schema.NullOr(Sha),
+  mergeBase: Schema.NullOr(Sha),
+  mergeability: Mergeability,
+});
+export type ChangeDetailResponse = typeof ChangeDetailResponse.Type;
 
 /** Commit history requested explicitly, without file statistics or patches. */
 export const ChangeCommitsResponse = Schema.Struct({

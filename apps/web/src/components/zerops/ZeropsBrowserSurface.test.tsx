@@ -44,11 +44,11 @@ describe("BrowserSites", () => {
     );
     expect(shown(html)).toEqual([
       "# Development",
-      "Nextstore nextstoredev-a1b2-8000.prg1.zerops.app",
+      "nextstoredev nextstoredev-a1b2-8000.prg1.zerops.app",
       "# Preview",
-      "Nextstore nextstorestage-a1b2-8000.prg1.zerops.app",
+      "nextstorestage nextstorestage-a1b2-8000.prg1.zerops.app",
       "# Production",
-      "Nextstore nextstore-c3d4-8000.prg1.zerops.app",
+      "nextstore nextstore-c3d4-8000.prg1.zerops.app",
       "# Tools",
       "mailpit mailpit-a1b2-8000.prg1.zerops.app",
     ]);

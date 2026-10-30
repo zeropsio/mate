@@ -10,9 +10,9 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  *
  * A place's section is what its chip's menu said (`ChipMenu`): its state, what went wrong, the fix
  * for the viewer's own Mate, its public access, its links and its way to Zerops. A Mate's section
- * is one row per part (`mateParts`) — its name, then its dev and its preview side by side, each a
- * link with its host in its tooltip; a pool's dev is each workspace zcp holds on it, read from a
- * conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
+ * is one row per service by its real hostname (`mateParts`), as a place's addresses are — each
+ * part's dev, then its stage; a pool's dev is each workspace zcp holds on it, by its alias, read
+ * from a conversation of the Mate (`useMatesLeases`) — then its other addresses. A place with nothing
  * deployed is its head alone. Each address is listed once, opens in a
  * new tab, and copies from its row or its link (`c`, ⌘C, or the button an address row's hover
  * shows).
@@ -71,8 +71,7 @@ import {
   sitesLinkCount,
   type SitesLink,
   type SitesMateFacts,
-  type SitesPair,
-  type SitesSide,
+  type SitesService,
   type SitesStatus,
 } from "./SidebarProjectSites.logic";
 import { StopPublicAccessStatus } from "./StopPublicAccess";
@@ -136,7 +135,6 @@ const factsOf = (mate: SitesMate, leases: MatesLeases = {}): SitesMateFacts => (
   leases: leases[mate.candidate.project.id]?.leases,
   poolPairs: leases[mate.candidate.project.id]?.poolPairs,
   standIns: leases[mate.candidate.project.id]?.standIns,
-  devServers: leases[mate.candidate.project.id]?.devServers,
 });
 
 /** The section a key names, else — for a stage named differently — the first stage's. */
@@ -637,9 +635,12 @@ export function SitesPanel({
                     projectId={section.projectId}
                     title={section.title}
                   />
-                  <SitesPairs
+                  <SitesServices
+                    copied={copied}
                     onCopy={copy}
-                    pairs={filtering ? (shown?.kind === "mate" ? shown.pairs : []) : section.pairs}
+                    services={
+                      filtering ? (shown?.kind === "mate" ? shown.services : []) : section.services
+                    }
                   />
                   {body}
                   {filtering || manage === undefined ? null : (
@@ -1046,87 +1047,88 @@ function CopyButton({
 }
 
 /**
- * A Mate's parts, one row each: the part's name, then its dev and its preview in fixed columns, so
- * the rows align; every part shows both. Each side with an address is a link that opens in a new
- * tab, its host (and any other port's) in its tooltip, and copies on `c` or ⌘C; a dev on several
- * addresses is a link per address, one under another; a side with none is its word, muted, its
- * tooltip saying why.
+ * A Mate's services, one row each as a place's addresses are: its hostname, its host, ↗ — opening
+ * in a new tab, its other ports' hosts in its tooltip, copying on `c` or ⌘C. A service with nothing to open is its hostname alone, muted,
+ * its tooltip saying why.
  */
-function SitesPairs({
-  pairs,
+function SitesServices({
+  services,
+  copied,
   onCopy,
 }: {
-  readonly pairs: ReadonlyArray<SitesPair>;
+  readonly services: ReadonlyArray<SitesService>;
+  readonly copied: string | undefined;
   readonly onCopy: (link: CopiedLink) => void;
 }) {
-  return pairs.map((pair) => (
-    <div
-      className="zerops-sites-pair"
-      data-zerops-surface="sidebar-project-sites-pair"
-      key={pair.key}
-    >
-      <span className="zerops-sites-service">{pair.name}</span>
-      <span className="zerops-sites-side" data-side="dev">
-        {pair.dev.map((side) => (
-          <PairSide key={side.key} onCopy={onCopy} side={side} />
-        ))}
-      </span>
-      <span className="zerops-sites-side" data-side="preview">
-        <PairSide key={pair.preview.key} onCopy={onCopy} side={pair.preview} />
-      </span>
-    </div>
-  ));
-}
-
-/**
- * One side of a part: a link to its address, as an address row opens — its label, then ↗ — or its
- * label muted with no ↗, its tooltip saying why it has none.
- */
-function PairSide({
-  side,
-  onCopy,
-}: {
-  readonly side: SitesSide;
-  readonly onCopy: (link: CopiedLink) => void;
-}) {
-  const { url } = side;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          url === undefined ? (
-            <span className="zerops-sites-off" data-zerops-surface="sidebar-project-sites-side" />
-          ) : (
-            <a
-              className="zerops-sites-link"
-              data-sites-nav=""
-              data-zerops-surface="sidebar-project-sites-side"
-              href={url}
-              onKeyDown={(event) => {
-                copyOnKey(event, () => {
-                  onCopy({ key: side.key, url });
-                });
-              }}
-              rel="noreferrer"
-              target="_blank"
-            />
-          )
-        }
+  return services.map((row) => {
+    const { url } = row;
+    const name = <span className="zerops-sites-service">{row.service}</span>;
+    if (url === undefined)
+      return (
+        <div
+          className="zerops-sites-linkrow"
+          data-zerops-surface="sidebar-project-sites-service"
+          key={row.key}
+        >
+          <Tooltip>
+            <TooltipTrigger render={<span className="zerops-sites-link zerops-sites-off" />}>
+              {name}
+            </TooltipTrigger>
+            <TooltipPopup side="top">{row.why}</TooltipPopup>
+          </Tooltip>
+        </div>
+      );
+    const done = copied === row.key;
+    const host = row.host ?? url;
+    const anchor = {
+      className: "zerops-sites-link",
+      "data-sites-nav": "",
+      "data-zerops-surface": "sidebar-project-sites-link",
+      href: url,
+      onKeyDown: (event: KeyboardEvent<HTMLAnchorElement>) => {
+        copyOnKey(event, () => {
+          onCopy({ key: row.key, url });
+        });
+      },
+      rel: "noreferrer",
+      target: "_blank",
+    };
+    const content = (
+      <>
+        {name}
+        <span className="zerops-sites-host">{host}</span>
+        <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+      </>
+    );
+    return (
+      <div
+        className="zerops-sites-linkrow"
+        data-copied={done ? "" : undefined}
+        data-zerops-surface="sidebar-project-sites-service"
+        key={row.key}
       >
-        <span className="zerops-sites-label">{side.label}</span>
-        {url === undefined ? null : (
-          <ArrowUpRightIcon aria-hidden="true" className="zerops-sites-arrow" />
+        {row.more.length === 0 ? (
+          <a {...anchor}>{content}</a>
+        ) : (
+          <Tooltip>
+            <TooltipTrigger render={<a {...anchor} />}>{content}</TooltipTrigger>
+            <TooltipPopup side="top">
+              {[host, ...row.more].map((each) => (
+                <div key={each}>{each}</div>
+              ))}
+            </TooltipPopup>
+          </Tooltip>
         )}
-      </TooltipTrigger>
-      <TooltipPopup side="top">
-        {side.label === "dev" || side.label === "preview" ? null : <div>{side.label}</div>}
-        {side.server === undefined || side.server === side.label ? null : <div>{side.server}</div>}
-        {url === undefined
-          ? side.why
-          : [side.host, ...side.more].map((host) => <div key={host}>{host}</div>)}
-      </TooltipPopup>
-    </Tooltip>
-  );
+        <CopyButton
+          done={done}
+          host={host}
+          onCopy={() => {
+            onCopy({ key: row.key, url });
+          }}
+        />
+      </div>
+    );
+  });
 }
 
 /** A section's links: each opens in a new tab, and copies from its row. */
