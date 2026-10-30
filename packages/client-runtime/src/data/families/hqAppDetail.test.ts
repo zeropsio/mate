@@ -40,6 +40,27 @@ const change = {
 const tier = { state: "present", importYaml: "services:\n  - hostname: api\n", mainHead: SHA };
 
 describe("hqAppDetailFamily", () => {
+  it("HQ's findings retain what failed, its location, rule and next action through the client data layer", () => {
+    const problem = {
+      code: "recipe_invalid",
+      what: "Unsupported CPU setting",
+      where: { appId: "shop", service: "api", tier: "production", file: "production.yaml" },
+      rule: { source: "zerops-schema", schemaPath: "/services/properties/minCpu" },
+      next: { actor: "mate", action: "Correct production.yaml and propose a new group change" },
+    };
+    expect(hq.idOf("problems", owner)).toBe("shop/problems");
+    expect(hq.decode([problem], "problems")).toEqual({ kind: "problems", value: [problem] });
+    const validation = { head: SHA, state: "invalid", problems: [problem] };
+    expect(
+      hq.decode(
+        [{ ...change, repo: "group", recipeValidation: validation, problems: [problem] }],
+        "changes",
+      ),
+    ).toMatchObject({
+      kind: "changes",
+      value: [{ recipeValidation: validation, problems: [problem] }],
+    });
+  });
   it.each([
     { key: "probe:web", raw: { ok: true, remote: gitRemote }, kind: "probe" },
     { key: "preflight:web", raw: gitPreflight, kind: "preflight" },

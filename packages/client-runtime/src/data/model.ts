@@ -1,3 +1,4 @@
+import type { HqProblem } from "@t3tools/shared/hqProblems";
 // Include every registered kind's declarations even for consumers that reach only a model leaf.
 import type * as _RegisteredOperationKinds from "./operations/kinds.ts";
 /**
@@ -172,6 +173,7 @@ export interface OperationReceipt {
       }
     | {
         readonly kind: "refused";
+        readonly problems?: ReadonlyArray<HqProblem>;
         readonly reason: string;
         /** The owner's own code for the refusal (`projectEnvDuplicateKey`), where it named one. */
         readonly code?: string;

@@ -388,6 +388,7 @@ export function releaseWord(verdict: ReleaseVerdict): string {
 export function flowReleaseOf(release: Release): FlowRelease {
   const entries = release.entries.map(({ service, sha }) => ({ service, commit: sha }));
   return {
+    ...(release.problems === undefined ? {} : { problems: release.problems }),
     tag: release.tag,
     verdict: release.state,
     detail: release.reason ?? undefined,
@@ -401,6 +402,7 @@ export function flowReleaseOf(release: Release): FlowRelease {
 
 /** One release of the application, as HQ judged it. */
 export interface FlowRelease {
+  readonly problems?: Release["problems"] | undefined;
   readonly history?: Release["history"];
   readonly tag: string;
   readonly verdict: ReleaseVerdict;

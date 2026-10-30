@@ -62,6 +62,7 @@
  *
  * @module hqChanges
  */
+import { HqProblem, HqRecipeValidation } from "./hqProblems.ts";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqPullRequest } from "./hqGithub.ts";
@@ -211,6 +212,8 @@ export const HqDraftReason = Schema.String;
 export type HqDraftReason = typeof HqDraftReason.Type;
 
 export const HqChange = Schema.Struct({
+  recipeValidation: Schema.optionalKey(HqRecipeValidation),
+  problems: Schema.optionalKey(Schema.Array(HqProblem)),
   pipeline: Schema.optionalKey(ChangePipeline),
   appId: Schema.String,
   repo: RepoName,
