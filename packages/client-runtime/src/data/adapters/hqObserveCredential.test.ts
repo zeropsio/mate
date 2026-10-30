@@ -76,6 +76,7 @@ describe("personal observe authorization data", () => {
 
   it("definitive refusal remains an error and account close fences delayed answers", async () => {
     const answer = deferred<typeof AUTH>();
+    const started = deferred<void>();
     let calls = 0;
     const r = rig({
       observeCredential: () => {
@@ -83,6 +84,7 @@ describe("personal observe authorization data", () => {
           return Promise.reject(
             new HqError({ kind: "refused", code: "forbidden", message: "Not allowed" }),
           );
+        started.resolve();
         return answer.promise;
       },
     });
@@ -90,9 +92,9 @@ describe("personal observe authorization data", () => {
     const release = r.host.demand(KEY);
     await failed;
     expect(r.view().metadata).toEqual({ state: "failed", words: "Not allowed" });
-    const reading = waitFor(r, () => calls === 2);
     r.host.again(KEY);
-    await reading;
+    await started.promise;
+    expect(calls).toBe(2);
     r.host.close();
     const before = JSON.stringify([...r.store.state().facts]);
     answer.resolve(AUTH);
