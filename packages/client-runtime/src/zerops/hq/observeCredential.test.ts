@@ -21,9 +21,10 @@ describe("personal observe credential client", () => {
           init?.method ?? "GET",
           new Headers(init?.headers).get("authorization"),
         ]);
+        if (url.endsWith("/zcp-authorization")) return new Response(null, { status: 204 });
         return new Response(
           JSON.stringify({
-            ...(init?.method === "DELETE" ? revoked : metadata),
+            ...(seen.length > 1 ? revoked : metadata),
             credential: "unexpected-secret",
           }),
         );
@@ -32,15 +33,13 @@ describe("personal observe credential client", () => {
     expect(api.observeCredential).toBeTypeOf("function");
     expect(await api.observeCredential?.("project/one")).toEqual(metadata);
     expect(seen.map((call) => call[1])).toEqual(["GET"]);
-    expect(await api.authorizeObserveCredential?.("project/one")).toEqual(metadata);
-    expect(await api.revokeObserveCredential?.("project/one")).toEqual(revoked);
-    expect(seen).toEqual(
-      ["GET", "POST", "DELETE"].map((method) => [
-        "/api/mates/project%2Fone/observe-credential",
-        method,
-        "Bearer person-session",
-      ]),
-    );
+    await api.establishZcpAuthorization?.("project/one", { keyHash: "a".repeat(64) });
+    expect(await api.observeCredential?.("project/one")).toEqual(revoked);
+    expect(seen).toEqual([
+      ["/api/mates/project%2Fone/observe-credential", "GET", "Bearer person-session"],
+      ["/api/mates/project%2Fone/zcp-authorization", "POST", "Bearer person-session"],
+      ["/api/mates/project%2Fone/observe-credential", "GET", "Bearer person-session"],
+    ]);
   });
   it("never repeats an authorization whose answer was lost", async () => {
     let attempts = 0;
@@ -58,7 +57,9 @@ describe("personal observe credential client", () => {
         throw new TypeError("offline");
       },
     });
-    await expect(api.authorizeObserveCredential?.("mate")).rejects.toThrow();
+    await expect(
+      api.establishZcpAuthorization?.("mate", { keyHash: "a".repeat(64) }),
+    ).rejects.toThrow();
     expect(attempts).toBe(1);
   });
 });

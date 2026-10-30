@@ -1,4 +1,4 @@
-/** Opening this page demands metadata only; the two commands require a person's press. */
+/** Opening this page demands read-only observation metadata. */
 import {
   makeObserveCredential,
   observeCredential,
@@ -12,10 +12,8 @@ import { useEffect, useMemo } from "react";
 import { useOfficialHq } from "./accountHq";
 import { onAccountLifetimeClose } from "./accountLifetime";
 import { useAccountOrgId, useAccountStoreForAdapters } from "./ZeropsAccountData";
-import { randomUUID } from "../lib/utils";
 const UNREAD = Atom.make<ObserveCredentialRead>({
   metadata: { state: "unread" },
-  action: { kind: "idle" },
 });
 const hosts = new WeakMap<AccountStore, WeakMap<HqApi, ReturnType<typeof makeObserveCredential>>>();
 function hostFor(store: AccountStore, api: HqApi) {
@@ -26,7 +24,7 @@ function hostFor(store: AccountStore, api: HqApi) {
   }
   let host = byApi.get(api);
   if (host === undefined) {
-    host = makeObserveCredential({ store, api, makeId: randomUUID });
+    host = makeObserveCredential({ store, api });
     byApi.set(api, host);
     onAccountLifetimeClose(host.close);
   }
@@ -50,12 +48,6 @@ export function useObserveCredential(projectId: string | null) {
   return {
     state,
     available: host !== null && key !== null,
-    authorize: () => {
-      if (host !== null && key !== null) void host.authorize(key);
-    },
-    revoke: () => {
-      if (host !== null && key !== null) void host.revoke(key);
-    },
     again: () => {
       if (host !== null && key !== null) host.again(key);
     },
