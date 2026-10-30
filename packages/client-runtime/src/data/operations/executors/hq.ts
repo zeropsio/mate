@@ -84,7 +84,6 @@ export type HqWrites = Pick<
   | "attachProject"
   | "createMate"
   | "recordClosedOff"
-  | "establishZcpAuthorization"
   | "keepDeployToken"
   | "setChief"
   | "decideProposal"

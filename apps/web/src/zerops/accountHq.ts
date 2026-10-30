@@ -50,7 +50,6 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
   const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
   const active = captureAccountLifetime();
-  const nativeEpoch = client.accountEpoch;
   return makeBrowserHqApi({
     address: hq.address,
     kept: {
@@ -73,7 +72,7 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
       },
       forget: (token) => keptHqSessions.forget(keptKey, token),
     },
-    isCurrent: () => active() && client.accountEpoch === nativeEpoch,
+    isCurrent: active,
     accessToken,
     orgId: clientId,
     startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
