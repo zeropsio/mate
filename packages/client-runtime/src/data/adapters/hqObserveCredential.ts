@@ -1,23 +1,15 @@
-/** Read-only view demand and explicit person operations share the account's existing machinery. */
-import * as Effect from "effect/Effect";
+/** Read-only HQ status, refreshed by acknowledged automatic ZCP establishment. */
 import type { HqApi } from "../../zerops/hq/client.ts";
 import {
   observeCredentialId,
   observeCredentialScope,
-  observeRequestScope,
   type ObserveCredentialKey,
 } from "../families/hqObserveCredential.ts";
-import { makeOperations } from "../operations/coordinator.ts";
-import { makeObserveCredentialExecutor } from "../operations/executors/hqObserveCredential.ts";
 import { readsOfState, type AccountStore } from "../store.ts";
-import { commitOwn, makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
+import { makeSettingsReads, type SettingRead } from "./hqSettingsReads.ts";
 export function makeObserveCredential(options: {
   readonly store: AccountStore;
-  readonly api: Pick<
-    HqApi,
-    "observeCredential" | "authorizeObserveCredential" | "revokeObserveCredential"
-  >;
-  readonly makeId: () => string;
+  readonly api: Pick<HqApi, "observeCredential">;
 }) {
   const { store, api } = options;
   let closed = false;
@@ -30,78 +22,46 @@ export function makeObserveCredential(options: {
     read: () => api.observeCredential?.(key.projectId),
     unsupported: "Update HQ to manage observe authorization.",
   });
-  const publishRequest = (key: ObserveCredentialKey, requestId: string) =>
-    commitOwn(
-      store,
-      "hqObserveCredentialRequest",
-      observeRequestScope(key),
-      observeCredentialId(key),
-      {
-        requestId,
-        after: reads.started(spec(key)),
-      },
-    );
-  const operations = makeOperations({
-    store,
-    makeId: options.makeId,
-    executors: {
-      hq: makeObserveCredentialExecutor({
-        api,
-        current: () => !closed,
-        acknowledged: (requestId, key) => {
-          if (closed) return;
-          const current = readsOfState(store.state()).fact(
-            "hqObserveCredentialRequest",
-            observeCredentialId(key),
-          );
-          // No accepted receipt may expose metadata from a read started before its answer.
-          if (current.kind === "known" && current.value.requestId === requestId)
-            publishRequest(key, requestId);
-        },
-      }),
-    },
-  });
-  const act = async (key: ObserveCredentialKey, verb: "authorize" | "revoke") => {
-    if (closed) return;
-    const fact = readsOfState(store.state()).fact(
-      "hqObserveCredentialRequest",
-      observeCredentialId(key),
-    );
-    // This account's own request marker: no remote read can fail or refuse it.
-    if (fact.kind === "known") {
-      const held = store.state().operations.get(fact.value.requestId);
-      if (
-        held !== undefined &&
-        (held.receipt === null ||
-          held.unresolved !== null ||
-          ["uncertain", "uncertain-unasked"].includes(held.submission)) &&
-        (held.submission === "recorded" || verb === "authorize")
-      )
-        return;
-    }
-    const requestId = options.makeId();
-    publishRequest(key, requestId);
-    await Effect.runPromise(
-      operations.submit(
-        {
-          kind: verb === "authorize" ? "authorize-observe-credential" : "revoke-observe-credential",
-          ...key,
-        },
-        requestId,
-      ),
-    );
-    if (closed) return;
-    reads.readAfterWrite(spec(key));
-  };
+  const following = new Map<string, { count: number; readonly stop: () => void }>();
   return {
-    demand: (key: ObserveCredentialKey) => (closed ? () => {} : reads.demand(spec(key))),
+    demand: (key: ObserveCredentialKey) => {
+      if (closed) return () => {};
+      const setting = spec(key);
+      const release = reads.demand(setting);
+      const id = observeCredentialId(key);
+      const held = following.get(id);
+      if (held !== undefined) held.count++;
+      else {
+        const signature = () =>
+          JSON.stringify(readsOfState(store.state()).fact("hqObserveCredentialRequest", id));
+        let seen = signature();
+        const stop = store.subscribe(() => {
+          const next = signature();
+          if (next === seen) return;
+          seen = next;
+          // HQ acknowledged changed credential input: fence every earlier metadata read.
+          reads.again(setting);
+        });
+        following.set(id, { count: 1, stop });
+      }
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        release();
+        const held = following.get(id);
+        if (held === undefined || --held.count > 0) return;
+        following.delete(id);
+        held.stop();
+      };
+    },
     again: (key: ObserveCredentialKey) => {
       if (!closed) reads.again(spec(key));
     },
-    authorize: (key: ObserveCredentialKey) => act(key, "authorize"),
-    revoke: (key: ObserveCredentialKey) => act(key, "revoke"),
     close: () => {
       closed = true;
+      for (const held of following.values()) held.stop();
+      following.clear();
       reads.close();
     },
   };

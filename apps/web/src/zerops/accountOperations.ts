@@ -120,6 +120,7 @@ export function accountOperations(
       hq: hqExecutor,
       zerops: makeZeropsExecutor({
         client,
+        hqApiOf: hqWritesOf,
         viewerOf: (orgId) => platformMembership.derive(readsOfState(store.state()), orgId).viewer,
         active: captureAccountLifetime(),
         readDetail,

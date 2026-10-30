@@ -12,25 +12,23 @@ async function render(state: ObserveCredentialRead, available = true) {
   document.body.append(container);
   const root = createRoot(container);
   const calls: string[] = [];
-  await act(() =>
-    root.render(
-      <ObserveCredentialControlBody
-        state={state}
-        available={available}
-        authorize={() => calls.push("authorize")}
-        revoke={() => calls.push("revoke")}
-        again={() => calls.push("read")}
-        personName={(id) => (id === "person" ? "Ada" : undefined)}
-      />,
-    ),
-  );
+  const update = (next: ObserveCredentialRead) =>
+    act(() =>
+      root.render(
+        <ObserveCredentialControlBody
+          state={next}
+          available={available}
+          again={() => calls.push("read")}
+          personName={(id) => (id === "person" ? "Ada" : undefined)}
+        />,
+      ),
+    );
+  await update(state);
   return {
     container,
     calls,
-    button: (name: string) =>
-      Array.from(container.querySelectorAll("button")).find(
-        (button) => button.textContent?.trim() === name,
-      ),
+    update,
+    buttons: () => Array.from(container.querySelectorAll("button")),
     close: async () => {
       await act(() => root.unmount());
       container.remove();
@@ -38,92 +36,120 @@ async function render(state: ObserveCredentialRead, available = true) {
   };
 }
 describe("explicit observe authorization control", () => {
-  it("opening shows authorization, person and expiry without granting until a person presses", async () => {
-    const r = await render({
-      metadata: { state: "known", value: AUTH, stale: false },
-      action: { kind: "idle" },
-    });
-    try {
-      expect(r.calls).toEqual([]);
-      expect(r.container.textContent).toContain("Authorized by Ada");
-      expect(r.container.textContent).toContain(new Date(AUTH.expiresAt).toLocaleString());
-      await act(() => r.button("Reauthorize")!.click());
-      await act(() => r.button("Revoke")!.click());
-      expect(r.calls).toEqual(["authorize", "revoke"]);
-    } finally {
-      await r.close();
-    }
-  });
-  it("an unauthorized profile offers an explicit authorization action", async () => {
-    const r = await render({
-      metadata: { state: "known", value: NONE, stale: false },
-      action: { kind: "idle" },
-    });
-    try {
-      expect(r.container.textContent).toContain("Not authorized");
-      expect(r.button("Revoke")).toBeUndefined();
-      await act(() => r.button("Authorize Zerops Control Plane")!.click());
-      expect(r.calls).toEqual(["authorize"]);
-    } finally {
-      await r.close();
-    }
-  });
+  it.each([AUTH, NONE])(
+    "opening Observe status never offers authorization or revocation",
+    async (value) => {
+      const r = await render({ metadata: { state: "known", value, stale: false } });
+      try {
+        expect(r.buttons().map((button) => button.textContent?.trim())).toEqual(["Refresh"]);
+        expect(r.calls).toEqual([]);
+        expect(r.container.textContent).toContain(
+          value.authorized ? "Authorized" : "Not authorized",
+        );
+        if (value.authorized) {
+          expect(r.container.textContent).toContain("Authorized by Ada");
+          expect(r.container.textContent).toContain(new Date(AUTH.expiresAt).toLocaleString());
+        } else {
+          expect(r.container.textContent).not.toContain("Authorized by");
+        }
+        await act(() => r.buttons()[0]!.click());
+        expect(r.calls).toEqual(["read"]);
+      } finally {
+        await r.close();
+      }
+    },
+  );
   it.each([
     {
-      label: "reading",
-      state: { metadata: { state: "reading" }, action: { kind: "idle" } } as ObserveCredentialRead,
+      label: "unread",
+      metadata: { state: "unread" },
       words: "Reading authorization…",
       available: true,
+      buttons: 1,
+      disabled: true,
+    },
+    {
+      label: "reading",
+      metadata: { state: "reading" },
+      words: "Reading authorization…",
+      available: true,
+      buttons: 1,
+      disabled: true,
     },
     {
       label: "unavailable",
-      state: { metadata: { state: "unread" }, action: { kind: "idle" } } as ObserveCredentialRead,
+      metadata: { state: "unread" },
       words: "Observe authorization is unavailable.",
       available: false,
+      buttons: 0,
+      disabled: false,
     },
     {
       label: "refused",
-      state: {
-        metadata: { state: "failed", words: "Not allowed" },
-        action: { kind: "idle" },
-      } as ObserveCredentialRead,
+      metadata: { state: "failed", words: "Not allowed" },
       words: "Not allowed",
       available: true,
+      buttons: 1,
+      disabled: false,
     },
     {
-      label: "busy",
-      state: {
-        metadata: { state: "known", value: NONE, stale: false },
-        action: { kind: "working", verb: "authorize" },
-      } as ObserveCredentialRead,
-      words: "Not authorized",
+      label: "withheld",
+      metadata: { state: "withheld" },
+      words: "You cannot read this authorization.",
       available: true,
+      buttons: 1,
+      disabled: false,
     },
-  ])(
-    "$label never looks authorized and disables authorization",
-    async ({ state, words, available }) => {
-      const r = await render(state, available);
+  ] satisfies ReadonlyArray<{
+    label: string;
+    metadata: ObserveCredentialRead["metadata"];
+    words: string;
+    available: boolean;
+    buttons: number;
+    disabled: boolean;
+  }>)(
+    "$label status preserves uncertainty without offering authority controls",
+    async ({ metadata, words, available, buttons, disabled }) => {
+      const r = await render({ metadata }, available);
       try {
         expect(r.container.textContent).toContain(words);
-        expect(r.button("Authorize Zerops Control Plane")?.disabled).toBe(true);
+        expect(r.container.textContent).not.toContain("Authorized by");
+        expect(r.buttons().length).toBe(buttons);
+        expect(r.buttons().map((button) => button.textContent?.trim())).toEqual(
+          buttons ? ["Refresh"] : [],
+        );
+        if (buttons) expect(r.buttons()[0]!.disabled).toBe(disabled);
         expect(r.calls).toEqual([]);
       } finally {
         await r.close();
       }
     },
   );
-  it("a stale record is labelled last known and uncertain writes retain the way to revoke", async () => {
-    const r = await render({
-      metadata: { state: "known", value: AUTH, stale: true },
-      action: { kind: "unresolved", words: "Outcome unresolved" },
-    });
+  it("stale Observe metadata stays labelled last known and can only be refreshed", async () => {
+    const r = await render({ metadata: { state: "known", value: AUTH, stale: true } });
     try {
-      expect(r.container.textContent).toContain("Last known state");
-      expect(r.container.textContent).toContain("Outcome unresolved");
-      expect(r.button("Reauthorize")?.disabled).toBe(true);
-      expect(r.button("Revoke")?.disabled).toBe(false);
-      await act(() => r.button("Revoke")!.click());
-      expect(r.calls).toEqual(["revoke"]);
+      expect(r.container.textContent).toContain("Authorized · Last known state");
+      expect(r.container.textContent).toContain("Authorized by Ada");
+      expect(r.container.textContent).toContain(new Date(AUTH.expiresAt).toLocaleString());
+      expect(r.buttons().map((button) => button.textContent?.trim())).toEqual(["Refresh"]);
+      await act(() => r.buttons()[0]!.click());
+      expect(r.calls).toEqual(["read"]);
+    } finally {
+      await r.close();
+    }
+  });
+  it("metadata arriving after first paint shows its authorizer and expiry without issuing access", async () => {
+    const r = await render({ metadata: { state: "reading" } });
+    try {
+      expect(r.container.textContent).toContain("Reading authorization…");
+      expect(r.buttons()[0]!.disabled).toBe(true);
+      await r.update({ metadata: { state: "known", value: AUTH, stale: false } });
+      expect(r.container.textContent).not.toContain("Reading authorization…");
+      expect(r.container.textContent).toContain("Authorized by Ada");
+      expect(r.container.textContent).toContain(new Date(AUTH.expiresAt).toLocaleString());
+      expect(r.buttons().map((button) => button.textContent?.trim())).toEqual(["Refresh"]);
+      expect(r.buttons()[0]!.disabled).toBe(false);
+      expect(r.calls).toEqual([]);
     } finally {
       await r.close();
     }
