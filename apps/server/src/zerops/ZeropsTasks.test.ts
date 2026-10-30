@@ -19,6 +19,8 @@ import {
 import { OPENCODE_KEY_PROVIDERS } from "@t3tools/shared/openCodeKeyProviders";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
+import * as Deferred from "effect/Deferred";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Stream from "effect/Stream";
@@ -190,7 +192,12 @@ const rig = (
     /** Each task's own latest run's end, by its task, as the engine's runs hold it. */
     const ownEnds = new Map<string, RunEnd>();
     /** How many times a conversation's view was read. */
-    const reads = { count: 0 };
+    const listed = yield* Deferred.make<void>();
+    const replies: { beforeSendReturn?: (id: ConversationId) => Effect.Effect<void> } = {};
+    const reads: {
+      count: number;
+      beforeReturn?: (held: ConversationView | undefined) => Effect.Effect<void>;
+    } = { count: 0 };
     const engine = Layer.succeed(MateEngine, {
       ...inertMateEngine,
       // A task's latest run: one ended as the test says, or one its sent message opened.
@@ -231,13 +238,15 @@ const rig = (
         views: [...views.values()],
         unread: [...unreadable],
         complete: unreadable.size === 0,
-      })),
+      })).pipe(Effect.tap(() => Deferred.succeed(listed, undefined))),
       conversation: (id) =>
         unreadable.has(id)
           ? Effect.fail(new ViewUnreadable({ conversationId: id }))
-          : Effect.sync(() => {
+          : Effect.gen(function* () {
               reads.count += 1;
-              return views.get(id);
+              const held = views.get(id);
+              if (reads.beforeReturn !== undefined) yield* reads.beforeReturn(held);
+              return held;
             }),
       changes: Stream.fromPubSub(changes),
       // Giving the agent writes the conversation's record, as the engine's does: no run in it yet.
@@ -288,7 +297,9 @@ const rig = (
           );
           const result: CommandResult = { ...accepted, runId: queued.id };
           receipts.set(commandId, result);
-          return Effect.succeed(result);
+          return Effect.succeed(result).pipe(
+            Effect.tap(() => replies.beforeSendReturn?.(conversationId) ?? Effect.void),
+          );
         }),
     });
     const automation = Layer.mock(ZeropsAutomation)({
@@ -418,6 +429,8 @@ const rig = (
       tasks,
       ownEnds,
       reads,
+      listed,
+      replies,
       changes,
       spent,
       running,
@@ -1578,8 +1591,10 @@ describe("a task HQ puts back in line is dropped, and taken again when handed ag
           delivered.flatMap((each) => (each.command._tag === "Send" ? [each.commandId] : [])),
           ["task:task-1", "task:task-1:1"],
         );
+        // The task already has an earlier run. Its fresh native projection
+        // says working, which affirms this re-take without a late literal.
         assert.deepStrictEqual(sent.slice(said, said + 1), [
-          { taskId: "task-1", state: "accepted", conversationId: id },
+          { taskId: "task-1", state: "working", conversationId: id },
         ]);
       }),
   );
@@ -1915,6 +1930,301 @@ describe("a task's report says what it cost and how long it worked", () => {
         workedMs: 200_000,
       });
     }),
+  );
+
+  it.effect(
+    "a new link never replays an older task view after its baseline or loses a newer completion",
+    () =>
+      Effect.gen(function* () {
+        const { tasks, views, reads, move, listed } = yield* rig();
+        yield* Deferred.await(listed);
+        const id = taskConversationId("task-1");
+        const oldRead = yield* Deferred.make<void>();
+        const releaseOld = yield* Deferred.make<void>();
+        const firstSent = yield* Deferred.make<void>();
+        const releaseFirst = yield* Deferred.make<void>();
+        const doneARead = yield* Deferred.make<void>();
+        const workingBRead = yield* Deferred.make<void>();
+        const doneBRead = yield* Deferred.make<void>();
+        const endOfQueue = yield* Deferred.make<void>();
+        const releaseEnd = yield* Deferred.make<void>();
+        const deliveredB = yield* Deferred.make<void>();
+
+        let baselineSent = false,
+          replaying = false;
+        reads.beforeReturn = (held) =>
+          Effect.gen(function* () {
+            if (held?.seq === 1) {
+              yield* Deferred.succeed(oldRead, undefined);
+              yield* Deferred.await(releaseOld);
+            }
+            if (baselineSent && held?.seq === 2) yield* Deferred.succeed(doneARead, undefined);
+            if (baselineSent && held?.seq === 3) yield* Deferred.succeed(workingBRead, undefined);
+            if (baselineSent && held?.seq === 4) yield* Deferred.succeed(doneBRead, undefined);
+            if (!replaying && held?.seq === 5) {
+              yield* Deferred.succeed(endOfQueue, undefined);
+              yield* Deferred.await(releaseEnd);
+            }
+          });
+        const firstRun = run(id, principalOf("task-1"), "running");
+        yield* move(id, { ...view(id, { activeRun: { ...firstRun, startedAt: 0 } }), seq: 1 });
+        yield* Deferred.await(oldRead);
+        const doneA = {
+          ...view(id, {
+            lastEnded: {
+              ...run(id, principalOf("task-1"), "ended", { kind: "completed" }),
+              startedAt: 0,
+              endedAt: 200_000,
+            },
+          }),
+          seq: 2,
+        };
+        // The first list resolves to the new record while an older native read's
+        // response is still in flight. Neither the engine nor its seq goes back.
+        views.set(id, doneA);
+        const sent: Array<MateTaskReport> = [];
+        const link = yield* tasks.open((report) =>
+          Effect.gen(function* () {
+            sent.push(report);
+            if (sent.length === 1) {
+              baselineSent = true;
+              yield* Deferred.succeed(firstSent, undefined);
+              yield* Deferred.await(releaseFirst);
+            }
+            if (report.state === "done" && report.workedMs === 260_000)
+              yield* Deferred.succeed(deliveredB, undefined);
+          }),
+        );
+        yield* Effect.forkScoped(link.run);
+        yield* Deferred.await(firstSent);
+        yield* Deferred.succeed(releaseOld, undefined);
+        yield* move(id, doneA);
+        // This legacy task owns its conversation. A following native read
+        // proves the previous report was published; no shared-copy check runs.
+        yield* Deferred.await(doneARead);
+        yield* move(id, {
+          ...view(id, {
+            activeRun: {
+              ...run(id, principalOf("task-1"), "running", null, 2),
+              startedAt: 300_000,
+            },
+            lastEnded: doneA.lastEnded,
+          }),
+          seq: 3,
+        });
+        yield* Deferred.await(workingBRead);
+        const doneB = {
+          ...view(id, {
+            lastEnded: {
+              ...run(id, principalOf("task-1"), "ended", { kind: "completed" }, 2),
+              startedAt: 300_000,
+              endedAt: 360_000,
+            },
+          }),
+          seq: 4,
+        };
+        yield* move(id, doneB);
+        yield* Deferred.await(doneBRead);
+        yield* move(id, { ...doneB, seq: 5 });
+        yield* Deferred.await(endOfQueue);
+        replaying = true;
+        yield* Deferred.succeed(releaseFirst, undefined);
+        yield* Deferred.await(deliveredB);
+        assert.deepStrictEqual(
+          sent.map(({ state }) => state),
+          ["done", "working", "done"],
+        );
+        yield* Deferred.succeed(releaseEnd, undefined);
+      }),
+  );
+
+  it.effect(
+    "a recorded task already completed before its command reply reports its actual end",
+    () =>
+      Effect.gen(function* () {
+        const { link, replies, views, sent } = yield* rig();
+        replies.beforeSendReturn = (id) =>
+          Effect.sync(() => {
+            const held = views.get(id);
+            assert.isDefined(held?.activeRun);
+            if (held?.activeRun == null) return;
+            views.set(id, {
+              ...held,
+              seq: held.seq + 1,
+              activeRun: null,
+              lastEnded: {
+                ...held.activeRun,
+                state: "ended",
+                startedAt: 0,
+                endedAt: 100,
+                end: { kind: "completed" },
+                endSource: "agent",
+              },
+            });
+          });
+        yield* link.receive(task("task-1"));
+        assert.deepStrictEqual(
+          sent.map(({ state }) => state),
+          ["done"],
+        );
+      }),
+  );
+
+  it.effect("forced task replies respect unchanged newer views and a new conversation owner", () =>
+    Effect.forEach(["unchanged", "owner"] as const, (mode) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { tasks, views, reads, move, listed } = yield* rig();
+          yield* Deferred.await(listed);
+          const id = taskConversationId("task-1");
+          const done = {
+            ...view(id, {
+              lastEnded: {
+                ...run(id, principalOf("task-1"), "ended", { kind: "completed" }),
+                startedAt: 0,
+                endedAt: 200_000,
+              },
+            }),
+            seq: 2,
+          };
+          views.set(id, done);
+          const firstSent = yield* Deferred.make<void>();
+          const advanced = yield* Deferred.make<void>();
+          const readNewer = yield* Deferred.make<void>();
+          const oldRead = yield* Deferred.make<void>();
+          const releaseOld = yield* Deferred.make<void>();
+          const sent: Array<MateTaskReport> = [];
+          const link = yield* tasks.open((report) =>
+            Effect.gen(function* () {
+              sent.push(report);
+              if (sent.length === 1) yield* Deferred.succeed(firstSent, undefined);
+              if (report.taskId === "task-2" || report.conversationId === TASKS)
+                yield* Deferred.succeed(advanced, undefined);
+            }),
+          );
+          yield* Effect.forkScoped(link.run);
+          yield* Deferred.await(firstSent);
+          reads.beforeReturn = (held) =>
+            Effect.gen(function* () {
+              if (held?.conversationId === id && held.seq === 3) {
+                yield* Deferred.succeed(oldRead, undefined);
+                yield* Deferred.await(releaseOld);
+              }
+              if (held?.conversationId === id && held.seq === 4)
+                yield* Deferred.succeed(readNewer, undefined);
+            });
+          views.set(id, {
+            ...view(id, {
+              activeRun: { ...run(id, principalOf("task-1"), "running"), startedAt: 0 },
+            }),
+            seq: 3,
+          });
+          const forced = yield* Effect.forkScoped(link.receive(task("task-1")));
+          yield* Deferred.await(oldRead);
+          if (mode === "unchanged") {
+            yield* move(id, { ...done, seq: 4 });
+            yield* Deferred.await(readNewer);
+            // A second task's send is a receipt that the same PubSub consumer
+            // already admitted the unchanged seq4 of the first task.
+            const other = taskConversationId("task-2");
+            yield* move(
+              other,
+              view(other, {
+                lastEnded: run(other, principalOf("task-2"), "ended", { kind: "completed" }),
+              }),
+            );
+          } else {
+            views.delete(id);
+            yield* move(TASKS, {
+              ...view(TASKS, {
+                activeRun: { ...run(TASKS, principalOf("task-1"), "running"), startedAt: 0 },
+              }),
+              seq: 1,
+            });
+          }
+          yield* Deferred.await(advanced);
+          yield* Deferred.succeed(releaseOld, undefined);
+          yield* Fiber.join(forced);
+          assert.deepStrictEqual(
+            sent
+              .filter(({ taskId }) => taskId === "task-1")
+              .map(({ state, conversationId }) => ({ state, conversationId })),
+            mode === "unchanged"
+              ? [{ state: "done", conversationId: id }]
+              : [
+                  { state: "done", conversationId: id },
+                  { state: "working", conversationId: TASKS },
+                ],
+          );
+        }),
+      ),
+    ),
+  );
+
+  it.effect("a queued same-view task report cannot undo a later stop or return to the queue", () =>
+    Effect.forEach(["stop", "drop"] as const, (mode) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { tasks, views, reads, move, spent, listed } = yield* rig();
+          yield* Deferred.await(listed);
+          const id = taskConversationId("task-1");
+          const held = view(id, {
+            activeRun: { ...run(id, principalOf("task-1"), "running"), startedAt: 0 },
+          });
+          views.set(id, held);
+          const firstSent = yield* Deferred.make<void>();
+          const releaseFirst = yield* Deferred.make<void>();
+          const costRead = yield* Deferred.make<void>();
+          const queued = yield* Deferred.make<void>();
+          const releaseQueued = yield* Deferred.make<void>();
+          const controlSent = yield* Deferred.make<void>();
+          const sent: Array<MateTaskReport> = [];
+          const link = yield* tasks.open((report) =>
+            Effect.gen(function* () {
+              sent.push(report);
+              if (sent.length === 1) {
+                yield* Deferred.succeed(firstSent, undefined);
+                yield* Deferred.await(releaseFirst);
+              }
+              if (report.taskId === "task-2") yield* Deferred.succeed(controlSent, undefined);
+            }),
+          );
+          yield* Effect.forkScoped(link.run);
+          yield* Deferred.await(firstSent);
+          let nativeReads = 0;
+          reads.beforeReturn = (value) =>
+            Effect.gen(function* () {
+              if (value?.conversationId !== id) return;
+              nativeReads++;
+              if (nativeReads === 1) yield* Deferred.succeed(costRead, undefined);
+              if (nativeReads === 2) {
+                yield* Deferred.succeed(queued, undefined);
+                yield* Deferred.await(releaseQueued);
+              }
+            });
+          // Usage changes the report without changing this native view's seq.
+          yield* spent(id, "turn-1", 1);
+          yield* Deferred.await(costRead);
+          const other = taskConversationId("task-2");
+          yield* move(
+            other,
+            view(other, {
+              lastEnded: run(other, principalOf("task-2"), "ended", { kind: "completed" }),
+            }),
+          );
+          yield* move(id, held);
+          yield* Deferred.await(queued);
+          yield* link.stop("task-1", "The source stopped this task.", mode === "drop");
+          yield* Deferred.succeed(releaseFirst, undefined);
+          yield* Deferred.await(controlSent);
+          assert.deepStrictEqual(
+            sent.filter(({ taskId }) => taskId === "task-1").map(({ state }) => state),
+            mode === "stop" ? ["working", "stopped"] : ["working"],
+          );
+          yield* Deferred.succeed(releaseQueued, undefined);
+        }),
+      ),
+    ),
   );
 
   it.effect("a run that just ended counts in the report a link opened before its read says", () =>

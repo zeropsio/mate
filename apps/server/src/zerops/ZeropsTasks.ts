@@ -81,7 +81,7 @@ import {
   type MateTaskCommitAuthor,
   type MateTaskLimits,
   type MateTaskMessage,
-  type MateTaskReport,
+  MateTaskReport,
   type Principal,
   type RunEnd,
   isMateTaskConversation,
@@ -98,6 +98,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
+import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 
@@ -531,6 +532,23 @@ export interface TaskChange {
   readonly branch: string;
 }
 
+const encodeTaskReport = Schema.encodeSync(Schema.fromJsonString(MateTaskReport));
+
+const taskControl = (entry: TaskEntry | undefined) => ({
+  requeued: entry?.requeued ?? 0,
+  retaken: entry?.retaken ?? 0,
+  stopped: entry?.stopped,
+  limitHit: entry?.limitHit,
+});
+
+// Only native-view projections have source order. Admission/control answers
+// without a conversation stay explicit facts, not invented view revisions.
+interface TaskObservation {
+  readonly report: MateTaskReport;
+  readonly control: ReturnType<typeof taskControl>;
+  readonly source?: Pick<ConversationView, "conversationId" | "seq">;
+}
+
 /** One link's side of the tasks: the frames it hears, and the reports it sends while it lives. */
 export interface TaskLink {
   /** HQ's `task` frame: taken, refused, or re-reported. */
@@ -578,7 +596,7 @@ export const make = Effect.gen(function* () {
   // One frame at a time: two told at once never both pass the one-task check.
   const taking = yield* Semaphore.make(1);
   // How each task stands once its conversation moved, for every link that follows them.
-  const reports = yield* PubSub.unbounded<MateTaskReport>();
+  const reports = yield* PubSub.unbounded<TaskObservation>();
   // The task conversations that moved since they were last read: a burst of moves (a streaming
   // answer) is read once, one read at a time.
   const moved = yield* Queue.unbounded<ConversationId>();
@@ -683,7 +701,14 @@ export const make = Effect.gen(function* () {
       const report = taskReportOf(taskId, view, own, entry, shared && taskId === current);
       return report === undefined
         ? undefined
-        : { ...report, ...taskSpendOf(taskId, entry, view, inFlightOf(taskId, entry, "seen")) };
+        : ({
+            report: {
+              ...report,
+              ...taskSpendOf(taskId, entry, view, inFlightOf(taskId, entry, "seen")),
+            },
+            source: { conversationId: view.conversationId, seq: view.seq },
+            control: taskControl(entry),
+          } satisfies TaskObservation);
     });
 
   const principalOf = (taskId: string): Principal => ({ kind: "task", taskId });
@@ -1028,11 +1053,14 @@ export const make = Effect.gen(function* () {
       // Stopped before it was taken: it stays stopped.
       const kept = yield* ledger.entry(task.id);
       if (kept?.stopped !== undefined) {
-        return Option.some<MateTaskReport>({
-          taskId: task.id,
-          state: "stopped",
-          detail: kept.stopped,
-          ...taskSpendOf(task.id, kept, undefined),
+        return Option.some<TaskObservation>({
+          control: taskControl(kept),
+          report: {
+            taskId: task.id,
+            state: "stopped",
+            detail: kept.stopped,
+            ...taskSpendOf(task.id, kept, undefined),
+          },
         });
       }
       // Taken before and past its limits (its last turn's cost came in as HQ put it back in
@@ -1055,17 +1083,23 @@ export const make = Effect.gen(function* () {
             limitHit: reached,
             ...(again === undefined ? {} : { retaken: again }),
           }));
-          return Option.some<MateTaskReport>({
-            taskId: task.id,
-            state: "failed",
-            conversationId,
-            detail: limitWords(reached, limits),
-            ...taskSpendOf(task.id, limited, held, inFlightOf(task.id, limited, "seen")),
+          return Option.some<TaskObservation>({
+            control: taskControl(limited),
+            report: {
+              taskId: task.id,
+              state: "failed",
+              conversationId,
+              detail: limitWords(reached, limits),
+              ...taskSpendOf(task.id, limited, held, inFlightOf(task.id, limited, "seen")),
+            },
           });
         }
       }
       const refused = (detail: string) =>
-        Option.some<MateTaskReport>({ taskId: task.id, state: "declined", detail });
+        Option.some<TaskObservation>({
+          control: taskControl(kept),
+          report: { taskId: task.id, state: "declined", detail },
+        });
       if (!(yield* automation.automated)) return refused(REFUSALS.notAutomated);
       if (!(yield* automation.keySet)) return refused(REFUSALS.noKey);
       const openCode = (yield* instances.providers).find(
@@ -1160,18 +1194,27 @@ export const make = Effect.gen(function* () {
       if (again !== undefined)
         yield* ledger.update(task.id, (entry) => ({ ...entry, retaken: again }));
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
-      return Option.some<MateTaskReport>({
-        taskId: task.id,
-        state: "accepted",
-        conversationId,
-        ...(detail === "" ? {} : { detail }),
-        ...taskSpendOf(task.id, yield* ledger.entry(task.id), undefined),
-      });
+      const now = yield* engine.conversation(conversationId);
+      const observation =
+        now === undefined || now.seq < result.seq ? undefined : yield* reportFor(task.id, now);
+      return Option.fromUndefinedOr(
+        observation === undefined || detail === ""
+          ? observation
+          : {
+              ...observation,
+              report: {
+                ...observation.report,
+                detail: [observation.report.detail, detail]
+                  .filter((part) => part !== undefined)
+                  .join(" "),
+              },
+            },
+      );
     }).pipe(
       taking.withPermit,
       Effect.catchTags({
-        ViewUnreadable: () => Effect.succeed(Option.none<MateTaskReport>()),
-        DeliveryUnrecorded: () => Effect.succeed(Option.none<MateTaskReport>()),
+        ViewUnreadable: () => Effect.succeed(Option.none<TaskObservation>()),
+        DeliveryUnrecorded: () => Effect.succeed(Option.none<TaskObservation>()),
       }),
     );
 
@@ -1184,7 +1227,8 @@ export const make = Effect.gen(function* () {
     Effect.gen(function* () {
       const { conversationId, held } = yield* placeOf(taskId);
       // Not a task this Mate took: nothing to steer.
-      if (held === undefined || !(yield* ranIn(taskId, held))) return Option.none<MateTaskReport>();
+      if (held === undefined || !(yield* ranIn(taskId, held)))
+        return Option.none<TaskObservation>();
       // Why its work went on where it was, where a working copy could not be put on its change.
       let asItWas: string | undefined;
       let onItsChange = false;
@@ -1252,14 +1296,16 @@ export const make = Effect.gen(function* () {
       const now = (yield* engine.conversation(conversationId)) ?? held;
       const report = yield* reportFor(taskId, now);
       return Option.fromUndefinedOr(
-        report === undefined || asItWas === undefined ? report : { ...report, detail: asItWas },
+        report === undefined || asItWas === undefined
+          ? report
+          : { ...report, report: { ...report.report, detail: asItWas } },
       );
     }).pipe(
       // One frame at a time with the takes: a follow-up's working copy never moves under one.
       taking.withPermit,
       Effect.catchTags({
-        ViewUnreadable: () => Effect.succeed(Option.none<MateTaskReport>()),
-        DeliveryUnrecorded: () => Effect.succeed(Option.none<MateTaskReport>()),
+        ViewUnreadable: () => Effect.succeed(Option.none<TaskObservation>()),
+        DeliveryUnrecorded: () => Effect.succeed(Option.none<TaskObservation>()),
       }),
     );
 
@@ -1271,17 +1317,20 @@ export const make = Effect.gen(function* () {
       );
       const { held } = yield* placeOf(taskId);
       if (held === undefined || !(yield* ranIn(taskId, held))) {
-        return Option.some<MateTaskReport>({
-          taskId,
-          state: "stopped",
-          detail: reason,
-          ...taskSpendOf(taskId, entry, undefined),
+        return Option.some<TaskObservation>({
+          control: taskControl(entry),
+          report: {
+            taskId,
+            state: "stopped",
+            detail: reason,
+            ...taskSpendOf(taskId, entry, undefined),
+          },
         });
       }
       yield* enforce(taskId, held);
       return Option.fromUndefinedOr(yield* reportFor(taskId, held));
     }).pipe(
-      Effect.catchTags({ ViewUnreadable: () => Effect.succeed(Option.none<MateTaskReport>()) }),
+      Effect.catchTags({ ViewUnreadable: () => Effect.succeed(Option.none<TaskObservation>()) }),
     );
 
   /**
@@ -1326,17 +1375,58 @@ export const make = Effect.gen(function* () {
     Effect.sync(() => {
       // What this link last said of each task: a report is sent again only once it moved.
       const said = new Map<string, string>();
-      const tell = (report: MateTaskReport | undefined, always = false) => {
-        if (report === undefined) return Effect.void;
-        const key = JSON.stringify(report);
-        if (!always && said.get(report.taskId) === key) return Effect.void;
-        said.set(report.taskId, key);
-        return send(report);
-      };
+      const sources = new Map<
+        string,
+        { requeued: number; retaken: number; view?: NonNullable<TaskObservation["source"]> }
+      >();
+      const tell = (observation: TaskObservation | undefined, always = false) =>
+        Effect.gen(function* () {
+          if (observation === undefined) return;
+          const { report, source, control } = observation;
+          if (source !== undefined) {
+            const owner = yield* placeOf(report.taskId);
+            if (owner.held === undefined || owner.conversationId !== source.conversationId) return;
+          }
+          // Recheck control after the native read, immediately before admitting
+          // and sending this observation. A stop/drop is not a view revision.
+          const entry = yield* ledger.entry(report.taskId);
+          const currentControl = taskControl(entry);
+          if (
+            control.requeued !== currentControl.requeued ||
+            control.retaken !== currentControl.retaken ||
+            control.stopped !== currentControl.stopped ||
+            control.limitHit !== currentControl.limitHit
+          )
+            return;
+          // A current offer may be declined while the previous take is dropped.
+          // It does not resume that work. Other dropped observations stay silent.
+          if (droppedIn(entry) && !(source === undefined && report.state === "declined")) return;
+          let lineage = sources.get(report.taskId);
+          if (
+            lineage === undefined ||
+            lineage.requeued !== control.requeued ||
+            lineage.retaken !== control.retaken
+          ) {
+            lineage = { requeued: control.requeued, retaken: control.retaken };
+            sources.set(report.taskId, lineage);
+            said.delete(report.taskId);
+          }
+          if (source !== undefined) {
+            const held = lineage.view;
+            if (held?.conversationId === source.conversationId && source.seq < held.seq) return;
+            // Even unchanged words cover this new source revision. A delayed
+            // older view must not pass just because this one needed no Write.
+            lineage.view = source;
+          }
+          const key = encodeTaskReport(report);
+          if (!always && said.get(report.taskId) === key) return;
+          said.set(report.taskId, key);
+          yield* send(report);
+        }).pipe(Effect.catchTags({ ViewUnreadable: () => Effect.void }));
       // A frame told again is answered again: HQ asks because it has not heard.
       const answer = Option.match({
         onNone: () => Effect.void,
-        onSome: (report: MateTaskReport) => tell(report, true),
+        onSome: (report: TaskObservation) => tell(report, true),
       });
       const first = latest.pipe(
         Effect.flatMap(
