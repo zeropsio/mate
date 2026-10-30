@@ -3,7 +3,7 @@ import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { classifyHqCall } from "@t3tools/client-runtime/data";
-import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
+import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
 import { accountHqApi, configuredHq, useOfficialHq, type HqStanding } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -152,38 +152,6 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 
     expect(presented).toEqual(["access", "access"]);
   });
-
-  it.each(["door", "renewal"] as const)(
-    "the verified native account cannot change ZCP authorizer during HQ %s",
-    async (phase) => {
-      const client = new ZeropsApiClient();
-      client.restoreSession({ accessToken: "original-person-access" });
-      const api = accountHqApi(client, "org-1", HQ);
-      if (phase === "renewal") {
-        lifetimeMs = 10 * 60_000;
-        await api.structure();
-      }
-      const before = globalThis.fetch;
-      const started = Promise.withResolvers<void>();
-      const release = Promise.withResolvers<void>();
-      vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (new URL(String(input)).pathname === "/api/door") {
-          started.resolve();
-          await release.promise;
-        }
-        return before(input, init);
-      });
-      const establishing = api.establishZcpAuthorization?.("source-project", {
-        keyHash: "a".repeat(64),
-      });
-      await started.promise;
-      // Native session adoption precedes the renderer learning which person now owns the client.
-      client.restoreSession({ accessToken: "next-person-access" });
-      release.resolve();
-      await expect(establishing).rejects.toMatchObject({ code: "account_changed" });
-      expect(calls.filter((call) => call.path.endsWith("/zcp-authorization"))).toEqual([]);
-    },
-  );
 
   it("a sign-out revokes HQ's session and forgets it", async () => {
     await accountHqApi(load().client, "org-1", HQ).structure();

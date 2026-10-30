@@ -1936,24 +1936,18 @@ export class ZeropsApiClient {
     },
     signal?: AbortSignal,
     beforeWrite?: () => Promise<void>,
-    /** Establish the actual credential's person context before handing it to its container. */
-    onKeyEstablished?: (context: {
-      readonly projectId: string;
-      readonly keyHash: string;
-    }) => Promise<void>,
   ): Promise<{
     readonly serviceName: string;
     readonly imported: boolean;
     /** The container's creation process Zerops answered the import with, where it named one. */
     readonly processId?: string;
   }> {
-    const generation = this.#generation;
     const services = await this.listProjectServices(input.projectId, signal);
-    this.#assertGeneration(generation);
     const container = mateContainerOf(services);
     if (container.kind === "several") throw new Error(severalMatesLine(container.names));
     if (container.kind === "one") return { serviceName: container.service.name, imported: false };
 
+    const generation = this.#generation;
     const grants: ReadonlyArray<ZeropsProjectGrant> = [
       { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
     ];
@@ -2030,17 +2024,6 @@ export class ZeropsApiClient {
         signal,
         beforeWrite,
       );
-    }
-
-    this.#assertGeneration(generation);
-    if (onKeyEstablished !== undefined) {
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-      this.#assertGeneration(generation);
-      const keyHash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
-      await onKeyEstablished({ projectId: input.projectId, keyHash });
-      this.#assertGeneration(generation);
     }
 
     const serviceName = nextZcpServiceName(services.map((service) => service.name));
