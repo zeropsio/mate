@@ -808,3 +808,6 @@ export {
   type ReleaseReviewRequest,
 } from "./families/hqReleaseReview.ts";
 export { hqReleaseReview, type HqReleaseReview } from "./projections/hqReleaseReview.ts";
+
+export { makeObserveCredential } from "./adapters/hqObserveCredential.ts";
+export { observeCredential, type ObserveCredentialRead } from "./projections/observeCredential.ts";

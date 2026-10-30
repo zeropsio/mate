@@ -1,3 +1,4 @@
+import { ObserveCredentialControl } from "./ObserveCredentialControl";
 /**
  * The MCP tab: the servers this Mate's coding agents can call, one row each, and
  * Add a server, whose form opens when pressed.
@@ -78,10 +79,19 @@ export function McpPanel(props: {
     environmentId: props.environmentId,
     threadId: props.threadId,
   });
-  return <McpPanelBody act={act} driver={props.driver} onRetry={refresh} state={state} />;
+  return (
+    <McpPanelBody
+      act={act}
+      driver={props.driver}
+      onRetry={refresh}
+      state={state}
+      observe={<ObserveCredentialControl environmentId={props.environmentId} />}
+    />
+  );
 }
 
 export function McpPanelBody(props: {
+  readonly observe?: ReactNode;
   readonly state: McpTabState;
   readonly driver: ProviderDriverKind | null;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
@@ -138,6 +148,8 @@ export function McpPanelBody(props: {
             ))}
           </ul>
         )}
+
+        {props.observe}
 
         {state.list === null ? null : (
           <McpAddServer

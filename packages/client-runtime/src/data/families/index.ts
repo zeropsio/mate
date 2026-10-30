@@ -1,3 +1,7 @@
+import {
+  hqObserveCredentialFamily,
+  hqObserveCredentialRequestFamily,
+} from "./hqObserveCredential.ts";
 import { hqReleaseReviewFamily } from "./hqReleaseReview.ts";
 import { agentUsageFamily } from "./agentUsage.ts";
 import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
@@ -139,6 +143,8 @@ export const FAMILIES = defineFamilies([
 
   mateArchiveFamily,
   mateVcsFamily,
+  hqObserveCredentialFamily,
+  hqObserveCredentialRequestFamily,
   hqGitCredentialsFamily,
   hqGitCredentialRequestFamily,
   hqAiKeysFamily,

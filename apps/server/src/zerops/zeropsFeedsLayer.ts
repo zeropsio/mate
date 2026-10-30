@@ -46,6 +46,7 @@ import { ZEROPS_WORKSPACE_ROOT } from "./ZeropsRepositorySource.ts";
 import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
+import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFile.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
@@ -377,6 +378,7 @@ const liveLayer = Layer.mergeAll(
   Layer.provideMerge(ZeropsConnectionsLive),
   // The Mate's Git credential file: written by the link, read by the setup's git step.
   Layer.provide(ZeropsGitCredentialFileModule.layer),
+  Layer.provide(ZeropsObserveCredentialFileModule.layer),
   // Who signed each login in, as this server saw it: one store, written by the login walker
   // and read by the gate, the feeds, the setup and the link to HQ.
   Layer.provide(ZeropsSignInsModule.layer),
