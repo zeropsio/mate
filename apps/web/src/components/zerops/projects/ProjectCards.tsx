@@ -61,6 +61,7 @@ import { comingMateLine, projectRowLine, stopLine } from "./projectsView.logic";
 import { ProjectPageSpend, ProjectSpendSection } from "./ProjectSpend";
 import { ChangeRow } from "./ChangeRow";
 import { ProjectPageHistory } from "./ProjectHistory";
+import { ProjectLifecycle } from "./ProjectLifecycle";
 import { spendProjectIds } from "./projectSpend.logic";
 import type {
   ProjectsFlowGroup,
@@ -858,21 +859,59 @@ export function ProjectPage<T>({
 }) {
   const { group, flow } = entry;
   const spendIds = useMemo(() => spendProjectIds(flow), [flow]);
+  const [view, setView] = useState<"overview" | "lifecycle">("overview");
   return (
-    <div className="ov-page" data-zerops-surface="project-page">
-      <ProjectCard
-        entry={entry}
-        focused={false}
-        page={{ onAddMate, addMateWhy, people }}
-        props={props}
-      />
-      {/* Its spend and its History are sections of the column, which the page's flow alone can
+    <div className="flex min-w-0 flex-col gap-4" data-zerops-surface="project-page">
+      <nav aria-label="Project view" className="flex gap-2">
+        <Button
+          aria-pressed={view === "overview"}
+          variant={view === "overview" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setView("overview")}
+        >
+          Overview
+        </Button>
+        <Button
+          aria-pressed={view === "lifecycle"}
+          variant={view === "lifecycle" ? "secondary" : "ghost"}
+          size="sm"
+          onClick={() => setView("lifecycle")}
+        >
+          Lifecycle
+        </Button>
+      </nav>
+      {view === "lifecycle" ? (
+        <>
+          <ProjectLifecycle
+            entry={entry}
+            props={props}
+            mates={<CardMates entry={entry} props={props} onAdd={onAddMate} addWhy={addMateWhy} />}
+            renderPlace={(line) =>
+              props.renderPlacePanel?.(entry, line) ?? <PlainPanel line={line} />
+            }
+            renderSetUp={(line, action) => <SetUpPanel line={line} onSetUp={action} />}
+          />
+          <StopReads entry={entry} />
+        </>
+      ) : (
+        <div className="ov-page">
+          <ProjectCard
+            entry={entry}
+            focused={false}
+            page={{ onAddMate, addMateWhy, people }}
+            props={props}
+          />
+          {/* Its spend and its History are sections of the column, which the page's flow alone can
           name the parts of. */}
-      <ProjectPageSpend value={<ProjectSpendSection appId={group.groupId} projectIds={spendIds} />}>
-        <ProjectPageHistory value={props.renderHistory?.(entry) ?? null}>
-          <div className="ov-page-aside">{aside}</div>
-        </ProjectPageHistory>
-      </ProjectPageSpend>
+          <ProjectPageSpend
+            value={<ProjectSpendSection appId={group.groupId} projectIds={spendIds} />}
+          >
+            <ProjectPageHistory value={props.renderHistory?.(entry) ?? null}>
+              <div className="ov-page-aside">{aside}</div>
+            </ProjectPageHistory>
+          </ProjectPageSpend>
+        </div>
+      )}
     </div>
   );
 }

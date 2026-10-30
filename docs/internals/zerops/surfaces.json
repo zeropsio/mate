@@ -1326,7 +1326,8 @@
         "apps/web/src/components/zerops/chief/ChiefPage.tsx",
         "apps/web/src/components/zerops/chief/ChiefOverviewButton.tsx",
         "apps/web/src/components/zerops/chief/SidebarChiefRow.tsx",
-        "apps/web/src/components/zerops/chief/SidebarChiefTop.tsx"
+        "apps/web/src/components/zerops/chief/SidebarChiefTop.tsx",
+        "apps/web/src/components/zerops/projects/ProjectLifecycle.tsx"
       ],
       "entryPoints": [
         {
@@ -1535,7 +1536,9 @@
         "packages/client-runtime/src/zerops/hq/menuRows.test.ts",
         "apps/web/src/zerops/useAccountVoice.test.ts",
         "packages/client-runtime/src/data/demand.test.ts",
-        "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx"
+        "apps/web/src/components/zerops/ZeropsReadFailure.test.tsx",
+        "apps/web/src/components/zerops/projects/ProjectLifecycle.test.tsx",
+        "apps/web/src/components/zerops/projects/lifecycle.logic.test.ts"
       ],
       "captures": []
     },

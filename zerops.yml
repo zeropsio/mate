@@ -101,10 +101,7 @@ zerops:
         - apps/web/~dist
       envVariables:
         VITE_HOSTED_APP_CHANNEL: latest
-        # PLACEHOLDER: the staging web service's own origin, filled in once
-        # that service exists. The channel above already makes the build
-        # hosted-static; this only names its canonical origin.
-        VITE_HOSTED_APP_URL: https://staging-web-origin-placeholder.invalid
+        VITE_HOSTED_APP_URL: https://web-31d9.prg1.zerops.app
         VITE_HQ_ORIGIN: https://hq-31d9-8080.prg1.zerops.app
         VITE_ZEROPS_SIGN_IN: device-login
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
