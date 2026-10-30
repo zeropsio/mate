@@ -454,6 +454,115 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     setupRuntimesYaml: "services:\n  - hostname: appdev\n",
   };
 
+  it.each(["minted", "regenerated"] as const)(
+    "establishes the actual $0 key authorization before importing, carrying only project and hash",
+    async (kind) => {
+      const { client, requests } = platformClient({
+        ...(kind === "regenerated"
+          ? {
+              tokens: [
+                {
+                  id: "earlier",
+                  name: "zcp-Acme Docs - Ada",
+                  roleCode: "NO_ACCESS",
+                  projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+                  createdByUser: { id: "delegating-creator" },
+                },
+              ],
+            }
+          : {}),
+      });
+      const seen: unknown[] = [];
+      const result = await client.importDevelopmentContainer(
+        INPUT,
+        undefined,
+        undefined,
+        async (context: { readonly projectId: string; readonly keyHash: string }) => {
+          expect(importOf(requests)).toBeUndefined();
+          expect(
+            writesOf(requests).some((request) =>
+              request.includes(kind === "minted" ? "/integration-token" : "/regenerate"),
+            ),
+          ).toBe(true);
+          seen.push(context);
+        },
+      );
+      expect(seen).toEqual([
+        {
+          projectId: "project-9",
+          keyHash:
+            kind === "minted"
+              ? "352d21841a40a47209ac2050481884c9b9a5c5c20224074c8534a45b25dd58e9"
+              : "afea47065b3ea2d4ee30a63079419657b79f6238ea1811017e05306753211501",
+        },
+      ]);
+      expect(result.imported).toBe(true);
+    },
+  );
+
+  it("authorization refusal stops the new container import without retry or exposing its key", async () => {
+    const { client, requests } = platformClient({});
+    let calls = 0;
+    await expect(
+      client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+        calls++;
+        throw new Error("HQ refused ZCP authorization");
+      }),
+    ).rejects.toThrow("HQ refused ZCP authorization");
+    expect(calls).toBe(1);
+    expect(importOf(requests)).toBeUndefined();
+  });
+
+  it("an existing container does not establish or replace its authorizer", async () => {
+    const { client, requests } = platformClient({
+      services: [
+        { id: "svc", name: "zcp", serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" } },
+      ],
+    });
+    let calls = 0;
+    expect(
+      await client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+        calls++;
+      }),
+    ).toEqual({ serviceName: "zcp", imported: false });
+    expect(calls).toBe(0);
+    expect(writesOf(requests)).toEqual([]);
+  });
+
+  it("a native account ending while its key hash is computed cannot establish authorization", async () => {
+    const { client, requests } = platformClient({});
+    const digest = crypto.subtle.digest.bind(crypto.subtle);
+    const hashing = vi.spyOn(crypto.subtle, "digest").mockImplementationOnce((algorithm, data) => {
+      client.forgetSession();
+      return digest(algorithm, data);
+    });
+    let calls = 0;
+    try {
+      await expect(
+        client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+          calls++;
+        }),
+      ).rejects.toThrow();
+      expect(calls).toBe(0);
+      expect(importOf(requests)).toBeUndefined();
+    } finally {
+      hashing.mockRestore();
+    }
+  });
+
+  it("a native account ending during authorization cannot import the established key", async () => {
+    const { client, requests } = platformClient({});
+    let calls = 0;
+    await expect(
+      client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+        calls++;
+        client.forgetSession();
+      }),
+    ).rejects.toThrow();
+    expect(calls).toBe(1);
+    expect(importOf(requests)).toBeUndefined();
+  });
+
   // ADR 0003: a Mate's key holds its own project; it reads nothing of its application's others.
   it("mints the key with its own project and nothing more, then imports the container holding it", async () => {
     const { client, requests } = platformClient({});

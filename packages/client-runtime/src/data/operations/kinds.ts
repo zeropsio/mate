@@ -1,4 +1,3 @@
-import { authorizeObserveCredential, revokeObserveCredential } from "./hqObserveCredential.ts";
 import { HQ_GIT_TARGET_KINDS } from "./hqGitTargets.ts";
 import { creationPress } from "./creationPress.ts";
 import { issueGitCredential, revokeGitCredential } from "./hqGitCredentials.ts";
@@ -69,8 +68,6 @@ export function defineOperationKinds<const Kinds extends ReadonlyArray<Registere
 export const OPERATION_KINDS = defineOperationKinds([
   creationPress,
   ...HQ_GIT_TARGET_KINDS,
-  authorizeObserveCredential,
-  revokeObserveCredential,
   issueGitCredential,
   revokeGitCredential,
   ...HQ_AUTOMATION_KINDS,

@@ -548,10 +548,13 @@ export interface HqApi {
   /** The repository and its code are deleted from Mate (`DELETE /api/apps/:appId/repos/:repo`). */
   readonly deleteRepo?: (appId: string, repo: string) => Promise<void>;
   /** The person's active Git password metadata; passwords are returned only on issue. */
-  /** Reads metadata only; authority changes require an explicit person's action. */
+  /** Reads metadata only; provisioning records authority separately. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
-  readonly authorizeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
-  readonly revokeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
+  /** Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate. */
+  readonly establishZcpAuthorization?: (
+    projectId: string,
+    context: { readonly keyHash?: string },
+  ) => Promise<void>;
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
   readonly issueGitCredential: (appId: string) => Promise<GitCredential>;
   readonly revokeGitCredential: (appId: string, id: string) => Promise<void>;
@@ -1783,22 +1786,16 @@ export function makeHqApi(input: {
       decoded(ObserveCredential)(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
       ),
-    authorizeObserveCredential: async (projectId) =>
-      decoded(ObserveCredential)(
-        await authorized(
-          `/api/mates/${encodeURIComponent(projectId)}/observe-credential`,
-          { method: "POST" },
-          true,
-        ),
-      ),
-    revokeObserveCredential: async (projectId) =>
-      decoded(ObserveCredential)(
-        await authorized(
-          `/api/mates/${encodeURIComponent(projectId)}/observe-credential`,
-          { method: "DELETE" },
-          true,
-        ),
-      ),
+    establishZcpAuthorization: async (projectId, context) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
+        {
+          method: "POST",
+          body: JSON.stringify(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
+        },
+        true,
+      );
+    },
     gitCredentials: async (appId) =>
       (
         await readGitCredentialList(
