@@ -12,6 +12,7 @@ import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
 import { ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
+import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
   makeInMemoryProjectTagLocks,
@@ -103,7 +104,9 @@ type ZeropsOperationsClient = Pick<
 >;
 
 export function makeZeropsExecutor(input: {
-  readonly client: ZeropsOperationsClient;
+  readonly client: ZeropsOperationsClient & Pick<ZeropsApiClient, "accountEpoch">;
+  /** Capture this operation's HQ/person before native credential establishment can yield. */
+  readonly hqApiOf: (orgId: string) => Pick<HqApi, "establishZcpAuthorization"> | null;
   readonly viewerOf: (orgId: string) => ZeropsOrganization | undefined;
   readonly active: () => boolean;
   readonly readDetail: (demand: DetailDemand) => Promise<boolean>;
@@ -375,6 +378,19 @@ export function makeZeropsExecutor(input: {
         if (Result.isFailure(answer)) throw new ZeropsWriteNotSent(answer.failure);
       };
       const source = input.client;
+      const generation = source.accountEpoch;
+      const establish =
+        intent.kind === "import-container"
+          ? input.hqApiOf(intent.orgId)?.establishZcpAuthorization
+          : undefined;
+      const checkCredentialAccount = async () => {
+        await check();
+        if (source.accountEpoch !== generation)
+          throw new ZeropsWriteNotSent({
+            outcome: "definitive-refusal",
+            message: "This Zerops sign-in has ended.",
+          });
+      };
       const client: ZeropsOperationsClient = {
         deployMate: (id, signal) => source.deployMate(id, signal, check),
         restartService: (id, signal) => source.restartService(id, signal, check),
@@ -392,7 +408,25 @@ export function makeZeropsExecutor(input: {
         importServicesIntoProject: (id, yaml, signal) =>
           source.importServicesIntoProject(id, yaml, signal, check),
         importDevelopmentContainer: (input, signal) =>
-          source.importDevelopmentContainer(input, signal, check),
+          source.importDevelopmentContainer(input, signal, check, async (context) => {
+            await checkCredentialAccount();
+            if (establish === undefined)
+              throw new ZeropsWriteNotSent({
+                outcome: "definitive-refusal",
+                message: "HQ is not ready to record this Mate's ZCP authorization.",
+              });
+            try {
+              await establish(context.projectId, { keyHash: context.keyHash });
+            } catch (cause) {
+              if (cause instanceof HqError && cause.kind === "refused")
+                throw new ZeropsWriteNotSent({
+                  outcome: "definitive-refusal",
+                  message: cause.message,
+                });
+              throw cause;
+            }
+            await checkCredentialAccount();
+          }),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>
           source.hardenMate(orgId, projectId, signal, check, tokenId),
         addProjectVariable: (id, write) => source.addProjectVariable(id, write, check),

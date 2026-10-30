@@ -272,6 +272,7 @@ export const HQ_CLIENT_VERBS = [
   "issueGitCredential",
   "revokeGitCredential",
   "observeCredential",
+  "establishZcpAuthorization",
   "authorizeObserveCredential",
   "revokeObserveCredential",
   "commentOnChange",

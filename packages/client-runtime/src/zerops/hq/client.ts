@@ -550,6 +550,11 @@ export interface HqApi {
   /** The person's active Git password metadata; passwords are returned only on issue. */
   /** Reads metadata only; authority changes require an explicit person's action. */
   readonly observeCredential?: (projectId: string) => Promise<ObserveCredential>;
+  /** Binds the verified person establishing the native ZCP key; no hash reconnects an existing Mate. */
+  readonly establishZcpAuthorization?: (
+    projectId: string,
+    context: { readonly keyHash?: string },
+  ) => Promise<void>;
   readonly authorizeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
   readonly revokeObserveCredential?: (projectId: string) => Promise<ObserveCredential>;
   readonly gitCredentials: (appId: string) => Promise<ReadonlyArray<GitCredentialRecord>>;
@@ -1783,6 +1788,16 @@ export function makeHqApi(input: {
       decoded(ObserveCredential)(
         await authorized(`/api/mates/${encodeURIComponent(projectId)}/observe-credential`),
       ),
+    establishZcpAuthorization: async (projectId, context) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
+        {
+          method: "POST",
+          body: JSON.stringify(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
+        },
+        true,
+      );
+    },
     authorizeObserveCredential: async (projectId) =>
       decoded(ObserveCredential)(
         await authorized(
