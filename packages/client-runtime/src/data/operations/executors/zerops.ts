@@ -1,4 +1,6 @@
 import { admitPlatformOperation } from "./platformAdmission.ts";
+import { commitOwn } from "../../adapters/hqSettingsReads.ts";
+import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
 import type { ZeropsOrganization } from "../../../zerops/api.ts";
 /**
  * Zerops as an operation's owner, over the account's REST client: each Zerops kind's executor,
@@ -407,8 +409,8 @@ export function makeZeropsExecutor(input: {
         importProject: (id, yaml, signal) => source.importProject(id, yaml, signal, check),
         importServicesIntoProject: (id, yaml, signal) =>
           source.importServicesIntoProject(id, yaml, signal, check),
-        importDevelopmentContainer: (input, signal) =>
-          source.importDevelopmentContainer(input, signal, check, async (context) => {
+        importDevelopmentContainer: (container, signal) =>
+          source.importDevelopmentContainer(container, signal, check, async (context) => {
             await checkCredentialAccount();
             if (establish === undefined)
               throw new ZeropsWriteNotSent({
@@ -426,6 +428,15 @@ export function makeZeropsExecutor(input: {
               throw cause;
             }
             await checkCredentialAccount();
+            // The status reader must discard any read begun before HQ acknowledged this context.
+            const key = { orgId: container.clientId, projectId: context.projectId };
+            commitOwn(
+              input.store,
+              "hqObserveCredentialRequest",
+              observeRequestScope(key),
+              observeCredentialId(key),
+              { requestId },
+            );
           }),
         hardenMate: (orgId, projectId, signal, _before, tokenId) =>
           source.hardenMate(orgId, projectId, signal, check, tokenId),

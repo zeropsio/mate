@@ -15,7 +15,8 @@ export const observeRequestScope = (key: ObserveCredentialKey): ScopeKey =>
 declare module "../model.ts" {
   interface FamilyValues {
     readonly hqObserveCredential: ObserveCredential;
-    readonly hqObserveCredentialRequest: { readonly requestId: string; readonly after: number };
+    /** Successful automatic establishment; status reads begun earlier must be replaced. */
+    readonly hqObserveCredentialRequest: { readonly requestId: string };
   }
 }
 export const hqObserveCredentialFamily: FamilySpec<"hqObserveCredential"> = {
