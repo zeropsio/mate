@@ -35,7 +35,7 @@ async function render(state: ObserveCredentialRead, available = true) {
     },
   };
 }
-describe("passive Observe status", () => {
+describe("explicit observe authorization control", () => {
   it.each([AUTH, NONE])(
     "opening Observe status never offers authorization or revocation",
     async (value) => {
