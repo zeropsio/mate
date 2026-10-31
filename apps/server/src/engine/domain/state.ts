@@ -7,6 +7,7 @@
  */
 import type {
   ConversationAgent,
+  TaskAssignmentBinding,
   HistorySource,
   ConversationId,
   EffectId,
@@ -37,10 +38,10 @@ import type {
 export const KEPT_ENDED_RUNS = 16;
 
 /**
- * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 17
- * keeps the pool container the conversation's agent leased (`lease`).
+ * Bumped whenever the shape changes: a snapshot of another version is ignored and refolded. 18
+ * keeps durable HQ task assignment and retirement fences.
  */
-export const STATE_VERSION = 17;
+export const STATE_VERSION = 18;
 
 export interface RunRecord {
   readonly id: RunId;
@@ -52,6 +53,8 @@ export interface RunRecord {
   readonly trigger: RunTrigger;
   readonly joins: RunId | null;
   readonly principal: Principal;
+  /** Effective HQ grant, advanced only by an accepted adoption; origin principal stays unchanged. */
+  readonly taskAssignment?: string;
   readonly maintenance: boolean;
   readonly text: string;
   readonly state: RunState;
@@ -283,6 +286,8 @@ export interface ConversationState {
    * afresh (`dispatch`).
    */
   readonly sessionTask: string | null;
+  /** Latest durable HQ grant/control per task; older controls remain in the event record. */
+  readonly taskAssignments: Readonly<Record<string, TaskAssignmentBinding>>;
   /**
    * A usage limit holds the queue until then; `"unknown"` until a probe or a known reset ends it,
    * or the person writes again.
@@ -333,6 +338,7 @@ export const initialState = (conversationId: ConversationId): ConversationState 
   rotation: null,
   lastNativeRef: null,
   sessionTask: null,
+  taskAssignments: {},
   pausedUntil: null,
   usageProbeMs: null,
   items: {},

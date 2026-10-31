@@ -1,6 +1,9 @@
+import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  TaskAssignmentNumber,
+  compareTaskAssignments,
   isMateTaskConversation,
   MATE_TASKS_CONVERSATION_ID,
   mateTaskIdOfConversation,
@@ -27,5 +30,16 @@ describe("an automated Mate's tasks", () => {
     expect(isMateTaskConversation("thread-1")).toBe(false);
     // The one conversation names no task of its own: its messages do.
     expect(mateTaskIdOfConversation(MATE_TASKS_CONVERSATION_ID)).toBeUndefined();
+  });
+});
+
+describe("HQ assignment numbers", () => {
+  it("keeps PostgreSQL grant order exactly past JavaScript integer precision and refuses noncanonical identities", () => {
+    const valid = Schema.is(TaskAssignmentNumber);
+    expect(valid("9007199254740993")).toBe(true);
+    expect(valid("9223372036854775807")).toBe(true);
+    expect(compareTaskAssignments("9007199254740993", "9007199254740992")).toBeGreaterThan(0);
+    for (const value of ["", "0", "01", "+1", "1.0", "1e3", " 1", "9223372036854775808", 1])
+      expect(valid(value)).toBe(false);
   });
 });

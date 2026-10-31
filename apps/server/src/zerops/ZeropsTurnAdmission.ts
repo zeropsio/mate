@@ -92,7 +92,7 @@ export type TurnPrincipal =
   | { readonly kind: "session"; readonly subject: string }
   | { readonly kind: "crew"; readonly startedBy: string }
   | { readonly kind: "standup"; readonly startedBy: string }
-  | { readonly kind: "task"; readonly taskId: string };
+  | { readonly kind: "task"; readonly taskId: string; readonly assignment?: string };
 
 /** The Zerops user a principal stands for, or `undefined` when it names none. */
 export function principalUserId(principal: TurnPrincipal): string | undefined {

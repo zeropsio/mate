@@ -69,6 +69,7 @@
  *
  * @module ZeropsTasks
  */
+import { compareTaskAssignments, type MateTaskControlReceipt } from "@t3tools/contracts";
 import {
   CommandId,
   MATE_TASK_BODY_MAX,
@@ -115,7 +116,7 @@ import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsCommitAuthor } from "./ZeropsCommitAuthor.ts";
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
-import { ZeropsTaskLedger, type TaskEntry } from "./ZeropsTaskLedger.ts";
+import { ZeropsTaskLedger, emptyTaskEntry, type TaskEntry } from "./ZeropsTaskLedger.ts";
 import {
   type WorkingCopiesHeld,
   type WorkingCopyBase,
@@ -534,6 +535,9 @@ export interface TaskChange {
 
 const encodeTaskReport = Schema.encodeSync(Schema.fromJsonString(MateTaskReport));
 
+const runAssignmentOf = (run: Pick<ViewRun, "principal" | "taskAssignment">) =>
+  run.taskAssignment ?? (run.principal.kind === "task" ? run.principal.assignment : undefined);
+
 const taskControl = (entry: TaskEntry | undefined) => ({
   requeued: entry?.requeued ?? 0,
   retaken: entry?.retaken ?? 0,
@@ -561,13 +565,19 @@ export interface TaskLink {
     taskId: string,
     message: MateTaskMessage,
     change?: TaskChange,
+    assignment?: string,
   ) => Effect.Effect<void>;
   /**
    * HQ's `task-stop` frame: its runs stopped, and it says `stopped` with HQ's reason — once per
    * link; a stop told again, or for a task this Mate never took, changes nothing else. One that
    * put it back in line (`requeued`) drops it, saying nothing.
    */
-  readonly stop: (taskId: string, reason: string, requeued?: boolean) => Effect.Effect<void>;
+  readonly stop: (
+    taskId: string,
+    reason: string,
+    requeued?: boolean,
+    assignment?: string,
+  ) => Effect.Effect<void>;
   /** The latest task's report, then each report that moved, for as long as the link runs. */
   readonly run: Effect.Effect<void>;
 }
@@ -578,6 +588,7 @@ export class ZeropsTasks extends Context.Service<
     /** A link's side, reporting through `send`. */
     readonly open: (
       send: (report: MateTaskReport) => Effect.Effect<void>,
+      ack?: (receipt: MateTaskControlReceipt) => Effect.Effect<void>,
     ) => Effect.Effect<TaskLink>;
   }
 >()("t3/zerops/ZeropsTasks") {}
@@ -688,8 +699,42 @@ export const make = Effect.gen(function* () {
    */
   const reportFor = (taskId: string, view: ConversationView) =>
     Effect.gen(function* () {
-      const entry = yield* counted(taskId, view);
-      if (droppedIn(entry)) return undefined;
+      let entry = yield* counted(taskId, view);
+      const control = taskControl(entry);
+      const binding = view.taskAssignments?.[taskId];
+      if (binding?.state === "requeued") return undefined;
+      if (droppedIn(entry) && binding === undefined) return undefined;
+      const inGrant = (run: ViewRun | null | undefined) =>
+        run !== null &&
+        run !== undefined &&
+        run.principal.kind === "task" &&
+        run.principal.taskId === taskId &&
+        ((run.taskAssignment ?? run.principal.assignment) === binding?.assignment ||
+          binding?.runId === run.id);
+      const hasGrantRun = [view.activeRun, ...view.queued, view.lastEnded].some(inGrant);
+      // A person may continue the current task in this same conversation.
+      // Preserve that accepted work without treating it as proof of a grant:
+      // the task's own run/kept run below must still prove its assignment.
+      const inProjection = (run: ViewRun | null | undefined) =>
+        inGrant(run) ||
+        (binding?.state === "active" && taskId === current && run?.principal.kind === "person");
+      const projected =
+        binding === undefined
+          ? view
+          : {
+              ...view,
+              activeRun: inProjection(view.activeRun) ? view.activeRun : null,
+              queued: view.queued.filter(inProjection),
+              lastEnded: inGrant(view.lastEnded) ? view.lastEnded : null,
+            };
+      if (binding?.state === "stopped") {
+        if (projected.activeRun !== null || projected.queued.length > 0) return undefined;
+        entry = {
+          ...emptyTaskEntry,
+          ...entry,
+          stopped: binding.reason ?? "This task was stopped.",
+        };
+      }
       // In the tasks' one conversation a view without the task's runs may follow them, or hold
       // none: the engine's record says which.
       const shared = view.conversationId === TASKS_CONVERSATION_ID;
@@ -698,20 +743,40 @@ export const make = Effect.gen(function* () {
         ? yield* engine.runOf({ conversationId: view.conversationId, taskId })
         : undefined;
       if (shared && elsewhere && own === undefined) return undefined;
-      const report = taskReportOf(taskId, view, own, entry, shared && taskId === current);
+      const owned =
+        own === undefined ||
+        binding === undefined ||
+        (own.principal.kind === "task" &&
+          ((own.taskAssignment ?? own.principal.assignment) === binding.assignment ||
+            binding.runId === own.runId))
+          ? own
+          : undefined;
+      if (
+        binding !== undefined &&
+        !hasGrantRun &&
+        owned === undefined &&
+        binding.state !== "stopped"
+      )
+        return undefined;
+      const report = taskReportOf(taskId, projected, owned, entry, shared && taskId === current);
       return report === undefined
         ? undefined
         : ({
             report: {
               ...report,
+              ...(binding === undefined ? {} : { assignment: binding.assignment }),
               ...taskSpendOf(taskId, entry, view, inFlightOf(taskId, entry, "seen")),
             },
             source: { conversationId: view.conversationId, seq: view.seq },
-            control: taskControl(entry),
+            control,
           } satisfies TaskObservation);
     });
 
-  const principalOf = (taskId: string): Principal => ({ kind: "task", taskId });
+  const principalOf = (taskId: string, assignment?: string): Principal => ({
+    kind: "task",
+    taskId,
+    ...(assignment === undefined ? {} : { assignment }),
+  });
 
   /**
    * Counts the task's ended run, sees its run on live, and holds it to its limits and its stop: every run of it on or
@@ -762,8 +827,10 @@ export const make = Effect.gen(function* () {
               .deliver(
                 view.conversationId,
                 { _tag: "Stop", runId: run.id },
-                CommandId.make(`task-stop:${taskId}:${run.id}`),
-                principalOf(taskId),
+                CommandId.make(
+                  `task-stop:${taskId}:${run.id}${runAssignmentOf(run) === undefined ? "" : ":" + runAssignmentOf(run)}`,
+                ),
+                principalOf(taskId, runAssignmentOf(run)),
               )
               .pipe(
                 Effect.catchTags({
@@ -844,12 +911,25 @@ export const make = Effect.gen(function* () {
         yield* Effect.logInfo("zerops tasks: a task ended with its work undelivered", { where });
         return view;
       }
+      const grant = view.taskAssignments?.[taskId];
+      if (
+        grant !== undefined &&
+        (grant.state !== "active" ||
+          ((ended.principal.kind !== "task" || ended.principal.assignment !== grant.assignment) &&
+            grant.runId !== ended.id))
+      )
+        return view;
       const told = yield* engine
         .deliver(
           view.conversationId,
-          { _tag: "Send", text: deliverWords(where), taskId },
+          {
+            _tag: "Send",
+            text: deliverWords(where),
+            taskId,
+            ...(grant === undefined ? {} : { taskAssignment: grant.assignment }),
+          },
           CommandId.make(`task-deliver:${taskId}`),
-          principalOf(taskId),
+          principalOf(taskId, grant?.assignment),
         )
         .pipe(
           Effect.catchTags({
@@ -1040,12 +1120,26 @@ export const make = Effect.gen(function* () {
     });
 
   /** The report a frame is answered with; none when it cannot be told now. */
-  const take = (task: MateTask) =>
+  const take = (task: MateTask, retake = false) =>
     Effect.gen(function* () {
       const { conversationId, held } = yield* placeOf(task.id);
+      const grant = held?.taskAssignments?.[task.id];
+      if (task.assignment === undefined && grant !== undefined)
+        return Option.none<TaskObservation>();
+      if (
+        task.assignment !== undefined &&
+        grant !== undefined &&
+        (compareTaskAssignments(task.assignment, grant.assignment) < 0 ||
+          (task.assignment === grant.assignment && grant.state !== "active"))
+      )
+        return Option.none<TaskObservation>();
       // Put back in line since it was taken: taken again below, in the same conversation.
       const dropped = yield* ledger.entry(task.id);
-      const again = held !== undefined && droppedIn(dropped) ? dropped?.requeued : undefined;
+      const again = retake
+        ? task.assignment
+        : held !== undefined && droppedIn(dropped)
+          ? dropped?.requeued
+          : undefined;
       // Taken before: said again. One whose brief never went out is sent on below.
       const told =
         held === undefined || again !== undefined ? undefined : yield* reportFor(task.id, held);
@@ -1057,6 +1151,7 @@ export const make = Effect.gen(function* () {
           control: taskControl(kept),
           report: {
             taskId: task.id,
+            ...(task.assignment === undefined ? {} : { assignment: task.assignment }),
             state: "stopped",
             detail: kept.stopped,
             ...taskSpendOf(task.id, kept, undefined),
@@ -1081,7 +1176,7 @@ export const make = Effect.gen(function* () {
             ...entry,
             limits,
             limitHit: reached,
-            ...(again === undefined ? {} : { retaken: again }),
+            ...(typeof again === "number" ? { retaken: again } : {}),
           }));
           return Option.some<TaskObservation>({
             control: taskControl(limited),
@@ -1098,7 +1193,12 @@ export const make = Effect.gen(function* () {
       const refused = (detail: string) =>
         Option.some<TaskObservation>({
           control: taskControl(kept),
-          report: { taskId: task.id, state: "declined", detail },
+          report: {
+            taskId: task.id,
+            ...(task.assignment === undefined ? {} : { assignment: task.assignment }),
+            state: "declined",
+            detail,
+          },
         });
       if (!(yield* automation.automated)) return refused(REFUSALS.notAutomated);
       if (!(yield* automation.keySet)) return refused(REFUSALS.noKey);
@@ -1160,7 +1260,12 @@ export const make = Effect.gen(function* () {
           : undefined;
       const detail = [authorUnset, asItWas].filter((words) => words !== undefined).join(" ");
       const ask = task.body.trim();
-      const take = again === undefined ? task.id : `${task.id}:${again}`;
+      const take =
+        task.assignment === undefined
+          ? again === undefined
+            ? task.id
+            : `${task.id}:${again}`
+          : `${task.id}:${task.assignment}`;
       // In the tasks' one conversation each task starts on a fresh agent session: no context or
       // cost carried from the task before, and nothing it assumed.
       if (conversationId === TASKS_CONVERSATION_ID) {
@@ -1168,7 +1273,7 @@ export const make = Effect.gen(function* () {
           conversationId,
           { _tag: "RotateSession", reason: "task", fresh: true, seed: null },
           CommandId.make(`task-session:${take}`),
-          principalOf(task.id),
+          principalOf(task.id, task.assignment),
         );
         if (rotated._tag === "Rejected") return refused(REFUSALS.notNow);
       }
@@ -1179,10 +1284,11 @@ export const make = Effect.gen(function* () {
           text: taskBrief(task),
           task: task.source,
           taskId: task.id,
+          ...(task.assignment === undefined ? {} : { taskAssignment: task.assignment }),
           ...(ask === "" ? {} : { taskAsk: ask }),
         },
         CommandId.make(`task:${take}`),
-        principalOf(task.id),
+        principalOf(task.id, task.assignment),
       );
       // Refused now (an update draining it, say): another Mate, or this one later, takes it.
       if (result._tag === "Rejected") return refused(REFUSALS.notNow);
@@ -1191,7 +1297,7 @@ export const make = Effect.gen(function* () {
         const brief = taskBrief(task);
         yield* ledger.update(task.id, (kept) => ({ ...kept, brief }));
       }
-      if (again !== undefined)
+      if (typeof again === "number")
         yield* ledger.update(task.id, (entry) => ({ ...entry, retaken: again }));
       yield* Effect.logInfo("zerops tasks: a task was taken", { conversationId });
       const now = yield* engine.conversation(conversationId);
@@ -1211,7 +1317,6 @@ export const make = Effect.gen(function* () {
             },
       );
     }).pipe(
-      taking.withPermit,
       Effect.catchTags({
         ViewUnreadable: () => Effect.succeed(Option.none<TaskObservation>()),
         DeliveryUnrecorded: () => Effect.succeed(Option.none<TaskObservation>()),
@@ -1223,9 +1328,21 @@ export const make = Effect.gen(function* () {
    * as a person's message is, joining the run on or starting the next — more work on the same
    * task. A task people stopped, or past its limits, starts nothing; how it stands is said.
    */
-  const hear = (taskId: string, message: MateTaskMessage, change?: TaskChange) =>
+  const hear = (
+    taskId: string,
+    message: MateTaskMessage,
+    change?: TaskChange,
+    assignment?: string,
+  ) =>
     Effect.gen(function* () {
       const { conversationId, held } = yield* placeOf(taskId);
+      const binding = held?.taskAssignments?.[taskId];
+      if (
+        assignment === undefined
+          ? binding !== undefined
+          : binding?.assignment !== assignment || binding.state !== "active"
+      )
+        return Option.none<TaskObservation>();
       // Not a task this Mate took: nothing to steer.
       if (held === undefined || !(yield* ranIn(taskId, held)))
         return Option.none<TaskObservation>();
@@ -1281,9 +1398,10 @@ export const make = Effect.gen(function* () {
               context,
               taskMessage: message,
               taskId,
+              ...(assignment === undefined ? {} : { taskAssignment: assignment }),
             },
             CommandId.make(`task-message:${message.id}`),
-            principalOf(taskId),
+            principalOf(taskId, assignment),
           );
           if (result._tag === "Rejected") {
             yield* Effect.logWarning("zerops tasks: a follow-up was refused", {
@@ -1371,7 +1489,91 @@ export const make = Effect.gen(function* () {
     );
   });
 
-  const open: ZeropsTasks["Service"]["open"] = (send) =>
+  const receiveTask = (task: MateTask) =>
+    Effect.gen(function* () {
+      const assignment = task.assignment;
+      if (assignment === undefined)
+        return task.adoptOnly === true ? Option.none<TaskObservation>() : yield* take(task);
+      const place = yield* placeOf(task.id);
+      const binding = place.held?.taskAssignments?.[task.id];
+      if (binding !== undefined) {
+        const order = compareTaskAssignments(assignment, binding.assignment);
+        if (order < 0 || (order === 0 && binding.state !== "active"))
+          return Option.none<TaskObservation>();
+      }
+      const retake =
+        binding !== undefined &&
+        compareTaskAssignments(assignment, binding.assignment) > 0 &&
+        binding.state === "requeued";
+      const retained = place.held !== undefined && (yield* ranIn(task.id, place.held));
+      if (task.adoptOnly === true && (!retained || retake)) return Option.none<TaskObservation>();
+      if (!retake && retained && (task.adoptOnly === true || binding?.assignment !== assignment)) {
+        // Binding retained work is a real engine command with actual run/principal
+        // proof. It does not resend its brief or create a provider turn.
+        const run = yield* engine.runOf({ conversationId: place.conversationId, taskId: task.id });
+        if (run === undefined || run.principal.kind !== "task" || run.principal.taskId !== task.id)
+          return Option.none<TaskObservation>();
+        const bound = yield* engine.deliver(
+          place.conversationId,
+          {
+            _tag: "AdoptTaskAssignment",
+            taskId: task.id,
+            assignment: assignment,
+            runId: run.runId,
+          },
+          CommandId.make(`task-adopt:${task.id}:${assignment}`),
+          principalOf(task.id, assignment),
+        );
+        if (bound._tag !== "Accepted") return Option.none<TaskObservation>();
+        const current = yield* engine.conversation(place.conversationId);
+        if (
+          current === undefined ||
+          current.seq < bound.seq ||
+          current.taskAssignments?.[task.id]?.assignment !== assignment ||
+          current.taskAssignments?.[task.id]?.state !== "active"
+        )
+          return Option.none<TaskObservation>();
+        if (task.adoptOnly === true)
+          return Option.fromUndefinedOr(yield* reportFor(task.id, current));
+      }
+      const reply = yield* take(task, retake);
+      // A direct refusal belongs to this actual offer. Native-view reports carry
+      // their observed engine grant and are never relabelled at the transport.
+      return Option.map(reply, (observation) =>
+        observation.source === undefined
+          ? { ...observation, report: { ...observation.report, assignment } }
+          : observation,
+      );
+    }).pipe(
+      taking.withPermit,
+      Effect.catchTags({
+        ViewUnreadable: () => Effect.succeed(Option.none<TaskObservation>()),
+        DeliveryUnrecorded: () => Effect.succeed(Option.none<TaskObservation>()),
+      }),
+    );
+
+  const controlTask = (taskId: string, reason: string, requeued: boolean, assignment: string) =>
+    Effect.gen(function* () {
+      const place = yield* placeOf(taskId);
+      const committed = yield* engine.deliver(
+        place.conversationId,
+        { _tag: "StopTaskAssignment", taskId, assignment, requeued, reason },
+        CommandId.make(`task-control:${taskId}:${assignment}:${requeued ? "requeue" : "stop"}`),
+        principalOf(taskId, assignment),
+      );
+      if (committed._tag !== "Accepted") return undefined;
+      // A receipt means this exact retirement was durably accepted. Provider
+      // shutdown remains its own engine outcome and later task-state report.
+      return { taskId, assignment, control: requeued ? ("requeue" as const) : ("stop" as const) };
+    }).pipe(
+      taking.withPermit,
+      Effect.catchTags({
+        ViewUnreadable: () => Effect.succeed(undefined),
+        DeliveryUnrecorded: () => Effect.succeed(undefined),
+      }),
+    );
+
+  const open: ZeropsTasks["Service"]["open"] = (send, ack) =>
     Effect.sync(() => {
       // What this link last said of each task: a report is sent again only once it moved.
       const said = new Map<string, string>();
@@ -1383,10 +1585,20 @@ export const make = Effect.gen(function* () {
         Effect.gen(function* () {
           if (observation === undefined) return;
           const { report, source, control } = observation;
-          if (source !== undefined) {
-            const owner = yield* placeOf(report.taskId);
-            if (owner.held === undefined || owner.conversationId !== source.conversationId) return;
-          }
+          const owner = yield* placeOf(report.taskId);
+          if (
+            source !== undefined &&
+            (owner.held === undefined || owner.conversationId !== source.conversationId)
+          )
+            return;
+          const binding = owner.held?.taskAssignments?.[report.taskId];
+          if (binding !== undefined) {
+            if (report.assignment === undefined) return;
+            const order = compareTaskAssignments(report.assignment, binding.assignment);
+            if (order < 0 || (order > 0 && !(source === undefined && report.state === "declined")))
+              return;
+            if (order === 0 && binding.state === "requeued") return;
+          } else if (source !== undefined && report.assignment !== undefined) return;
           // Recheck control after the native read, immediately before admitting
           // and sending this observation. A stop/drop is not a view revision.
           const entry = yield* ledger.entry(report.taskId);
@@ -1437,16 +1649,25 @@ export const make = Effect.gen(function* () {
         ),
       );
       return {
-        receive: (task) => Effect.flatMap(take(task), answer),
-        message: (taskId, message, change) => Effect.flatMap(hear(taskId, message, change), answer),
+        receive: (task) => Effect.flatMap(receiveTask(task), answer),
+        message: (taskId, message, change, assignment) =>
+          Effect.flatMap(hear(taskId, message, change, assignment), answer),
         // Answered only when it moved what this link said: HQ answers a word on a stopped task
         // with a stop, so one answer each would never end.
-        stop: (taskId, reason, requeued = false) =>
-          requeued
-            ? dropTask(taskId)
-            : Effect.flatMap(
-                stopTask(taskId, reason),
-                Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
+        stop: (taskId, reason, requeued = false, assignment) =>
+          assignment === undefined
+            ? Effect.gen(function* () {
+                const place = yield* placeOf(taskId);
+                if (place.held?.taskAssignments?.[taskId] !== undefined) return;
+                if (requeued) yield* dropTask(taskId);
+                else
+                  yield* Effect.flatMap(
+                    stopTask(taskId, reason),
+                    Option.match({ onNone: () => Effect.void, onSome: (report) => tell(report) }),
+                  );
+              }).pipe(Effect.catchTags({ ViewUnreadable: () => Effect.void }))
+            : Effect.flatMap(controlTask(taskId, reason, requeued, assignment), (receipt) =>
+                receipt === undefined || ack === undefined ? Effect.void : ack(receipt),
               ),
         // Following the reports first, so a move between the first read and them is heard.
         run: Effect.scoped(

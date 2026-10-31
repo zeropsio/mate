@@ -311,7 +311,7 @@ export interface ChatsSource<E> {
   /** The engine's own rows of the person's conversations. */
   readonly conversations: Effect.Effect<ReadonlyArray<ConversationRow>, E>;
   /** The engine the rows are of, by the protocol they speak. */
-  readonly engine: { readonly protocol: number };
+  readonly engine: { readonly protocol: number; readonly taskAssignments?: 1 };
 }
 
 /** The Mate's environment and this start's epoch: the revision every engine row carries. */
@@ -336,7 +336,7 @@ export const chatsSource = (
       .filter((view) => !view.archived && view.agent?.profile.kind !== "crewmate")
       .map((view) => conversationRowOf(view, { environmentId, epoch }));
   }),
-  engine: { protocol: Math.max(...MATE_ENGINE_PROTOCOLS) },
+  engine: { protocol: Math.max(...MATE_ENGINE_PROTOCOLS), taskAssignments: 1 },
 });
 
 /**

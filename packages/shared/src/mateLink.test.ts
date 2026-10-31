@@ -617,3 +617,52 @@ describe("the keys model's link", () => {
       expect(decodeClosed(closed)._tag).toBe("Failure");
   });
 });
+
+describe("task assignment wire", () => {
+  it("keeps adoption-only intent distinct from an ordinary numbered work offer", () => {
+    const task = {
+      id: "kept-task",
+      assignment: "9007199254740993",
+      source: { kind: "schedule", name: "Actual schedule", title: "Restore tester work" },
+      body: "Actual accepted work",
+      limits: { minutes: 60, costUsd: null },
+    };
+    for (const adoptOnly of [true, false]) {
+      const decoded = decodeDown(JSON.stringify({ type: "task", task: { ...task, adoptOnly } }));
+      expect(decoded).toMatchObject({ _tag: "Success", value: { task: { adoptOnly } } });
+    }
+    expect(decodeDown(JSON.stringify({ type: "task", task }))._tag).toBe("Success");
+  });
+
+  it("keeps exact grant text and explicit retirement receipts while advertising the actual engine capability", () => {
+    const assignment = "9007199254740993";
+    const stop = {
+      type: "task-stop",
+      taskId: "kept-task",
+      assignment,
+      reason: "Budget reached",
+      requeued: true,
+    };
+    expect(decodeDown(JSON.stringify(stop))).toMatchObject({ _tag: "Success", value: stop });
+    expect(decodeDown(JSON.stringify({ ...stop, assignment: "9223372036854775808" }))._tag).toBe(
+      "Failure",
+    );
+    const ack = { type: "task-control-ack", taskId: "kept-task", assignment, control: "requeue" };
+    expect(decodeUp(JSON.stringify(ack))).toMatchObject({ _tag: "Success", value: ack });
+    expect(decodeUp(JSON.stringify({ ...ack, assignment: "9223372036854775808" }))._tag).toBe(
+      "Failure",
+    );
+    const frame = {
+      type: "overview",
+      full: true,
+      overview: {
+        ...overview,
+        identity: { ...overview.identity, engine: { protocol: 1, taskAssignments: 1 } },
+      },
+    };
+    expect(decodeUp(JSON.stringify(frame))).toMatchObject({
+      _tag: "Success",
+      value: { overview: { identity: { engine: { protocol: 1, taskAssignments: 1 } } } },
+    });
+  });
+});

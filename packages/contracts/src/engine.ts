@@ -34,7 +34,12 @@ import {
 import { ToolPresentation } from "./providerRuntime.ts";
 import { callFields } from "./engineCall.ts";
 import { CrewSeam, CrewTaskId } from "./zeropsCrew.ts";
-import { MATE_TASK_BODY_MAX, MateTaskMessage, MateTaskSource } from "./mateTask.ts";
+import {
+  MATE_TASK_BODY_MAX,
+  MateTaskMessage,
+  MateTaskSource,
+  TaskAssignmentNumber,
+} from "./mateTask.ts";
 import { CREW_SESSION_REASONS, CrewHandle } from "./zeropsCrewStates.ts";
 
 // ── ids ──────────────────────────────────────────────────────────────────────────────────────
@@ -180,7 +185,11 @@ export const Principal = forwardCompatibleUnion({
      * A task from outside an automated Mate took (`MateTask`, by HQ's id): nobody is at the
      * keyboard, and its runs go on the organization's key, never on a person's sign-in.
      */
-    Schema.Struct({ kind: Schema.Literal("task"), taskId: Schema.String }),
+    Schema.Struct({
+      kind: Schema.Literal("task"),
+      taskId: Schema.String,
+      assignment: Schema.optionalKey(TaskAssignmentNumber),
+    }),
     Schema.Struct({ kind: Schema.Literal("engine") }),
   ],
   fallback: unknownKind,
@@ -948,6 +957,18 @@ const event = <const Tag extends string, const Fields extends Schema.Struct.Fiel
   fields: Fields,
 ) => Schema.TaggedStruct(tag, { ...eventHeader, ...fields });
 
+export const TaskAssignmentBinding = Schema.Struct({
+  assignment: TaskAssignmentNumber,
+  state: Schema.Literals(["active", "requeued", "stopped"]),
+  runId: Schema.optionalKey(RunId),
+  reason: Schema.optionalKey(Schema.String),
+});
+export type TaskAssignmentBinding = typeof TaskAssignmentBinding.Type;
+export const TaskAssignmentChanged = event("TaskAssignmentChanged", {
+  taskId: TrimmedNonEmptyString,
+  ...TaskAssignmentBinding.fields,
+});
+
 export const RunQueued = event("RunQueued", {
   runId: RunId,
   ordinal: Schema.Int,
@@ -1292,6 +1313,7 @@ export const UnknownEngineEvent = Schema.TaggedStruct("Unknown", {
 });
 
 const knownEvents = [
+  TaskAssignmentChanged,
   RunQueued,
   RunAdmitted,
   RunSending,
@@ -1399,6 +1421,9 @@ const rejectionReasons = [
   "invalid-wake",
   "invalid-signal",
   "invalid-principal",
+  "task-assignment-stale",
+  "task-assignment-retired",
+  "task-assignment-proof",
   /** The id names another owner (the crew), which takes no conversation's command. */
   "not-a-conversation",
   /** The agent's background work lives in the session a change would replace. */

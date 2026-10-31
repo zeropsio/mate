@@ -11,6 +11,7 @@
  */
 import type {
   BootId,
+  TaskAssignmentNumber,
   ChatFileAttachment,
   MateRestart,
   ChatImageAttachment,
@@ -222,6 +223,20 @@ export type Command =
       readonly taskMessage?: MateTaskMessage;
       /** HQ's id of the task its brief or follow-up is for (the person item's `taskId`). */
       readonly taskId?: string;
+      readonly taskAssignment?: TaskAssignmentNumber;
+    }
+  | {
+      readonly _tag: "AdoptTaskAssignment";
+      readonly taskId: string;
+      readonly assignment: TaskAssignmentNumber;
+      readonly runId: RunId;
+    }
+  | {
+      readonly _tag: "StopTaskAssignment";
+      readonly taskId: string;
+      readonly assignment: TaskAssignmentNumber;
+      readonly requeued: boolean;
+      readonly reason: string;
     }
   | { readonly _tag: "Stop"; readonly runId?: RunId }
   /** The person asks the work a usage limit holds to try the provider now. */

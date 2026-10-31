@@ -456,7 +456,11 @@ export const makeZeropsHqLink = (
         Effect.flatMap(Ref.get(automatedHere), (automated) =>
           automated ? send({ type: "task-state", report }) : Effect.void,
         );
-      const tasks = options.tasks ? yield* options.tasks.open(reportTask) : undefined;
+      const tasks = options.tasks
+        ? yield* options.tasks.open(reportTask, (receipt) =>
+            send({ type: "task-control-ack", ...receipt }),
+          )
+        : undefined;
       let requestSerial = 0;
       const policyRequests = new Map<
         string,
@@ -584,11 +588,15 @@ export const makeZeropsHqLink = (
           case "task-message":
             return tasks === undefined
               ? Effect.void
-              : onceStated(tasks.message(frame.taskId, frame.message, frame.change));
+              : onceStated(
+                  tasks.message(frame.taskId, frame.message, frame.change, frame.assignment),
+                );
           case "task-stop":
             return tasks === undefined
               ? Effect.void
-              : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
+              : onceStated(
+                  tasks.stop(frame.taskId, frame.reason, frame.requeued === true, frame.assignment),
+                );
           case "ticket":
             return options.ticket === undefined
               ? Effect.void

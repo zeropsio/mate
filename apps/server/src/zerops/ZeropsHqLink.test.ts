@@ -252,11 +252,17 @@ const rig = (
           Effect.sync(() => void automation.push(model === undefined ? { keys } : { keys, model })),
       },
       tasks: {
-        open: (send) =>
+        open: (send, ack) =>
           Effect.succeed({
             receive: (task) =>
               Effect.sync(() => void taken.push(task.id)).pipe(
-                Effect.andThen(send({ taskId: task.id, state: "accepted" })),
+                Effect.andThen(
+                  send({
+                    taskId: task.id,
+                    ...(task.assignment === undefined ? {} : { assignment: task.assignment }),
+                    state: "accepted",
+                  }),
+                ),
               ),
             message: (taskId, message, change) =>
               Effect.sync(
@@ -265,7 +271,14 @@ const rig = (
                     `${taskId}:${message.id}${change === undefined ? "" : `@${change.branch}`}`,
                   ),
               ),
-            stop: (taskId, reason) => Effect.sync(() => void taken.push(`${taskId}:${reason}`)),
+            stop: (taskId, reason, requeued, assignment) =>
+              Effect.sync(() => void taken.push(`${taskId}:${reason}`)).pipe(
+                Effect.andThen(
+                  assignment === undefined || ack === undefined
+                    ? Effect.void
+                    : ack({ taskId, assignment, control: requeued ? "requeue" : "stop" }),
+                ),
+              ),
             run: send({ taskId: "task-0", state: "done" }).pipe(Effect.andThen(Effect.never)),
           }),
       },
@@ -891,6 +904,35 @@ describe("ZeropsHqLink", () => {
         assert.deepStrictEqual(automation, [{ heard: automated }, { keys }, { keys, model }]);
       }),
     ),
+  );
+
+  it.live(
+    "returns the task service's exact durable grant retirement receipt over the admitted link",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets, until } = yield* rig({ everyMs: 10 });
+          const socket = yield* until(() => sockets[0]);
+          socket.emit("open");
+          socket.hear({ type: "state", mate: { ...STATE, automated: true } });
+          socket.hear({
+            type: "task-stop",
+            taskId: "kept-task",
+            assignment: "9007199254740993",
+            reason: "Budget reached",
+            requeued: true,
+          });
+          const receipt = yield* until(() =>
+            socket.sent.find((frame) => frame.type === "task-control-ack"),
+          );
+          assert.deepStrictEqual(receipt, {
+            type: "task-control-ack",
+            taskId: "kept-task",
+            assignment: "9007199254740993",
+            control: "requeue",
+          });
+        }),
+      ),
   );
 
   it.live("works a task HQ tells once HQ said who the Mate is, and sends how it stands", () =>

@@ -451,7 +451,7 @@ describe("HQ's overview of a Mate on the engine", () => {
           rows.map((row) => [row.conversationId, row.state.kind, row.revision]),
           [[c, "working", { environmentId: "env-1", epoch: 3, seq: 9 }]],
         );
-        assert.deepStrictEqual(chats.engine, { protocol: 1 });
+        assert.deepStrictEqual(chats.engine, { protocol: 1, taskAssignments: 1 });
       }),
   );
 });

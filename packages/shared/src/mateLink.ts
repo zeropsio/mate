@@ -42,6 +42,8 @@ import {
   MateTask,
   MateTaskMessage,
   MateTaskReport,
+  MateTaskControlReceipt,
+  TaskAssignmentNumber,
   OrchestrationLatestTurn,
   OrchestrationSessionStatus,
   ProviderInteractionMode,
@@ -146,7 +148,9 @@ export const OverviewIdentity = Schema.Struct({
   serverVersion: ExecutionEnvironmentDescriptor.fields.serverVersion,
   update: Schema.NullOr(ExecutionEnvironmentUpdate),
   /** The engine its conversation runs on, by the protocol its rows speak; absent on a V1 Mate. */
-  engine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
+  engine: Schema.optionalKey(
+    Schema.Struct({ protocol: Schema.Int, taskAssignments: Schema.optionalKey(Schema.Literal(1)) }),
+  ),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;
 
@@ -362,6 +366,7 @@ export const MateLinkUp = Schema.Union([
   Schema.Struct({ type: Schema.Literal("attention"), attention: MateAttention }),
   /** How a task HQ handed it stands (`MateTaskReport`): once taken, then on each move. */
   Schema.Struct({ type: Schema.Literal("task-state"), report: MateTaskReport }),
+  Schema.Struct({ type: Schema.Literal("task-control-ack"), ...MateTaskControlReceipt.fields }),
 ]);
 export type MateLinkUp = typeof MateLinkUp.Type;
 
@@ -395,6 +400,7 @@ const TaskDown = Schema.Struct({ type: Schema.Literal("task"), task: MateTask })
 const TaskMessageDown = Schema.Struct({
   type: Schema.Literal("task-message"),
   taskId: TrimmedNonEmptyString,
+  assignment: Schema.optionalKey(TaskAssignmentNumber),
   message: MateTaskMessage,
   /**
    * The task's change, where it opened one: its repository, number and branch on HQ's git, the
@@ -414,6 +420,7 @@ const TaskMessageDown = Schema.Struct({
 const TaskStopDown = Schema.Struct({
   type: Schema.Literal("task-stop"),
   taskId: TrimmedNonEmptyString,
+  assignment: Schema.optionalKey(TaskAssignmentNumber),
   reason: Schema.String,
   /**
    * HQ put the task back in line before it heard the Mate take it (the monthly budget was

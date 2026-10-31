@@ -30,6 +30,7 @@ import {
   RunEnd,
   RunId,
   RunEndSource,
+  TaskAssignmentNumber,
 } from "@t3tools/contracts";
 
 import { makeEngineUpdateDrain } from "./updateDrain.ts";
@@ -78,6 +79,7 @@ interface CallDataRow {
 
 interface RunEndRow {
   readonly run_id: string;
+  readonly task_assignment: string | null;
   readonly end_json: string | null;
   readonly end_source: string | null;
   readonly started_at: number | null;
@@ -332,18 +334,18 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
     const runOf: MateEngineService["runOf"] = (find) =>
       ("wakeId" in find
         ? sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+            SELECT run_id, task_assignment,end_json, end_source, started_at, principal_json FROM engine_run
             WHERE json_extract(trigger_json, '$.wakeId') = ${find.wakeId}
             ORDER BY ordinal DESC LIMIT 1
           `
         : "providerTurnId" in find
           ? sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+            SELECT run_id, task_assignment,end_json, end_source, started_at, principal_json FROM engine_run
             WHERE provider_turn_id = ${find.providerTurnId}
             ORDER BY ordinal DESC LIMIT 1
           `
           : sql<RunEndRow>`
-            SELECT run_id, end_json, end_source, started_at, principal_json FROM engine_run
+            SELECT run_id, task_assignment,end_json, end_source, started_at, principal_json FROM engine_run
             WHERE conversation_id = ${find.conversationId}
               AND json_extract(principal_json, '$.kind') = 'task'
               AND json_extract(principal_json, '$.taskId') = ${find.taskId}
@@ -357,10 +359,15 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
             end: row.end_json === null ? Effect.succeed(null) : decodeEnd(row.end_json),
             source: row.end_source === null ? Effect.succeed(null) : decodeSource(row.end_source),
             principal: decodePrincipal(row.principal_json),
+            taskAssignment:
+              row.task_assignment === null
+                ? Effect.succeed(undefined)
+                : Schema.decodeUnknownEffect(TaskAssignmentNumber)(row.task_assignment),
             reachedAgent: reachedAgent(row),
           }).pipe(
-            Effect.map(({ end, source, principal, reachedAgent }) => ({
+            Effect.map(({ end, source, principal, reachedAgent, taskAssignment }) => ({
               runId: RunId.make(row.run_id),
+              ...(taskAssignment === undefined ? {} : { taskAssignment }),
               end,
               source,
               principal,

@@ -66,7 +66,7 @@ export const turnPrincipalOf = (
     case "standup":
       return { kind: "standup", startedBy: principal.startedBy };
     case "task":
-      return { kind: "task", taskId: principal.taskId };
+      return principal;
     default:
       return null;
   }

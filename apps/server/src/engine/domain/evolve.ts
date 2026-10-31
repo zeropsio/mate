@@ -6,6 +6,7 @@
  */
 import {
   ENGINE_EVENT_VERSION,
+  compareTaskAssignments,
   type EngineEvent,
   type ItemActor,
   type ItemBody,
@@ -96,6 +97,34 @@ export const evolve = (previous: ConversationState, event: EngineEvent): Convers
 
 const evolveKnown = (state: ConversationState, event: KnownEngineEvent): ConversationState => {
   switch (event._tag) {
+    case "TaskAssignmentChanged": {
+      const assignments = state.taskAssignments ?? {};
+      const held = assignments[event.taskId];
+      if (held !== undefined && compareTaskAssignments(event.assignment, held.assignment) < 0)
+        return state;
+      return {
+        ...state,
+        ...(event.state === "active" &&
+        event.runId !== undefined &&
+        state.runs[event.runId] !== undefined
+          ? {
+              runs: {
+                ...state.runs,
+                [event.runId]: { ...state.runs[event.runId]!, taskAssignment: event.assignment },
+              },
+            }
+          : {}),
+        taskAssignments: {
+          ...assignments,
+          [event.taskId]: {
+            assignment: event.assignment,
+            state: event.state,
+            ...(event.runId === undefined ? {} : { runId: event.runId }),
+            ...(event.reason === undefined ? {} : { reason: event.reason }),
+          },
+        },
+      };
+    }
     case "RunQueued": {
       const run: RunRecord = {
         id: event.runId,
@@ -105,6 +134,9 @@ const evolveKnown = (state: ConversationState, event: KnownEngineEvent): Convers
         trigger: event.trigger,
         joins: event.joins,
         principal: event.principal,
+        ...(event.principal.kind === "task" && event.principal.assignment !== undefined
+          ? { taskAssignment: event.principal.assignment }
+          : {}),
         maintenance: event.maintenance,
         text: event.text,
         state: "queued",

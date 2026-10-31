@@ -10,6 +10,23 @@ import * as Schema from "effect/Schema";
 
 import { PositiveInt, TrimmedNonEmptyString } from "./baseSchemas.ts";
 
+/** HQ's exact monotonic grant number. Decimal text never rounds through JS Number. */
+export const TaskAssignmentNumber = Schema.String.check(
+  Schema.isPattern(/^[1-9][0-9]{0,18}$/u),
+  Schema.makeFilter((value) => value.length < 19 || value <= "9223372036854775807", {
+    message: "An assignment fits a positive PostgreSQL bigint",
+  }),
+);
+export type TaskAssignmentNumber = typeof TaskAssignmentNumber.Type;
+export const compareTaskAssignments = (left: string, right: string): number =>
+  left.length === right.length
+    ? left === right
+      ? 0
+      : left < right
+        ? -1
+        : 1
+    : left.length - right.length;
+
 export const MATE_TASK_TITLE_MAX = 256;
 /** How much of the issue's text a task carries; the rest stays on GitHub, a link away. */
 export const MATE_TASK_BODY_MAX = 16_000;
@@ -120,6 +137,9 @@ export type MateTaskCommitAuthor = typeof MateTaskCommitAuthor.Type;
 export const MateTask = Schema.Struct({
   /** HQ's id of the task: the same task handed twice is one task. */
   id: TrimmedNonEmptyString,
+  assignment: Schema.optionalKey(TaskAssignmentNumber),
+  /** Restore actual retained work; never start a run if its proof is absent. */
+  adoptOnly: Schema.optionalKey(Schema.Boolean),
   source: MateTaskSource,
   /** The ask's text (the issue's, the message's, the call's, the schedule's), cut to `MATE_TASK_BODY_MAX`. */
   body: Schema.String.check(Schema.isMaxLength(MATE_TASK_BODY_MAX)),
@@ -155,6 +175,7 @@ export type MateTaskStateKind = typeof MateTaskStateKind.Type;
 
 export const MateTaskReport = Schema.Struct({
   taskId: TrimmedNonEmptyString,
+  assignment: Schema.optionalKey(TaskAssignmentNumber),
   state: MateTaskStateKind,
   /** The conversation the Mate works it in, once it has one. */
   conversationId: Schema.optionalKey(TrimmedNonEmptyString),
@@ -268,3 +289,11 @@ export function mateTaskIdOfConversation(conversationId: string): string | undef
     .slice(MATE_TASK_CONVERSATION_PREFIX.length)
     .replace(/\.([0-9a-f]+)\./gu, (_, code: string) => String.fromCodePoint(parseInt(code, 16)));
 }
+
+/** A specific grant's control was durably recorded, not proof its provider stopped. */
+export const MateTaskControlReceipt = Schema.Struct({
+  taskId: TrimmedNonEmptyString,
+  assignment: TaskAssignmentNumber,
+  control: Schema.Literals(["requeue", "stop"]),
+});
+export type MateTaskControlReceipt = typeof MateTaskControlReceipt.Type;

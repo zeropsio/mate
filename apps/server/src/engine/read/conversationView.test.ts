@@ -484,19 +484,31 @@ describe("a task's own run", () => {
         const engine = yield* w.engine;
         // This world seats no Zerops user for a task: its run ends failed before it starts.
         yield* w.tell(
-          { _tag: "Send", text: "#42 The cart forgets its teas" },
+          {
+            _tag: "Send",
+            text: "#42 The cart forgets its teas",
+            taskId: "task-1",
+            taskAssignment: "1",
+          },
           {
             kind: "task",
             taskId: "task-1",
+            assignment: "1",
           },
         );
+        yield* w.tell(
+          { _tag: "AdoptTaskAssignment", taskId: "task-1", assignment: "2", runId: runId(mate, 1) },
+          { kind: "task", taskId: "task-1", assignment: "2" },
+        );
+        assert.strictEqual((yield* viewOf(w))?.lastEnded?.taskAssignment, "2");
         yield* w.tell({ _tag: "Send", text: "Why did it stop?" });
         yield* w.agent((agent, thread) => agent.finish(thread));
         assert.deepStrictEqual((yield* viewOf(w))?.lastEnded?.end, { kind: "completed" });
         const own = yield* engine.runOf({ conversationId: mate, taskId: "task-1" });
         assert.strictEqual(own?.runId, runId(mate, 1));
         assert.strictEqual(own?.end?.kind, "failed");
-        assert.deepStrictEqual(own?.principal, { kind: "task", taskId: "task-1" });
+        assert.deepStrictEqual(own?.principal, { kind: "task", taskId: "task-1", assignment: "1" });
+        assert.strictEqual(own?.taskAssignment, "2");
         assert.isUndefined(yield* engine.runOf({ conversationId: mate, taskId: "task-2" }));
         yield* w.shutdown;
       }),

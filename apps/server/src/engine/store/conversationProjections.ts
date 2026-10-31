@@ -25,13 +25,13 @@ const upsertRun = (
     INSERT INTO engine_run (
       run_id, conversation_id, ordinal, seq, rev, trigger_json, joins, principal_json, state,
       maintenance, waiting_on, stop_asked_json, end_json, end_source, session_id,
-      provider_turn_id, queued_at, admitted_at, started_at, ended_at, unresponsive_since
+      provider_turn_id, queued_at, admitted_at, started_at, ended_at, unresponsive_since,task_assignment
     ) VALUES (
       ${run.id}, ${state.conversationId}, ${run.ordinal}, ${run.seq}, ${rev},
       ${JSON.stringify(run.trigger)}, ${run.joins}, ${JSON.stringify(run.principal)}, ${run.state},
       ${run.maintenance ? 1 : 0}, ${run.waitingOn}, ${json(run.stopAsked)}, ${json(run.end)},
       ${run.endSource}, ${run.sessionId}, ${run.providerTurnId}, ${run.queuedAt},
-      ${run.admittedAt}, ${run.startedAt}, ${run.endedAt}, ${run.unresponsiveSince}
+      ${run.admittedAt}, ${run.startedAt}, ${run.endedAt}, ${run.unresponsiveSince},${run.taskAssignment ?? null}
     )
     ON CONFLICT (run_id) DO UPDATE SET
       rev = excluded.rev, state = excluded.state, waiting_on = excluded.waiting_on,
@@ -39,7 +39,7 @@ const upsertRun = (
       end_source = excluded.end_source, session_id = excluded.session_id,
       provider_turn_id = excluded.provider_turn_id, admitted_at = excluded.admitted_at,
       started_at = excluded.started_at, ended_at = excluded.ended_at,
-      unresponsive_since = excluded.unresponsive_since
+      unresponsive_since = excluded.unresponsive_since,task_assignment=excluded.task_assignment
   `.pipe(Effect.asVoid);
 };
 
@@ -56,6 +56,10 @@ const projectWith = (
 ) => {
   const c = event.conversationId;
   switch (event._tag) {
+    case "TaskAssignmentChanged":
+      return event.state === "active" && event.runId !== undefined
+        ? upsertRun(sql, state, event.runId, event.seq)
+        : Effect.void;
     case "RunQueued":
       return Effect.andThen(
         upsertRun(sql, state, event.runId, event.seq),

@@ -19,9 +19,11 @@ import {
   RunEndSource,
   RunId,
   RunTrigger,
+  TaskAssignmentNumber,
   WORK_ALIVE,
   type BackgroundWorkItem,
   type ConversationAgent,
+  type TaskAssignmentBinding,
   type RunState,
   type RuntimeMode,
   type ThreadLease,
@@ -42,6 +44,7 @@ export interface ViewRun {
   readonly state: RunState | "unknown";
   readonly trigger: RunTrigger;
   readonly principal: Principal;
+  readonly taskAssignment?: string;
   readonly end: RunEnd | null;
   readonly endSource: RunEndSource | null;
   readonly queuedAt: number;
@@ -75,6 +78,8 @@ export interface ConversationView {
   readonly conversationId: ConversationId;
   /** The conversation's sequence: its own revision. */
   readonly seq: number;
+  /** Actual committed engine ownership, never a file or socket-derived grant. */
+  readonly taskAssignments?: Readonly<Record<string, TaskAssignmentBinding>>;
   readonly agent: ConversationAgent | null;
   /** How freely its agent works, once a person set it. */
   readonly runtimeMode?: RuntimeMode | null;
@@ -150,6 +155,7 @@ interface RunRow {
   readonly state: string;
   readonly trigger_json: string;
   readonly principal_json: string;
+  readonly task_assignment: string | null;
   readonly end_json: string | null;
   readonly end_source: string | null;
   readonly queued_at: number;
@@ -176,6 +182,13 @@ const runOf = (row: RunRow) =>
       state: RUN_STATES.has(row.state) ? (row.state as RunState) : "unknown",
       trigger: yield* decodeTrigger(row.trigger_json),
       principal: yield* decodePrincipal(row.principal_json),
+      ...(row.task_assignment === null
+        ? {}
+        : {
+            taskAssignment: yield* Schema.decodeUnknownEffect(TaskAssignmentNumber)(
+              row.task_assignment,
+            ),
+          }),
       end: row.end_json === null ? null : yield* decodeEnd(row.end_json),
       endSource: row.end_source === null ? null : yield* decodeSource(row.end_source),
       queuedAt: row.queued_at,
@@ -309,6 +322,7 @@ export const readConversationView = (conversationId: ConversationId) =>
     const view: ConversationView = {
       conversationId,
       seq: head.head_seq,
+      taskAssignments: state.taskAssignments ?? {},
       agent: state.agent,
       runtimeMode: state.runtimeMode,
       lease: state.lease,

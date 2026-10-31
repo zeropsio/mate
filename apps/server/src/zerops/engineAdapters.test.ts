@@ -54,6 +54,12 @@ describe("engineAdapters", () => {
       { kind: "task", taskId: "task-1" },
     ],
     [
+      "a task's original HQ assignment remains attached to its admitted run",
+      { kind: "task", taskId: "task-1", assignment: "9007199254740993" },
+      { kind: "person", itemId: "task/r/1/i/1" },
+      { kind: "task", taskId: "task-1", assignment: "9007199254740993" },
+    ],
+    [
       "any other wake is admitted like a stand-up, for the person it continues",
       { kind: "person", subject: "zerops-user:eva" },
       wake("usage-resume"),

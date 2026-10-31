@@ -23,6 +23,8 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import {
   effectId as deriveEffectId,
+  compareTaskAssignments,
+  TaskAssignmentNumber,
   itemId as deriveItemId,
   requestId as deriveRequestId,
   runId as deriveRunId,
@@ -272,6 +274,10 @@ const handle = (b: StepBuilder, command: Command): void => {
   switch (command._tag) {
     case "Send":
       return send(b, command);
+    case "AdoptTaskAssignment":
+      return adoptTaskAssignment(b, command);
+    case "StopTaskAssignment":
+      return stopTaskAssignment(b, command);
     case "Stop":
       return stop(b, command.runId);
     case "Continue":
@@ -360,6 +366,30 @@ const handle = (b: StepBuilder, command: Command): void => {
 
 // ── runs ────────────────────────────────────────────────────────────────────────────────────
 
+// A continuation carries its actual joined run's accepted adoption. The
+// latest task number alone cannot relabel unrelated/old work as a new grant.
+const continuedPrincipal = (principal: Principal, joined: RunRecord | undefined): Principal =>
+  principal.kind === "task" &&
+  joined?.principal.kind === "task" &&
+  joined.principal.taskId === principal.taskId &&
+  joined.taskAssignment !== undefined
+    ? { ...principal, assignment: joined.taskAssignment }
+    : principal;
+const taskGrantActive = (b: StepBuilder, principal: Principal): boolean => {
+  if (principal.kind !== "task") return true;
+  const grant = b.state.taskAssignments?.[principal.taskId];
+  return (
+    grant === undefined || (grant.state === "active" && principal.assignment === grant.assignment)
+  );
+};
+const runGrantActive = (b: StepBuilder, run: RunRecord) =>
+  taskGrantActive(b, continuedPrincipal(run.principal, run));
+const stopRetiredRun = (b: StepBuilder, run: RunRecord) => {
+  if (run.stopAsked === null)
+    b.emit({ _tag: "RunStopAsked", runId: run.id, by: ENGINE, effectId: null });
+  endRun(b, b.run(run.id), { kind: "stopped", by: ENGINE }, "stop-asked");
+};
+
 const queueRun = (
   b: StepBuilder,
   input: {
@@ -379,7 +409,10 @@ const queueRun = (
     ordinal,
     trigger: input.trigger(id),
     joins: input.joins,
-    principal: input.principal,
+    principal: continuedPrincipal(
+      input.principal,
+      input.joins === null ? undefined : b.state.runs[input.joins],
+    ),
     maintenance: input.maintenance,
     text: input.text,
     ...(input.interactionMode === undefined || input.interactionMode === "default"
@@ -406,6 +439,11 @@ const admitNext = (b: StepBuilder): void => {
   if (next === undefined) {
     releaseLostWork(b);
     return armIdle(b);
+  }
+  if (!runGrantActive(b, b.run(next))) {
+    stopRetiredRun(b, b.run(next));
+    admitNext(b);
+    return;
   }
   cancelIdle(b);
   b.emit({ _tag: "RunAdmitted", runId: next });
@@ -764,6 +802,11 @@ const selectionOf = (state: ConversationState) =>
  * V1's words). A run whose admission has not settled, or a session closing, waits.
  */
 const dispatch = (b: StepBuilder, run: RunRecord, justOpened = false): void => {
+  if (!runGrantActive(b, run)) {
+    stopRetiredRun(b, run);
+    admitNext(b);
+    return;
+  }
   if (needsPrepare(run) && run.prepare !== "done") return;
   if (b.state.closing !== null) return;
   const opening = Object.values(b.state.effects).some(
@@ -1094,8 +1137,100 @@ const actsForSomeone = (b: StepBuilder): void => {
   }
 };
 
+const assignmentNumber = Schema.is(TaskAssignmentNumber);
+const checkTaskAssignment = (b: StepBuilder, taskId: string, assignment: string) => {
+  if (!assignmentNumber(assignment)) throw new Rejected("task-assignment-proof");
+  const held = b.state.taskAssignments?.[taskId];
+  if (held !== undefined) {
+    const order = compareTaskAssignments(assignment, held.assignment);
+    if (order < 0) throw new Rejected("task-assignment-stale");
+    if (order === 0 && held.state !== "active") throw new Rejected("task-assignment-retired");
+  }
+  return held;
+};
+const taskAssignmentPrincipal = (b: StepBuilder, taskId: string, assignment: string) => {
+  const principal = b.envelope.principal;
+  if (
+    principal.kind !== "task" ||
+    principal.taskId !== taskId ||
+    principal.assignment !== assignment ||
+    !assignmentNumber(assignment)
+  )
+    throw new Rejected("task-assignment-proof");
+};
+const adoptTaskAssignment = (
+  b: StepBuilder,
+  command: Extract<Command, { _tag: "AdoptTaskAssignment" }>,
+) => {
+  const { taskId, assignment, runId } = command;
+  taskAssignmentPrincipal(b, taskId, assignment);
+  checkTaskAssignment(b, taskId, assignment);
+  const run = b.state.runs[runId];
+  if (run === undefined || run.principal.kind !== "task" || run.principal.taskId !== taskId)
+    throw new Rejected("task-assignment-proof");
+  const held = b.state.taskAssignments?.[taskId];
+  if (held?.assignment === assignment && held.runId === runId) return;
+  b.emit({ _tag: "TaskAssignmentChanged", taskId, assignment, state: "active", runId });
+};
+const stopTaskAssignment = (
+  b: StepBuilder,
+  command: Extract<Command, { _tag: "StopTaskAssignment" }>,
+) => {
+  const { taskId, assignment, requeued, reason } = command;
+  taskAssignmentPrincipal(b, taskId, assignment);
+  const held = b.state.taskAssignments?.[taskId];
+  const older = held !== undefined && compareTaskAssignments(assignment, held.assignment) < 0;
+  b.emit({
+    _tag: "TaskAssignmentChanged",
+    taskId,
+    assignment,
+    state: (!older && held?.state === "stopped") || !requeued ? "stopped" : "requeued",
+    reason:
+      held?.assignment === assignment && held.state === "stopped"
+        ? (held.reason ?? reason)
+        : reason,
+    ...(held?.assignment === assignment && held.runId !== undefined ? { runId: held.runId } : {}),
+  });
+  // Even an old control has its own committed retirement receipt. It never
+  // touches successor runs, including an adopted run with a legacy principal.
+  const runs = Object.values(b.state.runs).filter(
+    (run) =>
+      run.state !== "ended" &&
+      run.principal.kind === "task" &&
+      run.principal.taskId === taskId &&
+      (run.taskAssignment ?? run.principal.assignment) === assignment,
+  );
+  for (const run of runs) if (run.stopAsked === null) stop(b, run.id);
+};
+
 const send = (b: StepBuilder, command: Extract<Command, { _tag: "Send" }>): void => {
   actsForSomeone(b);
+  const assignment =
+    command.taskAssignment ??
+    (b.envelope.principal.kind === "task" ? b.envelope.principal.assignment : undefined);
+  if (
+    b.envelope.principal.kind === "task" &&
+    b.state.taskAssignments?.[b.envelope.principal.taskId] !== undefined &&
+    assignment === undefined
+  )
+    throw new Rejected("task-assignment-proof");
+  if (assignment !== undefined) {
+    const principal = b.envelope.principal;
+    if (
+      principal.kind !== "task" ||
+      principal.taskId !== command.taskId ||
+      principal.assignment !== assignment
+    )
+      throw new Rejected("invalid-principal");
+    const held = checkTaskAssignment(b, principal.taskId, assignment);
+    if (held === undefined || held.assignment !== assignment)
+      b.emit({
+        _tag: "TaskAssignmentChanged",
+        taskId: principal.taskId,
+        assignment,
+        state: "active",
+      });
+  }
   if (b.state.archived) throw new Rejected("archived");
   const attachments = command.attachments ?? [];
   if (command.text.trim() === "" && attachments.length === 0) throw new Rejected("empty-message");
@@ -1211,6 +1346,20 @@ const stopWork = (b: StepBuilder): void => {
 
 const stop = (b: StepBuilder, target: RunId | undefined): void => {
   const id = target ?? b.state.activeRunId;
+  const principal = b.envelope.principal;
+  if (principal.kind === "task") {
+    const binding = b.state.taskAssignments?.[principal.taskId];
+    const own = id === null ? undefined : b.state.runs[id];
+    if (binding !== undefined || own?.taskAssignment !== undefined) {
+      if (
+        own === undefined ||
+        own.principal.kind !== "task" ||
+        own.principal.taskId !== principal.taskId ||
+        (own.taskAssignment ?? own.principal.assignment) !== principal.assignment
+      )
+        throw new Rejected("task-assignment-proof");
+    }
+  }
   if (id === null) return stopWork(b);
   const run = b.state.runs[id];
   if (run === undefined) throw new Rejected("unknown-run");
@@ -1718,13 +1867,27 @@ const wakeFired = (
   id: Extract<Command, { _tag: "WakeFired" }>["wakeId"],
   armedSeq: number | undefined,
 ) => {
-  const wake = b.state.wakes[id];
+  let wake = b.state.wakes[id];
   if (wake === undefined) throw new Rejected("wake-not-armed");
   if (armedSeq !== undefined && armedSeq !== wake.armedSeq) {
     throw new Rejected("wake-not-armed", "armed again since");
   }
   b.emit({ _tag: "WakeFired", wakeId: id, dueAt: wake.dueAt });
   b.result = { ...b.result, wakeId: id };
+  const principal = continuedPrincipal(
+    wake.principal,
+    wake.joins === null ? undefined : b.state.runs[wake.joins],
+  );
+  if (!taskGrantActive(b, principal)) {
+    if (wake.joins !== null)
+      b.emit({
+        _tag: "RunNotContinued",
+        runId: wake.joins,
+        reason: "its task assignment was retired",
+      });
+    return;
+  }
+  wake = { ...wake, principal };
   if (wake.cron !== null) {
     b.emit({
       _tag: "WakeArmed",
@@ -2948,6 +3111,10 @@ const selfStarted = (
   });
   b.emit({ _tag: "RunAdmitted", runId: run });
   markStarted(b, b.run(run), providerTurnId, turn);
+  // This turn already started in the external CLI. Retain the evidence and
+  // interrupt its actual session/turn; retirement never grants it fresh work
+  // and cannot truthfully mark an unconfirmed provider turn already ended.
+  if (!runGrantActive(b, b.run(run))) stop(b, run);
 };
 
 // ── recovery ────────────────────────────────────────────────────────────────────────────────

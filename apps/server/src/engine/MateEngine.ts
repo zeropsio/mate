@@ -261,6 +261,8 @@ export interface MateEngineService {
   ) => Effect.Effect<
     | {
         readonly runId: RunId;
+        /** Effective grant recorded by this actual run's accepted adoption. */
+        readonly taskAssignment?: string;
         readonly end: RunEnd | null;
         readonly source: RunEndSource | null;
         /** Whose authority it runs for: a task's names the task, in the one conversation of many. */
