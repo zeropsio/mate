@@ -25,7 +25,7 @@
  * @module groupDeploys
  */
 
-import { ProjectId } from "@t3tools/contracts";
+import type { ProjectId } from "@t3tools/contracts";
 import type { HqEnvironmentIdentity } from "@t3tools/shared/hqEnvironment";
 import type { EnvironmentBirth } from "@t3tools/shared/hqDeploys";
 import type { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
@@ -35,9 +35,7 @@ import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnviron
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
-  type HqEnvironment,
   type CanonicalHqEnvironment,
-  canonicalEnvironmentsOf,
   type UnreadEnvironment,
   jobFailed,
   jobsByService,
@@ -446,49 +444,4 @@ export function deployWord(tone: GroupRowTone): string | undefined {
     case "neutral":
       return undefined;
   }
-}
-
-/** @deprecated Use canonicalEnvironmentRowInputsOf after the HQ boundary. */
-export function environmentRowInputsOf(
-  input: Omit<
-    Parameters<typeof canonicalEnvironmentRowInputsOf>[0],
-    "environments" | "projectNames" | "services"
-  > & {
-    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
-    readonly projectNames: ReadonlyMap<string, string>;
-    readonly services: ReadonlyArray<GroupEnvironmentService>;
-  },
-): ReadonlyArray<GroupEnvironmentRowInput> {
-  const environments = canonicalEnvironmentsOf(input.environments);
-  if (environments === undefined) return [];
-  const rows = canonicalEnvironmentRowInputsOf({
-    ...input,
-    environments,
-    projectNames: new Map([...input.projectNames].map(([id, name]) => [ProjectId.make(id), name])),
-    services: input.services.map((entry) => ({
-      ...entry,
-      projectId: ProjectId.make(entry.projectId),
-    })),
-  });
-  return zeropsStops({ declarations: [], environments: rows, unread: [] }).environments;
-}
-/** @deprecated Unmigrated callers keep the Zerops DTO, derived from canonical stops. */
-export function groupStopsOf(
-  input: Omit<Parameters<typeof canonicalGroupStopsOf>[0], "environments" | "projects"> & {
-    readonly environments: ReadonlyArray<HqEnvironment | CanonicalHqEnvironment>;
-    readonly projects: ReadonlyArray<GroupStopProject>;
-  },
-): GroupStops {
-  const environments = canonicalEnvironmentsOf(input.environments);
-  if (environments === undefined) return { declarations: [], environments: [], unread: [] };
-  return zeropsStops(
-    canonicalGroupStopsOf({
-      ...input,
-      environments,
-      projects: input.projects.map((entry) => ({
-        ...entry,
-        projectId: ProjectId.make(entry.projectId),
-      })),
-    }),
-  );
 }

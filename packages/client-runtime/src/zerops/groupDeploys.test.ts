@@ -2,24 +2,24 @@ import * as Schema from "effect/Schema";
 import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import { gitEnvironment, gitRemote, gitPreflight } from "../data/__fixtures__/hqWire.ts";
 import { gitDeliveryOf } from "./gitDelivery.ts";
-import { ProjectId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   canonicalEnvironmentRowInputsOf,
   appRecipeOf,
   deployWord,
-  environmentRowInputsOf,
-  groupStopsOf,
+  canonicalGroupStopsOf,
   releaseDeploys,
 } from "./groupDeploys.ts";
 import type { ZeropsServiceDeployedVersion } from "../data/projections/serviceRuns.ts";
-import { canonicalEnvironmentRow, environmentRow } from "./groupRows.ts";
+import { canonicalEnvironmentRow } from "./groupRows.ts";
 import type { Shown } from "./knowledge/known.ts";
 import {
   canonicalEnvironmentsOf,
   jobInFlight,
   type HqEnvironment,
+  type CanonicalHqEnvironment,
   type HqJob,
 } from "./hq/environments.ts";
 import { releaseCandidate } from "./release.ts";
@@ -31,10 +31,10 @@ const WEB = "77ab0e1f2d3c4b5a69788796a5b4c3d2e1f0a9b8";
 const OLD = "1111111111111111111111111111111111111111";
 
 const services = [
-  { projectId: "p-stage", serviceId: "s1", hostname: "api" },
-  { projectId: "p-stage", serviceId: "s2", hostname: "web" },
-  { projectId: "p-prod", serviceId: "s3", hostname: "api" },
-  { projectId: "p-mate", serviceId: "s4", hostname: "api" },
+  { projectId: ProjectId.make("p-stage"), serviceId: "s1", hostname: "api" },
+  { projectId: ProjectId.make("p-stage"), serviceId: "s2", hostname: "web" },
+  { projectId: ProjectId.make("p-prod"), serviceId: "s3", hostname: "api" },
+  { projectId: ProjectId.make("p-mate"), serviceId: "s4", hostname: "api" },
 ];
 
 let jobs = 0;
@@ -68,7 +68,7 @@ function record(
 
 function environment(
   overrides: Partial<HqEnvironment> & Pick<HqEnvironment, "projectId" | "tier" | "name">,
-): HqEnvironment {
+): CanonicalHqEnvironment {
   return {
     sources: overrides.tier === "production" ? ["release"] : ["main"],
     order: 1,
@@ -78,6 +78,9 @@ function environment(
     release: null,
     birth: null,
     ...overrides,
+    projectId: ProjectId.make(overrides.projectId),
+    id: HqEnvironmentId.make(overrides.projectId),
+    target: { kind: "zerops", projectId: ProjectId.make(overrides.projectId) },
   };
 }
 
@@ -85,11 +88,16 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
   it("reads each environment HQ records, in its order, with each service's newest and live jobs", () => {
     const live = record("live", OLD);
     const failed = record("failed", API);
-    const inputs = environmentRowInputsOf({
+    const inputs = canonicalEnvironmentRowInputsOf({
       environments: [
-        environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
         environment({
-          projectId: "p-stage",
+          projectId: ProjectId.make("p-prod"),
+          tier: "production",
+          name: "production",
+          order: 2,
+        }),
+        environment({
+          projectId: ProjectId.make("p-stage"),
           tier: "stage",
           name: "stage",
           order: 1,
@@ -97,14 +105,15 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
           jobs: [failed, live],
         }),
       ],
-      projectNames: new Map([["p-stage", "Acme - stage"]]),
+      projectNames: new Map([[ProjectId.make("p-stage"), "Acme - stage"]]),
       services,
       versions: new Map([["s1", `main ${OLD.slice(0, 7)}`]]),
       repositories: new Map([["api", "apidev"]]),
     });
     expect(inputs).toEqual([
       {
-        projectId: "p-stage",
+        id: HqEnvironmentId.make("p-stage"),
+        target: { kind: "zerops", projectId: ProjectId.make("p-stage") },
         name: "Acme - stage",
         tier: "stage",
         sources: ["main"],
@@ -125,7 +134,8 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
         ],
       },
       {
-        projectId: "p-prod",
+        id: HqEnvironmentId.make("p-prod"),
+        target: { kind: "zerops", projectId: ProjectId.make("p-prod") },
         name: "production",
         tier: "production",
         sources: "release",
@@ -140,8 +150,10 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
   });
 
   it("carries the id of the version each service runs, as the platform states it", () => {
-    const [stage] = environmentRowInputsOf({
-      environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
+    const [stage] = canonicalEnvironmentRowInputsOf({
+      environments: [
+        environment({ projectId: ProjectId.make("p-stage"), tier: "stage", name: "stage" }),
+      ],
       projectNames: new Map(),
       services,
       versions: new Map(),
@@ -158,9 +170,14 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
 
   it("reads a delta and a job of a service no newer one replaced, never as a service's deploy", () => {
     const delta: HqJob = { ...record("live", API), kind: "delta", service: null, sha: null };
-    const [stage] = environmentRowInputsOf({
+    const [stage] = canonicalEnvironmentRowInputsOf({
       environments: [
-        environment({ projectId: "p-stage", tier: "stage", name: "stage", jobs: [delta] }),
+        environment({
+          projectId: ProjectId.make("p-stage"),
+          tier: "stage",
+          name: "stage",
+          jobs: [delta],
+        }),
       ],
       projectNames: new Map(),
       services,
@@ -173,10 +190,10 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
 describe("a service HQ records a deploy of", () => {
   it("stands in its environment's row though the account does not list it", () => {
     const latest = record("failed", API, "worker");
-    const [stage] = environmentRowInputsOf({
+    const [stage] = canonicalEnvironmentRowInputsOf({
       environments: [
         environment({
-          projectId: "p-stage",
+          projectId: ProjectId.make("p-stage"),
           tier: "stage",
           name: "stage",
           jobs: [latest, record("live", API)],
@@ -202,10 +219,10 @@ describe("what a release compares, from HQ's records", () => {
     (state) => {
       const failedJob = record("failed", API, "api", RELEASED);
       const nextJob = record(state, WEB, "api", { cause: "release", ref: "v1.0.2" });
-      const inputs = environmentRowInputsOf({
+      const inputs = canonicalEnvironmentRowInputsOf({
         environments: [
           environment({
-            projectId: "p-prod",
+            projectId: ProjectId.make("p-prod"),
             tier: "production",
             name: "production",
             jobs: [nextJob, failedJob],
@@ -224,16 +241,16 @@ describe("what a release compares, from HQ's records", () => {
   );
 
   it("holds a production deploy HQ records as failed, under its service and commit", () => {
-    const inputs = environmentRowInputsOf({
+    const inputs = canonicalEnvironmentRowInputsOf({
       environments: [
         environment({
-          projectId: "p-stage",
+          projectId: ProjectId.make("p-stage"),
           tier: "stage",
           name: "stage",
           jobs: [record("failed", WEB)],
         }),
         environment({
-          projectId: "p-prod",
+          projectId: ProjectId.make("p-prod"),
           tier: "production",
           name: "production",
           order: 2,
@@ -275,10 +292,10 @@ describe("what a release compares, from HQ's records", () => {
   ] as const)("holds a failed $name as the release's: $owned", ({ job, owned }) => {
     const latest = job();
     const { failed } = releaseDeploys(
-      environmentRowInputsOf({
+      canonicalEnvironmentRowInputsOf({
         environments: [
           environment({
-            projectId: "p-prod",
+            projectId: ProjectId.make("p-prod"),
             tier: "production",
             name: "production",
             jobs: [latest],
@@ -322,11 +339,11 @@ describe("what a release compares, from HQ's records", () => {
       leftOut: [],
     };
     const { rollouts } = releaseDeploys(
-      environmentRowInputsOf({
+      canonicalEnvironmentRowInputsOf({
         environments: [
-          environment({ projectId: "p-stage", tier: "stage", name: "stage" }),
+          environment({ projectId: ProjectId.make("p-stage"), tier: "stage", name: "stage" }),
           environment({
-            projectId: "p-prod",
+            projectId: ProjectId.make("p-prod"),
             tier: "production",
             name: "production",
             order: 2,
@@ -350,10 +367,10 @@ describe("what a release compares, from HQ's records", () => {
     { state: "superseded", failed: false },
   ] as const)("holds a production job $state as failed: $failed", ({ state, failed }) => {
     const { failed: held } = releaseDeploys(
-      environmentRowInputsOf({
+      canonicalEnvironmentRowInputsOf({
         environments: [
           environment({
-            projectId: "p-prod",
+            projectId: ProjectId.make("p-prod"),
             tier: "production",
             name: "production",
             jobs: [record(state, API, "api", RELEASED)],
@@ -371,17 +388,19 @@ describe("what a release compares, from HQ's records", () => {
 describe("an application's stops, as HQ records them", () => {
   const projects = [
     {
-      projectId: "p-stage",
+      projectId: ProjectId.make("p-stage"),
       name: "Acme - stage",
       role: "stage" as const,
       services: [{ serviceId: "s1", hostname: "api" }],
     },
-    { projectId: "p-mate", name: "Acme - Ada", role: "dev" as const, services: [] },
+    { projectId: ProjectId.make("p-mate"), name: "Acme - Ada", role: "dev" as const, services: [] },
   ];
 
   it("declares each environment HQ records, and asks for each tier the recipe offers and none fills", () => {
-    const stops = groupStopsOf({
-      environments: [environment({ projectId: "p-stage", tier: "stage", name: "stage" })],
+    const stops = canonicalGroupStopsOf({
+      environments: [
+        environment({ projectId: ProjectId.make("p-stage"), tier: "stage", name: "stage" }),
+      ],
       projects,
       versions: new Map([["s1", `main ${API.slice(0, 7)}`]]),
       recipe: {
@@ -392,7 +411,13 @@ describe("an application's stops, as HQ records them", () => {
       },
     });
     expect(stops.declarations).toEqual([
-      { name: "stage", tier: "stage", project: "p-stage", sources: ["main"] },
+      {
+        name: "stage",
+        tier: "stage",
+        id: HqEnvironmentId.make("p-stage"),
+        target: { kind: "zerops", projectId: ProjectId.make("p-stage") },
+        sources: ["main"],
+      },
     ]);
     expect(stops.environments.map((entry) => [entry.name, entry.services])).toEqual([
       [
@@ -454,10 +479,15 @@ describe("what the recipe on main offers", () => {
   // "declared in the recipe, not in Zerops" until a person adds it.
   it("carries into each environment the services its tier declares", () => {
     const recipe = appRecipeOf({ stage: stageTier, production: null });
-    const [stage, production] = environmentRowInputsOf({
+    const [stage, production] = canonicalEnvironmentRowInputsOf({
       environments: [
-        environment({ projectId: "p-stage", tier: "stage", name: "stage" }),
-        environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
+        environment({ projectId: ProjectId.make("p-stage"), tier: "stage", name: "stage" }),
+        environment({
+          projectId: ProjectId.make("p-prod"),
+          tier: "production",
+          name: "production",
+          order: 2,
+        }),
       ],
       projectNames: new Map(),
       services: [],
@@ -490,7 +520,7 @@ describe("a stop whose tier builds from HQ's git", () => {
   ];
   const projects = [
     {
-      projectId: "p-stage",
+      projectId: ProjectId.make("p-stage"),
       name: "Acme - stage",
       services: [
         { serviceId: "stage-app", hostname: "app" },
@@ -498,7 +528,7 @@ describe("a stop whose tier builds from HQ's git", () => {
       ],
     },
     {
-      projectId: "p-prod",
+      projectId: ProjectId.make("p-prod"),
       name: "Acme - production",
       services: [
         { serviceId: "prod-app", hostname: "app" },
@@ -507,32 +537,39 @@ describe("a stop whose tier builds from HQ's git", () => {
     },
   ];
   const environments = [
-    environment({ projectId: "p-stage", tier: "stage", name: "stage", order: 1 }),
-    environment({ projectId: "p-prod", tier: "production", name: "production", order: 2 }),
+    environment({ projectId: ProjectId.make("p-stage"), tier: "stage", name: "stage", order: 1 }),
+    environment({
+      projectId: ProjectId.make("p-prod"),
+      tier: "production",
+      name: "production",
+      order: 2,
+    }),
   ];
   const rowOf = (projectId: string, versions: ReadonlyMap<string, string>) => {
-    const stops = groupStopsOf({ environments, projects, versions, recipe });
-    const input = stops.environments.find((entry) => entry.projectId === projectId);
+    const stops = canonicalGroupStopsOf({ environments, projects, versions, recipe });
+    const input = stops.environments.find(
+      (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
+    );
     if (input === undefined) throw new Error(`no stop ${projectId}`);
-    return environmentRow(input);
+    return canonicalEnvironmentRow(input);
   };
 
   it.each([
     {
       name: "a stage running main's head",
-      projectId: "p-stage",
+      projectId: ProjectId.make("p-stage"),
       versions: new Map([["stage-app", `main ${MAIN.slice(0, 7)}`]]),
       atMainHead: true,
     },
     {
       name: "a stage whose version the store has not named yet",
-      projectId: "p-stage",
+      projectId: ProjectId.make("p-stage"),
       versions: new Map<string, string>(),
       atMainHead: false,
     },
     {
       name: "a production on the import's no-code version",
-      projectId: "p-prod",
+      projectId: ProjectId.make("p-prod"),
       versions: new Map<string, string>(),
       atMainHead: false,
     },
@@ -588,17 +625,23 @@ describe("the word beside the dot", () => {
 });
 
 describe("what a release compares", () => {
-  const stage = environment({ projectId: "p-stage", tier: "stage", name: "stage", order: 1 });
+  const stage = environment({
+    projectId: ProjectId.make("p-stage"),
+    tier: "stage",
+    name: "stage",
+    order: 1,
+  });
   const production = environment({
-    projectId: "p-prod",
+    projectId: ProjectId.make("p-prod"),
     tier: "production",
     name: "production",
     order: 2,
   });
   const snapshot = (
     versions: ReadonlyMap<string, string>,
-    environments: ReadonlyArray<HqEnvironment> = [stage, production],
-  ) => environmentRowInputsOf({ environments, projectNames: new Map(), services, versions });
+    environments: ReadonlyArray<CanonicalHqEnvironment> = [stage, production],
+  ) =>
+    canonicalEnvironmentRowInputsOf({ environments, projectNames: new Map(), services, versions });
 
   it("reads production from the sha in the deployed version's name, never a stage's", () => {
     const commits = releaseDeploys(

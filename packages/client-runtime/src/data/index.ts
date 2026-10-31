@@ -65,7 +65,6 @@ export {
   canonicalAppEnvironments,
   environmentById,
   type CanonicalAppEnvironmentsRead,
-  appEnvironments,
   appsEnvironments,
   type AppEnvironmentsRead,
 } from "./projections/appEnvironments.ts";

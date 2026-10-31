@@ -69,7 +69,6 @@ export {
   UNREAD_ENVIRONMENT_LINE,
   unreadEnvironmentsWords,
   type UnreadEnvironment,
-  environmentsOf,
   jobFailed,
   jobInFlight,
   jobsByService,

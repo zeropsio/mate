@@ -132,7 +132,7 @@ export interface GroupFlowStopInput {
   readonly projectId: string;
   readonly name: string;
   readonly tier: GroupEnvironmentTier;
-  /** Its row, where HQ records the environment and its deploys (`environmentRowInputsOf`). */
+  /** Its row, where HQ records the environment and its deploys (`canonicalEnvironmentRowInputsOf`). */
   readonly row:
     | (Omit<EnvironmentRow, "projectId"> & Partial<Pick<HqEnvironmentIdentity, "id" | "target">>)
     | undefined;

@@ -340,8 +340,6 @@ export {
   type CanonicalGroupEnvironmentRowInput,
   type CanonicalGroupEnvironmentDeclaration,
   type CanonicalGroupStops,
-  environmentRowInputsOf,
-  groupStopsOf,
   releaseDeploys,
   type AppRecipe,
   type GroupEnvironmentRowInput,

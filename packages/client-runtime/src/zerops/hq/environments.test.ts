@@ -1,7 +1,8 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
-  environmentsOf,
+  canonicalEnvironmentsOf,
   deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
@@ -11,6 +12,12 @@ import {
 } from "./environments.ts";
 
 const A = "a".repeat(40);
+
+const withIdentity = <T extends { readonly projectId: string }>(environment: T) => ({
+  ...environment,
+  id: HqEnvironmentId.make(environment.projectId),
+  target: { kind: "zerops" as const, projectId: ProjectId.make(environment.projectId) },
+});
 
 const job = (id: string, service: string | null, state: HqJob["state"]): HqJob => ({
   id,
@@ -119,12 +126,12 @@ describe("environmentsOf", () => {
         },
       ],
     };
-    expect(environmentsOf([environment])).toEqual([environment]);
+    expect(canonicalEnvironmentsOf([environment])).toEqual([withIdentity(environment)]);
   });
 
   it("reads an environment with its jobs", () => {
     const environment = { ...STAGE, jobs: [job("1", "app", "live")] };
-    expect(environmentsOf([environment])).toEqual([environment]);
+    expect(canonicalEnvironmentsOf([environment])).toEqual([withIdentity(environment)]);
   });
 
   it("retains every environment when one accepted operation is unresolved", () => {
@@ -140,7 +147,10 @@ describe("environmentsOf", () => {
       ],
     };
     const production = { ...STAGE, projectId: "p-prod", tier: "production" };
-    expect(environmentsOf([stage, production])).toEqual([stage, production]);
+    expect(canonicalEnvironmentsOf([stage, production])).toEqual([
+      withIdentity(stage),
+      withIdentity(production),
+    ]);
   });
 
   it("reads a production with where its newest release stands", () => {
@@ -159,7 +169,7 @@ describe("environmentsOf", () => {
         leftOut: [{ service: "api", sha: A, job: "5", reason: "a job of aaaaaaa is under way" }],
       },
     };
-    expect(environmentsOf([production])).toEqual([production]);
+    expect(canonicalEnvironmentsOf([production])).toEqual([withIdentity(production)]);
   });
 
   // Review (client #4): a Core older than this client tells neither where a release stands nor
@@ -167,7 +177,7 @@ describe("environmentsOf", () => {
   // say is not known, never on its way and never coming up.
   it("reads an environment from a Core that tells no release and no birth", () => {
     const { release: _release, birth: _birth, ...older } = STAGE;
-    expect(environmentsOf([older])).toEqual([older]);
+    expect(canonicalEnvironmentsOf([older])).toEqual([withIdentity(older)]);
   });
 
   // Review (delta #9): a Core from before `landed` names a release's end without saying whether it
@@ -183,20 +193,24 @@ describe("environmentsOf", () => {
       leftOut: [],
     };
     const production = { ...STAGE, projectId: "p-prod", tier: "production" as const, release };
-    expect(environmentsOf([production])?.[0]?.release).toEqual(release);
+    expect(canonicalEnvironmentsOf([production])?.[0]?.release).toEqual(release);
   });
 
   // HQ and the client ship together: a set in the shape before jobs is one this build cannot read.
   it("does not read an environment HQ sent with deploys and no jobs", () => {
     const { jobs: _, ...before } = STAGE;
     expect(
-      environmentsOf([{ ...before, deploys: [{ service: "app", latest: null, live: null }] }]),
+      canonicalEnvironmentsOf([
+        { ...before, deploys: [{ service: "app", latest: null, live: null }] },
+      ]),
     ).toBeUndefined();
   });
 
   it("does not read a job in a state this build does not know", () => {
     expect(
-      environmentsOf([{ ...STAGE, jobs: [{ ...job("1", "app", "live"), state: "deploying" }] }]),
+      canonicalEnvironmentsOf([
+        { ...STAGE, jobs: [{ ...job("1", "app", "live"), state: "deploying" }] },
+      ]),
     ).toBeUndefined();
   });
 });
@@ -216,7 +230,7 @@ describe("delivery environments", () => {
       target: { kind: "git" },
       jobs: [],
     });
-    expect(environmentsOf([git])).toEqual([]);
+    expect(canonicalEnvironmentsOf([git])).toEqual([git]);
   });
 });
 
@@ -227,6 +241,8 @@ it.each([undefined, null, 0, 1_305_166_613])(
       ...job("1", "app", "failed"),
       ...(sourceArchiveBytes === undefined ? {} : { sourceArchiveBytes }),
     };
-    expect(environmentsOf([{ ...STAGE, jobs: [measured] }])?.[0]?.jobs).toEqual([measured]);
+    expect(canonicalEnvironmentsOf([{ ...STAGE, jobs: [measured] }])?.[0]?.jobs).toEqual([
+      measured,
+    ]);
   },
 );

@@ -1,7 +1,11 @@
 // @vitest-environment happy-dom
 import * as Schema from "effect/Schema";
 import { HqGitNavigationEnvironment as GitEnvironmentSchema } from "@t3tools/shared/hqStream";
-import { appEnvironments, environmentById, readsOfState } from "@t3tools/client-runtime/data";
+import {
+  canonicalAppEnvironments,
+  environmentById,
+  readsOfState,
+} from "@t3tools/client-runtime/data";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { HqPushNavigationJob, HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
 import type { HqPushCi } from "@t3tools/shared/hqDeploys";
@@ -509,9 +513,11 @@ it("the mounted compact flow joins delayed navigation evidence before menus and 
   ).toBe("queued");
   const reads = readsOfState(store.state());
   expect(
-    appEnvironments
+    canonicalAppEnvironments
       .derive(reads, { orgId: "org", appId: "shop" })
-      .environments?.map((entry) => entry.projectId),
+      .environments?.flatMap((entry) =>
+        entry.target.kind === "zerops" ? [entry.target.projectId] : [],
+      ),
   ).toEqual(["real-stage"]);
   expect(
     environmentById.derive(reads, { orgId: "org", appId: "shop", id: admitted.id })?.jobs[0]?.state,

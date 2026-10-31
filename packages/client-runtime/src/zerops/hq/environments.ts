@@ -139,12 +139,6 @@ export function zeropsEnvironments(
   );
 }
 
-/** An application's environments as HQ sent them; `undefined` where it sent none it can read. */
-export function environmentsOf(value: unknown): ReadonlyArray<HqEnvironment> | undefined {
-  const environments = canonicalEnvironmentsOf(value);
-  return environments === undefined ? undefined : zeropsEnvironments(environments);
-}
-
 /** A service's deploys: its newest job, and the newest that went live. */
 export interface ServiceJobs {
   readonly latest: HqJob;

@@ -1,10 +1,17 @@
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
-import { appEnvironments, appsEnvironments } from "./appEnvironments.ts";
+import { canonicalAppEnvironments, appsEnvironments } from "./appEnvironments.ts";
+
+const withIdentity = <T extends { readonly projectId: string }>(environment: T) => ({
+  ...environment,
+  id: HqEnvironmentId.make(environment.projectId),
+  target: { kind: "zerops" as const, projectId: ProjectId.make(environment.projectId) },
+});
 
 const ORG = "org";
 const SCOPE = hqAppsScope(ORG);
@@ -93,7 +100,7 @@ const refused = apply(told, [
 const removed = apply(told, [deliver([], [{ family: "hqApp", id: "shop", reason: "no-access" }])]);
 
 const of = (state: AccountState, appId: string) =>
-  appEnvironments.derive(readsOfState(state), { orgId: ORG, appId });
+  canonicalAppEnvironments.derive(readsOfState(state), { orgId: ORG, appId });
 
 describe("appEnvironments", () => {
   it.each([
@@ -121,7 +128,7 @@ describe("appEnvironments", () => {
     { name: "refused to the reader", state: told, appId: "blog", environments: undefined },
     { name: "an application HQ never named", state: told, appId: "none", environments: undefined },
   ])("reads $name", ({ state, appId, environments }) => {
-    expect(of(state, appId).environments).toEqual(environments);
+    expect(of(state, appId).environments).toEqual(environments?.map(withIdentity));
   });
 
   it.each([
@@ -175,7 +182,7 @@ describe("appEnvironments", () => {
     ({ sent, readable, unread }) => {
       const state = apply(demanded, [deliver([app("shop", sent)])]);
       const read = of(state, "shop");
-      expect(read.environments).toEqual(readable);
+      expect(read.environments).toEqual(readable.map(withIdentity));
       expect(read.unread).toEqual(unread);
     },
   );

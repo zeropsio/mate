@@ -80,16 +80,6 @@ const compatibilityRead = (answer: CanonicalAppEnvironmentsRead): AppEnvironment
         ),
 });
 
-export const appEnvironments: Projection<
-  { readonly orgId: string; readonly appId: string },
-  AppEnvironmentsRead
-> = {
-  name: "appEnvironments",
-  keyOf: ({ orgId, appId }) => `${orgId}/${appId}`,
-  derive: (read, key) => compatibilityRead(canonicalAppEnvironments.derive(read, key)),
-  equals: sameValue,
-};
-
 /** Each named application's environments, by its id: what a surface over several reads. */
 export const appsEnvironments: Projection<
   { readonly orgId: string; readonly appIds: ReadonlyArray<string> },
