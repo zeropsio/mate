@@ -272,6 +272,26 @@ export const decide = (state: ConversationState, envelope: Envelope, now: number
 
 const handle = (b: StepBuilder, command: Command): void => {
   switch (command._tag) {
+    case "CaptureToolInvocation":
+    case "BindToolInvocation": {
+      if (b.envelope.principal.kind !== "engine")
+        throw new Rejected("invalid-principal", "native tool provenance belongs to the engine");
+      if (command._tag === "CaptureToolInvocation") {
+        b.emit({
+          _tag: "ToolInvocationCaptured",
+          invocationId: command.invocationId,
+          inputHash: command.inputHash,
+        });
+      } else {
+        b.emit({
+          _tag: "ToolInvocationBound",
+          invocationId: command.invocationId,
+          capturedSeq: command.capturedSeq,
+          scope: command.scope,
+        });
+      }
+      return;
+    }
     case "Send":
       return send(b, command);
     case "AdoptTaskAssignment":

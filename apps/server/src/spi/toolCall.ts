@@ -391,12 +391,19 @@ const readOpenCodeToolCall = (payload: ItemLifecyclePayload): ToolCallReadResult
     return shapeMismatch(payload.itemType, isToolItem, "payload.data has no tool");
   }
   const state = isRecord(data.state) ? data.state : {};
-  const { name, server } = splitOpenCodeName(rawName);
+  // This owned native tool forwards the unchanged ZCP workflow input through its execution port.
+  const ownedWorkflow = rawName === "mate_workflow";
+  const { name, server } = ownedWorkflow ? { name: "zerops_workflow" } : splitOpenCodeName(rawName);
+  const arguments_ = ownedWorkflow
+    ? isRecord(state.input) && isRecord(state.input.input)
+      ? state.input.input
+      : undefined
+    : state.input;
   const base: SpiToolCall = {
     name,
     rawName,
     ...(server !== undefined ? { server } : {}),
-    ...(state.input !== undefined ? { arguments: state.input } : {}),
+    ...(arguments_ !== undefined ? { arguments: arguments_ } : {}),
   };
   if (state.status === "completed") {
     const blocks = openCodeAttachmentBlocks(state.attachments);

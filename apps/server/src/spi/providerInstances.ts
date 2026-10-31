@@ -108,6 +108,7 @@ export class ProviderInstances extends Context.Service<
      * an id no live instance carries (unknown, or its driver failed).
      */
     readonly agentOf: (instanceId: string) => Effect.Effect<ProviderInstanceAgent | undefined>;
+    readonly toolInvocationReady?: (instanceId: string) => Effect.Effect<boolean>;
     /** The configured instances as the registry holds them now (`ServerProvider` each). */
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
     readonly changes: Stream.Stream<ReadonlyArray<ServerProvider>>;
@@ -130,6 +131,13 @@ export const layer = Layer.effect(
         yield* registry.refreshInstance(instanceId);
       });
     return {
+      toolInvocationReady: (instanceId) =>
+        Effect.gen(function* () {
+          const instance = yield* instanceRegistry.getInstance(ProviderInstanceId.make(instanceId));
+          return instance?.enabled === true && instance.toolInvocationReady !== undefined
+            ? yield* instance.toolInvocationReady
+            : false;
+        }),
       reconcileAgentAuth: (agentId, verified) =>
         reconcileInstanceAuth(agentDefaultInstanceId(agentId), verified),
       refreshAgent: (agentId) =>

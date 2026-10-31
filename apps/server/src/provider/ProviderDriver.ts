@@ -69,6 +69,8 @@ export type ProviderWorkspaceSnapshot = ServerProvider &
  * state.
  */
 export interface ProviderInstance {
+  /** This concrete instance can execute the owned native tool, checked against its live runtime. */
+  readonly toolInvocationReady?: Effect.Effect<boolean>;
   readonly instanceId: ProviderInstanceId;
   readonly driverKind: ProviderDriverKind;
   readonly continuationIdentity: ProviderContinuationIdentity;

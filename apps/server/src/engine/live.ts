@@ -60,6 +60,7 @@ import type { EffectWorkerOptions } from "./outbox/EffectWorker.ts";
 import * as TurnPumpModule from "./pump/TurnPump.ts";
 import * as EngineStoreModule from "./store/EngineStore.ts";
 import { runEngineMigrations } from "./store/migrations.ts";
+import { EngineToolInvocations } from "./toolInvocations.ts";
 import { watchProviderUsage } from "./usageWatch.ts";
 import { makeEngineWire, type EngineWireOptions } from "./wire/EngineWire.ts";
 
@@ -479,7 +480,7 @@ export const makeLiveMateEngine = (options: LiveEngineOptions = {}) =>
  * (ProviderService and the SPI bus), the workspace history and the ports.
  */
 export const engineRuntimeLayer = (options: LiveEngineOptions = {}) =>
-  EffectsModule.layer.pipe(
+  Layer.mergeAll(EffectsModule.layer, EngineToolInvocations.layer).pipe(
     Layer.provideMerge(TurnPumpModule.layer),
     Layer.provideMerge(
       Layer.mergeAll(

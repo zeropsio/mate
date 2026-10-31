@@ -84,6 +84,9 @@ import {
   type OpenCodeServerConnection,
 } from "../opencodeRuntime.ts";
 import { openCodeMcpControl, type OpenCodeMcpClient } from "../../spi/mcpControl.ts";
+import type { OpenCodeToolExecution } from "../../spi/openCodeToolExecution.ts";
+import { ToolInvocationRegistry } from "../../spi/toolInvocation.ts";
+import { managedOpenCodePermissions } from "../openCodeManagedTools.ts";
 import * as Option from "effect/Option";
 
 const PROVIDER = ProviderDriverKind.make("opencode");
@@ -433,6 +436,7 @@ interface OpenCodeSessionContext {
 }
 
 export interface OpenCodeAdapterLiveOptions {
+  readonly toolExecution?: OpenCodeToolExecution;
   readonly instanceId?: ProviderInstanceId;
   readonly environment?: NodeJS.ProcessEnv;
   readonly nativeEventLogPath?: string;
@@ -952,6 +956,8 @@ export function makeOpenCodeAdapter(
     const serverConfig = yield* ServerConfig;
     const openCodeRuntime = yield* OpenCodeRuntime;
     const threadPolicies = yield* readOpenCodeThreadPolicies;
+    const invocationRegistry = yield* Effect.serviceOption(ToolInvocationRegistry);
+    const invocationRuns = new Map<string, Map<string, string>>();
     const crypto = yield* Crypto.Crypto;
     const fileSystem = yield* FileSystem.FileSystem;
     const path = yield* Path.Path;
@@ -970,6 +976,69 @@ export function makeOpenCodeAdapter(
       options?.nativeEventLogger === undefined ? nativeEventLogger : undefined;
     const runtimeEvents = yield* Queue.unbounded<ProviderRuntimeEvent>();
     const sessions = new Map<ThreadId, OpenCodeSessionContext>();
+    const invocationRoutes = new Map<OpenCodeSessionContext, () => void>();
+    const workflowModes = new WeakMap<OpenCodeSessionContext, boolean>();
+    const registerInvocationSession = Effect.fn("registerInvocationSession")(function* (
+      context: OpenCodeSessionContext,
+    ) {
+      if (options?.toolExecution === undefined) return;
+      invocationRoutes.get(context)?.();
+      workflowModes.set(context, false);
+      const nativeSessionId = context.openCodeSessionId;
+      const nativeRuns = new Map<string, string>();
+      invocationRuns.set(nativeSessionId, nativeRuns);
+      if (options?.toolExecution !== undefined) {
+        const unregister = options.toolExecution.registerSession(nativeSessionId, {
+          threadId: context.session.threadId,
+          execute: (toolInput, invocation) =>
+            Effect.gen(function* () {
+              const installed = Option.isSome(invocationRegistry)
+                ? yield* invocationRegistry.value.current
+                : Option.none();
+              if (Option.isNone(installed))
+                return { text: "This native tool has no owned execution path.", isError: true };
+              return yield* installed.value.execute(toolInput, invocation);
+            }),
+          prepare: (toolInput, invocation) =>
+            Effect.gen(function* () {
+              const installed = Option.isSome(invocationRegistry)
+                ? yield* invocationRegistry.value.current
+                : Option.none();
+              if (Option.isNone(installed))
+                return { text: "This native tool has no owned preparation path.", isError: true };
+              return yield* installed.value.prepare(toolInput, invocation);
+            }),
+          resolveTurn: (identity) =>
+            runOpenCodeSdk("session.message", (signal) =>
+              context.client.session.message(
+                { sessionID: identity.sessionId, messageID: identity.messageId },
+                { signal },
+              ),
+            ).pipe(
+              Effect.map((answer) =>
+                answer.data?.info.role === "assistant"
+                  ? nativeRuns.get(answer.data.info.parentID)
+                  : undefined,
+              ),
+              Effect.timeout("5 seconds"),
+              Effect.orElseSucceed(() => undefined),
+            ),
+        });
+        const release = () => {
+          unregister();
+          if (invocationRuns.get(nativeSessionId) === nativeRuns)
+            invocationRuns.delete(nativeSessionId);
+          if (invocationRoutes.get(context) === release) {
+            invocationRoutes.delete(context);
+            workflowModes.delete(context);
+          }
+        };
+        invocationRoutes.set(context, release);
+        yield* Effect.addFinalizer(() => Effect.sync(release)).pipe(
+          Effect.provideService(Scope.Scope, context.sessionScope),
+        );
+      }
+    });
     const deleteContextIfCurrent = (context: OpenCodeSessionContext) => {
       if (sessions.get(context.session.threadId) === context) {
         sessions.delete(context.session.threadId);
@@ -2935,9 +3004,13 @@ export function makeOpenCodeAdapter(
               instanceId: boundInstanceId,
               cwd: directory,
             });
-            const permissionRules = threadSetup
+            const basePermissionRules = threadSetup
               ? [...threadSetup.permission]
               : buildOpenCodePermissionRules(input.runtimeMode);
+            const permissionRules =
+              options?.toolExecution === undefined
+                ? basePermissionRules
+                : managedOpenCodePermissions(basePermissionRules, false);
             const server = yield* openCodeRuntime.connectToOpenCodeServer({
               binaryPath,
               directory,
@@ -3158,6 +3231,7 @@ export function makeOpenCodeAdapter(
         return (yield* awaitOpenCodeContextReady(raceWinner)).session;
       }
       sessions.set(input.threadId, context);
+      yield* registerInvocationSession(context);
       sessionScopeTransferred = true;
       const cleanupStartingContext = closeStartingOpenCodeContext(context, started.created).pipe(
         Effect.ensuring(Effect.sync(() => deleteContextIfCurrent(context))),
@@ -3317,21 +3391,70 @@ export function makeOpenCodeAdapter(
 
       return yield* context.promptSemaphore.withPermit(
         Effect.gen(function* () {
+          const nativeSessionId = context.openCodeSessionId;
           const freshTurnId = TurnId.make(`opencode-turn-${yield* randomUUIDv4}`);
           const messageId = yield* makeOpenCodeMessageId();
+          const needsOwnedExecution =
+            input.invocationRequired === true ||
+            options?.toolExecution?.isManaged(nativeSessionId) === true;
+          const managedInvocation =
+            needsOwnedExecution &&
+            context.threadSetup === undefined &&
+            input.invocationContext !== undefined &&
+            options?.toolExecution !== undefined;
+          if (
+            needsOwnedExecution &&
+            (!managedInvocation ||
+              Option.isNone(invocationRegistry) ||
+              Option.isNone(yield* invocationRegistry.value.current))
+          ) {
+            return yield* new ProviderAdapterValidationError({
+              provider: PROVIDER,
+              operation: "sendTurn",
+              issue: "This task requires an owned native tool execution path.",
+            });
+          }
+          if (managedInvocation) options?.toolExecution?.markManaged(nativeSessionId);
+          if (
+            options?.toolExecution !== undefined &&
+            workflowModes.get(context) !== managedInvocation
+          ) {
+            const permission = managedOpenCodePermissions(
+              context.threadSetup
+                ? [...context.threadSetup.permission]
+                : buildOpenCodePermissionRules(context.session.runtimeMode),
+              managedInvocation,
+            );
+            yield* runOpenCodeSdk("session.update", (signal) =>
+              context.client.session.update({ sessionID: nativeSessionId, permission }, { signal }),
+            ).pipe(Effect.mapError(toRequestError));
+            if (context.openCodeSessionId !== nativeSessionId) return yield* Effect.interrupt;
+            workflowModes.set(context, managedInvocation);
+          }
+          // Record the exact parent before prompt submission can execute any native tool.
+          if (input.invocationContext !== undefined)
+            invocationRuns.get(nativeSessionId)?.set(messageId, input.invocationContext);
           const pendingCancellation = context.cancellation;
           if (pendingCancellation) {
             const cancellationResult = yield* Deferred.await(pendingCancellation.completion).pipe(
               Effect.result,
             );
-            if ((yield* Ref.get(context.stopped)) || sessions.get(input.threadId) !== context) {
+            if (
+              (yield* Ref.get(context.stopped)) ||
+              sessions.get(input.threadId) !== context ||
+              context.openCodeSessionId !== nativeSessionId
+            ) {
               return yield* Effect.interrupt;
             }
             if (cancellationResult._tag === "Failure") {
               return yield* cancellationResult.failure;
             }
           }
-          if (sessions.get(input.threadId) !== context || (yield* Ref.get(context.stopped))) {
+          if (
+            sessions.get(input.threadId) !== context ||
+            context.openCodeSessionId !== nativeSessionId ||
+            (yield* Ref.get(context.stopped))
+          ) {
             return yield* Effect.interrupt;
           }
           // A sendTurn while a turn is active is a steer. OpenCode queues the
@@ -3429,7 +3552,7 @@ export function makeOpenCodeAdapter(
                 runOpenCodeSdk("session.command", (signal) =>
                   context.client.session.command(
                     {
-                      sessionID: context.openCodeSessionId,
+                      sessionID: nativeSessionId,
                       messageID: messageId,
                       command: nativeCommand.name,
                       arguments: commandMatch?.[2] ?? "",
@@ -3451,7 +3574,7 @@ export function makeOpenCodeAdapter(
             : runOpenCodeSdk("session.promptAsync", (signal) =>
                 context.client.session.promptAsync(
                   {
-                    sessionID: context.openCodeSessionId,
+                    sessionID: nativeSessionId,
                     messageID: messageId,
                     model: parsedModel,
                     ...(context.activeAgent ? { agent: context.activeAgent } : {}),
@@ -3558,10 +3681,7 @@ export function makeOpenCodeAdapter(
                     }
                     const cleanupExit = yield* Effect.exit(
                       runOpenCodeSdk("session.abort", (signal) =>
-                        context.client.session.abort(
-                          { sessionID: context.openCodeSessionId },
-                          { signal },
-                        ),
+                        context.client.session.abort({ sessionID: nativeSessionId }, { signal }),
                       ).pipe(Effect.timeout("1 second")),
                     );
                     if (Exit.isFailure(cleanupExit)) {
@@ -3642,7 +3762,8 @@ export function makeOpenCodeAdapter(
           const intentionallyCancelled =
             promptAdmission.cancelled ||
             (yield* Ref.get(context.stopped)) ||
-            sessions.get(input.threadId) !== context;
+            sessions.get(input.threadId) !== context ||
+            context.openCodeSessionId !== nativeSessionId;
           if (Exit.isFailure(promptExit) && !intentionallyCancelled) {
             if (submissionEndsTurn && steeringTurnId === undefined) {
               const failure = Cause.squash(promptExit.cause);
@@ -3703,6 +3824,7 @@ export function makeOpenCodeAdapter(
           if (
             stopped ||
             sessions.get(input.threadId) !== context ||
+            context.openCodeSessionId !== nativeSessionId ||
             promptAdmission.cancelled ||
             context.activeTurnId !== turnId ||
             context.promptGeneration !== promptAdmission.generation ||
@@ -4174,13 +4296,22 @@ export function makeOpenCodeAdapter(
           yield* runOpenCodeSdk("session.update", () =>
             context.client.session.update({
               sessionID: forkedSessionId,
-              permission: context.threadSetup
-                ? [...context.threadSetup.permission]
-                : buildOpenCodePermissionRules(context.session.runtimeMode),
+              permission:
+                options?.toolExecution === undefined
+                  ? context.threadSetup
+                    ? [...context.threadSetup.permission]
+                    : buildOpenCodePermissionRules(context.session.runtimeMode)
+                  : managedOpenCodePermissions(
+                      context.threadSetup
+                        ? [...context.threadSetup.permission]
+                        : buildOpenCodePermissionRules(context.session.runtimeMode),
+                      false,
+                    ),
             }),
           ).pipe(Effect.mapError(toRequestError));
           yield* clearPendingOpenCodeRequests(context, { type: "session.fork" });
           context.openCodeSessionId = forkedSessionId;
+          yield* registerInvocationSession(context);
           context.relatedSessionIds.clear();
           context.relatedSessionIds.add(forkedSessionId);
           context.messageRoleById.clear();

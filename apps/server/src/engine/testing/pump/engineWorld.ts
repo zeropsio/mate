@@ -126,6 +126,8 @@ export const makeEngineWorld = (options: WorldOptions) =>
       const refusal =
         typeof options.refuse === "function" ? options.refuse(principal) : options.refuse;
       if (refusal !== undefined) return Effect.fail(new RunRefused({ message: refusal }));
+      // Task admission spends the stubbed organisation key, never a person's subscription.
+      if (principal.kind === "task") return Effect.void;
       // Whose login the run spends, read as the server reads it (`turnPrincipalOf`): a
       // session by its Zerops subject, a wake by the bare Zerops user id it continues.
       const acting = turnPrincipalOf(principal, trigger);

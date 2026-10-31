@@ -957,6 +957,25 @@ const event = <const Tag extends string, const Fields extends Schema.Struct.Fiel
   fields: Fields,
 ) => Schema.TaggedStruct(tag, { ...eventHeader, ...fields });
 
+export const ToolInvocationScope = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("manual") }),
+  Schema.Struct({
+    kind: Schema.Literal("task"),
+    taskId: TrimmedNonEmptyString,
+    assignment: TaskAssignmentNumber,
+  }),
+]);
+export type ToolInvocationScope = typeof ToolInvocationScope.Type;
+export const ToolInvocationCaptured = event("ToolInvocationCaptured", {
+  invocationId: Schema.String,
+  inputHash: Schema.String,
+});
+export const ToolInvocationBound = event("ToolInvocationBound", {
+  invocationId: Schema.String,
+  capturedSeq: Schema.Int,
+  scope: ToolInvocationScope,
+});
+
 export const TaskAssignmentBinding = Schema.Struct({
   assignment: TaskAssignmentNumber,
   state: Schema.Literals(["active", "requeued", "stopped"]),
@@ -1313,6 +1332,8 @@ export const UnknownEngineEvent = Schema.TaggedStruct("Unknown", {
 });
 
 const knownEvents = [
+  ToolInvocationCaptured,
+  ToolInvocationBound,
   TaskAssignmentChanged,
   RunQueued,
   RunAdmitted,

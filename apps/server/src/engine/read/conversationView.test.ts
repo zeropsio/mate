@@ -480,10 +480,24 @@ describe("a task's own run", () => {
   it.effect("is found by its task after a person's later run in the same conversation", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const w = yield* world;
+        const w = yield* makeEngineWorld({
+          driver: "claudeAgent",
+          refuse: (principal) =>
+            principal.kind === "task" ? "The task's organisation key was refused." : undefined,
+        });
+        yield* w.boot;
+        yield* w.tell({
+          _tag: "AssignAgent",
+          agent: {
+            instanceId: "claudeAgent",
+            driver: "claudeAgent",
+            model: "m1",
+            profile: { kind: "mate" },
+          },
+        });
         const engine = yield* w.engine;
-        // This world seats no Zerops user for a task: its run ends failed before it starts.
-        yield* w.tell(
+        // This task is explicitly refused before it starts; a later person can still run.
+        const offered = yield* w.tell(
           {
             _tag: "Send",
             text: "#42 The cart forgets its teas",
@@ -496,10 +510,12 @@ describe("a task's own run", () => {
             assignment: "1",
           },
         );
-        yield* w.tell(
+        assert.strictEqual(offered._tag, "Accepted");
+        const adopted = yield* w.tell(
           { _tag: "AdoptTaskAssignment", taskId: "task-1", assignment: "2", runId: runId(mate, 1) },
           { kind: "task", taskId: "task-1", assignment: "2" },
         );
+        assert.strictEqual(adopted._tag, "Accepted");
         assert.strictEqual((yield* viewOf(w))?.lastEnded?.taskAssignment, "2");
         yield* w.tell({ _tag: "Send", text: "Why did it stop?" });
         yield* w.agent((agent, thread) => agent.finish(thread));

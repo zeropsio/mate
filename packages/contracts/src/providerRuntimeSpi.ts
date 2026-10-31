@@ -114,6 +114,15 @@
  *   completed fact's `nativeCost` replaces it, never adds to it. OpenCode emits it from its
  *   step-finish meters (one turn is a whole automated task run); the other drivers do not.
  *   The task limits and the cost a task reports read it (`zerops/ZeropsTasks.ts`). A new member.
+ * - 2.12 (2026-10-31): an owned native tool execution receives the exact provider instance,
+ *   native session, assistant message and call ids, separately from model arguments. Its
+ *   parent resolver is lazy: the engine durably captures the call before native SDK I/O,
+ *   and binds the original run's authority at that cursor. OpenCode's managed task path
+ *   implements it; unknown or unsupported execution never becomes a manual invocation.
+ *   Native approval waits between durable prepare and reuse-only execution. The owned native
+ *   mate_workflow call enriches as canonical zerops_workflow with unwrapped input; its raw
+ *   name, ids and result/error evidence stay native.
+ *   The runtime event union is unchanged.
  *
  * @module providerRuntimeSpi
  */
@@ -127,7 +136,7 @@ import type { CanonicalItemType, ProviderRuntimeEvent } from "./providerRuntime.
  * enrichment) changes what owned code may depend on (a new member, a
  * renamed field, a narrowed payload shape).
  */
-export const PROVIDER_RUNTIME_SPI_VERSION = "2.11";
+export const PROVIDER_RUNTIME_SPI_VERSION = "2.12";
 
 /**
  * One image content block an MCP tool result carried, e.g. a

@@ -43,6 +43,7 @@ import type {
   ThreadLease,
   TurnEndSource,
   TurnHandle,
+  ToolInvocationScope,
   WakeId,
 } from "@t3tools/contracts";
 
@@ -194,6 +195,17 @@ export interface ProviderUsageReport {
 }
 
 export type Command =
+  | {
+      readonly _tag: "CaptureToolInvocation";
+      readonly invocationId: string;
+      readonly inputHash: string;
+    }
+  | {
+      readonly _tag: "BindToolInvocation";
+      readonly invocationId: string;
+      readonly capturedSeq: number;
+      readonly scope: ToolInvocationScope;
+    }
   | {
       readonly _tag: "Send";
       readonly text: string;

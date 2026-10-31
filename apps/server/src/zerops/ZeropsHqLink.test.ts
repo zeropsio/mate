@@ -1554,7 +1554,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   const APPLIED: CrewSnapshot = { ...CREW_OFF_SNAPSHOT, status: "applied" };
 
   /** A link over HQ whose overview is read from feeds the test moves, on the test's clock. */
-  const feedRigOf = (onEngine: boolean) =>
+  const feedRigOf = (onEngine: boolean, toolInvocationReady?: Effect.Effect<boolean>) =>
     Effect.gen(function* () {
       const rows = yield* SubscriptionRef.make<ReadonlyArray<ConversationRow>>([]);
       const crew = yield* SubscriptionRef.make<CrewSnapshot>(CREW_OFF_SNAPSHOT);
@@ -1562,6 +1562,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       const update = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
       const providers = yield* SubscriptionRef.make<ReadonlyArray<ServerProvider>>([]);
       const feed = yield* mateOverviewFeed({
+        ...(toolInvocationReady === undefined ? {} : { toolInvocationReady }),
         providers: {
           latest: SubscriptionRef.get(providers),
           changes: SubscriptionRef.changes(providers).pipe(Stream.drop(1)),
@@ -1620,6 +1621,41 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       .filter((frame) => frame.type === "overview")
       .slice(1)
       .map((frame) => frame["sections"]);
+
+  it.effect(
+    "native tool invocation capability follows actual executable readiness and disappears on refusal",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const ready = yield* Ref.make(false);
+          const { socket, providers } = yield* feedRigOf(true, Ref.get(ready));
+          const first = yield* decodeMateLinkUp(socket.sent[1]);
+          assert.isTrue(
+            first.type === "overview" &&
+              first.full &&
+              first.overview.identity.engine?.toolInvocations === undefined,
+          );
+          yield* Ref.set(ready, true);
+          yield* SubscriptionRef.set(providers, []);
+          yield* TestClock.adjust(Duration.seconds(1));
+          const supported = yield* decodeMateLinkUp(socket.sent.at(-1));
+          assert.isTrue(
+            supported.type === "overview" &&
+              !supported.full &&
+              supported.sections.identity?.engine?.toolInvocations === 1,
+          );
+          yield* Ref.set(ready, false);
+          yield* SubscriptionRef.set(providers, []);
+          yield* TestClock.adjust(Duration.seconds(1));
+          const refused = yield* decodeMateLinkUp(socket.sent.at(-1));
+          assert.isTrue(
+            refused.type === "overview" &&
+              !refused.full &&
+              refused.sections.identity?.engine?.toolInvocations === undefined,
+          );
+        }),
+      ),
+  );
 
   it.effect("relays a ready agent without a sign-in when its provider snapshot changes", () =>
     Effect.scoped(

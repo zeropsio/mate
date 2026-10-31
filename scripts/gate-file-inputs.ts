@@ -68,6 +68,8 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/assets/ConversationMedia.test.ts": [],
   "apps/server/src/assets/PersistentAssets.test.ts": [],
   "apps/server/src/atomicWrite.test.ts": [],
+  // Only captured children and files created in each disposable test directory.
+  "apps/server/src/zerops/managedWorkflowProcess.test.ts": [],
   "apps/server/src/auth/RpcAuthorization.clientScopes.test.ts": [
     "apps/web/src/**",
     "apps/mobile/src/**",

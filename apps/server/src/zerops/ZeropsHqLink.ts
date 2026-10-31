@@ -41,6 +41,7 @@ import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
 import { mateRunsWithoutSignIn } from "@t3tools/shared/zeropsAgentAuth";
 import type { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
 import { ProviderInstances } from "../spi/providerInstances.ts";
+import { ToolInvocationRegistry } from "../spi/toolInvocation.ts";
 import * as NodeDns from "node:dns";
 import type * as NodeNet from "node:net";
 
@@ -807,6 +808,7 @@ export interface OverviewSources {
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
   /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
   readonly engine?: { readonly protocol: number };
+  readonly toolInvocationReady?: Effect.Effect<boolean>;
 }
 
 /**
@@ -837,7 +839,17 @@ export const mateOverviewFeed = (
           environmentId: sources.environmentId,
           serverVersion: sources.serverVersion,
           update: (yield* sources.update.current) ?? null,
-          ...(sources.engine === undefined ? {} : { engine: sources.engine }),
+          ...(sources.engine === undefined
+            ? {}
+            : {
+                engine: {
+                  ...sources.engine,
+                  ...(sources.toolInvocationReady !== undefined &&
+                  (yield* sources.toolInvocationReady)
+                    ? { toolInvocations: 1 as const }
+                    : {}),
+                },
+              }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -902,6 +914,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
       const engine = yield* MateEngine;
+      const toolInvocations = yield* Effect.serviceOption(ToolInvocationRegistry);
       const chats = chatsSource(
         engine,
         // The revision an engine row carries: the attention's source, as the engine wire's.
@@ -922,6 +935,11 @@ export const layer = (crew: OverviewSources["crew"]) =>
         domainEvents: chats.domainEvents,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
+        toolInvocationReady: Option.isNone(toolInvocations)
+          ? Effect.succeed(false)
+          : Effect.flatMap(toolInvocations.value.current, (current) =>
+              Option.isNone(current) ? Effect.succeed(false) : current.value.ready,
+            ),
       });
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,

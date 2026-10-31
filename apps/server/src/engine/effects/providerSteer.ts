@@ -45,6 +45,7 @@ export const makeProviderSteer = Effect.gen(function* () {
         }
         const sent = yield* deliver(row, {
           session: payload.sessionId,
+          runId: payload.runId,
           turn: payload.itemId as TurnHandle,
           mode: "steer",
           text: payload.text,

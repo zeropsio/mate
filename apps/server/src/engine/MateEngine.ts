@@ -49,6 +49,8 @@ export {
 
 /** Session identity for the engine's provider wiring. */
 export { conversationOfThread, providerThreadOf } from "./pump/TurnPump.ts";
+/** The engine's durable native-call authority binding, without exposing its store. */
+export { EngineToolInvocations, ToolInvocationUnavailable } from "./toolInvocations.ts";
 /** How a run reads when its own agent interrupted the turn: an owner kind tells it apart. */
 export { AGENT_STOPPED_ITSELF } from "./domain/decide.ts";
 /** A store read or write that failed, as an owner kind's effects meet it. */

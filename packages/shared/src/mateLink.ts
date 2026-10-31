@@ -149,7 +149,11 @@ export const OverviewIdentity = Schema.Struct({
   update: Schema.NullOr(ExecutionEnvironmentUpdate),
   /** The engine its conversation runs on, by the protocol its rows speak; absent on a V1 Mate. */
   engine: Schema.optionalKey(
-    Schema.Struct({ protocol: Schema.Int, taskAssignments: Schema.optionalKey(Schema.Literal(1)) }),
+    Schema.Struct({
+      protocol: Schema.Int,
+      taskAssignments: Schema.optionalKey(Schema.Literal(1)),
+      toolInvocations: Schema.optionalKey(Schema.Literal(1)),
+    }),
   ),
 });
 export type OverviewIdentity = typeof OverviewIdentity.Type;

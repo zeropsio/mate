@@ -48,6 +48,7 @@ import { ProviderRuntimeEventBusLive } from "./spi/ProviderRuntimeEventBus.ts";
 import { ClaudeThreadExtensionRegistry } from "./spi/claudeThreadProfile.ts";
 import { ServerCommandReadiness } from "./spi/serverCommandReadiness.ts";
 import { ThreadToolPolicyRegistry } from "./spi/threadToolPolicy.ts";
+import { ToolInvocationRegistry } from "./spi/toolInvocation.ts";
 import { ProviderSessionDirectoryLive } from "./provider/Layers/ProviderSessionDirectory.ts";
 import * as ProviderSessionRuntime from "./persistence/ProviderSessionRuntime.ts";
 import { ProviderAdapterRegistryLive } from "./provider/Layers/ProviderAdapterRegistry.ts";
@@ -773,6 +774,7 @@ export const makeServerLayer = (options: ServerLayerOptions) =>
         Layer.provideMerge(
           Layer.mergeAll(
             ThreadToolPolicyRegistry.layer,
+            ToolInvocationRegistry.layer,
             ClaudeThreadExtensionRegistry.layer,
             ServerCommandReadiness.layer,
             rpcUpdateAdmissionLayer,

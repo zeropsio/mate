@@ -4,6 +4,7 @@ import { RuntimeItemId, TurnId, type SpiEvent } from "@t3tools/contracts";
 
 import { makeBrowserCallFrames } from "../zerops/ZeropsBrowserCallFrames.ts";
 import { projectZeropsToolCall } from "../zerops/zeropsActivityResult.ts";
+import { readZeropsToolCall } from "../zerops/zeropsToolResult.ts";
 import { applyToolCall, readToolCall, sniffToolCallShape } from "./toolCall.ts";
 
 let idCounter = 0;
@@ -545,6 +546,49 @@ describe("sniffToolCallShape", () => {
 const openCodeData = (tool: string, state: Record<string, unknown>) => ({ tool, state });
 
 describe("readToolCall — OpenCode", () => {
+  it.each([
+    {
+      title: "its original workflow input and successful result",
+      state: {
+        status: "completed",
+        input: { input: { action: "open-change", title: "Original work" } },
+        output: "Original result",
+      },
+      arguments: { action: "open-change", title: "Original work" },
+      result: { text: "Original result", failed: false },
+    },
+    {
+      title: "a malformed input and the native refusal",
+      state: {
+        status: "error",
+        input: { input: "not an object" },
+        error: "Native refused the arguments",
+      },
+      arguments: undefined,
+      result: { text: "Native refused the arguments", failed: true },
+    },
+  ])("the owned workflow preserves $title at the existing SPI boundary", (row) => {
+    const event = itemEvent({
+      provider: "opencode",
+      itemType: "dynamic_tool_call",
+      data: openCodeData("mate_workflow", row.state),
+    });
+    const result = readToolCall(event);
+    expect(result).toEqual({
+      kind: "toolCall",
+      call: {
+        name: "zerops_workflow",
+        rawName: "mate_workflow",
+        ...(row.arguments === undefined ? {} : { arguments: row.arguments }),
+        result: row.result,
+      },
+    });
+    const enriched = applyToolCall(event);
+    expect(enriched.itemId).toBe(event.itemId);
+    expect(enriched.turnId).toBe(event.turnId);
+    expect(readZeropsToolCall(enriched)?.name).toBe("zerops_workflow");
+    expect(readZeropsToolCall(enriched)?.arguments).toEqual(row.arguments);
+  });
   it.each([
     {
       name: "omitted attachments",

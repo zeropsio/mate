@@ -17,6 +17,7 @@ import type {
   ModelSelection,
   ProviderInteractionMode,
   TurnHandle,
+  RunId,
 } from "@t3tools/contracts";
 
 import { ProviderService } from "../../provider/Services/ProviderService.ts";
@@ -24,6 +25,7 @@ import type { SendMode } from "../bridge/spi3.ts";
 import type { EffectHandler } from "../outbox/EffectWorker.ts";
 import type { EffectRow } from "../outbox/EffectOutbox.ts";
 import { TurnPump } from "../pump/TurnPump.ts";
+import { Conversations } from "../Conversations.ts";
 import { failed, isSessionGone, liveHost, ok, recovering, wordsOf } from "./shared.ts";
 
 /** What a send that found no live session reads: nothing went, so it may go again. */
@@ -45,10 +47,12 @@ interface SendPayload {
 export const makeDeliver = Effect.gen(function* () {
   const provider = yield* ProviderService;
   const pump = yield* TurnPump;
+  const conversations = yield* Conversations;
   return Effect.fnUntraced(function* (
     row: EffectRow,
     input: {
       readonly session: string;
+      readonly runId: string;
       readonly turn: TurnHandle;
       readonly mode: SendMode;
       readonly text: string;
@@ -61,10 +65,15 @@ export const makeDeliver = Effect.gen(function* () {
     if (host === undefined) return { live: false as const };
     const evidence = yield* host.beginSend(input.turn, input.mode);
     const trimmed = input.text.trim();
+    const owner = yield* conversations.state(row.conversationId);
+    const run = owner.runs[input.runId as RunId];
+    const invocationRequired = run === undefined || run.principal.kind === "task";
     yield* host.forkInSession(
       provider
         .sendTurn({
           threadId: host.thread,
+          invocationContext: input.runId,
+          invocationRequired,
           ...(trimmed === "" ? {} : { input: input.text }),
           ...(input.attachments.length === 0 ? {} : { attachments: input.attachments }),
           ...(input.modelSelection === undefined ? {} : { modelSelection: input.modelSelection }),
@@ -108,6 +117,7 @@ export const makeProviderSend = Effect.gen(function* () {
         const turn = payload.turn as TurnHandle;
         const sent = yield* deliver(row, {
           session: payload.sessionId,
+          runId: payload.runId,
           turn,
           mode: "new",
           text: payload.text,

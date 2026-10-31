@@ -56,6 +56,9 @@ const projectWith = (
 ) => {
   const c = event.conversationId;
   switch (event._tag) {
+    case "ToolInvocationCaptured":
+    case "ToolInvocationBound":
+      return Effect.void;
     case "TaskAssignmentChanged":
       return event.state === "active" && event.runId !== undefined
         ? upsertRun(sql, state, event.runId, event.seq)

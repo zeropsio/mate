@@ -97,6 +97,9 @@ export const evolve = (previous: ConversationState, event: EngineEvent): Convers
 
 const evolveKnown = (state: ConversationState, event: KnownEngineEvent): ConversationState => {
   switch (event._tag) {
+    case "ToolInvocationCaptured":
+    case "ToolInvocationBound":
+      return state;
     case "TaskAssignmentChanged": {
       const assignments = state.taskAssignments ?? {};
       const held = assignments[event.taskId];

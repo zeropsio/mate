@@ -1506,6 +1506,8 @@ const makeClientRuntimeZeropsFixture = Effect.fn("makeClientRuntimeZeropsFixture
 const SPI_DIR = "apps/server/src/spi";
 const PROVIDER_DIR = "apps/server/src/provider";
 const SPI_INBOUND_FILES: ReadonlySet<string> = new Set([
+  `${SPI_DIR}/toolInvocation.ts`,
+  `${SPI_DIR}/openCodeToolExecution.ts`,
   `${SPI_DIR}/threadToolPolicy.ts`,
   `${SPI_DIR}/claudeThreadProfile.ts`,
   `${SPI_DIR}/codexThreadProfile.ts`,
@@ -1648,6 +1650,7 @@ const ENGINE_PUBLIC_FILES: ReadonlySet<string> = new Set([
   "apps/server/src/engine/registerEngineRpc.ts",
 ]);
 const ENGINE_WIRING_FILES: ReadonlySet<string> = new Set([
+  "apps/server/src/zerops/ZeropsWorkflowTools.ts",
   "apps/server/src/engineSessionDirectory.ts",
   "apps/server/src/zerops/mateUpdateDrainLive.ts",
   "apps/server/src/zerops/ZeropsMateUpdate.ts",

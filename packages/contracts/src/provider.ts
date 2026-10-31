@@ -68,6 +68,10 @@ export type ProviderSessionStartInput = typeof ProviderSessionStartInput.Type;
 
 export const ProviderSendTurnInput = Schema.Struct({
   threadId: ThreadId,
+  /** Opaque engine run reference; only an actual native execution adapter may echo it. */
+  invocationContext: Schema.optional(Schema.String),
+  /** Task-owned work refuses a driver path that cannot preserve its native invocation identity. */
+  invocationRequired: Schema.optional(Schema.Boolean),
   input: Schema.optional(
     TrimmedNonEmptyString.check(Schema.isMaxLength(PROVIDER_SEND_TURN_MAX_INPUT_CHARS)),
   ),

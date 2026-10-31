@@ -68,6 +68,7 @@ import * as ZeropsWorkingCopyModule from "./ZeropsWorkingCopy.ts";
 import * as ZeropsTaskLedgerModule from "./ZeropsTaskLedger.ts";
 import * as ZeropsTasksModule from "./ZeropsTasks.ts";
 import * as ZeropsTurnAdmissionModule from "./ZeropsTurnAdmission.ts";
+import * as ZeropsWorkflowTools from "./ZeropsWorkflowTools.ts";
 import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /**
@@ -342,6 +343,10 @@ const liveLayer = Layer.mergeAll(
   // A crew proposed from the goal, on the Mate's agent, admitted through the same gate.
   ZeropsCrewProposalsModule.layer.pipe(Layer.provide(ZeropsTurnAdmissionLive)),
   MateEngineLive,
+  ZeropsWorkflowTools.layer.pipe(
+    Layer.provide(MateEngineLive),
+    Layer.provide(providerInstancesLayer),
+  ),
   // A new Mate's setup, reported at `/setup.json`, and its stand-up started
   // here once its asker has an agent to run — admitted through the same gate.
   // …and a running stand-up's progress, relayed from zcp's status file to its run card.

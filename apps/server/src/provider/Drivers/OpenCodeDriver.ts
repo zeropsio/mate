@@ -16,6 +16,10 @@ import { OpenCodeSettings, ProviderDriverKind } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { mergePathValues } from "@t3tools/shared/shell";
 import * as Crypto from "effect/Crypto";
+import * as Duration from "effect/Duration";
+import * as Exit from "effect/Exit";
+import * as Option from "effect/Option";
+import { ToolInvocationRegistry } from "../../spi/toolInvocation.ts";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
@@ -23,6 +27,8 @@ import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/http";
 import { ChildProcessSpawner } from "effect/process";
 
+import { serveOpenCodeToolExecution } from "../../spi/openCodeToolExecution.ts";
+import { makeManagedOpenCodeEnvironment } from "../openCodeManagedTools.ts";
 import { makeOpenCodeTextGeneration } from "../../textGeneration/OpenCodeTextGeneration.ts";
 import * as BackgroundPolicy from "../../background/BackgroundPolicy.ts";
 import { ServerConfig } from "../../config.ts";
@@ -38,7 +44,7 @@ import {
 } from "../Layers/OpenCodeProvider.ts";
 import { ProviderEventLoggers } from "../Layers/ProviderEventLoggers.ts";
 import { makeManagedServerProvider } from "../makeManagedServerProvider.ts";
-import { OpenCodeRuntime, loadOpenCodeCommands } from "../opencodeRuntime.ts";
+import { OpenCodeRuntime, loadOpenCodeCommands, runOpenCodeSdk } from "../opencodeRuntime.ts";
 import * as OpenCodeServerOwner from "../OpenCodeServerOwner.ts";
 import {
   defaultProviderContinuationIdentity,
@@ -126,7 +132,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const httpClient = yield* HttpClient.HttpClient;
       const serverSettings = yield* ServerSettingsService;
       const eventLoggers = yield* ProviderEventLoggers;
-      const processEnv = withOpenCodeInstallerPath(
+      const inheritedEnvironment = withOpenCodeInstallerPath(
         mergeProviderInstanceEnvironment(environment),
         serverConfig.homeDir,
         yield* HostProcessPlatform,
@@ -144,6 +150,27 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         continuationGroupKey: continuationIdentity.continuationKey,
       });
       const effectiveConfig = { ...config, enabled } satisfies OpenCodeSettings;
+      // A managed local process can load the owned executor. External servers
+      // retain their configuration and do not claim this capability.
+      const toolExecution =
+        effectiveConfig.serverUrl.trim() === "" && (yield* HostProcessPlatform) !== "win32"
+          ? yield* serveOpenCodeToolExecution(instanceId)
+          : undefined;
+      const processEnv =
+        toolExecution === undefined
+          ? inheritedEnvironment
+          : yield* makeManagedOpenCodeEnvironment(inheritedEnvironment, toolExecution).pipe(
+              Effect.mapError(
+                (cause) =>
+                  new ProviderDriverError({
+                    driver: DRIVER_KIND,
+                    instanceId,
+                    detail: "Managed workflow plugin could not be installed",
+                    cause,
+                  }),
+              ),
+            );
+
       const resolveMaintenance = yield* makeCachedProviderMaintenanceResolution(
         resolveProviderMaintenanceCapabilitiesEffect(UPDATE, {
           binaryPath: effectiveConfig.binaryPath,
@@ -158,6 +185,7 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
       const adapter = yield* makeOpenCodeAdapter(effectiveConfig, {
         instanceId,
         environment: processEnv,
+        ...(toolExecution === undefined ? {} : { toolExecution }),
         ...(eventLoggers.native ? { nativeEventLogger: eventLoggers.native } : {}),
       });
       const serverOwner = yield* OpenCodeServerOwner.make({
@@ -280,8 +308,41 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
         ),
       );
 
+      // A successful plugin discovery belongs to this configured instance, not each overview.
+      const [toolInvocationReady, invalidateNativeProof] = yield* Effect.cachedInvalidateWithTTL(
+        toolExecution === undefined || !enabled
+          ? Effect.succeed(false)
+          : serverOwner
+              .withServer((server) => {
+                const client = openCodeRuntime.createOpenCodeSdkClient({
+                  baseUrl: server.url,
+                  directory: serverConfig.cwd,
+                  ...(server.serverPassword === undefined
+                    ? {}
+                    : { serverPassword: server.serverPassword }),
+                });
+                return runOpenCodeSdk("tool.ids", (signal) =>
+                  client.tool.ids({ directory: serverConfig.cwd }, { signal }),
+                ).pipe(Effect.map((answer) => answer.data?.includes("mate_workflow") === true));
+              })
+              .pipe(
+                Effect.timeout("10 seconds"),
+                Effect.orElseSucceed(() => false),
+              ),
+        (exit) => (Exit.isSuccess(exit) && exit.value ? Duration.infinity : Duration.seconds(30)),
+      );
+      const executions = yield* Effect.serviceOption(ToolInvocationRegistry);
+      const invalidateReadiness = Effect.gen(function* () {
+        yield* invalidateNativeProof;
+        if (instanceId === "opencode" && Option.isSome(executions)) {
+          const installed = yield* executions.value.current;
+          if (Option.isSome(installed)) yield* installed.value.invalidateReadiness;
+        }
+      });
       return {
         instanceId,
+        toolInvocationReady,
+        invalidateCaches: invalidateReadiness,
         driverKind: DRIVER_KIND,
         continuationIdentity,
         displayName,
@@ -310,7 +371,13 @@ export const OpenCodeDriver: ProviderDriver<OpenCodeSettings, OpenCodeDriverEnv>
                     }),
                 ),
               ),
-        adapter,
+        adapter: {
+          ...adapter,
+          startSession: (input) =>
+            adapter.startSession(input).pipe(Effect.tapError(() => invalidateReadiness)),
+          sendTurn: (input) =>
+            adapter.sendTurn(input).pipe(Effect.tapError(() => invalidateReadiness)),
+        },
         textGeneration,
       } satisfies ProviderInstance;
     }),

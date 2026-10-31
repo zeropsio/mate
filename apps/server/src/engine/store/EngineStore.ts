@@ -22,6 +22,7 @@ import * as Schema from "effect/Schema";
 import * as SqlClient from "effect/sql/SqlClient";
 import {
   CommandResult,
+  type CommandId,
   ENGINE_EVENT_VERSION,
   type ConversationId,
   type EffectOutcome,
@@ -93,6 +94,16 @@ export interface Committed extends Omit<
 }
 
 export interface EngineStoreShape {
+  /** A historical authority read never uses a snapshot newer than its cursor. */
+  readonly loadAt: (
+    conversation: ConversationId,
+    seq: number,
+  ) => Effect.Effect<ConversationState, EngineStoreError>;
+  /** The immutable event of each provenance command (capture/bind each write one). */
+  readonly commandEvents: (
+    conversation: ConversationId,
+    command: CommandId,
+  ) => Effect.Effect<ReadonlyArray<EngineEvent>, EngineStoreError>;
   readonly load: (
     conversation: ConversationId,
   ) => Effect.Effect<ConversationState, EngineStoreError>;
@@ -462,6 +473,46 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
   const conversations = ownerStore(conversationDomain);
 
   return EngineStore.of({
+    loadAt: (conversation, seq) =>
+      Effect.gen(function* () {
+        let state = conversationDomain.initial(conversation);
+        const [row] = yield* sql<{
+          readonly snapshot_json: string | null;
+          readonly snapshot_seq: number | null;
+        }>`
+        SELECT snapshot_json,snapshot_seq FROM engine_conversation WHERE conversation_id=${conversation}
+      `;
+        if (row?.snapshot_json != null && row.snapshot_seq != null && row.snapshot_seq <= seq) {
+          const snapshot = (yield* decodeJson(row.snapshot_json)) as {
+            readonly v: number;
+            readonly state: ConversationState;
+          };
+          if (snapshot.v === conversationDomain.stateVersion) state = snapshot.state;
+        }
+        for (;;) {
+          const page = yield* conversations.events(
+            conversation,
+            state.headSeq,
+            DEFAULT_EVENTS_PAGE,
+          );
+          for (const event of page) {
+            if (event.seq > seq) return state;
+            state = conversationDomain.evolve(state, event);
+          }
+          if (page.length < DEFAULT_EVENTS_PAGE || state.headSeq >= seq) return state;
+        }
+      }).pipe(Effect.mapError(storeError("loadAt"))),
+    commandEvents: (conversation, command) =>
+      sql<EventRow>`
+        SELECT e.conversation_id,e.seq,e.type,e.v,e.at,e.command_id,e.payload_json
+        FROM engine_receipt r JOIN engine_event e
+          ON e.conversation_id=r.conversation_id AND e.seq=r.result_seq
+        WHERE r.conversation_id=${conversation} AND r.command_id=${command}
+          AND e.command_id=r.command_id
+    `.pipe(
+        Effect.flatMap(Effect.forEach((row) => conversationDomain.decode(rowFields(row)))),
+        Effect.mapError(storeError("commandEvents")),
+      ),
     load: conversations.load,
     commit: (input) => conversations.commit(input) as Effect.Effect<Committed, EngineStoreError>,
     events: conversations.events,

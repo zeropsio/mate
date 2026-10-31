@@ -1,8 +1,7 @@
 /**
  * threadToolPolicy — the provider-neutral thread tool policy SPI.
  *
- * One of the two files the ported zone may import from `spi/` (the other is
- * `claudeThreadProfile.ts`); neither imports anything from `provider/**`, so
+ * An inbound SPI file: it imports no `provider/**` code, so
  * the two directories never import each other. A driver asks the installed
  * policy for a thread's profile when it starts a session: none installed, or
  * no profile for the thread, and the driver runs exactly as it would without
@@ -23,6 +22,7 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import type * as Scope from "effect/Scope";
+import type { ToolInvocation, ToolInvocationResult } from "./toolInvocation.ts";
 
 export type ToolDecision =
   | { readonly kind: "allow"; readonly updatedInput?: Record<string, unknown> }
@@ -34,7 +34,8 @@ export interface ThreadTool {
   readonly inputSchema: JsonSchema.JsonSchema;
   readonly run: (
     input: unknown,
-  ) => Effect.Effect<{ readonly text: string; readonly isError: boolean }>;
+    invocation?: ToolInvocation,
+  ) => Effect.Effect<ToolInvocationResult>;
 }
 
 export interface ThreadToolProfile {

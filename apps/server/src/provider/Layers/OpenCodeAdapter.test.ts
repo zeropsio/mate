@@ -33,6 +33,8 @@ import {
 } from "@t3tools/contracts";
 import { createModelSelection } from "@t3tools/shared/model";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
+import { ToolInvocationRegistry } from "../../spi/toolInvocation.ts";
+import type { OpenCodeExecutionSession } from "../../spi/openCodeToolExecution.ts";
 import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
@@ -63,6 +65,7 @@ type MessageEntry = {
   info: {
     id: string;
     role: "user" | "assistant";
+    parentID?: string;
   };
   parts: Array<unknown>;
 };
@@ -137,6 +140,7 @@ const runtimeMock = {
     permissionListImplementation: null as (() => Promise<Array<PermissionRequest>>) | null,
     questionListImplementation: null as (() => Promise<Array<QuestionRequest>>) | null,
     sessionUpdateCalls: [] as Array<{ sessionID: string; permission: unknown }>,
+    sessionUpdateImplementation: null as ((sessionID: string) => Promise<void>) | null,
     forkCalls: [] as Array<{ sessionID: string; directory?: string; messageID?: string }>,
     configProviders: [] as Array<{
       id: string;
@@ -208,6 +212,7 @@ const runtimeMock = {
     this.state.permissionListImplementation = null;
     this.state.questionListImplementation = null;
     this.state.sessionUpdateCalls.length = 0;
+    this.state.sessionUpdateImplementation = null;
     this.state.forkCalls.length = 0;
     this.state.configProviders = [];
   },
@@ -306,6 +311,7 @@ const OpenCodeRuntimeTestDouble: OpenCodeRuntimeShape = {
         },
         update: async ({ sessionID, permission }: { sessionID: string; permission: unknown }) => {
           runtimeMock.state.sessionUpdateCalls.push({ sessionID, permission });
+          await runtimeMock.state.sessionUpdateImplementation?.(sessionID);
           return { data: { id: sessionID } };
         },
         fork: async ({
@@ -693,6 +699,31 @@ const questionRequest = (id: string, sessionID: string): QuestionRequest => ({
 });
 
 it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
+  it.effect(
+    "a task cannot fall back to an untracked workflow on an unsupported native execution path",
+    () =>
+      Effect.gen(function* () {
+        const adapter = yield* OpenCodeAdapter;
+        const threadId = asThreadId("task-without-owned-execution");
+        yield* adapter.startSession({ threadId, runtimeMode: "full-access" });
+        const result = yield* Effect.result(
+          adapter.sendTurn({
+            threadId,
+            input: "Actual task",
+            invocationContext: "task/r/1",
+            invocationRequired: true,
+            modelSelection: createModelSelection(
+              ProviderInstanceId.make("opencode"),
+              "openai/gpt-5",
+            ),
+          }),
+        );
+        NodeAssert.equal(result._tag, "Failure");
+        if (result._tag === "Failure")
+          NodeAssert.match(result.failure.message, /owned native tool execution/);
+        NodeAssert.equal(runtimeMock.state.promptCalls.length, 0);
+      }),
+  );
   it.effect("reuses a configured OpenCode server URL instead of spawning a local server", () =>
     Effect.gen(function* () {
       const adapter = yield* OpenCodeAdapter;
@@ -7928,6 +7959,163 @@ it.layer(OpenCodeAdapterTestLayer)("OpenCodeAdapterLive", (it) => {
 });
 
 const CREWMATE_THREAD = asThreadId("thread-crewmate");
+
+it.effect(
+  "a native task tool resolves its exact original parent before prompt submission returns",
+  () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const registrations = new Map<string, OpenCodeExecutionSession>();
+        const managed = new Set<string>();
+        const registry = yield* ToolInvocationRegistry;
+        const resolved: Array<string | undefined> = [];
+        yield* registry.install({
+          ready: Effect.succeed(true),
+          invalidateReadiness: Effect.void,
+          prepare: () => Effect.succeed({ text: "", isError: false }),
+          execute: (_input, invocation) =>
+            Effect.gen(function* () {
+              resolved.push(yield* invocation.resolveTurn());
+              return { text: "Owned execution", isError: false };
+            }),
+        });
+        const adapter = yield* makeOpenCodeAdapter(openCodeAdapterTestSettings, {
+          toolExecution: {
+            url: "http://127.0.0.1/private/invoke",
+            token: "synthetic-private-token",
+            markManaged: (id) => {
+              managed.add(id);
+            },
+            isManaged: (id) => managed.has(id),
+            registerSession: (nativeSession, session) => {
+              registrations.set(nativeSession, session);
+              return () => {
+                if (registrations.get(nativeSession) === session)
+                  registrations.delete(nativeSession);
+              };
+            },
+          },
+        });
+        const threadId = asThreadId("task/s/1");
+        yield* adapter.startSession({ threadId, runtimeMode: "approval-required" });
+        const originalNative = [...registrations.keys()][0]!;
+        runtimeMock.state.messages = [
+          { info: { id: "old-user-1", role: "user" }, parts: [] },
+          { info: { id: "old-answer-1", role: "assistant" }, parts: [] },
+          { info: { id: "old-user-2", role: "user" }, parts: [] },
+          { info: { id: "old-answer-2", role: "assistant" }, parts: [] },
+        ];
+        yield* adapter.rollbackThread(threadId, 1);
+        NodeAssert.equal(registrations.has(originalNative), false);
+        NodeAssert.equal(registrations.size, 1);
+        const capturedNative = [...registrations.keys()][0]!;
+        const updating = promiseWithResolvers<void>();
+        const releaseUpdate = promiseWithResolvers<void>();
+        runtimeMock.state.sessionUpdateImplementation = async (native) => {
+          if (native === capturedNative) {
+            updating.resolve(undefined);
+            await releaseUpdate.promise;
+          }
+        };
+        const obsolete = yield* adapter
+          .sendTurn({
+            threadId,
+            input: "Never retarget this pending send",
+            invocationContext: "obsolete/r/1",
+            invocationRequired: true,
+            modelSelection: createModelSelection(
+              ProviderInstanceId.make("opencode"),
+              "openai/gpt-5",
+            ),
+          })
+          .pipe(Effect.forkChild);
+        yield* Effect.promise(() => updating.promise);
+        yield* adapter.rollbackThread(threadId, 1);
+        releaseUpdate.resolve(undefined);
+        NodeAssert.equal(Exit.isFailure(yield* Fiber.await(obsolete)), true);
+        NodeAssert.equal(runtimeMock.state.promptCalls.length, 0);
+        runtimeMock.state.sessionUpdateImplementation = null;
+        const invokeTurn = Effect.fnUntraced(function* (
+          runRef: string,
+          required: boolean,
+          ordinal: number,
+        ) {
+          const execution = promiseWithResolvers<{
+            native: OpenCodeExecutionSession;
+            sessionId: string;
+          }>();
+          const answered = promiseWithResolvers<void>();
+          const messageId = `actual-assistant-${ordinal}`;
+          runtimeMock.state.promptAsyncImplementation = async () => {
+            const sent = runtimeMock.state.promptCalls.at(-1) as {
+              sessionID: string;
+              messageID: string;
+              tools?: unknown;
+            };
+            NodeAssert.equal(sent.tools, undefined);
+            const permission = runtimeMock.state.sessionUpdateCalls.at(-1)?.permission as Array<{
+              permission: string;
+              action: string;
+            }>;
+            NodeAssert.ok(
+              permission.some((rule) => rule.permission === "*" && rule.action === "ask"),
+            );
+            NodeAssert.ok(
+              !permission.some(
+                (rule) => rule.permission === "mate_workflow" && rule.action === "allow",
+              ),
+            );
+            const messages =
+              runtimeMock.state.forkMessagesBySession.get(sent.sessionID) ??
+              runtimeMock.state.messages;
+            messages.push({
+              info: { id: messageId, role: "assistant", parentID: sent.messageID },
+              parts: [],
+            });
+            execution.resolve({
+              native: registrations.get(sent.sessionID)!,
+              sessionId: sent.sessionID,
+            });
+            await answered.promise;
+          };
+          const sending = yield* adapter
+            .sendTurn({
+              threadId,
+              input: "Actual work",
+              invocationContext: runRef,
+              invocationRequired: required,
+              modelSelection: createModelSelection(
+                ProviderInstanceId.make("opencode"),
+                "openai/gpt-5",
+              ),
+            })
+            .pipe(Effect.forkChild);
+          const request = yield* Effect.promise(() => execution.promise);
+          const identity = {
+            driver: ProviderDriverKind.make("opencode"),
+            instanceId: ProviderInstanceId.make("opencode"),
+            sessionId: request.sessionId,
+            messageId,
+            callId: `actual-call-${ordinal}`,
+          };
+          const invocation = {
+            threadId,
+            identity,
+            resolveTurn: () => request.native.resolveTurn(identity),
+          };
+          yield* request.native.prepare({ action: "open" }, invocation);
+          yield* request.native.execute({ action: "open" }, invocation);
+          answered.resolve(undefined);
+          yield* Fiber.join(sending);
+        });
+        yield* invokeTurn("task/r/1", true, 1);
+        yield* invokeTurn("person/r/2", false, 2);
+        NodeAssert.deepEqual(resolved, ["task/r/1", "person/r/2"]);
+        yield* adapter.stopSession(threadId);
+        NodeAssert.equal(registrations.size, 0);
+      }),
+    ).pipe(Effect.provide(Layer.mergeAll(OpenCodeAdapterTestLayer, ToolInvocationRegistry.layer))),
+);
 
 const OpenCodeProfiledAdapterTestLayer = Layer.effect(
   OpenCodeAdapter,

@@ -73,6 +73,39 @@ const sendLine = (w: EngineWorld, text: string) => `send ${w.thread}: ${text}`;
 const scene = <E, R>(body: Effect.Effect<void, E, R>) => Effect.scoped(body);
 
 describe("the running engine", () => {
+  it.effect(
+    "task sends and a later steer preserve the actual run reference across the provider boundary",
+    () =>
+      scene(
+        Effect.gen(function* () {
+          const w = yield* world("opencode");
+          const task = {
+            kind: "task",
+            taskId: "actual-task",
+            assignment: "9007199254740993",
+          } as const;
+          yield* w.tell(
+            {
+              _tag: "Send",
+              text: "Original task brief",
+              taskId: task.taskId,
+              taskAssignment: task.assignment,
+            },
+            task,
+          );
+          assert.deepInclude(w.provider.sends.at(-1), {
+            invocationContext: r(1),
+            invocationRequired: true,
+          });
+          yield* w.tell({ _tag: "Steer", runId: r(1), text: "More exact instructions" });
+          assert.deepInclude(w.provider.sends.at(-1), {
+            invocationContext: r(1),
+            invocationRequired: true,
+          });
+          yield* w.shutdown;
+        }),
+      ),
+  );
   it.effect("a message is confirmed at once and reaches the agent only after its admission", () =>
     scene(
       Effect.gen(function* () {
