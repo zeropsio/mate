@@ -22,6 +22,8 @@ import { readReleaseSource, VERSIONED_RELEASE_PACKAGES } from "@t3tools/shared/r
 export const VERSIONED_PACKAGES = VERSIONED_RELEASE_PACKAGES;
 
 const REPOSITORY = "zeropsio/mate";
+// GitHub CLI for API calls; a maintainer may point MATE_GH at a wrapper holding the release token.
+const GH = process.env.MATE_GH || "gh";
 
 type Version = readonly [number, number, number];
 
@@ -104,7 +106,7 @@ interface PublishedRelease {
 // `jq` keeps only the fields read here: a full page of releases outgrows execFileSync's buffer.
 const github = <T>(repo: string, endpoint: string, jq?: string): T =>
   JSON.parse(
-    NodeChildProcess.execFileSync("gh-mate", ["api", endpoint, ...(jq ? ["--jq", jq] : [])], {
+    NodeChildProcess.execFileSync(GH, ["api", endpoint, ...(jq ? ["--jq", jq] : [])], {
       cwd: repo,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "inherit"],
@@ -166,7 +168,7 @@ async function waitForManifest(repo: string, version: string, releaseSHA: string
       console.log(`${failure}; retrying the same release workflow once`);
       try {
         NodeChildProcess.execFileSync(
-          "gh-mate",
+          GH,
           ["api", "--method", "POST", `repos/${REPOSITORY}/actions/runs/${run.id}/rerun`],
           { cwd: repo, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] },
         );

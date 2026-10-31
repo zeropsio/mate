@@ -72,7 +72,6 @@ if (action === "view") {
 `,
       { mode: 0o700 },
     );
-    NodeFS.symlinkSync(command, NodePath.join(bin, "gh-mate"));
     const result = NodeChildProcess.spawnSync("bash", ["-c", publication.run], {
       cwd: root,
       encoding: "utf8",
