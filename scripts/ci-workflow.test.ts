@@ -1120,7 +1120,8 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
     string,
     { if?: string; steps: { name: string; if?: string }[] },
   ][]) {
-    if (["verification", "prepare", "test", "release_smoke"].includes(id)) continue;
+    // The cache writer runs no tests on a promotion; its own Decision tests pin what it may run.
+    if (["verification", "prepare", "test", "release_smoke", "cache"].includes(id)) continue;
     expect(
       job.if,
       `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
@@ -1656,11 +1657,8 @@ it.each([
     steps: { uses?: string; with?: Record<string, unknown> }[];
   };
   expect(name).toBe("cache");
-  expect(job.if).toBe(
-    "needs.prepare.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'",
-  );
+  expect(job.if).toBe("github.ref == 'refs/heads/main' && github.event_name == 'push'");
   const condition = job.if
-    .replaceAll("needs.prepare.outputs.skip", "'false'")
     .replaceAll("github.ref", '"$GITHUB_REF"')
     .replaceAll("github.event_name", '"$GITHUB_EVENT_NAME"');
   const verdict = NodeChildProcess.spawnSync(
@@ -1687,6 +1685,112 @@ it.each([
         "write",
       );
   }
+});
+
+type CacheStep = {
+  name?: string;
+  id?: string;
+  if?: string;
+  uses?: string;
+  run?: string;
+  with?: Record<string, unknown>;
+};
+const cacheJob = () =>
+  parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8")).jobs
+    .cache as { if: string; steps: CacheStep[] };
+// Runs main's cache job on one runner: GitHub's step conditions decide, the lookups report `hits`.
+const runCacheJob = (os: "Linux" | "macOS", verified: boolean, hits: Record<string, boolean>) => {
+  const outputs: Record<string, string> = {};
+  const ran: CacheStep[] = [];
+  for (const step of cacheJob().steps) {
+    const condition = (step.if ?? "true == true")
+      .replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
+      .replaceAll(
+        /steps\.([a-z_]+)\.outputs\.cache-hit/gu,
+        (_, id: string) => `'${outputs[id] ?? ""}'`,
+      )
+      .replaceAll("runner.os", `'${os}'`)
+      .replaceAll("needs.prepare.outputs.skip", `'${verified}'`);
+    const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
+      encoding: "utf8",
+    });
+    expect(result.stderr, condition).toBe("");
+    if (result.status !== 0) continue;
+    ran.push(step);
+    if (step.id && step.uses === "actions/cache/restore@v4")
+      outputs[step.id] = String(hits[step.id] ?? false);
+  }
+  const saved = ran
+    .filter((step) => step.uses === "actions/cache/save@v4")
+    .map((step) => /steps\.([a-z_]+)\.outputs/u.exec(String(step.with?.key))![1]);
+  return { ran, saved };
+};
+const linuxCaches = ["store", "metadata", "browser", "hosted_modules"];
+const allHit = (caches: readonly string[]) => Object.fromEntries(caches.map((id) => [id, true]));
+
+it.each([
+  ["Linux", linuxCaches],
+  ["macOS", ["store"]],
+] as const)(
+  "Decision: A promotion to main writes each CI cache whose key does not exist yet, even when it reuses the tests' verdict; a cache whose key exists is not rebuilt (%s)",
+  (os, caches) => {
+    const job = cacheJob();
+    const condition = job.if
+      .replaceAll("needs.prepare.outputs.skip", "'true'")
+      .replaceAll("github.ref", "'refs/heads/main'")
+      .replaceAll("github.event_name", "'push'");
+    expect(
+      NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`]).status,
+      "ASSERTION: a verified promotion still starts main's cache writer",
+    ).toBe(0);
+    for (const missing of caches) {
+      const { saved } = runCacheJob(os, true, { ...allHit(caches), [missing]: false });
+      expect(saved, `ASSERTION: a verified promotion writes the missing ${missing} cache`).toEqual([
+        missing,
+      ]);
+    }
+    const { ran, saved } = runCacheJob(os, true, allHit(caches));
+    expect(saved, "ASSERTION: a verified promotion rewrites no existing cache").toEqual([]);
+    expect(
+      ran.filter(
+        (step) =>
+          (step.uses === "actions/cache/restore@v4" && step.with?.["lookup-only"] !== true) ||
+          (step.run !== undefined && step.name !== "Prune superseded main caches" && !step.id),
+      ),
+      "ASSERTION: with every key present a verified promotion neither downloads nor rebuilds a cache",
+    ).toEqual([]);
+    expect(
+      runCacheJob(os, false, allHit(caches)).saved,
+      "ASSERTION: a fresh main push rewrites no existing cache either",
+    ).toEqual([]);
+  },
+);
+
+it("Decision: main stays the only cache writer; a promotion that reuses a verdict still runs no tests.", () => {
+  const steps = cacheJob().steps;
+  const builds = new Set(
+    [
+      "Install dependencies",
+      "Provision the scenarios' Chrome for Testing",
+      "Clear the full install",
+      "Install the hosted dependencies",
+      "Prune superseded main caches",
+    ].map((name) => steps.find((step) => step.name === name)!.run),
+  );
+  for (const os of ["Linux", "macOS"] as const)
+    for (const missing of [...linuxCaches, "none"]) {
+      const { ran } = runCacheJob(os, true, { ...allHit(linuxCaches), [missing]: false });
+      for (const step of ran.filter((step) => step.run !== undefined && !step.id))
+        expect(
+          builds.has(step.run),
+          `ASSERTION: a verified promotion only installs and provisions, never tests: ${step.name}`,
+        ).toBe(true);
+    }
+  // The Linux writer's full install is a fresh main push's lockfile policy check.
+  expect(
+    runCacheJob("Linux", false, allHit(linuxCaches)).ran.map((step) => step.name),
+    "ASSERTION: a fresh main push keeps the Linux writer's lockfile policy install",
+  ).toContain("Install dependencies");
 });
 
 it.each(["ci", "release"])(
@@ -1734,6 +1838,7 @@ it.each(["ci", "release"])(
       const restore = consumer.steps?.find(
         (step) =>
           step.uses === "actions/cache/restore@v4" &&
+          step.with?.["lookup-only"] !== true &&
           String(step.with?.key).startsWith("vite-plus-"),
       );
       if (consumer.steps?.some((step) => step.uses === "voidzero-dev/setup-vp@v1")) {

@@ -219,7 +219,7 @@ jobs:
         uses: actions/cache/restore@v4
         with: &pnpm_store
           path: ${{ steps.paths.outputs.store }}
-          key: vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
+          key: &pnpm_store_key vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
           restore-keys: |
             vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
 
@@ -257,7 +257,8 @@ jobs:
   cache:
     name: Check cache (${{ matrix.os }})
     needs: prepare
-    if: needs.prepare.outputs.skip != 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # A verified promotion runs no tests, yet writes each cache whose key main does not hold yet.
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ${{ matrix.os }}
     timeout-minutes: 10
     permissions:
@@ -288,23 +289,63 @@ jobs:
         shell: bash
         run: *store_path
 
-      - name: Restore pnpm store
+      - name: Record the resolved Node version
+        id: node
+        run: *node_version
+
+      - name: Look up pnpm store
         id: store
         uses: actions/cache/restore@v4
-        with: *pnpm_store
+        with:
+          path: ${{ steps.paths.outputs.store }}
+          key: *pnpm_store_key
+          lookup-only: true
 
-      - name: Restore pnpm metadata
+      - name: Look up pnpm metadata
         if: runner.os == 'Linux'
         id: metadata
         uses: actions/cache/restore@v4
         with:
           # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
-          path: ${{ runner.temp }}/pnpm-metadata/v11
-          key: pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          path: &pnpm_metadata_path ${{ runner.temp }}/pnpm-metadata/v11
+          key: &pnpm_metadata_key pnpm-metadata-${{ runner.os }}-pnpm11-${{ hashFiles('pnpm-lock.yaml') }}
+          lookup-only: true
+
+      - name: Look up the scenarios' Chrome for Testing
+        if: runner.os == 'Linux'
+        id: browser
+        uses: actions/cache/restore@v4
+        with:
+          path: &test_browser_path ~/.cache/mate-test-browser
+          key: &test_browser_key mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+          lookup-only: true
+
+      - name: Look up the hosted dependencies
+        if: runner.os == 'Linux'
+        id: hosted_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: *hosted_modules_path
+          key: *hosted_modules_key
+          lookup-only: true
+
+      # A fresh main push always installs: the Linux install is main's lockfile policy check.
+      - name: Restore pnpm store
+        if: &builds needs.prepare.outputs.skip != 'true' || steps.store.outputs.cache-hit != 'true' || (runner.os == 'Linux' && (steps.metadata.outputs.cache-hit != 'true' || steps.browser.outputs.cache-hit != 'true' || steps.hosted_modules.outputs.cache-hit != 'true'))
+        uses: actions/cache/restore@v4
+        with: *pnpm_store
+
+      - name: Restore pnpm metadata
+        if: &builds_on_linux runner.os == 'Linux' && (needs.prepare.outputs.skip != 'true' || steps.store.outputs.cache-hit != 'true' || steps.metadata.outputs.cache-hit != 'true' || steps.browser.outputs.cache-hit != 'true' || steps.hosted_modules.outputs.cache-hit != 'true')
+        uses: actions/cache/restore@v4
+        with:
+          path: *pnpm_metadata_path
+          key: *pnpm_metadata_key
           restore-keys: |
             pnpm-metadata-${{ runner.os }}-pnpm11-
 
       - name: Install dependencies
+        if: *builds
         # The Linux cache Check owns main's policy verification; macOS reuses that verdict.
         env:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
@@ -323,41 +364,26 @@ jobs:
         if: runner.os == 'Linux' && steps.metadata.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          # Cache metadata only; lockfile-verified.jsonl must never skip a later run's check.
-          path: ${{ runner.temp }}/pnpm-metadata/v11
+          path: *pnpm_metadata_path
           key: ${{ steps.metadata.outputs.cache-primary-key }}
 
       - name: Restore the scenarios' Chrome for Testing
-        if: runner.os == 'Linux'
-        id: browser
+        if: *builds_on_linux
         uses: actions/cache/restore@v4
         with:
-          path: ~/.cache/mate-test-browser
-          key: mate-test-browser-${{ runner.os }}-${{ hashFiles('apps/web/test/testBrowser.ts') }}
+          path: *test_browser_path
+          key: *test_browser_key
 
       - name: Provision the scenarios' Chrome for Testing
-        if: runner.os == 'Linux'
+        if: *builds_on_linux
         run: vp run test:browser
 
       - name: Save the scenarios' Chrome for Testing
         if: runner.os == 'Linux' && steps.browser.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/.cache/mate-test-browser
+          path: *test_browser_path
           key: ${{ steps.browser.outputs.cache-primary-key }}
-
-      - name: Record the resolved Node version
-        id: node
-        run: *node_version
-
-      - name: Look up the hosted dependencies
-        if: runner.os == 'Linux'
-        id: hosted_modules
-        uses: actions/cache/restore@v4
-        with:
-          path: *hosted_modules_path
-          key: *hosted_modules_key
-          lookup-only: true
 
       # The full install above verified the lockfile; the shards' hosted install replaces it.
       - name: Clear the full install
