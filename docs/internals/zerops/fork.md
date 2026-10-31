@@ -72,8 +72,9 @@ Worktree, checks and shipping commands live in
 
 ## 6. Upstream constraints
 
-Never fetch upstream into this repository: no upstream remote, refs or history. Inspect it in a
-scratch clone. A port may bring the necessary preimage blobs, but not upstream history.
+A local clone may keep a fetch-only `upstream` remote for inspecting and porting. Its refs, tags and
+history never reach origin: never merge or rebase onto them, push only named refs (never `--tags` or
+`--mirror`). A port may bring the necessary preimage blobs, but not upstream history.
 Keep ported-zone changes explicit; do not hide skipped prerequisites by advancing a review SHA.
 Exclude upstream user guides, bot configuration, release pipelines and unconfigured Knip sweeps.
 Keep port commits free of upstream PR numbers, handles and trailers.
