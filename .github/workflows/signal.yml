@@ -10,7 +10,7 @@ on:
 
 permissions:
   contents: read
-  # The classifier reads the previous kh-next run's classification.
+  # The receipt reads kh-next's runs; the classifier reads the previous run's classification.
   actions: read
 
 env:
@@ -28,8 +28,43 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || startsWith(github.ref, 'refs/heads/kh-bisect/') }}
 
 jobs:
+  verification:
+    name: Prior Signal verification
+    if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/kh-next' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    outputs:
+      skip: ${{ steps.verdict.outputs.skip }}
+    steps:
+      - name: Checkout Signal receipt
+        uses: actions/checkout@v6
+        with:
+          sparse-checkout: /scripts/ci-tree-runs.sh
+          sparse-checkout-cone-mode: false
+
+      - name: Check kh-next verification
+        id: verdict
+        # A failed lookup lists no run, so the bundle and shards run in full.
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          source scripts/ci-tree-runs.sh
+          skip=false
+          for run in $(tree_runs signal.yml kh-next success); do
+            if ran_in_full "$run" "Classify original failures"; then
+              skip=true
+              printf 'Verified kh-next Signal run: %s\n' "$run"
+              break
+            fi
+          done
+          echo "skip=${skip}" >> "$GITHUB_OUTPUT"
+          echo "Already verified: ${skip}"
+
   chat_bundle:
     name: Chat Contract bundle
+    needs: verification
+    # Pull requests and diagnostics skip the receipt; a failed receipt runs in full.
+    if: ${{ !cancelled() && needs.verification.outputs.skip != 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
