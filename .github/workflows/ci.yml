@@ -197,10 +197,25 @@ jobs:
       - name: Record the producer's resolved Node version
         if: *plans_state_smoke
         id: node
-        run: echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+        run: &node_version echo "version=$(node -p 'process.versions.node')" >> "$GITHUB_OUTPUT"
+
+      # prepare and every State Smoke shard run the same hosted install; main's cache job saves it.
+      - name: Restore the hosted dependencies
+        if: *plans_state_smoke
+        id: hosted_modules
+        uses: actions/cache/restore@v4
+        with: &hosted_modules
+          path: &hosted_modules_path |
+            node_modules
+            apps/*/node_modules
+            infra/*/node_modules
+            oxlint-plugin-t3code/node_modules
+            packages/*/node_modules
+            scripts/node_modules
+          key: &hosted_modules_key hosted-modules-${{ runner.os }}-${{ steps.paths.outputs.arch }}-node${{ steps.node.outputs.version }}-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'patches/**', 'package.json', 'apps/*/package.json', 'infra/*/package.json', 'oxlint-plugin-t3code/package.json', 'packages/*/package.json', 'scripts/package.json') }}
 
       - name: Restore pnpm store
-        if: *plans_state_smoke
+        if: &installs_hosted_modules needs.verification.outputs.skip != 'true' && contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke') && steps.hosted_modules.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v4
         with: &pnpm_store
           path: ${{ steps.paths.outputs.store }}
@@ -209,7 +224,7 @@ jobs:
             vite-plus-${{ runner.os }}-${{ steps.paths.outputs.arch }}-pnpm-
 
       - name: Install dependencies
-        if: *plans_state_smoke
+        if: *installs_hosted_modules
         env: &verified_lockfile
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
@@ -331,6 +346,38 @@ jobs:
           path: ~/.cache/mate-test-browser
           key: ${{ steps.browser.outputs.cache-primary-key }}
 
+      - name: Record the resolved Node version
+        id: node
+        run: *node_version
+
+      - name: Look up the hosted dependencies
+        if: runner.os == 'Linux'
+        id: hosted_modules
+        uses: actions/cache/restore@v4
+        with:
+          path: *hosted_modules_path
+          key: *hosted_modules_key
+          lookup-only: true
+
+      # The full install above verified the lockfile; the shards' hosted install replaces it.
+      - name: Clear the full install
+        if: &builds_hosted_modules runner.os == 'Linux' && steps.hosted_modules.outputs.cache-hit != 'true'
+        env:
+          HOSTED_MODULES: *hosted_modules_path
+        run: for modules in $HOSTED_MODULES; do rm -rf "$modules"; done
+
+      - name: Install the hosted dependencies
+        if: *builds_hosted_modules
+        env: *verified_lockfile
+        run: *hosted_dependencies
+
+      - name: Save the hosted dependencies
+        if: *builds_hosted_modules
+        uses: actions/cache/save@v4
+        with:
+          path: *hosted_modules_path
+          key: ${{ steps.hosted_modules.outputs.cache-primary-key }}
+
       - name: Prune superseded main caches
         shell: bash
         env:
@@ -339,6 +386,7 @@ jobs:
             ${{ steps.store.outputs.cache-primary-key }}
             ${{ steps.metadata.outputs.cache-primary-key }}
             ${{ steps.browser.outputs.cache-primary-key }}
+            ${{ steps.hosted_modules.outputs.cache-primary-key }}
         run: |
           set -euo pipefail
           caches=$(gh api "repos/${GITHUB_REPOSITORY}/actions/caches?per_page=100" --paginate --slurp)
@@ -666,11 +714,22 @@ jobs:
         shell: bash
         run: *store_path
 
+      - name: Record the resolved Node version
+        id: node
+        run: *node_version
+
+      - name: Restore the hosted dependencies
+        id: hosted_modules
+        uses: actions/cache/restore@v4
+        with: *hosted_modules
+
       - name: Restore pnpm store
+        if: steps.hosted_modules.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v4
         with: *pnpm_store
 
       - name: Install dependencies
+        if: steps.hosted_modules.outputs.cache-hit != 'true'
         env: *verified_lockfile
         run: *hosted_dependencies
 

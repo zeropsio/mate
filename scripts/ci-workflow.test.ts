@@ -168,7 +168,8 @@ it.each([
           );
           env.PNPM_CONFIG_TRUST_LOCKFILE = String(mainPush);
         }
-        if (name === "cache") {
+        // The hosted install that follows reuses this verdict like every other consumer.
+        if (name === "cache" && step.run === "vp install --frozen-lockfile") {
           expect(env.PNPM_CONFIG_TRUST_LOCKFILE).toBe("${{ runner.os != 'Linux' }}");
           // The Linux writer verifies; the macOS writer trusts that frozen input.
           env.PNPM_CONFIG_TRUST_LOCKFILE = "false";
@@ -707,6 +708,102 @@ it("Decision: One State Smoke run builds the shared scenario bundle once and eve
     expect(NodeFS.readFileSync(output, "utf8")).toBe(`version=${process.versions.node}\n`);
   } finally {
     NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+it("Decision: Setup that is identical across shards of one run is done once per run, or restored from a cache keyed by its inputs (lockfiles, mate-hq ref), not repeated in every shard.", () => {
+  type Step = {
+    id?: string;
+    name?: string;
+    if?: string;
+    uses?: string;
+    run?: string;
+    env?: Record<string, string>;
+    with?: Record<string, unknown>;
+  };
+  const { jobs } = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const hostedInstall =
+    "vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'";
+  const workspaces = (
+    parseYaml(NodeFS.readFileSync(NodePath.join(root, "pnpm-workspace.yaml"), "utf8")) as {
+      packages: string[];
+    }
+  ).packages;
+  const producer: Step[] = jobs.cache.steps;
+  const lookup = producer.find((step) => step.id === "hosted_modules")!;
+  expect(lookup, "ASSERTION: main's cache job owns the hosted dependencies cache").toBeDefined();
+  const { path, key } = lookup.with as { path: string; key: string };
+  expect(path.trim().split("\n")).toEqual([
+    "node_modules",
+    ...workspaces.map((workspace) => `${workspace}/node_modules`),
+  ]);
+  for (const input of [
+    "runner.os",
+    "steps.paths.outputs.arch",
+    "steps.node.outputs.version",
+    ...["pnpm-lock.yaml", "pnpm-workspace.yaml", "patches/**", "package.json"].map(
+      (file) => `'${file}'`,
+    ),
+    ...workspaces.map((workspace) => `'${workspace}/package.json'`),
+  ])
+    expect(key, `ASSERTION: the hosted dependencies key covers ${input}`).toContain(input);
+
+  // The producer replaces its full install with exactly the hosted install the shards ran.
+  const clear = producer.find((step) => step.name === "Clear the full install")!;
+  const build = producer.indexOf(clear) + 1;
+  expect(producer[build]!.run).toBe(hostedInstall);
+  const save = producer[build + 1]!;
+  expect(save.uses).toBe("actions/cache/save@v4");
+  expect(save.with).toEqual({ path, key: "${{ steps.hosted_modules.outputs.cache-primary-key }}" });
+  for (const step of [clear, producer[build]!, save])
+    expect(step.if).toBe(
+      "runner.os == 'Linux' && steps.hosted_modules.outputs.cache-hit != 'true'",
+    );
+  expect(producer.at(-1)!.env!.CACHE_KEYS).toContain(
+    "${{ steps.hosted_modules.outputs.cache-primary-key }}",
+  );
+  const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "hosted-modules-"));
+  try {
+    for (const workspace of ["apps/web", "apps/mobile", "packages/shared", "scripts"])
+      NodeFS.mkdirSync(NodePath.join(directory, workspace, "node_modules/x"), { recursive: true });
+    NodeFS.mkdirSync(NodePath.join(directory, "node_modules/.pnpm"), { recursive: true });
+    const result = NodeChildProcess.spawnSync("bash", ["-e", "-c", clear.run!], {
+      cwd: directory,
+      env: { ...process.env, ...clear.env },
+    });
+    expect(result.status, String(result.stderr)).toBe(0);
+    expect(
+      NodeFS.globSync("**/node_modules", { cwd: directory }),
+      "ASSERTION: no full-install module survives into the hosted cache",
+    ).toEqual([]);
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+
+  // prepare and every shard restore that cache and repeat the store and install only on a miss.
+  for (const job of ["prepare", "state_smoke"]) {
+    const steps: Step[] = jobs[job].steps;
+    const restore = steps.find((step) => step.id === "hosted_modules")!;
+    expect(restore.uses, job).toBe("actions/cache/restore@v4");
+    expect(restore.with, job).toEqual({ path, key });
+    const node = steps.find((step) => step.id === "node")!;
+    expect(node.run, job).toBe(producer.find((step) => step.id === "node")!.run);
+    expect(steps.indexOf(node), job).toBeLessThan(steps.indexOf(restore));
+    const repeated = steps.filter(
+      (step) => step.name === "Restore pnpm store" || step.run === hostedInstall,
+    );
+    expect(repeated.map((step) => step.name)).toEqual([
+      "Restore pnpm store",
+      "Install dependencies",
+    ]);
+    for (const step of repeated) {
+      expect(steps.indexOf(step), job).toBeGreaterThan(steps.indexOf(restore));
+      expect(step.if, `ASSERTION: ${job} installs only when the cache missed`).toContain(
+        "steps.hosted_modules.outputs.cache-hit != 'true'",
+      );
+    }
   }
 });
 
@@ -1580,7 +1677,8 @@ it.each([
   );
   expect(job.strategy.matrix.os).toEqual(["ubuntu-latest", "macos-latest"]);
   expect(job.permissions.actions).toBe("write");
-  expect(job.steps.filter((step) => step.uses === "actions/cache/save@v4")).toHaveLength(3);
+  // pnpm store, pnpm metadata, Chrome for Testing and the hosted dependencies.
+  expect(job.steps.filter((step) => step.uses === "actions/cache/save@v4")).toHaveLength(4);
   for (const step of job.steps.filter((step) => step.uses === "voidzero-dev/setup-vp@v1"))
     expect(step.with?.cache).toBe(false);
   for (const [id, consumer] of Object.entries(workflow.jobs)) {
