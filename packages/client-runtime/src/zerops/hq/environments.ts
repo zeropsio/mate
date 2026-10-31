@@ -14,7 +14,7 @@ import { HqGitNavigationEnvironment } from "@t3tools/shared/hqStream";
  *
  * @module hq/environments
  */
-import { hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
+import { HqEnvironmentDeclaration, hqEnvironmentCodec } from "@t3tools/shared/hqEnvironment";
 import { HqOffers } from "@t3tools/shared/hqOffers";
 import { EnvironmentBirth, HqDeployEvidence, HqDeployOutcome } from "@t3tools/shared/hqDeploys";
 import { ReleaseRollout, TierStop } from "@t3tools/shared/hqRelease";
@@ -23,6 +23,7 @@ import * as Schema from "effect/Schema";
 
 /** A job of an environment, as HQ's record holds it. */
 export const HqJob = Schema.Struct({
+  declaration: Schema.optionalKey(Schema.NullOr(HqEnvironmentDeclaration)),
   id: Schema.String,
   kind: Schema.Literals(["deploy", "delta"]),
   /** The service it deploys, by its hostname; none for a delta. */
@@ -84,6 +85,7 @@ export const jobFailed = (job: Pick<HqJob, "state">): boolean =>
   job.state === "failed" || job.state === "refused";
 
 export const HqEnvironment = Schema.Struct({
+  declaration: Schema.optionalKey(HqEnvironmentDeclaration),
   projectId: Schema.String,
   tier: Schema.Literals(["stage", "production"]),
   name: Schema.String,
@@ -145,6 +147,18 @@ export function environmentsOf(value: unknown): ReadonlyArray<HqEnvironment> | u
   return environments === undefined ? undefined : zeropsEnvironments(environments);
 }
 
+const isDeclaration = Schema.is(HqEnvironmentDeclaration);
+
+/** Retained outcomes are history; only exact captured scope is current evidence. */
+export function currentEnvironmentJobs(
+  environment: Pick<HqEnvironment, "declaration" | "jobs">,
+): ReadonlyArray<HqJob> {
+  const declaration = environment.declaration;
+  return !isDeclaration(declaration)
+    ? []
+    : environment.jobs.filter((job) => job.declaration === declaration);
+}
+
 /** A service's deploys: its newest job, and the newest that went live. */
 export interface ServiceJobs {
   readonly latest: HqJob;
@@ -153,10 +167,10 @@ export interface ServiceJobs {
 
 /** An environment's deploys by service hostname: each one's newest job, and its newest live one. */
 export function jobsByService(
-  environment: Pick<HqEnvironment, "jobs">,
+  environment: Pick<HqEnvironment, "declaration" | "jobs">,
 ): ReadonlyMap<string, ServiceJobs> {
   const services = new Map<string, ServiceJobs>();
-  for (const job of environment.jobs) {
+  for (const job of currentEnvironmentJobs(environment)) {
     if (job.kind !== "deploy" || job.service === null) continue;
     const held = services.get(job.service);
     // Newest first: a service's first job is its newest, its first live one its newest live.

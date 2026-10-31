@@ -3,7 +3,11 @@ import { MateAttention as HqAttentionValue } from "@t3tools/contracts";
 import { HqProblem } from "./hqProblems.ts";
 import * as Schema from "effect/Schema";
 import * as Struct from "effect/Struct";
-import { hqEnvironmentCodec, HqDirectGitTarget } from "./hqEnvironment.ts";
+import {
+  HqEnvironmentDeclaration,
+  hqEnvironmentCodec,
+  HqDirectGitTarget,
+} from "./hqEnvironment.ts";
 import { AgentUsageScope, AGENT_USAGE_REPORT_PROTOCOL } from "@t3tools/contracts";
 import { usageCanonical } from "./agentUsage.ts";
 import { MatePresence } from "./hqMates.ts";
@@ -344,6 +348,7 @@ export const HqNavigationMate = Schema.Struct({
 });
 /** Bounded environment jobs, retaining the latest live job for each service too. */
 export const HqNavigationJob = Schema.Struct({
+  declaration: Schema.optionalKey(Schema.NullOr(HqEnvironmentDeclaration)),
   id: Schema.String,
   kind: HqDeployOutcome.fields.kind,
   service: HqDeployOutcome.fields.service,
@@ -403,6 +408,7 @@ export type HqDeliveryNavigationJob = typeof HqDeliveryNavigationJob.Type;
 
 /** @deprecated Use CanonicalHqNavigationEnvironment at the HQ read boundary. */
 export const HqNavigationEnvironment = Schema.Struct({
+  declaration: Schema.optionalKey(HqEnvironmentDeclaration),
   projectId: Schema.String,
   tier: Schema.Literals(["stage", "production"]),
   name: Schema.String,

@@ -51,6 +51,7 @@ function record(
   jobs += 1;
   return {
     id: String(jobs),
+    declaration: "1",
     kind: "deploy",
     service,
     sha,
@@ -70,6 +71,7 @@ function environment(
   overrides: Partial<HqEnvironment> & Pick<HqEnvironment, "projectId" | "tier" | "name">,
 ): HqEnvironment {
   return {
+    declaration: "1",
     sources: overrides.tier === "production" ? ["release"] : ["main"],
     order: 1,
     keyHeld: true,
@@ -105,6 +107,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
     expect(inputs).toEqual([
       {
         projectId: "p-stage",
+        declaration: "1",
         name: "Acme - stage",
         tier: "stage",
         sources: ["main"],
@@ -126,6 +129,7 @@ describe("the join — HQ's record of an environment, a version and a deploy", (
       },
       {
         projectId: "p-prod",
+        declaration: "1",
         name: "production",
         tier: "production",
         sources: "release",
@@ -730,4 +734,28 @@ it("Git waiting comparisons use the last confirmed pushed sha while a newer rele
     git: { releases: [] },
   });
   expect([...releaseDeploys(rows).production]).toEqual([["web", gitPreflight.sha]]);
+});
+
+it("retained older and unknown-declaration outcomes never become current services or release failures", () => {
+  const jobs = [
+    { ...record("live", OLD), declaration: "1" },
+    { ...record("failed", API, "api", RELEASED), declaration: null },
+  ];
+  const read = environmentRowInputsOf({
+    environments: [
+      environment({
+        projectId: "p-prod",
+        tier: "production",
+        name: "production",
+        declaration: "2",
+        jobs,
+      }),
+    ],
+    projectNames: new Map(),
+    services,
+    versions: new Map(),
+  });
+  expect(read[0]?.declaration).toBe("2");
+  expect(read[0]?.services.every((service) => service.deploy === undefined)).toBe(true);
+  expect(read[0]?.releaseFailures ?? []).toEqual([]);
 });

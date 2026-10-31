@@ -20,7 +20,11 @@ import type {
   ReleaseServicePlan,
 } from "@t3tools/shared/hqRelease";
 
-import { canonicalEnvironmentsOf, jobsByService } from "../../zerops/hq/environments.ts";
+import {
+  canonicalEnvironmentsOf,
+  currentEnvironmentJobs,
+  jobsByService,
+} from "../../zerops/hq/environments.ts";
 import { hqRefusalWords } from "../../zerops/hq/refusals.ts";
 import { GIT_PREFLIGHT_PENDING } from "../../zerops/release.ts";
 import type { ZeropsReleaseOffer } from "../projections/projectFlowJoin.ts";
@@ -57,6 +61,8 @@ declare module "../model.ts" {
       readonly groupHead: string;
     };
     readonly redeploy: {
+      /** Original rendered declaration; absent on historical restored operations. */
+      readonly declaration?: string;
       readonly orgId: string;
       readonly appId: string;
       /** The environment's project, and its name as HQ names it. */
@@ -68,6 +74,8 @@ declare module "../model.ts" {
       readonly after: string;
     };
     readonly "add-service": {
+      /** Original rendered declaration; absent on historical restored operations. */
+      readonly declaration?: string;
       readonly orgId: string;
       readonly appId: string;
       readonly projectId: string;
@@ -245,9 +253,10 @@ export const rollBackWrite: OperationKind<"roll-back"> = {
 /** Whether the service's newest job is newer than the one it was asked again over. */
 const askedAgain = (read: ProjectionReads, intent: IntentOf<"redeploy">) => {
   const environment = jobsOf(read, intent.appId, ProjectId.make(intent.projectId));
-  const latest =
-    environment === undefined ? undefined : jobsByService(environment).get(intent.service)?.latest;
-  return latest !== undefined && latest.id !== intent.after;
+  if (intent.declaration === undefined || environment?.declaration !== intent.declaration)
+    return false;
+  const latest = jobsByService(environment).get(intent.service)?.latest;
+  return latest !== undefined && latest.id !== intent.after && latest.sha === intent.sha;
 };
 
 export const redeployWrite: OperationKind<"redeploy"> = {
@@ -259,10 +268,16 @@ export const redeployWrite: OperationKind<"redeploy"> = {
 };
 
 /** Whether HQ's navigation lists a job adding the service to the environment. */
-const added = (read: ProjectionReads, intent: IntentOf<"add-service">) =>
-  jobsOf(read, intent.appId, ProjectId.make(intent.projectId))?.jobs.some(
-    ({ cause, service }) => cause === "add_service" && service === intent.service,
-  ) ?? false;
+const added = (read: ProjectionReads, intent: IntentOf<"add-service">) => {
+  const environment = jobsOf(read, intent.appId, ProjectId.make(intent.projectId));
+  return (
+    intent.declaration !== undefined &&
+    environment?.declaration === intent.declaration &&
+    currentEnvironmentJobs(environment).some(
+      ({ cause, service }) => cause === "add_service" && service === intent.service,
+    )
+  );
+};
 
 export const addServiceWrite: OperationKind<"add-service"> = {
   kind: "add-service",

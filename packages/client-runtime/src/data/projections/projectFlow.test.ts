@@ -406,6 +406,7 @@ const OTHER_SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 function job(service: string, sha: string, id: string): HqJob {
   return {
     id,
+    declaration: "1",
     kind: "deploy",
     service,
     sha,
@@ -422,6 +423,7 @@ function job(service: string, sha: string, id: string): HqJob {
   };
 }
 const runtimeEnvironment: CanonicalHqEnvironment = {
+  declaration: "1",
   id: HqEnvironmentId.make("environment-stage"),
   target: { kind: "zerops", projectId: ProjectId.make("project-stage") },
   projectId: ProjectId.make("wrong-legacy"),

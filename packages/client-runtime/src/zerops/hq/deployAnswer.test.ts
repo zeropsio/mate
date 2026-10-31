@@ -314,7 +314,12 @@ describe("deployAnswerFollowing — HQ's stream over the request's snapshot", ()
     };
     const followed = deployAnswerFollowing(
       answer,
-      new Map([["1", { state: "failed" as const, reason: "build broke", processId: null }]]),
+      new Map([
+        [
+          "1",
+          { declaration: null, state: "failed" as const, reason: "build broke", processId: null },
+        ],
+      ]),
     );
     expect(followed.jobs[0]).toMatchObject({
       state: "failed",

@@ -2,6 +2,15 @@ import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import * as SchemaTransformation from "effect/SchemaTransformation";
 
+/** A captured PostgreSQL declaration identity, kept exact beyond JS integer precision. */
+export const HqEnvironmentDeclaration = Schema.String.check(
+  Schema.makeFilter((value: string) =>
+    /^[1-9][0-9]{0,18}$/u.test(value) && (value.length < 19 || value <= "9223372036854775807")
+      ? undefined
+      : "Expected a positive declaration identity",
+  ),
+);
+
 /** A branch name, not a full ref; mate/ is reserved for the later PR-head writer. */
 export const HqGitBranch = Schema.String.check(
   Schema.makeFilter((branch: string) =>

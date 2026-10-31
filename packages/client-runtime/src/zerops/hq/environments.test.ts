@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   environmentsOf,
+  currentEnvironmentJobs,
   deliveryEnvironmentsOf,
   jobFailed,
   jobInFlight,
@@ -14,6 +15,7 @@ const A = "a".repeat(40);
 
 const job = (id: string, service: string | null, state: HqJob["state"]): HqJob => ({
   id,
+  declaration: "1",
   kind: service === null ? "delta" : "deploy",
   service,
   sha: service === null ? null : A,
@@ -31,6 +33,7 @@ const job = (id: string, service: string | null, state: HqJob["state"]): HqJob =
 
 const STAGE: HqEnvironment = {
   projectId: "p-stage",
+  declaration: "1",
   tier: "stage",
   name: "stage",
   sources: ["main"],
@@ -78,11 +81,45 @@ describe("jobsByService — each service's newest job and newest live one, from 
       expected: [["app", "1", null]],
     },
   ])("$name", ({ jobs, expected }) => {
-    const services = jobsByService({ jobs });
+    const services = jobsByService({ declaration: "1", jobs });
     expect(
       [...services].map(([service, { latest, live }]) => [service, latest.id, live?.id ?? null]),
     ).toEqual(expected);
   });
+});
+
+describe("environment declaration history", () => {
+  it("only exact captured declarations supply current jobs while all original history remains readable", () => {
+    const current = "9007199254740993";
+    const history = [
+      { ...job("old", "api", "live"), declaration: "9007199254740992" },
+      { ...job("unknown", "api", "failed"), declaration: null },
+      { ...job("current", "api", "queued"), declaration: current },
+    ];
+    const env = { ...STAGE, declaration: current, jobs: history };
+    expect(environmentsOf([env])?.[0]?.jobs).toEqual(history);
+    expect(currentEnvironmentJobs(env)).toEqual([history[2]]);
+    expect([...jobsByService(env)]).toEqual([["api", { latest: history[2], live: null }]]);
+  });
+  it("missing environment or job declarations never prove current state", () => {
+    const { declaration: _declaration, ...unknown } = job("unknown", "api", "live");
+    expect(currentEnvironmentJobs({ jobs: [job("1", "api", "live")] })).toEqual([]);
+    expect(
+      currentEnvironmentJobs({
+        declaration: "1",
+        jobs: [unknown, { ...job("null", "api", "live"), declaration: null }],
+      }),
+    ).toEqual([]);
+  });
+  it.each(["", "0", "01", "-1", "9223372036854775808", 1])(
+    "refuses malformed declaration metadata %s rather than guessing it",
+    (declaration) => {
+      expect(environmentsOf([{ ...STAGE, declaration }])).toBeUndefined();
+      expect(
+        environmentsOf([{ ...STAGE, jobs: [{ ...job("1", "api", "live"), declaration }] }]),
+      ).toBeUndefined();
+    },
+  );
 });
 
 describe("a job's state", () => {

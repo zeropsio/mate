@@ -53,6 +53,7 @@ const change = (state: HqChange["state"]): HqChange => ({
 });
 const job = (id: string, over: Record<string, unknown> = {}) => ({
   id,
+  declaration: "1",
   kind: "deploy",
   service: "api",
   sha: SHA,
@@ -89,7 +90,7 @@ const detail = (store: AccountStore, key: "releases" | "changes", value: unknown
     removals: [],
   });
 /** HQ's navigation saying the application's stage, with its jobs. */
-const stageJobs = (store: AccountStore, jobs: ReadonlyArray<unknown>) =>
+const stageJobs = (store: AccountStore, jobs: ReadonlyArray<unknown>, declaration = "1") =>
   store.dispatch({
     kind: "delivery",
     via: "hq-stream",
@@ -110,6 +111,7 @@ const stageJobs = (store: AccountStore, jobs: ReadonlyArray<unknown>) =>
           environments: [
             {
               projectId: "stage",
+              declaration,
               tier: "stage",
               name: "stage",
               sources: ["main"],
@@ -200,6 +202,7 @@ const ROLL_BACK = {
 } as const;
 const REDEPLOY = {
   kind: "redeploy",
+  declaration: "1",
   orgId: ORG,
   appId: "shop",
   projectId: "stage",
@@ -210,6 +213,7 @@ const REDEPLOY = {
 } as const;
 const ADD_SERVICE = {
   kind: "add-service",
+  declaration: "1",
   orgId: ORG,
   appId: "shop",
   projectId: "stage",
@@ -536,5 +540,98 @@ it.effect(
         deploys: DEPLOYS,
         delivery,
       });
+    }),
+);
+
+it.effect.each([REDEPLOY, ADD_SERVICE])(
+  "older-declaration history cannot reflect a new $kind operation after its answer is lost",
+  (intent) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      stageJobs(store, []);
+      const lost = new HqError({ kind: "uncertain", code: "network", message: "No answer." });
+      const { operations, calls } = operationsOf(store, () => Promise.reject(lost));
+      yield* operations.submit(intent);
+      stageJobs(store, [
+        job("historical", {
+          declaration: null,
+          service: intent.kind === "add-service" ? "db" : "api",
+          cause: intent.kind === "add-service" ? "add_service" : "run_again",
+        }),
+      ]);
+      yield* operations.retry("r1");
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      expect(calls).toHaveLength(1);
+    }),
+);
+
+it.effect.each([REDEPLOY, ADD_SERVICE])(
+  "a replacement declaration cannot settle an older uncertain $kind operation",
+  (intent) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      stageJobs(store, [job("j1", { state: "failed" })], "1");
+      const lost = new HqError({ kind: "uncertain", code: "network", message: "No answer." });
+      const { operations, calls } = operationsOf(store, () => Promise.reject(lost));
+      yield* operations.submit(intent);
+      stageJobs(
+        store,
+        [
+          job("replacement", {
+            declaration: "2",
+            service: intent.kind === "add-service" ? "db" : "api",
+            cause: intent.kind === "add-service" ? "add_service" : "run_again",
+          }),
+        ],
+        "2",
+      );
+      yield* operations.retry("r1");
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      expect(store.state().operations.get("r1")?.intent).toEqual(intent);
+      expect(calls).toHaveLength(1);
+    }),
+);
+it.effect.each([REDEPLOY, ADD_SERVICE])(
+  "missing historical declaration metadata cannot prove success of $kind",
+  (input) =>
+    Effect.gen(function* () {
+      const { declaration: _declaration, ...intent } = input;
+      const store = makeAccountStore(AtomRegistry.make());
+      stageJobs(store, [job("j1", { state: "failed" })]);
+      const lost = new HqError({ kind: "uncertain", code: "network", message: "No answer." });
+      const { operations, calls } = operationsOf(store, () => Promise.reject(lost));
+      yield* operations.submit(intent);
+      stageJobs(store, [
+        job("later", {
+          service: intent.kind === "add-service" ? "db" : "api",
+          cause: intent.kind === "add-service" ? "add_service" : "run_again",
+        }),
+      ]);
+      yield* operations.retry("r1");
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      expect(calls).toHaveLength(1);
+    }),
+);
+
+it.effect(
+  "a different commit's job cannot stand for an uncertain redeploy of the requested commit",
+  () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      stageJobs(store, [job("j1", { state: "failed" })]);
+      const lost = new HqError({ kind: "uncertain", code: "network", message: "No answer." });
+      const { operations, calls } = operationsOf(store, () => Promise.reject(lost));
+      yield* operations.submit(REDEPLOY);
+      stageJobs(store, [job("different", { sha: HEAD })]);
+      yield* operations.retry("r1");
+      expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      stageJobs(store, [job("requested")]);
+      yield* operations.retry("r1");
+      expect(progress(store)).toEqual({
+        stage: "done",
+        operationId: "stage/api",
+        outcome: "succeeded",
+      });
+      expect(calls).toHaveLength(1);
     }),
 );

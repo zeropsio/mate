@@ -304,13 +304,15 @@ export function useFlowVerbs(): FlowVerbs {
       const row = flow.environmentInputs.find(
         (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
       );
-      if (row === undefined || row.target.kind !== "zerops")
+      if (row === undefined || row.target.kind !== "zerops" || row.declaration === undefined)
         return Promise.resolve(refused(NOT_READ_YET));
       const target = row.target;
+      const declaration = row.declaration;
       return run(
         { kind: "redeploy", groupId: flow.groupId, projectId, service: deploy.service },
         (orgId) => ({
           kind: "redeploy",
+          declaration,
           orgId,
           appId: flow.groupId,
           projectId: target.projectId,
@@ -328,13 +330,15 @@ export function useFlowVerbs(): FlowVerbs {
       const row = flow.environmentInputs.find(
         (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
       );
-      if (row === undefined || row.target.kind !== "zerops")
+      if (row === undefined || row.target.kind !== "zerops" || row.declaration === undefined)
         return Promise.resolve(refused(NOT_READ_YET));
       const target = row.target;
+      const declaration = row.declaration;
       return run(
         { kind: "add-service", groupId: flow.groupId, projectId, service },
         (orgId) => ({
           kind: "add-service",
+          declaration,
           orgId,
           appId: flow.groupId,
           projectId: target.projectId,

@@ -6,7 +6,7 @@
 import { act, useLayoutEffect } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
-import { HqEnvironmentId } from "@t3tools/contracts";
+import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
 import type { Release } from "@t3tools/shared/hqRelease";
 
@@ -134,6 +134,8 @@ const FLOW = {
 const hq = {
   release: vi.fn(),
   merge: vi.fn(),
+  redeploy: vi.fn(),
+  addService: vi.fn(),
 };
 
 let tree: ReactTestRenderer | undefined;
@@ -152,9 +154,13 @@ beforeEach(async () => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   hq.release.mockReset();
   hq.merge.mockReset();
+  hq.redeploy.mockReset();
+  hq.addService.mockReset();
   letGo = holdHqWrites(ORG, {
     release: hq.release,
     mergeChange: hq.merge,
+    redeploy: hq.redeploy,
+    addService: hq.addService,
   } as never);
   const { RegistryContext } = await import("@effect/atom-react");
   const { AtomRegistry } = await import("effect/reactivity");
@@ -284,3 +290,66 @@ it("a Git environment cannot invoke branch rollback through an old platform offe
   expect(outcome).toEqual({ ok: false, reason: "A branch production offers no roll back." });
   expect(hq.release).not.toHaveBeenCalled();
 });
+
+it.each(["redeploy", "addService"] as const)(
+  "%s captures the declaration shown with the original flow before sending",
+  async (kind) => {
+    const declaration = "9007199254740993";
+    const row = {
+      id: HqEnvironmentId.make("stage"),
+      target: { kind: "zerops" as const, projectId: ProjectId.make("stage") },
+      declaration,
+      environment: "stage",
+    };
+    const flow = { ...FLOW, environmentInputs: [row] } as unknown as ZeropsProjectFlow;
+    hq[kind].mockImplementation(async () => {
+      const actual = account.stores.get(registryOfTest!) as ReturnType<
+        typeof import("@t3tools/client-runtime/data").makeAccountStore
+      >;
+      expect(
+        [...actual.state().operations.values()].find(
+          (record) => record.intent.kind === (kind === "addService" ? "add-service" : "redeploy"),
+        )?.intent,
+      ).toMatchObject({ declaration });
+      row.declaration = "9007199254740994";
+      return DEPLOYS;
+    });
+    await act(async () => {
+      if (kind === "redeploy")
+        await verbs.redeploy(flow, "stage", { service: "api", sha: SHA, after: "original" });
+      else await verbs.addService(flow, "stage", "api");
+    });
+    const actual = account.stores.get(registryOfTest!) as ReturnType<
+      typeof import("@t3tools/client-runtime/data").makeAccountStore
+    >;
+    const operation = [...actual.state().operations.values()].find(
+      (record) => record.intent.kind === (kind === "addService" ? "add-service" : "redeploy"),
+    );
+    expect(operation?.intent).toMatchObject({ declaration });
+    expect(hq[kind]).toHaveBeenCalledTimes(1);
+  },
+);
+it.each(["redeploy", "addService"] as const)(
+  "%s refuses an environment with no captured declaration",
+  async (kind) => {
+    const flow = {
+      ...FLOW,
+      environmentInputs: [
+        {
+          id: HqEnvironmentId.make("stage"),
+          target: { kind: "zerops", projectId: ProjectId.make("stage") },
+          environment: "stage",
+        },
+      ],
+    } as unknown as ZeropsProjectFlow;
+    let result: unknown;
+    await act(async () => {
+      result =
+        kind === "redeploy"
+          ? await verbs.redeploy(flow, "stage", { service: "api", sha: SHA, after: "original" })
+          : await verbs.addService(flow, "stage", "api");
+    });
+    expect(result).toEqual({ ok: false, reason: "This project has not been read yet." });
+    expect(hq[kind]).not.toHaveBeenCalled();
+  },
+);

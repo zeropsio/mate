@@ -40,7 +40,7 @@ import {
   type StopServiceRow,
   type StopVerdict,
 } from "./stopDetail.ts";
-import { jobInFlight, type HqJob } from "../hq/environments.ts";
+import { jobsByService, jobInFlight, type HqJob } from "../hq/environments.ts";
 
 /** HQ's job of a deploy in `state`. */
 const deployRecord = (state: HqJob["state"], over: Partial<HqJob> = {}): HqJob => ({
@@ -1723,3 +1723,18 @@ it.each([
     expect(row?.job).toBeUndefined();
   },
 );
+
+it("an earlier declaration's retained deploy never offers Run again for its replacement", () => {
+  const old = { ...deployRecord("unresolved"), declaration: "1", appVersionId: "original-version" };
+  const history = { declaration: "2", jobs: [old] };
+  const deploy = jobsByService(history).get("api");
+  expect(history.jobs).toEqual([old]);
+  expect(jobOf(deploy?.latest, () => "now")).toBeUndefined();
+  expect(
+    driftOf({
+      hostname: "api",
+      activeVersionId: "different-native-version",
+      ...(deploy === undefined ? {} : { deploy }),
+    }),
+  ).toBeUndefined();
+});

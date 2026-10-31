@@ -35,6 +35,7 @@ import { type GroupEnvironment, type GroupEnvironmentTier } from "./groupEnviron
 import { deployedCommit, type EnvironmentServiceState, type GroupRowTone } from "./groupRows.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
+  currentEnvironmentJobs,
   type HqEnvironment,
   type CanonicalHqEnvironment,
   canonicalEnvironmentsOf,
@@ -55,6 +56,8 @@ export interface GroupEnvironmentService {
 
 /** What one environment's row is built from, before the row itself. */
 export interface GroupEnvironmentRowInput {
+  /** The exact native declaration rendered to the person, never a later store lookup. */
+  readonly declaration?: string;
   readonly git?: GitDelivery | undefined;
   /** @deprecated Zerops-only compatibility address; canonical rows carry id and target. */
   readonly projectId: string;
@@ -250,7 +253,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
       const releaseFailures =
         environment.tier !== "production"
           ? []
-          : environment.jobs.flatMap((job) =>
+          : currentEnvironmentJobs(environment).flatMap((job) =>
               job.kind === "deploy" &&
               job.cause === "release" &&
               job.ref !== null &&
@@ -263,6 +266,7 @@ export function canonicalEnvironmentRowInputsOf(input: {
       return {
         id: environment.id,
         target: environment.target,
+        ...(environment.declaration === undefined ? {} : { declaration: environment.declaration }),
         name:
           (environment.target.kind === "zerops"
             ? input.projectNames.get(environment.target.projectId)
