@@ -1,5 +1,9 @@
 import type { HqProblem } from "@t3tools/shared/hqProblems";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import type {
+  ReviewReleaseRequest,
+  ReleaseServicePlan,
+  NativeReleaseIdentity,
+} from "@t3tools/shared/hqRelease";
 /**
  * The verbs that move an application's flow — release, roll back, merge, close, hand a change over,
  * run a deploy again, add a service — each the account's operation, which the organization's official HQ executes as
@@ -9,7 +13,12 @@ import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
  * next verb. The account holds both, in memory, for every surface that draws the verbs.
  */
 import { RegistryContext } from "@effect/atom-react";
-import { flowAnswer, releaseRequestOf, type FlowWriteIntent } from "@t3tools/client-runtime/data";
+import {
+  flowAnswer,
+  releaseRequestOf,
+  nativeReleaseIdentityOf,
+  type FlowWriteIntent,
+} from "@t3tools/client-runtime/data";
 import { flowVerbKey, type FlowVerb } from "@t3tools/client-runtime/zerops";
 import {
   HQ_WRITE_UNCERTAIN,
@@ -42,7 +51,13 @@ export type FlowVerbOutcome =
       /** The rollout its deploys are of: what an answer that handed planning over follows. */
       readonly rollout?: AppDeployRollout | undefined;
     }
-  | { readonly ok: false; readonly reason: string; readonly problems?: ReadonlyArray<HqProblem> };
+  | {
+      readonly ok: false;
+      readonly uncertain?: boolean;
+      readonly original?: NativeReleaseIdentity;
+      readonly reason: string;
+      readonly problems?: ReadonlyArray<HqProblem>;
+    };
 
 export interface FlowVerbs {
   /** The verbs on their way, by `flowVerbKey`: a row shows its own and takes no second press. */
@@ -59,7 +74,11 @@ export interface FlowVerbs {
     plan?: ReleaseServicePlan,
   ) => Promise<FlowVerbOutcome>;
   /** A new release listing an earlier release's entries (guide 5.6). */
-  readonly rollBack: (flow: ZeropsProjectFlow, tag: string) => Promise<FlowVerbOutcome>;
+  readonly rollBack: (
+    flow: ZeropsProjectFlow,
+    tag: string,
+    reviewed?: { readonly request: ReviewReleaseRequest; readonly plan: ReleaseServicePlan },
+  ) => Promise<FlowVerbOutcome>;
   /**
    * A change squashed into `main`, if its head is still `expectedHead` — the head its review
    * showed; none shown, HQ is not asked.
@@ -171,7 +190,9 @@ export function useFlowVerbs(): FlowVerbs {
         next.delete(key);
         publish(board, { pending: next });
       };
-      const { requestId, progress } = await operations.submit(intent(orgId)).catch((cause) => {
+      const submitted = intent(orgId);
+      const original = nativeReleaseIdentityOf(submitted);
+      const { requestId, progress } = await operations.submit(submitted).catch((cause) => {
         done();
         throw cause;
       });
@@ -190,6 +211,9 @@ export function useFlowVerbs(): FlowVerbs {
         if (says) publish(board, { trouble: reason });
         return {
           ok: false,
+          ...(progress.stage === "uncertain"
+            ? { uncertain: true, ...(original === undefined ? {} : { original }) }
+            : {}),
           reason,
           ...(progress.stage === "refused" && progress.problems !== undefined
             ? { problems: progress.problems }
@@ -218,31 +242,68 @@ export function useFlowVerbs(): FlowVerbs {
       tag?: string,
       plan?: ReleaseServicePlan,
     ): Promise<FlowVerbOutcome> => {
+      const viewer =
+        orgId === null || data === undefined
+          ? undefined
+          : registry.get(data.fact("organizationUser", orgId));
+      const principal = viewer?.kind === "known" ? viewer.value.id : undefined;
+      if (flow.release.git === undefined && principal === undefined)
+        return Promise.resolve(refused(NOT_READ_YET));
       const request = releaseRequestOf(flow.release, tag, plan);
       if ("refused" in request)
         return Promise.resolve(request.says ? refuse(request.refused) : refused(request.refused));
       return run(
         { kind: "release", groupId: flow.groupId },
-        (orgId) => ({ ...request, orgId, appId: flow.groupId }),
+        (orgId) => ({
+          ...request,
+          ...(principal === undefined ? {} : { principal }),
+          orgId,
+          appId: flow.groupId,
+        }),
         true,
       );
     },
-    [refuse, run],
+    [refuse, run, orgId, data, registry],
   );
 
   const rollBack = useCallback(
-    (flow: ZeropsProjectFlow, earlier: string): Promise<FlowVerbOutcome> => {
+    (
+      flow: ZeropsProjectFlow,
+      earlier: string,
+      reviewed?: { readonly request: ReviewReleaseRequest; readonly plan: ReleaseServicePlan },
+    ): Promise<FlowVerbOutcome> => {
       if (flow.release.git !== undefined)
         return Promise.resolve(refused("A branch production offers no roll back."));
-      const groupHead = flow.repos?.find((repo) => repo.name === RECIPE_REPO)?.mainHead;
-      if (groupHead == null) return Promise.resolve(refuse(NO_GROUP_MAIN));
+      const viewer =
+        orgId === null || data === undefined
+          ? undefined
+          : registry.get(data.fact("organizationUser", orgId));
+      if (
+        viewer?.kind !== "known" ||
+        reviewed === undefined ||
+        reviewed.request.rollbackOf !== earlier
+      )
+        return Promise.resolve(refused("Review the exact rollback operations before approval."));
+      const { request, plan } = reviewed;
+      const principal = viewer.value.id;
       return run(
         { kind: "roll-back", groupId: flow.groupId, tag: earlier },
-        (orgId) => ({ kind: "roll-back", orgId, appId: flow.groupId, tag: earlier, groupHead }),
+        (orgId) => ({
+          kind: "roll-back",
+          orgId,
+          appId: flow.groupId,
+          tag: earlier,
+          groupHead: request.groupHead,
+          reviewedTag: request.tag,
+          entries: request.entries,
+          planHash: plan.hash,
+          releaseTarget: request.releaseTarget,
+          principal,
+        }),
         true,
       );
     },
-    [refuse, run],
+    [run, orgId, data, registry],
   );
 
   const merge = useCallback(

@@ -1,16 +1,16 @@
 /** The exact production creation plan HQ persisted for the immutable release inputs. */
-import { CreateReleaseRequest, ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import { ReviewReleaseRequest, ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 export interface ReleaseReviewRequest {
   readonly appId: string;
-  readonly request: CreateReleaseRequest;
+  readonly request: ReviewReleaseRequest;
 }
 export const releaseReviewOwner = (input: ReleaseReviewRequest): string => JSON.stringify(input);
 const decodeOwner = Schema.decodeUnknownOption(
-  Schema.fromJsonString(Schema.Struct({ appId: Schema.String, request: CreateReleaseRequest })),
+  Schema.fromJsonString(Schema.Struct({ appId: Schema.String, request: ReviewReleaseRequest })),
 );
 export const releaseReviewRequest = (owner: string): ReleaseReviewRequest | null =>
   Option.getOrNull(decodeOwner(owner));

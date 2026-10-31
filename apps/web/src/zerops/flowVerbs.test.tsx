@@ -8,7 +8,9 @@ import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { gitDeliveryOf } from "@t3tools/client-runtime/zerops";
-import type { Release } from "@t3tools/shared/hqRelease";
+import { HqReleaseTarget, type Release, type ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+
+import * as Schema from "effect/Schema";
 
 import { openAccountLifetime, closeAccountLifetime } from "./accountLifetime";
 import { holdHqWrites } from "./hqWrites";
@@ -33,6 +35,16 @@ const gitRemote = {
 const ORG = "org";
 const SHA = "a".repeat(40);
 const HEAD = "b".repeat(40);
+const TARGET = Schema.decodeUnknownSync(HqReleaseTarget)({
+  environmentId: "prod",
+  createdAt: "2026-10-31T00:00:00Z",
+  declaration: "9007199254740993",
+  target: { kind: "zerops", projectId: "prod" },
+});
+const PLAN: ReleaseServicePlan = {
+  hash: "c".repeat(64),
+  operations: [{ kind: "deploy", service: "api", sha: SHA }],
+};
 const DEPLOYS = { jobs: [], note: "Deploying to production." };
 
 /** The account's store, one per test registry, as its data mount builds it. */
@@ -86,7 +98,10 @@ vi.mock("./ZeropsAccountData", async () => {
 
 const release = (tag: string): Release => ({
   tag,
-  sha: SHA,
+  sha: HEAD,
+  target: "zerops",
+  releaseTarget: TARGET,
+  planHash: PLAN.hash,
   entries: [{ service: "api", sha: SHA }],
   by: "ada",
   at: "2026-10-06T00:00:00Z",
@@ -125,6 +140,8 @@ const FLOW = {
   repos: [{ name: "recipe", mainHead: HEAD, updatedAt: "2026-10-06T00:00:00Z" }],
   release: {
     gate: { allowed: true },
+    permission: { allowed: true },
+    releaseTarget: TARGET,
     suggestion: "v1.0.1",
     groupHead: HEAD,
     entries: [{ service: "api", commit: SHA }],
@@ -166,6 +183,30 @@ beforeEach(async () => {
   const { AtomRegistry } = await import("effect/reactivity");
   const registry = AtomRegistry.make();
   registryOfTest = registry;
+  const scope = `zerops:${ORG}:organization-user:${ORG}`;
+  for (const event of [
+    { kind: "demand", demanded: true },
+    { kind: "attempt" },
+    { kind: "handshake" },
+  ])
+    store().dispatch({ kind: "stream", key: scope, now: 0, event });
+  store().dispatch({ kind: "baseline-begin", scope, generation: 1 });
+  store().dispatch({
+    kind: "baseline-commit",
+    scope,
+    generation: 1,
+    via: "zerops-read",
+    members: [ORG],
+    rows: [
+      {
+        family: "organizationUser",
+        id: ORG,
+        revision: { kind: "zerops", version: null },
+        value: { id: "ada", email: "ada@example.test", clientUserList: [] },
+      },
+    ],
+  });
+  store().dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
   await act(async () => {
     tree = create(
       <RegistryContext value={registry}>
@@ -188,13 +229,20 @@ describe("useFlowVerbs", () => {
     hq.release.mockResolvedValue({ made: release("v1.0.1"), deploys: DEPLOYS });
     let outcome: unknown;
     await act(async () => {
-      outcome = await verbs.release(FLOW);
+      outcome = await verbs.release(FLOW, undefined, PLAN);
     });
-    expect(hq.release).toHaveBeenCalledWith("shop", {
-      tag: "v1.0.1",
-      groupHead: HEAD,
-      entries: [{ service: "api", sha: SHA }],
-    });
+    expect(hq.release).toHaveBeenCalledWith(
+      "shop",
+      {
+        tag: "v1.0.1",
+        groupHead: HEAD,
+        entries: [{ service: "api", sha: SHA }],
+        target: "zerops",
+        releaseTarget: TARGET,
+        planHash: PLAN.hash,
+      },
+      "ada",
+    );
     expect(outcome).toEqual({
       ok: true,
       tag: "v1.0.1",
@@ -206,7 +254,7 @@ describe("useFlowVerbs", () => {
     // A second press while it is on its way sends nothing.
     let again: unknown;
     await act(async () => {
-      again = await verbs.release(FLOW);
+      again = await verbs.release(FLOW, undefined, PLAN);
     });
     expect(again).toEqual({ ok: false, reason: VERB_ALREADY_RUNNING });
     expect(hq.release).toHaveBeenCalledTimes(1);
@@ -222,7 +270,7 @@ describe("useFlowVerbs", () => {
     );
     let outcome: unknown;
     await act(async () => {
-      outcome = await verbs.release(FLOW, "v1.0.0");
+      outcome = await verbs.release(FLOW, "v1.0.0", PLAN);
     });
     expect(outcome).toEqual({ ok: false, reason: "That name is taken." });
     expect(verbs.trouble).toBe("That name is taken.");
@@ -233,10 +281,17 @@ describe("useFlowVerbs", () => {
     {
       name: "a release its offer refuses",
       press: () =>
-        verbs.release({
-          ...FLOW,
-          release: { ...FLOW.release, gate: { allowed: false, reason: "Only a developer may." } },
-        }),
+        verbs.release(
+          {
+            ...FLOW,
+            release: {
+              ...FLOW.release,
+              permission: { allowed: false, reason: "Only a developer may." },
+            },
+          },
+          undefined,
+          PLAN,
+        ),
       reason: "Only a developer may.",
     },
     {

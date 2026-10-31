@@ -60,6 +60,7 @@ export type HqEnvironmentTarget = typeof HqEnvironmentTarget.Type;
 
 /** Destination captured at acceptance; absence on old history remains unknown. */
 export const HqEnvironmentAttachment = Schema.Struct({
+  declaration: Schema.optionalKey(HqEnvironmentDeclaration),
   environmentId: HqEnvironmentId,
   createdAt: HqTargetTimestamp,
   target: HqEnvironmentTarget,

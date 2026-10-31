@@ -1,3 +1,5 @@
+import { HqReleaseTarget } from "@t3tools/shared/hqRelease";
+import * as Schema from "effect/Schema";
 import type {
   HqRemoteRefusalReason,
   HqGitEnvironmentRefusalReason,
@@ -23,6 +25,16 @@ import * as DateTime from "effect/DateTime";
 
 const isoAt = (ms: number) => DateTime.formatIso(DateTime.makeUnsafe(ms));
 const ORG = "org-1";
+const NATIVE_CONTEXT = {
+  target: "zerops" as const,
+  planHash: "c".repeat(64),
+  releaseTarget: Schema.decodeUnknownSync(HqReleaseTarget)({
+    environmentId: "production",
+    createdAt: "2026-10-31T00:00:00Z",
+    declaration: "9007199254740993",
+    target: { kind: "zerops", projectId: "production" },
+  }),
+};
 const FAR = Date.parse("2099-01-01T00:00:00.000Z");
 const ADDRESS = "https://hq-30db-8080.prg1.zerops.app";
 
@@ -1558,6 +1570,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
 
   // An application's releases (`@t3tools/shared/hqRelease`): read, made and rolled back as the person.
   const RELEASE = {
+    ...NATIVE_CONTEXT,
     tag: "v0.1.1",
     sha: SHA,
     entries: [{ service: "app", sha: "b".repeat(40) }],
@@ -1571,16 +1584,32 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
   it("releases what the offer showed, and rolls back with main's head read with the offer", async () => {
     const { hq, api: hqApi } = api((seen) =>
       seen.method === "POST" && seen.path.startsWith("/api/apps/app-1/releases")
-        ? json(201, RELEASE)
+        ? json(
+            201,
+            seen.path.endsWith("/rollback")
+              ? { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" }
+              : RELEASE,
+          )
         : undefined,
     );
-    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
-    await expect(hqApi.release("app-1", request)).resolves.toEqual({
+    const request = { ...NATIVE_CONTEXT, tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
+    await expect(hqApi.release("app-1", request, "u1")).resolves.toEqual({
       made: RELEASE,
       deploys: undefined,
     });
-    await expect(hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA })).resolves.toEqual({
-      made: RELEASE,
+    await expect(
+      hqApi.rollback(
+        "app-1",
+        "v0.1.0",
+        {
+          groupHead: SHA,
+          releaseTarget: NATIVE_CONTEXT.releaseTarget,
+          planHash: NATIVE_CONTEXT.planHash,
+        },
+        { tag: "v0.1.2", entries: RELEASE.entries, principal: "u1" },
+      ),
+    ).resolves.toEqual({
+      made: { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" },
       deploys: undefined,
     });
     expect(hq.seen.slice(-2)).toMatchObject([
@@ -1588,7 +1617,11 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       {
         method: "POST",
         path: "/api/apps/app-1/releases/v0.1.0/rollback",
-        body: { groupHead: SHA },
+        body: {
+          groupHead: SHA,
+          releaseTarget: NATIVE_CONTEXT.releaseTarget,
+          planHash: NATIVE_CONTEXT.planHash,
+        },
       },
     ]);
   });
@@ -1631,7 +1664,17 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
         seen.path === "/api/apps/app-1/releases"
           ? json(200, { releases: [ROLLED, RELEASE] })
           : undefined,
-      ask: (hqApi) => hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA }),
+      ask: (hqApi) =>
+        hqApi.rollback(
+          "app-1",
+          "v0.1.0",
+          {
+            groupHead: SHA,
+            releaseTarget: NATIVE_CONTEXT.releaseTarget,
+            planHash: NATIVE_CONTEXT.planHash,
+          },
+          { tag: ROLLED.tag, entries: ROLLED.entries, principal: "u1" },
+        ),
       made: { made: ROLLED, deploys: undefined },
     },
     {
@@ -1734,7 +1777,11 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
       holds: (seen) =>
         seen.path === "/api/apps/app-1/releases" ? json(200, { releases: [RELEASE] }) : undefined,
       ask: (hqApi) =>
-        hqApi.release("app-1", { tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries }),
+        hqApi.release(
+          "app-1",
+          { ...NATIVE_CONTEXT, tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries },
+          "u1",
+        ),
       made: { made: RELEASE, deploys: undefined },
     },
     {
@@ -1779,7 +1826,11 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
           ? json(200, { releases: [{ ...RELEASE, sha: "c".repeat(40) }] })
           : undefined,
       ask: (hqApi) =>
-        hqApi.release("app-1", { tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries }),
+        hqApi.release(
+          "app-1",
+          { ...NATIVE_CONTEXT, tag: RELEASE.tag, groupHead: SHA, entries: RELEASE.entries },
+          "u1",
+        ),
       made: "refused",
     },
     {
@@ -1854,6 +1905,7 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
 describe("makeHqApi — a write HQ may have made", () => {
   const SHA = "a".repeat(40);
   const MADE = {
+    ...NATIVE_CONTEXT,
     tag: "v0.1.1",
     sha: SHA,
     entries: [{ service: "app", sha: "b".repeat(40) }],
@@ -1863,7 +1915,90 @@ describe("makeHqApi — a write HQ may have made", () => {
     reason: null,
     rollbackOf: null,
   } as const;
-  const ASKED = { tag: MADE.tag, groupHead: SHA, entries: MADE.entries };
+  const ASKED = { ...NATIVE_CONTEXT, tag: MADE.tag, groupHead: SHA, entries: MADE.entries };
+
+  it.each(["plan", "declaration", "principal", "historical"] as const)(
+    "A lost Native release reply cannot adopt another %s receipt under the same tag.",
+    async (difference) => {
+      const stranger = {
+        ...MADE,
+        ...(difference === "plan"
+          ? { planHash: "d".repeat(64) }
+          : difference === "declaration"
+            ? {
+                releaseTarget: { ...NATIVE_CONTEXT.releaseTarget, declaration: "9007199254740994" },
+              }
+            : difference === "principal"
+              ? { by: "another" }
+              : { planHash: undefined }),
+      };
+      const hq = fakeHq((seen) =>
+        seen.path === "/api/apps/app-1/releases" && seen.method === "GET"
+          ? json(200, { releases: [stranger] })
+          : undefined,
+      );
+      let posts = 0;
+      const api = makeHqApi({
+        address: ADDRESS,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: NO_SOCKET,
+        fetch: async (input, init) => {
+          if (new URL(input).pathname === "/api/apps/app-1/releases" && init?.method === "POST") {
+            posts += 1;
+            throw new TypeError("lost original reply");
+          }
+          return hq.fetch(input, init);
+        },
+      });
+      await expect(api.release("app-1", ASKED, "u1")).rejects.toMatchObject({ kind: "uncertain" });
+      expect(posts).toBe(1);
+    },
+  );
+
+  it.each(["release", "rollback"] as const)(
+    "A Native %s response for another plan remains uncertain rather than becoming this command's receipt.",
+    async (kind) => {
+      const wrong = {
+        ...MADE,
+        planHash: "d".repeat(64),
+        rollbackOf: kind === "rollback" ? "v0.1.0" : null,
+      };
+      const hq = fakeHq((seen) =>
+        seen.path.startsWith("/api/apps/app-1/releases")
+          ? seen.method === "POST"
+            ? json(201, wrong)
+            : json(200, { releases: [wrong] })
+          : undefined,
+      );
+      const api = makeHqApi({
+        address: ADDRESS,
+        fetch: hq.fetch,
+        accessToken: doors().accessToken,
+        orgId: ORG,
+        openSocket: NO_SOCKET,
+      });
+      const result =
+        kind === "release"
+          ? api.release("app-1", ASKED, "u1")
+          : api.rollback(
+              "app-1",
+              "v0.1.0",
+              {
+                groupHead: SHA,
+                planHash: NATIVE_CONTEXT.planHash,
+                releaseTarget: NATIVE_CONTEXT.releaseTarget,
+              },
+              { tag: MADE.tag, entries: MADE.entries, principal: "u1" },
+            );
+      await expect(result).rejects.toMatchObject({ kind: "uncertain" });
+      expect(
+        hq.seen.filter(
+          (row) => row.method === "POST" && row.path.startsWith("/api/apps/app-1/releases"),
+        ),
+      ).toHaveLength(1);
+    },
+  );
 
   /** Runs `body` on fake timers, the calls' deadlines on the same clock. */
   async function onTheClock(body: () => Promise<void>) {
@@ -1904,7 +2039,7 @@ describe("makeHqApi — a write HQ may have made", () => {
         orgId: ORG,
         openSocket: NO_SOCKET,
       });
-      const made = api.release("app-1", ASKED);
+      const made = api.release("app-1", ASKED, "u1");
       const settled = vi.fn();
       made.then(settled, settled);
       await vi.advanceTimersByTimeAsync(30_000);
@@ -1946,13 +2081,16 @@ describe("makeHqApi — a write HQ may have made", () => {
 
   it("asks HQ what it holds when the connection drops under a release, never asking twice", async () => {
     const { api, asked } = dropping(true);
-    await expect(api.release("app-1", ASKED)).resolves.toEqual({ made: MADE, deploys: undefined });
+    await expect(api.release("app-1", ASKED, "u1")).resolves.toEqual({
+      made: MADE,
+      deploys: undefined,
+    });
     expect(asked()).toEqual(["POST", "GET"]);
   });
 
   it("says to check the project when HQ holds no release after its connection dropped", async () => {
     const { api, asked } = dropping(false);
-    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+    await expect(api.release("app-1", ASKED, "u1")).rejects.toMatchObject({
       kind: "uncertain",
       message: HQ_WRITE_UNCERTAIN,
     });
@@ -1972,7 +2110,7 @@ describe("makeHqApi — a write HQ may have made", () => {
       orgId: ORG,
       openSocket: NO_SOCKET,
     });
-    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+    await expect(api.release("app-1", ASKED, "u1")).rejects.toMatchObject({
       kind: "uncertain",
       message: HQ_WRITE_UNCERTAIN,
     });
@@ -2073,7 +2211,7 @@ describe("makeHqApi — a write HQ may have made", () => {
       orgId: ORG,
       openSocket: NO_SOCKET,
     });
-    await expect(api.release("app-1", ASKED)).rejects.toMatchObject({
+    await expect(api.release("app-1", ASKED, "u1")).rejects.toMatchObject({
       kind: "uncertain",
       message: HQ_WRITE_UNCERTAIN,
     });
@@ -2105,7 +2243,7 @@ describe("makeHqApi — a write HQ may have made", () => {
         orgId: ORG,
         openSocket: NO_SOCKET,
       });
-      const made = api.release("app-1", ASKED);
+      const made = api.release("app-1", ASKED, "u1");
       const settled = vi.fn();
       made.then(settled, settled);
       await vi.advanceTimersByTimeAsync(44_999);
@@ -2590,7 +2728,13 @@ describe("HQ structured refusal findings", () => {
       openSocket: NO_SOCKET,
     });
     await expect(
-      api.reviewRelease("app", { tag: "v1", groupHead: "a".repeat(40), entries: [] }),
+      api.reviewRelease("app", {
+        target: "zerops",
+        releaseTarget: NATIVE_CONTEXT.releaseTarget,
+        tag: "v1.0.0",
+        groupHead: "a".repeat(40),
+        entries: [],
+      }),
     ).rejects.toMatchObject({
       kind: "refused",
       code: "conflict",

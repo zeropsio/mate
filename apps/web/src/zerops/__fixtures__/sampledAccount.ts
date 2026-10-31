@@ -4,7 +4,12 @@
  *
  * Lives outside `*.test.*` on purpose: it runs the layer's own Effect runtime.
  */
-import { makeAccountStore, observeAccount, type ZeropsWire } from "@t3tools/client-runtime/data";
+import {
+  makeAccountStore,
+  observeAccount,
+  type AccountStore,
+  type ZeropsWire,
+} from "@t3tools/client-runtime/data";
 import type { ZeropsOrganizationMember } from "@t3tools/client-runtime/zerops";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -19,6 +24,7 @@ import type { AccountData } from "../ZeropsAccountData";
 export function makeSampledAccount(input: {
   readonly registry: AtomRegistry.AtomRegistry;
   readonly orgId: string;
+  readonly store?: AccountStore;
   readonly answer: (
     path: string,
     search?: Readonly<Record<string, unknown>>,
@@ -51,7 +57,7 @@ export function makeSampledAccount(input: {
       },
     }),
   };
-  const store = makeAccountStore(input.registry);
+  const store = input.store ?? makeAccountStore(input.registry);
   const observation = observeAccount({ store, wire, repairSession: Effect.void });
   observation.show(input.orgId);
   return {

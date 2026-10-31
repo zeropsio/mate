@@ -1,3 +1,4 @@
+import { matchesNativeRelease } from "@t3tools/shared/hqRelease";
 /**
  * The writes that move an application's flow, each made at the organization's official HQ as the
  * person: a release of what its offer showed, production rolled back to an earlier release, a
@@ -18,6 +19,7 @@ import type {
   HqReleaseTarget,
   Release,
   ReleaseServicePlan,
+  NativeReleaseIdentity,
 } from "@t3tools/shared/hqRelease";
 
 import {
@@ -46,6 +48,7 @@ declare module "../model.ts" {
       readonly entries: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
       /** Exact server-stored production plan shown before approval. */
       readonly planHash?: string;
+      readonly principal?: string;
       readonly releaseTarget?: HqReleaseTarget;
       /** A branch production: the attachment the review showed and HQ's ready preflight of it. */
       readonly git?: {
@@ -59,6 +62,11 @@ declare module "../model.ts" {
       /** The earlier release production goes back to. */
       readonly tag: string;
       readonly groupHead: string;
+      readonly reviewedTag?: string;
+      readonly entries?: ReadonlyArray<{ readonly service: string; readonly sha: string }>;
+      readonly planHash?: string;
+      readonly releaseTarget?: HqReleaseTarget;
+      readonly principal?: string;
     };
     readonly redeploy: {
       /** Original rendered declaration; absent on historical restored operations. */
@@ -181,16 +189,24 @@ export function releaseRequestOf(
       refused: offer.git.delivery?.release.reason ?? "Checking what can be released…",
       says: false,
     };
-  const creates = offer.git === undefined && (offer.missingServices?.length ?? 0) > 0;
-  if (creates && offer.permission?.allowed !== true)
+  const native = offer.git === undefined;
+  if (native && offer.permission?.allowed !== true)
     return {
       refused:
         offer.permission?.allowed === false ? offer.permission.reason : "Checking who can release…",
       says: false,
     };
-  if (creates && plan === undefined)
-    return { refused: "Review the production services this release will create.", says: false };
-  if (!creates && !offer.gate.allowed) return { refused: offer.gate.reason, says: false };
+  if (
+    native &&
+    (plan === undefined ||
+      offer.releaseTarget?.target.kind !== "zerops" ||
+      offer.releaseTarget.declaration === undefined)
+  )
+    return {
+      refused: "Review the exact production operations before approval.",
+      says: false,
+    };
+  if (!native && !offer.gate.allowed) return { refused: offer.gate.reason, says: false };
   if (offer.groupHead === undefined) return { refused: NO_GROUP_MAIN, says: true };
   if (offer.git !== undefined && offer.git.preflight === undefined)
     return { refused: offer.git.check ?? GIT_PREFLIGHT_PENDING, says: false };
@@ -199,7 +215,7 @@ export function releaseRequestOf(
     tag: tag ?? offer.suggestion,
     groupHead: offer.groupHead,
     entries: offer.entries.map(({ service, commit }) => ({ service, sha: commit })),
-    ...(creates && plan !== undefined
+    ...(native && plan !== undefined
       ? {
           planHash: plan.hash,
           ...(offer.releaseTarget === undefined ? {} : { releaseTarget: offer.releaseTarget }),
@@ -213,13 +229,48 @@ export function releaseRequestOf(
 
 const appDetail = (appId: string): DetailDemand => ({ family: "hqAppDetail", ownerId: appId });
 
+export function nativeReleaseIdentityOf(
+  intent: FlowWriteIntent,
+): NativeReleaseIdentity | undefined {
+  if (intent.kind !== "release" && intent.kind !== "roll-back") return undefined;
+  if (intent.kind === "release" && intent.git !== undefined) return undefined;
+  if (
+    intent.planHash === undefined ||
+    intent.releaseTarget === undefined ||
+    intent.principal === undefined
+  )
+    return undefined;
+  const tag = intent.kind === "release" ? intent.tag : intent.reviewedTag;
+  if (tag === undefined || intent.entries === undefined) return undefined;
+  return {
+    tag,
+    groupHead: intent.groupHead,
+    entries: intent.entries.map((entry) => ({ ...entry })),
+    planHash: intent.planHash,
+    releaseTarget: { ...intent.releaseTarget, target: { ...intent.releaseTarget.target } },
+    principal: intent.principal,
+    ...(intent.kind === "roll-back" ? { rollbackOf: intent.tag } : {}),
+  };
+}
+function exactNativeRelease(
+  record: Release,
+  intent: IntentOf<"release"> | IntentOf<"roll-back">,
+): boolean {
+  if (intent.kind === "release" && intent.git !== undefined) return record.tag === intent.tag;
+  const original = nativeReleaseIdentityOf(intent);
+  return original !== undefined && matchesNativeRelease(record, original);
+}
+
 /** A release HQ lists under the receipt's tag: its end, approved or refused in HQ's words. */
 function releaseListed(
   read: ProjectionReads,
   appId: string,
   receipt: OperationReceipt,
+  intent: IntentOf<"release"> | IntentOf<"roll-back">,
 ): Settlement | null {
-  const listed = releasesOf(read, appId).find(({ tag }) => tag === receipt.operationId);
+  const listed = releasesOf(read, appId).find(
+    (record) => record.tag === receipt.operationId && exactNativeRelease(record, intent),
+  );
   if (listed === undefined) return null;
   return listed.state === "approved"
     ? { kind: "succeeded" }
@@ -229,24 +280,26 @@ function releaseListed(
 export const releaseWrite: OperationKind<"release"> = {
   kind: "release",
   executor: "hq",
-  reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt) !== null,
-  settledBy: (read, intent, receipt) => releaseListed(read, intent.appId, receipt),
+  reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt, intent) !== null,
+  settledBy: (read, intent, receipt) => releaseListed(read, intent.appId, receipt, intent),
   observedIn: (intent) => appDetail(intent.appId),
   // After a lost answer: the release under the very name it asked for.
   effectHandles: (read, intent) =>
-    releasesOf(read, intent.appId).flatMap(({ tag }) => (tag === intent.tag ? [tag] : [])),
+    releasesOf(read, intent.appId).flatMap((record) =>
+      record.tag === intent.tag && exactNativeRelease(record, intent) ? [record.tag] : [],
+    ),
 };
 
 export const rollBackWrite: OperationKind<"roll-back"> = {
   kind: "roll-back",
   executor: "hq",
-  reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt) !== null,
-  settledBy: (read, intent, receipt) => releaseListed(read, intent.appId, receipt),
+  reflected: (read, intent, receipt) => releaseListed(read, intent.appId, receipt, intent) !== null,
+  settledBy: (read, intent, receipt) => releaseListed(read, intent.appId, receipt, intent),
   observedIn: (intent) => appDetail(intent.appId),
-  // After a lost answer: a new release listing the earlier one's entries, named by HQ.
+  // After a lost answer: only the original reviewed new tag and its copied plan.
   effectHandles: (read, intent) =>
-    releasesOf(read, intent.appId).flatMap(({ tag, rollbackOf }) =>
-      rollbackOf === intent.tag ? [tag] : [],
+    releasesOf(read, intent.appId).flatMap((record) =>
+      exactNativeRelease(record, intent) ? [record.tag] : [],
     ),
 };
 

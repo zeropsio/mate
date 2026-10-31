@@ -1,8 +1,9 @@
 import { describe, expect, it } from "@effect/vitest";
 import type { HqChange } from "@t3tools/shared/hqChanges";
 import type { HqDeployAnswer } from "@t3tools/shared/hqDeploys";
-import type { Release } from "@t3tools/shared/hqRelease";
+import { HqReleaseTarget, type Release } from "@t3tools/shared/hqRelease";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { AtomRegistry } from "effect/reactivity";
 
 import { ORG } from "../__fixtures__/account.ts";
@@ -17,12 +18,22 @@ import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
 
 const SHA = "a".repeat(40);
 const HEAD = "b".repeat(40);
+const TARGET = Schema.decodeUnknownSync(HqReleaseTarget)({
+  environmentId: "prod",
+  createdAt: "2026-10-31T00:00:00Z",
+  declaration: "9007199254740993",
+  target: { kind: "zerops", projectId: "prod" },
+});
+const HASH = "c".repeat(64);
 const LINK = { appId: "shop", repo: "web", number: 7 };
 const DEPLOYS: HqDeployAnswer = { jobs: [], note: "Deploying to production." };
 
 const release = (tag: string, over: Partial<Release> = {}): Release => ({
   tag,
-  sha: SHA,
+  sha: HEAD,
+  target: "zerops",
+  releaseTarget: TARGET,
+  planHash: HASH,
   entries: [{ service: "api", sha: SHA }],
   by: "ada",
   at: "2026-10-06T00:00:00Z",
@@ -187,6 +198,9 @@ const progress = (store: AccountStore) =>
 
 const RELEASE = {
   kind: "release",
+  principal: "ada",
+  planHash: HASH,
+  releaseTarget: TARGET,
   orgId: ORG,
   appId: "shop",
   tag: "v1.0.1",
@@ -195,6 +209,11 @@ const RELEASE = {
 } as const;
 const ROLL_BACK = {
   kind: "roll-back",
+  principal: "ada",
+  planHash: HASH,
+  releaseTarget: TARGET,
+  reviewedTag: "v1.0.2",
+  entries: [{ service: "api", sha: SHA }],
   orgId: ORG,
   appId: "shop",
   tag: "v1.0.0",
@@ -234,7 +253,15 @@ describe("a flow's writes, executed by HQ", () => {
       call: [
         "release",
         "shop",
-        { tag: "v1.0.1", groupHead: HEAD, entries: [{ service: "api", sha: SHA }] },
+        {
+          tag: "v1.0.1",
+          groupHead: HEAD,
+          entries: [{ service: "api", sha: SHA }],
+          planHash: HASH,
+          target: "zerops",
+          releaseTarget: TARGET,
+        },
+        "ada",
       ],
       operationId: "v1.0.1",
       result: { tag: "v1.0.1", deploys: DEPLOYS },
@@ -244,31 +271,20 @@ describe("a flow's writes, executed by HQ", () => {
     },
     {
       name: "a release carrying the reviewed creation hash and production attachment",
-      intent: {
-        ...RELEASE,
-        planHash: "c".repeat(64),
-        releaseTarget: {
-          environmentId: "production",
-          createdAt: "2026-10-28T10:00:00Z",
-          target: { kind: "zerops", projectId: "production-project" },
-        },
-      },
+      intent: RELEASE,
       answer: { made: release("v1.0.1"), deploys: DEPLOYS },
       call: [
         "release",
         "shop",
         {
-          tag: "v1.0.1",
+          tag: RELEASE.tag,
           groupHead: HEAD,
-          entries: [{ service: "api", sha: SHA }],
-          planHash: "c".repeat(64),
+          entries: RELEASE.entries,
+          planHash: HASH,
           target: "zerops",
-          releaseTarget: {
-            environmentId: "production",
-            createdAt: "2026-10-28T10:00:00Z",
-            target: { kind: "zerops", projectId: "production-project" },
-          },
+          releaseTarget: TARGET,
         },
+        "ada",
       ],
       operationId: "v1.0.1",
       result: { tag: "v1.0.1", deploys: DEPLOYS },
@@ -280,7 +296,13 @@ describe("a flow's writes, executed by HQ", () => {
       name: "a roll back",
       intent: ROLL_BACK,
       answer: { made: release("v1.0.2", { rollbackOf: "v1.0.0" }), deploys: DEPLOYS },
-      call: ["rollback", "shop", "v1.0.0", { groupHead: HEAD }],
+      call: [
+        "rollback",
+        "shop",
+        "v1.0.0",
+        { groupHead: HEAD, planHash: HASH, releaseTarget: TARGET },
+        { tag: "v1.0.2", entries: ROLL_BACK.entries, principal: "ada" },
+      ],
       operationId: "v1.0.2",
       result: { tag: "v1.0.2", deploys: DEPLOYS },
       before: (store: AccountStore) => detail(store, "releases", [release("v1.0.0")]),
@@ -430,7 +452,7 @@ describe("a flow's writes, executed by HQ", () => {
     },
     {
       name: "a roll back, by the earlier release it lists",
-      intent: ROLL_BACK,
+      intent: { ...ROLL_BACK, reviewedTag: "v1.0.3" },
       before: [release("v1.0.1", { rollbackOf: "v0.9.0" }), release("v1.0.0")],
       stranger: [release("v1.0.2"), release("v1.0.1", { rollbackOf: "v0.9.0" })],
       shown: [release("v1.0.3", { rollbackOf: "v1.0.0" }), release("v1.0.2")],
@@ -526,13 +548,48 @@ it.effect(
         deploys: DEPLOYS,
         delivery,
       }));
-      const git = { ...RELEASE, entries: [{ service: "web", sha: SHA }] };
+      const attachment = yield* Schema.decodeUnknownEffect(HqReleaseTarget)({
+        environmentId: "git-prod",
+        createdAt: TARGET.createdAt,
+        target: { kind: "git", branch: "production", delivery: "direct" },
+      });
+      const preflight = [
+        {
+          repo: "web",
+          remote: {
+            url: "https://github.com/acme/web.git",
+            repositoryId: "1",
+            keptAt: TARGET.createdAt,
+            keptBy: "custodian",
+            expiresAt: null,
+            invalidSince: null,
+          },
+          ref: "refs/heads/production",
+          before: null,
+          sha: SHA,
+          verdict: "ready" as const,
+          reason: null,
+          checkedAt: TARGET.createdAt,
+        },
+      ];
+      const git = {
+        ...RELEASE,
+        entries: [{ service: "web", sha: SHA }],
+        git: { releaseTarget: attachment, preflight },
+      };
       yield* operations.submit(git);
       expect(calls).toEqual([
         [
           "release",
           "shop",
-          { tag: "v1.0.1", groupHead: HEAD, entries: [{ service: "web", sha: SHA }] },
+          {
+            tag: RELEASE.tag,
+            groupHead: HEAD,
+            entries: git.entries,
+            target: "git",
+            releaseTarget: attachment,
+            preflight,
+          },
         ],
       ]);
       expect(operationResult(store.state().operations.get("r1")!, "release")).toEqual({
@@ -632,6 +689,41 @@ it.effect(
         operationId: "stage/api",
         outcome: "succeeded",
       });
+      expect(calls).toHaveLength(1);
+    }),
+);
+
+it.effect.each(["plan", "declaration", "principal", "sources", "historical"] as const)(
+  "An uncertain Native command cannot adopt a same-tag receipt with different %s evidence.",
+  (difference) =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const lost = new HqError({ kind: "uncertain", code: "network", message: "No answer." });
+      const { operations, calls } = operationsOf(store, () => Promise.reject(lost));
+      yield* operations.submit(RELEASE);
+      const different = release(RELEASE.tag);
+      const { planHash: _historicalHash, ...historical } = different;
+      const stranger: Release =
+        difference === "historical"
+          ? historical
+          : {
+              ...different,
+              ...(difference === "plan"
+                ? { planHash: "d".repeat(64) }
+                : difference === "declaration"
+                  ? { releaseTarget: { ...TARGET, declaration: "9007199254740994" } }
+                  : difference === "principal"
+                    ? { by: "another" }
+                    : difference === "sources"
+                      ? { entries: [{ service: "api", sha: HEAD }] }
+                      : {}),
+            };
+      detail(store, "releases", [stranger]);
+      yield* operations.retry("r1");
+      expect(progress(store).stage).toBe("uncertain");
+      detail(store, "releases", [release(RELEASE.tag)]);
+      yield* operations.retry("r1");
+      expect(progress(store).stage).toBe("done");
       expect(calls).toHaveLength(1);
     }),
 );

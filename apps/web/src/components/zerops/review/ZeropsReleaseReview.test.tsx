@@ -640,3 +640,27 @@ it("a release-review refusal carrying problems shows them; one with only code/re
   expect(page.body.textContent).toContain("Legacy refusal");
   expect(page.body.textContent).toContain("Review again");
 });
+
+it("Production review names exact stop and start effects and withholds approval until its plan is ready.", () => {
+  const plan: ReleaseServicePlan = {
+    hash: "a".repeat(64),
+    operations: [
+      {
+        kind: "stop",
+        service: "old",
+        serviceId: "S1",
+        reason: "This release no longer declares it.",
+      },
+      { kind: "start", service: "api", serviceId: "S2", reason: "This release declares it again." },
+    ],
+  };
+  const page = new Window().document;
+  page.body.innerHTML = render({ servicePlan: plan });
+  expect(page.body.textContent).toContain("Stop old");
+  expect(page.body.textContent).toContain("Service S1");
+  expect(page.body.textContent).toContain("This release no longer declares it.");
+  expect(page.body.textContent).toContain("Start api");
+  expect(page.body.textContent).toContain("Service S2");
+  page.body.innerHTML = render({ servicePlan: plan, servicePlanPending: true });
+  expect(page.querySelector("[data-review-primary]")?.hasAttribute("disabled")).toBe(true);
+});

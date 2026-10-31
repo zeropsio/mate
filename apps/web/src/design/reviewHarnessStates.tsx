@@ -684,6 +684,18 @@ const CREATION_PLAN: NonNullable<Parameters<typeof ReleaseReviewView>[0]["servic
       },
       cost: "Adds one billed service; resource usage is charged by Zerops according to the reviewed settings.",
     },
+    {
+      kind: "stop",
+      service: "retired-worker",
+      serviceId: "retired-worker-native-id",
+      reason: "This reviewed recipe no longer declares the previously executed service.",
+    },
+    {
+      kind: "start",
+      service: "api",
+      serviceId: "api-native-id",
+      reason: "This reviewed recipe declares the HQ-stopped service again.",
+    },
     { kind: "deploy", service: "agentrunner", sha: SEVEN_E },
   ],
 };
@@ -1355,6 +1367,20 @@ export const REVIEW_STATES: ReadonlyArray<{
         over={{
           servicePlan: CREATION_PLAN,
           onImportServices: async () => {},
+        }}
+      />
+    ),
+  },
+  {
+    id: "release-database-only",
+    label: "Database-only release with an explicitly reviewed no-effect plan",
+    node: (
+      <Release
+        over={{
+          servicePlan: { hash: "a".repeat(64), operations: [] },
+          services: [],
+          rows: [],
+          where: [],
         }}
       />
     ),

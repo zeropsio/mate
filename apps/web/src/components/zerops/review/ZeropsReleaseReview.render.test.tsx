@@ -1,3 +1,19 @@
+import { RegistryContext } from "@effect/atom-react";
+import { AtomRegistry } from "effect/reactivity";
+import {
+  makeAccountStore,
+  accountReadsAtom,
+  releaseReviewRequest,
+  releaseReviewScope,
+  releaseReviewId,
+} from "@t3tools/client-runtime/data";
+import { AccountDataContext } from "~/zerops/ZeropsAccountData";
+import { makeSampledAccount } from "~/zerops/__fixtures__/sampledAccount";
+import type {
+  ReleaseServicePlan,
+  ReviewReleaseRequest,
+  NativeReleaseIdentity,
+} from "@t3tools/shared/hqRelease";
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { HqAppDetailRead } from "@t3tools/client-runtime/data";
 import type { FlowReleaseRow } from "@t3tools/client-runtime/zerops";
@@ -25,8 +41,12 @@ const state = vi.hoisted(() => ({
     /** What the review asked of the project flows, each draw: the apps and the options. */
     asked: Array<{ ids: ReadonlyArray<string>; options: unknown }>;
     mateNames: Map<string, string>;
-    release: (group: string, tag?: string) => Promise<FlowVerbOutcome>;
-    rollBack: (group: string, tag: string) => Promise<FlowVerbOutcome>;
+    release: (group: string, tag?: string, plan?: ReleaseServicePlan) => Promise<FlowVerbOutcome>;
+    rollBack: (
+      group: string,
+      tag: string,
+      reviewed?: { request: ReviewReleaseRequest; plan: ReleaseServicePlan },
+    ) => Promise<FlowVerbOutcome>;
   },
 }));
 vi.mock("~/zerops/projectFlows", () => ({
@@ -43,8 +63,13 @@ vi.mock("~/zerops/flowVerbs", () => ({
   useFlowVerbs: () => ({
     pending: new Set(),
     trouble: null,
-    release: (flow: ZeropsProjectFlow, tag?: string) => state.value.release(flow.groupId, tag),
-    rollBack: (flow: ZeropsProjectFlow, tag: string) => state.value.rollBack(flow.groupId, tag),
+    release: (flow: ZeropsProjectFlow, tag?: string, plan?: ReleaseServicePlan) =>
+      state.value.release(flow.groupId, tag, plan),
+    rollBack: (
+      flow: ZeropsProjectFlow,
+      tag: string,
+      reviewed?: { request: ReviewReleaseRequest; plan: ReleaseServicePlan },
+    ) => state.value.rollBack(flow.groupId, tag, reviewed),
   }),
 }));
 vi.mock("~/zerops/useZeropsCandidates", () => ({
@@ -154,6 +179,12 @@ function flow(): ZeropsProjectFlow {
     release: {
       gate: { allowed: true },
       permission: { allowed: true },
+      releaseTarget: {
+        environmentId: HqEnvironmentId.make("p-prod"),
+        createdAt: "2026-10-31T00:00:00Z",
+        declaration: "9007199254740993",
+        target: { kind: "zerops", projectId: ProjectId.make("p-prod") },
+      },
       groupHead: "a".repeat(40),
       suggestion: "v0.1.5",
       comparison: [
@@ -192,9 +223,12 @@ function flow(): ZeropsProjectFlow {
   };
 }
 let root: Root | undefined;
+let dataRegistry: AtomRegistry.AtomRegistry | undefined;
 afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined;
+  dataRegistry?.dispose();
+  dataRegistry = undefined;
   vi.unstubAllGlobals();
   useAddressesSheet.getState().close();
 });
@@ -208,6 +242,7 @@ async function mount(
   shape: (base: ZeropsProjectFlow) => ZeropsProjectFlow = (base) => base,
   wrap: (children: ReactNode) => ReactNode = (children) => children,
   detail: HqAppDetailRead = detailOf(),
+  reviewPlan?: ReleaseServicePlan | null,
 ) {
   const window = new Window();
   for (const name of [
@@ -230,12 +265,70 @@ async function mount(
     release,
     rollBack,
   };
+  const registry = AtomRegistry.make();
+  dataRegistry = registry;
+  const store = makeAccountStore(registry);
+  const sampled = makeSampledAccount({ registry, store, orgId: "org", answer: () => null });
+  const account = {
+    ...sampled,
+    demandDetail: (demand: Parameters<typeof sampled.demandDetail>[0]) => {
+      if (demand.family !== "hqReleaseReview") return sampled.demandDetail(demand);
+      const input = releaseReviewRequest(demand.ownerId);
+      if (input === null) return () => {};
+      const scope = releaseReviewScope("org", demand.ownerId);
+      for (const event of [
+        { kind: "demand", demanded: true },
+        { kind: "attempt" },
+        { kind: "handshake" },
+      ] as const)
+        store.dispatch({ kind: "stream", key: scope, now: 0, event });
+      const generation = store.state().streams.get(scope)!.generation;
+      store.dispatch({ kind: "baseline-begin", scope, generation });
+      if (reviewPlan === null) return () => {};
+      const id = releaseReviewId("org", demand.ownerId);
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation,
+        via: "hq-stream",
+        members: [id],
+        rows: [
+          {
+            family: "hqReleaseReview",
+            id,
+            revision: { kind: "hq", incarnation: `review/${id}`, revision: generation },
+            value: reviewPlan ?? {
+              hash: "c".repeat(64),
+              operations: input.request.entries.map((entry) => ({
+                kind: "deploy",
+                service: entry.service,
+                sha: entry.sha,
+              })),
+            },
+          },
+        ],
+      });
+      store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+      return () =>
+        store.dispatch({
+          kind: "stream",
+          key: scope,
+          now: 0,
+          event: { kind: "demand", demanded: false },
+        });
+    },
+  };
+  registry.set(accountReadsAtom, account);
   const container = window.document.createElement("div");
   window.document.body.append(container);
   root = createRoot(container as unknown as HTMLElement);
   const render = () =>
     root!.render(
-      wrap(<ZeropsReleaseReview target={target} titleId="release" onClose={() => {}} />),
+      <RegistryContext value={registry}>
+        <AccountDataContext value={account}>
+          {wrap(<ZeropsReleaseReview target={target} titleId="release" onClose={() => {}} />)}
+        </AccountDataContext>
+      </RegistryContext>,
     );
   await act(async () => render());
   return { container, render };
@@ -307,7 +400,11 @@ describe("the release dialog's press", () => {
       "Release v1.0.0",
     );
     await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
-    expect(release).toHaveBeenCalledWith("xyz", "v1.0.0");
+    expect(release).toHaveBeenCalledWith(
+      "xyz",
+      "v1.0.0",
+      expect.objectContaining({ hash: "c".repeat(64) }),
+    );
     expect(field!.disabled).toBe(false);
     expect(container.textContent).toContain("HQ refused it");
   });
@@ -639,3 +736,181 @@ describe("a review from what HQ already stores", () => {
     });
   });
 });
+
+it("An uncertain review keeps the original plan and tag through changed offers and accepts only its exact recorded receipt.", async () => {
+  let draw = () => {};
+  let original: NativeReleaseIdentity | undefined;
+  const release = vi.fn(
+    async (_app: string, tag?: string, plan?: ReleaseServicePlan): Promise<FlowVerbOutcome> => {
+      const before = state.value.flows.get("xyz")!;
+      if (tag === undefined || plan === undefined || before.release.releaseTarget === undefined)
+        throw new Error("no captured review");
+      original = {
+        tag,
+        planHash: plan.hash,
+        groupHead: before.release.groupHead!,
+        entries: before.release.entries.map((entry) => ({
+          service: entry.service,
+          sha: entry.commit,
+        })),
+        releaseTarget: before.release.releaseTarget,
+        principal: "ada",
+      };
+      state.value.flows.set("xyz", {
+        ...before,
+        release: {
+          ...before.release,
+          suggestion: "v9.0.0",
+          releaseTarget: { ...before.release.releaseTarget, declaration: "9007199254740994" },
+        },
+      });
+      draw();
+      return { ok: false, uncertain: true, reason: "The original answer is unknown.", original };
+    },
+  );
+  const { container, render } = await mount(release);
+  draw = render;
+  await act(async () => container.querySelector<TestButton>("[data-review-primary]")!.click());
+  expect(container.textContent).toContain("v0.1.5");
+  expect(container.textContent).not.toContain("Release v9.0.0");
+  expect(container.textContent).toContain("The original answer is unknown.");
+  const originalVersion = container.querySelector<TestInput>('input[aria-label="Version"]');
+  if (originalVersion !== null) {
+    expect(originalVersion.value).toBe("0.1.5");
+    expect(originalVersion.disabled).toBe(true);
+  }
+  const receipt = {
+    tag: original!.tag,
+    sha: original!.groupHead,
+    entries: original!.entries,
+    target: "zerops" as const,
+    releaseTarget: original!.releaseTarget,
+    planHash: original!.planHash,
+    by: "ada",
+    at: "2026-10-31T00:00:00Z",
+    state: "approved" as const,
+    reason: null,
+    rollbackOf: null,
+  };
+  await act(async () => {
+    state.value.detail = {
+      ...state.value.detail,
+      releases: [{ ...receipt, planHash: "d".repeat(64) }],
+    };
+    render();
+  });
+  expect(container.textContent).toContain("The original answer is unknown.");
+  await act(async () => {
+    state.value.detail = { ...state.value.detail, releases: [receipt] };
+    render();
+  });
+  expect(container.textContent).not.toContain("The original answer is unknown.");
+  expect(release).toHaveBeenCalledTimes(1);
+});
+
+it("Rollback approves the fixed new tag, earlier sources and exact declaration whose Native effects were reviewed.", async () => {
+  const rollback = vi.fn(async (): Promise<FlowVerbOutcome> => ({ ok: true, tag: "v0.1.5" }));
+  const { container } = await mount(
+    async () => ({ ok: false, reason: "unused" }),
+    { kind: "rollback", groupId: "xyz", tag: "v0.1.3" },
+    rollback,
+    (base) => ({ ...base, releases: [row("v0.1.4", HEAD), row("v0.1.3", BEFORE, false)] }),
+  );
+  const button = container.querySelector<TestButton>("[data-review-primary]");
+  expect(button?.disabled).toBe(false);
+  await act(async () => button!.click());
+  expect(rollback).toHaveBeenCalledWith("xyz", "v0.1.3", {
+    request: {
+      tag: "v0.1.5",
+      groupHead: "a".repeat(40),
+      entries: [{ service: "app", sha: BEFORE }],
+      target: "zerops",
+      releaseTarget: flow().release.releaseTarget,
+      rollbackOf: "v0.1.3",
+    },
+    plan: { hash: "c".repeat(64), operations: [{ kind: "deploy", service: "app", sha: BEFORE }] },
+  });
+});
+
+it.each(["create", "control", "no_effect"] as const)(
+  "A DB-only Native %s plan is reviewable with explicit [] even when code counts offer nothing.",
+  async (kind) => {
+    const plan: ReleaseServicePlan = {
+      hash: "c".repeat(64),
+      operations:
+        kind === "create"
+          ? [
+              {
+                kind: "create",
+                service: "database",
+                settings: { hostname: "database", type: "postgresql:single@16", override: false },
+                cost: "One billed service",
+              },
+            ]
+          : kind === "control"
+            ? [
+                { kind: "stop", service: "old", serviceId: "S1", reason: "No longer declared" },
+                { kind: "start", service: "database", serviceId: "S2", reason: "Declared again" },
+              ]
+            : [],
+    };
+    const release = vi.fn(async (): Promise<FlowVerbOutcome> => ({ ok: true, tag: "v0.1.5" }));
+    const { container } = await mount(
+      release,
+      undefined,
+      undefined,
+      (base) => ({
+        ...base,
+        release: {
+          ...base.release,
+          gate: { allowed: false, reason: "No new code commits." },
+          entries: [],
+          missingServices: [],
+        },
+      }),
+      undefined,
+      undefined,
+      plan,
+    );
+    const button = container.querySelector<TestButton>("[data-review-primary]");
+    expect(button?.disabled).toBe(false);
+    if (kind === "no_effect")
+      expect(container.textContent).toContain(
+        "No production service changes are required by this reviewed plan.",
+      );
+    await act(async () => button!.click());
+    expect(release).toHaveBeenCalledWith("xyz", "v0.1.5", plan);
+  },
+);
+
+it.each(["permission", "unknown_review", "unknown_declaration"] as const)(
+  "A DB-only Native review has no approval authority from empty counts with %s.",
+  async (missing) => {
+    const release = vi.fn(async (): Promise<FlowVerbOutcome> => ({ ok: true }));
+    const { container } = await mount(
+      release,
+      undefined,
+      undefined,
+      (base) => ({
+        ...base,
+        release: {
+          ...base.release,
+          entries: [],
+          gate: { allowed: false, reason: "No new code commits." },
+          ...(missing === "permission"
+            ? { permission: { allowed: false, reason: "Not a releaser" } }
+            : missing === "unknown_declaration"
+              ? { releaseTarget: undefined }
+              : {}),
+        },
+      }),
+      undefined,
+      undefined,
+      missing === "unknown_review" ? null : { hash: "c".repeat(64), operations: [] },
+    );
+    const button = container.querySelector<TestButton>("[data-review-primary]");
+    expect(button?.disabled).toBe(true);
+    await act(async () => button?.click());
+    expect(release).not.toHaveBeenCalled();
+  },
+);

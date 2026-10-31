@@ -1,10 +1,11 @@
 import { HqError } from "../../zerops/hq/client.ts";
 import { classifyHqCall } from "../adapters/hqWire.ts";
 import { expect, it } from "@effect/vitest";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import { HqReleaseTarget, type ReleaseServicePlan } from "@t3tools/shared/hqRelease";
 import * as Clock from "effect/Clock";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Schema from "effect/Schema";
 import { AtomRegistry } from "effect/reactivity";
 
 import { makeHqPictureReads } from "../adapters/hqPictures.ts";
@@ -22,6 +23,12 @@ import { releaseRequestOf } from "./flowWrites.ts";
 const HEAD = "1".repeat(40);
 const COMMIT = "2".repeat(40);
 const HASH = "a".repeat(64);
+const TARGET = Schema.decodeUnknownSync(HqReleaseTarget)({
+  environmentId: "prod",
+  createdAt: "2026-10-31T00:00:00Z",
+  declaration: "9007199254740993",
+  target: { kind: "zerops", projectId: "prod" },
+});
 const PLAN: ReleaseServicePlan = {
   hash: HASH,
   operations: [
@@ -45,10 +52,13 @@ const REQUEST: ReleaseReviewRequest = {
   request: {
     tag: "v1.0.2",
     groupHead: HEAD,
+    target: "zerops",
+    releaseTarget: TARGET,
     entries: [{ service: "worker", sha: COMMIT }],
   },
 };
 const offer = {
+  releaseTarget: TARGET,
   gate: { allowed: false as const, reason: "Production has no service worker." },
   permission: { allowed: true as const },
   missingServices: ["database", "worker"],
@@ -138,6 +148,8 @@ it.live(
           request: {
             tag: "v1.0.2",
             groupHead: HEAD,
+            target: "zerops",
+            releaseTarget: TARGET,
             entries: [{ service: "worker", sha: COMMIT }],
           },
         },
@@ -182,6 +194,7 @@ it.live(
         groupHead: HEAD,
         entries: [{ service: "worker", sha: COMMIT }],
         planHash: HASH,
+        releaseTarget: TARGET,
       });
       yield* Deferred.await(live.finished[0]!);
       yield* live.signal({
@@ -233,11 +246,19 @@ it("A release that needs no creation reviews and approves exactly as today.", ()
     groupHead: HEAD,
     entries: [{ service: "worker", sha: COMMIT }],
   };
-  expect(releaseRequestOf(ready)).toEqual(expected);
-  expect(releaseRequestOf(ready, undefined, PLAN)).toEqual(expected);
+  expect(releaseRequestOf(ready)).toHaveProperty("refused");
+  expect(releaseRequestOf(ready, undefined, PLAN)).toEqual({
+    ...expected,
+    planHash: HASH,
+    releaseTarget: TARGET,
+  });
   expect(
-    releaseRequestOf({ ...ready, gate: { allowed: false, reason: "Production is busy." } }),
-  ).toEqual({ refused: "Production is busy.", says: false });
+    releaseRequestOf(
+      { ...ready, permission: { allowed: false, reason: "You cannot release." } },
+      undefined,
+      PLAN,
+    ),
+  ).toEqual({ refused: "You cannot release.", says: false });
 });
 
 it.live.each(["changed input", "released account", "superseded attempt"] as const)(

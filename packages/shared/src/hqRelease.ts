@@ -16,7 +16,7 @@
  *   ({@link compareReleaseTags}), at most {@link RELEASES_SHOWN};
  * - `POST /api/apps/:appId/releases` {@link CreateReleaseRequest} → the {@link Release};
  * - `POST /api/apps/:appId/releases/:tag/rollback` {@link RollbackRequest} → a new release named
- *   {@link nextPatch} over every release, listing `:tag`'s entries; `:tag` stays as it was, and an
+ *   the immutable review's fixed new tag, listing `:tag`'s entries; `:tag` stays as it was, and an
  *   unknown one is `404 release_not_found`.
  *
  * A refusal is `409 conflict` with one of {@link RELEASE_REFUSALS}; the words are the client's.
@@ -132,6 +132,8 @@ export const Release = Schema.Struct({
   rollbackOf: Schema.NullOr(ReleaseTag),
   /** Older releases have no recorded membership; absence does not trigger a Git read. */
   history: Schema.optionalKey(ReleaseHistory),
+  /** Exact copied approval; absent on historical records. */
+  planHash: Schema.optionalKey(Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u))),
   /** Saved before production existed; the press requested no deployment. */
   snapshot: Schema.optionalKey(Schema.Boolean),
 }).check(Schema.makeFilter(releaseTargetMatches));
@@ -190,18 +192,16 @@ export const TierStop = Schema.Struct({
 });
 export type TierStop = typeof TierStop.Type;
 
-/** At least one service, and each once: what a release message can carry. */
+/** Unique services. A Native non-code release explicitly lists []; Git requires a repository. */
 const Entries = Schema.Array(GitReleaseEntry).check(
   Schema.makeFilter((entries: ReadonlyArray<ReleaseEntry>) =>
-    entries.length === 0
-      ? "Expected at least one service"
-      : new Set(entries.map((entry) => entry.service)).size === entries.length
-        ? undefined
-        : "Expected each service once",
+    new Set(entries.map((entry) => entry.service)).size === entries.length
+      ? undefined
+      : "Expected each service once",
   ),
 );
 
-/** HQ's persisted exact production effects, reviewed before service creation. */
+/** HQ's persisted exact Native production effects, always reviewed before approval. */
 export const ReleaseServicePlan = Schema.Struct({
   hash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
   operations: Schema.Array(
@@ -212,11 +212,45 @@ export const ReleaseServicePlan = Schema.Struct({
         settings: Schema.Record(Schema.String, Schema.Unknown),
         cost: Schema.String,
       }),
-      Schema.Struct({ kind: Schema.Literal("deploy"), service: Schema.String, sha: Sha }),
+      Schema.Struct({
+        kind: Schema.Literal("deploy"),
+        service: Schema.String,
+        serviceId: Schema.optionalKey(Schema.String),
+        sha: Sha,
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("stop"),
+        service: Schema.String,
+        serviceId: Schema.String,
+        reason: Schema.String,
+      }),
+      Schema.Struct({
+        kind: Schema.Literal("start"),
+        service: Schema.String,
+        serviceId: Schema.String,
+        reason: Schema.String,
+      }),
     ]),
   ),
 });
 export type ReleaseServicePlan = typeof ReleaseServicePlan.Type;
+
+/** Every Native operation reviews one captured declaration before approval. */
+export const ReviewReleaseRequest = Schema.Struct({
+  tag: ReleaseTag,
+  groupHead: Sha,
+  entries: Entries,
+  target: Schema.Literal("zerops"),
+  releaseTarget: HqReleaseTarget,
+  rollbackOf: Schema.optionalKey(ReleaseTag),
+}).check(
+  Schema.makeFilter((value) =>
+    value.releaseTarget.target.kind === "zerops" && value.releaseTarget.declaration !== undefined
+      ? releaseTargetMatches(value)
+      : "Expected the exact Native declaration",
+  ),
+);
+export type ReviewReleaseRequest = typeof ReviewReleaseRequest.Type;
 
 /**
  * A release as the person was offered it: its name, the recipe repository's `main` head read with
@@ -236,8 +270,16 @@ export const CreateReleaseRequest = Schema.Struct({
     if (verdict !== undefined) return verdict;
     if (value.target !== undefined && value.releaseTarget === undefined)
       return "Expected the reviewed attachment for an explicit target";
-    if (value.target !== "git")
+    if (value.target !== "git") {
+      if (
+        value.target !== "zerops" ||
+        value.planHash === undefined ||
+        value.releaseTarget?.declaration === undefined
+      )
+        return "Expected the reviewed Native plan and declaration";
       return value.preflight === undefined ? undefined : "Expected Git preflight only for Git";
+    }
+    if (value.entries.length === 0) return "Expected at least one Git repository";
     const target = value.releaseTarget?.target;
     if (target?.kind !== "git" || value.preflight === undefined)
       return "Expected the reviewed direct-delivery preflight";
@@ -256,8 +298,18 @@ export const CreateReleaseRequest = Schema.Struct({
 );
 export type CreateReleaseRequest = typeof CreateReleaseRequest.Type;
 
-/** A rollback tags the recipe repository's `main` head read with its offer, as a release does. */
-export const RollbackRequest = Schema.Struct({ groupHead: Sha });
+/** A rollback accepts the exact current target and fixed new tag already bound by its reviewed plan. */
+export const RollbackRequest = Schema.Struct({
+  groupHead: Sha,
+  releaseTarget: HqReleaseTarget,
+  planHash: Schema.String.check(Schema.isPattern(/^[0-9a-f]{64}$/u)),
+}).check(
+  Schema.makeFilter((value) =>
+    value.releaseTarget.target.kind === "zerops" && value.releaseTarget.declaration !== undefined
+      ? undefined
+      : "Expected the reviewed Native declaration",
+  ),
+);
 export type RollbackRequest = typeof RollbackRequest.Type;
 
 /**
@@ -366,4 +418,40 @@ export function nextPatch(tags: ReadonlyArray<string>): string {
   if (version === undefined) return "v0.1.0";
   const [major, minor, patch] = version;
   return `v${String(major)}.${String(minor)}.${String(patch! + 1n)}`;
+}
+
+/** Original captured Native command; a historical omission proves nothing. */
+export interface NativeReleaseIdentity {
+  readonly tag: string;
+  readonly groupHead: string;
+  readonly entries: ReadonlyArray<ReleaseEntry>;
+  readonly planHash: string;
+  readonly releaseTarget: HqReleaseTarget;
+  readonly principal: string;
+  readonly rollbackOf?: string;
+}
+export function matchesNativeRelease(record: Release, original: NativeReleaseIdentity): boolean {
+  const target = record.releaseTarget,
+    expected = original.releaseTarget;
+  return (
+    record.target === "zerops" &&
+    record.planHash === original.planHash &&
+    /^[0-9a-f]{64}$/u.test(original.planHash) &&
+    original.principal.length > 0 &&
+    record.by === original.principal &&
+    record.tag === original.tag &&
+    record.sha === original.groupHead &&
+    record.rollbackOf === (original.rollbackOf ?? null) &&
+    target?.target.kind === "zerops" &&
+    expected.target.kind === "zerops" &&
+    expected.declaration !== undefined &&
+    target.declaration === expected.declaration &&
+    target.environmentId === expected.environmentId &&
+    target.createdAt === expected.createdAt &&
+    target.target.projectId === expected.target.projectId &&
+    record.entries.length === original.entries.length &&
+    original.entries.every((entry) =>
+      record.entries.some((other) => entry.service === other.service && entry.sha === other.sha),
+    )
+  );
 }

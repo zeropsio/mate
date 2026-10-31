@@ -21,6 +21,13 @@ const A = "a".repeat(40);
 const B = "b".repeat(40);
 const LONG = "c".repeat(64);
 
+const nativeTarget = {
+  environmentId: "production",
+  createdAt: "2026-10-31T12:00:00Z",
+  declaration: "9007199254740993",
+  target: { kind: "zerops", projectId: "production" },
+};
+const approvedNative = { target: "zerops", releaseTarget: nativeTarget, planHash: "c".repeat(64) };
 const read = (schema: Schema.Codec<unknown, unknown>, value: unknown) =>
   Schema.decodeUnknownExit(schema)(value)._tag;
 
@@ -132,7 +139,7 @@ describe("hqRelease", () => {
     [
       "a release asked for",
       CreateReleaseRequest,
-      { tag: "v0.1.0", groupHead: A, entries: [{ service: "api", sha: B }] },
+      { ...approvedNative, tag: "v0.1.0", groupHead: A, entries: [{ service: "api", sha: B }] },
       "Success",
     ],
     [
@@ -166,7 +173,12 @@ describe("hqRelease", () => {
       { tag: "v0.1.0", groupHead: A, entries: [{ service: "api", sha: "abc1234" }] },
       "Failure",
     ],
-    ["a rollback", RollbackRequest, { groupHead: A }, "Success"],
+    [
+      "a rollback",
+      RollbackRequest,
+      { groupHead: A, releaseTarget: nativeTarget, planHash: approvedNative.planHash },
+      "Success",
+    ],
     ["a rollback with no head read", RollbackRequest, {}, "Failure"],
     [
       "an approved release",
@@ -393,8 +405,10 @@ it("Explicit Zerops release requests retain hostname validation and the reviewed
     groupHead: A,
     entries: [{ service: "api", sha: B }],
     target: "zerops",
+    planHash: approvedNative.planHash,
     releaseTarget: {
       environmentId: "environment-id",
+      declaration: "9007199254740993",
       createdAt: gitAttachment.createdAt,
       target: { kind: "zerops", projectId: "different-project-id" },
     },
@@ -410,7 +424,7 @@ it("Explicit Zerops release requests retain hostname validation and the reviewed
     Schema.decodeUnknownExit(CreateReleaseRequest)({ ...value, releaseTarget: undefined })._tag,
   ).toBe("Failure");
   const old = { tag: value.tag, groupHead: A, entries: value.entries };
-  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(old)).toEqual(old);
+  expect(read(CreateReleaseRequest, old)).toBe("Failure");
 });
 
 it("A Git release cannot submit a diverged or refused-token preflight or an unreviewed roster.", () => {
@@ -476,4 +490,90 @@ it("Release records retain domain history while older releases omit it.", () => 
   expect(Schema.decodeUnknownSync(Release)(value)).toEqual(value);
   const { history: _, ...legacy } = value;
   expect(Schema.decodeUnknownSync(Release)(legacy)).toEqual(legacy);
+});
+
+it("Native releases review an explicit empty code set and retain exact declaration and every approved effect.", () => {
+  const releaseTarget = {
+    environmentId: "production",
+    createdAt: "2026-10-31T12:00:00.000000Z",
+    declaration: "9007199254740993",
+    target: { kind: "zerops", projectId: "production" },
+  };
+  const request = {
+    tag: "v1.0.0",
+    groupHead: A,
+    entries: [],
+    target: "zerops",
+    releaseTarget,
+    planHash: "c".repeat(64),
+  };
+  expect(read(CreateReleaseRequest, request)).toBe("Success");
+  for (const entries of [undefined, null])
+    expect(read(CreateReleaseRequest, { ...request, entries })).toBe("Failure");
+  expect(Schema.decodeUnknownSync(CreateReleaseRequest)(request).releaseTarget).toEqual(
+    releaseTarget,
+  );
+  const plan = {
+    hash: "c".repeat(64),
+    operations: [
+      {
+        kind: "create",
+        service: "db",
+        settings: { type: "postgresql:single@16", override: false },
+        cost: "One billed service",
+      },
+      { kind: "stop", service: "old", serviceId: "S1", reason: "No longer declared" },
+      { kind: "start", service: "api", serviceId: "S2", reason: "Declared again" },
+      { kind: "deploy", service: "api", serviceId: "S2", sha: A },
+    ],
+  };
+  expect(Schema.decodeUnknownSync(ReleaseSchemas.ReleaseServicePlan)(plan)).toEqual(plan);
+});
+
+it("An exact Native receipt preserves its original plan, declaration, sources, tag and principal through a lost reply.", () => {
+  const target = Schema.decodeUnknownSync(ReleaseSchemas.HqReleaseTarget)({
+    environmentId: "prod",
+    createdAt: "2026-10-31T00:00:00Z",
+    declaration: "9007199254740993",
+    target: { kind: "zerops" as const, projectId: "prod" },
+  });
+  const original = {
+    tag: "v1.0.0",
+    groupHead: A,
+    entries: [],
+    planHash: "c".repeat(64),
+    releaseTarget: target,
+    principal: "ada",
+  };
+  const made: Release = {
+    tag: original.tag,
+    sha: A,
+    entries: [],
+    planHash: original.planHash,
+    target: "zerops",
+    releaseTarget: target,
+    by: "ada",
+    at: "2026-10-31T00:00:00Z",
+    state: "approved",
+    reason: null,
+    rollbackOf: null,
+  };
+  expect(ReleaseSchemas.matchesNativeRelease(made, original)).toBe(true);
+  const { planHash: _oldHash, ...historical } = made;
+  const { declaration: _oldDeclaration, ...historicalTarget } = target;
+  expect(ReleaseSchemas.matchesNativeRelease(historical, original)).toBe(false);
+  expect(
+    ReleaseSchemas.matchesNativeRelease({ ...made, releaseTarget: historicalTarget }, original),
+  ).toBe(false);
+  for (const patch of [
+    { planHash: "d".repeat(64) },
+    { by: "another" },
+    { tag: "v1.0.1" },
+    { sha: B },
+    { entries: [{ service: "api", sha: B }] },
+    { releaseTarget: { ...target, declaration: "9007199254740994" } },
+    { releaseTarget: { ...target, createdAt: "2026-10-31T01:00:00Z" } },
+  ]) {
+    expect(ReleaseSchemas.matchesNativeRelease({ ...made, ...patch }, original)).toBe(false);
+  }
 });

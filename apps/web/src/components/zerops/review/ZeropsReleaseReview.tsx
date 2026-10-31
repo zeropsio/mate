@@ -65,7 +65,11 @@ import {
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 
 import { Input } from "~/components/ui/input";
-import type { ReleaseServicePlan } from "@t3tools/shared/hqRelease";
+import {
+  matchesNativeRelease,
+  type NativeReleaseIdentity,
+  type ReleaseServicePlan,
+} from "@t3tools/shared/hqRelease";
 
 import { putLiveAddress } from "~/zerops/putLive.logic";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
@@ -302,8 +306,19 @@ function ReleaseData({
   const askMateToFix = useAskMateToFix();
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  const [uncertain, setUncertain] = useState(false);
+  const [uncertainOriginal, setUncertainOriginal] = useState<NativeReleaseIdentity>();
   // The version this review tags — the suggestion when it was pressed, or the one on its way.
   const [made, setMade] = useState<string | undefined>(undefined);
+  if (
+    uncertainOriginal !== undefined &&
+    detail.releases?.some((record) => matchesNativeRelease(record, uncertainOriginal))
+  ) {
+    setUncertainOriginal(undefined);
+    setUncertain(false);
+    setMade(uncertainOriginal.tag);
+    setPress({ kind: "done" });
+  }
   // What the release is — its tag, what it replaces, what goes out and where — held from the
   // press, or from the first look at it on its way: once it lands, the reads are the state it made.
   const [held, setHeld] = useState<ReleaseFacts | undefined>(undefined);
@@ -356,9 +371,9 @@ function ReleaseData({
   // Its Where row follows HQ's deploys of it: released is said with them, never before.
   const followed = useDeployAnswerFollowing(useReviewDeploys(press)).answer;
   const {
-    outcome,
+    outcome: currentOutcome,
     held: keep,
-    facts,
+    facts: currentFacts,
     productionMoved,
   } = releaseStep({
     follows,
@@ -376,7 +391,9 @@ function ReleaseData({
         productionServices: production?.services.map((entry) => entry.hostname) ?? [],
       }),
   });
-  if (keep !== held) setHeld(keep);
+  const outcome = uncertain ? { kind: "offered" as const } : currentOutcome;
+  const facts = uncertain && held !== undefined ? held : currentFacts;
+  if (!uncertain && keep !== held) setHeld(keep);
   // Once it is live, production on a domain of its own where it has none: read only from then.
   const orgId = useAccountOrgId();
   const offersDomain = useLacksOwnDomain(
@@ -480,7 +497,7 @@ function ReleaseData({
     });
   }, [canCheck, checking]);
 
-  const reviewing = press.kind === "idle" || press.kind === "refused";
+  const reviewing = !uncertain && (press.kind === "idle" || press.kind === "refused");
   const plan = useReleaseServicePlan(
     flow,
     chosen.error === undefined ? chosen.tag : undefined,
@@ -526,7 +543,11 @@ function ReleaseData({
       reviewedPlan === undefined
         ? await verbs.release(flow, chosen.tag)
         : await verbs.release(flow, chosen.tag, reviewedPlan);
-    if (!answer.ok && plan.required) plan.again();
+    if (!answer.ok) {
+      setUncertain(answer.uncertain === true);
+      setUncertainOriginal(answer.original);
+    }
+    if (!answer.ok && answer.uncertain !== true && plan.required) plan.again();
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
@@ -538,7 +559,10 @@ function ReleaseData({
 
   return (
     <ReleaseReviewView
-      servicePlan={press.kind === "running" || press.kind === "done" ? heldPlan : reviewedPlan}
+      originalUncertain={uncertain}
+      servicePlan={
+        uncertain || press.kind === "running" || press.kind === "done" ? heldPlan : reviewedPlan
+      }
       servicePlanPending={planPending}
       problems={flow.release.problems}
       servicePlanFailure={planFailure}
@@ -601,7 +625,7 @@ function ReleaseData({
       services={facts.services}
       tag={facts.tag}
       version={{
-        value: versionValue,
+        value: uncertain ? facts.tag.slice(1) : versionValue,
         onChange: setTypedVersion,
         tags: versionTags,
         suggestions,
@@ -771,6 +795,7 @@ function newestLive(
 }
 
 export interface ReleaseReviewViewProps {
+  readonly originalUncertain?: boolean | undefined;
   readonly problems?: ReadonlyArray<HqProblem> | undefined;
   /** Read from HQ for these exact immutable release inputs, never reconstructed in the browser. */
   readonly servicePlan?: ReleaseServicePlan | undefined;
@@ -913,9 +938,11 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
   const answer = useReviewDeploys(press);
   // Pressed, its Version stays — not to be changed — until Where takes its place: the panel's foot
   // does not jump up and back down under the pointer (the onboarding run: 110 px up, 76 px down).
-  const offered = props.outcome.kind === "offered";
+  const offered = props.outcome.kind === "offered" && props.originalUncertain !== true;
   const version =
-    offered || (props.outcome.kind === "releasing" && answer === undefined)
+    offered ||
+    props.originalUncertain === true ||
+    (props.outcome.kind === "releasing" && answer === undefined)
       ? props.version
       : undefined;
   const checkedVersion =
@@ -1149,16 +1176,7 @@ export function ReleaseReviewView(props: ReleaseReviewViewProps) {
         </ReviewSection>
       ) : props.servicePlan === undefined ? null : (
         <ReviewSection title="Production operations">
-          <ol className="rv-service-plan">
-            {props.servicePlan.operations.map((operation, index) => (
-              <li key={`${index}-${operation.kind}-${operation.service}`}>
-                <p className="rv-words">
-                  {operation.kind === "create" ? "Create" : "Deploy"} {operation.service}
-                </p>
-                {operation.kind === "create" ? null : <p className="rv-note">{operation.sha}</p>}
-              </li>
-            ))}
-          </ol>
+          <ProductionPlanEffects plan={props.servicePlan} />
           <ProductionImport plan={props.servicePlan} run={props.onImportServices} />
         </ReviewSection>
       )}
@@ -1391,9 +1409,20 @@ function RollbackData({
   const askMateToFix = useAskMateToFix();
   const now = useNowMs();
   const [press, setPress] = useState<ReviewPress>({ kind: "idle" });
+  const [uncertain, setUncertain] = useState(false);
+  const [uncertainOriginal, setUncertainOriginal] = useState<NativeReleaseIdentity>();
   // The release the roll back made — HQ's answer, not the flow's guess — which the review follows
   // through HQ's record of it and production's deploy, as a release's.
   const [made, setMade] = useState<string | undefined>(undefined);
+  if (
+    uncertainOriginal !== undefined &&
+    detail.releases?.some((record) => matchesNativeRelease(record, uncertainOriginal))
+  ) {
+    setUncertainOriginal(undefined);
+    setUncertain(false);
+    setMade(uncertainOriginal.tag);
+    setPress({ kind: "done" });
+  }
   // What the review offered when it was pressed: HQ's flow moves under the request (production's
   // baseline, the next version), and the review keeps saying what was approved.
   const [asked, setAsked] = useState<{ runs: typeof flow.release.runs; tag: string } | undefined>(
@@ -1409,7 +1438,13 @@ function RollbackData({
     tag,
   });
   const [following, setFollowing] = useState<string | undefined>(undefined);
-  if (made === undefined && following === undefined && onItsWay !== undefined)
+  if (
+    asked === undefined &&
+    !uncertain &&
+    made === undefined &&
+    following === undefined &&
+    onItsWay !== undefined
+  )
     setFollowing(onItsWay);
   const followed = made ?? following;
   const follows = releaseFollows({
@@ -1440,7 +1475,7 @@ function RollbackData({
   const current = { tag, live: flow.releases.find((entry) => entry.standing === "live")?.tag };
   const [held, setHeld] = useState<typeof current | undefined>(undefined);
   const keep = holdReleaseFacts({ held, current, press, outcome });
-  if (keep !== held) setHeld(keep);
+  if (!uncertain && keep !== held) setHeld(keep);
   const earlier = flow.releases.find((entry) => entry.tag === tag);
   const { repositories } = flow.release;
   // What leaves and what comes back is what the releases in between recorded they carried; a
@@ -1498,20 +1533,49 @@ function RollbackData({
     projectId: production?.projectId ?? flow.groupId,
     groupId: flow.groupId,
   });
+  const plan = useReleaseServicePlan(
+    flow,
+    suggestion,
+    !uncertain && earlier !== undefined && (press.kind === "idle" || press.kind === "refused"),
+    {
+      rollbackOf: tag,
+      entries: (earlier?.entries ?? NO_ENTRIES).map((entry) => ({
+        service: entry.service,
+        sha: entry.commit,
+      })),
+    },
+  );
+  const reviewedPlan = plan.view.kind === "ready" ? plan.view.plan : undefined;
+  const [heldPlan, setHeldPlan] = useState<ReleaseServicePlan>();
   const rollBack = async () => {
-    setAsked({ runs: flow.release.runs, tag: flow.release.suggestion });
+    if (reviewedPlan === undefined || plan.request === undefined) return;
+    setHeldPlan(reviewedPlan);
+    setAsked({ runs: flow.release.runs, tag: plan.request.tag });
     setPress({ kind: "running" });
-    const answer = await verbs.rollBack(flow, tag);
+    const answer = await verbs.rollBack(flow, tag, { request: plan.request, plan: reviewedPlan });
+    if (!answer.ok) {
+      setUncertain(answer.uncertain === true);
+      setUncertainOriginal(answer.original);
+    }
     setPress(
       answer.ok
         ? { kind: "done", deploys: answer.deploys, rollout: answer.rollout }
         : { kind: "refused", reason: answer.reason, problems: answer.problems },
     );
     if (answer.ok) setMade(answer.tag);
-    else setAsked(undefined);
+    else if (answer.uncertain !== true) {
+      setAsked(undefined);
+      plan.again();
+    }
   };
   return (
     <RollbackReviewView
+      servicePlan={
+        uncertain || press.kind === "running" || press.kind === "done" ? heldPlan : reviewedPlan
+      }
+      servicePlanPending={!uncertain && plan.view.kind === "pending"}
+      servicePlanFailure={plan.view.kind === "failed" ? plan.view.reason : undefined}
+      onRetryServicePlan={plan.again}
       comingBack={listOf("comingBack")}
       fixer={fixer?.name}
       leaving={listOf("leaving")}
@@ -1552,7 +1616,38 @@ function RollbackData({
   );
 }
 
+function ProductionPlanEffects({ plan }: { readonly plan: ReleaseServicePlan }) {
+  if (plan.operations.length === 0)
+    return (
+      <p className="rv-note">No production service changes are required by this reviewed plan.</p>
+    );
+  return (
+    <ol className="rv-service-plan">
+      {plan.operations.map((operation) => (
+        <li key={`${operation.kind}-${operation.service}`}>
+          <p className="rv-words">
+            {{ create: "Create", deploy: "Deploy", stop: "Stop", start: "Start" }[operation.kind]}{" "}
+            {operation.service}
+          </p>
+          {operation.kind === "deploy" ? <p className="rv-note">{operation.sha}</p> : null}
+          {"serviceId" in operation && operation.serviceId !== undefined ? (
+            <p className="rv-note">Service {operation.serviceId}</p>
+          ) : null}
+          {operation.kind === "stop" || operation.kind === "start" ? (
+            <p className="rv-note">{operation.reason}</p>
+          ) : null}
+          {operation.kind === "create" ? <p className="rv-note">{operation.cost}</p> : null}
+        </li>
+      ))}
+    </ol>
+  );
+}
+
 export interface RollbackReviewViewProps {
+  readonly servicePlan?: ReleaseServicePlan | undefined;
+  readonly servicePlanPending?: boolean | undefined;
+  readonly servicePlanFailure?: string | undefined;
+  readonly onRetryServicePlan?: () => void;
   readonly name: string | undefined;
   /** The earlier release production goes back to. */
   readonly tag: string;
@@ -1698,6 +1793,11 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
           : {
               ...model.primary,
               icon: "rollback",
+              enabled:
+                model.primary.enabled &&
+                props.servicePlan !== undefined &&
+                props.servicePlanPending !== true &&
+                props.servicePlanFailure === undefined,
               busy: press.kind === "running",
               label: press.kind === "running" ? `Rolling back to ${tag}` : model.primary.label,
               onPress: props.onRollBack,
@@ -1708,6 +1808,24 @@ export function RollbackReviewView(props: RollbackReviewViewProps) {
       verdict={model.verdict}
     >
       <HqProblems problems={problems} />
+      <ReviewSection title="Production operations">
+        {props.servicePlanPending === true ? (
+          <p className="rv-note">Reading production operations…</p>
+        ) : props.servicePlanFailure !== undefined ? (
+          <ZeropsReadFailure
+            reason={props.servicePlanFailure}
+            action="Review again"
+            again={props.onRetryServicePlan}
+          />
+        ) : props.servicePlan === undefined ? (
+          <p className="rv-note">Review the exact production operations before approval.</p>
+        ) : (
+          <>
+            <ProductionPlanEffects plan={props.servicePlan} />
+            <ProductionImport plan={props.servicePlan} run={undefined} />
+          </>
+        )}
+      </ReviewSection>
       <RollbackListSection
         appId={props.appId}
         list={props.leaving}

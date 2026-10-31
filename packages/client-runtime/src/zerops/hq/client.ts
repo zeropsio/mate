@@ -49,6 +49,9 @@ import {
   Release,
   ReleaseListResponse,
   ReleaseServicePlan,
+  matchesNativeRelease,
+  type NativeReleaseIdentity,
+  type ReviewReleaseRequest,
   type CreateReleaseRequest,
   type RollbackRequest,
 } from "@t3tools/shared/hqRelease";
@@ -625,15 +628,20 @@ export interface HqApi {
   /** A release made in HQ as the person, of what its offer showed; HQ tags and deploys it. */
   readonly reviewRelease: (
     appId: string,
-    request: CreateReleaseRequest,
+    request: ReviewReleaseRequest,
     signal?: AbortSignal,
   ) => Promise<ReleaseServicePlan>;
-  readonly release: (appId: string, request: CreateReleaseRequest) => Promise<Asked<Release>>;
+  readonly release: (
+    appId: string,
+    request: CreateReleaseRequest,
+    principal?: string,
+  ) => Promise<Asked<Release>>;
   /** Production back to `tag` as the person: a new release listing its entries. */
   readonly rollback: (
     appId: string,
     tag: string,
     request: RollbackRequest,
+    original?: Pick<NativeReleaseIdentity, "tag" | "entries" | "principal">,
   ) => Promise<Asked<Release>>;
 }
 
@@ -1896,46 +1904,80 @@ export function makeHqApi(input: {
           body: JSON.stringify(request),
         }),
       ),
-    release: (appId, request) =>
-      confirmed(
-        async () =>
-          readRelease(
+    release: (appId, request, principal) => {
+      const original: NativeReleaseIdentity | undefined =
+        request.target === "zerops" &&
+        request.releaseTarget?.target.kind === "zerops" &&
+        request.releaseTarget.declaration !== undefined &&
+        request.planHash !== undefined &&
+        principal !== undefined
+          ? {
+              ...request,
+              planHash: request.planHash,
+              releaseTarget: request.releaseTarget,
+              principal,
+            }
+          : undefined;
+      if (request.target !== "git" && original === undefined)
+        return Promise.reject(
+          new HqError({
+            kind: "refused",
+            code: "invalid",
+            message: "Review the production release as the original account before approval.",
+          }),
+        );
+      return confirmed(
+        async () => {
+          const answer = await readRelease(
             await authorized(
               releasesPath(appId),
               { method: "POST", body: JSON.stringify(request) },
               true,
             ),
-          ),
+          );
+          if (original !== undefined && !matchesNativeRelease(answer.made, original))
+            throw uncertain();
+          return answer;
+        },
         async () =>
           heldAsked(
-            (await releasesOf(appId)).find(
-              (made) =>
-                made.tag === request.tag &&
-                made.sha === request.groupHead &&
-                sameEntries(made.entries, request.entries),
+            (await releasesOf(appId)).find((made) =>
+              original === undefined
+                ? made.tag === request.tag &&
+                  made.sha === request.groupHead &&
+                  sameEntries(made.entries, request.entries)
+                : matchesNativeRelease(made, original),
             ),
           ),
         ["tag_taken"],
-      ),
-    // A roll back is a new release HQ names: the newest, rolling back to `tag` at the same `main`,
-    // is taken for it.
-    rollback: (appId, tag, request) =>
-      confirmed(
-        async () =>
-          readRelease(
+      );
+    },
+    rollback: (appId, tag, request, captured) => {
+      if (captured === undefined)
+        return Promise.reject(
+          new HqError({
+            kind: "refused",
+            code: "invalid",
+            message: "Review the original rollback before approval.",
+          }),
+        );
+      const original: NativeReleaseIdentity = { ...request, ...captured, rollbackOf: tag };
+      return confirmed(
+        async () => {
+          const answer = await readRelease(
             await authorized(
               `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
               { method: "POST", body: JSON.stringify(request) },
               true,
             ),
-          ),
-        async () => {
-          const [newest] = await releasesOf(appId);
-          return heldAsked(
-            newest?.rollbackOf === tag && newest.sha === request.groupHead ? newest : undefined,
           );
+          if (!matchesNativeRelease(answer.made, original)) throw uncertain();
+          return answer;
         },
-      ),
+        async () =>
+          heldAsked((await releasesOf(appId)).find((made) => matchesNativeRelease(made, original))),
+      );
+    },
     mateRecipe: async (appId, signal) =>
       readRecipeTier(
         await authorized(

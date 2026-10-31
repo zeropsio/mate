@@ -151,18 +151,38 @@ function flowWrite(
   switch (intent.kind) {
     case "release":
       return Effect.map(
-        write(() =>
-          api.release(intent.appId, {
+        write(() => {
+          if (
+            intent.git === undefined &&
+            (intent.planHash === undefined ||
+              intent.releaseTarget?.declaration === undefined ||
+              intent.principal === undefined)
+          )
+            return Promise.reject(
+              new HqError({
+                kind: "refused",
+                code: "invalid",
+                message: "Review the exact Native release plan before approval.",
+              }),
+            );
+          const request = {
             tag: intent.tag,
             groupHead: intent.groupHead,
             entries: intent.entries,
-            ...(intent.planHash === undefined ? {} : { planHash: intent.planHash }),
-            ...(intent.releaseTarget === undefined
-              ? {}
-              : { target: "zerops", releaseTarget: intent.releaseTarget }),
-            ...(intent.git === undefined ? {} : { target: "git", ...intent.git }),
-          }),
-        ),
+            ...(intent.git === undefined
+              ? {
+                  ...(intent.planHash === undefined ? {} : { planHash: intent.planHash }),
+                  target: "zerops" as const,
+                  ...(intent.releaseTarget === undefined
+                    ? {}
+                    : { releaseTarget: intent.releaseTarget }),
+                }
+              : { target: "git" as const, ...intent.git }),
+          };
+          return intent.git === undefined
+            ? api.release(intent.appId, request, intent.principal)
+            : api.release(intent.appId, request);
+        }),
         ({ made, deploys, delivery }) =>
           receipt(
             requestId,
@@ -173,7 +193,32 @@ function flowWrite(
       );
     case "roll-back":
       return Effect.map(
-        write(() => api.rollback(intent.appId, intent.tag, { groupHead: intent.groupHead })),
+        write(() => {
+          if (
+            intent.planHash === undefined ||
+            intent.releaseTarget === undefined ||
+            intent.reviewedTag === undefined ||
+            intent.entries === undefined ||
+            intent.principal === undefined
+          )
+            return Promise.reject(
+              new HqError({
+                kind: "refused",
+                code: "invalid",
+                message: "Review the original rollback plan before approval.",
+              }),
+            );
+          return api.rollback(
+            intent.appId,
+            intent.tag,
+            {
+              groupHead: intent.groupHead,
+              planHash: intent.planHash,
+              releaseTarget: intent.releaseTarget,
+            },
+            { tag: intent.reviewedTag, entries: intent.entries, principal: intent.principal },
+          );
+        }),
         ({ made, deploys }) => receipt(requestId, made.tag, { tag: made.tag, deploys }, PENDING),
       );
     case "redeploy":
