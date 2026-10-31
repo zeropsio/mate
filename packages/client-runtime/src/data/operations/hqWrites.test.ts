@@ -459,6 +459,7 @@ describe("keep-deploy-key", () => {
   it.effect("a replacement declaration cannot stand for a lost deploy-token acceptance", () =>
     Effect.gen(function* () {
       const environment = (declaration: string, keyHeld: boolean) => ({
+        id: "p-stage",
         target: { kind: "zerops", projectId: "p-stage" },
         declaration,
         tier: "stage",
@@ -483,6 +484,14 @@ describe("keep-deploy-key", () => {
       });
       yield* operations.submit(KEY);
       expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
+      expect(readsOfState(store.state()).fact("hqApp", KEY.appId)).toMatchObject({
+        kind: "known",
+        value: {
+          environments: [
+            expect.objectContaining({ declaration: "9007199254740994", keyHeld: true }),
+          ],
+        },
+      });
       expect(progress(store)).toMatchObject({ stage: "uncertain" });
     }),
   );
@@ -499,6 +508,33 @@ describe("keep-deploy-key", () => {
       });
       expect(zerops.calls).toEqual([]);
       expect(progress(store)).toMatchObject({ stage: "refused" });
+    }),
+  );
+  it.effect("an already usable key cannot be an acceptance receipt for a lost replacement", () =>
+    Effect.gen(function* () {
+      const environment = {
+        id: KEY.projectId,
+        target: { kind: "zerops", projectId: KEY.projectId },
+        declaration: KEY.declaration,
+        tier: "stage",
+        name: "stage",
+        sources: [],
+        order: 0,
+        keyHeld: true,
+        keyInvalid: false,
+        can: {},
+        jobs: [],
+        release: null,
+        birth: null,
+      };
+      const store = account([app({ environments: [environment] as never })]);
+      const { operations, zerops } = operationsOf(store, {
+        keepDeployToken: () => Promise.reject(lost),
+      });
+      yield* operations.submit(KEY);
+      expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
+      expect(record(store)?.before).toEqual([KEY.projectId]);
+      expect(progress(store)).toMatchObject({ stage: "uncertain" });
     }),
   );
 });
