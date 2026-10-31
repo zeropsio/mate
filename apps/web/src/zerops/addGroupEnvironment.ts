@@ -83,6 +83,7 @@ export async function addGroupEnvironment(input: {
           appId: groupId,
           projectId,
           environmentName: recorded.name,
+          declaration: recorded.declaration,
         },
         unobserved,
       );

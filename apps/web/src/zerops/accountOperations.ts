@@ -77,7 +77,7 @@ export interface AccountOperations {
     orgId: string,
     appId: string,
     projectId: string,
-  ) => Promise<{ readonly name: string; readonly keyed: boolean }>;
+  ) => Promise<{ readonly name: string; readonly keyed: boolean; readonly declaration: string }>;
   /** Where a creation's steps stand now, read off their operations (`creationSteps`). */
   readonly readCreation: (orgId: string, creationId: string) => CreationRead;
 }
@@ -182,7 +182,12 @@ export function accountOperations(
         (recorded) => {
           if (ended || recorded.kind === "waiting") return;
           ended = true;
-          if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
+          if (recorded.kind === "recorded")
+            resolve({
+              name: recorded.name,
+              keyed: recorded.keyed,
+              declaration: recorded.declaration,
+            });
           else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
           cancel?.();
         },

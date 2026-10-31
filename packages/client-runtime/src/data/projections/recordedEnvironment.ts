@@ -1,3 +1,5 @@
+import { HqEnvironmentDeclaration } from "@t3tools/shared/hqEnvironment";
+import * as Schema from "effect/Schema";
 /**
  * A project attached to its application as a stage or a production, as HQ's navigation records
  * its environment: the name HQ gave it and whether HQ holds a key that works — what an attach's
@@ -13,9 +15,16 @@ import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { UNOBSERVED_PHASES } from "./operationEnd.ts";
 
+const isEnvironmentDeclaration = Schema.is(HqEnvironmentDeclaration);
+
 export type RecordedEnvironment =
   | { readonly kind: "waiting" }
-  | { readonly kind: "recorded"; readonly name: string; readonly keyed: boolean }
+  | {
+      readonly kind: "recorded";
+      readonly name: string;
+      readonly keyed: boolean;
+      readonly declaration: string;
+    }
   | { readonly kind: "refused"; readonly reason: string }
   | { readonly kind: "unobserved" };
 
@@ -34,8 +43,16 @@ export const recordedEnvironment: Projection<
     const environment = environments?.find(
       (entry) => entry.target.kind === "zerops" && entry.target.projectId === projectId,
     );
-    if (environment !== undefined)
-      return { kind: "recorded", name: environment.name, keyed: environmentKeyed(environment) };
+    if (environment !== undefined) {
+      if (!isEnvironmentDeclaration(environment.declaration))
+        return { kind: "refused", reason: "HQ has not identified this environment declaration." };
+      return {
+        kind: "recorded",
+        name: environment.name,
+        keyed: environmentKeyed(environment),
+        declaration: environment.declaration,
+      };
+    }
     return UNOBSERVED_PHASES.has(read.stream(linkKeys.hq(orgId)).phase)
       ? { kind: "unobserved" }
       : { kind: "waiting" };

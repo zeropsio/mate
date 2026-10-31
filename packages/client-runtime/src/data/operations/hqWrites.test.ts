@@ -394,6 +394,7 @@ describe("keep-deploy-key", () => {
     appId: "app-1",
     projectId: "p-stage",
     environmentName: "stage",
+    declaration: "9007199254740993",
   } as const;
 
   it.effect("mints the environment's own token and hands it to HQ", () =>
@@ -401,13 +402,13 @@ describe("keep-deploy-key", () => {
       const store = account();
       const kept: string[] = [];
       const { operations, zerops } = operationsOf(store, {
-        keepDeployToken: async (appId, name, token) => {
-          kept.push(`${appId} ${name} ${token}`);
+        keepDeployToken: async (appId, name, token, declaration) => {
+          kept.push(`${appId} ${name} ${token} ${declaration}`);
         },
       });
       yield* operations.submit(KEY);
       expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
-      expect(kept).toEqual(["app-1 stage secret"]);
+      expect(kept).toEqual(["app-1 stage secret 9007199254740993"]);
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
     }),
   );
@@ -430,6 +431,7 @@ describe("keep-deploy-key", () => {
   it.effect("keeps a token whose handoff was lost, adopted once HQ shows the key held", () =>
     Effect.gen(function* () {
       const environment = (keyHeld: boolean) => ({
+        declaration: "9007199254740993",
         projectId: "p-stage",
         tier: "stage",
         name: "stage",
@@ -452,6 +454,51 @@ describe("keep-deploy-key", () => {
       yield* operations.submit(KEY);
       expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
       expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+  it.effect("a replacement declaration cannot stand for a lost deploy-token acceptance", () =>
+    Effect.gen(function* () {
+      const environment = (declaration: string, keyHeld: boolean) => ({
+        target: { kind: "zerops", projectId: "p-stage" },
+        declaration,
+        tier: "stage",
+        name: "stage",
+        sources: [],
+        order: 0,
+        keyHeld,
+        keyInvalid: false,
+        can: {},
+        jobs: [],
+        release: null,
+        birth: null,
+      });
+      const store = account([
+        app({ environments: [environment(KEY.declaration, false)] as never }),
+      ]);
+      const { operations, zerops } = operationsOf(store, {
+        keepDeployToken: () => {
+          hqSays(store, [app({ environments: [environment("9007199254740994", true)] as never })]);
+          return Promise.reject(lost);
+        },
+      });
+      yield* operations.submit(KEY);
+      expect(zerops.calls).toEqual(["mint mate-hq-deploy:stage:p-stage"]);
+      expect(progress(store)).toMatchObject({ stage: "uncertain" });
+    }),
+  );
+  it.effect("an old unscoped deploy-key operation cannot mint a token", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const { operations, zerops } = operationsOf(store, {});
+      yield* operations.submit({
+        kind: KEY.kind,
+        orgId: KEY.orgId,
+        appId: KEY.appId,
+        projectId: KEY.projectId,
+        environmentName: KEY.environmentName,
+      });
+      expect(zerops.calls).toEqual([]);
+      expect(progress(store)).toMatchObject({ stage: "refused" });
     }),
   );
 });

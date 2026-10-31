@@ -60,6 +60,8 @@ declare module "../model.ts" {
       readonly projectId: string;
       /** Its name, as HQ named it with its attach. */
       readonly environmentName: string;
+      /** Captured before token mint; old persisted operations may have no scope proof. */
+      readonly declaration?: string;
     };
   }
   interface OperationResults {
@@ -176,7 +178,7 @@ export const markClosedOff = shown(
 /** The environment's key, as HQ's navigation says it: held, and not found broken. */
 export const deployKeyShown = (
   read: ProjectionReads,
-  intent: Pick<IntentOf<"keep-deploy-key">, "appId" | "projectId">,
+  intent: Pick<IntentOf<"keep-deploy-key">, "appId" | "projectId" | "declaration">,
 ): boolean => {
   const environments = appOf(read, intent.appId)?.environments;
   return (
@@ -185,6 +187,8 @@ export const deployKeyShown = (
       (environment) =>
         environment.target.kind === "zerops" &&
         environment.target.projectId === intent.projectId &&
+        intent.declaration !== undefined &&
+        environment.declaration === intent.declaration &&
         environment.keyHeld &&
         !environment.keyInvalid,
     )

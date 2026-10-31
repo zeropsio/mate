@@ -418,7 +418,12 @@ export interface HqApi {
    * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
    * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
    */
-  readonly keepDeployToken: (appId: string, environment: string, token: string) => Promise<void>;
+  readonly keepDeployToken: (
+    appId: string,
+    environment: string,
+    token: string,
+    expectedDeclaration: string,
+  ) => Promise<void>;
   /**
    * "Run again": the environment's newest deploy of `service`, at `sha`, ended, asked again as the
    * person (`POST /api/apps/:appId/environments/:name/redeploy`): where HQ's submission of it
@@ -1369,10 +1374,10 @@ export function makeHqApi(input: {
             (project) => project.projectId === attach.projectId && project.kind === attach.kind,
           ) === true,
       ),
-    keepDeployToken: async (appId, environment, token) => {
+    keepDeployToken: async (appId, environment, token, expectedDeclaration) => {
       await authorized(
         `${environmentPath(appId, environment)}/deploy-token`,
-        { method: "PUT", body: JSON.stringify({ token }) },
+        { method: "PUT", body: JSON.stringify({ token, expectedDeclaration }) },
         true,
       );
     },

@@ -1,3 +1,5 @@
+import { HqEnvironmentDeclaration } from "@t3tools/shared/hqEnvironment";
+import * as Schema from "effect/Schema";
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
@@ -119,6 +121,8 @@ export interface HqExecutor extends OperationExecutor {
   readonly cancelGitCandidate: (requestId: string) => void;
   readonly hasGitCandidate: (requestId: string) => boolean;
 }
+
+const isEnvironmentDeclaration = Schema.is(HqEnvironmentDeclaration);
 
 type Write = <A>(call: () => Promise<A>) => Effect.Effect<A, StreamFault | UncertainAcceptance>;
 
@@ -408,6 +412,12 @@ export function makeHqExecutor(ports: {
     intent: Extract<HqWriteIntent, { readonly kind: "keep-deploy-key" }>,
   ) =>
     Effect.gen(function* () {
+      const declaration = intent.declaration;
+      if (!isEnvironmentDeclaration(declaration))
+        return yield* Effect.fail({
+          outcome: "definitive-refusal" as const,
+          message: "HQ has not identified this environment declaration.",
+        });
       const minted = yield* write(() =>
         ports.zerops.mintIntegrationToken({
           clientId: intent.orgId,
@@ -419,7 +429,7 @@ export function makeHqExecutor(ports: {
       );
       return yield* write(() =>
         api
-          .keepDeployToken(intent.appId, intent.environmentName, minted.token)
+          .keepDeployToken(intent.appId, intent.environmentName, minted.token, declaration)
           .catch(async (cause: unknown) => {
             // A key HQ refused is a key nobody needs: no orphan of a write that failed stays.
             if (cause instanceof HqError && cause.kind === "refused" && cause.code !== "conflict")

@@ -11,7 +11,9 @@ import { addGroupEnvironment } from "./addGroupEnvironment";
 
 /** The account's operations as a test stands them in: each write recorded, each answered. */
 function operationsOf(options: {
-  readonly recorded?: { readonly name: string; readonly keyed: boolean } | Error;
+  readonly recorded?:
+    | { readonly name: string; readonly keyed: boolean; readonly declaration: string }
+    | Error;
   readonly refuse?: Readonly<Record<string, string>>;
 }) {
   const ran: Array<unknown> = [];
@@ -24,7 +26,11 @@ function operationsOf(options: {
     }) as AccountOperations["run"],
     untilEnvironment: async (orgId, appId, projectId) => {
       ran.push(`environment ${orgId} ${appId} ${projectId}`);
-      const recorded = options.recorded ?? { name: "acme-stage", keyed: false };
+      const recorded = options.recorded ?? {
+        name: "acme-stage",
+        declaration: "9007199254740993",
+        keyed: false,
+      };
       if (recorded instanceof Error) throw recorded;
       return recorded;
     },
@@ -68,6 +74,7 @@ describe("addGroupEnvironment", () => {
           appId: "g-1",
           projectId: "p-stage",
           environmentName: "acme-stage",
+          declaration: "9007199254740993",
         },
       ]);
     },
@@ -94,12 +101,15 @@ describe("addGroupEnvironment", () => {
         appId: "g-1",
         projectId: "p-stage",
         environmentName: "acme-stage",
+        declaration: "9007199254740993",
       },
     ]);
   });
 
   it("keeps no key for an environment whose key HQ holds and finds working", async () => {
-    const { operations, ran } = operationsOf({ recorded: { name: "acme-stage", keyed: true } });
+    const { operations, ran } = operationsOf({
+      recorded: { name: "acme-stage", declaration: "9007199254740993", keyed: true },
+    });
     expect(await add(operations)).toEqual({
       done: ["registry", "deploy-token"],
       failed: undefined,

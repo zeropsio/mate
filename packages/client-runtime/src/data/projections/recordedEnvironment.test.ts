@@ -9,6 +9,7 @@ import { recordedEnvironment } from "./recordedEnvironment.ts";
 
 const ENVIRONMENT = {
   projectId: "p-stage",
+  declaration: "9007199254740993",
   tier: "stage",
   name: "stage",
   sources: [],
@@ -55,25 +56,31 @@ describe("recordedEnvironment — an attached project as HQ's navigation records
       "recorded: its name and its key as HQ holds it",
       [ENVIRONMENT],
       {},
-      { kind: "recorded", name: "stage", keyed: false },
+      { kind: "recorded", name: "stage", declaration: "9007199254740993", keyed: false },
     ],
     [
       "recorded with a key that works",
       [{ ...ENVIRONMENT, keyHeld: true }],
       {},
-      { kind: "recorded", name: "stage", keyed: true },
+      { kind: "recorded", name: "stage", declaration: "9007199254740993", keyed: true },
     ],
     [
       "recorded with a key HQ found broken",
       [{ ...ENVIRONMENT, keyHeld: true, keyInvalid: true }],
       {},
-      { kind: "recorded", name: "stage", keyed: false },
+      { kind: "recorded", name: "stage", declaration: "9007199254740993", keyed: false },
     ],
     [
       "the reader may not read its environments",
       { refused: "You may not read them." },
       {},
       { kind: "refused", reason: "You may not read them." },
+    ],
+    [
+      "a missing declaration cannot authorize token minting",
+      [Object.fromEntries(Object.entries(ENVIRONMENT).filter(([key]) => key !== "declaration"))],
+      {},
+      { kind: "refused", reason: "HQ has not identified this environment declaration." },
     ],
     ["HQ no longer observed", [], { paused: true }, { kind: "unobserved" }],
   ] as const)("%s", (_label, environments, options, expected) => {

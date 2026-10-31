@@ -1254,11 +1254,11 @@ describe("makeHqApi — application name and a project's application", () => {
     // Minted by the person's own client; HQ keeps it, and says of it only that it holds one.
     [
       "hands HQ an environment's deploy token",
-      (api) => api.keepDeployToken("app-1", "stage", "tok-1"),
+      (api) => api.keepDeployToken("app-1", "stage", "tok-1", "9007199254740993"),
       {
         method: "PUT",
         path: "/api/apps/app-1/environments/stage/deploy-token",
-        body: { token: "tok-1" },
+        body: { token: "tok-1", expectedDeclaration: "9007199254740993" },
       },
     ],
   ])("%s", async (_name, act, expected) => {
@@ -1983,7 +1983,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     readonly ask: (api: HqApi) => Promise<void>;
   }>([
     { name: "face", ask: (api) => api.updateMate("p1", { face: "sky" }) },
-    { name: "deploy token", ask: (api) => api.keepDeployToken("app-1", "stage", "token") },
+    { name: "deploy token", ask: (api) => api.keepDeployToken("app-1", "stage", "token", "1") },
   ])("a failed $name write stays uncertain and manual Again writes once", async ({ ask }) => {
     let failed = true;
     const writes: Seen[] = [];

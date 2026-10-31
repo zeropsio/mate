@@ -141,6 +141,7 @@ describe("ZeropsAccountData on mobile", () => {
       account.seed("org-1", [
         {
           ...environmentPayload,
+          declaration: "9007199254740993",
           ...(version === "old HQ"
             ? { projectId: "zerops-1" }
             : { id: environmentId, target: { kind: "zerops", projectId: "zerops-1" } }),
@@ -161,7 +162,12 @@ describe("ZeropsAccountData on mobile", () => {
             projectId,
           }),
         );
-      expect(join("zerops-1")).toEqual({ kind: "recorded", name: "Production", keyed: true });
+      expect(join("zerops-1")).toEqual({
+        kind: "recorded",
+        name: "Production",
+        keyed: true,
+        declaration: "9007199254740993",
+      });
       if (version === "canonical HQ") expect(join(environmentId)).toEqual({ kind: "waiting" });
       account.render("org-2");
       expect(account.registry.get(account.navigation)).toBeNull();
