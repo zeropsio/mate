@@ -40,6 +40,7 @@ import { attachmentRelativePath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
 import { CONTENT_CONTRACT } from "../../contentContract.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../../macHostInstructions.ts";
+import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
@@ -741,7 +742,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.systemPrompt, {
         type: "preset",
         preset: "claude_code",
-        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}\n${MAC_HOST_INSTRUCTIONS}`,
+        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}`,
       });
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);

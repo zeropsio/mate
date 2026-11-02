@@ -13,6 +13,7 @@ import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
 } from "../CodexDeveloperInstructions.ts";
+import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import {
   buildTurnStartParams,
@@ -660,6 +661,14 @@ describe("buildCodexAdditionalContext", () => {
     NodeAssert.doesNotMatch(value, /<runtime_info>[^<]*\n/);
   });
 
+  it("gives Codex Mate's places as an entry of their own, apart from the runtime", () => {
+    const context = buildCodexAdditionalContext(runtime);
+
+    NodeAssert.equal(context.mate_places?.kind, "application");
+    NodeAssert.equal(context.mate_places?.value, MATE_PLACES_INSTRUCTIONS);
+    NodeAssert.doesNotMatch(runtimeValue(context), /<mate_places>/);
+  });
+
   it("keeps every entry under Codex's 1,000 token cap per entry", () => {
     const context = buildCodexAdditionalContext(runtime);
     for (const entry of Object.values(context)) {
@@ -673,7 +682,7 @@ describe("Codex developer instructions never mention preview tools", () => {
   it("Codex developer instructions never mention preview tools", () => {
     const runtime = { model: "gpt-5.3-codex", reasoningEffort: "medium" };
     const context = buildCodexAdditionalContext(runtime);
-    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime"]);
+    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime", "mate_places"]);
     for (const instructions of [
       buildCodexDeveloperInstructions("default"),
       buildCodexDeveloperInstructions("plan"),
