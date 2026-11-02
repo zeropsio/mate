@@ -3,8 +3,7 @@
  * jump box and its toast's *Open*, a project's page, an ask handed to it.
  *
  * Its main chat opens (`resolvePrimaryConversation`), never whichever project anywhere was touched
- * last, which is what landing on the index would pick; its other chats are in its conversation
- * strip. A Mate this page holds no socket to, or whose main chat its conversations here lack — this
+ * last; its other chats are in its conversation strip. A Mate this page holds no socket to, or whose main chat its conversations here lack — this
  * page keeps them current only while the Mate is open, so one started in another browser is not
  * among them — opens the main chat HQ names for it (`useHqMainChats`): the route connects it (A9).
  * A Mate with no conversation, here or by HQ's word, starts one in its environment's project. What its row

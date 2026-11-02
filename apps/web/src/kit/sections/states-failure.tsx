@@ -109,7 +109,7 @@ function FailureCensus() {
           "apps/web/src/components/zerops/landing/ZeropsHandoverFailed.tsx:11 ZeropsHandoverFailed",
           "apps/web/src/components/zerops/landing/ZeropsAppFailed.tsx:10 ZeropsAppFailed",
           "apps/web/src/routes/__root.tsx:497 RootRouteErrorView",
-          "apps/web/src/routes/_chat.index.tsx:293 DraftStartError",
+          "apps/web/src/routes/_chat.index.tsx:136 DraftStartError",
         ]}
       >
         <Specimen

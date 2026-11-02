@@ -130,7 +130,7 @@ export const KIT_OMISSIONS: readonly KitOmission[] = [
   {
     name: "Failure: RootRouteErrorView, DraftStartError, DiffFailure, FailedTake",
     source:
-      "apps/web/src/routes/__root.tsx:497, routes/_chat.index.tsx:293, components/chat/ReviewCommentDiff.tsx:11, components/chat/BrowserStrip.tsx:645",
+      "apps/web/src/routes/__root.tsx:497, routes/_chat.index.tsx:136, components/chat/ReviewCommentDiff.tsx:11, components/chat/BrowserStrip.tsx:645",
     reason:
       "The router's error for a route, a draft's start, a live diff's context and a browser operation's take: each needs the thing that failed.",
   },
