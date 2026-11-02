@@ -6,7 +6,7 @@
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { ArrowUpRightIcon, ChevronDownIcon } from "lucide-react";
 import { useState, type ReactNode } from "react";

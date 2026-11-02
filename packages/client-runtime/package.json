@@ -415,6 +415,10 @@
       "types": "./src/zerops/deviceLogin.ts",
       "default": "./src/zerops/deviceLogin.ts"
     },
+    "./zerops/gui": {
+      "types": "./src/zerops/gui.ts",
+      "default": "./src/zerops/gui.ts"
+    },
     "./zerops/handover": {
       "types": "./src/zerops/handover.ts",
       "default": "./src/zerops/handover.ts"

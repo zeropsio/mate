@@ -21,7 +21,7 @@ import { useHqAppDetail } from "~/zerops/useHqAppDetail";
  */
 import { Popover as PopoverPrimitive } from "@base-ui/react/popover";
 import type { ZeropsPublicRoute } from "@t3tools/client-runtime/zerops";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import {
   ArrowUpRightIcon,
   CheckIcon,

@@ -16,7 +16,7 @@ import {
   type PlaceAddresses,
   type Projection,
 } from "@t3tools/client-runtime/data";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Atom } from "effect/reactivity";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
