@@ -147,8 +147,8 @@ export function proposalMessage(
 
 /**
  * The vault write an approved value is, read off the vault as it stands: a key held there is
- * updated in place, any other added. Refused where the vault is not read yet, or where the value
- * has nowhere to go.
+ * updated in place, any other added. Refused where the vault is not read yet, where the value
+ * has nowhere to go, or where a plain value would overwrite a secret.
  */
 export function envProposalWrite(
   view: VaultView,
@@ -172,6 +172,10 @@ export function envProposalWrite(
     };
   }
   const held = scope.values.find((each) => each.key === params.key);
+  // A plain write would store the secret unmasked: a secret stays the person's, in the Vault.
+  if (held?.sensitive === true && !params.secret) {
+    return { refused: `${params.key} is a secret: change it in the Vault.` };
+  }
   return {
     scope: scope.ref,
     write:
@@ -185,6 +189,32 @@ export function envProposalWrite(
             sensitive: params.secret,
           },
   };
+}
+
+/** The kinds whose approval runs on the card's own project with the approving person's token. */
+const RUNS_ON_TARGET: ReadonlySet<ZeropsProposal["kind"]> = new Set([
+  "service.restart",
+  "service.start",
+  "service.stop",
+  "env.set",
+  "domain.add",
+]);
+
+/**
+ * Why the viewer may not decide a card, where HQ says so: HQ keeps a decision only from someone who
+ * may work in the conversation's Mate, and an approval runs on its project as the person who
+ * approves. Nothing while HQ has not said: Zerops still refuses what they may not do.
+ */
+export function approveAuthority(
+  proposal: ZeropsProposal,
+  home: { readonly mayWrite?: boolean | undefined } | undefined,
+  target: { readonly mayWrite?: boolean | undefined } | undefined,
+): string | undefined {
+  if (home?.mayWrite === false) return "Only someone who can work in this Mate can decide this.";
+  if (RUNS_ON_TARGET.has(proposal.kind) && target?.mayWrite === false) {
+    return `Only someone who can change ${proposal.projectName ?? "this project"} can approve this.`;
+  }
+  return undefined;
 }
 
 const SERVICE_VERBS = {
