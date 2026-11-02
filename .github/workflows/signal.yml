@@ -16,7 +16,7 @@ permissions:
 env:
   # Scenarios run against the test HQ of zeropsio/mate-hq (private), read with a deploy key, as
   # CI's State Smoke does. The bundle build reads it too: an external HQ changes the bundle's HQ origin.
-  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/scripts/test-hq.ts
+  MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
   PNPM_CONFIG_FETCH_RETRIES: "2"
   PNPM_CONFIG_FETCH_TIMEOUT: "60000"
   PNPM_CONFIG_FETCH_RETRY_MINTIMEOUT: "10000"
@@ -180,7 +180,13 @@ jobs:
           ref: main
           ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
           path: mate-hq
-          submodules: true
+
+      - &setup_go_hq
+        name: Setup Go for mate-hq
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: mate-hq/go.mod
+          cache: false
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1
@@ -212,12 +218,12 @@ jobs:
 
       - &install_hq
         name: Install mate-hq and its services
-        working-directory: mate-hq
+        working-directory: mate-hq/conformance
         env: *verified_lockfile
         run: |
           vp install --frozen-lockfile
-          scripts/ci-install-object-store.sh
-          scripts/ci-install-postgres.sh
+          ../scripts/ci-install-object-store.sh
+          ../scripts/ci-install-postgres.sh
 
       - name: Cache the scenarios' Chrome for Testing
         uses: actions/cache/restore@v4
@@ -268,6 +274,7 @@ jobs:
           sparse-checkout-cone-mode: false
 
       - *checkout_hq
+      - *setup_go_hq
 
       - name: Setup Vite+
         uses: voidzero-dev/setup-vp@v1

@@ -65,7 +65,7 @@ it("Signal's scenarios run against the mate-hq test HQ that State Smoke's run ag
   const ci = read("ci.yml");
   const signal = read("signal.yml");
   const command = ci.jobs.state_smoke.env.MATE_HQ_TEST_COMMAND;
-  expect(command).toContain("mate-hq/scripts/test-hq.ts");
+  expect(command).toContain("mate-hq/conformance/scripts/test-hq.ts");
   expect(signal.env.MATE_HQ_TEST_COMMAND).toBe(command);
   const stateSmoke = (name: string) =>
     ci.jobs.state_smoke.steps.find((step: { name: string }) => step.name === name);
