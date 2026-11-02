@@ -84,7 +84,7 @@ export function startScenarioCore(
     if (!command)
       return Effect.die(
         new Error(
-          "Scenarios run against mate-hq's test HQ: set MATE_HQ_TEST_COMMAND to `node <mate-hq>/scripts/test-hq.ts`",
+          "Scenarios run against mate-hq's test HQ: set MATE_HQ_TEST_COMMAND to `node <mate-hq>/conformance/scripts/test-hq.ts`",
         ),
       );
     return startExternalCore(command, zeropsHttp, timings);
