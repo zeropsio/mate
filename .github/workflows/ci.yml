@@ -715,7 +715,7 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          ref=main
+          ref=wt/c_39c6bcd8cce67ad6932d95dc2f47eb1a
           echo "$BRANCH tests against mate-hq $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
