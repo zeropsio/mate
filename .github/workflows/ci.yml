@@ -8,6 +8,7 @@ on:
       - main
       - kh-next
       - "kh-bisect/**"
+      - "wt/c_4a4de740487e6c4c6880000243f3c7b1"
 
 permissions:
   contents: read
