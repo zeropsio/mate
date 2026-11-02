@@ -62,6 +62,7 @@ import {
   proposalStage,
   accessAskLines,
   accessProposalPlan,
+  approveAuthority,
   type ProposalDecision,
 } from "./proposal.logic";
 
@@ -140,11 +141,20 @@ function Proposal({
   const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
   const chief = chiefMessageTarget(person?.chief?.projectId);
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
+  // The card's own project, where an approval runs as the person who approves it.
+  const target = useMemo(
+    () =>
+      home === undefined || proposal.projectId === undefined
+        ? null
+        : { orgId: home.orgId, projectId: proposal.projectId },
+    [home, proposal.projectId],
+  );
+  const targetPerson = useProjection(hqProjectPerson, target, UNKNOWN_PERSON);
   const readOnlyReason = readOnlyChief
     ? person?.chief === undefined
       ? "Finding this Mate's Chief…"
       : "Only this Mate's person can ask their Chief."
-    : undefined;
+    : approveAuthority(proposal, person, targetPerson);
   const proposer = useKnownMate(environmentId);
   const directory = useZeropsMateDirectory();
   const recipient = useMemo(
