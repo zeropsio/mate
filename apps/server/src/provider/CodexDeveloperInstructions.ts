@@ -1,5 +1,6 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 import type { V2TurnStartParams__AdditionalContextEntry } from "effect-codex-app-server/schema";
+import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
@@ -173,7 +174,9 @@ export function buildCodexAdditionalContext(
   return {
     mate_runtime: {
       kind: "application",
-      value: buildRuntimeInstructions({ harness: "Codex", ...runtime }),
+      value: buildRuntimeInstructions({ harness: "Codex", ...runtime, places: false }),
     },
+    // An entry of its own: the runtime entry alone sits near Codex's per-entry cap.
+    mate_places: { kind: "application", value: MATE_PLACES_INSTRUCTIONS },
   };
 }

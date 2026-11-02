@@ -12,6 +12,7 @@ import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 import {
   PROPOSAL_DECISIONS_KEPT,
   accessAskLines,
+  approveAuthority,
   chiefAsk,
   chiefMessageTarget,
   decisionFromHq,
@@ -219,6 +220,21 @@ describe("envProposalWrite", () => {
         {
           scope: { kind: "shared" },
           write: { kind: "update", id: "v1", key: "STRIPE_KEY", value: "v2", sensitive: false },
+        },
+      ],
+      [
+        "a secret held already is never rewritten as a plain value",
+        view([{ values: [{ ...value("v1", "STRIPE_KEY"), sensitive: true }] }]),
+        envProposal("project", "STRIPE_KEY"),
+        { refused: "STRIPE_KEY is a secret: change it in the Vault." },
+      ],
+      [
+        "a secret held already takes a secret value in place",
+        view([{ values: [{ ...value("v1", "STRIPE_KEY"), sensitive: true }] }]),
+        envProposal("project", "STRIPE_KEY", true),
+        {
+          scope: { kind: "shared" },
+          write: { kind: "update", id: "v1", key: "STRIPE_KEY", value: "v2", sensitive: true },
         },
       ],
       [
@@ -1047,4 +1063,46 @@ describe("accessProposalPlan", () => {
       "All of Contoso: its environments and Mates",
     );
   });
+});
+
+describe("approveAuthority", () => {
+  const restart: ZeropsProposal = {
+    id: "p1",
+    kind: "service.restart",
+    summary: "Restart api in Production",
+    projectId: "p-prod",
+    projectName: "Production",
+    serviceId: "s-api",
+  };
+  const message: ZeropsProposal = {
+    id: "p2",
+    kind: "mate.message",
+    summary: "Message Rossy",
+    projectId: "p-rossy",
+    params: { to: { projectId: "p-rossy", mateName: "Rossy" }, words: "Ship it." },
+  };
+  it.each<[string, ZeropsProposal, boolean | undefined, boolean | undefined, string | undefined]>([
+    ["a viewer who may work in the Mate and change its target", restart, true, true, undefined],
+    ["a viewer whose rights HQ has not said yet", restart, undefined, undefined, undefined],
+    [
+      "a viewer who may not work in the Mate",
+      restart,
+      false,
+      true,
+      "Only someone who can work in this Mate can decide this.",
+    ],
+    [
+      "a viewer who may not change the card's target",
+      restart,
+      true,
+      false,
+      "Only someone who can change Production can approve this.",
+    ],
+    ["a message, which changes no project of the viewer's", message, true, false, undefined],
+  ])(
+    "Approve is held back only where HQ says the viewer may not do it: %s",
+    (_case, proposal, home, target, words) => {
+      expect(approveAuthority(proposal, { mayWrite: home }, { mayWrite: target })).toBe(words);
+    },
+  );
 });

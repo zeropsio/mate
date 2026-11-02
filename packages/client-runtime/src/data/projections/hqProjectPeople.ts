@@ -33,6 +33,8 @@ export interface HqProjectPeople {
   readonly mine: boolean | undefined;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
+  /** The reader may work in it, as HQ says (`mayWrite`); `undefined` where HQ does not say. */
+  readonly mayWrite?: boolean | undefined;
   /**
    * Who is signed in to each login now, by login id: whose the composer is. `undefined` for a Mate
    * the reader may not operate: HQ sends them no overview of it, and its empty record is no fact.
@@ -66,6 +68,7 @@ function peopleOf(
     owner: ownerOf(read, orgId, person?.ownerUserId),
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
+    mayWrite: person?.mayWrite,
     signedInNow: withheld ? undefined : signedInNow,
     everSignedIn: withheld ? undefined : everSignedIn,
   };
