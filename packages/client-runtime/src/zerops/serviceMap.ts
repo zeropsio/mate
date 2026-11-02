@@ -45,6 +45,7 @@ import type {
 import type { ZeropsStatPair } from "./api.ts";
 import { threadLeases, type CheckoutLease } from "./gitTab.ts";
 import type { Known } from "./knowledge/index.ts";
+import { serviceDashboardUrl, zeropsProjectUrl } from "./gui.ts";
 import { isPoolServiceType } from "./infrastructureType.ts";
 import { compareZeropsHostnames } from "./listingOrder.ts";
 import { poolWorkspaces, type LeaseChat, type PoolWorkspace } from "./poolWorkspaces.logic.ts";
@@ -75,10 +76,6 @@ const GROUP_ORDER: ReadonlyArray<{ group: ZeropsTopologyGroup; title: string }> 
  * (`internal/workflow/compute_envelope.go`, `prodLaunchRefsRender`).
  */
 const PRODUCTION_LAUNCH = /^(.*?)\s*\(([^()\s]+)\)$/u;
-
-/** Zerops' own dashboard, the same deep link zcp hands out on a launch failure. */
-export const zeropsProjectUrl = (projectId: string): string =>
-  `https://app.zerops.io/project/${projectId}`;
 
 export interface ZeropsProductionLink {
   readonly label: string;
@@ -311,10 +308,6 @@ const KIND_ORDER: Readonly<Record<ZeropsServiceRowKind, number>> = {
   service: 1,
   holder: 2,
 };
-
-/** The service's own page in the Zerops dashboard, the GUI's `/service-stack/:id` route. */
-export const serviceDashboardUrl = (serviceId: string): string =>
-  `https://app.zerops.io/service-stack/${serviceId}`;
 
 /** `:80`, or `:80, :443` — the ports the service declares, after its name. */
 /**

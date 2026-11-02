@@ -195,7 +195,10 @@ function makeSession(storage: ZeropsStorageAdapter) {
   /** True while the person's own sign-out runs: its session end is no refusal. */
   let signingOut = false;
   const owner = ownerRecordIn(browser);
+  const apiBase = import.meta.env.VITE_ZEROPS_API_URL?.trim();
   const calls = makeZeropsSessionCalls({
+    // The platform this build talks to; prg1 when the build names none.
+    ...(apiBase ? { baseUrl: apiBase } : {}),
     // The client's own token writes hold the same locks as every other writer in this browser.
     holdToken: tokenWrites,
     fetch,

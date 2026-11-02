@@ -169,6 +169,11 @@ export function buildZcpServiceImportYaml(input: {
   readonly setupRuntimesYaml?: string;
   /** Absent where no HQ is known: zcp reads `mate.hqOrigin` from the installed Mate package. */
   readonly birthplace?: MateBirthplace;
+  /**
+   * The platform API the project lives on (`ZCP_API_HOST`), for zcp and the Mate server it starts;
+   * absent on prg1, their default. Zcp's own guess from the container's subdomain knows prg1 only.
+   */
+  readonly apiHost?: string;
 }): string {
   if (!input.vscodePassword) {
     throw new Error("A zcp container with a public subdomain needs a VSCODE_PASSWORD.");
@@ -192,6 +197,7 @@ export function buildZcpServiceImportYaml(input: {
   const hqOriginLine = input.birthplace
     ? `      T3CODE_ZEROPS_HQ_ORIGIN: "${input.birthplace.hqOrigin}"\n`
     : "";
+  const apiHostLine = input.apiHost ? `      ZCP_API_HOST: "${input.apiHost}"\n` : "";
   // zcp admits only `https://` entries and names any other in a diagnostic on every boot.
   const allowedOriginsLine = input.birthplace?.webOrigin.startsWith("https://")
     ? `      ZCP_MATE_ALLOWED_ORIGINS: "${input.birthplace.webOrigin}"\n`
@@ -208,7 +214,7 @@ export function buildZcpServiceImportYaml(input: {
       ZCP_VSCODE_AUTH_ENABLED: "true"
       ZCP_VSCODE: "true"
 ${agentsLine}${agentAuthSecrets}      ZCP_MATE_ENABLED: "1"
-${keyLine}${runtimesLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
+${keyLine}${apiHostLine}${runtimesLine}${hqOriginLine}${allowedOriginsLine}    zeropsYaml:
 ${buildZcpDeploymentYaml(input.serviceName, zcpRunConfig(input.zcpVersion))
   .split("\n")
   .map((line) => `      ${line}`)

@@ -4,7 +4,7 @@ import type { MateShapeId, MateTintId } from "@t3tools/shared/brand";
 import { assignCandidateMateTints, mateShapeOf } from "../../zerops/mateTints.ts";
 import { projectNameInApp, readZeropsMembership } from "../../zerops/groups.ts";
 import type { ZeropsCandidate } from "../../zerops/candidates.ts";
-import { zeropsProjectUrl } from "../../zerops/serviceMap.ts";
+import { zeropsProjectUrl } from "../../zerops/gui.ts";
 import { placementsScope } from "../families/hqNavigation.ts";
 import { hqAppsScope } from "../families/hqNavigation.ts";
 import type { Projection } from "../store.ts";

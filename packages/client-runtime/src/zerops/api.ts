@@ -17,7 +17,7 @@ import {
   isZcpService,
   mateContainerOf,
   severalMatesLine,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
 import { withMateProjectRole } from "./mateAccess.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
@@ -579,11 +579,11 @@ export function servicePortOrigin(
   if (service.subdomainAccess !== true) return undefined;
   if (port.scheme !== "http" && port.scheme !== "https") return undefined;
   if (!project.publicZone || !project.zeropsSubdomainHost) return undefined;
-  const region = zeropsRegionFromPublicZone(project.publicZone);
-  if (!region) return undefined;
+  const domain = zeropsSubdomainDomainFromPublicZone(project.publicZone);
+  if (!domain) return undefined;
   return port.port === 80
-    ? `https://${service.name}-${project.zeropsSubdomainHost}.${region}.zerops.app`
-    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, region);
+    ? `https://${service.name}-${project.zeropsSubdomainHost}.${domain}`
+    : buildZeropsContainerUrl(service.name, project.zeropsSubdomainHost, port.port, domain);
 }
 
 /**
@@ -2060,6 +2060,9 @@ export class ZeropsApiClient {
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
               ...(input.birthplace ? { birthplace: input.birthplace } : {}),
+              ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
+                ? {}
+                : { apiHost: new URL(this.#baseUrl).host }),
             }),
           }),
         ),

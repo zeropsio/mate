@@ -399,14 +399,18 @@ function platformClient(state: {
   readonly holdToken?: TokenWriteHold;
   /** What the container import answers; nothing by default. */
   readonly importAnswer?: Record<string, unknown>;
+  /** The platform the client talks to; prg1 by default. */
+  readonly baseUrl?: string;
 }) {
   const requests: Array<Recorded> = [];
+  const base = state.baseUrl ?? DEFAULT_ZEROPS_API_BASE;
   const client = new ZeropsApiClient({
     ...(state.holdToken === undefined ? {} : { holdToken: state.holdToken }),
+    ...(state.baseUrl === undefined ? {} : { baseUrl: state.baseUrl }),
     fetch: (input, init) => {
       const method = init?.method ?? "GET";
       requests.push({
-        url: input.replace(`${DEFAULT_ZEROPS_API_BASE}/api/rest/public`, ""),
+        url: input.replace(`${base}/api/rest/public`, ""),
         method,
         body: typeof init?.body === "string" ? init.body : null,
       });
@@ -457,8 +461,8 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
   it.each(["minted", "regenerated"] as const)(
     "establishes the actual $0 key authorization before importing, carrying only project and hash",
     async (kind) => {
-      const { client, requests } = platformClient({
-        ...(kind === "regenerated"
+      const { client, requests } = platformClient(
+        kind === "regenerated"
           ? {
               tokens: [
                 {
@@ -470,8 +474,8 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
                 },
               ],
             }
-          : {}),
-      });
+          : {},
+      );
       const seen: unknown[] = [];
       const result = await client.importDevelopmentContainer(
         INPUT,
@@ -587,6 +591,17 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(body.createIntegrationToken).toBe(false);
     expect(body.serviceImportYaml).toContain(`ZCP_API_KEY: "${MINTED_KEY}"`);
     expect(body.serviceImportYaml).toContain("MATE_SETUP_RUNTIMES: ");
+  });
+
+  it("a Mate born on another Zerops platform names that platform's API to its container; one on prg1 names none", async () => {
+    const alpha = platformClient({ baseUrl: "https://api.app-alpha.zerops.dev" });
+    await alpha.client.importDevelopmentContainer(INPUT);
+    expect(importOf(alpha.requests).serviceImportYaml).toContain(
+      'ZCP_API_HOST: "api.app-alpha.zerops.dev"',
+    );
+    const prg1 = platformClient({});
+    await prg1.client.importDevelopmentContainer(INPUT);
+    expect(importOf(prg1.requests).serviceImportYaml).not.toContain("ZCP_API_HOST");
   });
 
   // B5: the import's own process is the press's handle another browser follows.

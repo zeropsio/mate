@@ -17,6 +17,7 @@ import {
   MoonIcon,
   RefreshCwIcon,
 } from "lucide-react";
+import { zeropsTokenManagementUrl } from "@t3tools/client-runtime/zerops/gui";
 import { useRef, useState, type ReactNode } from "react";
 
 import { requestConfirmDialog } from "../../confirmDialog";
@@ -115,9 +116,7 @@ function macReady() {
         <span className="mac-ready-name">zcli, signed in</span>
         <span className="mac-ready-how">
           <InstallLink href="https://docs.zerops.io/references/cli">Install zcli</InstallLink>
-          <InstallLink href="https://app.zerops.io/settings/token-management">
-            Make a token
-          </InstallLink>
+          <InstallLink href={zeropsTokenManagementUrl()}>Make a token</InstallLink>
           <span>
             then <code>zcli login &lt;token&gt;</code>
           </span>

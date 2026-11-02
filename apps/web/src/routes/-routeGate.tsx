@@ -5,7 +5,7 @@ import {
   type RouteGatePhrase,
 } from "@t3tools/client-runtime/zerops/environments";
 import type { WebMateVoice as MateVoice } from "../zerops/mateNoticeVoice";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 

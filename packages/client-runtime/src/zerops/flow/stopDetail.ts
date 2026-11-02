@@ -30,7 +30,7 @@ import { deployLogTarget, type DeployLogTarget } from "../hq/deployLog.ts";
 import type { Shown } from "../knowledge/known.ts";
 import type { TierStop } from "@t3tools/shared/hqRelease";
 import { cannotTellWhatRuns, changesNotLive, serviceNames } from "../projectAttention.ts";
-import { serviceDashboardUrl } from "../serviceMap.ts";
+import { serviceDashboardUrl } from "../gui.ts";
 import type { ZeropsPublicRoute, ZeropsRouteOffer } from "../publicRoutes.ts";
 import { sameCommit } from "../versionName.ts";
 import {

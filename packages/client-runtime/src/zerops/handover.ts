@@ -37,8 +37,7 @@
  * @module zerops/handover
  */
 
-/** Where the platform's own client lives, and the only place sign-up works. */
-export const DEFAULT_ZEROPS_GUI_URL = "https://app.zerops.io";
+import { zeropsGuiBase } from "./gui.ts";
 
 /**
  * The mode this client asks for; an unknown mode is refused there before
@@ -97,7 +96,7 @@ export function buildZeropsAuthorizeUrl(input: {
       `${JSON.stringify(input.path)} is not a base path a callback can come back under.`,
     );
   }
-  const url = new URL(AUTHORIZE_PATH, input.guiBaseUrl ?? DEFAULT_ZEROPS_GUI_URL);
+  const url = new URL(AUTHORIZE_PATH, input.guiBaseUrl ?? zeropsGuiBase());
   url.searchParams.set("app", ZEROPS_HANDOVER_APP_MODE);
   url.searchParams.set("origin", input.origin);
   url.searchParams.set("path", input.path);

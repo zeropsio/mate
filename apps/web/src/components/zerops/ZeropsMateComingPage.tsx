@@ -79,7 +79,7 @@ import {
   type BirthCopyService,
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
-import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/serviceMap";
+import { zeropsProjectUrl } from "@t3tools/client-runtime/zerops/gui";
 import { stageSpeaks } from "~/zerops/mateOpeningStage";
 import { ConversationFooterStandIn } from "./ConversationFooterStandIn";
 import { Link, useNavigate, useRouter } from "@tanstack/react-router";

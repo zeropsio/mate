@@ -41,22 +41,26 @@ export function severalMatesLine(names: ReadonlyArray<string>): string {
 }
 
 /**
- * Recovers the region (`"prg1"`, …) from a project's `publicZone`
- * (`"fte23….prg1-zerops.zone"`). The container origin must never hard-code a
- * region: `publicZone` already rides in the project detail both clients fetch.
- * Returns null when the zone does not match the shape.
+ * The domain a project's Zerops subdomains answer under, from its `publicZone`: a region's
+ * `"fte23….prg1-zerops.zone"` gives `prg1.zerops.app`; the alpha platform's
+ * `"tlcr….alpha.dev-zerops.cloud"` gives `app-alpha.zerops.dev` (its zcp service's
+ * `zeropsSubdomain`, read 2026-11-02). The container origin must never hard-code a region:
+ * `publicZone` already rides in the project detail both clients fetch. Returns null when the zone
+ * has neither shape.
  */
-export function zeropsRegionFromPublicZone(publicZone: string): string | null {
-  const match = /\.([a-z0-9-]+)-zerops\.zone$/i.exec(publicZone);
-  return match?.[1] ?? null;
+export function zeropsSubdomainDomainFromPublicZone(publicZone: string): string | null {
+  const region = /\.([a-z0-9-]+)-zerops\.zone$/i.exec(publicZone)?.[1];
+  if (region !== undefined) return `${region}.zerops.app`;
+  const development = /\.([a-z0-9-]+)\.dev-zerops\.cloud$/i.exec(publicZone)?.[1];
+  return development === undefined ? null : `app-${development}.zerops.dev`;
 }
 
-/** The public origin of one service port: `https://<service>-<subdomain>-<port>.<region>.zerops.app`. */
+/** The public origin of one service port: `https://<service>-<subdomain>-<port>.<domain>`. */
 export function buildZeropsContainerUrl(
   serviceName: string,
   subdomainHost: string,
   port: number,
-  region: string,
+  domain: string,
 ): string {
-  return `https://${serviceName}-${subdomainHost}-${port}.${region}.zerops.app`;
+  return `https://${serviceName}-${subdomainHost}-${port}.${domain}`;
 }
