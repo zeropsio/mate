@@ -91,3 +91,36 @@ describe("overview filter history", () => {
     );
   });
 });
+
+describe("overview filter from the empty link", () => {
+  scenarioSuite((it) => {
+    it.effect("the empty link opens the overview on Mine, listing the person's own Mates", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([]);
+        yield* s.given.project("Ada", { mate: true, app: "Ada" });
+        yield* s.given.project("Bea", { kind: "stage", app: "Bea" });
+        yield* s.given.signedIn;
+        yield* Effect.promise(async () => {
+          await s.page.goto(s.web.origin);
+          await s.page.waitForFunction(
+            () =>
+              document
+                .querySelector('[data-zerops-surface="overview-filters"] [data-show="mine"]')
+                ?.getAttribute("data-active-tab") === "true",
+            { polling: "raf" },
+          );
+          const opened = new URL(s.page.url());
+          expect(`${opened.pathname}${opened.search}`).toBe("/zerops?show=mine");
+          await expect
+            .poll(() =>
+              s.page.$$eval('[data-zerops-surface="project-cards"] > [role="listitem"]', (items) =>
+                items.map((item) => item.getAttribute("aria-label")),
+              ),
+            )
+            .toEqual(["Ada"]);
+        });
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+  });
+});
