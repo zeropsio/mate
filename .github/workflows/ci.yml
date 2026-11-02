@@ -8,7 +8,6 @@ on:
       - main
       - kh-next
       - "kh-bisect/**"
-      - "wt/c_4a4de740487e6c4c6880000243f3c7b1"
 
 permissions:
   contents: read
@@ -716,7 +715,7 @@ jobs:
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          ref=wt/c_39c6bcd8cce67ad6932d95dc2f47eb1a
+          ref=main
           echo "$BRANCH tests against mate-hq $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
