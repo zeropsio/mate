@@ -19,11 +19,11 @@
  * 2. `GET /project/{projectId}/service-stack` with the caller's token — is
  *    `endpointOrigin` the public origin of a subdomain-enabled service in
  *    that project? Each candidate's origin is rebuilt from the project's
- *    bare `zeropsSubdomainHost` prefix and the region its `publicZone`
- *    carries (`docs/internals/zerops/verified.md`, measured):
- *    `https://{serviceHostname}-{prefix}.{region}.zerops.app` for a port-80
- *    route, `https://{serviceHostname}-{prefix}-{port}.{region}.zerops.app`
- *    for every other HTTP port — the same address the clients build
+ *    bare `zeropsSubdomainHost` prefix and the subdomain domain its
+ *    `publicZone` names (`docs/internals/zerops/verified.md`, measured):
+ *    `https://{serviceHostname}-{prefix}.{domain}` for a port-80 route,
+ *    `https://{serviceHostname}-{prefix}-{port}.{domain}` for every other
+ *    HTTP port — the same address the clients build
  *    (`@t3tools/client-runtime/zerops/containerAddress`).
  *
  * @module zerops/ZeropsProjectBinding
@@ -33,7 +33,7 @@ import * as Schema from "effect/Schema";
 import { HttpClient } from "effect/http";
 import {
   buildZeropsContainerUrl,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "@t3tools/client-runtime/zerops/containerAddress";
 
 export class ZeropsNotAMemberError extends Schema.TaggedError<ZeropsNotAMemberError>()(
@@ -113,12 +113,12 @@ const zeropsGet = Effect.fn("ZeropsProjectBinding.get")(function* (input: {
 function subdomainOrigin(
   hostname: string,
   subdomainHost: string,
-  region: string,
+  domain: string,
   port: number,
 ): string {
   return port === 80
-    ? `https://${hostname}-${subdomainHost}.${region}.zerops.app`
-    : buildZeropsContainerUrl(hostname, subdomainHost, port, region);
+    ? `https://${hostname}-${subdomainHost}.${domain}`
+    : buildZeropsContainerUrl(hostname, subdomainHost, port, domain);
 }
 
 function originHost(url: string): string | undefined {
@@ -191,10 +191,12 @@ export const verify = Effect.fn("ZeropsProjectBinding.verify")(function* (input:
   );
 
   const subdomainHost = project.zeropsSubdomainHost;
-  const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
+  const domain = project.publicZone
+    ? zeropsSubdomainDomainFromPublicZone(project.publicZone)
+    : null;
   const bound =
     subdomainHost &&
-    region !== null &&
+    domain !== null &&
     (services.list ?? []).some(
       (service) =>
         service.subdomainAccess === true &&
@@ -203,7 +205,7 @@ export const verify = Effect.fn("ZeropsProjectBinding.verify")(function* (input:
           (port) =>
             (port.scheme === "http" || port.scheme === "https") &&
             port.port !== undefined &&
-            originHost(subdomainOrigin(service.name!, subdomainHost, region, port.port)) ===
+            originHost(subdomainOrigin(service.name!, subdomainHost, domain, port.port)) ===
               endpointHost,
         ),
     );

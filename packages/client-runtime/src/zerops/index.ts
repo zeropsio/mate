@@ -30,7 +30,7 @@ export {
   mateContainerOf,
   severalMatesLine,
   type MateContainer,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
 
 export {

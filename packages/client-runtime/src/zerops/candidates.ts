@@ -14,7 +14,7 @@ import type { ZeropsProject, ZeropsService } from "./api.ts";
 import {
   buildZeropsContainerUrl,
   isZcpService,
-  zeropsRegionFromPublicZone,
+  zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
 import { projectCreationOutcome, type ZeropsProjectCreation } from "./projectCreation.ts";
 import type { EnvironmentId } from "@t3tools/contracts";
@@ -133,8 +133,10 @@ function containerOrigin(project: ZeropsProject, service: ZeropsService): Origin
   if (!service.ports?.some((port) => port.port === ZCP_HTTP_PORT)) {
     return { ok: false, reason: `this container does not expose port ${ZCP_HTTP_PORT}` };
   }
-  const region = project.publicZone ? zeropsRegionFromPublicZone(project.publicZone) : null;
-  if (!region || !project.zeropsSubdomainHost) {
+  const domain = project.publicZone
+    ? zeropsSubdomainDomainFromPublicZone(project.publicZone)
+    : null;
+  if (!domain || !project.zeropsSubdomainHost) {
     return { ok: false, reason: "this project has no public subdomain" };
   }
   return {
@@ -143,7 +145,7 @@ function containerOrigin(project: ZeropsProject, service: ZeropsService): Origin
       service.name,
       project.zeropsSubdomainHost,
       ZCP_HTTP_PORT,
-      region,
+      domain,
     ),
   };
 }
