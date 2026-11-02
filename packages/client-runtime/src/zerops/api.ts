@@ -2060,6 +2060,9 @@ export class ZeropsApiClient {
               ...(input.agents ? { agents: input.agents } : {}),
               ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
               ...(input.birthplace ? { birthplace: input.birthplace } : {}),
+              ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
+                ? {}
+                : { apiHost: new URL(this.#baseUrl).host }),
             }),
           }),
         ),
