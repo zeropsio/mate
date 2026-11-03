@@ -239,10 +239,12 @@ export function accountOperations(
     askAgain: (requestId) => Effect.runPromise(operations.retry(requestId)),
     submit: async (intent, named) => {
       const requestId = await Effect.runPromise(operations.submit(intent, named));
-      const outcome = store.state().operations.get(requestId)?.receipt?.outcome;
+      // Read from the store's state, never the registry: the account may have closed meanwhile.
+      const state = store.state();
+      const outcome = state.operations.get(requestId)?.receipt?.outcome;
       return {
         requestId,
-        progress: registry.get(store.data.project(operationProgress, requestId)),
+        progress: operationProgress.derive(readsOfState(state), requestId),
         evidence: outcome === undefined || outcome.kind === "pending" ? null : outcome.evidence,
       };
     },
