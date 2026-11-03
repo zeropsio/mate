@@ -4,13 +4,14 @@
  * Chief — is sent in, and how far an approved domain is from answering. Nothing here acts; the card's container carries out an approval as the
  * person.
  */
-import type {
-  DomainFace,
-  PlaceAddresses,
-  ProjectGrantsRead,
-  VaultScopeRef,
-  VaultView,
-  VaultWrite,
+import {
+  isMateOwned,
+  type DomainFace,
+  type PlaceAddresses,
+  type ProjectGrantsRead,
+  type VaultScopeRef,
+  type VaultView,
+  type VaultWrite,
 } from "@t3tools/client-runtime/data";
 import type {
   HqProposalDecision,
@@ -154,8 +155,14 @@ export function envProposalWrite(
   view: VaultView,
   proposal: Extract<ZeropsProposal, { kind: "env.set" }>,
 ): { readonly scope: VaultScopeRef; readonly write: VaultWrite } | { readonly refused: string } {
-  if (view.status === "unread") return { refused: "Reading the vault…" };
   const { params } = proposal;
+  // The vault never lists such a name: the value would be written where nobody sees or removes it.
+  if (isMateOwned(params.key)) {
+    return {
+      refused: `${params.key} is a name Mate keeps for itself: the Vault wouldn't list it.`,
+    };
+  }
+  if (view.status === "unread") return { refused: "Reading the vault…" };
   const id = params.scope === "project" ? "shared" : proposal.serviceId;
   const scope = view.scopes.find((each) => each.id === id);
   if (scope === undefined) {

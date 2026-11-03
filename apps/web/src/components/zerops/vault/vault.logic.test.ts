@@ -64,6 +64,9 @@ describe("keyProblem", () => {
     ["NODE_ENV", APPDEV, "appdev's zerops.yml already sets NODE_ENV"],
     ["node_env", APPDEV, "appdev's zerops.yml already sets NODE_ENV"],
     ["NODE_ENV", SHARED, null],
+    // The vault never lists a name the Mate keeps for itself: a value added under one is lost.
+    ["MATE_CARD_CHECK", SHARED, "MATE_CARD_CHECK is a name Mate keeps for itself"],
+    ["GIT_TOKEN", APPDEV, "GIT_TOKEN is a name Mate keeps for itself"],
   ])("%s in %s", (key, scope, problem) => {
     expect(keyProblem(key, scope)).toBe(problem);
   });

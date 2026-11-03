@@ -4,15 +4,16 @@
  * it becomes live, what a write would mean for the services that read it, and what the person may
  * type as a key. Pure: the panel draws what these answer.
  */
-import type {
-  VaultImpact,
-  VaultNotLive,
-  VaultReader,
-  VaultScope,
-  VaultScopeRef,
-  VaultValue,
-  VaultView,
-  VaultWrite,
+import {
+  isMateOwned,
+  type VaultImpact,
+  type VaultNotLive,
+  type VaultReader,
+  type VaultScope,
+  type VaultScopeRef,
+  type VaultValue,
+  type VaultView,
+  type VaultWrite,
 } from "@t3tools/client-runtime/data";
 
 /** A run of words, some of them a name: a hostname is strong, a key is code. */
@@ -81,13 +82,16 @@ export const VAULT_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 export const KEY_FORMAT_WORDS = "Letters, digits and _ only, not starting with a digit";
 
 /**
- * Why a key cannot be added to a scope, or null: its format, a value the scope already holds
- * (Zerops compares keys case-insensitively), or — in a service — a run entry of its deployed
- * zerops.yml, which Zerops refuses (`userDataDuplicateKey`). An empty key is no problem yet.
+ * Why a key cannot be added to a scope, or null: its format, a name the Mate keeps for itself
+ * (`isMateOwned`: the vault never lists one, so the value could be neither seen nor removed), a
+ * value the scope already holds (Zerops compares keys case-insensitively), or — in a service — a
+ * run entry of its deployed zerops.yml, which Zerops refuses (`userDataDuplicateKey`). An empty
+ * key is no problem yet.
  */
 export function keyProblem(key: string, scope: VaultScope): string | null {
   if (key === "") return null;
   if (!VAULT_KEY_PATTERN.test(key)) return KEY_FORMAT_WORDS;
+  if (isMateOwned(key)) return `${key} is a name Mate keeps for itself`;
   const upper = key.toUpperCase();
   const held = scope.values.find((value) => value.key.toUpperCase() === upper);
   if (held !== undefined) return `${held.key} already exists`;

@@ -256,6 +256,15 @@ describe("envProposalWrite", () => {
         },
       ],
       [
+        "a name the Mate keeps for itself is refused: the Vault would never list the value",
+        view([{ values: [value("v1", "OTHER")] }]),
+        envProposal("project", "MATE_CARD_SECRET_CHECK", true),
+        {
+          refused:
+            "MATE_CARD_SECRET_CHECK is a name Mate keeps for itself: the Vault wouldn't list it.",
+        },
+      ],
+      [
         "nothing is written while the vault is not read",
         { ...view([]), status: "unread" } as VaultView,
         envProposal("project", "A"),
