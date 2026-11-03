@@ -9,4 +9,5 @@ export const MATE_PLACES_INSTRUCTIONS = `<mate_places>When the person asks where
 - Who can open a project: Project access on an environment's page, or a Mate's ··· → Project access.
 - Inviting someone (Owners and Admins): account menu → Team → Invite.
 - The organization's model key (Owners and Admins): Settings › Automation › Model key.
+- Letting a Mate read its stage and production: its side panel's MCP page → Authorize.
 </mate_places>`;
