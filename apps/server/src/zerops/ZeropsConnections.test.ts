@@ -4,6 +4,7 @@ import type { KeyLinkAccess } from "@t3tools/shared/mateLink";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
@@ -170,9 +171,15 @@ describe("ZeropsConnections", () => {
               viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + row.skew)),
             });
             yield* TestClock.adjust(row.holds);
-            assert.strictEqual(yield* connections.ticket(ticket("before", "jan")), "open");
+            assert.strictEqual(
+              yield* Effect.flatten(connections.ticket(ticket("before", "jan"))),
+              "open",
+            );
             yield* TestClock.adjust(1);
-            assert.strictEqual(yield* connections.ticket(ticket("after", "jan")), "not_in_list");
+            assert.strictEqual(
+              yield* Effect.flatten(connections.ticket(ticket("after", "jan"))),
+              "not_in_list",
+            );
           }).pipe(Effect.scoped);
         }
       }),
@@ -192,7 +199,10 @@ describe("ZeropsConnections", () => {
           viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + 600_000)),
         });
         yield* TestClock.adjust("10 minutes");
-        assert.strictEqual(yield* connections.ticket(ticket("renewed", "jan")), "open");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("renewed", "jan"))),
+          "open",
+        );
         yield* connections.heard({
           ...full([]),
           version: 2,
@@ -200,7 +210,10 @@ describe("ZeropsConnections", () => {
           viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + 1_200_000)),
         });
         yield* TestClock.adjust(300_001);
-        assert.strictEqual(yield* connections.ticket(ticket("discarded", "jan")), "not_in_list");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("discarded", "jan"))),
+          "not_in_list",
+        );
       }).pipe(Effect.scoped),
   );
 
@@ -247,9 +260,18 @@ describe("ZeropsConnections", () => {
             { userId: "bob", role: "OWNER", visibility: "open" },
           ]),
         );
-        assert.strictEqual(yield* connections.ticket(ticket("t-jan", "jan")), "open");
-        assert.strictEqual(yield* connections.ticket(ticket("t-eva", "eva")), "read_only");
-        assert.strictEqual(yield* connections.ticket(ticket("t-bob", "bob")), "not_in_list");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("t-jan", "jan"))),
+          "open",
+        );
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("t-eva", "eva"))),
+          "read_only",
+        );
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("t-bob", "bob"))),
+          "not_in_list",
+        );
         assert.isTrue(Option.isSome(yield* tickets.consume({ ticket: "t-jan" })));
         assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "t-eva" })));
         assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "t-bob" })));
@@ -265,9 +287,32 @@ describe("ZeropsConnections", () => {
         yield* Ref.set(answer, { kind: "failed", reason: "unreachable" });
         yield* TestClock.adjust("15 minutes");
         yield* TestClock.adjust(1);
-        assert.strictEqual(yield* connections.ticket(ticket("late", "jan")), "not_in_list");
+        assert.strictEqual(
+          yield* Effect.flatten(connections.ticket(ticket("late", "jan"))),
+          "not_in_list",
+        );
         assert.deepEqual(closed, []);
         assert.isTrue(Option.isSome(yield* connections.current("jan")));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "A ticket answered after its session's close-session is never kept, though its verdict waited on a Zerops read",
+    () =>
+      Effect.gen(function* () {
+        const readAnswers = yield* Deferred.make<void>();
+        const { connections } = yield* setupWith({
+          projectId: "P_MATE",
+          read: Deferred.await(readAnswers).pipe(Effect.as(ownRead({ jan: "OWNER" }))),
+        });
+        const answer = yield* connections.ticket(ticket("before-close", "jan"));
+        const verdict = yield* Effect.forkChild(answer);
+        yield* connections.closeSession("session-1");
+        yield* Deferred.succeed(readAnswers, undefined);
+        assert.strictEqual(yield* Fiber.join(verdict), "open");
+        assert.isTrue(
+          Option.isNone(yield* connections.admit({ ticket: "before-close" }, Effect.void)),
+        );
       }).pipe(Effect.scoped),
   );
 

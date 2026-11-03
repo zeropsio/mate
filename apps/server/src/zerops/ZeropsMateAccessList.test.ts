@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import type { KeyLinkAccess } from "@t3tools/shared/mateLink";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -360,8 +361,26 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
         const list = yield* makeAccessList({ projectId: PROJECT, read: Effect.never });
         const answered = yield* list.admits("jan").pipe(Effect.forkChild);
         yield* TestClock.adjust(ACCESS_READ_BUDGET);
-        yield* TestClock.adjust(ACCESS_READ_BUDGET);
         assert.strictEqual(yield* Fiber.join(answered), "not_in_list");
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "A ticket that names an unknown person while a recompute is in flight waits on that recompute instead of reading again",
+    () =>
+      Effect.gen(function* () {
+        const { answer, reads, own } = yield* ownRead;
+        const readAnswers = yield* Deferred.make<void>();
+        const list = yield* makeAccessList({
+          projectId: PROJECT,
+          read: Deferred.await(readAnswers).pipe(Effect.andThen(own.read)),
+        });
+        yield* Ref.set(answer, read([person("ben", "BASIC_USER")]));
+        const answered = yield* list.admits("ben").pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+        yield* Deferred.succeed(readAnswers, undefined);
+        assert.strictEqual(yield* Fiber.join(answered), "open");
+        assert.strictEqual(yield* Ref.get(reads), 1);
       }).pipe(Effect.scoped),
   );
 });

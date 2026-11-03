@@ -35,8 +35,12 @@ export class ZeropsConnections extends Context.Service<
   ZeropsConnections,
   {
     readonly heard: (frame: KeyLinkAccess) => Effect.Effect<void>;
-    /** HQ's ticket: kept for its socket when the list opens for its person, else refused. */
-    readonly ticket: (frame: TicketFrame) => Effect.Effect<"open" | TicketRefusal>;
+    /**
+     * Takes HQ's ticket in the order the link heard it, and gives what answers it: kept for its
+     * socket when the list opens for its person, else refused. The answer may wait on a recompute,
+     * so the link runs it aside; a ticket whose session closed meanwhile is never kept.
+     */
+    readonly ticket: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
     readonly admit: (
       firstFrame: unknown,
       close: Effect.Effect<void>,
@@ -54,6 +58,8 @@ export const make = Effect.gen(function* () {
   const scope = yield* Effect.scope;
   const lock = yield* Semaphore.make(1);
   const connections = new Map<string, ConnectionInput>();
+  /** Tickets taken and not yet answered; closing their session drops them. */
+  const pending = new Set<TicketFrame>();
   const current = Effect.fn("ZeropsConnections.current")(function* (id: string) {
     const connection = connections.get(id);
     if (connection === undefined) return Option.none<ConnectionIdentity>();
@@ -91,10 +97,18 @@ export const make = Effect.gen(function* () {
         yield* reconcile;
       }).pipe(lock.withPermits(1)),
     ticket: (frame) =>
-      Effect.gen(function* () {
-        const verdict = yield* access.admits(frame.userId);
-        if (verdict === "open") yield* tickets.heard(frame);
-        return verdict;
+      Effect.sync(() => {
+        pending.add(frame);
+        return access.admits(frame.userId).pipe(
+          Effect.tap((verdict) =>
+            lock.withPermits(1)(
+              Effect.suspend(() =>
+                verdict === "open" && pending.has(frame) ? tickets.heard(frame) : Effect.void,
+              ),
+            ),
+          ),
+          Effect.ensuring(Effect.sync(() => pending.delete(frame))),
+        );
       }),
     admit: (firstFrame, close) =>
       Effect.gen(function* () {
@@ -125,6 +139,7 @@ export const make = Effect.gen(function* () {
     closeSession: (sessionId) =>
       Effect.gen(function* () {
         yield* tickets.closeSession(sessionId);
+        for (const frame of pending) if (frame.sessionId === sessionId) pending.delete(frame);
         for (const [id, connection] of connections)
           if (connection.sessionId === sessionId) yield* remove(id);
       }).pipe(lock.withPermits(1)),

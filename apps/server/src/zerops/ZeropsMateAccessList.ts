@@ -35,6 +35,7 @@ import { roleAtLeast } from "@t3tools/shared/zeropsRoles";
 import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
+import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
@@ -42,7 +43,6 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
-import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 
@@ -190,7 +190,10 @@ export class ZeropsMateAccessList extends Context.Service<
      * while it has one that is not stale, else HQ's relay, else its own stale one.
      */
     readonly current: Effect.Effect<Option.Option<AccessList>>;
-    /** A new ticket's verdict for `userId`, recomputing once first if the list does not open for them. */
+    /**
+     * A new ticket's verdict for `userId`, recomputing once first (or joining the recompute in
+     * flight) if the list does not open for them.
+     */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
     /** The latest report, then each one after a recompute. */
     readonly reports: Stream.Stream<AccessReport>;
@@ -218,7 +221,9 @@ export const make = (own?: {
     const held = yield* Ref.make<Held>({ own: undefined, stale: false, relayed: undefined });
     const moved = yield* PubSub.unbounded<void>();
     const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
-    const recomputing = yield* Semaphore.make(1);
+    const scope = yield* Effect.scope;
+    /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
+    const inFlight = yield* Ref.make<Deferred.Deferred<void> | undefined>(undefined);
 
     const update = (next: (held: Held, nowMs: number) => Held) =>
       Effect.gen(function* () {
@@ -232,36 +237,55 @@ export const make = (own?: {
         return after;
       });
 
+    const readOnce = (from: NonNullable<typeof own>) =>
+      Effect.gen(function* () {
+        const read = yield* from.read.pipe(
+          Effect.timeoutOrElse({
+            duration: ACCESS_READ_BUDGET,
+            orElse: () => Effect.succeed<AccessRead>({ kind: "failed", reason: "timeout" }),
+          }),
+        );
+        if (read.kind === "failed") return;
+        const after = yield* update((current, nowMs) =>
+          read.kind === "refused"
+            ? { ...current, stale: true }
+            : { ...current, own: ownAccessList(from.projectId, read, nowMs), stale: false },
+        );
+        if (read.kind !== "read" || after.own === undefined) return;
+        const list = after.own;
+        yield* SubscriptionRef.update(reports, (previous) =>
+          Option.some(
+            accessReport(
+              Option.getOrUndefined(previous),
+              list,
+              DateTime.formatIso(DateTime.makeUnsafe(list.heardAtMs)),
+            ),
+          ),
+        );
+      });
+
+    /**
+     * One read at a time, and whoever asks while it runs waits on it. The read runs in the list's
+     * scope, so a waiter that goes away (its link closed) leaves it to the others.
+     */
     const recompute =
       own === undefined
         ? Effect.void
-        : recomputing.withPermits(1)(
-            Effect.gen(function* () {
-              const read = yield* own.read.pipe(
-                Effect.timeoutOrElse({
-                  duration: ACCESS_READ_BUDGET,
-                  orElse: () => Effect.succeed<AccessRead>({ kind: "failed", reason: "timeout" }),
-                }),
-              );
-              if (read.kind === "failed") return;
-              const after = yield* update((current, nowMs) =>
-                read.kind === "refused"
-                  ? { ...current, stale: true }
-                  : { ...current, own: ownAccessList(own.projectId, read, nowMs), stale: false },
-              );
-              if (read.kind !== "read" || after.own === undefined) return;
-              const list = after.own;
-              yield* SubscriptionRef.update(reports, (previous) =>
-                Option.some(
-                  accessReport(
-                    Option.getOrUndefined(previous),
-                    list,
-                    DateTime.formatIso(DateTime.makeUnsafe(list.heardAtMs)),
-                  ),
-                ),
-              );
-            }),
-          );
+        : Effect.gen(function* () {
+            const fresh = yield* Deferred.make<void>();
+            const running = yield* Ref.modify(
+              inFlight,
+              (current): [Deferred.Deferred<void> | undefined, Deferred.Deferred<void>] =>
+                current === undefined ? [undefined, fresh] : [current, current],
+            );
+            if (running !== undefined) return yield* Deferred.await(running);
+            yield* readOnce(own).pipe(
+              Effect.ensuring(Ref.set(inFlight, undefined)),
+              Deferred.into(fresh),
+              Effect.forkIn(scope, { startImmediately: true }),
+            );
+            return yield* Deferred.await(fresh);
+          });
 
     const verdict = (userId: string) =>
       Effect.gen(function* () {

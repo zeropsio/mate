@@ -24,7 +24,7 @@ import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet, zeropsPost } from "./zeropsApiRead.ts";
 
-/** One search page; an organisation with more members than this is beyond the prototype. */
+/** One search page; an organisation with more members than this fails the read. */
 export const MEMBER_SEARCH_LIMIT = 200;
 
 /** One read of both, as the access list tells the outcomes apart. */
@@ -122,12 +122,20 @@ const make = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "projectId">) 
         }),
       );
       if (membersAnswer.kind !== "body") return membersAnswer;
-      const items =
+      const page =
         typeof membersAnswer.body === "object" && membersAnswer.body !== null
-          ? (membersAnswer.body as Record<string, unknown>)["items"]
-          : undefined;
+          ? (membersAnswer.body as Record<string, unknown>)
+          : {};
+      const items = page["items"];
       if (!Array.isArray(items))
         return { kind: "failed", reason: "the member search carried no items" } as const;
+      // A truncated page is no list: whoever it leaves out would be signed out as gone.
+      const totalHits = page["totalHits"];
+      if (typeof totalHits === "number" && totalHits > items.length)
+        return {
+          kind: "failed",
+          reason: "the organisation has more members than one page",
+        } as const;
       return { kind: "read", project, members: readOrgMembers(items) } as const;
     });
 

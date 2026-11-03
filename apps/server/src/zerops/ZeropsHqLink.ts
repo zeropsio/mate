@@ -197,8 +197,11 @@ export interface ZeropsHqLinkOptions {
   readonly changes: Stream.Stream<unknown>;
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
-  /** Admits HQ's ticket or says why not, answered `ticket-ack` or `ticket_refused`. */
-  readonly ticket?: (frame: TicketFrame) => Effect.Effect<"open" | TicketRefusal>;
+  /**
+   * Takes HQ's ticket and gives what admits it or says why not, answered `ticket-ack` or
+   * `ticket_refused` (`ZeropsConnections.ticket`).
+   */
+  readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
   /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`), advisory. */
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
@@ -604,19 +607,25 @@ export const makeZeropsHqLink = (
               ? Effect.void
               : onceStated(tasks.stop(frame.taskId, frame.reason, frame.requeued === true));
           case "ticket":
+            // Taken here, in the order heard; answered aside, since a verdict may wait on a
+            // Zerops read that must not hold back pings, close-session or the frames after it.
             return options.ticket === undefined
               ? Effect.void
-              : options
-                  .ticket(frame)
-                  .pipe(
-                    Effect.flatMap((verdict) =>
-                      send(
-                        verdict === "open"
-                          ? { type: "ticket-ack", ticket: frame.ticket }
-                          : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
+              : options.ticket(frame).pipe(
+                  Effect.flatMap((answer) =>
+                    answer.pipe(
+                      Effect.flatMap((verdict) =>
+                        send(
+                          verdict === "open"
+                            ? { type: "ticket-ack", ticket: frame.ticket }
+                            : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
+                        ),
                       ),
+                      Effect.forkChild,
                     ),
-                  );
+                  ),
+                  Effect.asVoid,
+                );
           case "close-session":
             return options.closeSession?.(frame.sessionId) ?? Effect.void;
           default:

@@ -127,6 +127,23 @@ describe("ZeropsAccessRead", () => {
     },
   );
 
+  it.effect(
+    "A member search that names fewer persons than the organisation holds fails the read, so nobody past its page is taken for gone",
+    () => {
+      const zerops = platform({
+        project: () => json(200, { clientId: ORG, userRoles: [] }),
+        search: () =>
+          json(200, {
+            totalHits: 201,
+            items: [{ id: "cu-jan", userId: "jan", roleCode: "OWNER", status: "ACTIVE" }],
+          }),
+      });
+      return Effect.gen(function* () {
+        assert.strictEqual((yield* readOnce).kind, "failed");
+      }).pipe(Effect.provide(zerops.layer));
+    },
+  );
+
   it.effect.each([
     {
       name: "401 on the project read",
