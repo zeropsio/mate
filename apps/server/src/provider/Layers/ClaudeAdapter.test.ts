@@ -41,6 +41,7 @@ import { ServerConfig } from "../../config.ts";
 import { CONTENT_CONTRACT } from "../../contentContract.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../../macHostInstructions.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
+import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
@@ -56,6 +57,7 @@ import {
 } from "../Errors.ts";
 import type { ClaudeAdapterShape } from "../Services/ClaudeAdapter.ts";
 import type { ClaudeScopedLimitNames } from "./claudeUsageLimits.ts";
+import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { makeClaudeAdapter, type ClaudeAdapterLiveOptions } from "./ClaudeAdapter.ts";
 const decodeClaudeSettings = Schema.decodeSync(ClaudeSettings);
 const encodeUnknownJsonString = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -9475,6 +9477,73 @@ describe("ClaudeAdapterLive", () => {
       Effect.provide(harness.layer),
     );
   });
+
+  const CURRENT_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
+  it.effect.each([
+    {
+      label: "began before Mate marked them",
+      resumeCursor: { threadId: "resume-thread-1", resume: "550e8400-e29b-41d4-a716-446655440000" },
+      hears: true,
+    },
+    {
+      label: "began under other ones",
+      resumeCursor: {
+        threadId: "resume-thread-1",
+        resume: "550e8400-e29b-41d4-a716-446655440000",
+        instructions: instructionsMark("Mate's instructions as an older release wrote them"),
+      },
+      hears: true,
+    },
+    {
+      label: "began under the current ones",
+      resumeCursor: {
+        threadId: "resume-thread-1",
+        resume: "550e8400-e29b-41d4-a716-446655440000",
+        instructions: instructionsMark(CURRENT_INSTRUCTIONS),
+      },
+      hears: false,
+    },
+    { label: "starts now, with them in its system prompt", resumeCursor: undefined, hears: false },
+  ])(
+    "a Claude conversation that $label hears Mate's current instructions once: $hears",
+    ({ resumeCursor, hears }) => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* adapter.startSession({
+          threadId: RESUME_THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          ...(resumeCursor ? { resumeCursor } : {}),
+          runtimeMode: "full-access",
+        });
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "First", attachments: [] });
+        const sent = yield* adapter.sendTurn({
+          threadId: session.threadId,
+          input: "Second",
+          attachments: [],
+        });
+        const [first, second] = yield* Effect.promise(() =>
+          readPromptMessages(harness.getLastCreateQueryInput(), 2),
+        );
+        const texts = (message: SDKUserMessage | undefined) =>
+          ((message?.message.content ?? []) as Array<{ type: string; text?: string }>).flatMap(
+            (block) => (block.type === "text" && block.text !== undefined ? [block.text] : []),
+          );
+        assert.deepEqual(
+          texts(first),
+          hears ? [instructionsRefresh(CURRENT_INSTRUCTIONS), "First"] : ["First"],
+        );
+        assert.deepEqual(texts(second), ["Second"]);
+        assert.equal(
+          (sent.resumeCursor as { readonly instructions?: string }).instructions,
+          instructionsMark(CURRENT_INSTRUCTIONS),
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
 
   it.effect("uses an app-generated Claude session id for fresh sessions", () => {
     const harness = makeHarness();
