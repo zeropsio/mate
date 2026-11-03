@@ -24,6 +24,7 @@ import { enableSubdomainAccess } from "./enableSubdomainAccess.ts";
 import { enableZeropsMate } from "./enableZeropsMate.ts";
 import { hardenProject } from "./hardenProject.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
+import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
@@ -100,6 +101,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   hardenProject,
   ...HQ_WRITE_KINDS,
   ...HQ_CHIEF_KINDS,
+  authorizeObserve,
   changeComment,
   renameApp,
   deleteApp,

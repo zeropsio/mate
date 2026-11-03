@@ -2031,7 +2031,12 @@ describe("useMateActions — Restart", () => {
       expected:
         "Fen is working on Fix the build and Ship the app; restarting interrupts those turns.",
     },
-    { label: "idle Mate", titles: [], expected: "Restart Fen?" },
+    {
+      label: "idle Mate",
+      titles: [],
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
   ])("confirms before restarting: $label", async ({ titles, expected }) => {
     mock.threads = [
       ...titles.map((title) => ({
@@ -2090,8 +2095,20 @@ it("uses only live HQ readings for an unopened Mate's confirmation", () => {
       online: true,
       expected: "Fen is working on Fix the build; restarting interrupts that turn.",
     },
-    { label: "stale", current: false, online: true, expected: "Restart Fen?" },
-    { label: "offline", current: true, online: false, expected: "Restart Fen?" },
+    {
+      label: "stale",
+      current: false,
+      online: true,
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
+    {
+      label: "offline",
+      current: true,
+      online: false,
+      expected:
+        "Fen's container stops and starts again, which takes a minute or two. Its conversations stay.",
+    },
   ]) {
     const registry = AtomRegistry.make();
     registry.set(zeropsSessionAtom, {

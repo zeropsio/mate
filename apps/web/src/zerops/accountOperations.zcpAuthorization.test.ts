@@ -234,6 +234,23 @@ it("a lost authorization answer stays unresolved and cannot automatically issue 
   }
 });
 
+it("an authorization HQ answers after its account signed out settles without reading the closed account", async () => {
+  const authorization = deferred<void>();
+  const asked = deferred<void>();
+  const r = automaticStatusRig({
+    read: async () => NONE,
+    establish: () => {
+      asked.resolve();
+      return authorization.promise;
+    },
+  });
+  const writing = r.operations.submit({ kind: "authorize-observe", ...OBSERVE_KEY });
+  await asked.promise;
+  await r.close();
+  authorization.resolve();
+  await expect(writing).resolves.toMatchObject({ progress: { stage: "done" } });
+});
+
 it.each(["mint", "regenerate"] as const)(
   "real account provisioning captures the %s performer before native awaits and never binds a later viewer or delegation creator",
   async (credential) => {

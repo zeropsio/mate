@@ -21,6 +21,7 @@ import { SidebarInset } from "~/components/ui/sidebar";
 import { MateOpeningView } from "~/components/zerops/MateLinkStage";
 import { Loading } from "~/components/ui/loading";
 import { useZeropsMate } from "~/zerops/useZeropsMates";
+import { ObserveAuthorizationKeeper } from "~/zerops/useObserveAuthorization";
 import { useThreadDetail, useThreadShell, useThreadStatus } from "../state/entities";
 import { useEnvironmentQuery } from "../state/query";
 import { environmentShell } from "../state/shell";
@@ -136,6 +137,7 @@ function ChatThreadRouteView() {
 
   return (
     <SidebarInset className="h-svh min-h-0 overflow-hidden overscroll-y-none bg-background text-foreground md:h-dvh">
+      <ObserveAuthorizationKeeper environmentId={threadRef.environmentId} />
       {stage === "conversation" ? (
         <ChatViewBoundary
           waiting={<ChatThreadRoutePending />}

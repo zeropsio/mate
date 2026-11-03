@@ -9,6 +9,7 @@ describe("MATE_PLACES_INSTRUCTIONS", () => {
     ["who can open a project", "Project access"],
     ["inviting someone", "Team → Invite"],
     ["the organization's model key", "Settings › Automation › Model key"],
+    ["letting a Mate read its stage and production", "MCP page → Authorize"],
   ])("a Mate names the place in Mate where the person does %s", (_thing, place) => {
     expect(MATE_PLACES_INSTRUCTIONS).toContain(place);
   });
