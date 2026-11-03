@@ -2,7 +2,10 @@ import { RecoveryItems, useRecoveryFeedback } from "./recoveryOutcomes";
 import { useAtomValue } from "@effect/atom-react";
 
 import { ZeropsRestartMateDialog } from "../components/zerops/ZeropsRestartMateDialog";
-import { restartMateWords } from "../components/zerops/ZeropsRestartMateDialog.logic";
+import {
+  idleRestartWords,
+  restartMateWords,
+} from "../components/zerops/ZeropsRestartMateDialog.logic";
 import { useThreadShells } from "../state/entities";
 import { hqMatesAtom } from "../state/zerops";
 
@@ -53,6 +56,8 @@ export function RestartMateConfirmation({
 export function RestartMateWarning(props: RestartTarget) {
   const words = useRestartWords(props);
   return (
-    <>{words === `Restart ${props.name}?` ? "Restarting interrupts work running in it." : words}</>
+    <>
+      {words === idleRestartWords(props.name) ? "Restarting interrupts work running in it." : words}
+    </>
   );
 }

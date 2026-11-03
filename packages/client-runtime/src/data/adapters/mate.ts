@@ -702,6 +702,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
 
   const guardsFor = (key: TargetKey, budget: boolean): EnvironmentGuards => {
     const wanted = wantedBy(key);
+    const container = entries.get(key)?.container;
     return {
       want: wanted.length > 0,
       routeTarget: wanted.includes("route"),
@@ -709,6 +710,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       verified: account.verified,
       zeropsState: account.zeropsState,
       budget,
+      ...(container !== undefined && platformSaysDown(container) ? { serverDown: true } : {}),
     };
   };
 
@@ -1410,7 +1412,12 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     process: (key, running) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) transition(entry, { type: "PROCESS", running });
+        if (entry === undefined) return;
+        const ended = entry.container.processRunning && !running;
+        transition(entry, { type: "PROCESS", running });
+        // A process that ended says the container is on its way back: read it now, not at the
+        // poll's next rung.
+        if (ended) requestFor(entry, { fresh: true });
       }),
     intend: (key, intent) => {
       const entry = entries.get(key);

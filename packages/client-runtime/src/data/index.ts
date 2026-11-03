@@ -811,3 +811,8 @@ export { hqReleaseReview, type HqReleaseReview } from "./projections/hqReleaseRe
 
 export { makeObserveCredential } from "./adapters/hqObserveCredential.ts";
 export { observeCredential, type ObserveCredentialRead } from "./projections/observeCredential.ts";
+export {
+  authorizesObserveByItself,
+  automaticObserveRequestId,
+  offersObserveAuthorize,
+} from "./projections/observeAuthorization.ts";
