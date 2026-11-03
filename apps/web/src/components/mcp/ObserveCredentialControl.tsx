@@ -1,10 +1,11 @@
-/** Read-only status for the installed Zerops Control Plane observation access. */
+/** Status of the Zerops Control Plane observation access, and Authorize where it has none. */
 import type { EnvironmentId } from "@t3tools/contracts";
-import type { ObserveCredentialRead } from "@t3tools/client-runtime/data";
+import { offersObserveAuthorize, type ObserveCredentialRead } from "@t3tools/client-runtime/data";
 import { useObserveCredential } from "~/zerops/useObserveCredential";
+import { useAuthorizeObserve, type ObserveAuthorizePress } from "~/zerops/useObserveAuthorization";
 import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
 import { useAccountOrgId } from "~/zerops/ZeropsAccountData";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { useHqPersonNames, useHqProjectPerson } from "~/zerops/useZeropsMateOwners";
 import { Button } from "../ui/button";
 
 export function ObserveCredentialControl({
@@ -13,17 +14,31 @@ export function ObserveCredentialControl({
   readonly environmentId: EnvironmentId;
 }) {
   const project = useEnvironmentProjectRef(environmentId);
-  const control = useObserveCredential(project?.projectId ?? null);
+  const projectId = project?.projectId ?? null;
+  const control = useObserveCredential(projectId);
   const orgId = useAccountOrgId();
   const personName = useHqPersonNames(orgId ?? undefined);
+  const mayWrite = useHqProjectPerson(projectId ?? "")?.mayWrite;
+  const { authorize, press } = useAuthorizeObserve(projectId);
   if (project === null) return null;
-  return <ObserveCredentialControlBody {...control} personName={personName} />;
+  const offered = offersObserveAuthorize({ mayWrite, metadata: control.state.metadata });
+  return (
+    <ObserveCredentialControlBody
+      {...control}
+      personName={personName}
+      authorize={offered ? authorize : null}
+      press={press}
+    />
+  );
 }
 export function ObserveCredentialControlBody(props: {
   readonly state: ObserveCredentialRead;
   readonly available: boolean;
   readonly again: () => void;
   readonly personName: (userId: string) => string | undefined;
+  /** Offered to a viewer who may operate the Mate while it reads not authorized; else `null`. */
+  readonly authorize: (() => void) | null;
+  readonly press: ObserveAuthorizePress | null;
 }) {
   const { metadata } = props.state;
   const known = metadata.state === "known" ? metadata : null;
@@ -68,8 +83,23 @@ export function ObserveCredentialControlBody(props: {
           {metadata.state === "failed" ? metadata.words : "You cannot read this authorization."}
         </p>
       )}
+      {props.press?.state === "refused" ? (
+        <p className="text-xs text-destructive-foreground" role="alert">
+          {props.press.words}
+        </p>
+      ) : null}
       {props.available ? (
-        <div>
+        <div className="flex gap-2">
+          {props.authorize === null ? null : (
+            <Button
+              disabled={props.press?.state === "working"}
+              onClick={props.authorize}
+              size="sm"
+              variant="primary"
+            >
+              Authorize
+            </Button>
+          )}
           <Button disabled={reading} onClick={props.again} size="sm" variant="ghost">
             Refresh
           </Button>
