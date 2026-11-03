@@ -34,6 +34,8 @@ import { deployTokenMint } from "../../../zerops/deployToken.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import { HQ_NOT_OPEN } from "../../../zerops/hq/refusals.ts";
 import { discussionId } from "../../families/hqDiscussion.ts";
+import { observeCredentialId, observeRequestScope } from "../../families/hqObserveCredential.ts";
+import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
@@ -294,6 +296,8 @@ export function makeHqExecutor(ports: {
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
   readonly gitStore?: AccountStore;
   readonly hqProjectIdOf?: (orgId: string) => string | null;
+  /** The account store: an acknowledged observe authorization fences status reads begun before. */
+  readonly store?: AccountStore;
 }): HqExecutor {
   const candidates = new Map<string, { readonly intent: HqGitCandidateIntent; token: string }>();
   let gitClosed = false;
@@ -830,6 +834,29 @@ export function makeHqExecutor(ports: {
           });
         if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
           return yield* chiefWrite(requestId, api, intent);
+        if (intent.kind === "authorize-observe") {
+          const establish = api.establishZcpAuthorization;
+          if (establish === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to manage observe authorization.",
+            });
+          yield* Effect.tryPromise({
+            try: () => establish(intent.projectId, {}),
+            catch: faultOf,
+          });
+          const key = { orgId: intent.orgId, projectId: intent.projectId };
+          // The status reader must discard any read begun before HQ acknowledged it.
+          if (ports.store !== undefined && ports.active?.() !== false)
+            commitOwn(
+              ports.store,
+              "hqObserveCredentialRequest",
+              observeRequestScope(key),
+              observeCredentialId(key),
+              { requestId },
+            );
+          return answered(requestId, intent.projectId);
+        }
         if (intent.kind === "change-comment") {
           const said = yield* Effect.tryPromise({
             try: () => api.commentOnChange(intent.link, intent.body),
