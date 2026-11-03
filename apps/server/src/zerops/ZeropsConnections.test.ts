@@ -5,10 +5,12 @@ import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as TestClock from "effect/testing/TestClock";
 import * as Connections from "./ZeropsConnections.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
+import type { AccessRead } from "./ZeropsAccessRead.ts";
 
 const JAN = { userId: "jan", role: "OWNER", visibility: "open" } as const;
 const EVA = { userId: "eva", role: "READ_ONLY", visibility: "open" } as const;
@@ -20,28 +22,51 @@ const full = (members: KeyLinkAccess["members"]): Extract<KeyLinkAccess, { viewA
   viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT)),
   members,
 });
-const setup = Effect.gen(function* () {
-  yield* TestClock.setTime(AT);
-  const access = yield* Access.make;
-  const tickets = yield* Tickets.make;
-  const connections = yield* Connections.make.pipe(
-    Effect.provide(NodeCrypto.layer),
-    Effect.provideService(Access.ZeropsMateAccessList, access),
-    Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
-  );
-  const closed: Array<string> = [];
-  const closeReceipt = yield* Deferred.make<void>();
-  const open = (id: string, userId: string, sessionId = "session-1") =>
-    Effect.gen(function* () {
-      yield* tickets.heard({ type: "ticket", ticket: id, userId, sessionId, expiresIn: 60 });
-      return yield* connections.admit(
-        { ticket: id },
-        Effect.sync(() => {
-          closed.push(id);
-        }).pipe(Effect.andThen(Deferred.succeed(closeReceipt, undefined))),
-      );
-    });
-  return { connections, tickets, closed, closeReceipt, open };
+const ticket = (id: string, userId: string) =>
+  ({ type: "ticket", ticket: id, userId, sessionId: "session-1", expiresIn: 60 }) as const;
+const setupWith = (own?: Parameters<typeof Access.make>[0]) =>
+  Effect.gen(function* () {
+    yield* TestClock.setTime(AT);
+    const access = yield* Access.make(own);
+    const tickets = yield* Tickets.make;
+    const connections = yield* Connections.make.pipe(
+      Effect.provide(NodeCrypto.layer),
+      Effect.provideService(Access.ZeropsMateAccessList, access),
+      Effect.provideService(Tickets.ZeropsTicketDoor, tickets),
+    );
+    const closed: Array<string> = [];
+    const closeReceipt = yield* Deferred.make<void>();
+    const open = (id: string, userId: string, sessionId = "session-1") =>
+      Effect.gen(function* () {
+        yield* tickets.heard({ type: "ticket", ticket: id, userId, sessionId, expiresIn: 60 });
+        return yield* connections.admit(
+          { ticket: id },
+          Effect.sync(() => {
+            closed.push(id);
+          }).pipe(Effect.andThen(Deferred.succeed(closeReceipt, undefined))),
+        );
+      });
+    return { connections, tickets, closed, closeReceipt, open };
+  });
+const setup = setupWith();
+
+/** The Mate's own read of its project: every person active, their org role as given. */
+const ownRead = (roles: Readonly<Record<string, string>>): AccessRead => ({
+  kind: "read",
+  project: { clientId: "org", overrides: {} },
+  members: Object.entries(roles).map(([userId, orgRole]) => ({
+    clientUserId: `cu-${userId}`,
+    userId,
+    orgRole,
+    status: "ACTIVE",
+    canCreateProjects: false,
+  })),
+});
+const setupOwn = Effect.gen(function* () {
+  const answer = yield* Ref.make(ownRead({ jan: "OWNER", eva: "READ_ONLY" }));
+  const rig = yield* setupWith({ projectId: "P_MATE", read: Ref.get(answer) });
+  yield* TestClock.adjust(0);
+  return { ...rig, answer };
 });
 
 describe("ZeropsConnections", () => {
@@ -129,24 +154,6 @@ describe("ZeropsConnections", () => {
   );
 
   it.effect(
-    "TC-9 and TC-20 an outage keeps people connected until the cap and then closes them without another frame",
-    () =>
-      Effect.gen(function* () {
-        const { connections, closed, closeReceipt, open } = yield* setup;
-        yield* connections.heard(full([JAN]));
-        yield* open("jan", "jan");
-        yield* TestClock.adjust("15 minutes");
-        assert.deepEqual(closed, []);
-        assert.isTrue(Option.isSome(yield* connections.current("jan")));
-        yield* TestClock.adjust(1);
-        yield* Deferred.await(closeReceipt);
-        assert.deepEqual(closed, ["jan"]);
-        assert.isTrue(Option.isNone(yield* connections.current("jan")));
-        assert.isTrue(Option.isNone(yield* open("late", "jan")));
-      }).pipe(Effect.scoped),
-  );
-
-  it.effect(
     "TC-13 the view caps receipt only within sixty seconds of skew and future views never extend it",
     () =>
       Effect.gen(function* () {
@@ -157,17 +164,15 @@ describe("ZeropsConnections", () => {
           { skew: 60_001, holds: 900_000 },
         ]) {
           yield* Effect.gen(function* () {
-            const { connections, closed, closeReceipt, open } = yield* setup;
+            const { connections } = yield* setup;
             yield* connections.heard({
               ...full([JAN]),
               viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + row.skew)),
             });
-            yield* open("jan", "jan");
             yield* TestClock.adjust(row.holds);
-            assert.deepEqual(closed, []);
+            assert.strictEqual(yield* connections.ticket(ticket("before", "jan")), "open");
             yield* TestClock.adjust(1);
-            yield* Deferred.await(closeReceipt);
-            assert.deepEqual(closed, ["jan"]);
+            assert.strictEqual(yield* connections.ticket(ticket("after", "jan")), "not_in_list");
           }).pipe(Effect.scoped);
         }
       }),
@@ -177,9 +182,8 @@ describe("ZeropsConnections", () => {
     "TC-20 a fresh unchanged access list renews the hold but a discarded delta does not",
     () =>
       Effect.gen(function* () {
-        const { connections, closed, closeReceipt, open } = yield* setup;
+        const { connections } = yield* setup;
         yield* connections.heard(full([JAN]));
-        yield* open("jan", "jan");
         yield* TestClock.adjust("10 minutes");
         yield* connections.heard({
           ...full([]),
@@ -188,7 +192,7 @@ describe("ZeropsConnections", () => {
           viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + 600_000)),
         });
         yield* TestClock.adjust("10 minutes");
-        assert.deepEqual(closed, []);
+        assert.strictEqual(yield* connections.ticket(ticket("renewed", "jan")), "open");
         yield* connections.heard({
           ...full([]),
           version: 2,
@@ -196,8 +200,7 @@ describe("ZeropsConnections", () => {
           viewAt: DateTime.formatIso(DateTime.makeUnsafe(AT + 1_200_000)),
         });
         yield* TestClock.adjust(300_001);
-        yield* Deferred.await(closeReceipt);
-        assert.deepEqual(closed, ["jan"]);
+        assert.strictEqual(yield* connections.ticket(ticket("discarded", "jan")), "not_in_list");
       }).pipe(Effect.scoped),
   );
 
@@ -229,5 +232,59 @@ describe("ZeropsConnections", () => {
       assert.isTrue(Option.isNone(yield* connections.current("racing")));
       assert.isTrue(Option.isNone(yield* connections.admit({ ticket: "racing" }, Effect.void)));
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "The Mate's own list is authoritative for admission: a ticket for a person who is not an opener is refused not_in_list or read_only and never held; HQ's relay is advisory",
+    () =>
+      Effect.gen(function* () {
+        const { connections, tickets } = yield* setupOwn;
+        // HQ relays a list that would open for Eva and Bob: the Mate's own read decides.
+        yield* connections.heard(
+          full([
+            JAN,
+            { ...EVA, role: "BASIC_USER" },
+            { userId: "bob", role: "OWNER", visibility: "open" },
+          ]),
+        );
+        assert.strictEqual(yield* connections.ticket(ticket("t-jan", "jan")), "open");
+        assert.strictEqual(yield* connections.ticket(ticket("t-eva", "eva")), "read_only");
+        assert.strictEqual(yield* connections.ticket(ticket("t-bob", "bob")), "not_in_list");
+        assert.isTrue(Option.isSome(yield* tickets.consume({ ticket: "t-jan" })));
+        assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "t-eva" })));
+        assert.isTrue(Option.isNone(yield* tickets.consume({ ticket: "t-bob" })));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "A list older than 15 minutes refuses new tickets with reason not_in_list but keeps open connections",
+    () =>
+      Effect.gen(function* () {
+        const { answer, closed, connections, open } = yield* setupOwn;
+        assert.isTrue(Option.isSome(yield* open("jan", "jan")));
+        yield* Ref.set(answer, { kind: "failed", reason: "unreachable" });
+        yield* TestClock.adjust("15 minutes");
+        yield* TestClock.adjust(1);
+        assert.strictEqual(yield* connections.ticket(ticket("late", "jan")), "not_in_list");
+        assert.deepEqual(closed, []);
+        assert.isTrue(Option.isSome(yield* connections.current("jan")));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "When the Mate's own recompute stops opening for a person, their connections close and a narrowed role is read at once, without a frame from HQ",
+    () =>
+      Effect.gen(function* () {
+        const { answer, closed, closeReceipt, connections, open } = yield* setupOwn;
+        yield* Ref.set(answer, ownRead({ jan: "OWNER", eva: "BASIC_USER" }));
+        yield* TestClock.adjust("6 minutes");
+        yield* open("jan", "jan");
+        yield* open("eva", "eva");
+        yield* Ref.set(answer, ownRead({ jan: "ADMIN", eva: "READ_ONLY" }));
+        yield* TestClock.adjust("6 minutes");
+        yield* Deferred.await(closeReceipt);
+        assert.deepEqual(closed, ["eva"]);
+        assert.strictEqual(Option.getOrThrow(yield* connections.current("jan")).role, "ADMIN");
+      }).pipe(Effect.scoped),
   );
 });

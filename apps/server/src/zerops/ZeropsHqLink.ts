@@ -1,5 +1,6 @@
 import { ZeropsConnections } from "./ZeropsConnections.ts";
-import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import type { TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
  * The Mate's link to its HQ (mate-hq `spec/protocol.md`, "Mate link"; `@t3tools/shared/mateLink`, the keys model): one
@@ -14,11 +15,13 @@ import { ZeropsTicketDoor, type TicketFrame } from "./ZeropsTicketDoor.ts";
  *   changed, at most once per `MATE_OVERVIEW_EVERY_MS`, looked at again when something it is made
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
- *   each new revision; `pong` to each of HQ's pings.
+ *   each new revision; the Mate's own access list (`access_report`), its latest on every link and
+ *   again after each recompute; `pong` to each of HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
- *   every session on a moved Chief mark (`chief`); who its project opens for and lists (`access`), handed on to
- *   `ZeropsMateAccessList`; the Mate's Git credential (`git-credential`), handed on to
+ *   every session on a moved Chief mark (`chief`); who HQ says its project opens for and lists (`access`, advisory), handed on to
+ *   `ZeropsMateAccessList`; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
+ *   when the Mate's own list does not open for its person; the Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
  *   follow-ups people say on them (`task-message`) and their stops (`task-stop`), worked by
@@ -57,8 +60,10 @@ import { type MateTaskReport, TrimmedNonEmptyString } from "@t3tools/contracts";
 import {
   KeyLinkDown,
   KeyLinkUp,
+  type AccessReport,
   type KeyLinkAccess,
   type LinkedMate,
+  type TicketRefusal,
   MATE_OVERVIEW_EVERY_MS,
   MateLinkClosed,
   type MateOverview,
@@ -192,10 +197,13 @@ export interface ZeropsHqLinkOptions {
   readonly changes: Stream.Stream<unknown>;
   /** The Mate's attention now, then each new revision (`ZeropsMateAttention.changes`). */
   readonly attention: Stream.Stream<MateAttention>;
-  /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`). */
-  readonly ticket?: (frame: TicketFrame) => Effect.Effect<void>;
+  /** Admits HQ's ticket or says why not, answered `ticket-ack` or `ticket_refused`. */
+  readonly ticket?: (frame: TicketFrame) => Effect.Effect<"open" | TicketRefusal>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
+  /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`), advisory. */
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
+  /** The Mate's own access list, latest first, then after each recompute (`access_report`). */
+  readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
@@ -521,6 +529,12 @@ export const makeZeropsHqLink = (
       const attention = Stream.runForEach(options.attention, (value) =>
         send({ type: "attention", attention: value }),
       );
+      const accessReports =
+        options.accessReports === undefined
+          ? Effect.never
+          : Stream.runForEach(options.accessReports, (report) =>
+              send({ type: "access_report", ...report }),
+            );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
        * for as long as the link lives, until HQ's first state; HQ tells it again if that never
@@ -594,7 +608,15 @@ export const makeZeropsHqLink = (
               ? Effect.void
               : options
                   .ticket(frame)
-                  .pipe(Effect.andThen(send({ type: "ticket-ack", ticket: frame.ticket })));
+                  .pipe(
+                    Effect.flatMap((verdict) =>
+                      send(
+                        verdict === "open"
+                          ? { type: "ticket-ack", ticket: frame.ticket }
+                          : { type: "ticket_refused", ticket: frame.ticket, reason: verdict },
+                      ),
+                    ),
+                  );
           case "close-session":
             return options.closeSession?.(frame.sessionId) ?? Effect.void;
           default:
@@ -635,6 +657,7 @@ export const makeZeropsHqLink = (
               heard,
               onceAnswered(attention),
               onceAnswered(health),
+              onceAnswered(accessReports),
               ...(usage ? [onceAnswered(usage.run)] : []),
               reporting,
               keyRefusals,
@@ -887,7 +910,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
-      const tickets = yield* ZeropsTicketDoor;
+      const access = yield* ZeropsMateAccessList;
       const credential = yield* ZeropsGitCredentialFile;
       const observeCredential = yield* ZeropsObserveCredentialFile;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
@@ -924,7 +947,8 @@ export const layer = (crew: OverviewSources["crew"]) =>
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         connect: connectLinkSocket,
         access: connections.heard,
-        ticket: tickets.heard,
+        accessReports: access.reports,
+        ticket: connections.ticket,
         closeSession: connections.closeSession,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
