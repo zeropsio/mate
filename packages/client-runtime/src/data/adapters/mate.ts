@@ -702,6 +702,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
 
   const guardsFor = (key: TargetKey, budget: boolean): EnvironmentGuards => {
     const wanted = wantedBy(key);
+    const container = entries.get(key)?.container;
     return {
       want: wanted.length > 0,
       routeTarget: wanted.includes("route"),
@@ -709,6 +710,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
       verified: account.verified,
       zeropsState: account.zeropsState,
       budget,
+      ...(container !== undefined && platformSaysDown(container) ? { serverDown: true } : {}),
     };
   };
 
