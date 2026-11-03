@@ -21,7 +21,7 @@ const until = (page: Page, why: string, holds: (reply: string, restarting: strin
 
 /**
  * Ada's conversation open, then Restart from its menu row: Zerops runs it as a process while the
- * tab never reads its container as RESTARTING (Juno, 2026-11-03), and its server goes down.
+ * tab never reads its container as RESTARTING, and its server goes down.
  */
 const restartedFromItsMenu = Effect.gen(function* () {
   const s = yield* createScenario([], { mate: "real" });
@@ -60,7 +60,6 @@ const restartedFromItsMenu = Effect.gen(function* () {
 
 describe("C: a Mate restarted under its open conversation", () => {
   scenarioSuite((it) => {
-    // Juno, 2026-11-03: "Restart completed.", and its composer still said it was restarting.
     it.effect(
       "a Mate restarted from its menu stops saying it restarts once Zerops finished it",
       () =>
@@ -78,8 +77,6 @@ describe("C: a Mate restarted under its open conversation", () => {
         }),
     );
 
-    // Juno, 2026-11-03: reopened in the tab it was restarted from, its conversation stayed on its
-    // stand-in for minutes, through reloads, until a fresh browser.
     it.effect("a Mate restarted from its menu opens after a reload as soon as it answers", () =>
       Effect.gen(function* () {
         const { s, ada, processId } = yield* restartedFromItsMenu;

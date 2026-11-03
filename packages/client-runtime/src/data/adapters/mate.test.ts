@@ -241,8 +241,6 @@ describe("makeMateAdapter", () => {
     expect(first.intents.value).toBeNull();
   });
 
-  // Juno, 2026-11-03: reopened in the tab it was restarted from, its conversation stayed on its
-  // stand-in for minutes, through reloads, until a fresh browser.
   it("a Mate restarted before a reload opens once it answers, though nothing proves its container re-initialized", async () => {
     const restarted = JSON.stringify([
       { target: "p1:zcp", kind: "restart", since: 1_800_000_000_000 - 60_000 },

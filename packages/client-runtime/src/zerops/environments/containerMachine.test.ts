@@ -717,7 +717,6 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
   });
 
-  // Juno, 2026-11-03: "Restart completed.", and its composer still said it was restarting.
   it("our restart is over once a read follows the end of its process, though the platform's status never said it restarts", () => {
     const up = ready();
     const asked = drive(
