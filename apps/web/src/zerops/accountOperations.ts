@@ -113,6 +113,7 @@ export function accountOperations(
     active: captureAccountLifetime(),
     hqProjectIdOf,
     gitStore: store,
+    store,
   });
   const operations = makeOperations({
     store,
