@@ -241,6 +241,32 @@ describe("makeMateAdapter", () => {
     expect(first.intents.value).toBeNull();
   });
 
+  // Juno, 2026-11-03: reopened in the tab it was restarted from, its conversation stayed on its
+  // stand-in for minutes, through reloads, until a fresh browser.
+  it("a Mate restarted before a reload opens once it answers, though nothing proves its container re-initialized", async () => {
+    const restarted = JSON.stringify([
+      { target: "p1:zcp", kind: "restart", since: 1_800_000_000_000 - 60_000 },
+    ]);
+    const { adapter, store, exchanges, installs, intents } = rig({
+      intents: restarted,
+      reading: (origin) => ({
+        ...ready(new URL(origin).hostname.split(".")[0] ?? ""),
+        initAt: null,
+      }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
+    expect(installs).toEqual(["p1:zcp"]);
+    adapter.link(EnvironmentId.make("env-p1"), { phase: "connected" });
+    await flush();
+    const link = mateLink.derive(read(store), "p1:zcp");
+    expect(link?.container.state.level).toBe("ready");
+    expect(link?.container.intent).toBeNull();
+    expect(intents.value).toBeNull();
+  });
+
   it("refuses the link when the door refuses, until the person's Connect", async () => {
     let refuse = true;
     const { adapter, store } = rig({
