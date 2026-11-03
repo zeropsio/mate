@@ -117,6 +117,7 @@ import {
 } from "../../providerPictures.ts";
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
@@ -283,6 +284,8 @@ interface ClaudeResumeState {
   readonly resumeSessionAt?: string;
   readonly turnCount?: number;
   readonly turnStartMessageIds?: ReadonlyArray<string | null>;
+  /** The mark of the instructions its Claude session holds: a resume keeps its first prompt. */
+  readonly instructions?: string;
 }
 
 interface ClaudeTurnState {
@@ -498,6 +501,8 @@ interface ClaudeSessionContext {
    * effort override inherit this. */
   currentEffort: string | undefined;
   resumeSessionId: string | undefined;
+  /** The mark of the instructions its Claude session holds; another one hears the current ones. */
+  instructions: string | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   /** Completed turn ids, reported by readThread and trimmed on rollback.
@@ -1104,6 +1109,7 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     resumeSessionAt?: unknown;
     turnCount?: unknown;
     turnStartMessageIds?: unknown;
+    instructions?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -1132,6 +1138,7 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     ...(resume ? { resume } : {}),
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
     ...(turnStartMessageIds ? { turnStartMessageIds } : {}),
+    ...(typeof cursor.instructions === "string" ? { instructions: cursor.instructions } : {}),
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
       ? { turnCount: turnCountValue }
       : {}),
@@ -1708,6 +1715,9 @@ const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
   "image/png",
   "image/webp",
 ]);
+// Model and effort can change after this session-level prompt is set.
+const CLAUDE_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
+const CLAUDE_INSTRUCTIONS_MARK = instructionsMark(CLAUDE_INSTRUCTIONS);
 const CLAUDE_SETTING_SOURCES = [
   "user",
   "project",
@@ -1768,6 +1778,8 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     readonly modelCatalog: ClaudeModelCatalog;
     /** Names of the skills Claude Code can run for this session's cwd. */
     readonly skillNames: ReadonlySet<string>;
+    /** Text the message leads with, ahead of everything the person sent. */
+    readonly preface?: string | undefined;
   },
 ) {
   const text = buildPromptText(input, dependencies.boundInstanceId, dependencies.modelCatalog);
@@ -1841,7 +1853,12 @@ const buildUserMessageEffect = Effect.fn("buildUserMessageEffect")(function* (
     sdkContent.push({ type: "text", text });
   }
 
-  return buildUserMessage({ sdkContent: placeClaudePictures(sdkContent) });
+  return buildUserMessage({
+    sdkContent: [
+      ...(dependencies.preface === undefined ? [] : [{ type: "text", text: dependencies.preface }]),
+      ...placeClaudePictures(sdkContent),
+    ],
+  });
 });
 
 /**
@@ -2404,6 +2421,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ...(context.lastAssistantUuid ? { resumeSessionAt: context.lastAssistantUuid } : {}),
       turnCount: context.turnStartMessageIds.length,
       turnStartMessageIds: [...context.turnStartMessageIds],
+      ...(context.instructions ? { instructions: context.instructions } : {}),
     };
 
     context.session = {
@@ -5635,8 +5653,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          // Model and effort can change after this session-level prompt is set.
-          append: buildRuntimeInstructions({ harness: "Claude Code" }),
+          append: CLAUDE_INSTRUCTIONS,
         },
         settingSources: [...CLAUDE_SETTING_SOURCES],
         // `ultracode` is a Claude Code setting, not an API effort level. It is
@@ -5804,6 +5821,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           currentApiModelId: apiModelId,
           currentEffort: effectiveEffort ?? undefined,
           resumeSessionId: sessionId,
+          instructions:
+            existingResumeSessionId === undefined
+              ? CLAUDE_INSTRUCTIONS_MARK
+              : resumeState?.instructions,
           pendingApprovals,
           pendingUserInputs,
           turns: [],
@@ -6037,7 +6058,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
+    const preface =
+      context.instructions === CLAUDE_INSTRUCTIONS_MARK
+        ? undefined
+        : instructionsRefresh(CLAUDE_INSTRUCTIONS);
     const message = yield* buildUserMessageEffect(input, {
+      preface,
       fileSystem,
       attachmentsDir: serverConfig.attachmentsDir,
       boundInstanceId,
@@ -6115,6 +6141,10 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         provider: PROVIDER,
         threadId: input.threadId,
       });
+    }
+    if (preface !== undefined) {
+      context.instructions = CLAUDE_INSTRUCTIONS_MARK;
+      yield* updateResumeCursor(context);
     }
 
     return {
