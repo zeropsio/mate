@@ -27,8 +27,8 @@
  * `hasProjectAccess` is the one answer to whether a person may use this Mate
  * at all — the one that keeps their session open — for a turn no session of
  * theirs stands behind (X3), and for offboarding, which signs every login of a
- * person it says no for out (`ZeropsOffboarding`, X4). It reads the access list the Mate
- * computes from its own read of Zerops (`ZeropsMateAccessList`): an opener, not a mere member.
+ * person it says no for out (`ZeropsOffboarding`, X4). It reads HQ's access list
+ * (`ZeropsMateAccessList`) and nothing of Zerops.
  *
  * @module ZeropsProjectSigners
  */
@@ -134,12 +134,11 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether `userId` is an opener of this project, as the deciding access list says — the
-     * answer that keeps a connection open (`ZeropsConnections`). What admits a turn no session
-     * stands behind: the crew's, the stand-up's (X3). The list holds at most 15 min from the read
-     * or frame that brought it (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says
-     * the organisation's key was refused, `undefined`: nobody is vouched for, and nobody's logins
-     * are taken on a guess.
+     * Whether this project opens for `userId`, as HQ's latest access list says — the answer that
+     * keeps a connection open (`ZeropsConnections`). What admits a turn no session stands behind:
+     * the crew's, the stand-up's (X3). The list holds at most 15 min from the frame that brought it
+     * (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says the organisation's key was
+     * refused, `undefined`: nobody is vouched for, and nobody's logins are taken on a guess.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
@@ -156,10 +155,9 @@ export const make = Effect.gen(function* () {
   const hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"] = (userId) =>
     environment === undefined
       ? Effect.succeed(undefined)
-      : Effect.gen(function* () {
-          const list = Option.getOrUndefined(yield* accessList.current);
-          const now = yield* Clock.currentTimeMillis;
-          if (list === undefined || list.refused || now > list.expiresAtMs) return undefined;
+      : Effect.map(accessList.current, (current) => {
+          const list = Option.getOrUndefined(current);
+          if (list === undefined || list.refused) return undefined;
           return list.members.some(
             (member) => member.userId === userId && member.visibility === "open",
           );
