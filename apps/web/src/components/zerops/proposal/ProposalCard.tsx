@@ -305,6 +305,8 @@ function ProposalFoot(props: ProposalCardProps) {
                 disabled={props.approveBlocked !== undefined}
                 onClick={props.onApprove}
                 size="sm"
+                // Stopping takes the service offline: its Approve reads as destructive.
+                variant={proposal.kind === "service.stop" ? "destructive" : "primary"}
               >
                 Approve
               </Button>
