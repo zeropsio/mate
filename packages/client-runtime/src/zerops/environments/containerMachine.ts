@@ -463,9 +463,10 @@ const restartOver = (
   if (connectedAfter(machine, state.since)) return "connected";
   const reading = readingSince(machine, state.since);
   if (reading === null) return null;
-  if (state.platformEnded !== null && notBefore(machine.reading!.sentAt, state.platformEnded)) {
-    return reading;
-  }
+  // The platform's word that it is over: its status leaving RESTARTING, or its restart's process
+  // ending, which a tab that never saw that status still reads.
+  const ended = state.platformEnded ?? processEndedSince(machine, state.since);
+  if (ended !== null && notBefore(machine.reading!.sentAt, ended)) return reading;
   const initAt = readInitAt(reading);
   if (initAt === null) return null;
   const baseline = state.baseline;
@@ -474,6 +475,14 @@ const restartOver = (
     (baseline.kind === "held" ? initAt !== baseline.initAt : Date.parse(initAt) > state.since.wall);
   return reinitialized ? reading : null;
 };
+
+/** When a process the platform ran against the container ended since `since`; null otherwise. */
+const processEndedSince = (machine: ContainerMachine, since: Instant): Instant | null =>
+  !machine.processRunning &&
+  machine.processEndedAt !== null &&
+  notBefore(machine.processEndedAt, since)
+    ? machine.processEndedAt
+    : null;
 
 const readInitAt = (reading: ProbeReading): string | null =>
   reading.kind === "ready" || reading.kind === "initializing" || reading.kind === "not-answering"

@@ -1410,7 +1410,12 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     process: (key, running) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) transition(entry, { type: "PROCESS", running });
+        if (entry === undefined) return;
+        const ended = entry.container.processRunning && !running;
+        transition(entry, { type: "PROCESS", running });
+        // A process that ended says the container is on its way back: read it now, not at the
+        // poll's next rung.
+        if (ended) requestFor(entry, { fresh: true });
       }),
     intend: (key, intent) => {
       const entry = entries.get(key);
