@@ -55,7 +55,7 @@ export interface StopDeployAgain {
  * type and state with the verbs at its end; what runs and where it answers; then the meters.
  */
 const ROW_GRID =
-  "grid grid-cols-[minmax(0,auto)_minmax(0,auto)_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 @2xl/place:grid-cols-[minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,1.35fr)_7.5rem]";
+  "grid grid-cols-[minmax(0,auto)_minmax(0,auto)_minmax(0,1fr)_auto] items-start gap-x-3 gap-y-1 @2xl/place:grid-cols-[minmax(0,0.8fr)_minmax(0,0.95fr)_minmax(0,1.1fr)_minmax(0,0.6fr)_minmax(0,1.35fr)_11rem]";
 /** Each cell's place: narrow first, then its column in the one-row table. */
 const AT = {
   name: "col-start-1 row-start-1 min-w-0",
