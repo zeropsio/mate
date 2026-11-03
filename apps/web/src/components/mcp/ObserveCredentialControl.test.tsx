@@ -3,16 +3,21 @@ import { act } from "react";
 import { createRoot } from "react-dom/client";
 import { describe, expect, it } from "vite-plus/test";
 import type { ObserveCredentialRead } from "@t3tools/client-runtime/data";
+import type { ObserveAuthorizePress } from "~/zerops/useObserveAuthorization";
 import { ObserveCredentialControlBody } from "./ObserveCredentialControl";
 Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
 const AUTH = { authorized: true, userId: "person", expiresAt: "2026-11-28T10:00:00Z" };
 const NONE = { authorized: false, userId: null, expiresAt: null };
-async function render(state: ObserveCredentialRead, available = true) {
+async function render(
+  state: ObserveCredentialRead,
+  available = true,
+  options: { readonly offered?: boolean; readonly press?: ObserveAuthorizePress | null } = {},
+) {
   const container = document.createElement("div");
   document.body.append(container);
   const root = createRoot(container);
   const calls: string[] = [];
-  const update = (next: ObserveCredentialRead) =>
+  const update = (next: ObserveCredentialRead, press = options.press ?? null) =>
     act(() =>
       root.render(
         <ObserveCredentialControlBody
@@ -20,6 +25,8 @@ async function render(state: ObserveCredentialRead, available = true) {
           available={available}
           again={() => calls.push("read")}
           personName={(id) => (id === "person" ? "Ada" : undefined)}
+          authorize={options.offered ? () => calls.push("authorize") : null}
+          press={press}
         />,
       ),
     );
@@ -37,7 +44,7 @@ async function render(state: ObserveCredentialRead, available = true) {
 }
 describe("explicit observe authorization control", () => {
   it.each([AUTH, NONE])(
-    "opening Observe status never offers authorization or revocation",
+    "Observe status shows who authorized it and until when, and reads it again on Refresh",
     async (value) => {
       const r = await render({ metadata: { state: "known", value, stale: false } });
       try {
@@ -125,6 +132,30 @@ describe("explicit observe authorization control", () => {
       }
     },
   );
+  it("a viewer who may operate an unauthorized Mate authorizes it and sees HQ's refusal words", async () => {
+    const state = { metadata: { state: "known", value: NONE, stale: false } } as const;
+    const r = await render(state, true, { offered: true });
+    try {
+      expect(r.buttons().map((button) => button.textContent?.trim())).toEqual([
+        "Authorize",
+        "Refresh",
+      ]);
+      await act(() => r.buttons()[0]!.click());
+      expect(r.calls).toEqual(["authorize"]);
+      await r.update(state, { state: "working" });
+      expect(r.buttons()[0]!.disabled).toBe(true);
+      await r.update(state, {
+        state: "refused",
+        words: "Another person already authorized this Mate.",
+      });
+      expect(r.container.querySelector("[role=alert]")?.textContent).toBe(
+        "Another person already authorized this Mate.",
+      );
+      expect(r.buttons()[0]!.disabled).toBe(false);
+    } finally {
+      await r.close();
+    }
+  });
   it("stale Observe metadata stays labelled last known and can only be refreshed", async () => {
     const r = await render({ metadata: { state: "known", value: AUTH, stale: true } });
     try {
