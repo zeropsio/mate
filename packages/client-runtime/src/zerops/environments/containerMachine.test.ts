@@ -717,6 +717,25 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(containerVerdict(run.machine)).toEqual({ level: "booting", overdue: false });
   });
 
+  // Juno, 2026-11-03: "Restart completed.", and its composer still said it was restarting.
+  it("our restart is over once a read follows the end of its process, though the platform's status never said it restarts", () => {
+    const up = ready();
+    const asked = drive(
+      [{ type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } }],
+      up,
+    );
+    const running = drive([{ type: "PROCESS", running: true }], asked);
+    // The old server still answering while the process runs is not the restart being over.
+    const stale = drive([probed(READY, running.nowMs)], running);
+    expect(containerVerdict(stale.machine).level).toBe("restarting");
+    const ended = drive([{ type: "PROCESS", running: false }], stale);
+    // A read sent before the process ended says nothing of it.
+    const late = drive([probed(READY, stale.nowMs)], ended);
+    expect(containerVerdict(late.machine).level).toBe("restarting");
+    const away = drive([probed({ kind: "unreachable" }, late.nowMs)], late);
+    expect(containerVerdict(away.machine)).toEqual({ level: "booting", overdue: false });
+  });
+
   it("a read sent after the verb is never the restart's baseline", () => {
     // Nothing said the initAt before the verb, and the container's clock runs behind the browser's.
     const up = drive([active, probed(READY, START_MS)]);

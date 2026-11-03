@@ -672,14 +672,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * The platform's processes for every booting target's project: a boot's cap runs from the
-   * moment the last process ends (§4.5), so a long restart or start is never overdue while it runs.
+   * The platform's processes for every booting or restarting target's project: a boot's cap runs
+   * from the moment the last process ends (§4.5), so a long restart or start is never overdue while
+   * it runs, and a restart's process ending is the platform's word that the restart is over.
    */
   const updateProcesses = () => {
     if (adapter === null || closed) return;
     const booting = new Map<string, ProjectRef>();
     for (const [key, machine] of adapter.containers()) {
-      if (machine.state.level !== "booting") continue;
+      if (machine.state.level !== "booting" && machine.state.level !== "restarting") continue;
       const projectId = targetProject(key);
       if (!detailProjects.has(projectId)) continue;
       const ref = projectRefOf(projectId);
