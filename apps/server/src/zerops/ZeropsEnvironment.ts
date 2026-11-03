@@ -42,8 +42,9 @@ export interface ZeropsEnvironment {
    * this container and which the platform scopes to this one project at
    * `BASIC_USER`.
    *
-   * HQ verifies it when this Mate links. Project reads use the same key; people
-   * enter with HQ tickets and receive rights from HQ's access list.
+   * HQ verifies it when this Mate links. Project reads use the same key, the
+   * Mate's own access list among them (`ZeropsMateAccessList`); people enter
+   * with HQ tickets that list admits.
    */
   readonly apiToken: string | undefined;
   /**

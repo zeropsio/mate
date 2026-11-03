@@ -394,7 +394,7 @@ const ticketAuthTestLayer = EnvironmentAuth.zeropsLayer.pipe(
   Layer.provideMerge(
     ZeropsConnectionsModule.layer.pipe(
       Layer.provideMerge(ZeropsTicketDoorModule.layer),
-      Layer.provideMerge(ZeropsMateAccessListModule.layer),
+      Layer.provideMerge(ZeropsMateAccessListModule.relayLayer),
     ),
   ),
 );
@@ -1062,7 +1062,7 @@ const buildAppUnderTest = (options?: {
           // answers the boot snapshot (`undefined`, same as `config.zerops`
           // being unset), the member list has no key to be read with, no HQ
           // sends who the project opens for, and the status starts `"unknown"`.
-          ZeropsMateAccessListModule.layer.pipe(
+          ZeropsMateAccessListModule.relayLayer.pipe(
             Layer.provideMerge(
               ZeropsOrgReadModule.layer.pipe(
                 Layer.provideMerge(
