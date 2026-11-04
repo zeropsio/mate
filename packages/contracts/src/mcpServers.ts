@@ -60,6 +60,11 @@ export type McpServerTool = typeof McpServerTool.Type;
 export const McpServerAgent = Schema.Struct({
   driver: ProviderDriverKind,
   state: McpServerState,
+  /**
+   * Whether the agent holds an OAuth sign-in for the server, where it says
+   * (Codex); absent where it can't tell.
+   */
+  signedIn: Schema.optionalKey(Schema.Boolean),
   error: Schema.optionalKey(Schema.String),
   tools: Schema.optionalKey(Schema.Array(McpServerTool)),
 });

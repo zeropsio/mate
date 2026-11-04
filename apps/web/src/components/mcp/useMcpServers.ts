@@ -26,6 +26,7 @@ export type McpAction =
   | { readonly kind: "add"; readonly input: McpServerAddInput }
   | { readonly kind: "remove"; readonly name: string }
   | { readonly kind: "reconnect"; readonly name: string }
+  | { readonly kind: "signOut"; readonly name: string }
   | { readonly kind: "setEnabled"; readonly name: string; readonly enabled: boolean }
   /** Finishes a sign-in with the address the person's browser landed on. */
   | {
@@ -108,7 +109,9 @@ export function useMcpServers(input: {
                     registry,
                     action.kind === "remove"
                       ? mcpServersEnvironment.remove
-                      : mcpServersEnvironment.reconnect,
+                      : action.kind === "signOut"
+                        ? mcpServersEnvironment.signOut
+                        : mcpServersEnvironment.reconnect,
                     { environmentId, input: { name: action.name, ...scope } },
                     options,
                   );

@@ -78,6 +78,22 @@ function applyAction(list: McpServersList, action: McpAction): McpServersList {
               },
         ),
       };
+    case "signOut":
+      return {
+        ...list,
+        servers: list.servers.map((entry) =>
+          entry.name !== action.name
+            ? entry
+            : {
+                ...entry,
+                agents: entry.agents.map((agent) =>
+                  agent.state === "connected"
+                    ? { driver: agent.driver, state: "needs-auth" as const }
+                    : agent,
+                ),
+              },
+        ),
+      };
     case "finishSignIn":
     case "reconnect":
       return {

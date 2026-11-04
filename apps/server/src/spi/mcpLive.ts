@@ -63,6 +63,8 @@ export class McpLive extends Context.Service<
       { readonly driver: ProviderDriverKind; readonly started: McpSignInStart | "signed-in" },
       ProviderMcpError
     >;
+    /** Drops the thread's agent's sign-in to a server (`ProviderAdapterMcp.signOut`). */
+    readonly signOut: (threadId: ThreadId, name: string) => Effect.Effect<void, ProviderMcpError>;
     /** The drivers installed here, each once: the agents an added server is written for. */
     readonly installedDrivers: Effect.Effect<ReadonlyArray<ProviderDriverKind>>;
     /** Every running session of every instance of `driver`, best effort. */
@@ -136,6 +138,18 @@ export const layer = Layer.effect(
           const started = yield* answeredInTime(signIn(threadId, name, redirectUri));
           return { driver: instance.driverKind, started };
         }),
+      signOut: (threadId, name) =>
+        hookOf(threadId).pipe(
+          Effect.flatMap((hook) =>
+            hook.signOut === undefined
+              ? Effect.fail(
+                  new ProviderMcpError({
+                    detail: "This agent can't sign out of MCP servers from Mate.",
+                  }),
+                )
+              : answeredInTime(hook.signOut(threadId, name)),
+          ),
+        ),
       installedDrivers: providers.getProviders.pipe(
         Effect.map((snapshots) => [
           ...new Set(snapshots.filter((snapshot) => snapshot.installed).map((s) => s.driver)),

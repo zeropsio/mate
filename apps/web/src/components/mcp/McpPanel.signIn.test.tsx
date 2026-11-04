@@ -68,3 +68,40 @@ it("Sign in opens the provider's page, and a landing the browser can't reach is 
     container.remove();
   }
 });
+
+it.each([{ name: "context7", press: "Sign out", action: { kind: "signOut", name: "context7" } }])(
+  "$press on a signed-in server drops the agent's sign-in",
+  async ({ name, press, action }) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const actions: McpAction[] = [];
+    try {
+      await act(() =>
+        root.render(
+          <McpPanelBody
+            act={async (next) => {
+              actions.push(next);
+              return { ok: true };
+            }}
+            driver={CLAUDE}
+            onRetry={() => {}}
+            signIn={async () => ({ ok: false, message: "" })}
+            state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+          />,
+        ),
+      );
+      await act(async () =>
+        container.querySelector<HTMLElement>(`[data-mcp-server="${name}"] button`)!.click(),
+      );
+      const button = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === press,
+      );
+      await act(async () => button!.click());
+      expect(actions).toEqual([action]);
+    } finally {
+      await act(() => root.unmount());
+      container.remove();
+    }
+  },
+);

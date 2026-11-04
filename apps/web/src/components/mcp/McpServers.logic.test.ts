@@ -336,33 +336,39 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     {
       name: "zerops",
       driver: CLAUDE,
-      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: null, signOut: false },
     },
     {
       name: "playwright",
       driver: CODEX,
-      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: null, signOut: false },
     },
     {
       name: "sentry",
       driver: CLAUDE,
-      actions: { reconnect: false, toggle: "on", remove: true, signIn: false },
+      actions: { reconnect: false, toggle: "on", remove: true, signIn: null, signOut: false },
     },
     {
       name: "linear",
       driver: OPENCODE,
-      actions: { reconnect: false, toggle: "off", remove: true, signIn: false },
+      actions: { reconnect: false, toggle: "off", remove: true, signIn: null, signOut: false },
     },
     // A remote server waiting for a sign-in offers one, on the agent that waits for it.
     {
       name: "github",
       driver: CLAUDE,
-      actions: { reconnect: true, toggle: "off", remove: true, signIn: true },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: "new", signOut: false },
     },
     {
       name: "github",
       driver: CURSOR,
-      actions: { reconnect: false, toggle: "off", remove: true, signIn: false },
+      actions: { reconnect: false, toggle: "off", remove: true, signIn: null, signOut: false },
+    },
+    // Signed in: Sign out. context7 is a URL Claude reaches: it can't say whether by a sign-in.
+    {
+      name: "context7",
+      driver: CLAUDE,
+      actions: { reconnect: true, toggle: null, remove: false, signIn: null, signOut: true },
     },
   ])("$name for $driver: its actions", ({ name, driver, actions }) => {
     expect(rowNamed(name, driver).actions).toEqual(actions);
@@ -380,14 +386,14 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: undefined,
       managed: false,
       origin: "mate",
-      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: null, signOut: false },
     },
     {
       case: "a user-scope one",
       scope: "user",
       managed: false,
       origin: "mate",
-      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: null, signOut: false },
     },
     // The repo's .mcp.json is edited there, not here: shown, reconnected, never turned off or removed.
     {
@@ -395,7 +401,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: "project",
       managed: false,
       origin: "repo",
-      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: null, signOut: false },
     },
     {
       // The Mate runs on Zerops' tools: shown and reconnected, never turned off here.
@@ -403,7 +409,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: undefined,
       managed: true,
       origin: "builtin",
-      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: null, signOut: false },
     },
   ])("$case: where it comes from and what may change it", ({ scope, managed, origin, actions }) => {
     const list: McpServersList = {
@@ -420,6 +426,62 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     };
     const row = buildMcpRows(list, CLAUDE)[0]!;
     expect({ origin: row.origin, actions: row.actions }).toEqual({ origin, actions });
+  });
+
+  it.each<{
+    case: string;
+    agent: Omit<McpServerAgent, "driver">;
+    transport: McpServerEntry["transport"];
+    signIn: string | null;
+    signOut: boolean;
+  }>([
+    {
+      case: "a URL server that failed may need its sign-in again",
+      agent: { state: "failed", error: "401 Unauthorized" },
+      transport: { type: "http", url: "https://mcp.example.com" },
+      signIn: "again",
+      signOut: false,
+    },
+    {
+      case: "a command that failed has no sign-in to renew",
+      agent: { state: "failed", error: "exited 1" },
+      transport: { type: "stdio", command: "x", args: [] },
+      signIn: null,
+      signOut: false,
+    },
+    {
+      case: "a URL server the agent reaches by a token offers no sign-in or sign-out",
+      agent: { state: "failed", signedIn: false },
+      transport: { type: "http", url: "https://mcp.example.com" },
+      signIn: null,
+      signOut: false,
+    },
+    {
+      case: "a URL server the agent holds a sign-in for offers Sign out",
+      agent: { state: "connected", signedIn: true },
+      transport: { type: "http", url: "https://mcp.example.com" },
+      signIn: null,
+      signOut: true,
+    },
+    {
+      case: "a connected URL server reached by a token offers no Sign out",
+      agent: { state: "connected", signedIn: false },
+      transport: { type: "http", url: "https://mcp.example.com" },
+      signIn: null,
+      signOut: false,
+    },
+  ])("$case", ({ agent, transport, signIn, signOut }) => {
+    const row = buildMcpRows(
+      {
+        agents: [CODEX],
+        servers: [{ name: "x", managed: false, transport, agents: [{ driver: CODEX, ...agent }] }],
+      },
+      CODEX,
+    )[0]!;
+    expect({ signIn: row.actions.signIn, signOut: row.actions.signOut }).toEqual({
+      signIn,
+      signOut,
+    });
   });
 
   it("is empty for an empty list", () => {

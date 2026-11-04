@@ -108,9 +108,10 @@ describe("codexMcpLiveServers", () => {
       {
         name: "zerops",
         state: "connected",
+        signedIn: false,
         tools: [{ name: "zerops_discover", description: "Look", readOnly: true }],
       },
-      { name: "broken", state: "configured", error: "timed out" },
+      { name: "broken", state: "configured", signedIn: false, error: "timed out" },
     ]);
   });
 
@@ -434,6 +435,65 @@ describe("signing in to a remote MCP server", () => {
       expect(loopbackRedirect(url)?.href).toBe(listener);
     },
   );
+});
+
+describe("signing out of a remote MCP server", () => {
+  it.effect("each agent drops its sign-in its own way, and the server asks for one again", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const claude = claudeMcpControl({
+        get: () =>
+          live({
+            mcpClearAuth: async (name: string) => {
+              calls.push(`claude clear ${name}`);
+            },
+          } satisfies ClaudeMcpQuery),
+        all: () => [],
+      });
+      const codex = codexMcpControl({
+        get: () =>
+          live({
+            logoutMcpServer: (name: string) =>
+              Effect.sync(() => {
+                calls.push(`codex logout ${name}`);
+              }),
+            reloadMcpServers: Effect.sync(() => {
+              calls.push("codex reload");
+            }),
+          }),
+        all: () => [],
+      });
+      const client: OpenCodeMcpClient = {
+        status: async () => ({}),
+        connect: async (name) => calls.push(`opencode connect ${name}`),
+        disconnect: async (name) => calls.push(`opencode disconnect ${name}`),
+        add: async () => undefined,
+        removeAuth: async (name) => calls.push(`opencode forget ${name}`),
+      };
+      const openCode = openCodeMcpControl({ get: () => live(client), all: () => [] });
+      for (const control of [claude, codex, openCode]) yield* control.signOut!(THREAD, "adobe");
+      expect(calls).toEqual([
+        "claude clear adobe",
+        "codex logout adobe",
+        "codex reload",
+        "opencode forget adobe",
+        "opencode disconnect adobe",
+        "opencode connect adobe",
+      ]);
+    }),
+  );
+
+  it.each([
+    ["oAuth", true],
+    ["bearerToken", false],
+    ["unsupported", false],
+    ["unknown", undefined],
+  ])("Codex says whether it holds a sign-in for a server: %s", (authStatus, signedIn) => {
+    const [server] = codexMcpLiveServers({
+      data: [{ name: "adobe", runtimeStatus: "connected", authStatus }],
+    });
+    expect(server?.signedIn).toBe(signedIn);
+  });
 });
 
 describe("McpLive", () => {

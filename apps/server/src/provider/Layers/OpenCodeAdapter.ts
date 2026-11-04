@@ -372,6 +372,11 @@ const openCodeMcpClient = (client: OpencodeClient): OpenCodeMcpClient => ({
       if (result.data === undefined) throw new Error(openCodeAuthError(result.error));
       return result.data;
     }),
+  removeAuth: (name) =>
+    client.mcp.auth.remove({ name }).then((result) => {
+      if (result.data === undefined) throw new Error(openCodeAuthError(result.error));
+      return result.data;
+    }),
   finishAuth: (name, code) =>
     client.mcp.auth.callback({ name, code }).then((result) => {
       if (result.data === undefined) throw new Error(openCodeAuthError(result.error));

@@ -130,6 +130,14 @@ const setup = (input: {
                 new ProviderMcpError({ detail: "No conversation is running on this agent." }),
               );
         }),
+      signOut: (threadId, name) =>
+        threadId === runningThread && input.running !== undefined
+          ? Effect.sync(() => {
+              rig.calls.push(`sign out ${name}`);
+            })
+          : Effect.fail(
+              new ProviderMcpError({ detail: "No conversation is running on this agent." }),
+            ),
       configChanged: (driver, change: McpConfigChange) =>
         Effect.sync(() => {
           rig.calls.push(`${driver} ${change.kind} ${change.name}`);
@@ -657,6 +665,26 @@ describe("McpServers sign-in", () => {
         threadId: THREAD,
       });
       expect(agent.finished).toEqual([CODE]);
+    }),
+  );
+
+  it.effect("signing out drops the running agent's sign-in and answers the fresh list", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({
+        installed: ["codex"],
+        running: {
+          driver: "codex",
+          servers: [{ name: "zerops", state: "connected", signedIn: true }],
+        },
+      });
+      const list = yield* service.signOut({
+        name: "zerops" as McpServerAddInput["name"],
+        threadId: THREAD,
+      });
+      expect(rig.calls).toEqual(["sign out zerops"]);
+      expect(list.servers.find((server) => server.name === "zerops")?.agents).toEqual([
+        { driver: "codex", state: "connected", signedIn: true },
+      ]);
     }),
   );
 

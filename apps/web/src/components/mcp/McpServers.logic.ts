@@ -58,8 +58,13 @@ export interface McpServerRow {
     /** `null` where this tab may not change it (the repo's). */
     readonly toggle: "on" | "off" | null;
     readonly remove: boolean;
-    /** The conversation's agent waits for a sign-in to this server: Sign in. */
-    readonly signIn: boolean;
+    /**
+     * `new`: the conversation's agent waits for a sign-in to this server;
+     * `again`: a URL server it failed on, whose sign-in may have run out.
+     */
+    readonly signIn: "new" | "again" | null;
+    /** The conversation's agent is signed in to it, or may be: Sign out. */
+    readonly signOut: boolean;
   };
 }
 
@@ -91,6 +96,9 @@ const STATE_WORD: Record<McpRowState, string> = {
   configured: "set up",
   absent: "not set up",
 };
+
+/** The agents that sign in to a remote server from Mate (`mcp.servers.signIn`). */
+const SIGNING_AGENTS: ReadonlySet<string> = new Set(["claudeAgent", "codex", "opencode"]);
 
 /** The most telling state first: what a row shows when no agent is the conversation's. */
 const STATE_PRIORITY: ReadonlyArray<McpServerState> = [
@@ -342,6 +350,16 @@ function buildRow(
       ? entry.agents.some((candidate) => candidate.state !== "disabled")
       : state !== "disabled";
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
+  // Only the conversation's own agent signs in or out, and only one that can; an agent that
+  // reaches the server by a token (`signedIn: false`) has no sign-in to renew or drop.
+  const signing = driver !== null && SIGNING_AGENTS.has(driver) && agent?.signedIn !== false;
+  const remote = entry.transport.type === "http";
+  const signIn: McpServerRow["actions"]["signIn"] =
+    driver !== null && state === "needs-auth"
+      ? "new"
+      : signing && remote && state === "failed"
+        ? "again"
+        : null;
   return {
     name: entry.name,
     managed: entry.managed,
@@ -371,7 +389,8 @@ function buildRow(
       // its .mcp.json, and the Mate runs on Zerops' tools.
       toggle: origin === "mate" ? (enabled ? "off" : "on") : null,
       remove: origin === "mate",
-      signIn: driver !== null && state === "needs-auth",
+      signIn,
+      signOut: signing && remote && state === "connected",
     },
   };
 }

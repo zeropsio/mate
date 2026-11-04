@@ -31,6 +31,8 @@ import * as Schema from "effect/Schema";
 export interface McpLiveServer {
   readonly name: string;
   readonly state: McpServerState;
+  /** Whether the agent holds an OAuth sign-in for it, where the agent says. */
+  readonly signedIn?: boolean;
   readonly error?: string;
   readonly tools?: ReadonlyArray<McpServerTool>;
 }
@@ -77,6 +79,8 @@ export interface ProviderAdapterMcp {
     name: string,
     redirectUri: string | undefined,
   ) => Effect.Effect<McpSignInStart | "signed-in", ProviderMcpError>;
+  /** Drops the agent's sign-in to a server; the server then asks for one again. */
+  readonly signOut?: (threadId: ThreadId, name: string) => Effect.Effect<void, ProviderMcpError>;
   /** The thread's running session's servers; `undefined` when it has none running. */
   readonly status: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<McpLiveServer> | undefined>;
   readonly reconnect: (threadId: ThreadId, name: string) => Effect.Effect<void, ProviderMcpError>;
@@ -249,6 +253,8 @@ export interface ClaudeMcpQuery {
   readonly mcpAuthenticate?: (name: string, redirectUri?: string) => Promise<unknown>;
   /** The CLI's `mcp_oauth_callback_url`: settles once the tokens are exchanged. */
   readonly mcpSubmitOAuthCallbackUrl?: (name: string, callbackUrl: string) => Promise<unknown>;
+  /** The CLI's `mcp_clear_auth`: revokes a remote server's tokens and reconnects it. */
+  readonly mcpClearAuth?: (name: string) => Promise<unknown>;
 }
 
 /** Signing in is the agent's own: it has no call for it, or answered something unknown. */
@@ -338,6 +344,13 @@ export function claudeMcpControl(sessions: {
           ),
         );
       }),
+    signOut: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (query) => {
+        const clear = query.mcpClearAuth;
+        return clear === undefined
+          ? Effect.fail(NO_SIGN_IN)
+          : fromPromise(() => clear.call(query, name)).pipe(Effect.asVoid);
+      }),
     configChanged: (change) =>
       Effect.forEach(
         unprofiled(sessions.all()),
@@ -382,6 +395,13 @@ export function codexMcpLiveServers(response: unknown): McpLiveServer[] {
           ? "needs-auth"
           : "configured";
     const error = optionalString(entry["toolsError"]);
+    const auth = entry["authStatus"];
+    const signedIn =
+      auth === "oAuth"
+        ? true
+        : auth === "bearerToken" || auth === "unsupported" || auth === "notLoggedIn"
+          ? false
+          : undefined;
     const tools = isRecord(entry["tools"])
       ? definedTools(
           Object.values(entry["tools"]).map((tool) =>
@@ -394,6 +414,7 @@ export function codexMcpLiveServers(response: unknown): McpLiveServer[] {
     servers.push({
       name,
       state,
+      ...(signedIn !== undefined ? { signedIn } : {}),
       ...(error !== undefined ? { error } : {}),
       ...(tools !== undefined && (state === "connected" || tools.length > 0) ? { tools } : {}),
     });
@@ -417,6 +438,8 @@ export interface CodexMcpRuntime {
         Error
       >)
     | undefined;
+  /** `codex mcp logout`, with the session's own binary and home. */
+  readonly logoutMcpServer?: ((name: string) => Effect.Effect<void, Error>) | undefined;
 }
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
@@ -479,6 +502,14 @@ export function codexMcpControl(sessions: {
           }),
         );
       }),
+    signOut: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (runtime) =>
+        runtime.logoutMcpServer === undefined
+          ? Effect.fail(NO_SIGN_IN)
+          : asMcpError(runtime.logoutMcpServer(name)).pipe(
+              Effect.andThen(Effect.ignore(runtime.reloadMcpServers ?? Effect.void)),
+            ),
+      ),
     // Codex reconnects by re-reading its config; the config already holds `enabled`.
     reconnect: (threadId) => reload(threadId),
     setEnabled: (threadId) => reload(threadId),
@@ -526,6 +557,8 @@ export interface OpenCodeMcpClient {
   readonly startAuth?: (name: string) => Promise<{ readonly authorizationUrl: string }>;
   /** `POST /mcp/{name}/auth/callback`: exchanges the code the provider sent. */
   readonly finishAuth?: (name: string, code: string) => Promise<unknown>;
+  /** `DELETE /mcp/{name}/auth`: forgets the server's credentials. */
+  readonly removeAuth?: (name: string) => Promise<unknown>;
 }
 
 export function openCodeMcpControl(sessions: {
@@ -562,6 +595,17 @@ export function openCodeMcpControl(sessions: {
             },
           })),
         );
+      }),
+    signOut: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (client) => {
+        const removeAuth = client.removeAuth;
+        if (removeAuth === undefined) return Effect.fail(NO_SIGN_IN);
+        // The open connection still carries the old token: reconnect it without one.
+        return fromPromise(async () => {
+          await removeAuth.call(client, name);
+          await client.disconnect(name).catch(() => undefined);
+          await client.connect(name);
+        });
       }),
     reconnect: (threadId, name) =>
       withClient(threadId, async (client) => {

@@ -171,6 +171,10 @@ export class McpServers extends Context.Service<
     readonly signIn: (
       input: McpServerSignInInput,
     ) => Effect.Effect<McpServerSignIn, McpServersError>;
+    /** Drops the conversation's agent's sign-in to a server. */
+    readonly signOut: (
+      input: McpServerTargetInput,
+    ) => Effect.Effect<McpServersList, McpServersError>;
     /** Finishes a `paste` sign-in with the address the browser landed on. */
     readonly finishSignIn: (
       input: McpServerFinishSignInInput,
@@ -227,6 +231,7 @@ export function mergeMcpServers(
           ? {
               driver: store.driver,
               state: liveServer.state,
+              ...(liveServer.signedIn !== undefined ? { signedIn: liveServer.signedIn } : {}),
               ...(liveServer.error !== undefined ? { error: liveServer.error } : {}),
               ...(liveServer.tools !== undefined ? { tools: liveServer.tools } : {}),
             }
@@ -618,8 +623,29 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
       return flow.name;
     });
 
+  const signOut: McpServers["Service"]["signOut"] = (input) =>
+    Effect.gen(function* () {
+      const operation = "mcp.servers.signOut";
+      const session = yield* sessionThread(input.threadId);
+      if (session === undefined) {
+        return yield* fail(
+          operation,
+          "Open a conversation with this Mate first: its agent is the one that signs out.",
+        );
+      }
+      yield* live
+        .signOut(session, input.name)
+        .pipe(
+          Effect.mapError((error) =>
+            fail(operation, `${input.name} can't sign out: ${error.detail}`, error),
+          ),
+        );
+      return yield* list(operation, input.threadId);
+    });
+
   return {
     list: (input) => list("mcp.servers.list", input.threadId),
+    signOut,
     add,
     remove,
     setEnabled,

@@ -53,6 +53,8 @@ export const MCP_WORDS = {
   url: "URL",
   reconnect: "Reconnect",
   signIn: "Sign in",
+  signInAgain: "Sign in again",
+  signOut: "Sign out",
   signInMate: "Finish signing in on the page that opened. This row updates when you come back.",
   signInOpenAgain: "Open it again",
   signInPaste:
@@ -281,12 +283,12 @@ function McpServerDetails(props: {
 }) {
   const { row, act } = props;
   const [pending, setPending] = useState<
-    "reconnect" | "toggle" | "remove" | "signIn" | "finish" | null
+    "reconnect" | "toggle" | "remove" | "signIn" | "signOut" | "finish" | null
   >(null);
   const [startedSigning, setSigning] = useState<Signing | null>(null);
   const [landed, setLanded] = useState("");
   // A sign-in in progress shows only while the agent still waits for one.
-  const signing = row.actions.signIn ? startedSigning : null;
+  const signing = row.actions.signIn === null ? null : startedSigning;
 
   const startSignIn = async () => {
     // Opened in the press itself, so no popup blocker stands in the way; pointed at the
@@ -326,7 +328,7 @@ function McpServerDetails(props: {
   const [armed, setArmed] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
-  const run = async (which: "reconnect" | "toggle" | "remove", action: McpAction) => {
+  const run = async (which: "reconnect" | "toggle" | "remove" | "signOut", action: McpAction) => {
     setPending(which);
     setFailure(null);
     const result = await act(action);
@@ -396,7 +398,7 @@ function McpServerDetails(props: {
           </>
         ) : (
           <>
-            {row.actions.signIn ? (
+            {row.actions.signIn === null ? null : (
               <Button
                 disabled={pending !== null}
                 onClick={() => void startSignIn()}
@@ -404,9 +406,9 @@ function McpServerDetails(props: {
                 variant="primary"
               >
                 {pending === "signIn" ? <Spinner size="xs" /> : null}
-                {MCP_WORDS.signIn}
+                {row.actions.signIn === "again" ? MCP_WORDS.signInAgain : MCP_WORDS.signIn}
               </Button>
-            ) : null}
+            )}
             {row.actions.reconnect ? (
               <Button
                 disabled={pending !== null}
@@ -435,6 +437,17 @@ function McpServerDetails(props: {
                 {row.actions.toggle === "on" ? MCP_WORDS.turnOn : MCP_WORDS.turnOff}
               </Button>
             )}
+            {row.actions.signOut ? (
+              <Button
+                disabled={pending !== null}
+                onClick={() => void run("signOut", { kind: "signOut", name: row.name })}
+                size="sm"
+                variant="secondary"
+              >
+                {pending === "signOut" ? <Spinner size="xs" /> : null}
+                {MCP_WORDS.signOut}
+              </Button>
+            ) : null}
             {row.actions.remove ? (
               <Button
                 disabled={pending !== null}

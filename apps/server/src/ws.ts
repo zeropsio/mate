@@ -1157,6 +1157,11 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             WS_METHODS.mcpServersSignIn,
             withMcpServers(WS_METHODS.mcpServersSignIn, (mcp) => mcp.signIn(input)),
           ),
+        [WS_METHODS.mcpServersSignOut]: (input) =>
+          admit(
+            WS_METHODS.mcpServersSignOut,
+            withMcpServers(WS_METHODS.mcpServersSignOut, (mcp) => mcp.signOut(input)),
+          ),
         [WS_METHODS.mcpServersFinishSignIn]: (input) =>
           admit(
             WS_METHODS.mcpServersFinishSignIn,

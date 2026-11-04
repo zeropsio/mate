@@ -90,6 +90,7 @@ export const RPC_REQUIRED_SCOPES = {
   [WS_METHODS.mcpServersReconnect]: AuthOrchestrationOperateScope,
   [WS_METHODS.mcpServersSignIn]: AuthOrchestrationOperateScope,
   [WS_METHODS.mcpServersFinishSignIn]: AuthOrchestrationOperateScope,
+  [WS_METHODS.mcpServersSignOut]: AuthOrchestrationOperateScope,
   [WS_METHODS.subscribeVcsStatus]: AuthOrchestrationReadScope,
   // `git ls-remote` against the checkout's own remote: a read of what is
   // already there, with no ref written and nothing fetched (guide 4.5).

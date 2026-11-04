@@ -296,6 +296,7 @@ export const WS_METHODS = {
   mcpServersReconnect: "mcp.servers.reconnect",
   mcpServersSignIn: "mcp.servers.signIn",
   mcpServersFinishSignIn: "mcp.servers.finishSignIn",
+  mcpServersSignOut: "mcp.servers.signOut",
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
@@ -814,6 +815,12 @@ const WsMcpServersSignInRpc = Rpc.make(WS_METHODS.mcpServersSignIn, {
 
 const WsMcpServersFinishSignInRpc = Rpc.make(WS_METHODS.mcpServersFinishSignIn, {
   payload: McpServerFinishSignInInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersSignOutRpc = Rpc.make(WS_METHODS.mcpServersSignOut, {
+  payload: McpServerTargetInput,
   success: McpServersList,
   error: McpServersRpcError,
 });
@@ -1517,6 +1524,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpServersReconnectRpc,
   WsMcpServersSignInRpc,
   WsMcpServersFinishSignInRpc,
+  WsMcpServersSignOutRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

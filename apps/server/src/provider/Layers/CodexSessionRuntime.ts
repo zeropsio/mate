@@ -41,7 +41,7 @@ import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import type { CodexFileChange, CodexThreadSetup } from "../../spi/codexThreadProfile.ts";
-import { CODEX_SIGN_IN_TIMEOUT_SECONDS } from "../../spi/mcpControl.ts";
+import { CODEX_SIGN_IN_TIMEOUT_SECONDS, ProviderMcpError } from "../../spi/mcpControl.ts";
 import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
@@ -232,6 +232,8 @@ export interface CodexSessionRuntimeShape {
     },
     CodexSessionRuntimeError
   >;
+  /** Drops a server's OAuth sign-in: `codex mcp logout`, with this session's binary and home. */
+  readonly logoutMcpServer?: (name: string) => Effect.Effect<void, ProviderMcpError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -2878,6 +2880,34 @@ export const makeCodexSessionRuntime = (
           });
           return { authorizationUrl, completed: Deferred.await(completed) };
         }),
+      logoutMcpServer: (name) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const logout = yield* resolveSpawnCommand(options.binaryPath, ["mcp", "logout", name], {
+              env,
+              extendEnv,
+            });
+            const process = yield* spawner.spawn(
+              ChildProcess.make(logout.command, logout.args, {
+                cwd: options.cwd,
+                env,
+                extendEnv,
+                shell: logout.shell,
+              }),
+            );
+            const code = yield* process.exitCode;
+            if (code !== 0) {
+              return yield* new ProviderMcpError({
+                detail: `codex mcp logout ${name} exited with ${String(code)}`,
+              });
+            }
+          }),
+        ).pipe(
+          Effect.catchTags({
+            PlatformError: () =>
+              Effect.fail(new ProviderMcpError({ detail: `codex mcp logout ${name} didn't run` })),
+          }),
+        ),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);
