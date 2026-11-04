@@ -6,6 +6,7 @@ import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
 import {
   HQ_ATTENTION_HEALTH_KEY,
+  hqScopeKey,
   type HqScopeDelivery,
   type HqStreamMessage,
 } from "@t3tools/shared/hqStream";
@@ -16,7 +17,11 @@ import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
 import { AtomRegistry } from "effect/reactivity";
 
-import { graceOver } from "../__fixtures__/account.ts";
+import { graceOver, liveProjects, projectValue, zeropsVersion } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
+import { projectsScope } from "../families/project.ts";
+import { accountReadsAtom } from "../reads.ts";
+import { followMateRoles } from "../../zerops/account/mateRoles.ts";
 import {
   hqFixtureWire,
   HQ_FIXTURE_ACCESS_TOKEN,
@@ -880,6 +885,109 @@ describe("hqNavigationLink", () => {
       expect(phase(store, hqAppsScope(ORG))).toBe("baselining");
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  // Brief W7 fix stage (Karel, 2026-11-04): a re-door lifts no refusal; the person's role on the
+  // project changing in Zerops' own data is the one input that asks HQ's refused scopes again.
+  it.effect(
+    "When the person's role on a project changes in the client's own live data, HQ's refused scopes of that project are asked again, and no other project's",
+    () =>
+      Effect.gen(function* () {
+        const registry = AtomRegistry.make();
+        const store = makeAccountStore(registry);
+        registry.set(accountReadsAtom, {
+          data: store.data,
+          orgId: ORG,
+          demandDetail: () => () => undefined,
+          renewHeld: () => undefined,
+        });
+        const roles = (roleCode: string) => [{ clientUserId: "member", roleCode }];
+        for (const input of [
+          ...membershipInputs("BASIC_USER", false, 1, ORG),
+          ...liveProjects(ORG, [
+            { id: "ada", userRoles: roles("NO_ACCESS") },
+            { id: "bob", userRoles: roles("NO_ACCESS") },
+          ]),
+        ])
+          store.dispatch(input);
+        const fixture = hqFixtureWire();
+        const { fiber, link } = yield* run(store, fixture);
+        yield* fixture.send(
+          navigation("scope-reset", 3, [
+            { key: "app:shop", value: app("shop", "Shop", ["ada"]) },
+            { key: "app:cafe", value: app("cafe", "Cafe", ["bob"]) },
+            { key: "project:ada", value: project("ada", "shop") },
+            { key: "project:bob", value: project("bob", "cafe") },
+          ]),
+        );
+        yield* fixture.send(ready(3));
+        yield* settle;
+        link.demandDetail({ family: "hqAppDetail", ownerId: "shop" });
+        link.demandDetail({ family: "hqAppDetail", ownerId: "cafe" });
+        yield* settle;
+        const stopRoles = followMateRoles(registry, link.roleChanged);
+        const refusedScopes = [
+          { kind: "app-detail", appId: "shop" },
+          { kind: "attention", projectId: "ada", health: "apart" },
+          { kind: "app-detail", appId: "cafe" },
+          { kind: "attention", projectId: "bob", health: "apart" },
+        ] as const;
+        for (const scope of refusedScopes)
+          yield* fixture.send({
+            type: "scope-error",
+            scope,
+            code: "forbidden",
+            reason: "No access.",
+            disposition: "refused",
+          });
+        yield* settle;
+        for (const scope of [
+          hqAppDetailScope(ORG, "shop"),
+          hqMateScope(ORG, "ada"),
+          hqAppDetailScope(ORG, "cafe"),
+          hqMateScope(ORG, "bob"),
+        ])
+          expect(phase(store, scope)).toBe("refused");
+        const before = fixture.sent.length;
+
+        // Zerops pushes Ada's project row: the person is a Basic user there now.
+        store.dispatch({
+          kind: "delivery",
+          via: "zerops-realtime",
+          scopes: [{ scope: projectsScope(ORG), generation: 1 }],
+          reset: false,
+          rows: [
+            {
+              family: "project",
+              id: "ada",
+              value: projectValue({ id: "ada", userRoles: roles("BASIC_USER") }),
+              revision: zeropsVersion(2),
+            },
+          ],
+          removals: [],
+        });
+        yield* settle;
+
+        const sent = fixture.sent.slice(before).map(({ request }) => request);
+        const named = (type: "retry" | "subscribe") =>
+          sent
+            .flatMap((request) =>
+              request.type !== type
+                ? []
+                : (request.scopes ?? []).map((entry) => ("scope" in entry ? entry.scope : entry)),
+            )
+            .map(hqScopeKey)
+            .toSorted();
+        const ada = [refusedScopes[0], refusedScopes[1]].map(hqScopeKey).toSorted();
+        expect(named("retry")).toEqual(ada);
+        expect(named("subscribe")).toEqual(ada);
+        expect(phase(store, hqAppDetailScope(ORG, "shop"))).not.toBe("refused");
+        expect(phase(store, hqMateScope(ORG, "ada"))).not.toBe("refused");
+        expect(phase(store, hqAppDetailScope(ORG, "cafe"))).toBe("refused");
+        expect(phase(store, hqMateScope(ORG, "bob"))).toBe("refused");
+        stopRoles();
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("observes each placed Mate's attention, and lets it go once HQ places it no more", () =>

@@ -91,6 +91,7 @@ export {
   type ZeropsPrincipalVerdict,
   type ZeropsSessionCalls,
 } from "../zerops/data/zeropsSession.ts";
+export { followMateRoles } from "../zerops/account/mateRoles.ts";
 export { endIssuedSession } from "./adapters/issuedSessions.ts";
 export { makeBuildLogTransport } from "./adapters/buildLog.ts";
 export { makeVaultReveal, type VaultReveal, type VaultRevealed } from "./adapters/vaultReveal.ts";
