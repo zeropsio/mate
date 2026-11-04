@@ -629,6 +629,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
         zerops: { mintIntegrationToken: unused, deleteIntegrationToken: unused },
         apiOf: () => ({
           answerKeptGit: unused,
+          completeProjectDeletion: unused,
           updateMate: mock.updateMate,
           commentOnChange: unused,
           renameApp: unused,

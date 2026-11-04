@@ -209,6 +209,7 @@ export const HQ_CLIENT_VERBS = [
   "mateTicket",
   "openScopeSocket",
   "lifecycleWrite",
+  "completeProjectDeletion",
   "lifecycleReceipt",
   "gitTargetWrite",
   "gitTargetReceipt",
