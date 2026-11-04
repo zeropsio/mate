@@ -157,6 +157,19 @@ export function mateRecordPermission(
 }
 
 /**
+ * Finishing a deletion another person prepared, once Zerops proved its project gone: the delete-Mate
+ * rule (`mateRecordPermission`) over the project as a gone one, which no grant names, so the
+ * organization role decides — an owner or an admin. The preparer finishes their own by its receipt.
+ */
+export function finishDeletionPermission(facts: PermissionFacts, projectId: string): Decision {
+  return mateRecordPermission(
+    { member: facts.member, project: (id) => (id === projectId ? {} : facts.project(id)) },
+    projectId,
+    { create: false, held: "mate" },
+  );
+}
+
+/**
  * Attaching a project to an application as `kind`, from how it is held now (`held`, `none` for
  * nowhere). `projectId` `null` is a project the person is about to make: theirs as its owner.
  */
