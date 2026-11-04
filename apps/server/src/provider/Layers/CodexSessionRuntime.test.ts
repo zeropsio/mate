@@ -372,7 +372,9 @@ describe("buildTurnStartParams", () => {
         prompt: "Ship it",
       });
 
-      NodeAssert.deepStrictEqual(params, {
+      const { additionalContext, ...rest } = params;
+      NodeAssert.ok(additionalContext?.mate_runtime);
+      NodeAssert.deepStrictEqual(rest, {
         threadId: "provider-thread-1",
         summary: "auto",
         approvalPolicy: "on-request",
@@ -399,7 +401,10 @@ describe("buildTurnStartParams", () => {
       }),
     );
 
-    NodeAssert.deepStrictEqual(params, {
+    // Mate's context still rides the turn; only the mode is left to Codex.
+    const { additionalContext, ...rest } = params;
+    NodeAssert.ok(additionalContext?.mate_runtime);
+    NodeAssert.deepStrictEqual(rest, {
       threadId: "provider-thread-1",
       summary: "auto",
       approvalPolicy: "untrusted",

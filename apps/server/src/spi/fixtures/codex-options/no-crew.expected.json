@@ -53,14 +53,6 @@
           },
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "medium"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",
@@ -195,14 +187,6 @@
           "serviceTier": "fast",
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "high"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",
@@ -342,14 +326,6 @@
           },
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "medium"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",

@@ -269,19 +269,10 @@ describe("the Mate's persona on the Codex adapter", () => {
       yield* settings.updateSettings({ persona: from });
       const { adapter, wire } = yield* withProfile(PROFILE);
       yield* adapter.startSession(startInput({ threadId }));
-      yield* adapter.sendTurn({
-        threadId,
-        input: "one",
-        attachments: [],
-        interactionMode: "default",
-      });
+      // As the engine sends a default-mode turn: with no interaction mode at all.
+      yield* adapter.sendTurn({ threadId, input: "one", attachments: [] });
       yield* settings.updateSettings({ persona: null });
-      yield* adapter.sendTurn({
-        threadId,
-        input: "two",
-        attachments: [],
-        interactionMode: "default",
-      });
+      yield* adapter.sendTurn({ threadId, input: "two", attachments: [] });
       return personaEntries(wire);
     });
 

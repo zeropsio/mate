@@ -592,20 +592,23 @@ function buildCodexTurnInstructions(input: {
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly persona?: string;
 }): Pick<CodexTurnStartParamsWithCollaborationMode, "collaborationMode" | "additionalContext"> {
-  if (input.interactionMode === undefined) {
-    return {};
-  }
   const model = normalizeCodexModelSlug(input.model) ?? DEFAULT_MODEL;
   const reasoningEffort = input.effort ?? "medium";
   return {
-    collaborationMode: {
-      mode: input.interactionMode,
-      settings: {
-        model,
-        reasoning_effort: reasoningEffort,
-        developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
-      },
-    },
+    // The engine names only a mode other than the default; a turn without one keeps Codex's own.
+    ...(input.interactionMode === undefined
+      ? {}
+      : {
+          collaborationMode: {
+            mode: input.interactionMode,
+            settings: {
+              model,
+              reasoning_effort: reasoningEffort,
+              developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
+            },
+          },
+        }),
+    // Every turn carries Mate's context: default-mode turns arrive without a mode.
     additionalContext: buildCodexAdditionalContext(
       { model, modelName: input.modelName, reasoningEffort },
       input.persona,
