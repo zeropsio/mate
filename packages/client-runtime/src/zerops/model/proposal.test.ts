@@ -349,8 +349,8 @@ describe("readZeropsProposal: an MCP server", () => {
   const linear = {
     name: "linear",
     title: "Linear",
-    transport: { type: "http", url: "https://mcp.linear.app/mcp" },
-    auth: { kind: "oauth" },
+    transport: { type: "http" as const, url: "https://mcp.linear.app/mcp" },
+    auth: { kind: "oauth" as const },
   };
   const head = {
     id: base.id,
