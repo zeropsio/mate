@@ -77,17 +77,21 @@ describe("who answered, and who can", () => {
   });
 });
 
-describe("an ask docks above the composer while the Mate is stopped on it", () => {
-  it.each<{ state: AskStateKind; running: boolean; want: boolean }>([
-    { state: "waiting", running: false, want: true },
-    { state: "waiting", running: true, want: false },
-    { state: "working", running: false, want: true },
-    { state: "failed", running: false, want: true },
-    { state: "othersToAnswer", running: false, want: true },
-    { state: "done", running: false, want: false },
-    { state: "notNow", running: false, want: false },
-    { state: "replaced", running: false, want: false },
-  ])("$state, turn running $running: docks $want", ({ state, running, want }) => {
-    expect(docksAboveComposer(state, running)).toBe(want);
-  });
+describe("an ask docks above the composer while the Mate is stopped on it and its card is out of view", () => {
+  it.each<{ state: AskStateKind; running: boolean; cardOnScreen: boolean; want: boolean }>([
+    { state: "waiting", running: false, cardOnScreen: false, want: true },
+    { state: "waiting", running: false, cardOnScreen: true, want: false },
+    { state: "waiting", running: true, cardOnScreen: false, want: false },
+    { state: "working", running: false, cardOnScreen: false, want: true },
+    { state: "failed", running: false, cardOnScreen: false, want: true },
+    { state: "othersToAnswer", running: false, cardOnScreen: false, want: true },
+    { state: "done", running: false, cardOnScreen: false, want: false },
+    { state: "notNow", running: false, cardOnScreen: false, want: false },
+    { state: "replaced", running: false, cardOnScreen: false, want: false },
+  ])(
+    "$state, turn running $running, card on screen $cardOnScreen: docks $want",
+    ({ state, running, cardOnScreen, want }) => {
+      expect(docksAboveComposer(state, { turnRunning: running, cardOnScreen })).toBe(want);
+    },
+  );
 });

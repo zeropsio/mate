@@ -3,7 +3,12 @@ import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { showAskInConversation, useAskReveal } from "./askReveal";
+import {
+  showAskInConversation,
+  useAskCardOnScreen,
+  useAskReveal,
+  useReportAskOnScreen,
+} from "./askReveal";
 
 let root: Root | undefined;
 
@@ -56,5 +61,48 @@ describe("Show in conversation", () => {
     const { scrolled } = await mountConversation();
     await act(async () => showAskInConversation({ askId: "q1", holds: () => false }));
     expect(scrolled).toEqual([]);
+  });
+});
+
+describe("the dock stands only while the card is out of view", () => {
+  it("a card in view keeps the ask off the composer; scrolled away or not drawn, it docks", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    let report: ((entries: Array<{ intersectionRatio: number }>) => void) | undefined;
+    vi.stubGlobal(
+      "IntersectionObserver",
+      class {
+        constructor(callback: (entries: Array<{ intersectionRatio: number }>) => void) {
+          report = callback;
+        }
+        observe() {}
+        disconnect() {}
+      },
+    );
+    const seen: boolean[] = [];
+    function Dock() {
+      seen.push(useAskCardOnScreen("q1"));
+      return null;
+    }
+    function Card() {
+      return <div ref={useReportAskOnScreen("q1")} />;
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () =>
+      root!.render(
+        <>
+          <Dock />
+          <Card />
+        </>,
+      ),
+    );
+    expect(seen.at(-1)).toBe(true);
+    await act(async () => report!([{ intersectionRatio: 0.1 }]));
+    expect(seen.at(-1)).toBe(false);
+    await act(async () => report!([{ intersectionRatio: 0.9 }]));
+    expect(seen.at(-1)).toBe(true);
+    await act(async () => root!.render(<Dock />));
+    expect(seen.at(-1)).toBe(false);
   });
 });

@@ -14,6 +14,7 @@ import { Badge } from "../ui/badge";
 import { Button } from "../ui/button";
 import { Card } from "../ui/card";
 import { Spinner } from "../ui/spinner";
+import { useReportAskOnScreen } from "./askReveal";
 import {
   type AskState,
   type AskStateKind,
@@ -50,6 +51,17 @@ function WhereChip({ where }: { readonly where: AskWhere }) {
 }
 
 export function AskCard(props: AskCardProps) {
+  return props.density === "compact" ? <AskCardFace {...props} /> : <FullAskCard {...props} />;
+}
+
+/** The conversation's card says whether it is in view, so the dock shows only while it is not. */
+function FullAskCard(props: AskCardProps) {
+  return <AskCardFace {...props} cardRef={useReportAskOnScreen(props.askId)} />;
+}
+
+function AskCardFace(
+  props: AskCardProps & { readonly cardRef?: ((node: HTMLElement | null) => void) | undefined },
+) {
   const { title, why } = props;
   const marks = {
     "aria-label": title,
@@ -94,7 +106,7 @@ export function AskCard(props: AskCardProps) {
   }
 
   return (
-    <Card {...marks} size="sm" variant="flat">
+    <Card {...marks} ref={props.cardRef} size="sm" variant="flat">
       <div className="grid min-w-0 gap-3">
         <div className="grid min-w-0 justify-items-start gap-1.5">
           <WhereChip where={props.where} />

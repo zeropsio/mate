@@ -87,11 +87,14 @@ export function askWhomWords(names: ReadonlyArray<string>): string | null {
 
 /**
  * Whether an ask stands above the composer as well as in the conversation: while it still waits
- * on someone and the Mate's turn has stopped on it. While the turn runs, the conversation's card
- * is where the person is already looking.
+ * on someone, the Mate's turn has stopped on it, and its card is out of view. While the turn runs,
+ * or while the card is on screen, the card is where the person is already looking.
  */
-export function docksAboveComposer(state: AskStateKind, turnRunning: boolean): boolean {
-  if (turnRunning) return false;
+export function docksAboveComposer(
+  state: AskStateKind,
+  where: { readonly turnRunning: boolean; readonly cardOnScreen: boolean },
+): boolean {
+  if (where.turnRunning || where.cardOnScreen) return false;
   return (
     state === "waiting" || state === "working" || state === "failed" || state === "othersToAnswer"
   );
