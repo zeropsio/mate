@@ -30,7 +30,12 @@ import {
   type McpServerRow,
   type McpTabState,
 } from "./McpServers.logic";
-import { useMcpServers, type McpAction, type McpActionResult } from "./useMcpServers";
+import {
+  useMcpServers,
+  type McpAction,
+  type McpActionResult,
+  type McpSignInResult,
+} from "./useMcpServers";
 import { Badge } from "~/components/ui/badge";
 import { RightPanelPageEdge } from "~/components/RightPanelPage";
 
@@ -47,6 +52,13 @@ export const MCP_WORDS = {
   runs: "Runs",
   url: "URL",
   reconnect: "Reconnect",
+  signIn: "Sign in",
+  signInMate: "Finish signing in on the page that opened. This row updates when you come back.",
+  signInOpenAgain: "Open it again",
+  signInPaste:
+    "After you sign in, the browser lands on a page that doesn't load. Copy that page's address and paste it here.",
+  signInPastePlaceholder: "http://localhost:…/callback?code=…",
+  signInFinish: "Finish",
   turnOff: "Turn off",
   turnOn: "Turn on",
   remove: "Remove",
@@ -75,7 +87,7 @@ export function McpPanel(props: {
   /** The agent the open conversation runs on: whose state each dot carries. */
   readonly driver: ProviderDriverKind | null;
 }) {
-  const { state, refresh, act } = useMcpServers({
+  const { state, refresh, act, signIn } = useMcpServers({
     environmentId: props.environmentId,
     threadId: props.threadId,
   });
@@ -84,6 +96,7 @@ export function McpPanel(props: {
       act={act}
       driver={props.driver}
       onRetry={refresh}
+      signIn={signIn}
       state={state}
       observe={<ObserveCredentialControl environmentId={props.environmentId} />}
     />
@@ -95,6 +108,7 @@ export function McpPanelBody(props: {
   readonly state: McpTabState;
   readonly driver: ProviderDriverKind | null;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
+  readonly signIn: (name: string) => Promise<McpSignInResult>;
   readonly onRetry: () => void;
 }) {
   const { state, driver, act } = props;
@@ -141,6 +155,8 @@ export function McpPanelBody(props: {
               <McpServerRowView
                 act={act}
                 key={row.name}
+                onRefresh={props.onRetry}
+                signIn={props.signIn}
                 onOpenChange={(next) => toggleOpen(row.name, next)}
                 open={open.has(row.name)}
                 row={row}
@@ -168,6 +184,8 @@ function McpServerRowView(props: {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
+  readonly signIn: (name: string) => Promise<McpSignInResult>;
+  readonly onRefresh: () => void;
 }) {
   const { row } = props;
   return (
@@ -222,7 +240,12 @@ function McpServerRowView(props: {
           />
         </CollapsibleTrigger>
         <CollapsiblePanel>
-          <McpServerDetails act={props.act} row={row} />
+          <McpServerDetails
+            act={props.act}
+            onRefresh={props.onRefresh}
+            row={row}
+            signIn={props.signIn}
+          />
         </CollapsiblePanel>
       </Collapsible>
     </li>
@@ -244,12 +267,62 @@ function DetailBlock({
   );
 }
 
+interface Signing {
+  readonly flow: string;
+  readonly url: string;
+  readonly landing: "mate" | "paste";
+}
+
 function McpServerDetails(props: {
   readonly row: McpServerRow;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
+  readonly signIn: (name: string) => Promise<McpSignInResult>;
+  readonly onRefresh: () => void;
 }) {
   const { row, act } = props;
-  const [pending, setPending] = useState<"reconnect" | "toggle" | "remove" | null>(null);
+  const [pending, setPending] = useState<
+    "reconnect" | "toggle" | "remove" | "signIn" | "finish" | null
+  >(null);
+  const [startedSigning, setSigning] = useState<Signing | null>(null);
+  const [landed, setLanded] = useState("");
+  // A sign-in in progress shows only while the agent still waits for one.
+  const signing = row.actions.signIn ? startedSigning : null;
+
+  const startSignIn = async () => {
+    // Opened in the press itself, so no popup blocker stands in the way; pointed at the
+    // provider's page once the Mate answers, with no way back to this window.
+    const tab = window.open("", "_blank");
+    if (tab !== null) tab.opener = null;
+    setPending("signIn");
+    setFailure(null);
+    const result = await props.signIn(row.name);
+    setPending(null);
+    if (!result.ok || result.signIn.kind === "signed-in") {
+      tab?.close();
+      if (result.ok) props.onRefresh();
+      else setFailure(result.message);
+      return;
+    }
+    const { flow, url, landing } = result.signIn;
+    if (tab !== null) tab.location.href = url;
+    else window.open(url, "_blank", "noopener,noreferrer");
+    setLanded("");
+    setSigning({ flow, url, landing });
+  };
+
+  const finishSignIn = async (current: Signing) => {
+    setPending("finish");
+    setFailure(null);
+    const result = await act({
+      kind: "finishSignIn",
+      name: row.name,
+      flow: current.flow,
+      landed: landed.trim(),
+    });
+    setPending(null);
+    if (result.ok) setSigning(null);
+    else setFailure(result.message);
+  };
   const [armed, setArmed] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
 
@@ -323,6 +396,17 @@ function McpServerDetails(props: {
           </>
         ) : (
           <>
+            {row.actions.signIn ? (
+              <Button
+                disabled={pending !== null}
+                onClick={() => void startSignIn()}
+                size="sm"
+                variant="primary"
+              >
+                {pending === "signIn" ? <Spinner size="xs" /> : null}
+                {MCP_WORDS.signIn}
+              </Button>
+            ) : null}
             {row.actions.reconnect ? (
               <Button
                 disabled={pending !== null}
@@ -367,6 +451,51 @@ function McpServerDetails(props: {
           </>
         )}
       </div>
+      {signing === null ? null : signing.landing === "mate" ? (
+        <p className="text-xs text-muted-foreground" data-mcp-signing="mate">
+          {MCP_WORDS.signInMate}{" "}
+          <InlineButton
+            onClick={() => window.open(signing.url, "_blank", "noopener,noreferrer")}
+            tone="muted"
+          >
+            {MCP_WORDS.signInOpenAgain}
+          </InlineButton>
+        </p>
+      ) : (
+        <form
+          className="flex flex-col gap-1.5"
+          data-mcp-signing="paste"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void finishSignIn(signing);
+          }}
+        >
+          <span className="text-xs text-muted-foreground">{MCP_WORDS.signInPaste}</span>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <Input
+                aria-label={MCP_WORDS.signInPaste}
+                autoComplete="off"
+                nativeInput
+                onChange={(event) => setLanded(event.target.value)}
+                placeholder={MCP_WORDS.signInPastePlaceholder}
+                size="sm"
+                spellCheck={false}
+                value={landed}
+              />
+            </div>
+            <Button
+              disabled={pending !== null || landed.trim() === ""}
+              size="sm"
+              type="submit"
+              variant="secondary"
+            >
+              {pending === "finish" ? <Spinner size="xs" /> : null}
+              {MCP_WORDS.signInFinish}
+            </Button>
+          </div>
+        </form>
+      )}
       {failure === null ? null : (
         <p className="text-xs text-destructive-foreground" role="alert">
           {failure}

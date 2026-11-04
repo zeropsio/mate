@@ -9,6 +9,7 @@ const render = (state: McpTabState) =>
   renderToStaticMarkup(
     <McpPanelBody
       act={async () => ({ ok: true })}
+      signIn={async () => ({ ok: false, message: "" })}
       driver={CLAUDE}
       onRetry={() => undefined}
       state={state}

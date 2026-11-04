@@ -9,7 +9,9 @@
  * read failed over a list), `busy` (a read in flight over a list), `empty`.
  * `?agent=` — whose dots: `claudeAgent` (the default), `codex`, `cursor`,
  * `opencode`. Actions answer after 600 ms by changing the fixture; `?fail=1`
- * makes every action fail as the server does today. `?theme=dark` for dark.
+ * makes every action fail as the server does today. Sign in (github) opens an
+ * example page; `?landing=mate` lands back on the Mate, otherwise the tab asks
+ * for the pasted address. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-mcp.html`. Fixtures only: nothing here
  * ships, and no route imports this module.
@@ -22,7 +24,7 @@ import { RightPanelPage } from "~/components/RightPanelPage";
 import { McpPanelBody } from "~/components/mcp/McpPanel";
 import { MCP_TAB_START, type McpTabState } from "~/components/mcp/McpServers.logic";
 import { MCP_SERVERS_FIXTURE } from "~/components/mcp/mcpServersFixture";
-import type { McpAction, McpActionResult } from "~/components/mcp/useMcpServers";
+import type { McpAction, McpActionResult, McpSignInResult } from "~/components/mcp/useMcpServers";
 import { RightPanelTabs } from "~/components/RightPanelTabs";
 import { resolveRightPanelAvailability } from "~/rightPanelKinds";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
@@ -35,6 +37,7 @@ const AGENT = ProviderDriverKind.make(params.get("agent") ?? "claudeAgent");
 const FAIL = params.get("fail") === "1";
 const MAXIMIZED = params.get("max") === "1";
 const MENU = Number(params.get("menu") ?? 435);
+const LANDING = params.get("landing") === "mate" ? "mate" : "paste";
 const noop = () => {};
 
 const START: Record<string, McpTabState> = {
@@ -75,6 +78,7 @@ function applyAction(list: McpServersList, action: McpAction): McpServersList {
               },
         ),
       };
+    case "finishSignIn":
     case "reconnect":
       return {
         ...list,
@@ -84,7 +88,7 @@ function applyAction(list: McpServersList, action: McpAction): McpServersList {
             : {
                 ...entry,
                 agents: entry.agents.map((agent) =>
-                  agent.state === "failed"
+                  agent.state === "failed" || agent.state === "needs-auth"
                     ? { driver: agent.driver, state: "connected" as const }
                     : agent,
                 ),
@@ -111,9 +115,18 @@ function Tab() {
     }));
     return { ok: true };
   };
+  const signIn = async (): Promise<McpSignInResult> => {
+    await new Promise((resolve) => setTimeout(resolve, 600));
+    return FAIL
+      ? { ok: false, message: "Not built yet." }
+      : {
+          ok: true,
+          signIn: { kind: "open", url: "https://example.com/", landing: LANDING, flow: "f" },
+        };
+  };
   return (
     <RightPanelPage kind="mcp" mate="Nova">
-      <McpPanelBody act={act} driver={AGENT} onRetry={noop} state={state} />
+      <McpPanelBody act={act} driver={AGENT} onRetry={noop} signIn={signIn} state={state} />
     </RightPanelPage>
   );
 }

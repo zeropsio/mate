@@ -507,3 +507,41 @@ it("a Git probe retains the owner's negative, while a refused read never invents
   reads.close();
   registry.dispose();
 });
+
+it("starting an MCP sign-in leaves the tab's server list as the Mate last answered it", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const target = { environmentId: file.environmentId, input: {} };
+  const listed = { agents: ["claudeAgent" as const], servers: [] };
+  const reads = makeWorkspaceReads(store, {
+    read: () => Effect.succeed(listed),
+  } as WorkspaceWire);
+  const release = reads.demand("mcp", target);
+  await Promise.resolve();
+  const act = makeWorkspaceActions({
+    store,
+    current: () => true,
+    makeId: () => "mcp-sign-in",
+    mcpAnswer: reads.mcpAnswer,
+    wire: {
+      call: () =>
+        Effect.succeed({
+          kind: "open",
+          url: "https://auth.example.com/a",
+          landing: "mate",
+          flow: "f",
+        }),
+    } as WorkspaceMutationWire,
+  });
+  expect(
+    (await act("mate-mcp-sign-in", { environmentId: file.environmentId, input: { name: "adobe" } }))
+      ._tag,
+  ).toBe("Success");
+  expect(workspaceReading("mcp").derive(readsOfState(store.state()), target).result).toMatchObject({
+    _tag: "Success",
+    value: listed,
+  });
+  release();
+  reads.close();
+  registry.dispose();
+});

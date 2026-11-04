@@ -21,6 +21,7 @@ it("pressing the built-in server's row opens its tools", async () => {
         <McpPanelBody
           driver={driver}
           act={async () => ({ ok: true })}
+          signIn={async () => ({ ok: false, message: "" })}
           onRetry={() => {}}
           state={{
             ...MCP_TAB_START,

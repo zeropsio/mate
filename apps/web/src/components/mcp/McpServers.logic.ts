@@ -58,6 +58,8 @@ export interface McpServerRow {
     /** `null` where this tab may not change it (the repo's). */
     readonly toggle: "on" | "off" | null;
     readonly remove: boolean;
+    /** The conversation's agent waits for a sign-in to this server: Sign in. */
+    readonly signIn: boolean;
   };
 }
 
@@ -369,6 +371,7 @@ function buildRow(
       // its .mcp.json, and the Mate runs on Zerops' tools.
       toggle: origin === "mate" ? (enabled ? "off" : "on") : null,
       remove: origin === "mate",
+      signIn: driver !== null && state === "needs-auth",
     },
   };
 }

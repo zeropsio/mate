@@ -336,22 +336,33 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     {
       name: "zerops",
       driver: CLAUDE,
-      actions: { reconnect: true, toggle: null, remove: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
     },
     {
       name: "playwright",
       driver: CODEX,
-      actions: { reconnect: true, toggle: "off", remove: true },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
     },
     {
       name: "sentry",
       driver: CLAUDE,
-      actions: { reconnect: false, toggle: "on", remove: true },
+      actions: { reconnect: false, toggle: "on", remove: true, signIn: false },
     },
     {
       name: "linear",
       driver: OPENCODE,
-      actions: { reconnect: false, toggle: "off", remove: true },
+      actions: { reconnect: false, toggle: "off", remove: true, signIn: false },
+    },
+    // A remote server waiting for a sign-in offers one, on the agent that waits for it.
+    {
+      name: "github",
+      driver: CLAUDE,
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: true },
+    },
+    {
+      name: "github",
+      driver: CURSOR,
+      actions: { reconnect: false, toggle: "off", remove: true, signIn: false },
     },
   ])("$name for $driver: its actions", ({ name, driver, actions }) => {
     expect(rowNamed(name, driver).actions).toEqual(actions);
@@ -369,14 +380,14 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: undefined,
       managed: false,
       origin: "mate",
-      actions: { reconnect: true, toggle: "off", remove: true },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
     },
     {
       case: "a user-scope one",
       scope: "user",
       managed: false,
       origin: "mate",
-      actions: { reconnect: true, toggle: "off", remove: true },
+      actions: { reconnect: true, toggle: "off", remove: true, signIn: false },
     },
     // The repo's .mcp.json is edited there, not here: shown, reconnected, never turned off or removed.
     {
@@ -384,7 +395,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: "project",
       managed: false,
       origin: "repo",
-      actions: { reconnect: true, toggle: null, remove: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
     },
     {
       // The Mate runs on Zerops' tools: shown and reconnected, never turned off here.
@@ -392,7 +403,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       scope: undefined,
       managed: true,
       origin: "builtin",
-      actions: { reconnect: true, toggle: null, remove: false },
+      actions: { reconnect: true, toggle: null, remove: false, signIn: false },
     },
   ])("$case: where it comes from and what may change it", ({ scope, managed, origin, actions }) => {
     const list: McpServersList = {

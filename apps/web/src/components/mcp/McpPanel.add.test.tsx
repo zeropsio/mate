@@ -22,6 +22,7 @@ beforeEach(() => {
       <RightPanelPage kind="mcp" mate="Nova">
         <McpPanelBody
           act={async () => ({ ok: true })}
+          signIn={async () => ({ ok: false, message: "" })}
           driver={CLAUDE}
           onRetry={() => undefined}
           state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
