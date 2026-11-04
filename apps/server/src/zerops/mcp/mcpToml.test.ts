@@ -5,6 +5,7 @@ import {
   readTomlServers,
   removeTomlServer,
   setTomlServerBoolean,
+  setTomlServerStrings,
   TomlEditError,
   TomlSyntaxError,
   validateToml,
@@ -246,6 +247,43 @@ name = "b"
 command = "zcp"
 args = ["serve"]
 `;
+
+describe("setTomlServerStrings", () => {
+  const SERVER = `[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+startup_timeout_sec = 30
+
+[mcp_servers.linear.http_headers]
+Authorization = "Bearer old"
+`;
+  it.each([
+    {
+      case: "replaces a server's headers, keeping its other keys as they were written",
+      value: { Authorization: "Bearer new", "X-Team": "eng" },
+      expected: {
+        url: "https://mcp.linear.app/mcp",
+        startup_timeout_sec: "30",
+        http_headers: { Authorization: "Bearer new", "X-Team": "eng" },
+      },
+    },
+    {
+      case: "drops the headers when none are left",
+      value: {},
+      expected: { url: "https://mcp.linear.app/mcp", startup_timeout_sec: "30" },
+    },
+  ])("$case", ({ value, expected }) => {
+    const next = setTomlServerStrings(SERVER, "mcp_servers", "linear", "http_headers", value);
+    expect(readTomlServers(next, "mcp_servers")["linear"]).toEqual(expected);
+    // A number stays a number: written bare, never quoted.
+    expect(next).toContain("startup_timeout_sec = 30");
+  });
+
+  it("leaves a file without the server alone", () => {
+    expect(setTomlServerStrings(CODEX_ZCP, "mcp_servers", "linear", "env", { A: "b" })).toBe(
+      CODEX_ZCP,
+    );
+  });
+});
 
 describe("validateToml", () => {
   it.each([

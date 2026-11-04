@@ -278,6 +278,74 @@ describe("McpServers.list", () => {
   );
 });
 
+describe("McpServers.update", () => {
+  // Values as a person would paste them, built from parts.
+  const OLD = ["Bearer", "old", "k3y"].join("-");
+  const NEW = ["team", "n3w"].join("-");
+  const ADOBE: McpServerAddInput = {
+    name: "adobe" as McpServerAddInput["name"],
+    transport: { type: "http", url: "https://mcp.example.com/mcp" },
+    headers: { Authorization: OLD, "X-Dropped": "gone" },
+  };
+
+  it.effect.each([
+    { file: `${HOME}/.claude.json`, at: ["mcpServers", "adobe", "headers"] },
+    { file: `${HOME}/.cursor/mcp.json`, at: ["mcpServers", "adobe", "headers"] },
+    { file: `${HOME}/.config/opencode/opencode.json`, at: ["mcp", "adobe", "headers"] },
+    { file: `${HOME}/.gemini/config/mcp_config.json`, at: ["mcpServers", "adobe", "headers"] },
+  ])(
+    "editing a server's headers keeps the values left masked, sets the new ones and drops the rest: $file",
+    ({ file, at }) =>
+      Effect.gen(function* () {
+        const { service, rig } = yield* setup({});
+        yield* service.add(ADOBE);
+        rig.calls.length = 0;
+        const list = yield* service.update({
+          name: ADOBE.name,
+          values: { "X-Team": NEW },
+          keep: ["Authorization"],
+        });
+        let held: unknown = JSON.parse(rig.files.get(file)!);
+        for (const key of at) held = (held as Record<string, unknown>)[key];
+        expect(held).toEqual({ Authorization: OLD, "X-Team": NEW });
+        const adobe = list.servers.find((server) => server.name === "adobe");
+        expect(adobe?.secretNames).toEqual(["Authorization", "X-Team"]);
+        // The tab sees names only.
+        expect(JSON.stringify(list)).not.toContain(OLD);
+        expect(rig.calls).toContain("opencode changed adobe");
+      }),
+  );
+
+  it.effect("Codex's and Grok's tables keep their own spellings and every other key", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({});
+      yield* service.add(ADOBE);
+      yield* service.update({ name: ADOBE.name, values: {}, keep: ["Authorization"] });
+      expect(rig.files.get(`${HOME}/.codex/config.toml`)).toContain(
+        `[mcp_servers.adobe.http_headers]\nAuthorization = "${OLD}"`,
+      );
+      expect(rig.files.get(`${HOME}/.grok/config.toml`)).toMatch(/enabled = true/);
+      expect(rig.files.get(`${HOME}/.grok/config.toml`)).not.toContain("X-Dropped");
+    }),
+  );
+
+  it.effect.each([
+    ["zerops", "Zerops' own server can't be changed here."],
+    [
+      "playwright",
+      "playwright is set up in the project's .mcp.json, so it is changed there, not here.",
+    ],
+  ])("refuses to edit %s", ([name, detail]) =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({});
+      const error = yield* Effect.flip(
+        service.update({ name: name as McpServerAddInput["name"], values: {}, keep: [] }),
+      );
+      expect(error.detail).toBe(detail);
+    }),
+  );
+});
+
 describe("McpServers.add", () => {
   it.effect("writes the server for every installed agent and tells the running ones", () =>
     Effect.gen(function* () {

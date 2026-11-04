@@ -24,7 +24,10 @@ import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
 import {
   buildMcpRows,
+  MCP_SECRET_MASK,
+  mcpSecretsFormText,
   readMcpAddForm,
+  readMcpSecretsForm,
   type McpAddForm,
   type McpAddFormErrors,
   type McpServerRow,
@@ -55,6 +58,10 @@ export const MCP_WORDS = {
   signIn: "Sign in",
   signInAgain: "Sign in again",
   signOut: "Sign out",
+  editEnv: "Edit environment",
+  editHeaders: "Edit headers",
+  editHint: "Leave •••••• to keep a value; take a line out to drop it.",
+  save: "Save",
   signInMate: "Finish signing in on the page that opened. This row updates when you come back.",
   signInOpenAgain: "Open it again",
   signInPaste:
@@ -283,10 +290,32 @@ function McpServerDetails(props: {
 }) {
   const { row, act } = props;
   const [pending, setPending] = useState<
-    "reconnect" | "toggle" | "remove" | "signIn" | "signOut" | "finish" | null
+    "reconnect" | "toggle" | "remove" | "signIn" | "signOut" | "finish" | "save" | null
   >(null);
   const [startedSigning, setSigning] = useState<Signing | null>(null);
   const [landed, setLanded] = useState("");
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editError, setEditError] = useState<string | null>(null);
+  const { secrets } = row;
+
+  const saveSecrets = async (text: string) => {
+    const read = readMcpSecretsForm(secrets.kind, text);
+    if (!read.ok) {
+      setEditError(read.error);
+      return;
+    }
+    setPending("save");
+    setEditError(null);
+    const result = await act({
+      kind: "update",
+      name: row.name,
+      values: read.values,
+      keep: read.keep,
+    });
+    setPending(null);
+    if (result.ok) setEditing(null);
+    else setEditError(result.message);
+  };
   // A sign-in in progress shows only while the agent still waits for one.
   const signing = row.actions.signIn === null ? null : startedSigning;
 
@@ -374,6 +403,69 @@ function McpServerDetails(props: {
         </span>
       </DetailBlock>
 
+      {secrets.names.length === 0 ? null : (
+        <DetailBlock label={secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}>
+          <ul className="flex flex-col gap-0.5" data-mcp-secrets>
+            {secrets.names.map((name) => (
+              <li className="flex min-w-0 gap-2 font-mono text-xs" key={name}>
+                <span className="min-w-0 truncate">{name}</span>
+                <span className="shrink-0 text-muted-foreground">{MCP_SECRET_MASK}</span>
+              </li>
+            ))}
+          </ul>
+        </DetailBlock>
+      )}
+
+      {editing === null ? null : (
+        <form
+          className="flex flex-col gap-1.5"
+          data-mcp-editing
+          onSubmit={(event) => {
+            event.preventDefault();
+            void saveSecrets(editing);
+          }}
+        >
+          <span className="flex items-baseline gap-2 text-xs">
+            <span className="font-medium">
+              {secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}
+            </span>
+            <span className="text-muted-foreground">
+              {secrets.kind === "env" ? MCP_WORDS.envHint : MCP_WORDS.headersHint}
+            </span>
+          </span>
+          <Textarea
+            aria-label={secrets.kind === "env" ? MCP_WORDS.editEnv : MCP_WORDS.editHeaders}
+            autoCapitalize="off"
+            autoComplete="off"
+            onChange={(event) => setEditing(event.target.value)}
+            rows={3}
+            size="sm"
+            spellCheck={false}
+            value={editing}
+          />
+          <span className="text-xs text-muted-foreground">{MCP_WORDS.editHint}</span>
+          {editError === null ? null : (
+            <span className="text-xs text-destructive-foreground" role="alert">
+              {editError}
+            </span>
+          )}
+          <div className="flex items-center gap-2">
+            <Button disabled={pending !== null} size="sm" type="submit" variant="primary">
+              {pending === "save" ? <Spinner size="xs" /> : null}
+              {MCP_WORDS.save}
+            </Button>
+            <Button
+              disabled={pending !== null}
+              onClick={() => setEditing(null)}
+              size="sm"
+              variant="ghost"
+            >
+              {MCP_WORDS.cancel}
+            </Button>
+          </div>
+        </form>
+      )}
+
       <div className="flex min-h-7 flex-wrap items-center gap-2" data-mcp-actions>
         {armed ? (
           <>
@@ -446,6 +538,19 @@ function McpServerDetails(props: {
               >
                 {pending === "signOut" ? <Spinner size="xs" /> : null}
                 {MCP_WORDS.signOut}
+              </Button>
+            ) : null}
+            {secrets.editable && editing === null ? (
+              <Button
+                disabled={pending !== null}
+                onClick={() => {
+                  setEditError(null);
+                  setEditing(mcpSecretsFormText(secrets.kind, secrets.names));
+                }}
+                size="sm"
+                variant="secondary"
+              >
+                {secrets.kind === "env" ? MCP_WORDS.editEnv : MCP_WORDS.editHeaders}
               </Button>
             ) : null}
             {row.actions.remove ? (

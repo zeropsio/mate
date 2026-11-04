@@ -27,6 +27,7 @@ import {
   type McpServersListInput,
   type McpServerSetEnabledInput,
   type McpServerTargetInput,
+  type McpServerUpdateInput,
   type ProviderDriverKind,
   type ThreadId,
 } from "@t3tools/contracts";
@@ -171,6 +172,10 @@ export class McpServers extends Context.Service<
     readonly signIn: (
       input: McpServerSignInInput,
     ) => Effect.Effect<McpServerSignIn, McpServersError>;
+    /** Replaces a server's environment or headers for every agent, keeping named values. */
+    readonly update: (
+      input: McpServerUpdateInput,
+    ) => Effect.Effect<McpServersList, McpServersError>;
     /** Drops the conversation's agent's sign-in to a server. */
     readonly signOut: (
       input: McpServerTargetInput,
@@ -217,7 +222,12 @@ export function mergeMcpServers(
 ): McpServerEntry[] {
   const byName = new Map<
     string,
-    { first: McpConfigServer; scopes: Set<string>; agents: McpServerAgent[] }
+    {
+      first: McpConfigServer;
+      scopes: Set<string>;
+      secretNames: Set<string>;
+      agents: McpServerAgent[];
+    }
   >();
   for (const { store, servers } of agents) {
     for (const server of servers) {
@@ -241,20 +251,23 @@ export function mergeMcpServers(
         byName.set(server.name, {
           first: server,
           scopes: new Set([server.scope]),
+          secretNames: new Set(server.secretNames),
           agents: [agent],
         });
       } else {
         found.scopes.add(server.scope);
+        for (const secret of server.secretNames) found.secretNames.add(secret);
         found.agents.push(agent);
       }
     }
   }
   return [...byName.values()]
-    .map(({ first, scopes, agents: serverAgents }) => ({
+    .map(({ first, scopes, secretNames, agents: serverAgents }) => ({
       name: McpServerName.make(first.name),
       transport: first.transport,
       managed: first.name === MANAGED_MCP_SERVER,
       scope: scopes.has("user") ? ("user" as const) : ("project" as const),
+      ...(secretNames.size > 0 ? { secretNames: [...secretNames].toSorted() } : {}),
       agents: serverAgents,
     }))
     .toSorted((a, b) =>
@@ -623,6 +636,43 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
       return flow.name;
     });
 
+  const update: McpServers["Service"]["update"] = (input) => {
+    // Each agent's server as it will stand, for its running sessions.
+    const changed = new Map<string, Readonly<Record<string, unknown>>>();
+    return change({
+      operation: "mcp.servers.update",
+      name: input.name,
+      done: "changed",
+      threadId: input.threadId,
+      check: target("mcp.servers.update", input.name),
+      edit: (store, loaded) => {
+        const server = store.read(loaded.files).find((found) => found.name === input.name);
+        if (server === undefined || server.scope !== "user") return [];
+        const stored = store.readSecrets(loaded.files, input.name);
+        const values: Record<string, string> = { ...input.values };
+        for (const name of input.keep) {
+          const kept = stored[name];
+          if (kept !== undefined && !(name in values)) values[name] = kept;
+        }
+        const edits = store.setSecrets(loaded.files, input.name, values);
+        changed.set(
+          store.driver,
+          store.entry({
+            name: input.name,
+            transport: server.transport,
+            ...(server.transport.type === "stdio" ? { env: values } : { headers: values }),
+          }),
+        );
+        return edits;
+      },
+      nudge: (store) => ({
+        kind: "changed",
+        name: input.name,
+        entry: changed.get(store.driver) ?? {},
+      }),
+    });
+  };
+
   const signOut: McpServers["Service"]["signOut"] = (input) =>
     Effect.gen(function* () {
       const operation = "mcp.servers.signOut";
@@ -646,6 +696,7 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
   return {
     list: (input) => list("mcp.servers.list", input.threadId),
     signOut,
+    update,
     add,
     remove,
     setEnabled,

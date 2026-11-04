@@ -81,6 +81,11 @@ export const McpServerEntry = Schema.Struct({
    * edited there. Absent means `user`.
    */
   scope: Schema.optionalKey(Schema.Literals(["user", "project"])),
+  /**
+   * The names of its environment variables (a command) or request headers
+   * (a URL), across the agents: never their values.
+   */
+  secretNames: Schema.optionalKey(Schema.Array(Schema.String)),
   agents: Schema.Array(McpServerAgent),
 });
 export type McpServerEntry = typeof McpServerEntry.Type;
@@ -115,6 +120,19 @@ export const McpServerTargetInput = Schema.Struct({
   threadId: Schema.optionalKey(ThreadId),
 });
 export type McpServerTargetInput = typeof McpServerTargetInput.Type;
+
+/**
+ * A server's environment (a command) or request headers (a URL), replaced
+ * for every agent. A name in `keep` keeps the value already stored, which the
+ * tab never sees; a name in neither is dropped.
+ */
+export const McpServerUpdateInput = Schema.Struct({
+  name: McpServerName,
+  values: Schema.Record(Schema.String, Schema.String),
+  keep: Schema.Array(Schema.String),
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpServerUpdateInput = typeof McpServerUpdateInput.Type;
 
 export const McpServerSetEnabledInput = Schema.Struct({
   name: McpServerName,

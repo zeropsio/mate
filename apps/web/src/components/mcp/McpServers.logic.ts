@@ -50,6 +50,15 @@ export interface McpServerRow {
   /** Which agent stands how, only when they stand differently. */
   readonly agentsLine: string | null;
   readonly tools: ReadonlyArray<McpToolRow>;
+  /**
+   * The names of its environment (a command) or headers (a URL), never their
+   * values; `editable` where this tab may change them (the Mate's own).
+   */
+  readonly secrets: {
+    readonly kind: "env" | "headers";
+    readonly names: ReadonlyArray<string>;
+    readonly editable: boolean;
+  };
   readonly config:
     | { readonly kind: "command"; readonly line: string }
     | { readonly kind: "url"; readonly url: string };
@@ -364,8 +373,11 @@ function buildRow(
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
   // Only the conversation's own agent signs in or out, and only one that can; an agent that
   // reaches the server by a token (`signedIn: false`) has no sign-in to renew or drop.
-  const signing = driver !== null && SIGNING_AGENTS.has(driver) && agent?.signedIn !== false;
   const remote = entry.transport.type === "http";
+  // Headers on a URL server are how it signs in, unless the agent says it holds an OAuth sign-in.
+  const byHeaders = remote && (entry.secretNames?.length ?? 0) > 0 && agent?.signedIn !== true;
+  const signing =
+    driver !== null && SIGNING_AGENTS.has(driver) && agent?.signedIn !== false && !byHeaders;
   const signIn: McpServerRow["actions"]["signIn"] =
     driver !== null && state === "needs-auth"
       ? "new"
@@ -382,6 +394,11 @@ function buildRow(
     runs: mcpRunsLabel(entry.transport),
     note,
     agentsLine: agentsLine(entry, installed, state),
+    secrets: {
+      kind: remote ? "headers" : "env",
+      names: entry.secretNames ?? [],
+      editable: origin === "mate",
+    },
     tools: toolSource.map((tool) => ({
       name: tool.name,
       description: tool.description?.trim() || null,
@@ -497,6 +514,39 @@ function isHttpUrl(value: string): boolean {
   } catch {
     return false;
   }
+}
+
+// ── A server's environment or headers ─────────────────────────────────
+
+/** What stands for a stored value the tab never sees. */
+export const MCP_SECRET_MASK = "••••••";
+
+/** The edit form's first text: each name, its value masked. */
+export function mcpSecretsFormText(kind: "env" | "headers", names: ReadonlyArray<string>): string {
+  return names
+    .map((name) => (kind === "env" ? `${name}=${MCP_SECRET_MASK}` : `${name}: ${MCP_SECRET_MASK}`))
+    .join("\n");
+}
+
+export type ReadMcpSecretsForm =
+  | {
+      readonly ok: true;
+      readonly values: Record<string, string>;
+      readonly keep: ReadonlyArray<string>;
+    }
+  | { readonly ok: false; readonly error: string };
+
+/** The edit form read: new values, and the names left masked, whose stored values stay. */
+export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadMcpSecretsForm {
+  const parsed = kind === "env" ? parseEnvLines(text) : parseHeaderLines(text);
+  if (!parsed.ok) return parsed;
+  const values: Record<string, string> = {};
+  const keep: string[] = [];
+  for (const [name, value] of Object.entries(parsed.value)) {
+    if (value === MCP_SECRET_MASK) keep.push(name);
+    else values[name] = value;
+  }
+  return { ok: true, values, keep };
 }
 
 // ── Failures ──────────────────────────────────────────────────────────

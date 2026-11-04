@@ -18,6 +18,7 @@ export const WORKSPACE_MUTATIONS = {
   "mate-mcp-sign-in": WS_METHODS.mcpServersSignIn,
   "mate-mcp-finish-sign-in": WS_METHODS.mcpServersFinishSignIn,
   "mate-mcp-sign-out": WS_METHODS.mcpServersSignOut,
+  "mate-mcp-update": WS_METHODS.mcpServersUpdate,
   "mate-vcs-pull": WS_METHODS.vcsPull,
   "mate-vcs-refresh-status": WS_METHODS.vcsRefreshStatus,
   "mate-vcs-create-worktree": WS_METHODS.vcsCreateWorktree,

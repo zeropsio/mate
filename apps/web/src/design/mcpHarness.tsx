@@ -78,6 +78,15 @@ function applyAction(list: McpServersList, action: McpAction): McpServersList {
               },
         ),
       };
+    case "update":
+      return {
+        ...list,
+        servers: list.servers.map((entry) =>
+          entry.name !== action.name
+            ? entry
+            : { ...entry, secretNames: [...action.keep, ...Object.keys(action.values)].toSorted() },
+        ),
+      };
     case "signOut":
       return {
         ...list,

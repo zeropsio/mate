@@ -17,6 +17,9 @@ import {
   parseEnvLines,
   parseHeaderLines,
   readMcpAddForm,
+  readMcpSecretsForm,
+  mcpSecretsFormText,
+  MCP_SECRET_MASK,
   splitCommandLine,
   type McpAddForm,
   type McpTabEvent,
@@ -526,6 +529,78 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     expect(row.note).toEqual({ kind: "quiet", text: note });
   });
 
+  it.each<{
+    case: string;
+    agent: Omit<McpServerAgent, "driver">;
+    signIn: string | null;
+    signOut: boolean;
+  }>([
+    {
+      case: "a URL server that signs in by its headers offers no Sign out",
+      agent: { state: "connected" },
+      signIn: null,
+      signOut: false,
+    },
+    {
+      case: "a URL server that signs in by its headers offers no Sign in again when it fails",
+      agent: { state: "failed" },
+      signIn: null,
+      signOut: false,
+    },
+    {
+      case: "a URL server with headers that still asks for a sign-in offers one",
+      agent: { state: "needs-auth" },
+      signIn: "new",
+      signOut: false,
+    },
+  ])("$case", ({ agent, signIn, signOut }) => {
+    const row = buildMcpRows(
+      {
+        agents: [CLAUDE],
+        servers: [
+          {
+            name: "x",
+            managed: false,
+            transport: { type: "http", url: "https://mcp.example.com" },
+            secretNames: ["Authorization"],
+            agents: [{ driver: CLAUDE, ...agent }],
+          },
+        ],
+      },
+      CLAUDE,
+    )[0]!;
+    expect({ signIn: row.actions.signIn, signOut: row.actions.signOut }).toEqual({
+      signIn,
+      signOut,
+    });
+  });
+
+  it.each<{ name: string; secrets: unknown }>([
+    { name: "a URL", secrets: { kind: "headers", names: ["Authorization"], editable: true } },
+    { name: "a command", secrets: { kind: "env", names: [], editable: true } },
+  ])("$name server shows which values it holds, never the values", ({ name, secrets }) => {
+    const transport: McpServerEntry["transport"] =
+      name === "a URL"
+        ? { type: "http", url: "https://mcp.example.com" }
+        : { type: "stdio", command: "x", args: [] };
+    const row = buildMcpRows(
+      {
+        agents: [CLAUDE],
+        servers: [
+          {
+            name: "x",
+            managed: false,
+            transport,
+            ...(name === "a URL" ? { secretNames: ["Authorization"] } : {}),
+            agents: [{ driver: CLAUDE, state: "connected" }],
+          },
+        ],
+      },
+      CLAUDE,
+    )[0]!;
+    expect(row.secrets).toEqual(secrets);
+  });
+
   it("is empty for an empty list", () => {
     expect(buildMcpRows({ agents: [CLAUDE], servers: [] }, CLAUDE)).toEqual([]);
   });
@@ -740,4 +815,39 @@ describe("mcpTabStep — the tab's list, as calls answer in any order", () => {
   it("starts from a remembered list without painting it as fresh", () => {
     expect(mcpTabStart(A)).toMatchObject({ list: A, error: null, busy: false });
   });
+});
+
+describe("the secrets form — a server's environment or headers, edited without seeing them", () => {
+  it.each<{ kind: "env" | "headers"; names: string[]; text: string }>([
+    {
+      kind: "headers",
+      names: ["Authorization", "X-Team"],
+      text: `Authorization: ${MCP_SECRET_MASK}\nX-Team: ${MCP_SECRET_MASK}`,
+    },
+    { kind: "env", names: ["API_KEY"], text: `API_KEY=${MCP_SECRET_MASK}` },
+    { kind: "env", names: [], text: "" },
+  ])("starts with each $kind name, its value masked", ({ kind, names, text }) => {
+    expect(mcpSecretsFormText(kind, names)).toBe(text);
+  });
+
+  it.each<{ kind: "env" | "headers"; text: string; read: unknown }>([
+    {
+      kind: "headers",
+      text: `Authorization: ${MCP_SECRET_MASK}\nX-Team: eng`,
+      read: { ok: true, values: { "X-Team": "eng" }, keep: ["Authorization"] },
+    },
+    {
+      kind: "env",
+      text: `API_KEY=${MCP_SECRET_MASK}\nREGION=eu`,
+      read: { ok: true, values: { REGION: "eu" }, keep: ["API_KEY"] },
+    },
+    // A line taken out is a value dropped.
+    { kind: "env", text: "", read: { ok: true, values: {}, keep: [] } },
+    { kind: "env", text: "not a line", read: { ok: false, error: "Line 1: write KEY=value." } },
+  ])(
+    "reads $kind lines into new values and the masked ones kept: $text",
+    ({ kind, text, read }) => {
+      expect(readMcpSecretsForm(kind, text)).toEqual(read);
+    },
+  );
 });

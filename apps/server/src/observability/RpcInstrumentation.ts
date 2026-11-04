@@ -84,6 +84,7 @@ const RPC_AGGREGATES = {
   [WS_METHODS.mcpServersSignIn]: "server",
   [WS_METHODS.mcpServersFinishSignIn]: "server",
   [WS_METHODS.mcpServersSignOut]: "server",
+  [WS_METHODS.mcpServersUpdate]: "server",
   [WS_METHODS.subscribeVcsStatus]: "vcs",
   [WS_METHODS.zeropsGitProbeRemote]: "zerops",
   [WS_METHODS.threadsFileWrites]: "orchestration",

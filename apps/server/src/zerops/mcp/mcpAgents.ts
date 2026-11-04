@@ -50,6 +50,7 @@ import {
   readTomlServers,
   removeTomlServer,
   setTomlServerBoolean,
+  setTomlServerStrings,
   TomlEditError,
   validateToml,
   type TomlPlain,
@@ -65,6 +66,8 @@ export interface McpConfigServer {
   readonly transport: McpServerTransport;
   readonly enabled: boolean;
   readonly scope: McpServerScope;
+  /** The names of its environment (a command) or request headers (a URL); never their values. */
+  readonly secretNames: ReadonlyArray<string>;
 }
 
 /** The text of each file an agent reads; a missing file is absent. */
@@ -116,6 +119,42 @@ export interface McpAgentStore {
   ) => ReadonlyArray<McpFileEdit>;
   /** The server as this agent's config holds it — what a running session is handed live. */
   readonly entry: (input: McpServerAddInput) => Record<string, unknown>;
+  /** A server's environment or headers, values included: read here, never handed out. */
+  readonly readSecrets: (files: McpFiles, name: string) => Readonly<Record<string, string>>;
+  /** Replaces a server's environment (a command) or headers (a URL) wherever it is written. */
+  readonly setSecrets: (
+    files: McpFiles,
+    name: string,
+    values: Readonly<Record<string, string>>,
+  ) => ReadonlyArray<McpFileEdit>;
+}
+
+/** Where an agent's config keeps a server's environment and its headers. */
+interface SecretFields {
+  readonly stdio: string;
+  readonly http: string;
+}
+
+const STANDARD_FIELDS: SecretFields = { stdio: "env", http: "headers" };
+
+const secretField = (fields: SecretFields, entry: unknown): string | undefined => {
+  const transport = decodeMcpTransport(entry);
+  return transport === undefined
+    ? undefined
+    : transport.type === "http"
+      ? fields.http
+      : fields.stdio;
+};
+
+/** The string values of an entry's environment or headers. */
+function secretsOf(fields: SecretFields, entry: unknown): Record<string, string> {
+  const field = secretField(fields, entry);
+  if (field === undefined || !isRecord(entry) || !isRecord(entry[field])) return {};
+  return Object.fromEntries(
+    Object.entries(entry[field]).filter(
+      (pair): pair is [string, string] => typeof pair[1] === "string",
+    ),
+  );
 }
 
 /** Where the agents keep their config on this machine. */
@@ -211,14 +250,33 @@ function readJsonServers(
   servers: JsonRecord,
   enabled: (name: string, entry: JsonRecord) => boolean,
   scope: McpServerScope = "user",
+  fields: SecretFields = STANDARD_FIELDS,
 ): McpConfigServer[] {
   const out: McpConfigServer[] = [];
   for (const [name, entry] of Object.entries(servers)) {
     const transport = decodeMcpTransport(entry);
     if (transport === undefined || !isRecord(entry)) continue;
-    out.push({ name, transport, enabled: enabled(name, entry), scope });
+    const secretNames = Object.keys(secretsOf(fields, entry));
+    out.push({ name, transport, enabled: enabled(name, entry), scope, secretNames });
   }
   return out;
+}
+
+/** `text` with the JSON server at `path` given `values` as its environment or headers. */
+function setJsonSecrets(
+  text: string,
+  path: JSONPath,
+  entry: unknown,
+  fields: SecretFields,
+  values: Readonly<Record<string, string>>,
+): string | undefined {
+  const field = secretField(fields, entry);
+  if (field === undefined) return undefined;
+  return setJson(
+    text,
+    [...path, field],
+    Object.keys(values).length === 0 ? undefined : { ...values },
+  );
 }
 
 const toggled = (list: ReadonlyArray<string>, name: string, present: boolean): string[] =>
@@ -349,6 +407,36 @@ function claudeStore(paths: McpAgentPaths): McpAgentStore {
         return setJson(text, disabledPath, toggled(disabled, name, !enabled));
       }),
     entry: claudeEntry,
+    readSecrets: (files, name) => {
+      for (const path of homes) {
+        const doc = parseJson(path, files.get(path));
+        const entry =
+          serverMap(claudeProject(doc, paths.cwd), "mcpServers")[name] ??
+          serverMap(doc, "mcpServers")[name];
+        if (entry !== undefined) return secretsOf(STANDARD_FIELDS, entry);
+      }
+      return {};
+    },
+    setSecrets: (files, name, values) =>
+      editEach(files, homes, (text, path) => {
+        const doc = parseJson(path, text);
+        const local = serverMap(claudeProject(doc, paths.cwd), "mcpServers")[name];
+        const user = serverMap(doc, "mcpServers")[name];
+        let next: string | undefined = text;
+        if (local !== undefined) {
+          next = setJsonSecrets(
+            next,
+            ["projects", paths.cwd, "mcpServers", name],
+            local,
+            STANDARD_FIELDS,
+            values,
+          );
+        }
+        if (user !== undefined && next !== undefined) {
+          next = setJsonSecrets(next, ["mcpServers", name], user, STANDARD_FIELDS, values);
+        }
+        return next;
+      }),
   };
 }
 
@@ -377,6 +465,7 @@ function tomlStore(
   driver: string,
   configs: ReadonlyArray<string>,
   entry: (input: McpServerAddInput) => Record<string, TomlPlain>,
+  fields: SecretFields,
 ): McpAgentStore {
   return {
     driver: ProviderDriverKind.make(driver),
@@ -388,7 +477,15 @@ function tomlStore(
             const transport = decodeMcpTransport(server);
             return transport === undefined
               ? []
-              : [{ name, transport, enabled: server["enabled"] !== false, scope: "user" as const }];
+              : [
+                  {
+                    name,
+                    transport,
+                    enabled: server["enabled"] !== false,
+                    scope: "user" as const,
+                    secretNames: Object.keys(secretsOf(fields, server)),
+                  },
+                ];
           }),
         ),
       ),
@@ -417,6 +514,20 @@ function tomlStore(
         );
       }),
     entry,
+    readSecrets: (files, name) => {
+      for (const path of configs) {
+        const server = tomlServers(path, files.get(path))[name];
+        if (server !== undefined) return secretsOf(fields, server);
+      }
+      return {};
+    },
+    setSecrets: (files, name, values) =>
+      editEach(files, configs, (text, path) => {
+        const server = tomlServers(path, text)[name];
+        const field = secretField(fields, server);
+        if (server === undefined || field === undefined) return undefined;
+        return tomlEdit(path, () => setTomlServerStrings(text, "mcp_servers", name, field, values));
+      }),
   };
 }
 
@@ -453,8 +564,9 @@ function jsonStore(input: {
   /** The edits that mark `entry` on or off, as paths under it. */
   readonly mark: (entry: JsonRecord, enabled: boolean) => ReadonlyArray<[string, unknown]>;
   readonly entry: (input: McpServerAddInput) => JsonRecord;
+  readonly fields: SecretFields;
 }): McpAgentStore {
-  const { key } = input;
+  const { key, fields } = input;
   return {
     driver: ProviderDriverKind.make(input.driver),
     paths: input.paths,
@@ -463,8 +575,11 @@ function jsonStore(input: {
         input
           .targets(files)
           .map((path) =>
-            readJsonServers(serverMap(parseJson(path, files.get(path)), key), (_name, entry) =>
-              input.enabled(entry),
+            readJsonServers(
+              serverMap(parseJson(path, files.get(path)), key),
+              (_name, entry) => input.enabled(entry),
+              "user",
+              fields,
             ),
           ),
       ),
@@ -489,6 +604,20 @@ function jsonStore(input: {
           .reduce((next, [field, value]) => setJson(next, [key, name, field], value), text);
       }),
     entry: input.entry,
+    readSecrets: (files, name) => {
+      for (const path of input.targets(files)) {
+        const entry = serverMap(parseJson(path, files.get(path)), key)[name];
+        if (entry !== undefined) return secretsOf(fields, entry);
+      }
+      return {};
+    },
+    setSecrets: (files, name, values) =>
+      editEach(files, input.targets(files), (text, path) => {
+        const entry = serverMap(parseJson(path, text), key)[name];
+        return entry === undefined
+          ? undefined
+          : setJsonSecrets(text, [key, name], entry, fields, values);
+      }),
   };
 }
 
@@ -582,6 +711,18 @@ function cursorStore(paths: McpAgentPaths): McpAgentStore {
         ? markDisabled(files, name, !enabled)
         : [],
     entry: cursorEntry,
+    readSecrets: (files, name) =>
+      secretsOf(
+        STANDARD_FIELDS,
+        serverMap(parseJson(config, files.get(config)), "mcpServers")[name],
+      ),
+    setSecrets: (files, name, values) =>
+      editEach(files, [config], (text) => {
+        const entry = serverMap(parseJson(config, text), "mcpServers")[name];
+        return entry === undefined
+          ? undefined
+          : setJsonSecrets(text, ["mcpServers", name], entry, STANDARD_FIELDS, values);
+      }),
   };
 }
 
@@ -663,6 +804,22 @@ function readBack(store: McpAgentStore): McpAgentStore {
         name,
         (after) => after?.enabled === enabled,
       ),
+    setSecrets: (files, name, values) => {
+      const before = store.read(files).find((server) => server.name === name);
+      const names = Object.keys(values).toSorted();
+      return check(
+        files,
+        store.setSecrets(files, name, values),
+        name,
+        (after) =>
+          before !== undefined &&
+          after !== undefined &&
+          after.enabled === before.enabled &&
+          after.scope === before.scope &&
+          sameTransport(after.transport, before.transport) &&
+          after.secretNames.toSorted().join("\n") === names.join("\n"),
+      );
+    },
   };
 }
 
@@ -673,9 +830,9 @@ export function makeMcpAgentStores(
   const openCodeJsonc = paths.openCodeConfig.replace(/\.json$/, ".jsonc");
   const stores: McpAgentStore[] = [
     claudeStore(paths),
-    tomlStore("codex", paths.codexConfigs, codexEntry),
+    tomlStore("codex", paths.codexConfigs, codexEntry, { stdio: "env", http: "http_headers" }),
     cursorStore(paths),
-    tomlStore("grok", [paths.grokConfig], grokEntry),
+    tomlStore("grok", [paths.grokConfig], grokEntry, STANDARD_FIELDS),
     jsonStore({
       driver: "antigravity",
       paths: paths.antigravityConfigs,
@@ -684,6 +841,7 @@ export function makeMcpAgentStores(
       enabled: (entry) => entry["disabled"] !== true,
       mark: (_entry, enabled) => [["disabled", enabled ? undefined : true]],
       entry: antigravityEntry,
+      fields: STANDARD_FIELDS,
     }),
     jsonStore({
       driver: "opencode",
@@ -698,6 +856,7 @@ export function makeMcpAgentStores(
       enabled: (entry) => entry["enabled"] !== false,
       mark: (_entry, enabled) => [["enabled", enabled]],
       entry: openCodeEntry,
+      fields: { stdio: "environment", http: "headers" },
     }),
   ];
   return new Map(stores.map((store) => [store.driver, readBack(store)]));

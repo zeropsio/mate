@@ -105,3 +105,50 @@ it.each([{ name: "context7", press: "Sign out", action: { kind: "signOut", name:
     }
   },
 );
+
+it("editing a server's headers sends the new values and keeps the masked ones, never seeing them", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const actions: McpAction[] = [];
+  try {
+    await act(() =>
+      root.render(
+        <McpPanelBody
+          act={async (next) => {
+            actions.push(next);
+            return { ok: true };
+          }}
+          driver={CLAUDE}
+          onRetry={() => {}}
+          signIn={async () => ({ ok: false, message: "" })}
+          state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+        />,
+      ),
+    );
+    const button = (name: string) =>
+      Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === name,
+      );
+    await act(async () =>
+      container.querySelector<HTMLElement>('[data-mcp-server="linear"] button')!.click(),
+    );
+    await act(async () => button(MCP_WORDS.editHeaders)!.click());
+    const area = container.querySelector<HTMLTextAreaElement>("[data-mcp-editing] textarea")!;
+    expect(area.value).toBe("Authorization: ••••••");
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")!.set!.call(
+        area,
+        "Authorization: ••••••\nX-Team: eng",
+      );
+      area.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button(MCP_WORDS.save)!.click());
+    expect(actions).toEqual([
+      { kind: "update", name: "linear", values: { "X-Team": "eng" }, keep: ["Authorization"] },
+    ]);
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+  }
+});

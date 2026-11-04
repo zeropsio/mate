@@ -234,6 +234,7 @@ import {
   McpServerSetEnabledInput,
   McpServerSignIn,
   McpServerSignInInput,
+  McpServerUpdateInput,
   McpServersError,
   McpServersList,
   McpServersListInput,
@@ -297,6 +298,7 @@ export const WS_METHODS = {
   mcpServersSignIn: "mcp.servers.signIn",
   mcpServersFinishSignIn: "mcp.servers.finishSignIn",
   mcpServersSignOut: "mcp.servers.signOut",
+  mcpServersUpdate: "mcp.servers.update",
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
@@ -815,6 +817,12 @@ const WsMcpServersSignInRpc = Rpc.make(WS_METHODS.mcpServersSignIn, {
 
 const WsMcpServersFinishSignInRpc = Rpc.make(WS_METHODS.mcpServersFinishSignIn, {
   payload: McpServerFinishSignInInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersUpdateRpc = Rpc.make(WS_METHODS.mcpServersUpdate, {
+  payload: McpServerUpdateInput,
   success: McpServersList,
   error: McpServersRpcError,
 });
@@ -1525,6 +1533,7 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpServersSignInRpc,
   WsMcpServersFinishSignInRpc,
   WsMcpServersSignOutRpc,
+  WsMcpServersUpdateRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

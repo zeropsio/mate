@@ -46,6 +46,12 @@ export type McpConfigChange =
       readonly entry: Readonly<Record<string, unknown>>;
     }
   | { readonly kind: "removed"; readonly name: string }
+  /** Its environment or headers changed: the server as this agent's config now holds it. */
+  | {
+      readonly kind: "changed";
+      readonly name: string;
+      readonly entry: Readonly<Record<string, unknown>>;
+    }
   | { readonly kind: "enabled"; readonly name: string; readonly enabled: boolean };
 
 export class ProviderMcpError extends Schema.TaggedError<ProviderMcpError>()("ProviderMcpError", {
@@ -274,16 +280,17 @@ const claudeAddedServers = new WeakMap<
 /** One running query hears an added or removed server; one it started with stays to the next. */
 const claudeSetChanged = (
   query: ClaudeMcpQuery,
-  change: Extract<McpConfigChange, { kind: "added" | "removed" }>,
+  change: Extract<McpConfigChange, { kind: "added" | "removed" | "changed" }>,
 ): Effect.Effect<void> => {
   const set = query.setMcpServers;
   const added = claudeAddedServers.get(query) ?? {};
-  if (set === undefined || (change.kind === "removed" && !(change.name in added))) {
+  // One the conversation started with keeps what it started with until the next conversation.
+  if (set === undefined || (change.kind !== "added" && !(change.name in added))) {
     return Effect.void;
   }
   const next = { ...added };
-  if (change.kind === "added") next[change.name] = change.entry;
-  else delete next[change.name];
+  if (change.kind === "removed") delete next[change.name];
+  else next[change.name] = change.entry;
   return fromPromise(() => set.call(query, next)).pipe(
     Effect.tap(() => Effect.sync(() => claudeAddedServers.set(query, next))),
     Effect.ignore,
@@ -619,7 +626,7 @@ export function openCodeMcpControl(sessions: {
         unprofiled(sessions.all()),
         (client) =>
           fromPromise(() =>
-            change.kind === "added"
+            change.kind === "added" || change.kind === "changed"
               ? client.add(change.name, change.entry)
               : change.kind === "removed" || !change.enabled
                 ? client.disconnect(change.name)

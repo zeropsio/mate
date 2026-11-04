@@ -27,6 +27,13 @@ export type McpAction =
   | { readonly kind: "remove"; readonly name: string }
   | { readonly kind: "reconnect"; readonly name: string }
   | { readonly kind: "signOut"; readonly name: string }
+  /** Replaces its environment or headers; names in `keep` keep their stored values. */
+  | {
+      readonly kind: "update";
+      readonly name: string;
+      readonly values: Readonly<Record<string, string>>;
+      readonly keep: ReadonlyArray<string>;
+    }
   | { readonly kind: "setEnabled"; readonly name: string; readonly enabled: boolean }
   /** Finishes a sign-in with the address the person's browser landed on. */
   | {
@@ -90,31 +97,46 @@ export function useMcpServers(input: {
                   },
                   options,
                 )
-              : action.kind === "finishSignIn"
+              : action.kind === "update"
                 ? await runAtomCommand(
                     registry,
-                    mcpServersEnvironment.finishSignIn,
+                    mcpServersEnvironment.update,
                     {
                       environmentId,
                       input: {
                         name: action.name,
-                        flow: action.flow,
-                        landed: action.landed,
+                        values: { ...action.values },
+                        keep: [...action.keep],
                         ...scope,
                       },
                     },
                     options,
                   )
-                : await runAtomCommand(
-                    registry,
-                    action.kind === "remove"
-                      ? mcpServersEnvironment.remove
-                      : action.kind === "signOut"
-                        ? mcpServersEnvironment.signOut
-                        : mcpServersEnvironment.reconnect,
-                    { environmentId, input: { name: action.name, ...scope } },
-                    options,
-                  );
+                : action.kind === "finishSignIn"
+                  ? await runAtomCommand(
+                      registry,
+                      mcpServersEnvironment.finishSignIn,
+                      {
+                        environmentId,
+                        input: {
+                          name: action.name,
+                          flow: action.flow,
+                          landed: action.landed,
+                          ...scope,
+                        },
+                      },
+                      options,
+                    )
+                  : await runAtomCommand(
+                      registry,
+                      action.kind === "remove"
+                        ? mcpServersEnvironment.remove
+                        : action.kind === "signOut"
+                          ? mcpServersEnvironment.signOut
+                          : mcpServersEnvironment.reconnect,
+                      { environmentId, input: { name: action.name, ...scope } },
+                      options,
+                    );
         if (result._tag === "Success") return { ok: true };
         if (action.kind !== "reconnect") refresh();
         return { ok: false, message: describeMcpFailure(squashAtomCommandFailure(result)) };
