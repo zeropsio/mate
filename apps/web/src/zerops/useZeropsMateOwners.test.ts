@@ -10,6 +10,7 @@ import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates"
 import {
   useWaitsOnViewer,
   useZeropsMateOwners,
+  personNameOf,
   useHqPersonNames,
   zeropsMateOwnerOf,
 } from "./useZeropsMateOwners";
@@ -140,5 +141,17 @@ describe("useHqPersonNames", () => {
       create(createElement(RegistryContext.Provider, { value: registry }, createElement(Probe)));
     });
     expect(named.at(-1)).toBe(name);
+  });
+});
+
+describe("personNameOf — who a record names, by Zerops user id", () => {
+  const viewer = { id: "user-ales", firstName: "Aleš", fullName: "Aleš Novák" };
+  const people = (id: string) => (id === "user-petr" ? "Petr" : undefined);
+  it.each([
+    { name: "the person looking, by their own account", subject: "user-ales", want: "Aleš" },
+    { name: "a colleague, as HQ names them", subject: "user-petr", want: "Petr" },
+    { name: "somebody nobody names", subject: "user-x", want: undefined },
+  ])("$name", ({ subject, want }) => {
+    expect(personNameOf(subject, viewer, people)).toBe(want);
   });
 });

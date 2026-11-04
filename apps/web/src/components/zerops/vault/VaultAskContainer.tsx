@@ -28,7 +28,7 @@ import { threadEnvironment } from "~/state/threads";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useDetailDemand } from "~/zerops/ZeropsAccountData";
-import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { showAskInConversation } from "../../ask/askReveal";
@@ -142,7 +142,7 @@ function VaultAskHome({
   useDetailDemand("process", "history", projectId);
   const view = useAtomValue(projectId === null ? UNREAD : vaultAtom(projectId));
   const { write } = useVaultWriter(project, view);
-  const nameOf = useHqPersonNames(project?.orgId);
+  const nameOf = usePersonNames(project?.orgId);
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const answerVaultAsk = useAtomCommand(threadEnvironment.answerVaultAsk, {
     reportFailure: false,
