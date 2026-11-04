@@ -7,8 +7,8 @@
  * putting production on the person's domain: undecided, with another change waiting, and approved
  * at each step its domain goes through. First, the Chief proposing who has access to an
  * application: undecided, held for a name nobody in the organization has, and done. Every face is
- * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
- * refuses it. `?theme=dark` for dark.
+ * the mark there; the receiving Mate keeps its own. The secret and the domain act on production.
+ * The main press answers after 900 ms; `?fail=1` refuses it. `?theme=dark` for dark.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
@@ -257,6 +257,8 @@ function Card(card: (typeof CARDS)[number]) {
     <ProposalCard
       approveBlocked={card.approveBlocked}
       chiefTarget={card.chiefTarget}
+      decidedAt={stage === "open" ? null : "15:02"}
+      decidedBy={stage === "open" ? null : "Aleš"}
       domainAlso={card.domainAlso}
       domainState={card.domainState}
       domainRecords={card.domainRecords}
@@ -280,6 +282,10 @@ function Card(card: (typeof CARDS)[number]) {
       recipient={card.proposal.kind === "mate.message" ? ROSSY : undefined}
       refusal={card.refusal}
       stage={stage}
+      // The secret and the domain act on Contoso's production: its chip and press are red.
+      tier={
+        card.proposal.id === "secret" || card.proposal.kind === "domain.add" ? "production" : null
+      }
     />
   );
 }

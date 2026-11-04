@@ -1,5 +1,5 @@
 /**
- * The project's repository while it clones, at the composer's top in the asks' look (`ComposerAsk`):
+ * The project's repository while it clones, at the composer's top in the asks' look (`AskDock`):
  * cloning stops nothing but Send — the person writes, attaches and picks a model meanwhile — so it
  * never takes the composer's place. Running, it offers Cancel; failed or cancelled, Retry and
  * Remove project, a failure's own words whole.
@@ -12,7 +12,7 @@ import {
 import { DownloadIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
-import { ComposerAsk } from "./ComposerAsk";
+import { AskDock } from "../ask/AskCard";
 
 export interface ComposerCloneActions {
   readonly cancel: () => void;
@@ -42,7 +42,7 @@ export function ComposerCloneAsk({
   );
   if (clone.phase === "running") {
     return (
-      <ComposerAsk
+      <AskDock
         actions={
           <Button onClick={actions.cancel} variant="secondary">
             Cancel
@@ -63,7 +63,7 @@ export function ComposerCloneAsk({
   const cancelled = clone.phase === "cancelled";
   const why = cancelled ? "Retry to bring in the repository." : clone.error;
   return (
-    <ComposerAsk
+    <AskDock
       actions={
         <>
           <Button onClick={actions.remove} size="sm" variant="ghost">

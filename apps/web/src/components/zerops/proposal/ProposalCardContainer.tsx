@@ -45,6 +45,11 @@ import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
 import { useProposalDecision } from "~/zerops/proposalRecord";
+import { useEnvironmentTier } from "~/zerops/environmentTier";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { useClientSettings } from "~/hooks/useSettings";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
@@ -138,6 +143,11 @@ function Proposal({
   );
   const stage = proposalStage(decision, runningHere);
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  // Where it acts, and who decided it when: the card's chip and its settled line.
+  const tier = useEnvironmentTier(proposal.projectId);
+  const nameOf = usePersonNames(home?.orgId);
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
   const chief = chiefMessageTarget(person?.chief?.projectId);
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
@@ -288,18 +298,26 @@ function Proposal({
                     ? accessPlan.words
                     : undefined;
 
+  /** A decision made here, recorded as the person's. */
+  const mine = useCallback(
+    (next: ProposalDecision): ProposalDecision =>
+      viewer === undefined ? next : { ...next, by: viewer },
+    [viewer],
+  );
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
       void record(
-        outcome.ok
-          ? { state: "done", at: new Date().toISOString() }
-          : {
-              state: "failed",
-              at: new Date().toISOString(),
-              message: outcome.message ?? "Zerops did not do it.",
-            },
+        mine(
+          outcome.ok
+            ? { state: "done", at: new Date().toISOString() }
+            : {
+                state: "failed",
+                at: new Date().toISOString(),
+                message: outcome.message ?? "Zerops did not do it.",
+              },
+        ),
       ),
-    [record],
+    [mine, record],
   );
 
   /**
@@ -322,7 +340,7 @@ function Proposal({
   /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */
   const decide = async (next: ProposalDecision): Promise<boolean> => {
     setRefusal(undefined);
-    const refused = await record(next);
+    const refused = await record(mine(next));
     if (refused !== null) setRefusal(refused);
     return refused === null;
   };
@@ -450,6 +468,11 @@ function Proposal({
             : { lines: accessAskLines(proposal), dropped: [] }
       }
       chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
+      decidedAt={
+        decision === undefined ? null : formatDayAwareTimestamp(decision.at, timestampFormat)
+      }
+      decidedBy={decision?.by === undefined ? null : (nameOf(decision.by) ?? null)}
+      homeProjectId={home?.projectId ?? null}
       readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
@@ -471,6 +494,7 @@ function Proposal({
       recipient={recipient}
       refusal={refusal}
       stage={stage}
+      tier={tier}
     />
   );
 }

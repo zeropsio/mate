@@ -166,10 +166,9 @@ import { ComposerPrimaryActions } from "./ComposerPrimaryActions";
 import { ComposerAskFace, useComposerAskName } from "./ComposerAsk";
 import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
-import {
-  ComposerVaultAskContainer,
-  useOpenVaultAskId,
-} from "../zerops/vault/ComposerVaultAskContainer";
+import { ComposerVaultAskContainer, useOpenVaultAskId } from "../zerops/vault/VaultAskContainer";
+import { docksAboveComposer } from "../ask/ask.logic";
+import { useAskCardOnScreen } from "../ask/askReveal";
 import {
   ComposerAccessControl,
   ComposerInteractionModeToggle,
@@ -1656,10 +1655,16 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const activePendingUserInput = pendingUserInputs[0] ?? null;
   const isChoiceOnlyPendingQuestion =
     activePendingProgress?.activeQuestion?.allowCustomAnswer === false;
-  // A value the Mate asked for waits after any approval or question: one ask at a time.
+  // A value the Mate asked for waits after any approval or question: one ask at a time. Its card
+  // stands in the conversation; it docks here too once the Mate's turn has stopped on it, while
+  // that card is out of view.
   const openVaultAskId = useOpenVaultAskId(routeKind === "server" ? routeThreadRef : null);
+  const cardOnScreen = useAskCardOnScreen(openVaultAskId);
   const vaultAskWaits =
-    openVaultAskId !== null && !isComposerApprovalState && pendingUserInputs.length === 0;
+    openVaultAskId !== null &&
+    docksAboveComposer("waiting", { turnRunning: phase === "running", cardOnScreen }) &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0;
   // What the agent asks stands at the composer's top in the look of the change waiting for review
   // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
   // keeps it in the drawer over its one line.
