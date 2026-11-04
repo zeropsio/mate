@@ -18,6 +18,7 @@ import {
   type Operations,
   type RunToEnd,
   type Projection,
+  shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
 import { Atom } from "effect/reactivity";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
@@ -1524,10 +1525,18 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
   const ids = () => verbs(STOPPED).map((verb) => verb.id);
 
   it.each([
-    { who: "a member", role: "BASIC_USER", user: { id: "user-ada" }, known: true, offered: true },
+    {
+      who: "a member",
+      role: "BASIC_USER",
+      visibility: "open",
+      user: { id: "user-ada" },
+      known: true,
+      offered: true,
+    },
     {
       who: "a read-only member, whose Mate is listed",
       role: "READ_ONLY",
+      visibility: "listed",
       user: { id: "user-ada" },
       known: true,
       offered: false,
@@ -1536,15 +1545,16 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
     {
       who: "a member HQ has said nothing of yet",
       role: "BASIC_USER",
+      visibility: "open",
       user: { id: "user-ada" },
       known: false,
       offered: true,
     },
-  ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
+  ] as const)("$who: Start offered $offered", ({ role, visibility, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
-    // Whether its door opens is the Mate's visibility from the person's Zerops role; HQ may not
-    // have said anything yet.
+    // Whether its door opens is the Mate's visibility, as the account reads it from the person's
+    // Zerops role (`mateVisibility`); HQ may not have said anything yet.
     mock.mateOffers = () => (known ? OWNER_OFFERS : undefined);
     mock.listing.current = {
       state: "known",
@@ -1553,7 +1563,13 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
       coverage: "complete",
       freshness: { kind: "live" },
     };
-    mount();
+    mount(
+      AtomRegistry.make({
+        initialValues: [
+          [shownMateVisibilitiesAtom(STOPPED.project.id), { [STOPPED.project.id]: visibility }],
+        ],
+      }),
+    );
     expect(ids().includes("start")).toBe(offered);
   });
 });

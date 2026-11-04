@@ -39,7 +39,11 @@ import { PlayIcon, PlusIcon } from "lucide-react";
 
 import { Button } from "../ui/button";
 import { Spinner } from "../ui/spinner";
-import { shownHqPersonFactsAtom, shownHqProjectPeopleAtom } from "@t3tools/client-runtime/data";
+import {
+  shownHqPersonFactsAtom,
+  shownHqProjectPeopleAtom,
+  shownMateVisibilitiesAtom,
+} from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
@@ -51,10 +55,7 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  resolveMateVisibility,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import {
   deployBuilding,
@@ -1021,12 +1022,13 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, from its project row and their org role as Zerops
-  // pushes them, through the one shared role function (D5). A `listed` row is shown, never opened.
+  // What this person may do with each Mate, as the account reads it from live Zerops data
+  // (`mateVisibility`). A `listed` row is shown, never opened; one not judged yet is not held back.
+  const visibilities = useAtomValue(
+    shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
+  );
   const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
-    activeOrganization === null
-      ? undefined
-      : resolveMateVisibility({ project: candidate.project, viewer: activeOrganization });
+    visibilities[candidate.project.id];
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();

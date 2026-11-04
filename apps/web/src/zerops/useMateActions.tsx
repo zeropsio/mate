@@ -53,7 +53,7 @@ import {
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
-import { resolveMateVerbs, resolveMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
@@ -120,6 +120,7 @@ import {
   initialStream,
   organizationMembers,
   shownHqProjectPeopleAtom,
+  shownMateVisibilitiesAtom,
   type MembersRead,
 } from "@t3tools/client-runtime/data";
 import { HAND_OVER_VERB, handOverCandidates, handOverOffered } from "./mateHandOver.logic";
@@ -365,6 +366,11 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
+  // Each Mate's visibility for the person, as the account reads it from live Zerops data
+  // (`mateVisibility`); one not judged yet is absent.
+  const visibilities = useAtomValue(
+    shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
+  );
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
   // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
@@ -555,8 +561,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
    */
   const rowInputFor = useCallback(
     (candidate: ZeropsCandidatePresentation): ZeropsRowInput => {
-      const visibility =
-        viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
+      const visibility = visibilities[candidate.project.id];
       return {
         candidate,
         coming: comingOf(candidate),
@@ -566,7 +571,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         ...(visibility === undefined ? {} : { visibility }),
       };
     },
-    [comingOf, mateOffersOf, viewer],
+    [comingOf, mateOffersOf, visibilities],
   );
 
   const start = useCallback(
@@ -1082,8 +1087,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         siblings: siblings.map((mate) => ({
           projectId: mate.project.id,
           opens:
-            (viewer === null ||
-              resolveMateVisibility({ project: mate.project, viewer }) === "open") &&
+            (visibilities[mate.project.id] ?? "open") === "open" &&
             !mateDeleting(mate.project, deletingMates()),
         })),
       });
@@ -1096,7 +1100,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         if (next !== undefined) openMate(next);
       }
     },
-    [groupTree.groups, linkTarget, openMate, router, viewer],
+    [groupTree.groups, linkTarget, openMate, router, visibilities],
   );
 
   /**
