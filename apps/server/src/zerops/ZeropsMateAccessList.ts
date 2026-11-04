@@ -13,7 +13,7 @@
  * applies over the rows the last read and frames left, and the list is recomputed from them; a
  * frame that changes no row changes nothing. Every (re)connect reads again, for what the socket
  * missed. After every read, and every frame that changed a row, whom the list names goes up to
- * HQ (`access_report`); the link computes `missing` as it sends ({@link accessReport}). The own
+ * HQ (`access_report`), whole every time. The own
  * list names whose the project is too: whom its `OWNER` override names (`projectOwners`), the
  * owner marker a hand-over moves.
  *
@@ -232,28 +232,12 @@ export const ticketVerdict = (
   return member.visibility === "open" ? "open" : "read_only";
 };
 
-/** Whom a list names, as of `at`: an `access_report` but its `missing`. */
-export type AccessNamed = Omit<AccessReport, "missing">;
-
 /** Whom `list` opens for and lists, as of `at`. */
-export const accessNamed = (list: AccessList, at: string): AccessNamed => ({
+export const accessNamed = (list: AccessList, at: string): AccessReport => ({
   at,
   openers: list.members.filter((m) => m.visibility === "open").map((m) => m.userId),
   listed: list.members.filter((m) => m.visibility === "listed").map((m) => m.userId),
 });
-
-/**
- * The report of `named` as sent after `previous`, the last one HQ received: `missing` is whom
- * `previous` named and `named` does not, so nobody a report HQ never received took away is lost.
- */
-export const accessReport = (
-  previous: AccessReport | undefined,
-  named: AccessNamed,
-): AccessReport => {
-  const now = new Set([...named.openers, ...named.listed]);
-  const before = previous === undefined ? [] : [...previous.openers, ...previous.listed];
-  return { ...named, missing: before.filter((userId) => !now.has(userId)) };
-};
 
 /** Who a list opens for and lists, whose it is, and whether it is refused: what its readers act on. */
 const reachOf = (list: AccessList | undefined): string =>
@@ -296,7 +280,7 @@ export class ZeropsMateAccessList extends Context.Service<
      */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
     /** Whom the own list names, latest first, then after each change (`access_report`). */
-    readonly reports: Stream.Stream<AccessNamed>;
+    readonly reports: Stream.Stream<AccessReport>;
     /**
      * Fires when the deciding list changes whom it opens for or lists, or whose the project is,
      * never when it only aged.
@@ -334,7 +318,7 @@ export const make = (own?: {
       relayed: undefined,
     });
     const moved = yield* PubSub.unbounded<void>();
-    const reports = yield* SubscriptionRef.make(Option.none<AccessNamed>());
+    const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
     const scope = yield* Effect.scope;
     /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
     const inFlight = yield* Ref.make<Deferred.Deferred<void> | undefined>(undefined);
