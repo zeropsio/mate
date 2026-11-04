@@ -136,6 +136,7 @@ export function useChiefSetupRunner(): {
     if (useChiefSetupStore.getState().setup.phase !== "idle") return;
     const ask: NewProjectAsk = {
       organizationId: activeOrganization.id,
+      creator: activeOrganization.membershipId,
       birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
       ...chiefNames(user),
       face: CHIEF_FACE,

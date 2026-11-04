@@ -44,6 +44,7 @@ import {
 /** What Create asked for: Acme CRM, and Vera in it. */
 const ASK: NewProjectAsk = {
   organizationId: "org-acme",
+  creator: "cu-me",
   birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
@@ -585,7 +586,34 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
   return { order, ports: made, read: () => now };
 }
 
+/** The Mate's owner marker: its creator's own `OWNER` override. */
+const CREATOR_OWNS = { clientUserId: "cu-me", roleCode: "OWNER" } as const;
+
 describe("runNewProjectBirth — the project, then its first Mate", () => {
+  // Decision: A birth from the web always writes the creator's OWNER override in the create body,
+  // whatever the creator's org role, so every Mate carries its owner marker from creation.
+  it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk> }>([
+    { case: "with no access chosen", ask: {} },
+    {
+      case: "beside the access chosen at Create",
+      ask: { userRoles: [{ clientUserId: "cu-ada", roleCode: "ADMIN" }] },
+    },
+    {
+      case: "over any lower grant the creator was given",
+      ask: { userRoles: [{ clientUserId: "cu-me", roleCode: "READ_ONLY" }] },
+    },
+  ])("writes its creator's OWNER override into every birth, $case", async ({ ask }) => {
+    const { ports: made, read: now } = ports(
+      read({ appId: "app-acme", birthId: "b-1", steps: { app: DONE, birth: DONE } }),
+    );
+    await runNewProjectBirth(held(ask), now, made);
+    const sent = vi.mocked(made.createProject).mock.calls[0]?.[1].userRoles ?? [];
+    expect(sent.filter((grant) => grant.clientUserId === "cu-me")).toEqual([CREATOR_OWNS]);
+    expect(sent.filter((grant) => grant.clientUserId !== "cu-me")).toEqual(
+      (ask.userRoles ?? []).filter((grant) => grant.clientUserId !== "cu-me"),
+    );
+  });
+
   it("registers the project in the organization's HQ, records its Mate's birth, then creates its Mate", async () => {
     const { order, ports: made, read: now } = ports();
     await runNewProjectBirth(held(), now, made);
@@ -605,13 +633,19 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
       // face are HQ's, which the press's registration writes.
       case: "named in full under its application, under its birth intent",
       ask: {},
-      args: { name: "Acme CRM - Vera", appId: "app-acme", birth: "b-1" },
+      args: { name: "Acme CRM - Vera", appId: "app-acme", birth: "b-1", userRoles: [CREATOR_OWNS] },
     },
     {
       // Its agents are its container's, which its press imports.
       case: "in the location chosen",
       ask: { locationId: "prg1", agents: ["claude-code"] },
-      args: { name: "Acme CRM - Vera", location: "prg1", appId: "app-acme", birth: "b-1" },
+      args: {
+        name: "Acme CRM - Vera",
+        location: "prg1",
+        appId: "app-acme",
+        birth: "b-1",
+        userRoles: [CREATOR_OWNS],
+      },
     },
     {
       case: "with the access its creator chose",
@@ -620,7 +654,7 @@ describe("runNewProjectBirth — the project, then its first Mate", () => {
         name: "Acme CRM - Vera",
         appId: "app-acme",
         birth: "b-1",
-        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }],
+        userRoles: [{ clientUserId: "cu-ada", roleCode: "READ_ONLY" }, CREATOR_OWNS],
       },
     },
   ])("creates its first Mate $case", async ({ ask, args }) => {

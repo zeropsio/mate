@@ -2,6 +2,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
@@ -38,9 +39,13 @@ const WORK: MateLogin = {
 
 /**
  * Offboarding over the real sign-out: Eva signed in Claude Code's own login and the `work` login,
- * Jan Codex; a live session runs on each of Eva's. `access` is what `hasProjectAccess` answers.
+ * Jan Codex; a live session runs on each of Eva's. `access` is what `hasProjectAccess` answers,
+ * `owners` whose the project's own row says it is.
  */
-const offboarding = (access: Readonly<Record<string, boolean | undefined>>) =>
+const offboarding = (
+  access: Readonly<Record<string, boolean | undefined>>,
+  owners: Effect.Effect<ReadonlyArray<string> | undefined> = Effect.succeed(undefined),
+) =>
   Effect.gen(function* () {
     const stopped = yield* Ref.make<ReadonlyArray<string>>([]);
     const steps = yield* Ref.make<ReadonlyArray<string>>([]);
@@ -71,6 +76,7 @@ const offboarding = (access: Readonly<Record<string, boolean | undefined>>) =>
     const service = yield* makeOffboarding({
       signers: Effect.succeed({ "claude-code": EVA, [WORK.id]: EVA, codex: JAN }),
       hasProjectAccess: (userId) => Effect.succeed(access[userId]),
+      owners,
       signOut: signOut.signOut,
     });
     return { service, stopped, steps };
@@ -122,6 +128,43 @@ describe("ZeropsOffboarding", () => {
   );
 });
 
+// Decision: When the Mate's owner (the OWNER override on its own project row) changes, the Mate
+// signs out every provider login whose signer is not the new owner and ends the running agent,
+// through the existing offboarding path.
+describe("ZeropsOffboarding, when the project changes hands", () => {
+  it.effect(
+    "an owner change on the project row signs out every login whose signer is not the new owner, the old owner's access kept",
+    () =>
+      Effect.gen(function* () {
+        const owners = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+        const { service, stopped, steps } = yield* offboarding(
+          { [EVA]: true, [JAN]: true },
+          Ref.get(owners),
+        );
+        // No own read yet, then the first owner read: what it starts from, nobody signed out.
+        assert.strictEqual(yield* service.checkNow, 0);
+        yield* Ref.set(owners, [EVA]);
+        assert.strictEqual(yield* service.checkNow, 0);
+        assert.strictEqual(yield* service.checkNow, 0);
+        // Eva hands the Mate to Jan: Eva keeps her access (her organization role), not her logins.
+        yield* Ref.set(owners, [JAN]);
+        assert.strictEqual(yield* service.checkNow, 2);
+        assert.deepStrictEqual(yield* Ref.get(stopped), ["claudeAgent", "claude-code", WORK.id]);
+        const done = yield* Ref.get(steps);
+        assert.include([...done], "logout:claude-code");
+        assert.include([...done], `logout:${WORK.home}`);
+        assert.isFalse(
+          done.some((label) => label.includes("codex")),
+          "the new owner's Codex was signed out",
+        );
+        // Handed over once: a later pass with the same owner signs nobody out again.
+        yield* Ref.set(steps, []);
+        assert.strictEqual(yield* service.checkNow, 0);
+        assert.deepStrictEqual(yield* Ref.get(steps), []);
+      }),
+  );
+});
+
 // HQ sending a different access list signs a person who lost access out now, not at the next
 // role recheck.
 describe("ZeropsOffboarding's loop", () => {
@@ -166,6 +209,7 @@ describe("ZeropsOffboarding's loop", () => {
                 Layer.succeed(
                   ZeropsMateAccessList,
                   ZeropsMateAccessList.of({
+                    current: Effect.succeed(Option.none()),
                     changes: Stream.fromPubSub(relays),
                   } as unknown as ZeropsMateAccessList["Service"]),
                 ),

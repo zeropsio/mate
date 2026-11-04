@@ -18,6 +18,7 @@ import type { CreationAsk, NewProjectAsk, NewProjectBirth } from "./newProjectBi
 const HQ = { projectId: "hq-1", address: "https://hq.example" } as const;
 const ACME: NewProjectAsk = {
   organizationId: "org-acme",
+  creator: "cu-me",
   birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",

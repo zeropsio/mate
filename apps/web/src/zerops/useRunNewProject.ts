@@ -56,7 +56,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                         ? [...withZeropsMateTag([]), CHIEF_TAG]
                         : withZeropsMateTag([]),
                     ...(location === undefined ? {} : { location }),
-                    ...(userRoles === undefined ? {} : { userRoles }),
+                    userRoles,
                   },
                   {
                     orgId: organizationId,

@@ -14,6 +14,7 @@ import { comingEndsEntries, SidebarComingEnds } from "./SidebarComingEnds";
 const IDA: NewProjectBirth = {
   birthId: "add-1",
   organizationId: "org-acme",
+  creator: "cu-me",
   appId: "g-acme",
   intent: null,
   hq: { projectId: "hq", address: "https://hq.example" },
@@ -48,9 +49,9 @@ function Held() {
 
 /** Ida's Add, held from the press. */
 const pressIda = () => {
-  const { birthId, organizationId, name, botName, face, locationId, agents, adds } = IDA;
+  const { birthId, organizationId, creator, name, botName, face, locationId, agents, adds } = IDA;
   beginCreation({
-    ask: { birthId, organizationId, name, botName, face, locationId, agents, adds },
+    ask: { birthId, organizationId, creator, name, botName, face, locationId, agents, adds },
     hq: IDA.hq,
     now: 0,
     run: () => undefined,

@@ -1,6 +1,7 @@
 /**
  * ZeropsOffboarding — a person this project no longer opens for is signed out
- * of every login they signed in here (X4).
+ * of every login they signed in here (X4), and so is everyone but the new
+ * owner once the project changes hands.
  *
  * Every 30 seconds it reads who signed each login in (`ZeropsProjectSigners`,
  * an agent's own login and any beyond the two) and asks, for each signer, the
@@ -11,12 +12,21 @@
  * A read that cannot say signs nobody out — a platform blip never logs a
  * room out — and a sign-out that stumbles is logged, the rest go on.
  *
+ * The same pass watches whose the project is: the owners its own row names
+ * (`AccessList.owners`, its `OWNER` override). When they change to someone,
+ * every login whose signer is not among the new owners is signed out the same
+ * way, whatever access its signer keeps through their organization role: the
+ * old owner's login never runs the new owner's agent. The first owners a pass
+ * reads are its baseline, and a pass that cannot read them keeps the last.
+ *
  * @module ZeropsOffboarding
  */
 import type { ZeropsAgentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as Stream from "effect/Stream";
 
@@ -40,18 +50,35 @@ const targetOf = (key: string): SignOutTarget =>
     ? { agentId: key as ZeropsAgentId }
     : { loginId: key };
 
+const sameOwners = (a: ReadonlyArray<string>, b: ReadonlyArray<string>) =>
+  a.length === b.length && a.every((owner) => b.includes(owner));
+
 export const make = (options: {
   readonly signers: Effect.Effect<ProjectSigners>;
   readonly hasProjectAccess: ZeropsProjectSigners["Service"]["hasProjectAccess"];
+  /** Whose the project is as its own row names it; `undefined` while no own read says. */
+  readonly owners: Effect.Effect<ReadonlyArray<string> | undefined>;
   readonly signOut: ZeropsSignOut["Service"]["signOut"];
 }) =>
-  Effect.succeed(
-    ZeropsOffboarding.of({
+  Effect.gen(function* () {
+    const lastOwners = yield* Ref.make<ReadonlyArray<string> | undefined>(undefined);
+    /** The new owners when they changed to someone since the last pass that read them. */
+    const ownersMoved = Effect.gen(function* () {
+      const owners = yield* options.owners;
+      if (owners === undefined) return undefined;
+      const previous = yield* Ref.getAndSet(lastOwners, owners);
+      return previous !== undefined && owners.length > 0 && !sameOwners(previous, owners)
+        ? owners
+        : undefined;
+    });
+    return ZeropsOffboarding.of({
       checkNow: Effect.gen(function* () {
+        const newOwners = yield* ownersMoved;
         let signedOut = 0;
         for (const [key, signer] of Object.entries(yield* options.signers)) {
           if (signer.length === 0) continue;
-          if ((yield* options.hasProjectAccess(signer)) !== false) continue;
+          const handedOver = newOwners !== undefined && !newOwners.includes(signer);
+          if (!handedOver && (yield* options.hasProjectAccess(signer)) !== false) continue;
           const target = targetOf(key);
           const done = yield* options.signOut(target).pipe(
             Effect.as(true),
@@ -69,28 +96,29 @@ export const make = (options: {
         }
         return signedOut;
       }).pipe(Effect.catchCause(() => Effect.succeed(0))),
-    }),
-  );
+    });
+  });
 
 /**
  * One pass every 30 seconds, while this is a Zerops project, and one at once whenever the access
- * list changes whom it opens for (`ZeropsMateAccessList`): the Mate's own recompute or HQ's relay.
+ * list changes whom it opens for or whose the project is (`ZeropsMateAccessList`): the Mate's own
+ * recompute, a Zerops websocket frame, or HQ's relay.
  */
 export const layer = Layer.effect(
   ZeropsOffboarding,
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const signers = yield* ZeropsProjectSigners;
+    const accessList = yield* ZeropsMateAccessList;
     const service = yield* make({
       signers: signers.signers,
       hasProjectAccess: signers.hasProjectAccess,
+      owners: Effect.map(accessList.current, (list) => Option.getOrUndefined(list)?.owners),
       signOut: (yield* ZeropsSignOut).signOut,
     });
     if (config.zerops !== undefined) {
       yield* Effect.forkScoped(service.checkNow.pipe(Effect.repeat(Schedule.spaced("30 seconds"))));
-      yield* Effect.forkScoped(
-        Stream.runForEach((yield* ZeropsMateAccessList).changes, () => service.checkNow),
-      );
+      yield* Effect.forkScoped(Stream.runForEach(accessList.changes, () => service.checkNow));
     }
     return service;
   }),

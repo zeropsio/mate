@@ -49,6 +49,7 @@ const UNSENT: CreationRead = {
 const ASK: CreationAsk = {
   ask: {
     organizationId: "org-acme",
+    creator: "cu-me",
     birthId: "creation-1",
     name: "Garden",
     botName: "Nova",

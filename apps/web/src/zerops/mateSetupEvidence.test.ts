@@ -85,6 +85,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
   const held: CreationAsk = {
     ask: {
       organizationId: ORG,
+      creator: "cu-me",
       birthId: "birth-pepa",
       name: "Franta",
       botName: mate.name,

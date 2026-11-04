@@ -126,6 +126,24 @@ export function resolveDoorVisibility(input: {
   };
 }
 
+/**
+ * Whom the project's own row names its owner: each member its `OWNER` override names (the owner
+ * marker a birth writes and a hand-over moves), in the member list's order — never an organization
+ * role, which reaches every project and marks none of them anyone's.
+ */
+export function projectOwners(input: {
+  readonly members: ReadonlyArray<ZeropsOrgMember>;
+  readonly overrides: Readonly<Record<string, string>>;
+}): ReadonlyArray<string> {
+  return input.members.flatMap((member) =>
+    member.userId.length > 0 &&
+    member.clientUserId.length > 0 &&
+    asOrgRole(input.overrides[member.clientUserId]) === "OWNER"
+      ? [member.userId]
+      : [],
+  );
+}
+
 /** One member the project lets in: open, or listed (the door refuses them as read-only). */
 export const MateAccessMember = Schema.Struct({
   userId: Schema.String,

@@ -444,6 +444,31 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
       }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "A project frame that moves the OWNER override names the new owner and tells the change, whoever else the list opens for",
+    () =>
+      Effect.gen(function* () {
+        const { answer, frame, own } = yield* liveRead;
+        // Both are organization owners: the move changes nobody's role or reach, only whose it is.
+        yield* Ref.set(
+          answer,
+          read([person("jan", "OWNER"), person("eva", "OWNER")], { "cu-jan": "OWNER" }),
+        );
+        const list = yield* makeAccessList(own);
+        yield* TestClock.adjust(Duration.zero);
+        const ownersNow = Effect.map(
+          list.current,
+          (current) => Option.getOrUndefined(current)?.owners,
+        );
+        assert.deepStrictEqual(yield* ownersNow, ["jan"]);
+        const changed = yield* Stream.runHead(list.changes).pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+        yield* frame({ kind: "project", overrides: { "cu-eva": "OWNER" } });
+        assert.isTrue(Option.isSome(yield* Fiber.join(changed)));
+        assert.deepStrictEqual(yield* ownersNow, ["eva"]);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("A websocket (re)connect runs the Zerops read once", () =>
     Effect.gen(function* () {
       const { connected, own, reads } = yield* liveRead;

@@ -1105,6 +1105,7 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
   const QUINN_MADE: NewProjectBirth = {
     birthId: "add-quinn",
     organizationId: "org-beviro",
+    creator: "cu-me",
     projectId: PROJECT,
     appId: "beviro",
     intent: null,
@@ -2022,6 +2023,7 @@ describe("an added Mate's own view, after its hand-over", () => {
   const IDA: NewProjectBirth = {
     birthId: "add-1",
     organizationId: "org-beviro",
+    creator: "cu-me",
     appId: "beviro",
     intent: null,
     hq: { projectId: "hq", address: "https://hq.example" },

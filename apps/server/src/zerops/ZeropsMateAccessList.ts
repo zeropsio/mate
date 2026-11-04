@@ -13,7 +13,9 @@
  * applies over the rows the last read and frames left, and the list is recomputed from them; a
  * frame that changes no row changes nothing. Every (re)connect reads again, for what the socket
  * missed. After every read, and every frame that changed a row, whom the list names goes up to
- * HQ (`access_report`); the link computes `missing` as it sends ({@link accessReport}).
+ * HQ (`access_report`); the link computes `missing` as it sends ({@link accessReport}). The own
+ * list names whose the project is too: whom its `OWNER` override names (`projectOwners`), the
+ * owner marker a hand-over moves.
  *
  * The list HQ relays down the link (`access`, `@t3tools/shared/mateLink`) is advisory: it decides
  * only while the Mate has no own list or its own is stale. A full frame always replaces the
@@ -27,7 +29,12 @@
  *
  * @module ZeropsMateAccessList
  */
-import { type ProjectRoles, projectAccess, type ZeropsOrgMember } from "@t3tools/shared/mateAccess";
+import {
+  type ProjectRoles,
+  projectAccess,
+  projectOwners,
+  type ZeropsOrgMember,
+} from "@t3tools/shared/mateAccess";
 import type {
   AccessReport,
   KeyLinkAccess,
@@ -86,6 +93,11 @@ export interface AccessList {
   /** The relayed list's version; an own list is unversioned (0). */
   readonly version: number;
   readonly members: ReadonlyArray<ListedMember>;
+  /**
+   * Whom the project's own row names its owner (`projectOwners`); only an own list knows, as HQ's
+   * relay carries no row.
+   */
+  readonly owners?: ReadonlyArray<string>;
   /** HQ relayed that the organisation's key was refused: nobody is admitted. */
   readonly refused: boolean;
   /** When this Mate read or received it (its own clock, ms). */
@@ -142,6 +154,7 @@ export interface OwnRows {
 export const ownAccessList = (projectId: string, rows: OwnRows, nowMs: number): AccessList => ({
   version: 0,
   members: projectAccess({ projectId, members: rows.members, overrides: rows.project.overrides }),
+  owners: projectOwners({ members: rows.members, overrides: rows.project.overrides }),
   refused: false,
   heardAtMs: nowMs,
   expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
@@ -242,13 +255,14 @@ export const accessReport = (
   return { ...named, missing: before.filter((userId) => !now.has(userId)) };
 };
 
-/** Who a list opens for and lists, and whether it is refused: what its readers act on. */
+/** Who a list opens for and lists, whose it is, and whether it is refused: what its readers act on. */
 const reachOf = (list: AccessList | undefined): string =>
   list === undefined
     ? ""
     : JSON.stringify([
         list.refused,
         list.members.map((member) => [member.userId, member.role, member.visibility]),
+        list.owners ?? null,
       ]);
 
 /**
@@ -283,7 +297,10 @@ export class ZeropsMateAccessList extends Context.Service<
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
     /** Whom the own list names, latest first, then after each change (`access_report`). */
     readonly reports: Stream.Stream<AccessNamed>;
-    /** Fires when the deciding list changes whom it opens for or lists, never when it only aged. */
+    /**
+     * Fires when the deciding list changes whom it opens for or lists, or whose the project is,
+     * never when it only aged.
+     */
     readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsMateAccessList") {}

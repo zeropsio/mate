@@ -230,6 +230,7 @@ function NewProjectDialog() {
     const organizationId = activeOrganization.id;
     const ask: NewProjectAsk = {
       organizationId,
+      creator: activeOrganization.membershipId,
       birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
       name,
       botName,
