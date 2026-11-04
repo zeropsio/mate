@@ -33,8 +33,11 @@ export interface McpToolRow {
   readonly mark: "reads" | "changes" | null;
 }
 
-/** Where a tool stands in the tab: waiting on the person, ready, or turned off. */
-export type McpRowGroup = "waiting" | "ready" | "off";
+/**
+ * Where a tool stands in the tab: waiting on the person; ready (an agent reached it); not
+ * checked yet (no agent reached it, or it isn't set up for the conversation's agent); off.
+ */
+export type McpRowGroup = "waiting" | "ready" | "unchecked" | "off";
 
 /**
  * A row's right column says one thing: the one action it needs from the person (Sign in, Add
@@ -369,9 +372,13 @@ function agentsLine(
  * ones) and a command, which signs in by its environment, are only set up.
  */
 function unreportedNote(entry: McpServerEntry, driver: ProviderDriverKind | null): string {
-  if (entry.transport.type === "stdio") return STATE_LABEL.configured;
+  if (driver !== null && !SIGNING_AGENTS.has(driver)) return STATE_LABEL.configured;
+  if (entry.transport.type === "stdio") {
+    return driver === null
+      ? "Open a conversation with this Mate to check it."
+      : `${agentDisplayName(driver)} checks it when this conversation next runs.`;
+  }
   if (driver === null) return "May need a sign-in. Open a conversation with this Mate to check.";
-  if (!SIGNING_AGENTS.has(driver)) return STATE_LABEL.configured;
   return `May need a sign-in. ${agentDisplayName(driver)} checks when this conversation next runs.`;
 }
 
@@ -433,11 +440,14 @@ function rowRight(input: {
   }
 }
 
-/** Waiting on you · Ready · Off, each with its rows in the server's order; empty ones left out. */
+/**
+ * Waiting on you · Ready · Not checked yet · Off, each with its rows in the server's order; empty
+ * ones left out.
+ */
 export function groupMcpRows(
   rows: ReadonlyArray<McpServerRow>,
 ): ReadonlyArray<{ readonly id: McpRowGroup; readonly rows: ReadonlyArray<McpServerRow> }> {
-  return (["waiting", "ready", "off"] as const).flatMap((id) => {
+  return (["waiting", "ready", "unchecked", "off"] as const).flatMap((id) => {
     const inGroup = rows.filter((row) => row.group === id);
     return inGroup.length === 0 ? [] : [{ id, rows: inGroup }];
   });
@@ -495,8 +505,10 @@ function buildRow(
       : state !== "disabled";
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
   const unable = new Map((entry.cannot ?? []).map((item) => [item.driver, item.reason]));
+  // The conversation's own agent leads; the rest keep their installed order.
   const marks: McpAgentMark[] = [...installed, ...entry.agents.map((found) => found.driver)]
     .filter((candidate, index, all) => all.indexOf(candidate) === index)
+    .toSorted((a, b) => Number(b === driver) - Number(a === driver))
     .map((candidate) => {
       const reason = unable.get(candidate);
       const found = entry.agents.find((item) => item.driver === candidate);
@@ -536,7 +548,9 @@ function buildRow(
         ? "off"
         : right.kind === "action" || state === "needs-auth"
           ? "waiting"
-          : "ready",
+          : state === "configured" || state === "absent"
+            ? "unchecked"
+            : "ready",
     right,
     marks,
     initials: mcpTileInitials(entry.name, entry.managed),
@@ -869,6 +883,21 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
     else values[name] = value;
   }
   return { ok: true, values, keep };
+}
+
+// ── When to read again ────────────────────────────────────────────────
+
+/**
+ * What the conversation's agent did that may change what it reports of its tools: its session
+ * starting, coming ready or stopping, a turn starting, a turn ending. The tab reads again each
+ * time this changes, so a turn's first session is read as it comes up, not only on focus.
+ */
+export function mcpRunKey(input: {
+  readonly phase: string;
+  readonly turnId: string | null;
+  readonly completedAt: string | null;
+}): string {
+  return [input.phase, input.turnId ?? "", input.completedAt ?? ""].join("|");
 }
 
 // ── Failures ──────────────────────────────────────────────────────────

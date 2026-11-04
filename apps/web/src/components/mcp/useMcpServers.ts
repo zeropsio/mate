@@ -16,7 +16,7 @@ import type {
   ThreadId,
 } from "@t3tools/contracts";
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
@@ -62,9 +62,26 @@ export interface UseMcpServers {
   readonly signIn: (name: string) => Promise<McpSignInResult>;
 }
 
+/**
+ * Reads again whenever `key` changes after the first paint (the conversation's session and turns,
+ * `mcpRunKey`): the agent's own events say when its tools may stand differently, so nothing polls.
+ */
+export function useReadAgainWhen(key: string, read: () => void): void {
+  const last = useRef(key);
+  const latestRead = useRef(read);
+  latestRead.current = read;
+  useEffect(() => {
+    if (last.current === key) return;
+    last.current = key;
+    latestRead.current();
+  }, [key]);
+}
+
 export function useMcpServers(input: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | undefined;
+  /** The conversation's session and turns (`mcpRunKey`): each change reads the list again. */
+  readonly runKey?: string;
 }): UseMcpServers {
   const { environmentId, threadId } = input;
   const registry = useContext(RegistryContext);
@@ -169,6 +186,7 @@ export function useMcpServers(input: {
     },
     [environmentId, registry, target],
   );
+  useReadAgainWhen(input.runKey ?? "", refresh);
   useEffect(() => {
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
