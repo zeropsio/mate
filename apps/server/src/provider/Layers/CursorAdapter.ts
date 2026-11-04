@@ -42,6 +42,8 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
+import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
   ProviderAdapterProcessError,
@@ -344,6 +346,7 @@ export function makeCursorAdapter(
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
+    const serverSettings = yield* ServerSettingsService;
     const threadPolicies = yield* readAcpThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const nativeEventLogger =
@@ -995,6 +998,9 @@ export function makeCursorAdapter(
             CURSOR_EFFORT_OPTION,
           );
           const turnModelSelection = turnProfile.modelSelection;
+          const persona = turnProfile.profiled
+            ? undefined
+            : yield* readPersonaInstructions(serverSettings);
           const model = turnModelSelection?.model ?? ctx.session.model;
           const resolvedModel = resolveCursorAcpBaseModelId(model);
           yield* applyRequestedSessionConfiguration({
@@ -1114,7 +1120,12 @@ export function makeCursorAdapter(
                     ...promptParts,
                     {
                       type: "text",
-                      text: buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
+                      text: [
+                        buildRuntimeInstructions({ harness: "Cursor", model: resolvedModel }),
+                        persona,
+                      ]
+                        .filter(Boolean)
+                        .join("\n"),
                     },
                     ...(turnProfile.instructions
                       ? [{ type: "text" as const, text: turnProfile.instructions }]

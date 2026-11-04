@@ -23,6 +23,8 @@ import * as AcpErrors from "effect-acp/errors";
 import type * as AcpSchema from "effect-acp/schema";
 
 import { ServerConfig } from "../../config.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { ANTIGRAVITY_SIGN_IN_REQUIRED_MESSAGE } from "../antigravityAuthSupport.ts";
 import type { AcpSessionRuntimeEvent } from "../acp/AcpSessionRuntime.ts";
 import { makeAntigravityAcpRuntime } from "../acp/AntigravityAcpSupport.ts";
@@ -304,7 +306,10 @@ const makeHarness = Effect.fn("makeAntigravityAdapterHarness")(function* (option
 
 const layer = ServerConfig.layerTest(process.cwd(), {
   prefix: "t3-antigravity-adapter-test-",
-}).pipe(Layer.provideMerge(NodeServices.layer));
+}).pipe(
+  Layer.provideMerge(ServerSettingsService.layerTest()),
+  Layer.provideMerge(NodeServices.layer),
+);
 
 it.layer(layer)("AntigravityAdapter", (it) => {
   it.effect(
@@ -529,6 +534,57 @@ it.layer(layer)("AntigravityAdapter", (it) => {
         item: { aggregatedOutput: "after\n", exitCode: 0 },
       });
     }),
+  );
+
+  it.effect.each([
+    { label: "a person's chat", crewmate: false, heard: ["persona", "none"] },
+    { label: "a crewmate's chat", crewmate: true, heard: ["missing", "missing"] },
+  ])(
+    "Antigravity carries the Mate's current persona on every turn of $label, and its removal",
+    ({ crewmate, heard }) =>
+      Effect.gen(function* () {
+        const pirate = { name: "Pirate", instructions: "Talk like a pirate." };
+        const settings = yield* ServerSettingsService;
+        yield* settings.updateSettings({ persona: pirate });
+        const policies = yield* makeInstallSlot<ThreadToolPolicy>();
+        yield* policies.install({
+          profileFor: () =>
+            Effect.succeed(
+              crewmate
+                ? {
+                    sessionContext: "You are @backend on the crew.",
+                    contextWindow: 100_000,
+                    decideTool: () => Effect.succeed({ kind: "allow" as const }),
+                    tools: [],
+                  }
+                : undefined,
+            ),
+        });
+        const h = yield* makeHarness().pipe(
+          Effect.provideService(ThreadToolPolicyRegistry, policies),
+        );
+        yield* h.adapter.startSession({ threadId, cwd: process.cwd(), runtimeMode: "full-access" });
+        const contents: Array<ReadonlyArray<AcpSchema.ContentBlock>> = [];
+        for (const input of ["one", "two"]) {
+          const sending = yield* h.adapter.sendTurn({ threadId, input }).pipe(Effect.forkChild);
+          const prompt = yield* h.nextPrompt;
+          contents.push(prompt.content);
+          yield* Deferred.succeed(prompt.result, { stopReason: "end_turn" });
+          yield* Fiber.join(sending);
+          yield* settings.updateSettings({ persona: null });
+        }
+        const texts = (content: ReadonlyArray<AcpSchema.ContentBlock>) =>
+          content.flatMap((part) => (part.type === "text" ? [part.text] : []));
+        expect(
+          contents.map((content) =>
+            texts(content).some((text) => text.endsWith(`\n${personaInstructions(pirate)}`))
+              ? "persona"
+              : texts(content).some((text) => text.endsWith(`\n${personaInstructions(null)}`))
+                ? "none"
+                : "missing",
+          ),
+        ).toEqual(heard);
+      }),
   );
 
   it.effect(

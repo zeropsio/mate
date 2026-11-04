@@ -36,6 +36,7 @@ import type * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../../config.ts";
+import { ServerSettingsService } from "../../../serverSettings.ts";
 import type { ProviderAdapterError } from "../../../provider/Errors.ts";
 import {
   makeAntigravityAdapter,
@@ -323,7 +324,10 @@ export async function recordAcp(
 
   const layer = ServerConfig.layerTest(process.cwd(), {
     prefix: "bridge-acp-record-",
-  }).pipe(Layer.provideMerge(NodeServices.layer));
+  }).pipe(
+    Layer.provideMerge(ServerSettingsService.layerTest()),
+    Layer.provideMerge(NodeServices.layer),
+  );
   const log = await Effect.runPromise(Effect.scoped(program).pipe(Effect.provide(layer)));
   return { threadId, log };
 }

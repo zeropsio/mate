@@ -31,6 +31,7 @@ import {
 import { ServerConfig } from "../../config.ts";
 import { ThreadToolPolicyRegistry } from "../../spi/threadToolPolicy.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import type { CursorAdapterShape } from "../Services/CursorAdapter.ts";
 import { makeCursorAdapter } from "./CursorAdapter.ts";
@@ -450,7 +451,10 @@ cursorAdapterTestLayer("CursorAdapterLive", (it) => {
         [
           [
             { type: "text", text: "please /review this" },
-            { type: "text", text: buildRuntimeInstructions({ harness: "Cursor" }) },
+            {
+              type: "text",
+              text: `${buildRuntimeInstructions({ harness: "Cursor" })}\n${personaInstructions(null)}`,
+            },
           ],
           [{ type: "text", text: "/copy-request-id" }],
         ],
