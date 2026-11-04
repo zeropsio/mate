@@ -60,6 +60,7 @@ vi.mock("../state/environments", () => ({
 }));
 vi.mock("../state/entities", () => ({
   useProjects: () => [],
+  useServerConfigs: () => new Map(),
   useThreadShells: () => [],
   useAllEnvironmentShellsBootstrapped: () => true,
   waitForProject: () => {},

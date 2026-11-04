@@ -14,7 +14,8 @@ import type { RightPanelSurface } from "./rightPanelStore";
 
 /**
  * In the order a person reaches for them after a reply (the onboarding run, 2026-10-16): the app,
- * what changed and where it runs come before the developer's tools. The launcher lists them so.
+ * what changed and where it runs come before the developer's tools, and the Mate's own setup, how
+ * it works and talks, comes last. The launcher lists them so.
  */
 export const RIGHT_PANEL_KINDS = [
   "overview",
@@ -31,6 +32,7 @@ export const RIGHT_PANEL_KINDS = [
   "vault",
   "terminal",
   "mcp",
+  "persona",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -51,6 +53,8 @@ export interface RightPanelAvailabilityInput {
    * own to browse, so its panel offers only what it uses (`CHIEF_PANEL_KINDS`).
    */
   readonly chief?: boolean;
+  /** The Mate's server keeps a persona (`matePersona`); `null` while its config is unread. */
+  readonly matePersona: boolean | null;
 }
 
 /** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
@@ -245,6 +249,17 @@ export const RIGHT_PANEL_KIND_META = {
       line: (mate) => `Tools ${mate} can use, with each of its coding agents.`,
     },
     availability: () => "available",
+  },
+  persona: {
+    launcher: {
+      label: "Persona",
+      description: "Choose how this Mate works and talks.",
+      shortcut: "P",
+      unavailableHint: "Update this Mate to give it a persona.",
+    },
+    page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
+    availability: (input) =>
+      input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

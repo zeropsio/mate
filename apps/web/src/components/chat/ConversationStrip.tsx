@@ -212,6 +212,7 @@ function MatePill({
   onOpen,
   onCloseChat,
   onRename,
+  persona,
   trailing,
 }: {
   readonly mate: LineMate;
@@ -221,6 +222,8 @@ function MatePill({
   readonly onOpen: (threadId: ThreadId) => void;
   readonly onCloseChat: (chat: NonNullable<LineChats["close"]>) => void;
   readonly onRename: (() => void) | null;
+  /** The Mate's persona, quiet after its name (`MatePersonaPress`). */
+  readonly persona?: ReactNode;
   /** What stands right after its name, before what the chat is about (`ChatHeader`). */
   readonly trailing?: ReactNode;
 }) {
@@ -338,6 +341,7 @@ function MatePill({
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
+      {persona}
       {trailing}
       {subjectLine}
     </div>
@@ -617,6 +621,8 @@ export interface ConversationStripViewProps {
   readonly crew: ReadonlyArray<LineCrewmate> | null;
   /** The rename field, over the line from the Mate's name while its chat is renamed. */
   readonly renameField: ReactNode;
+  /** The Mate's persona (`ConversationStripProps.persona`). */
+  readonly persona?: ReactNode;
   /** What stands right after the line (`ConversationStripProps.trailing`). */
   readonly trailing?: ReactNode;
   /** The open crewmate's menu: its popup, or `null` while its crew is not read. */
@@ -639,6 +645,7 @@ export function ConversationStripView({
   mate,
   chats,
   crew,
+  persona,
   trailing,
   renameField,
   renderCrewmateMenu,
@@ -687,6 +694,7 @@ export function ConversationStripView({
         onCloseChat={onCloseChat}
         onOpen={onOpen}
         onRename={onRename}
+        persona={persona}
         trailing={trailing}
       />
       {crew === null ? null : (
@@ -731,6 +739,8 @@ export interface ConversationStripProps {
   /** What the chat on screen is about, when it is the Mate's own: its hover. */
   readonly subject: string | null;
   readonly renameField: ReactNode;
+  /** The Mate's persona, after its name; nothing in a crewmate's chat, which takes none. */
+  readonly persona?: ReactNode;
   /** What stands right after the line: what waits on the person in its project (`ChatHeader`). */
   readonly trailing?: ReactNode;
   /** Renames the Mate's chat on screen; `null` where it cannot be renamed. */
@@ -753,6 +763,7 @@ export function ConversationStrip({
   crewChat,
   subject,
   renameField,
+  persona,
   trailing,
   onRename,
   onEditJob,
@@ -851,6 +862,7 @@ export function ConversationStrip({
       onCloseChat={(chat) => void close(chat)}
       onOpen={open}
       onRename={onRename}
+      persona={persona}
       renameField={renameField}
       trailing={trailing}
     />

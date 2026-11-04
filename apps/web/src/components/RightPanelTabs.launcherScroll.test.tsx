@@ -22,6 +22,8 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  // The last card stays MCP: these cases scroll the launcher, not its order.
+  persona: "hidden",
   vault: "available",
   overview: "hidden",
 } as const;

@@ -43,6 +43,7 @@ import {
   ArrowLeftIcon,
   ChartNoAxesColumnIcon,
   CornerLeftUpIcon,
+  Drama as PersonaIcon,
   FileSearchIcon,
   FolderIcon,
   FolderPlusIcon,
@@ -94,9 +95,13 @@ import { useEnvironments, usePrimaryEnvironmentId } from "../state/environments"
 import {
   useAllEnvironmentShellsBootstrapped,
   useProjects,
+  useServerConfigs,
   useThreadShells,
   waitForProject,
 } from "../state/entities";
+import { useRightPanelStore } from "../rightPanelStore";
+import { zeropsMateAt } from "../zerops/mateIdentities";
+import { zeropsMatesAtom } from "../zerops/useZeropsMates";
 import { useThreadSearch } from "../state/queries";
 import {
   shownHqListedMatesAtom,
@@ -752,6 +757,8 @@ export function OpenCommandPaletteDialog(props: {
   const primaryEnvironmentId = usePrimaryEnvironmentId();
   const { activeDraftThread, activeThread, defaultProjectRef, handleNewThread } =
     useHandleNewThread();
+  const zeropsMates = useAtomValue(zeropsMatesAtom);
+  const serverConfigs = useServerConfigs();
   const allProjects = useProjects();
   const projects = useMemo(
     () =>
@@ -1938,6 +1945,36 @@ export function OpenCommandPaletteDialog(props: {
         if (plan.rescan === null) return;
         const refreshed = await refreshProviders({ environmentId, input: plan.rescan });
         if (refreshed._tag === "Failure") throw squashAtomCommandFailure(refreshed);
+      },
+    });
+  }
+
+  // A Mate's own persona, from any of its chats; the Chief takes none.
+  const personaMate = activeThread ? zeropsMateAt(zeropsMates, activeThread.environmentId) : null;
+  if (activeThread && personaMate?.kind === "mate" && personaMate.mate.chief !== true) {
+    const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
+    const mateName = personaMate.mate.name;
+    const takesPersona =
+      serverConfigs.get(activeThread.environmentId)?.environment.capabilities.matePersona === true;
+    actionItems.push({
+      kind: "action",
+      value: "action:persona",
+      searchTerms: [
+        "persona",
+        "personality",
+        "voice",
+        "style",
+        "instructions",
+        "template",
+        "talks",
+      ],
+      title: `Choose ${mateName}'s persona`,
+      icon: <PersonaIcon className={ITEM_ICON_CLASS} />,
+      ...(takesPersona
+        ? {}
+        : { disabled: true, description: `Update ${mateName} to give it a persona.` }),
+      run: async () => {
+        useRightPanelStore.getState().open(threadRef, "persona");
       },
     });
   }

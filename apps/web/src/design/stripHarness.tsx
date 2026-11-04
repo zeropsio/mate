@@ -37,6 +37,7 @@ import { resolveThreadStatus } from "@t3tools/shared/threadStatus";
 import { EllipsisIcon } from "lucide-react";
 
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
+import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
 import {
   lineChats,
   lineCrew,
@@ -282,6 +283,8 @@ interface HeadState {
   readonly subject?: string | null;
   /** The subject arrives a moment after the line is painted, as the first words sent. */
   readonly lateSubject?: true;
+  /** The Mate's persona, after its name. */
+  readonly persona?: string;
 }
 
 const LONG_SUBJECT =
@@ -370,6 +373,23 @@ const STATES: ReadonlyArray<HeadState> = [
     crew: [],
     on: 0,
     lateSubject: true,
+  },
+  {
+    id: "lone-persona",
+    title:
+      "A Mate with a persona: its name, quiet, after the Mate's; a press opens the Persona page",
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    persona: "Careful engineer",
+  },
+  {
+    id: "lone-persona-long",
+    title: "A long persona name beside a subject longer than the line: the subject gives way first",
+    chats: [{ title: LONG_SUBJECT, activity: "working" }],
+    crew: [],
+    on: 0,
+    persona: "Acme house style for client work",
   },
   {
     id: "reload",
@@ -577,6 +597,11 @@ function Frame({
                 onSwitch?.(pressed === undefined ? 0 : pressed.handle);
               }}
               onRename={() => {}}
+              persona={
+                state.persona === undefined ? undefined : (
+                  <MatePersonaPress mateName={FEN.name} onOpen={() => {}} persona={state.persona} />
+                )
+              }
               renameField={null}
             />
             <HeaderActions />
