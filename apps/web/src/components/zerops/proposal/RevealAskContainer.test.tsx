@@ -2,7 +2,12 @@
 import { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
-import type { HqProjectPeople, VaultView } from "@t3tools/client-runtime/data";
+import {
+  REVEAL_UNRECORDABLE,
+  OperationStopped,
+  type HqProjectPeople,
+  type VaultView,
+} from "@t3tools/client-runtime/data";
 import type { EnvironmentId } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 
@@ -188,6 +193,20 @@ describe("revealing a hidden value on the card", () => {
     await press("Reveal production value");
     expect(card()).not.toContain(VALUE);
     expect(card()).toContain("HQ couldn't record the reveal, so it stays hidden. Try again.");
+    expect(button("Try again")).toBeDefined();
+    expect(source.record).not.toHaveBeenCalled();
+  });
+
+  it("keeps a value hidden where its HQ records no reveals, says to update HQ and offers no Try again", async () => {
+    source.reveal.mockResolvedValue({ ok: true, value: VALUE });
+    source.recorded.mockRejectedValue(
+      new OperationStopped("Update HQ to record reveals.", REVEAL_UNRECORDABLE),
+    );
+    await draw();
+    await press("Reveal production value");
+    expect(card()).not.toContain(VALUE);
+    expect(card()).toContain("Update HQ to record reveals.");
+    expect(button("Try again")).toBeUndefined();
     expect(source.record).not.toHaveBeenCalled();
   });
 

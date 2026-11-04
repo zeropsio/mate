@@ -39,7 +39,7 @@ import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
-import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
+import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import type { HqWriteIntent } from "../hqWrites.ts";
 
 import {
@@ -244,6 +244,11 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
     };
   return { outcome: "transient", message };
 }
+
+/** An HQ from before reveals were recorded: a retry never records one. */
+const HQ_RECORDS_NO_REVEALS = "Update HQ to record reveals.";
+/** An HQ that will not record a reveal by this person: someone HQ lets record it reveals it. */
+const HQ_REFUSES_REVEAL = "HQ won't record a reveal by you here, so it stays hidden.";
 
 const write = <A>(call: () => Promise<A>) =>
   Effect.tryPromise({
@@ -471,14 +476,24 @@ export function makeHqExecutor(ports: {
         );
       case "record-reveal": {
         const record = api.recordReveal;
-        // No HQ that records reveals: nothing was recorded, so nothing is shown.
-        if (record === undefined)
-          return Effect.fail<StreamFault>({
-            outcome: "definitive-refusal",
-            message: "Update HQ to record reveals.",
-          });
+        // Nothing recorded, so nothing is shown, where no retry records it: an HQ without reveals
+        // (no call, or no address for it) until HQ is updated, or one refusing the person.
+        const unrecordable = (message: string): StreamFault => ({
+          outcome: "definitive-refusal",
+          message,
+          code: REVEAL_UNRECORDABLE,
+        });
+        if (record === undefined) return Effect.fail(unrecordable(HQ_RECORDS_NO_REVEALS));
         return Effect.map(
-          Effect.tryPromise({ try: () => record(intent.reveal), catch: faultOf }),
+          Effect.tryPromise({
+            try: () => record(intent.reveal),
+            catch: (cause) =>
+              cause instanceof HqError && cause.status === 404
+                ? unrecordable(HQ_RECORDS_NO_REVEALS)
+                : cause instanceof HqError && cause.status === 403
+                  ? unrecordable(HQ_REFUSES_REVEAL)
+                  : faultOf(cause),
+          }),
           () => answered(requestId, intent.reveal.projectId, {}),
         );
       }

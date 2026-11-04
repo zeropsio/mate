@@ -65,3 +65,9 @@ export type HqChiefIntent = Extract<
 
 /** The code a decision's refusal carries where HQ holds another decision of the proposal. */
 export const PROPOSAL_DECIDED_ELSEWHERE = "conflict";
+
+/**
+ * The code a reveal's refusal carries where no retry records it: an older HQ with no reveals to
+ * record it at, or one that refuses the person. Updating HQ, or someone else, changes that.
+ */
+export const REVEAL_UNRECORDABLE = "reveal_unrecordable";

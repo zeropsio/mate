@@ -31,6 +31,8 @@ export interface RevealAskCardProps {
   readonly blocked?: string | undefined;
   /** Whether the viewer may reveal it again once it hid. */
   readonly mayReveal: boolean;
+  /** Whether pressing again may help where it failed; an HQ that records no reveals never will. */
+  readonly mayRetry: boolean;
   readonly onReveal: () => void;
   readonly onNotNow: () => void;
   readonly onHide: () => void;
@@ -49,7 +51,7 @@ export function RevealAskCard(props: RevealAskCardProps) {
       <Button onClick={props.onHide} variant="ghost">
         Hide
       </Button>
-    ) : state.kind === "failed" ? (
+    ) : state.kind === "failed" && props.mayRetry ? (
       <Button onClick={props.onReveal} variant="secondary">
         Try again
       </Button>

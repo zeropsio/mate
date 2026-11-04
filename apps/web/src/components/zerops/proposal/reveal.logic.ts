@@ -110,6 +110,8 @@ export type RevealPhase =
   | { readonly kind: "shown" }
   /** Refused for a reason a retry may fix: the source's words, and Try again. */
   | { readonly kind: "failed"; readonly words: string }
+  /** Refused where no retry helps (an HQ that records no reveals): the source's words alone. */
+  | { readonly kind: "stuck"; readonly words: string }
   /** Refused for the person's role, which no retry fixes: the source's words. */
   | { readonly kind: "refused"; readonly words: string };
 
@@ -155,6 +157,7 @@ export function revealAskState(input: {
     case "shown":
       return { kind: "done", words: "Only on your screen · recorded at HQ", told: null };
     case "failed":
+    case "stuck":
       return { kind: "failed", words: phase.words };
     case "refused": {
       // Who can, by name, where known; else the role's own words.

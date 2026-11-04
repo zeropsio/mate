@@ -12,6 +12,8 @@ import {
   accountReadsAtom,
   hqProjectPerson,
   initialStream,
+  REVEAL_UNRECORDABLE,
+  OperationStopped,
   organizationMembers,
   projectsGrants,
   vaultAtom,
@@ -179,8 +181,12 @@ export function RevealAsk({
           { kind: "record-reveal", orgId: home.orgId, reveal: revealRecordOf(proposal) },
           { orgId: home.orgId, unobserved: HQ_UNFOLLOWED },
         );
-      } catch {
-        setPhase({ kind: "failed", words: NOT_RECORDED });
+      } catch (error) {
+        setPhase(
+          error instanceof OperationStopped && error.code === REVEAL_UNRECORDABLE
+            ? { kind: "stuck", words: error.message }
+            : { kind: "failed", words: NOT_RECORDED },
+        );
         return;
       }
       // The first reveal is the proposal's approval: a reload says to whom and when.
@@ -222,6 +228,7 @@ export function RevealAsk({
       homeProjectId={home?.projectId ?? null}
       mateName={proposer?.name ?? "Your Mate"}
       mayReveal={authority.kind === "may"}
+      mayRetry={phase.kind !== "stuck"}
       onHide={hide}
       onNotNow={() => {
         setRefusal(undefined);

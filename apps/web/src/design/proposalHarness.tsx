@@ -557,6 +557,7 @@ function Reveal(fixture: (typeof REVEALS)[number]) {
       homeProjectId="p-mate"
       mateName="Juno"
       mayReveal={(fixture.authority ?? MAY).kind === "may"}
+      mayRetry={phase.kind !== "stuck"}
       onHide={() => setPhase({ kind: "idle" })}
       onNotNow={() => setDecided("notNow")}
       onReveal={() => {
