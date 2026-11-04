@@ -28,7 +28,7 @@ const request = (headers: Record<string, string> = {}, query = "") =>
   HttpServerRequest.fromWeb(new Request(`https://mate.example/api/shell${query}`, { headers }));
 
 const setup = Effect.gen(function* () {
-  const access = yield* Access.make;
+  const access = yield* Access.make();
   const tickets = yield* Tickets.make;
   const connections = yield* Connections.make.pipe(
     Effect.provideService(Access.ZeropsMateAccessList, access),

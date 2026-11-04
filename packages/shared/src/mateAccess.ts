@@ -68,24 +68,27 @@ export interface ProjectRoles {
   readonly overrides: Readonly<Record<string, string>>;
 }
 
+/** A project's `userRoles`, as a read or a websocket frame carries it: `clientUserId` → role. */
+export function readUserRoles(userRoles: unknown): Readonly<Record<string, string>> {
+  const overrides: Record<string, string> = {};
+  if (!Array.isArray(userRoles)) return overrides;
+  for (const entry of userRoles) {
+    if (typeof entry !== "object" || entry === null) continue;
+    const row = entry as Record<string, unknown>;
+    if (typeof row["clientUserId"] === "string" && typeof row["roleCode"] === "string") {
+      overrides[row["clientUserId"]] = row["roleCode"];
+    }
+  }
+  return overrides;
+}
+
 /** The two fields of a project read the rule needs, or `null` if neither is there. */
 export function readProjectRoles(body: unknown): ProjectRoles | null {
   if (typeof body !== "object" || body === null) return null;
   const record = body as Record<string, unknown>;
   const clientId = record["clientId"];
   if (typeof clientId !== "string" || clientId.length === 0) return null;
-  const overrides: Record<string, string> = {};
-  const userRoles = record["userRoles"];
-  if (Array.isArray(userRoles)) {
-    for (const entry of userRoles) {
-      if (typeof entry !== "object" || entry === null) continue;
-      const row = entry as Record<string, unknown>;
-      if (typeof row["clientUserId"] === "string" && typeof row["roleCode"] === "string") {
-        overrides[row["clientUserId"]] = row["roleCode"];
-      }
-    }
-  }
-  return { clientId, overrides };
+  return { clientId, overrides: readUserRoles(record["userRoles"]) };
 }
 
 /**

@@ -1,15 +1,20 @@
-/** Live sockets are the sessions; all authorization reads the latest HQ access list. */
-import type { KeyLinkAccess, LinkAccessMember } from "@t3tools/shared/mateLink";
+/**
+ * Live sockets are the sessions; all authorization reads the access list that decides now
+ * (`ZeropsMateAccessList`). A ticket HQ sends is admitted only for a person that list opens for;
+ * a list that changes closes the connections of whoever it no longer opens for, and one that only
+ * aged closes nothing.
+ */
+import type { KeyLinkAccess, LinkAccessMember, TicketRefusal } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
-import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Semaphore from "effect/Semaphore";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
-import { ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
+import * as Stream from "effect/Stream";
+import { ticketVerdict, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { type TicketFrame, ZeropsTicketDoor } from "./ZeropsTicketDoor.ts";
 
 export interface ConnectionIdentity {
   readonly ticket: string;
@@ -30,6 +35,12 @@ export class ZeropsConnections extends Context.Service<
   ZeropsConnections,
   {
     readonly heard: (frame: KeyLinkAccess) => Effect.Effect<void>;
+    /**
+     * Takes HQ's ticket in the order the link heard it, and gives what answers it: kept for its
+     * socket when the list opens for its person, else refused. The answer may wait on a recompute,
+     * so the link runs it aside; a ticket whose session closed meanwhile is never kept.
+     */
+    readonly ticket: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
     readonly admit: (
       firstFrame: unknown,
       close: Effect.Effect<void>,
@@ -47,7 +58,8 @@ export const make = Effect.gen(function* () {
   const scope = yield* Effect.scope;
   const lock = yield* Semaphore.make(1);
   const connections = new Map<string, ConnectionInput>();
-  let expiry: Fiber.Fiber<void> | undefined;
+  /** Tickets taken and not yet answered; closing their session drops them. */
+  const pending = new Set<TicketFrame>();
   const current = Effect.fn("ZeropsConnections.current")(function* (id: string) {
     const connection = connections.get(id);
     if (connection === undefined) return Option.none<ConnectionIdentity>();
@@ -74,21 +86,30 @@ export const make = Effect.gen(function* () {
   const reconcile = Effect.gen(function* () {
     for (const id of connections.keys()) if (Option.isNone(yield* current(id))) yield* remove(id);
   });
+  // The Mate's own recompute changes the list without a frame: every change re-evaluates.
+  yield* Stream.runForEach(access.changes, () => lock.withPermits(1)(reconcile)).pipe(
+    Effect.forkIn(scope, { startImmediately: true }),
+  );
   return ZeropsConnections.of({
     heard: (frame) =>
       Effect.gen(function* () {
         yield* access.heard(frame);
         yield* reconcile;
-        if (expiry !== undefined) yield* Fiber.interrupt(expiry);
-        const list = yield* access.current;
-        if (Option.isSome(list) && !list.value.refused) {
-          const now = yield* Clock.currentTimeMillis;
-          expiry = yield* Effect.sleep(Math.max(0, list.value.expiresAtMs - now + 1)).pipe(
-            Effect.andThen(lock.withPermits(1)(reconcile)),
-            Effect.forkIn(scope, { startImmediately: true }),
-          );
-        }
       }).pipe(lock.withPermits(1)),
+    ticket: (frame) =>
+      Effect.sync(() => {
+        pending.add(frame);
+        return access.admits(frame.userId).pipe(
+          Effect.tap((verdict) =>
+            lock.withPermits(1)(
+              Effect.suspend(() =>
+                verdict === "open" && pending.has(frame) ? tickets.heard(frame) : Effect.void,
+              ),
+            ),
+          ),
+          Effect.ensuring(Effect.sync(() => pending.delete(frame))),
+        );
+      }),
     admit: (firstFrame, close) =>
       Effect.gen(function* () {
         const ticket = yield* tickets.consume(firstFrame);
@@ -101,6 +122,10 @@ export const make = Effect.gen(function* () {
           close,
         };
         if (connections.has(connection.id)) return Option.none<ConnectionIdentity>();
+        const now = yield* Clock.currentTimeMillis;
+        const list = Option.getOrUndefined(yield* access.current);
+        if (ticketVerdict(list, connection.userId, now) !== "open")
+          return Option.none<ConnectionIdentity>();
         connections.set(connection.id, connection);
         const identity = yield* current(connection.id);
         if (Option.isNone(identity)) connections.delete(connection.id);
@@ -114,6 +139,7 @@ export const make = Effect.gen(function* () {
     closeSession: (sessionId) =>
       Effect.gen(function* () {
         yield* tickets.closeSession(sessionId);
+        for (const frame of pending) if (frame.sessionId === sessionId) pending.delete(frame);
         for (const [id, connection] of connections)
           if (connection.sessionId === sessionId) yield* remove(id);
       }).pipe(lock.withPermits(1)),
