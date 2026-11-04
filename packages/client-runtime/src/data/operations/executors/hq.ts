@@ -97,7 +97,15 @@ export type HqWrites = Pick<
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
-    Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
+    Pick<
+      HqApi,
+      | "lifecycleWrite"
+      | "lifecycleReceipt"
+      | "updateMate"
+      | "setAutoUpdatePolicy"
+      | "savePersonaTemplate"
+      | "deletePersonaTemplate"
+    >
   >;
 
 /** Optional adapter ports; an older HQ/client never implies support for a Git verb. */
@@ -712,6 +720,39 @@ export function makeHqExecutor(ports: {
             ...answered(requestId, intent.appId),
             affected: [{ family: "hqKeptGit", id: intent.appId }],
             outcome: { kind: "succeeded", evidence: "HQ answered the kept Git question." },
+          };
+        }
+        if (intent.kind === "save-persona-template" || intent.kind === "delete-persona-template") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          const call: (() => Promise<unknown>) | undefined =
+            intent.kind === "save-persona-template"
+              ? api.savePersonaTemplate === undefined
+                ? undefined
+                : () =>
+                    api.savePersonaTemplate!(intent.templateId, {
+                      name: intent.name,
+                      description: intent.description,
+                      instructions: intent.instructions,
+                      revision: intent.revision,
+                    })
+              : api.deletePersonaTemplate === undefined
+                ? undefined
+                : () => api.deletePersonaTemplate!(intent.templateId, intent.revision);
+          if (call === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to manage persona templates.",
+            });
+          // A conflict is HQ's answer that it holds another revision: refused, its code kept.
+          yield* Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, true) });
+          return {
+            ...answered(requestId, intent.templateId),
+            affected: [{ family: "hqPersonaTemplates", id: intent.orgId }],
           };
         }
         if (intent.kind === "rename-app" || intent.kind === "delete-app") {

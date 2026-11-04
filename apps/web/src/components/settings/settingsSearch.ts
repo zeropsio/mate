@@ -263,6 +263,11 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/zerops",
   },
   {
+    id: "zerops-persona-templates",
+    title: "Persona templates",
+    to: "/settings/zerops",
+  },
+  {
     id: "zerops-hq",
     title: "HQ",
     to: "/settings/zerops",

@@ -1765,7 +1765,10 @@
     {
       "id": "zerops-settings",
       "title": "Zerops settings",
-      "components": ["apps/web/src/components/settings/ZeropsSettings.tsx"],
+      "components": [
+        "apps/web/src/components/settings/ZeropsSettings.tsx",
+        "apps/web/src/components/settings/PersonaTemplatesSettings.tsx"
+      ],
       "entryPoints": [
         {
           "kind": "route",
@@ -1786,6 +1789,10 @@
         {
           "kind": "settings-search",
           "value": "zerops-auto-update"
+        },
+        {
+          "kind": "settings-search",
+          "value": "zerops-persona-templates"
         }
       ],
       "clients": {
@@ -1798,7 +1805,11 @@
       },
       "providers": "n/a",
       "connectionModes": ["zerops-door"],
-      "contracts": ["@t3tools/client-runtime/zerops", "@t3tools/shared/mateAutoUpdatePolicy"],
+      "contracts": [
+        "@t3tools/client-runtime/zerops",
+        "@t3tools/shared/mateAutoUpdatePolicy",
+        "@t3tools/shared/personaTemplates"
+      ],
       "reverseStates": [
         {
           "action": "Sign out",
@@ -1815,6 +1826,14 @@
         {
           "action": "Turn automatic updates off",
           "reverse": "Turn automatic updates on"
+        },
+        {
+          "action": "Add template",
+          "reverse": "Delete"
+        },
+        {
+          "action": "Delete",
+          "reverse": "none: A deleted template is gone from HQ; Mates that started from it keep their own copy."
         }
       ],
       "docs": {
@@ -1824,7 +1843,9 @@
         "apps/web/src/components/settings/ZeropsSettings.test.tsx",
         "apps/web/src/components/settings/settingsSearch.test.ts",
         "packages/client-runtime/src/data/adapters/hqAutoUpdatePolicy.test.ts",
-        "packages/client-runtime/src/data/operations/hqWrites.test.ts"
+        "packages/client-runtime/src/data/operations/hqWrites.test.ts",
+        "apps/web/src/components/settings/PersonaTemplatesSettings.test.tsx",
+        "packages/client-runtime/src/data/adapters/hqPersonaTemplates.test.ts"
       ],
       "captures": []
     },

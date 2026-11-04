@@ -26,6 +26,7 @@ import { hardenProject } from "./hardenProject.ts";
 import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
+import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
 import { importContainer } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
@@ -100,6 +101,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   importContainer,
   hardenProject,
   ...HQ_WRITE_KINDS,
+  ...PERSONA_TEMPLATE_KINDS,
   ...HQ_CHIEF_KINDS,
   authorizeObserve,
   changeComment,

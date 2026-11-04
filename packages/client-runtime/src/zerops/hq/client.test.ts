@@ -2268,6 +2268,81 @@ describe("HQ automatic-update policy transport", () => {
   );
 });
 
+describe("HQ persona template transport", () => {
+  const TEMPLATE = {
+    id: "t-1",
+    name: "Reviewer",
+    description: "Reads every change twice.",
+    instructions: "Review before you merge.",
+    revision: 2,
+  };
+  const apiOf = (hq: ReturnType<typeof fakeHq>) =>
+    makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+  it("saves a template under the id the client made and deletes it at the revision it saw", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/persona-templates/t-1"
+        ? seen.method === "PUT"
+          ? json(200, TEMPLATE)
+          : new Response(null, { status: 204 })
+        : undefined,
+    );
+    const api = apiOf(hq);
+    const { id: _, ...saved } = TEMPLATE;
+    expect(await api.savePersonaTemplate("t-1", { ...saved, revision: 1 })).toEqual(TEMPLATE);
+    await api.deletePersonaTemplate("t-1", 2);
+    expect(hq.seen.filter((seen) => seen.path === "/api/persona-templates/t-1")).toMatchObject([
+      { method: "PUT", body: { ...saved, revision: 1 } },
+      { method: "DELETE", search: "?revision=2" },
+    ]);
+  });
+  it.each([
+    {
+      title: "a write over a revision HQ no longer holds is refused as a conflict, never uncertain",
+      body: { code: "conflict", reason: "revision_conflict", template: TEMPLATE },
+      says: {
+        kind: "refused",
+        reason: "revision_conflict",
+        message: "Someone else changed this template meanwhile.",
+      },
+    },
+    {
+      title: "a template past the organization's limit is refused with the limit",
+      body: { code: "conflict", reason: "too_many_templates" },
+      says: {
+        kind: "refused",
+        reason: "too_many_templates",
+        message: "An organization keeps at most 50 templates. Delete one first.",
+      },
+    },
+  ])("$title", async ({ body, says }) => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/persona-templates/t-1" ? json(409, body) : undefined,
+    );
+    const { id: _, ...saved } = TEMPLATE;
+    await expect(apiOf(hq).savePersonaTemplate("t-1", saved)).rejects.toMatchObject(says);
+  });
+  it("keeps a lost or unreadable save answer uncertain and sends it only once", async () => {
+    for (const failure of ["lost", "malformed"]) {
+      const hq = fakeHq((seen) => {
+        if (seen.path !== "/api/persona-templates/t-1") return undefined;
+        if (failure === "lost") throw new Error("connection reset");
+        return json(200, { name: "Reviewer" });
+      });
+      const { id: _, ...saved } = TEMPLATE;
+      await expect(apiOf(hq).savePersonaTemplate("t-1", saved)).rejects.toMatchObject({
+        kind: "uncertain",
+      });
+      expect(hq.seen.filter((seen) => seen.path === "/api/persona-templates/t-1")).toHaveLength(1);
+    }
+  });
+});
+
 it("Git transport keeps candidate plaintext in one incoming write body and recovers the original decoded receipt", async () => {
   const marker = "TRANSIENT_GIT_CANDIDATE";
   const intent = {

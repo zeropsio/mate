@@ -446,6 +446,19 @@ export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
+export { hqPersonaTemplatesFamily, personaTemplatesScope } from "./families/hqPersonaTemplates.ts";
+export {
+  PERSONA_TEMPLATE_CONFLICT,
+  personaTemplateGone,
+  personaTemplateIn,
+  personaTemplateSaved,
+} from "./operations/hqPersonaTemplates.ts";
+export {
+  orgPersonaTemplates,
+  personaTemplateWrite,
+  type OrgPersonaTemplates,
+  type PersonaTemplateWrite,
+} from "./projections/hqPersonaTemplates.ts";
 export { gitBrowse, type GitBrowseView } from "./projections/gitBrowse.ts";
 export { makeGitBrowseReads } from "./adapters/hqGitBrowse.ts";
 export { type GitBrowseKey } from "./families/hqGitBrowse.ts";
