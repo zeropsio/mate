@@ -94,38 +94,6 @@ const MCP_AGENT_NAMES: Readonly<Record<string, string>> = {
 };
 
 /**
- * Why an agent can't use a server as it is set up, or `null` when it can: the one table the
- * Mate's config writers and the tab's add card both read, checked against each agent's installed
- * CLI and SDK types. SSE: Claude Code and Cursor only (the installed OpenCode speaks streamable
- * HTTP alone). An own app: Claude Code without a secret (it keeps one in its own store), Cursor
- * and OpenCode; Codex picks a new sign-in port each time.
- */
-export function mcpAgentCannot(driver: string, needs: McpServerNeeds): string | null {
-  const agent = MCP_AGENT_NAMES[driver] ?? driver;
-  const sse = needs.transport.type === "sse";
-  const app = needs.auth?.kind === "oauth-app";
-  const secret =
-    needs.auth?.kind === "oauth-app" &&
-    ("secret" in needs.auth ? needs.auth.secret : needs.auth.clientSecret !== undefined);
-  switch (driver) {
-    case "claudeAgent":
-      return secret ? "Claude Code can't take your app's client secret from Mate." : null;
-    case "cursor":
-      return null;
-    case "opencode":
-      return sse ? "OpenCode can't use SSE servers." : null;
-    case "codex":
-      if (sse) return "Codex can't use SSE servers.";
-      return app
-        ? "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register."
-        : null;
-    default:
-      if (sse) return `${agent} can't use SSE servers.`;
-      return app ? `${agent} can't sign in with your own app.` : null;
-  }
-}
-
-/**
  * What each agent's config can take, as Mate writes it: an SSE server, a sign-in through the
  * person's own OAuth app, and that app's client secret. The server's writers refuse exactly what
  * this says (held equal by `mcpAgents.test.ts`); a card names who can't before it is added.
@@ -143,6 +111,28 @@ export const MCP_AGENT_LIMITS: Readonly<
   antigravity: { sse: false, ownApp: false, ownAppSecret: false },
   opencode: { sse: false, ownApp: true, ownAppSecret: true },
 };
+
+/**
+ * Why an agent can't use a server as it is set up, or `null` when it can, read from
+ * `MCP_AGENT_LIMITS` (the one table): the sentences the Mate's list says after an add and the
+ * tab's add card says before it. Codex says why its own-app sign-in can't work.
+ */
+export function mcpAgentCannot(driver: string, needs: McpServerNeeds): string | null {
+  const limits = MCP_AGENT_LIMITS[driver];
+  if (limits === undefined) return null;
+  const agent = MCP_AGENT_NAMES[driver] ?? driver;
+  if (needs.transport.type === "sse" && !limits.sse) return `${agent} can't use SSE servers.`;
+  if (needs.auth?.kind !== "oauth-app") return null;
+  if (!limits.ownApp) {
+    return driver === "codex"
+      ? "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register."
+      : `${agent} can't sign in with your own app.`;
+  }
+  const secret = "secret" in needs.auth ? needs.auth.secret : needs.auth.clientSecret !== undefined;
+  return secret && !limits.ownAppSecret
+    ? `${agent} can't take your app's client secret from Mate.`
+    : null;
+}
 
 /**
  * A URL server's sign-in as the agents' configs hold it, without its secret:
