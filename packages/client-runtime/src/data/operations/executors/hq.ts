@@ -80,6 +80,7 @@ export type HqWrites = Pick<
   | "renameApp"
   | "deleteApp"
   | "answerKeptGit"
+  | "completeProjectDeletion"
   | "createApp"
   | "recordBirth"
   | "bindBirth"
@@ -697,6 +698,23 @@ export function makeHqExecutor(ports: {
               message: "HQ did not confirm the reviewed production target and its fate.",
             });
           return lifecycleReceipt(record);
+        }
+        if (intent.kind === "complete-project-deletion") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null || ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          // HQ's 409 `project_present` or 401 `token_required` ends it, refused: never sent again.
+          yield* Effect.tryPromise({
+            try: () => api.completeProjectDeletion(intent.projectId),
+            catch: (cause) => faultOf(cause, true),
+          });
+          return {
+            ...answered(requestId, intent.projectId),
+            affected: [{ family: "placement", id: intent.projectId }],
+          };
         }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;
