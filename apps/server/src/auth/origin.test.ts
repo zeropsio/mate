@@ -36,8 +36,28 @@ it.each([
     allowed: false,
   },
   {
-    title: "refuses an unconfigured development port",
+    title: "admits a localhost page on any port",
     origin: "http://localhost:5174",
+    allowed: true,
+  },
+  {
+    title: "admits a localhost page over https",
+    origin: "https://localhost:5943",
+    allowed: true,
+  },
+  {
+    title: "refuses a host that only starts with localhost",
+    origin: "http://localhost.evil.test",
+    allowed: false,
+  },
+  {
+    title: "refuses a loopback address not named localhost",
+    origin: "http://127.0.0.1:5173",
+    allowed: false,
+  },
+  {
+    title: "requires an exact localhost Origin rather than a URL path",
+    origin: "http://localhost:5174/",
     allowed: false,
   },
   {
