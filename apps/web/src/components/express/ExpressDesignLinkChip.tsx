@@ -27,6 +27,23 @@ export function ExpressDesignLinkChip({
 }) {
   const openInApp = useContext(AppLinkContext);
   const documentId = href === undefined ? null : expressDesignId(href);
+  const open = href === undefined || documentId === null ? null : (openInApp?.(href) ?? null);
+  // Only a design's address reads pictures: every other link renders back without a subscription.
+  if (open === null || documentId === null || href === undefined) return children;
+  return <ExpressDesignCard documentId={documentId} href={href} open={open} words={words} />;
+}
+
+function ExpressDesignCard({
+  documentId,
+  href,
+  open,
+  words,
+}: {
+  readonly documentId: string;
+  readonly href: string;
+  readonly open: () => void;
+  readonly words: ReactNode | undefined;
+}) {
   // The newest picture the person saved from this design, in this conversation.
   const { environmentId, history } = useContext(ExpressHistoryContext);
   const saved = history.find(
@@ -37,8 +54,6 @@ export function ExpressDesignLinkChip({
       ? null
       : { environmentId, resource: saved.picture, rendition: CARD_PICTURE },
   ).url;
-  const open = documentId === null ? null : (openInApp?.(href ?? "") ?? null);
-  if (open === null || documentId === null) return children;
   // The design's own id, its last characters: two unnamed designs never read the same.
   const shortId = documentId.slice(-7);
   return (
