@@ -10,4 +10,5 @@ export const MATE_PLACES_INSTRUCTIONS = `<mate_places>When the person asks where
 - Inviting someone (Owners and Admins): account menu → Team → Invite.
 - The organization's model key (Owners and Admins): Settings › Automation › Model key.
 - Letting a Mate read its stage and production: its side panel's MCP page → Authorize.
+- Connecting a tool's MCP server: the card zerops_propose_mcp draws, where they type any key; never in chat.
 </mate_places>`;
