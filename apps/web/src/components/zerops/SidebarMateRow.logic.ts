@@ -901,15 +901,31 @@ export function pendingBornLine(
 }
 
 /**
- * Whether a row offers its ⋯ menu: not while its Mate is going, nor while it is still being made —
- * nothing on it is about a Mate on its way — but once its setup stopped, for what finishes or
- * removes it (*Finish setup*, *Delete*).
+ * A row's ⋯ menu: none while its Mate is going; while it is still being made, its Delete alone —
+ * nothing else on it is about a Mate on its way, and one that never comes up is removed as any
+ * Mate is; once it is up or its setup stopped, all of it (*Finish setup*, *Delete*). None where
+ * nothing is left on it.
  */
-export function mateRowOffersMenu(input: {
+export function mateRowMenu<
+  A extends {
+    readonly muted: boolean;
+    readonly entries: ReadonlyArray<{ readonly id: string }>;
+  },
+>(input: {
   readonly deleting: boolean;
   readonly coming: MateComing | undefined;
-}): boolean {
-  return !input.deleting && (input.coming === undefined || input.coming.kind === "failed");
+  readonly actions: A | undefined;
+}):
+  | A
+  | { readonly muted: boolean; readonly entries: ReadonlyArray<A["entries"][number]> }
+  | undefined {
+  const { actions } = input;
+  if (input.deleting || actions === undefined) return undefined;
+  if (input.coming?.kind !== "coming") return actions;
+  const entries = actions.entries.filter(
+    (entry) => entry.id === "delete" && !("separator" in entry),
+  );
+  return entries.length === 0 ? undefined : { muted: actions.muted, entries };
 }
 
 /**

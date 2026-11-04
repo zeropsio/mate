@@ -9,6 +9,7 @@
  */
 import { resolveMateVisibility, type RoleMateVisibility } from "../../zerops/mateAccess.ts";
 import { projectsScope } from "../families/project.ts";
+import { placedMates } from "../placedRows.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { platformMembership } from "./platformCapabilities.ts";
@@ -34,5 +35,26 @@ export const mateVisibility: Projection<
       ? "hidden"
       : "unknown";
   },
+  equals: sameValue,
+};
+
+/**
+ * Every Mate HQ places in the organization, by project, with the person's verdict on it
+ * (`mateVisibility`): where a change of their role in Zerops' own data is heard
+ * (`zerops/account/mateRoles.ts`).
+ */
+export const placedMateVisibilities: Projection<
+  string,
+  Readonly<Record<string, RoleMateVisibility | "unknown">>
+> = {
+  name: "placedMateVisibilities",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) =>
+    Object.fromEntries(
+      placedMates(read, orgId).map((projectId) => [
+        projectId,
+        mateVisibility.derive(read, { orgId, projectId }),
+      ]),
+    ),
   equals: sameValue,
 };

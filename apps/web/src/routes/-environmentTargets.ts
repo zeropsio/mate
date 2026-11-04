@@ -72,7 +72,7 @@ export function routeTarget(input: {
   readonly hqNames: boolean;
   /**
    * The Zerops listing's latest read has answered (`rosterAnswered`). HQ naming a project the
-   * listing lacks has it read again (`zerops/account/hqView.ts`): until that read answers, the
+   * listing lacks has its own row read (`placedRowsWanted`): until that read answers, the
    * listing's silence is not absence.
    */
   readonly listingAnswered: boolean;

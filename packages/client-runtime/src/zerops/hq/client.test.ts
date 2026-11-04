@@ -2607,6 +2607,21 @@ describe("Every HQ verb that decides on the person's role carries their current 
         }),
     },
     {
+      // Finish deleting Mate: HQ's completion decides on the person's role as its preparation does.
+      call: "lifecycleWrite",
+      method: "POST",
+      path: "/api/lifecycle/r1%3Acomplete",
+      ask: (api) =>
+        api.lifecycleWrite("r1:complete", {
+          kind: "complete-mate-deletion",
+          orgId: ORG,
+          hqProjectId: "hq",
+          projectId: "p1",
+          preparedRequestId: "r1",
+          completion: "scoped-handle",
+        }),
+    },
+    {
       call: "deleteApp",
       method: "DELETE",
       path: "/api/apps/app-1",
