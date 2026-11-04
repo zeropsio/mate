@@ -34,6 +34,8 @@ export type McpAction =
       readonly name: string;
       readonly values: Readonly<Record<string, string>>;
       readonly keep: ReadonlyArray<string>;
+      /** Stored values kept under a new name, new name → stored name. */
+      readonly renamed?: Readonly<Record<string, string>>;
       /** A URL server's sign-in, changed; absent leaves it as it is. */
       readonly auth?: McpServerAuth;
     }
@@ -127,6 +129,7 @@ export function useMcpServers(input: {
                         name: action.name,
                         values: { ...action.values },
                         keep: [...action.keep],
+                        ...(action.renamed !== undefined ? { renamed: { ...action.renamed } } : {}),
                         ...(action.auth !== undefined ? { auth: action.auth } : {}),
                         ...scope,
                       },

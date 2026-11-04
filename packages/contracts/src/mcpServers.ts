@@ -257,6 +257,8 @@ export const McpServerUpdateInput = Schema.Struct({
   name: McpServerName,
   values: Schema.Record(Schema.String, Schema.String),
   keep: Schema.Array(Schema.String),
+  /** Stored values kept under a new name, new name → the name they are stored under. */
+  renamed: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /**
    * A URL server's sign-in, changed: `none`, `oauth` or `oauth-app`; an
    * `oauth-app` without a client secret keeps the one stored. An API key is a

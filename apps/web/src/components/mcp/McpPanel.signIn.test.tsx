@@ -198,6 +198,62 @@ it.each([
   }
 });
 
+it("renaming a key's header with the key left empty keeps the stored key under the new name", async () => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const actions: McpAction[] = [];
+  try {
+    await act(() =>
+      root.render(
+        <McpPanelBody
+          act={async (next) => {
+            actions.push(next);
+            return { ok: true };
+          }}
+          driver={CLAUDE}
+          onRetry={() => {}}
+          signIn={async () => ({ ok: false, message: "" })}
+          state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+        />,
+      ),
+    );
+    const button = (name: string) =>
+      Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === name,
+      );
+    await act(async () =>
+      container.querySelector<HTMLElement>('[data-mcp-server="linear"] button')!.click(),
+    );
+    await act(async () => button(MCP_WORDS.edit)!.click());
+    const editing = container.querySelector<HTMLElement>("[data-mcp-editing]")!;
+    const headerName = Array.from(editing.querySelectorAll("label"))
+      .find((label) => label.textContent?.includes(MCP_WORDS.headerName))!
+      .querySelector("input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(
+        headerName,
+        "X-Api-Key",
+      );
+      headerName.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => button(MCP_WORDS.save)!.click());
+    expect(actions).toEqual([
+      {
+        kind: "update",
+        name: "linear",
+        values: {},
+        keep: [],
+        renamed: { "X-Api-Key": "Authorization" },
+        auth: { kind: "none" },
+      },
+    ]);
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+  }
+});
+
 it.each(["javascript:alert(document.cookie)", "data:text/html,x", "http://auth.example.com/a"])(
   "a sign-in page that isn't an https address never opens: %s",
   async (url) => {

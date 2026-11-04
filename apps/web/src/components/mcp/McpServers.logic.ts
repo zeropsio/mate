@@ -772,18 +772,34 @@ export function readMcpSignInEdit(start: McpSignInFields, fields: McpSignInField
   return read;
 }
 
-/** The edited headers: a sign-in other than the API key it had drops the key's header. */
+export interface McpEditSecrets {
+  readonly values: Record<string, string>;
+  readonly keep: ReadonlyArray<string>;
+  /** The stored key kept under its header's new name, new name → stored name. */
+  readonly renamed?: Readonly<Record<string, string>>;
+}
+
+/**
+ * The edited headers around an API key: a sign-in other than the key drops the key's header; a
+ * renamed header takes the key with it, the stored one when the key is left empty.
+ */
 export function mcpEditSecrets(
   read: { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> },
   start: McpSignInFields,
-  auth: McpServerAuth | undefined,
-): { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> } {
-  if (start.choice !== "header" || auth === undefined || auth.kind === "header") return read;
-  const key = (name: string) => name.toLowerCase() === start.headerName.toLowerCase();
-  return {
-    values: Object.fromEntries(Object.entries(read.values).filter(([name]) => !key(name))),
-    keep: read.keep.filter((name) => !key(name)),
+  fields: McpSignInFields,
+): McpEditSecrets {
+  if (start.choice !== "header") return read;
+  const stored = start.headerName.trim() || "Authorization";
+  const named = fields.headerName.trim() || "Authorization";
+  const sameName = stored.toLowerCase() === named.toLowerCase();
+  if (fields.choice === "header" && sameName) return read;
+  const old = (name: string) => name.toLowerCase() === stored.toLowerCase();
+  const without = {
+    values: Object.fromEntries(Object.entries(read.values).filter(([name]) => !old(name))),
+    keep: read.keep.filter((name) => !old(name)),
   };
+  if (fields.choice !== "header") return without;
+  return fields.key.trim() === "" ? { ...without, renamed: { [named]: stored } } : without;
 }
 
 /** The redirect each installed agent's own-app sign-in needs registered in the app. */
