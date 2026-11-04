@@ -11,6 +11,7 @@ import {
 import type { OrchestrationThreadActivity, TurnId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
 
+import { type AskState, answeredWords } from "../../ask/ask.logic";
 import { githubName, type GitMirrorApp, waitingAccount } from "../gitMirror.logic";
 
 /**
@@ -26,24 +27,56 @@ export interface OriginAskPlace {
 }
 
 /**
- * What the person picked on the card here, before the engine's record says it: `connected`, the
- * code kept on GitHub; `declined`, kept in Mate. Memory only.
+ * A pick on the card: `connected`, the code kept on GitHub; `declined`, kept in Mate (never "Not
+ * now": both are answers).
  */
 export type OriginAskSaid = "connected" | "declined";
 
-export type OriginAskFace = OriginAskActivityPayload["state"];
-
 /**
- * What the card draws: the engine's record; while it is open, connected once HQ mounts the origin
- * — however the person mounted it — else what the person just picked here.
+ * The card's state: the engine's record of the pick (kept on GitHub or in Mate, who and when, or
+ * closed some other way); while it is open, kept on GitHub once HQ mounts the origin — however the
+ * person mounted it —, the person's pick still on its way, or waiting on them.
  */
-export function originAskFace(
-  state: OriginAskActivityPayload["state"],
-  said: OriginAskSaid | null,
-  connected: boolean,
-): OriginAskFace {
-  if (state !== "open") return state;
-  return connected ? "connected" : (said ?? state);
+export function originAskState(input: {
+  readonly state: OriginAskActivityPayload["state"];
+  /** The pick pressed here that the engine has not recorded yet. */
+  readonly pending: OriginAskSaid | null;
+  readonly connected: boolean;
+  readonly url: string;
+  readonly mateName: string;
+  /** Who picked, by name, and when, as the engine's record says. */
+  readonly by: string | null;
+  readonly at: string | null;
+}): AskState {
+  const address = originAddress(input.url);
+  const kept = (where: string, recorded: boolean): AskState => ({
+    kind: "done",
+    words: answeredWords(
+      `${address} · Kept ${where}`,
+      recorded ? input.by : null,
+      recorded ? input.at : null,
+    ),
+    told: null,
+  });
+  switch (input.state) {
+    case "connected":
+      return kept("on GitHub", true);
+    case "declined":
+      return kept("in Mate", true);
+    case "closed":
+      return { kind: "replaced", words: `${input.mateName} isn't waiting on this any more.` };
+    case "open":
+      if (input.connected) return kept("on GitHub", false);
+      if (input.pending === null) return { kind: "waiting" };
+      return {
+        kind: "working",
+        words:
+          input.pending === "connected"
+            ? "Keeping the code on GitHub…"
+            : "Keeping the code in Mate…",
+        pressed: null,
+      };
+  }
 }
 
 /**
@@ -225,26 +258,60 @@ export function originAskOf(
   return null;
 }
 
-/** What the card reads of an ask: never who answered, which the card does not say. */
+/** What the card reads of an ask, and who answered it when: a person's Zerops user id. */
 export type OriginAsk = Pick<OriginAskActivityPayload, "url" | "repo" | "reason" | "state">;
 
-/** An ask the card stands for, by its request. */
-export type OriginAskOfRequest = OriginAsk & { readonly requestId: string };
+/** An ask the card stands for, by its request, with who answered it (a person) and when. */
+export type OriginAskOfRequest = OriginAsk & {
+  readonly requestId: string;
+  readonly answeredBy?: string | null;
+  readonly answeredAt?: number | null;
+};
+
+type AskTuple = [
+  string,
+  string,
+  string,
+  string | null,
+  OriginAsk["state"],
+  string | null,
+  number | null,
+];
 
 /** The asks a card stands for as one string, for a selector whose answer is compared by value. */
 export function originAsksKey(asks: ReadonlyArray<OriginAskActivityPayload | null>): string {
   return JSON.stringify(
-    asks.flatMap((ask) =>
-      ask === null ? [] : [[ask.requestId, ask.url, ask.repo, ask.reason, ask.state]],
+    asks.flatMap((ask): ReadonlyArray<AskTuple> =>
+      ask === null
+        ? []
+        : [
+            [
+              ask.requestId,
+              ask.url,
+              ask.repo,
+              ask.reason,
+              ask.state,
+              ask.answer?.by.kind === "person" ? ask.answer.by.subject : null,
+              ask.answer?.at ?? null,
+            ],
+          ],
     ),
   );
 }
 
 /** The asks back from their string. */
 export function originAsksFromKey(key: string): ReadonlyArray<OriginAskOfRequest> {
-  return (
-    JSON.parse(key) as ReadonlyArray<[string, string, string, string | null, OriginAsk["state"]]>
-  ).map(([requestId, url, repo, reason, state]) => ({ requestId, url, repo, reason, state }));
+  return (JSON.parse(key) as ReadonlyArray<AskTuple>).map(
+    ([requestId, url, repo, reason, state, answeredBy, answeredAt]) => ({
+      requestId,
+      url,
+      repo,
+      reason,
+      state,
+      answeredBy,
+      answeredAt,
+    }),
+  );
 }
 
 /**
@@ -256,6 +323,8 @@ export function originAsksFromKey(key: string): ReadonlyArray<OriginAskOfRequest
  */
 export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
   readonly ask: OriginAsk;
+  /** Who answered the card's first answered ask, and when. */
+  readonly answered: { readonly by: string | null; readonly at: number | null };
   readonly open: ReadonlyArray<string>;
   readonly repos: ReadonlyArray<string>;
   readonly connected: (repos: ReadonlyArray<RepoListEntry> | undefined) => boolean;
@@ -272,6 +341,10 @@ export function originAskGroup(asks: ReadonlyArray<OriginAskOfRequest>): {
       reason: asks.find((ask) => ask.reason !== null)?.reason ?? null,
       state: open.length > 0 ? "open" : (first?.state ?? "closed"),
     },
+    answered: (() => {
+      const settled = asks.find((ask) => ask.state !== "open");
+      return { by: settled?.answeredBy ?? null, at: settled?.answeredAt ?? null };
+    })(),
     open,
     repos,
     connected: (listed) =>
