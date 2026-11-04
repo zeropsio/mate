@@ -19,6 +19,7 @@ import {
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 
 import { type AskState, notNowWords } from "../../ask/ask.logic";
+import { MCP_NEEDS_UPDATE, MCP_UPDATE_TO_SIGN_IN } from "../../mcp/McpServers.logic";
 import type { ProposalStage } from "./proposal.logic";
 
 export type McpProposal = Extract<ZeropsProposal, { kind: "mcp.add" }>;
@@ -355,6 +356,8 @@ export function mcpProposalView(input: {
   readonly approveBlocked: string | undefined;
   /** The agents installed in the Mate, as its server list says: who the server is written for. */
   readonly agents: ReadonlyArray<ProviderDriverKind>;
+  /** The Mate takes a server's sign-in (`capabilities.mcpSignIn`); an older one drops an own app's. */
+  readonly mateCanSignIn?: boolean;
 }): McpProposalView {
   const { proposal, mateName, status, agents } = input;
   const { server, scope } = proposal.params;
@@ -366,7 +369,13 @@ export function mcpProposalView(input: {
     steps.push({
       kind: "approve",
       label: `Add ${server.title}`,
-      blocked: mcpUnsupported(proposal, mateName, agents) ?? input.approveBlocked ?? null,
+      blocked:
+        mcpUnsupported(proposal, mateName, agents) ??
+        (input.mateCanSignIn === false && server.auth.kind === "oauth-app"
+          ? MCP_UPDATE_TO_SIGN_IN
+          : null) ??
+        input.approveBlocked ??
+        null,
     });
   }
   if (status.kind === "needs-sign-in") {
@@ -550,8 +559,25 @@ export function mcpAskFace(input: {
   /** Who said Not now, by name, and when. */
   readonly by: string | null;
   readonly at: string | null;
+  /** The Mate signs in and changes keys (`capabilities.mcpSignIn`); an older one can't. */
+  readonly mateCanSignIn?: boolean;
 }): McpAskFace {
   const { status, signing, title } = input;
+  const failedAction = input.signsIn ? "signInAgain" : input.keyed ? "changeKey" : "tryAgain";
+  // An older Mate has no sign-in or key change: what needs one says the Mate needs an update.
+  if (
+    input.mateCanSignIn === false &&
+    ((status.kind === "needs-sign-in" && signing.phase === "idle") ||
+      (status.kind === "failed" && failedAction !== "tryAgain"))
+  ) {
+    return {
+      main: null,
+      notNow: false,
+      action: null,
+      note: MCP_UPDATE_TO_SIGN_IN,
+      state: { kind: "failed", words: MCP_NEEDS_UPDATE },
+    };
+  }
   const add = { label: `Add ${title}`, does: "add" } as const;
   const none = { main: null, notNow: false, action: null, note: null } as const;
   const words = input.view.outcome?.words ?? "";
@@ -607,7 +633,7 @@ export function mcpAskFace(input: {
     case "failed":
       return {
         ...none,
-        action: input.signsIn ? "signInAgain" : input.keyed ? "changeKey" : "tryAgain",
+        action: failedAction,
         state: { kind: "failed", words },
       };
     case "add-failed":

@@ -48,6 +48,8 @@ import {
   mcpAppRedirects,
   mcpRunKey,
   mcpEditSecrets,
+  MCP_NEEDS_UPDATE,
+  MCP_UPDATE_TO_SIGN_IN,
   type McpEditSecrets,
   mcpSecretsFormText,
   openSignInPage,
@@ -152,8 +154,8 @@ export const MCP_WORDS = {
   headers: "Headers",
   headersHint: "Name: value, one a line",
   cancel: "Cancel",
-  needsUpdate: "Needs an update",
-  updateToSignIn: "Update this Mate to sign in and edit tools here.",
+  needsUpdate: MCP_NEEDS_UPDATE,
+  updateToSignIn: MCP_UPDATE_TO_SIGN_IN,
 } as const;
 
 /** One of the Mate's proposals still waiting on the person, with the card that answers it. */

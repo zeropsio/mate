@@ -20,6 +20,7 @@ import {
   type McpSigning,
   MCP_SIGN_IN_ELSEWHERE,
 } from "./mcpProposal.logic";
+import { MCP_NEEDS_UPDATE, MCP_UPDATE_TO_SIGN_IN } from "../../mcp/McpServers.logic";
 
 const linear: McpProposal = {
   id: "p-1",
@@ -675,5 +676,51 @@ describe("a failed server always offers the way forward", () => {
     { name: "a command's key", proposal: github, want: "with the key you type here" },
   ])("the signs-in fact goes on after its label, lowercase: $name", ({ proposal, want }) => {
     expect(view(proposal, { kind: "proposed" }).signsIn).toBe(want);
+  });
+});
+
+describe("the MCP card against a Mate too old to sign in", () => {
+  const old = (status: McpProposalStatus, keyed = false) =>
+    mcpAskFace({
+      view: view(linear, status),
+      status,
+      signing: { phase: "idle" },
+      busy: false,
+      title: "Linear",
+      signsIn: !keyed,
+      keyed,
+      by: null,
+      at: null,
+      mateCanSignIn: false,
+    });
+  const needsUpdate = {
+    main: null,
+    action: null,
+    note: MCP_UPDATE_TO_SIGN_IN,
+    state: { kind: "failed", words: MCP_NEEDS_UPDATE },
+  };
+
+  it.each<[string, McpProposalStatus, boolean]>([
+    ["waiting for a sign-in", { kind: "needs-sign-in", agent: "Claude" }, false],
+    ["failed, signing in when asked", { kind: "failed", words: "Failed.", agent: "Claude" }, false],
+    ["failed, added with a key", { kind: "failed", words: "Failed.", agent: "Claude" }, true],
+  ])(
+    "a server %s says it needs an update, offering no Sign in or Change key",
+    (_c, status, keyed) => {
+      expect(old(status, keyed)).toMatchObject(needsUpdate);
+    },
+  );
+
+  it("an own-app server can't be added from the card, saying why", () => {
+    const step = mcpProposalView({
+      proposal: app,
+      mateName: "Juno",
+      status: { kind: "proposed" },
+      signing: { phase: "idle" },
+      approveBlocked: undefined,
+      agents: AGENTS,
+      mateCanSignIn: false,
+    }).steps.find((candidate) => candidate.kind === "approve");
+    expect(step).toMatchObject({ blocked: MCP_UPDATE_TO_SIGN_IN });
   });
 });

@@ -923,6 +923,12 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
   return { ok: true, values, keep };
 }
 
+// ── A Mate too old to sign in ─────────────────────────────────────────
+
+/** What waits on a sign-in, a sign-out or an edit a Mate without `capabilities.mcpSignIn` lacks. */
+export const MCP_NEEDS_UPDATE = "Needs an update";
+export const MCP_UPDATE_TO_SIGN_IN = "Update this Mate to sign in and edit tools here.";
+
 // ── Opening a sign-in page ────────────────────────────────────────────
 
 /**
