@@ -712,15 +712,11 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           ...secrets.filter((edit) => !authEdits.some((later) => later.path === edit.path)),
           ...authEdits,
         ];
-        changed.set(
-          store.driver,
-          store.entry({
-            name: input.name,
-            transport: server.transport,
-            ...(server.transport.type === "stdio" ? { env: values } : { headers: values }),
-            ...(auth !== undefined ? { auth } : {}),
-          }),
-        );
+        // Running sessions get the server as written, its on/off mark and own app included.
+        const after = new Map(afterSecrets);
+        for (const edit of authEdits) after.set(edit.path, edit.text);
+        const written = store.stored(after, input.name);
+        if (written !== undefined) changed.set(store.driver, written);
         return edits;
       },
       nudge: (store) => ({

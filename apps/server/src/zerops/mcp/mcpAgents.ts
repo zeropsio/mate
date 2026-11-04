@@ -151,6 +151,8 @@ export interface McpAgentStore {
     name: string,
     auth: McpServerAuth,
   ) => ReadonlyArray<McpFileEdit>;
+  /** The server as these files hold it, sign-in and on/off mark included: what a running session is told after an edit. */
+  readonly stored: (files: McpFiles, name: string) => Readonly<Record<string, unknown>> | undefined;
   /** A server's environment or headers, values included: read here, never handed out. */
   readonly readSecrets: (files: McpFiles, name: string) => Readonly<Record<string, string>>;
   /** Replaces a server's environment (a command) or headers (a URL) wherever it is written. */
@@ -407,6 +409,16 @@ function claudeStore(paths: McpAgentPaths): AgentWriter {
   const projectFile = `${paths.cwd.replace(/\/+$/, "")}/.mcp.json`;
   const homes = paths.claudeConfigs;
   const disabledPath: JSONPath = ["projects", paths.cwd, "disabledMcpServers"];
+  const stored = (files: McpFiles, name: string): JsonRecord | undefined => {
+    for (const path of homes) {
+      const doc = parseJson(path, files.get(path));
+      const entry =
+        serverMap(claudeProject(doc, paths.cwd), "mcpServers")[name] ??
+        serverMap(doc, "mcpServers")[name];
+      if (isRecord(entry)) return entry;
+    }
+    return undefined;
+  };
   /** Local scope (this project) before user scope: Claude's own precedence. */
   const readHome = (path: string, files: McpFiles): McpConfigServer[] => {
     const doc = parseJson(path, files.get(path));
@@ -516,16 +528,8 @@ function claudeStore(paths: McpAgentPaths): AgentWriter {
         }
         return next;
       }),
-    readSecrets: (files, name) => {
-      for (const path of homes) {
-        const doc = parseJson(path, files.get(path));
-        const entry =
-          serverMap(claudeProject(doc, paths.cwd), "mcpServers")[name] ??
-          serverMap(doc, "mcpServers")[name];
-        if (entry !== undefined) return secretsOf(STANDARD_FIELDS, entry);
-      }
-      return {};
-    },
+    stored,
+    readSecrets: (files, name) => secretsOf(STANDARD_FIELDS, stored(files, name)),
     setSecrets: (files, name, values) =>
       editEach(files, homes, (text, path) => {
         const doc = parseJson(path, text);
@@ -642,6 +646,13 @@ function tomlStore(
             ),
         );
       }),
+    stored: (files, name) => {
+      for (const path of configs) {
+        const server = tomlServers(path, files.get(path))[name];
+        if (server !== undefined) return server;
+      }
+      return undefined;
+    },
     readSecrets: (files, name) => {
       for (const path of configs) {
         const server = tomlServers(path, files.get(path))[name];
@@ -774,6 +785,13 @@ function jsonStore(input: {
         const { field, write } = input.auth;
         return setJson(text, [key, name, field], write(auth, entry[field]));
       }),
+    stored: (files, name) => {
+      for (const path of input.targets(files)) {
+        const entry = serverMap(parseJson(path, files.get(path)), key)[name];
+        if (isRecord(entry)) return entry;
+      }
+      return undefined;
+    },
     readSecrets: (files, name) => {
       for (const path of input.targets(files)) {
         const entry = serverMap(parseJson(path, files.get(path)), key)[name];
@@ -965,6 +983,10 @@ function cursorStore(paths: McpAgentPaths): AgentWriter {
         if (!isRecord(entry)) return undefined;
         return setJson(text, ["mcpServers", name, "auth"], cursorAuth(auth, entry["auth"]));
       }),
+    stored: (files, name) => {
+      const entry = serverMap(parseJson(config, files.get(config)), "mcpServers")[name];
+      return isRecord(entry) ? entry : undefined;
+    },
     readSecrets: (files, name) =>
       secretsOf(
         STANDARD_FIELDS,

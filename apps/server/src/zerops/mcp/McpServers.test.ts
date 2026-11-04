@@ -74,6 +74,8 @@ interface Rig {
   readonly writes: string[];
   readonly calls: string[];
   readonly locks: string[];
+  /** What each agent's running sessions were told, entries included. */
+  readonly changes: Array<{ readonly driver: string; readonly change: McpConfigChange }>;
 }
 
 const setup = (input: {
@@ -92,7 +94,13 @@ const setup = (input: {
   readonly agentWritesOnce?: { readonly path: string; readonly text: string };
 }) =>
   Effect.gen(function* () {
-    const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [], locks: [] };
+    const rig: Rig = {
+      files: input.files ?? zcpFiles(),
+      writes: [],
+      calls: [],
+      locks: [],
+      changes: [],
+    };
     let agentWrite = input.agentWritesOnce;
     // A running agent runs in the conversation's current session (`<conversation>/s/<n>`).
     const generation = input.generation ?? (input.running === undefined ? undefined : 1);
@@ -141,6 +149,7 @@ const setup = (input: {
       configChanged: (driver, change: McpConfigChange) =>
         Effect.sync(() => {
           rig.calls.push(`${driver} ${change.kind} ${change.name}`);
+          rig.changes.push({ driver, change });
         }),
     };
     let ids = 0;
@@ -327,6 +336,29 @@ describe("McpServers.update", () => {
       expect(rig.files.get(`${HOME}/.grok/config.toml`)).toMatch(/enabled = true/);
       expect(rig.files.get(`${HOME}/.grok/config.toml`)).not.toContain("X-Dropped");
     }),
+  );
+
+  it.effect(
+    "editing a turned-off server's headers leaves it off in running OpenCode sessions, keeping its own app",
+    () =>
+      Effect.gen(function* () {
+        const { service, rig } = yield* setup({ installed: ["opencode"] });
+        yield* service.add({
+          ...ADOBE,
+          auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: NEW, scopes: [] },
+        });
+        yield* service.setEnabled({ name: ADOBE.name, enabled: false });
+        rig.changes.length = 0;
+        yield* service.update({ name: ADOBE.name, values: { "X-Team": NEW }, keep: [] });
+        const told = rig.changes.find(({ change }) => change.kind === "changed")?.change;
+        expect(told).toMatchObject({
+          entry: {
+            enabled: false,
+            headers: { "X-Team": NEW },
+            oauth: { clientId: "mate-app", clientSecret: NEW },
+          },
+        });
+      }),
   );
 
   it.effect.each([
