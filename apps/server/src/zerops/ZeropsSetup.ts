@@ -57,6 +57,7 @@ import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
 import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/sql/SqlClient";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { MateEngine, type ConversationView } from "../engine/MateEngine.ts";
@@ -74,6 +75,7 @@ import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigner
 import { ZeropsStandUpReceipt } from "./ZeropsStandUpReceipt.ts";
 import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import { isTaskConversation } from "./ZeropsTasks.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 import {
   STAND_UP_MESSAGE,
   parseZcpStatus,
@@ -95,12 +97,8 @@ import {
 /** How many of the latest stand-up calls are held: a section, its carry, and retries before. */
 const STAND_UP_CALLS_HELD = 8;
 
-/** How often the server looks for the stand-up's go-ahead while it is new… */
-export const STAND_UP_POLL = Duration.seconds(10);
-/** …for this long… */
-export const STAND_UP_FAST_FOR = Duration.minutes(30);
-/** …and then, until the stand-up is settled. */
-export const STAND_UP_SLOW_POLL = Duration.seconds(60);
+/** How soon a flip looks again at an engine that could not read every conversation. */
+const UNREAD_RETRY = Duration.seconds(10);
 
 /** The reads this needs from outside the process; a test hands in its own. */
 export class ZeropsSetupReads extends Context.Service<
@@ -127,6 +125,11 @@ export class ZeropsSetupReads extends Context.Service<
     readonly providers: Effect.Effect<ReadonlyArray<ServerProvider>>;
     /** What an automated Mate's agents start on: its organization's model (`ZeropsAutomation`). */
     readonly automatedModel: Effect.Effect<ModelSelection>;
+    /**
+     * The change streams of what decides whether the stand-up may go: HQ's state (`hq`), the
+     * sign-ins (`signers`), the agent-auth feed (`agents`) and the providers (`providers`).
+     */
+    readonly changes: ReadonlyArray<Stream.Stream<unknown>>;
   }
 >()("t3/zerops/ZeropsSetup/ZeropsSetupReads") {}
 
@@ -145,8 +148,8 @@ export class ZeropsSetup extends Context.Service<
      * the Mate's unit fails a section left running (zcp's `MarkLaunch`), so none outlives them.
      */
     readonly noteStandUpCall: (call: StandUpCall) => Effect.Effect<void>;
-    /** A scheduled stand-up or flip decision returned; not an in-flight send. */
-    readonly nextPoll: Effect.Effect<void>;
+    /** A look at whether the stand-up may go returned; not an in-flight send. */
+    readonly nextLook: Effect.Effect<void>;
     /** The initial stand-up or flip worker has terminated. */
     readonly finished: Effect.Effect<void>;
     /** Receipt: the initial wait ended as sent, failed, skipped or not asked. */
@@ -220,25 +223,6 @@ export const standUpModelSelectionOn = (
   return { instanceId: provider.instanceId, model: resolveBootstrapModelSlug(provider) };
 };
 
-export interface ZeropsSetupTimings {
-  readonly poll: Duration.Duration;
-  readonly fastFor: Duration.Duration;
-  readonly slowPoll: Duration.Duration;
-}
-
-const TIMINGS: ZeropsSetupTimings = {
-  poll: STAND_UP_POLL,
-  fastFor: STAND_UP_FAST_FOR,
-  slowPoll: STAND_UP_SLOW_POLL,
-};
-
-/** How long to wait before the next look, this far (ms) into the wait for the stand-up. */
-export const standUpPollDelay = (
-  elapsedMs: number,
-  timings: ZeropsSetupTimings = TIMINGS,
-): Duration.Duration =>
-  elapsedMs < Duration.toMillis(timings.fastFor) ? timings.poll : timings.slowPoll;
-
 /**
  * A record's source. `server:claimed`: a send on its way, resumed after a restart (its ids make
  * it go out once). `server`: it went out. `none` (nobody asked), `skipped` (the conversation was
@@ -261,7 +245,7 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "skipped",
 ]);
 
-export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
+export const makeZeropsSetup = (unreadRetry: Duration.Duration = UNREAD_RETRY) =>
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const reads = yield* ZeropsSetupReads;
@@ -623,7 +607,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
         const read = yield* engineConversation(
           resuming === undefined ? undefined : ConversationId.make(resuming.threadId),
         );
-        // A conversation the engine cannot read now may be the Mate's: look again later.
+        // A conversation the engine cannot read now may be the Mate's: look again when it moves.
         if (read === "unknown") return false;
         const main = read;
         // Resumed, and its wake is in the engine already: it went out before.
@@ -739,7 +723,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
      * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
      * projections are only read.
      */
-    const polled = completionReceipt();
+    const looked = completionReceipt();
     const adoptAtFlip = Effect.gen(function* () {
       const held = yield* engineConversation();
       // Unread is not none: adopting now could give a conversation that exists a second agent.
@@ -781,10 +765,9 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
           turns,
         });
     }).pipe(
-      Effect.ensuring(polled.complete),
       Effect.retry({
         while: (error) => error === "unread",
-        schedule: Schedule.spaced(timings.poll),
+        schedule: Schedule.spaced(unreadRetry),
       }),
       Effect.catchCause((cause) =>
         Effect.logWarning(
@@ -798,29 +781,32 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
     /** One look. */
     const step = tickOnEngine;
 
-    /** Until the stand-up is settled: fast while the Mate is new, slower after. */
+    /**
+     * Until the stand-up is settled: one look now, then one after each change of what decides it
+     * (its reads' inputs, and the engine's conversations: one spoken in, or readable again).
+     */
     const wait = Effect.gen(function* () {
+      // Subscribed before anything is read, so no change after a look goes unheard.
+      const moved = yield* subscribeChanges([...reads.changes, engine.changes]);
       const variables = yield* reads.serviceVariables;
       const marked = variables !== undefined && hasSetupMarker(variables);
       yield* readiness.await;
       // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
       // rather than into a new one.
       yield* adoptAtFlip;
-      // A Mate the new press did not make has no stand-up of the server's, and never polls.
+      // A Mate the new press did not make has no stand-up of the server's, and never looks.
       if (!marked) {
         yield* receipt.settle;
         return;
       }
-      const since = yield* Clock.currentTimeMillis;
       while (true) {
-        const upMs = (yield* Clock.currentTimeMillis) - since;
-        if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(polled.complete))) {
+        if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(looked.complete))) {
           yield* receipt.settle;
           return;
         }
-        yield* Effect.sleep(standUpPollDelay(upMs, timings));
+        yield* moved;
       }
-    });
+    }).pipe(Effect.scoped);
 
     let finished = Effect.void;
     if (environment !== undefined && isZeropsEnvironment(config)) {
@@ -863,7 +849,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       noteStandUpCall,
       retry,
       finished,
-      nextPoll: Effect.suspend(polled.next),
+      nextLook: Effect.suspend(looked.next),
       awaitStandUp: receipt.await,
     });
   });
@@ -966,6 +952,7 @@ export const liveReadsLayer = Layer.effect(
       processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
       automatedModel: automation.modelSelection,
+      changes: [link.changes, projectSigners.changes, agentAuth.changes, instances.changes],
     });
   }),
 );
