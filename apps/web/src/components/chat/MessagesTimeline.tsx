@@ -3980,21 +3980,22 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
     true,
     ctx.threadRef?.threadId ?? null,
   );
-  // A request for a vault value is the person's to answer: its card is the ask.
-  if (vaultAskOf(row.operation) !== null) {
-    return (
-      <div className="min-w-0 px-1 py-0.5">
+  const card = (
+    <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+  );
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      {/* A request for a vault value is the person's to answer: its card is the ask. */}
+      {vaultAskOf(row.operation) === null ? (
+        card
+      ) : (
         <VaultRequestCardContainer
           environmentId={ctx.activeThreadEnvironmentId}
+          fallback={card}
           operation={row.operation}
           threadRef={ctx.threadRef}
         />
-      </div>
-    );
-  }
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+      )}
     </div>
   );
 });
@@ -4006,10 +4007,12 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
   row: Extract<TimelineRow, { kind: "vault-request" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  // Without the engine's record (older history) the run's own line is all it shows: no frame here.
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 px-1 py-0.5 empty:hidden">
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
+        fallback={null}
         operation={row.operation}
         threadRef={ctx.threadRef}
       />

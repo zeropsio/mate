@@ -20,7 +20,7 @@ import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import type { ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { Atom } from "effect/reactivity";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useMemo, useState, type ReactNode } from "react";
 
 import { useClientSettings } from "~/hooks/useSettings";
 import { useThreadDetail } from "~/state/entities";
@@ -60,15 +60,21 @@ interface RecordedAsk {
   readonly record: Pick<VaultAskActivityPayload, "state" | "answer">;
 }
 
-/** The card where the Mate asked, for an operation that asks for a value; nothing for another. */
+/**
+ * The card where the Mate asked, for an operation that asks for a value. Without the engine's
+ * record of it (a conversation from before the engine recorded asks), the operation reads as it
+ * did: `fallback`.
+ */
 export function VaultRequestCardContainer({
   operation,
   environmentId,
   threadRef,
+  fallback,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
   readonly threadRef: ScopedThreadRef | null;
+  readonly fallback: ReactNode;
 }) {
   const ask = useMemo(() => vaultAskOf(operation), [operation]);
   const record = useThreadDetail(
@@ -79,7 +85,8 @@ export function VaultRequestCardContainer({
       [ask],
     ),
   );
-  if (ask === null || record === null || environmentId === null || threadRef === null) return null;
+  if (ask === null || record === null || environmentId === null || threadRef === null)
+    return fallback;
   return (
     <VaultAskHome
       asked={{ requestId: record.requestId, ask, record }}
