@@ -100,6 +100,7 @@ export {
   PROPOSAL_IDS_PER_READ,
   type HqChiefCalls,
   type HqProposalDecisionWrite,
+  type HqRevealRecord,
 } from "./chief.ts";
 
 export { problemPresentation, problemsFix } from "./problems.ts";

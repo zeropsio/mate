@@ -137,3 +137,40 @@ describe("a decision on a proposal written to HQ", () => {
     }),
   );
 });
+
+describe("a reveal recorded at HQ", () => {
+  it.effect(
+    "sends where the value lives and its name, never the value, and ends once HQ kept it",
+    () =>
+      Effect.gen(function* () {
+        const sent: unknown[] = [];
+        const { store, operations } = account({
+          recordReveal: async (reveal) => {
+            sent.push(reveal);
+          },
+        });
+        yield* operations.submit({
+          kind: "record-reveal",
+          orgId: ORG,
+          reveal: { projectId: "p-prod", service: "db", key: "DATABASE_PASSWORD" },
+        });
+        expect(sent).toEqual([{ projectId: "p-prod", service: "db", key: "DATABASE_PASSWORD" }]);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      }),
+  );
+
+  it.effect("is refused where the HQ records no reveals, so nothing is shown", () =>
+    Effect.gen(function* () {
+      const { store, operations } = account({});
+      yield* operations.submit({
+        kind: "record-reveal",
+        orgId: ORG,
+        reveal: { projectId: "p-prod", key: "DATABASE_PASSWORD" },
+      });
+      expect(progress(store)).toMatchObject({
+        stage: "refused",
+        reason: "Update HQ to record reveals.",
+      });
+    }),
+  );
+});

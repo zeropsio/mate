@@ -9,6 +9,9 @@
  *   {@link PROPOSAL_IDS_PER_READ} per call.
  * - `PUT /api/proposals/:id` → one decision, then once how an approval ended: `decision` is
  *   written once, `outcome` once after `approved`, and anything else is HQ's `409`.
+ * - `POST /api/reveals` → `204` once HQ recorded, in the organization's activity, that the person
+ *   was shown a hidden value: the project, the service's hostname and the variable's name, never
+ *   the value (mate-hq `spec/protocol.md`, "Activity").
  *
  * @module hq/chief
  */
@@ -47,6 +50,14 @@ export interface HqProposalDecisionWrite {
   readonly words?: string;
 }
 
+/** A hidden value the person was shown, as HQ records it: where it lives and its name. */
+export interface HqRevealRecord {
+  readonly projectId: string;
+  /** The service's hostname, for a service's own value. */
+  readonly service?: string;
+  readonly key: string;
+}
+
 /** How many proposals one read names: HQ refuses more. */
 export const PROPOSAL_IDS_PER_READ = 100;
 
@@ -61,6 +72,8 @@ export interface HqChiefCalls {
     id: string,
     write: HqProposalDecisionWrite,
   ) => Promise<HqProposalDecision>;
+  /** Records that the person was shown a hidden value; resolves once HQ kept the record. */
+  readonly recordReveal: (reveal: HqRevealRecord) => Promise<void>;
 }
 
 /** The client's session call (`makeHqApi`'s `authorized`) and its schema read (`decoded`). */
@@ -109,5 +122,8 @@ export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChi
           true,
         ),
       ),
+    recordReveal: async (reveal) => {
+      await authorized("/api/reveals", { method: "POST", body: JSON.stringify(reveal) }, true);
+    },
   };
 }
