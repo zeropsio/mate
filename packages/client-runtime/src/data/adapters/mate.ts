@@ -190,8 +190,8 @@ export interface MateAdapter {
   readonly initAt: (key: TargetKey) => Promise<string | null>;
   /** The target's container is read again, if something waits on it. */
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
-  /** HQ placed the project's Mate for the person again: a refusal of it is asked again. */
-  readonly accessChanged: (projectId: string) => void;
+  /** The person's role on the project changed (`followMateRoles`): a refusal of it is asked again. */
+  readonly roleChanged: (projectId: string) => void;
   /** The reading of a probe of this origin started from now on. */
   readonly next: (origin: string) => Promise<ProbeReading>;
   readonly machines: (key: TargetKey) => MateMachines | undefined;
@@ -1392,7 +1392,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         }
       }),
     online: () => enqueue(everyTarget({ type: "ONLINE" })),
-    accessChanged: (projectId) =>
+    roleChanged: (projectId) =>
       enqueue(() => {
         if (suppressed(projectId)) return;
         for (const entry of entries.values())

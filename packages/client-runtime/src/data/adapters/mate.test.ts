@@ -14,6 +14,11 @@ import { linkKeys } from "../model.ts";
 import { streamOf } from "../reducer.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { mateLink, mateLinks } from "../projections/mateLinks.ts";
+import { followMateRoles } from "../../zerops/account/mateRoles.ts";
+import { liveProjects } from "../__fixtures__/account.ts";
+import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
+import { accountReadsAtom } from "../reads.ts";
 import { makeMateAdapter, type MateAdapter, type MateTarget } from "./mate.ts";
 
 const GRANTED: AccountGuards = {
@@ -90,6 +95,7 @@ const target = (projectId: string, overrides: Partial<MateTarget> = {}): MateTar
 
 interface Rig {
   readonly adapter: MateAdapter;
+  readonly registry: AtomRegistry.AtomRegistry;
   readonly store: AccountStore;
   readonly clock: ReturnType<typeof manualClock>;
   readonly probes: Array<{ readonly origin: string; readonly ask: ProbeRead }>;
@@ -106,7 +112,8 @@ function rig(
   } = {},
 ): Rig {
   const clock = manualClock();
-  const store = makeAccountStore(AtomRegistry.make());
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
   const probes: Array<{ readonly origin: string; readonly ask: ProbeRead }> = [];
   const exchanges: Array<ExchangeRequest> = [];
   const installs: Array<string> = [];
@@ -152,7 +159,7 @@ function rig(
   });
   adapter.setAccount(GRANTED);
   adapter.setVisible(true);
-  return { adapter, store, clock, probes, exchanges, installs, intents };
+  return { adapter, registry, store, clock, probes, exchanges, installs, intents };
 }
 
 const read = (store: AccountStore) => readsOfState(store.state());
@@ -290,6 +297,56 @@ describe("makeMateAdapter", () => {
     const outcome = await adapter.connect("p1:zcp", "user");
     expect(outcome).toEqual({ _tag: "Connected", environmentId: "env-p1" });
     expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("live");
+  });
+
+  // Brief W7 (Karel, 2026-11-04): HQ lists every Mate and sends no view of the person; the
+  // client's own live Zerops data is the one source of a role change.
+  it("When the signed-in person's role on a Mate's project changes in the client's own live data, a refused connection tries again", async () => {
+    let refuse = true;
+    const { adapter, registry, store, exchanges } = rig({
+      answer: (request) =>
+        refuse
+          ? {
+              ok: false,
+              failure: { class: "refusal", reason: { kind: "role" } },
+              descriptor: descriptor("p1"),
+            }
+          : {
+              ok: true,
+              environmentId: EnvironmentId.make("env-p1"),
+              descriptor: descriptor(request.key.split(":")[0] ?? ""),
+              credential: "credential-p1",
+            },
+    });
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: "org",
+      demandDetail: () => () => undefined,
+      renewHeld: () => undefined,
+    });
+    seedHqNavigation(store, "org", {
+      structure: {
+        apps: [],
+        ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }],
+      },
+    });
+    for (const input of [...liveProjects("org", [{ id: "p1" }]), ...membershipInputs("READ_ONLY")])
+      store.dispatch(input);
+    const stop = followMateRoles(registry, adapter.roleChanged);
+    adapter.setTargets([target("p1")]);
+    adapter.setDemand("route", ["p1:zcp"]);
+    await flush();
+    expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("refused");
+    const asked = exchanges.length;
+    refuse = false;
+
+    // A `client-user` frame naming the person reads their membership again: Basic user now.
+    for (const input of membershipInputs("BASIC_USER", false, 2)) store.dispatch(input);
+    await flush();
+
+    expect(exchanges.length).toBe(asked + 1);
+    expect(streamOf(store.state(), linkKeys.mate("p1")).phase).toBe("live");
+    stop();
   });
 
   it("keeps a Mate's facts through an outage: an unanswered probe changes its container, not its credential", async () => {
