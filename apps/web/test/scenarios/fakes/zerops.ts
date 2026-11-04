@@ -635,8 +635,6 @@ export class ZeropsFake {
     const logs = path.match(/^\/project\/([^/]+)\/log$/u);
     if (logs) return { body: { url: `${this.origin}/scenario-logs/${logs[1]}` } };
     if (path.startsWith("/scenario-logs/")) return { body: { items: [] } };
-    if (path === "/client-user/search" && request.method === "POST")
-      return this.memberSearch(request, bearer);
     if (path.endsWith("/search")) return this.search(path.split("/")[1]!, request, bearer);
     if (clientScope && path === `/client/${clientScope}/project`) {
       const rows = this.rows("project").filter(
@@ -692,44 +690,6 @@ export class ZeropsFake {
     }
     return undefined;
   };
-
-  /**
-   * The organisation's persons, one row per membership as Zerops answers them: top-level `id` is
-   * the membership (`clientUserId`), `userId` and `user.id` the person (ZEROPS-067). Tokens are
-   * no persons and stay out (ZEROPS-062); any credential of the organisation reads them
-   * (ZEROPS-055). Rows carry `_version` like every search row (ZEROPS-064).
-   */
-  private memberSearch(request: WireRequest, apiToken: string): WireResponse {
-    const search = (request.body.search ?? []) as SearchTerm[];
-    const rows = [...this.world.members]
-      .filter(([orgId]) => this.canAccessOrg(apiToken, orgId))
-      .flatMap(([orgId, members]) =>
-        members
-          .filter((member) => member.kind === "person")
-          .map((member) => ({
-            id: member.clientUserId,
-            clientId: orgId,
-            userId: member.userId,
-            roleCode: member.roleCode,
-            status: member.status,
-            canCreateProjects: member.canCreateProjects,
-            user: {
-              id: member.userId,
-              email: member.email ?? `${member.userId}@example.test`,
-              firstName: member.name,
-              lastName: "",
-              fullName: member.name,
-            },
-            _version: 1,
-          })),
-      )
-      .filter((row) => this.matches(row, search));
-    const limit = Number(request.body.limit ?? 1000);
-    const offset = Number(request.body.offset ?? 0);
-    return {
-      body: { items: rows.slice(offset, offset + limit), totalHits: rows.length, limit, offset },
-    };
-  }
 
   private search(kind: string, request: WireRequest, apiToken: string): WireResponse {
     const search = (request.body.search ?? []) as SearchTerm[];

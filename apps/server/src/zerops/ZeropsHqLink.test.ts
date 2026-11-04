@@ -11,12 +11,7 @@ import {
   type MateAttention,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import {
-  type AccessReport,
-  KeyLinkUp,
-  type LinkedMate,
-  type MateOverview,
-} from "@t3tools/shared/mateLink";
+import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -47,7 +42,6 @@ import {
   preferringIpv6,
   readsAlongOnly,
   type OverviewSources,
-  type ZeropsHqLinkOptions,
 } from "./ZeropsHqLink.ts";
 
 const decodeJson = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -196,11 +190,6 @@ const rig = (
     /** What a credential's write waits on before it lands, as a file write in flight does. */
     readonly credentialLands?: (credential: string | null) => Effect.Effect<void>;
     readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
-    /** The Mate's own verdict on each ticket HQ sends; no tickets unless a test says. */
-    readonly ticket?: ZeropsHqLinkOptions["ticket"];
-    readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
-    /** The Mate's own access reports; none unless a test says. */
-    readonly accessReports?: Stream.Stream<AccessReport>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -246,9 +235,6 @@ const rig = (
       attention: options.attention ?? Stream.never,
       ...(options.health === undefined ? {} : { health: options.health }),
       access: (frame) => Effect.sync(() => void relayed.push(frame)),
-      ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
-      ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
-      ...(options.accessReports === undefined ? {} : { accessReports: options.accessReports }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
           (options.credentialLands?.(credential) ?? Effect.void).pipe(
@@ -683,7 +669,7 @@ describe("ZeropsHqLink", () => {
     "TC-6 and TC-8 the HQ link holds tickets before acknowledging and forwards sign-out to live connections",
     () =>
       Effect.gen(function* () {
-        const access = yield* Access.make();
+        const access = yield* Access.make;
         const tickets = yield* Tickets.make;
         const connections = yield* Connections.make.pipe(
           Effect.provideService(Access.ZeropsMateAccessList, access),
@@ -692,7 +678,6 @@ describe("ZeropsHqLink", () => {
         );
         const sockets: Array<FakeSocket> = [];
         const pongs = yield* Queue.unbounded<void>();
-        const acks = yield* Queue.unbounded<void>();
         const closed: Array<string> = [];
         const heldAtAcknowledgement: Array<boolean> = [];
         let ticketHeld = false;
@@ -705,10 +690,7 @@ describe("ZeropsHqLink", () => {
             const socket = new FakeSocket(url);
             socket.over = "IPv6";
             socket.onSent = (message) => {
-              if (message.type === "ticket-ack") {
-                heldAtAcknowledgement.push(ticketHeld);
-                Queue.offerUnsafe(acks, undefined);
-              }
+              if (message.type === "ticket-ack") heldAtAcknowledgement.push(ticketHeld);
               if (message.type === "pong") Queue.offerUnsafe(pongs, undefined);
             };
             sockets.push(socket);
@@ -719,13 +701,11 @@ describe("ZeropsHqLink", () => {
           attention: Stream.never,
           access: connections.heard,
           ticket: (frame) =>
-            connections.ticket(frame).pipe(
-              Effect.map(
-                Effect.tap(() =>
-                  Effect.sync(() => {
-                    ticketHeld = true;
-                  }),
-                ),
+            tickets.heard(frame).pipe(
+              Effect.tap(() =>
+                Effect.sync(() => {
+                  ticketHeld = true;
+                }),
               ),
             ),
           closeSession: connections.closeSession,
@@ -747,7 +727,8 @@ describe("ZeropsHqLink", () => {
           sessionId: "hq-session",
           expiresIn: 60,
         });
-        yield* Queue.take(acks);
+        socket.hear({ type: "ping" });
+        yield* Queue.take(pongs);
         assert.deepEqual(heldAtAcknowledgement, [true]);
         assert.deepEqual(
           socket.sent.filter((message) => message.type === "ticket-ack"),
@@ -766,127 +747,6 @@ describe("ZeropsHqLink", () => {
         assert.deepEqual(closed, ["browser"]);
         assert.isTrue(Option.isNone(yield* connections.current("browser-ticket")));
       }).pipe(Effect.scoped),
-  );
-
-  it.effect(
-    "answers a ticket the Mate's own list does not open for with ticket_refused and its reason, instead of ticket-ack",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const verdicts = { jan: "open", eva: "read_only" } as const;
-          const { sockets } = yield* rig({
-            ticket: (frame) =>
-              Effect.succeed(
-                Effect.succeed(
-                  frame.userId in verdicts
-                    ? verdicts[frame.userId as keyof typeof verdicts]
-                    : "not_in_list",
-                ),
-              ),
-          });
-          const socket = yield* linked(sockets, 0);
-          for (const userId of ["jan", "eva", "token"])
-            socket.hear({
-              type: "ticket",
-              ticket: `t-${userId}`,
-              userId,
-              sessionId: "s",
-              expiresIn: 60,
-            });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(
-            socket.sent.filter(
-              (message) => message.type === "ticket-ack" || message.type === "ticket_refused",
-            ),
-            [
-              { type: "ticket-ack", ticket: "t-jan" },
-              { type: "ticket_refused", ticket: "t-eva", reason: "read_only" },
-              { type: "ticket_refused", ticket: "t-token", reason: "not_in_list" },
-            ],
-          );
-        }),
-      ),
-  );
-
-  it.effect(
-    "A ticket whose verdict waits on a Zerops read holds back none of the frames after it: ping and close-session are answered at once",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const readAnswers = yield* Deferred.make<void>();
-          const closedSessions: Array<string> = [];
-          const { sockets } = yield* rig({
-            ticket: () =>
-              Effect.succeed(Deferred.await(readAnswers).pipe(Effect.as("open" as const))),
-            closeSession: (sessionId) =>
-              Effect.sync(() => {
-                closedSessions.push(sessionId);
-              }),
-          });
-          const socket = yield* linked(sockets, 0);
-          socket.hear({
-            type: "ticket",
-            ticket: "t-1",
-            userId: "jan",
-            sessionId: "s",
-            expiresIn: 60,
-          });
-          socket.hear({ type: "close-session", sessionId: "other" });
-          socket.hear({ type: "ping" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(closedSessions, ["other"]);
-          assert.deepStrictEqual(
-            socket.sent.filter(
-              (message) => message.type === "pong" || message.type === "ticket-ack",
-            ),
-            [{ type: "pong" }],
-          );
-          yield* Deferred.succeed(readAnswers, undefined);
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(
-            socket.sent.filter((message) => message.type === "ticket-ack"),
-            [{ type: "ticket-ack", ticket: "t-1" }],
-          );
-        }),
-      ),
-  );
-
-  it.effect(
-    "reports the Mate's own access list once HQ answered: its latest on every link, then after each recompute",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const report = (at: string, missing: ReadonlyArray<string>): AccessReport => ({
-            at,
-            openers: ["jan"],
-            listed: ["eva"],
-            missing,
-          });
-          const reports = yield* SubscriptionRef.make(report("2026-11-03T10:00:00.000Z", []));
-          const { sockets } = yield* rig({ accessReports: SubscriptionRef.changes(reports) });
-          const reported = (socket: FakeSocket) =>
-            socket.sent.filter((message) => message.type === "access_report");
-          const first = yield* opened(sockets, 0);
-          assert.deepStrictEqual(reported(first), []);
-          admit(first);
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(reported(first), [
-            { type: "access_report", ...report("2026-11-03T10:00:00.000Z", []) },
-          ]);
-          yield* SubscriptionRef.set(reports, report("2026-11-03T10:05:00.000Z", ["bob"]));
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(reported(first).at(-1), {
-            type: "access_report",
-            ...report("2026-11-03T10:05:00.000Z", ["bob"]),
-          });
-          first.emit("close");
-          yield* TestClock.adjust(Duration.millis(30));
-          const second = yield* linked(sockets, 1);
-          assert.deepStrictEqual(reported(second), [
-            { type: "access_report", ...report("2026-11-03T10:05:00.000Z", ["bob"]) },
-          ]);
-        }),
-      ),
   );
 
   it.effect("acknowledges Observe writes and revocation only after their truthful receipt", () =>

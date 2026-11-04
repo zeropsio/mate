@@ -47,7 +47,6 @@ import * as ZeropsLoginsModule from "./ZeropsLogins.ts";
 import * as ZeropsMateAttentionModule from "./ZeropsMateAttention.ts";
 import * as ZeropsGitCredentialFileModule from "./ZeropsGitCredentialFile.ts";
 import * as ZeropsObserveCredentialFileModule from "./ZeropsObserveCredentialFile.ts";
-import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
@@ -73,19 +72,9 @@ import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /**
  * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
- * reader it reads Zerops with: computed by the Mate in a Zerops container, HQ's relay elsewhere.
+ * reader the door still reads Zerops with.
  */
-export const ZeropsMateAccessListLive = Layer.unwrap(
-  Effect.gen(function* () {
-    const config = yield* ServerConfig;
-    const zerops = config.zeropsFixtures === undefined ? config.zerops : undefined;
-    return zerops === undefined
-      ? ZeropsMateAccessListModule.relayLayer
-      : ZeropsMateAccessListModule.layer(zerops.projectId).pipe(
-          Layer.provide(ZeropsAccessReadModule.layer(zerops)),
-        );
-  }),
-).pipe(
+export const ZeropsMateAccessListLive = ZeropsMateAccessListModule.layer.pipe(
   Layer.provideMerge(ZeropsOrgReadModule.layer),
   Layer.provideMerge(ZeropsMateKeyModule.layer),
 );
