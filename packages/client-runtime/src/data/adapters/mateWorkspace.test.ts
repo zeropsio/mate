@@ -3,6 +3,7 @@ import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { EnvironmentId, type ProjectReadFileResult } from "@t3tools/contracts";
 import { makeAccountStore, readsOfState } from "../store.ts";
+import { NO_ANSWER_IN_TIME, STREAM_POLICY } from "../streamMachine.ts";
 import { makeWorkspaceReads, workspaceFailure, type WorkspaceWire } from "./mateWorkspace.ts";
 import { workspaceReading } from "../projections/mateWorkspace.ts";
 import { workspaceScope } from "../families/mateWorkspace.ts";
@@ -545,3 +546,45 @@ it("starting an MCP sign-in leaves the tab's server list as the Mate last answer
   reads.close();
   registry.dispose();
 });
+
+it.each([
+  { case: "the first read", answers: [] as Array<"list" | "never"> },
+  { case: "a read after a list", answers: ["list"] as Array<"list" | "never"> },
+])(
+  "an MCP server read that never answers ends in a failure the tab can retry: $case",
+  async ({ answers }) => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const target = { environmentId: file.environmentId, input: {} };
+    const listed = { agents: ["claudeAgent" as const], servers: [] };
+    let calls = 0;
+    const reads = makeWorkspaceReads(store, {
+      read: () => (answers[calls++] === "list" ? Effect.succeed(listed) : Effect.never),
+    } as WorkspaceWire);
+    const read = () => workspaceReading("mcp").derive(readsOfState(store.state()), target).result;
+    try {
+      const release = reads.demand("mcp", target);
+      await vi.advanceTimersByTimeAsync(0);
+      if (answers.length > 0) {
+        expect(read()).toMatchObject({ _tag: "Success", value: listed });
+        reads.again("mcp", target);
+        await vi.advanceTimersByTimeAsync(0);
+      }
+      // Past the read's deadline and the grace a blink is given.
+      await vi.advanceTimersByTimeAsync(
+        STREAM_POLICY.baselineTimeoutMs + STREAM_POLICY.reconnectGraceMs,
+      );
+      expect(read()).toMatchObject({
+        _tag: "Failure",
+        cause: { reasons: [{ error: { message: NO_ANSWER_IN_TIME } }] },
+      });
+      release();
+    } finally {
+      reads.close();
+      registry.dispose();
+      vi.useRealTimers();
+    }
+  },
+);

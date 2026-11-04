@@ -14,6 +14,7 @@ import { request } from "../../rpc/client.ts";
 import {
   WORKSPACE_READS,
   workspaceId,
+  workspaceLinkKey,
   workspaceScope,
   type WorkspaceRead,
   type WorkspaceTarget,
@@ -103,7 +104,7 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
   const demand = <K extends WorkspaceRead>(kind: K, target: WorkspaceTarget<K>, manual = false) => {
     if (closed) return () => {};
     const scope = workspaceScope(kind, target);
-    const key: LinkKey = `mate:workspace-${encodeURIComponent(scope)}`;
+    const key = workspaceLinkKey(scope);
     const id = workspaceId(target);
     const family = WORKSPACE_READS[kind].family;
     // A released URL may expire with no view present; its next demand cannot reuse it.
