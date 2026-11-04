@@ -265,7 +265,7 @@ describe("HQ source client", () => {
     const calls: string[] = [];
     const api = makeHqApi({
       address: "https://hq.example",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
@@ -292,7 +292,7 @@ describe("HQ source client", () => {
     let kept: string | null = "expired";
     const api = makeHqApi({
       address: "https://hq.example",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       orgId: "org-1",
       openSocket: () => {
         throw new Error("unused");
@@ -343,7 +343,7 @@ describe("HQ source client", () => {
     async (sent, held) => {
       const api = makeHqApi({
         address: "https://hq.example",
-        accessToken: async () => "access",
+        accessToken: async () => ({ token: "access" }),
         orgId: "org-1",
         openSocket: () => {
           throw new Error("unused");

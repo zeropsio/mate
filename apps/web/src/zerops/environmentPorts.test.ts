@@ -325,7 +325,7 @@ describe("HQ ticket refusal on the Mate's state", () => {
         const hq = makeHqApi({
           address: "https://hq.example",
           orgId: "org-1",
-          accessToken: async () => "access",
+          accessToken: async () => ({ token: "access" }),
           openSocket: () => {
             throw new Error("unexpected socket");
           },

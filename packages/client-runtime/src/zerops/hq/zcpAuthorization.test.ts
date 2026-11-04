@@ -14,7 +14,7 @@ describe("ZCP authorization client", () => {
       const api = makeHqApi({
         address: "https://hq.example",
         orgId: "org",
-        accessToken: async () => "person-access",
+        accessToken: async () => ({ token: "person-access" }),
         openSocket: () => {
           throw new Error("unused");
         },
@@ -53,7 +53,7 @@ describe("ZCP authorization client", () => {
     const api = makeHqApi({
       address: "https://hq.example",
       orgId: "org",
-      accessToken: async () => "person-access",
+      accessToken: async () => ({ token: "person-access" }),
       openSocket: () => {
         throw new Error("unused");
       },
@@ -80,7 +80,7 @@ describe("ZCP authorization client", () => {
       const api = makeHqApi({
         address: "https://hq.example",
         orgId: "org",
-        accessToken: async () => "original-person-access",
+        accessToken: async () => ({ token: "original-person-access" }),
         isCurrent: () => active,
         now: () => 0,
         ...(phase === "renewal"

@@ -643,10 +643,10 @@ describe("ZeropsApiClient.accessToken — the token HQ's sign-in reads", () => {
     const client = new ZeropsApiClient({ fetch: stub.fetch });
     client.restoreSession(SESSION);
 
-    await expect(client.accessToken()).resolves.toBe("access-1");
+    await expect(client.accessToken()).resolves.toEqual({ token: "access-1" });
     expect(stub.requests).toEqual([]);
-    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
-    await expect(client.accessToken()).resolves.toBe("access-2");
+    await expect(client.accessToken("access-1")).resolves.toEqual({ token: "access-2" });
+    await expect(client.accessToken()).resolves.toEqual({ token: "access-2" });
   });
 
   it("has none to hand out once signed out", async () => {
@@ -838,8 +838,9 @@ describe("ZeropsApiClient renews ahead of expiry, under no request", () => {
     const client = clientWith(stub.fetch);
     client.restoreSession({ ...SESSION, expiresAt: iso(NOW + HOUR) });
 
-    await expect(client.accessToken()).resolves.toBe("access-2");
-    await expect(client.accessToken("access-1")).resolves.toBe("access-2");
+    const renewedAccess = { token: "access-2", expiresAt: iso(NOW + 6 * HOUR) };
+    await expect(client.accessToken()).resolves.toEqual(renewedAccess);
+    await expect(client.accessToken("access-1")).resolves.toEqual(renewedAccess);
     expect(labelsOf(stub.requests)).toEqual(["refresh"]);
   });
 });

@@ -38,7 +38,7 @@ function hqAnswering(answer: (seen: Seen) => Response) {
   const api = makeHqApi({
     address: ADDRESS,
     fetch,
-    accessToken: async () => "access",
+    accessToken: async () => ({ token: "access" }),
     orgId: "org-1",
     openSocket: NO_SOCKET,
   });

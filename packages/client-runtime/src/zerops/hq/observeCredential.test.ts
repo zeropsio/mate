@@ -9,7 +9,7 @@ describe("personal observe credential client", () => {
     const api = makeHqApi({
       address: "https://hq.example",
       orgId: "org",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       openSocket: () => {
         throw new Error("unused");
       },
@@ -46,7 +46,7 @@ describe("personal observe credential client", () => {
     const api = makeHqApi({
       address: "https://hq.example",
       orgId: "org",
-      accessToken: async () => "access",
+      accessToken: async () => ({ token: "access" }),
       openSocket: () => {
         throw new Error("unused");
       },

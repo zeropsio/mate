@@ -171,7 +171,7 @@ export const makeMateRecoveryHarness = Effect.fn("test.makeMateRecoveryHarness")
   const hq = makeHqApi({
     address: "https://hq.example.test",
     orgId: target.orgId,
-    accessToken: async () => "test-access",
+    accessToken: async () => ({ token: "test-access" }),
     now: () => 0,
     openSocket: () => {
       throw new Error("This proof uses only the HQ ticket HTTP path.");

@@ -2,13 +2,10 @@ import { act, createElement } from "react";
 import { create } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { classifyHqCall } from "@t3tools/client-runtime/data";
 import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
-import { accountHqApi, configuredHq, useOfficialHq, type HqStanding } from "./accountHq";
+import { accountHqApi, configuredHq, useOfficialHq } from "./accountHq";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
-import { hqOutage } from "./hqNavigation";
-import { keptHqSessions } from "./keptSessions";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -104,7 +101,7 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
       accountEpoch: epoch,
       accessToken: async () => {
         mints += 1;
-        return "access";
+        return { token: "access" };
       },
     } as unknown as ZeropsApiClient;
     return { client, doors: () => mints };
@@ -209,17 +206,9 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
 describe("a web built with an HQ origin — one shared HQ every organization signs in to", () => {
   const SHARED = "https://hq.shared.test";
   /** What the shared HQ's door was handed, in order. */
-  let doors: Array<{
-    readonly accessToken: unknown;
-    readonly orgId: unknown;
-    readonly orgKey?: unknown;
-  }>;
+  let doors: Array<unknown>;
   /** What HQ was asked, by path, in order. */
   let paths: Array<string>;
-  /** Whether an Owner or Admin has started the organization at HQ. */
-  let started: boolean;
-  /** HQ refuses the organization's key the door hands it. */
-  let keyRejected: boolean;
   let stored: Map<string, string>;
   /** The page's account epochs only grow, across tests too: the mint budget is fenced by them. */
   let epoch = 10_000;
@@ -227,8 +216,6 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   beforeEach(() => {
     doors = [];
     paths = [];
-    started = true;
-    keyRejected = false;
     stored = new Map();
     let issued = 0;
     vi.stubEnv("VITE_HQ_ORIGIN", SHARED);
@@ -243,13 +230,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
       const url = new URL(String(input));
       paths.push(`${url.origin}${url.pathname}`);
       if (url.pathname === "/api/door") {
-        const body = JSON.parse(String(init?.body)) as (typeof doors)[number];
-        doors.push(body);
-        if (!started && body.orgKey === undefined)
-          return Response.json({ code: "org_not_started" }, { status: 409 });
-        if (keyRejected && body.orgKey !== undefined)
-          return Response.json({ code: "forbidden", reason: "org_key_rejected" }, { status: 403 });
-        started = true;
+        doors.push(JSON.parse(String(init?.body)));
         return Response.json({
           session: `shared-session-${String(++issued)}`,
           expiresAt: new Date(Date.now() + 3_600_000).toISOString(),
@@ -268,27 +249,14 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
     vi.unstubAllGlobals();
   });
 
-  /** A signed-in person's client in `org-1` with `roleCode` there, counting what it mints. */
-  const person = (roleCode: string) => {
-    const keys: Array<unknown> = [];
-    const taken: Array<string> = [];
+  /** A signed-in person's client in `org-1`. */
+  const person = () => {
     epoch += 1;
     const client = {
       accountEpoch: epoch,
-      accessToken: async () => "access",
-      verifiedUser: () => ({
-        user: { clientUserList: [{ id: "m-1", clientId: "org-1", roleCode, status: "ACTIVE" }] },
-        atMs: 0,
-      }),
-      mintIntegrationToken: async (input: unknown) => {
-        keys.push(input);
-        return { id: "org-key-id", token: "org-key-1" };
-      },
-      deleteIntegrationToken: async (input: { readonly tokenId: string }) => {
-        taken.push(input.tokenId);
-      },
+      accessToken: async () => ({ token: "access" }),
     } as unknown as ZeropsApiClient;
-    return { client, keys, taken };
+    return { client };
   };
 
   const sharedApi = (client: ZeropsApiClient) => {
@@ -296,7 +264,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   };
 
   it("A web built with an HQ origin signs in to that HQ", async () => {
-    const { client } = person("OWNER");
+    const { client } = person();
     const session = {
       client,
       activeOrganization: { id: "org-1" },
@@ -322,7 +290,7 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   });
 
   it("keeps the official HQ effect identity when the anchor still names the same address and API", async () => {
-    const { client } = person("OWNER");
+    const { client } = person();
     const session = {
       client,
       activeOrganization: { id: "org-1" },
@@ -353,93 +321,9 @@ describe("a web built with an HQ origin — one shared HQ every organization sig
   });
 
   it("Signing in to a shared HQ presents the person's Zerops access token and the organisation", async () => {
-    const { client, keys } = person("BASIC_USER");
+    const { client } = person();
     await sharedApi(client).structure();
 
     expect(doors).toEqual([{ accessToken: "access", orgId: "org-1" }]);
-    expect(keys).toEqual([]);
-  });
-
-  it("An Owner's first sign-in to an organisation the HQ has not started hands it a read-only key and then signs in", async () => {
-    started = false;
-    const { client, keys, taken } = person("OWNER");
-    await sharedApi(client).structure();
-
-    expect(keys).toEqual([
-      { clientId: "org-1", name: "mate-hq-org-key", roleCode: "READ_ONLY", projects: [] },
-    ]);
-    // The second plain sign-in is the one inside the lock, which finds the organisation started
-    // by another tab when there is one.
-    expect(doors).toEqual([
-      { accessToken: "access", orgId: "org-1" },
-      { accessToken: "access", orgId: "org-1" },
-      { accessToken: "access", orgId: "org-1", orgKey: "org-key-1" },
-    ]);
-    expect(paths.at(-1)).toBe(`${SHARED}/api/structure`);
-    // HQ keeps the key it took: nothing here takes it back.
-    expect(taken).toEqual([]);
-  });
-
-  it("A member's sign-in to an organisation no Owner has started says an Owner or Admin must sign in first", async () => {
-    started = false;
-    const { client, keys } = person("BASIC_USER");
-    const refusal = await sharedApi(client)
-      .structure()
-      .then(
-        () => null,
-        (cause: unknown) => cause,
-      );
-
-    expect(refusal).toMatchObject({ kind: "refused", code: "org_not_started" });
-    expect(keys).toEqual([]);
-    expect(doors).toEqual([{ accessToken: "access", orgId: "org-1" }]);
-    // The menu says it, with Try again as the way out once an Owner or Admin has signed in.
-    const navigation = {
-      live: false,
-      refusal: classifyHqCall(refusal).message,
-      capped: false,
-      reconnecting: false,
-      slow: false,
-      structure: null,
-    };
-    expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
-      kind: "refused",
-      line: "An Owner or Admin of this organization must sign in to Mate first. Then try again.",
-      again: true,
-    });
-  });
-
-  it("An organisation's key HQ did not accept tells the person to sign in again as an Owner or Admin", async () => {
-    started = false;
-    keyRejected = true;
-    const { client } = person("OWNER");
-    const refusal = await sharedApi(client)
-      .structure()
-      .then(
-        () => null,
-        (cause: unknown) => cause,
-      );
-
-    expect(refusal).toMatchObject({ kind: "refused", code: "forbidden" });
-    // The second plain sign-in is the one inside the lock, which finds the organisation started
-    // by another tab when there is one.
-    expect(doors).toEqual([
-      { accessToken: "access", orgId: "org-1" },
-      { accessToken: "access", orgId: "org-1" },
-      { accessToken: "access", orgId: "org-1", orgKey: "org-key-1" },
-    ]);
-    const navigation = {
-      live: false,
-      refusal: classifyHqCall(refusal).message,
-      capped: false,
-      reconnecting: false,
-      slow: false,
-      structure: null,
-    };
-    expect(hqOutage(navigation, null, "24-hour", 0)).toEqual({
-      kind: "refused",
-      line: "HQ did not accept the organization's key. Sign in again as an Owner or Admin.",
-      again: true,
-    });
   });
 });

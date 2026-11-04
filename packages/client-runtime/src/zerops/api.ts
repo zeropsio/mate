@@ -68,6 +68,12 @@ const PUBLIC_API_PREFIX = "/api/rest/public";
 /** How long an app version's archive may take to upload. */
 const APP_VERSION_UPLOAD_TIMEOUT_MS = 120_000;
 
+/** The person's Zerops access token and, when the platform gave one, its expiry (ISO). */
+export interface ZeropsAccess {
+  readonly token: string;
+  readonly expiresAt?: string;
+}
+
 export interface ZeropsClientMembership {
   readonly id: string;
   readonly clientId?: string;
@@ -956,17 +962,21 @@ export class ZeropsApiClient {
   }
 
   /**
-   * The held session's access token, for the one call that hands it to HQ's sign-in, once no
-   * renewal stands in front of it. `refused`, a token HQ refused, renews the session first, as a
-   * request does after a 401, unless a renewal has already replaced it.
+   * The held session's access token and its expiry, for the one call that hands them to HQ's
+   * sign-in, once no renewal stands in front of it. `refused`, a token HQ refused, renews the
+   * session first, as a request does after a 401, unless a renewal has already replaced it. A
+   * personal token from the hand-over has no expiry.
    */
-  async accessToken(refused?: string): Promise<string> {
+  async accessToken(refused?: string): Promise<ZeropsAccess> {
     const current = await this.#currentSession(null);
-    if (current !== null && current.accessToken === refused)
-      return (await this.#refreshSession(true)).accessToken;
-    if (current === null)
-      throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
-    return current.accessToken;
+    const held =
+      current !== null && current.accessToken === refused
+        ? await this.#refreshSession(true)
+        : current;
+    if (held === null) throw new ZeropsApiError("Sign in to Zerops again.", "expired-session", 401);
+    return held.expiresAt === undefined
+      ? { token: held.accessToken }
+      : { token: held.accessToken, expiresAt: held.expiresAt };
   }
 
   /** Adopts a session read back from storage without re-notifying the owner. */
