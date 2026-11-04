@@ -29,6 +29,17 @@ export const WORKSPACE_MUTATIONS = {
   "mate-prepare-pull-request-thread": WS_METHODS.gitPreparePullRequestThread,
 } as const;
 export type WorkspaceMutation = keyof typeof WORKSPACE_MUTATIONS;
+/**
+ * How long the client waits for a write that the Mate bounds beyond the usual window, set
+ * above that bound so the Mate's own words reach the person when it gives up: a sign-in's
+ * start and a sign-out wait on the agent for up to 15 s, a sign-in's finish on its token
+ * exchange for up to 60 s (and a relay to its listener for 10), each then answering the list.
+ */
+export const WORKSPACE_MUTATION_DEADLINE_MS: Partial<Record<WorkspaceMutation, number>> = {
+  "mate-mcp-sign-in": 40_000,
+  "mate-mcp-sign-out": 40_000,
+  "mate-mcp-finish-sign-in": 100_000,
+};
 export type MutationTarget<K extends WorkspaceMutation> = {
   readonly environmentId: EnvironmentId;
   readonly input: EnvironmentRpcInput<(typeof WORKSPACE_MUTATIONS)[K]>;

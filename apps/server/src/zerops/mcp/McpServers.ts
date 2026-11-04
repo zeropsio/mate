@@ -785,6 +785,10 @@ export const layer = Layer.effect(
               ? Effect.fail(`the agent's sign-in listener answered ${String(response.status)}`)
               : Effect.void,
           ),
+          Effect.timeoutOrElse({
+            duration: "10 seconds",
+            orElse: () => Effect.fail("the agent's sign-in listener didn't answer in 10 seconds"),
+          }),
           Effect.catchTags({
             HttpClientError: () => Effect.fail("the agent's sign-in listener didn't answer"),
           }),

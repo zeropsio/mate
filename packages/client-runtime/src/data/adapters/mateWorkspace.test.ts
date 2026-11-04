@@ -9,7 +9,10 @@ import { workspaceReading } from "../projections/mateWorkspace.ts";
 import { workspaceScope } from "../families/mateWorkspace.ts";
 import { makeFileWrites } from "./mateFiles.ts";
 import { makeWorkspaceActions } from "./mateWorkspaceActions.ts";
-import type { WorkspaceMutationWire } from "../operations/executors/mateWorkspace.ts";
+import {
+  makeWorkspaceMutationWire,
+  type WorkspaceMutationWire,
+} from "../operations/executors/mateWorkspace.ts";
 
 const file = {
   environmentId: EnvironmentId.make("env"),
@@ -625,4 +628,64 @@ it.each([
   { case: "an error's message", cause: new Error("socket closed"), message: "socket closed" },
 ])("a workspace refusal keeps the Mate's own words: $case", ({ cause, message }) => {
   expect(workspaceFailure(cause).message).toBe(message);
+});
+
+describe("how long an MCP sign-in may take", () => {
+  const finish = {
+    environmentId: file.environmentId,
+    input: { name: "adobe-test", flow: "f", landed: "http://localhost:1/callback?code=c" },
+  };
+  /** A Mate that answers this call after `ms`, as the real wire would hear it. */
+  const slowMate = (ms: number, answer: Effect.Effect<unknown, McpServersError>) =>
+    makeWorkspaceMutationWire({
+      run: () => Effect.sleep(`${ms} millis`).pipe(Effect.andThen(answer)),
+    } as unknown as Parameters<typeof makeWorkspaceMutationWire>[0]);
+
+  it("a slow sign-in that succeeds shows as signed in", async () => {
+    vi.useFakeTimers();
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const listed = { agents: ["claudeAgent" as const], servers: [] };
+    const act = makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "slow-finish",
+      wire: slowMate(45_000, Effect.succeed(listed)),
+    });
+    try {
+      const done = act("mate-mcp-finish-sign-in", finish);
+      await vi.advanceTimersByTimeAsync(45_000);
+      expect(await done).toMatchObject({ _tag: "Success", value: listed });
+    } finally {
+      registry.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("a sign-in the agent never finishes says the Mate's own words for it", async () => {
+    vi.useFakeTimers();
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const detail = "adobe-test didn't sign in: the agent did not finish in 60 seconds.";
+    const act = makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "stuck-finish",
+      wire: slowMate(
+        61_000,
+        Effect.fail(new McpServersError({ operation: "mcp.servers.finishSignIn", detail })),
+      ),
+    });
+    try {
+      const done = act("mate-mcp-finish-sign-in", finish);
+      await vi.advanceTimersByTimeAsync(61_000);
+      expect(await done).toMatchObject({
+        _tag: "Failure",
+        cause: { reasons: [{ error: { message: detail } }] },
+      });
+    } finally {
+      registry.dispose();
+      vi.useRealTimers();
+    }
+  });
 });
