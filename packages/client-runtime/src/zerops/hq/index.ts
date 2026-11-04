@@ -45,7 +45,6 @@ export {
   birthFaceOf,
   birthIntentOf,
   heldOf,
-  hqMateListedOnly,
   hqMateOffers,
   placedMenuRows,
   placedNames,

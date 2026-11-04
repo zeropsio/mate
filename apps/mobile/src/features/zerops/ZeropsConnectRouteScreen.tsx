@@ -1,7 +1,9 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
-import { useAtomValue } from "@effect/atom-react";
-import { hqMateSetupAtom, shownCanonicalHqMenuNavigationAtom } from "@t3tools/client-runtime/data";
-import { hqMateListedOnly, hqMateOffers } from "@t3tools/client-runtime/zerops/hq";
+import {
+  resolveMateVisibility,
+  type RoleMateVisibility,
+} from "@t3tools/client-runtime/zerops/mateAccess";
+import { hqMateSetupAtom } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState } from "react";
@@ -294,33 +296,46 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   const isConnecting = connectingKey !== null;
   const visibleError = actionError ?? error;
   const body = useMemo(() => candidatePickerBody(listing, readAtMs), [listing, readAtMs]);
-  // HQ lists a Mate without letting this person open it (D5): shown, never opened.
-  const navigation = useAtomValue(shownCanonicalHqMenuNavigationAtom);
-  const listedOf = useCallback(
-    (candidate: MobileCandidate): boolean =>
-      navigation.structure !== null &&
-      hqMateListedOnly(
-        hqMateOffers(navigation.structure, candidate.project.id, {
-          current: navigation.live,
-          unavailableSince: null,
-        }),
-      ),
-    [navigation],
+  // What this person may do with each Mate, from the one role function the
+  // door runs too (D5). Undefined when nobody is signed in to judge by.
+  const viewerOrganization = user?.clientUserList?.find(
+    ({ clientId }) => clientId === activeOrganization?.id,
+  );
+  const visibilityOf = useCallback(
+    (candidate: MobileCandidate): RoleMateVisibility | undefined => {
+      const organizationId = viewerOrganization?.clientId;
+      if (viewerOrganization === undefined || organizationId === undefined) return undefined;
+      return resolveMateVisibility({
+        project: candidate.project,
+        viewer: {
+          id: organizationId,
+          membershipId: viewerOrganization.id,
+          roleCode: viewerOrganization.roleCode,
+          canCreateProjects: viewerOrganization.canCreateProjects,
+        },
+      });
+    },
+    [viewerOrganization],
   );
   const sections = useMemo(() => {
     if (body.kind !== "rows") return [];
-    const presented = body.rows.map((candidate) => ({
-      candidate,
-      // Worded at the moment the listing was read, like its notice.
-      presentation: zeropsCandidatePresentation(candidate, readAtMs, {
-        listed: listedOf(candidate),
-      }),
-    }));
+    const presented = body.rows.map((candidate) => {
+      const visibility = visibilityOf(candidate);
+      return {
+        candidate,
+        // Worded at the moment the listing was read, like its notice.
+        presentation: zeropsCandidatePresentation(
+          candidate,
+          readAtMs,
+          visibility === undefined ? {} : { visibility },
+        ),
+      };
+    });
     return CANDIDATE_SECTIONS.map((section) => ({
       section,
       rows: presented.filter((row) => row.presentation.section === section),
     })).filter((section) => section.rows.length > 0);
-  }, [body, listedOf, readAtMs]);
+  }, [body, readAtMs, visibilityOf]);
 
   // Opening reads the organization's already observed navigation, without detail demand.
   const accountData = useAccountData();
@@ -344,7 +359,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         props.onDone(candidate.environmentId);
         return;
       }
-      if (listedOf(candidate) || environments === null) return;
+      if (visibilityOf(candidate) === "listed" || environments === null) return;
       const closeOff = closeOffOf(candidate);
       connectingRef.current = true;
       setConnectingKey(candidate.key);
@@ -361,7 +376,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         setConnectingKey(null);
       }
     },
-    [closeOffOf, environments, listedOf, props],
+    [closeOffOf, environments, props, visibilityOf],
   );
 
   return (

@@ -207,7 +207,6 @@ export const HQ_CLIENT_VERBS = [
   "setAutoUpdatePolicy",
   "structure",
   "mateTicket",
-  "renewReach",
   "openScopeSocket",
   "lifecycleWrite",
   "lifecycleReceipt",

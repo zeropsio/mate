@@ -7,6 +7,8 @@ import {
   EMPTY_MATE_DIRECTORY,
 } from "./projections/hqMateDirectory.ts";
 import { zeropsStructure } from "../zerops/hq/structure.ts";
+import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
+import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
@@ -288,6 +290,15 @@ export const listedProjectAtom = Atom.family((projectId: string) =>
     if (account === null || account.orgId === null) return null;
     return get(account.data.project(listedProject, { orgId: account.orgId, projectId }));
   }).pipe(Atom.withLabel(`data:listed-project:${projectId}`)),
+);
+
+/** A Mate's visibility for the person, as the mounted account reads it (`mateVisibility`). */
+export const shownMateVisibilityAtom = Atom.family((projectId: string) =>
+  Atom.make((get): RoleMateVisibility | "unknown" => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return "unknown";
+    return get(account.data.project(mateVisibility, { orgId: account.orgId, projectId }));
+  }).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
 );
 
 /** Whether the mounted account's owner proved a project deleted; `false` without an account. */

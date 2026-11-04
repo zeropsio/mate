@@ -9,6 +9,7 @@ import {
 } from "@t3tools/client-runtime/data";
 import {
   liveProjects,
+  membershipInputs,
   projectValue,
   seedHqNavigation,
   zeropsVersion,
@@ -148,9 +149,8 @@ const app = vi.hoisted(() => ({
   creations: [] as Array<unknown>,
   processes: [] as Array<unknown>,
   birthProgress: false,
-  observeRefused: false,
+  readOnly: false,
   chiefProjectRead: false,
-  hqHeld: true,
   ownChief: null as string | null | undefined,
   setUpChief: true,
   createAllowed: true,
@@ -171,20 +171,11 @@ const app = vi.hoisted(() => ({
 vi.mock("~/zerops/ownChief", () => ({ useOwnChief: () => app.ownChief }));
 vi.mock("~/zerops/usePlatformCapabilities", () => ({
   useRoleOffers: () => ({ setUpChief: app.setUpChief }),
-  useProjectCapabilities: () => ({ operate: !app.observeRefused }),
+  useProjectCapabilities: () => ({ operate: !app.readOnly }),
 }));
 vi.mock("~/zerops/useZeropsMates", () => ({ useZeropsMateDirectory: () => app.directory }));
 vi.mock("~/zerops/useHqOffers", () => ({
   useOrgOffers: () => () => ({ kind: app.createAllowed ? "allowed" : "refused" }),
-  useMateOffers: () => () =>
-    app.hqHeld
-      ? {
-          held: true,
-          observe: app.observeRefused
-            ? { kind: "refused", reason: "zerops_read_only" }
-            : { kind: "allowed" },
-        }
-      : { held: false },
 }));
 vi.mock("~/zerops/registration", () => ({ useMateRegistration: () => app.registration }));
 vi.mock("~/zerops/useMateRecovery", () => ({ useMateRecovery: () => app.recovery }));
@@ -489,6 +480,13 @@ function answerHqOwnership() {
   });
 }
 
+/** The person reads the Mate's project only: their org role is Read only, as Zerops answers it. */
+function holdReadOnly() {
+  app.readOnly = true;
+  for (const input of membershipInputs("READ_ONLY", false, 1, "org-1"))
+    appAtomRegistry.get(creationPressStoreAtom)!.dispatch(input);
+}
+
 function publishProject(tagList: string[], ownershipAnswered = true) {
   if (ownershipAnswered) answerHqOwnership();
   app.chiefProjectRead = true;
@@ -545,9 +543,8 @@ beforeEach(() => {
   app.setupFailure = undefined;
   app.restartSetup.mockReset().mockResolvedValue(undefined);
   app.standUpFailed = false;
-  app.observeRefused = false;
+  app.readOnly = false;
   app.chiefProjectRead = false;
-  app.hqHeld = true;
   app.ownChief = null;
   app.setUpChief = true;
   app.createAllowed = true;
@@ -590,7 +587,6 @@ describe("a Mate's own view while its link is made", () => {
     app.listing = listingOf([]);
     app.link = { key: KEY, environmentId: undefined, reachability: null };
     app.detailFailure = { message: "not_mate_opener" };
-    app.hqHeld = false;
     openView();
     const button = tree?.root
       .findAllByType("button")
@@ -641,7 +637,7 @@ describe("a Mate's own view while its link is made", () => {
       publishProject(["chief"]);
       app.listing = listingOf([]);
       if (permission === "setup") app.setUpChief = false;
-      if (permission === "project") app.observeRefused = true;
+      if (permission === "project") holdReadOnly();
       if (permission === "HQ") app.createAllowed = false;
       if (permission === "owner")
         app.admissionRefusal = { kind: "refused-role", chiefOwnerName: "Karlos" };
@@ -2120,9 +2116,12 @@ it("keeps the failed stand-up's recovery visible before a conversation exists", 
 });
 
 it("shows HQ's read-only refusal and never connects a listed Mate", () => {
-  app.observeRefused = true;
+  holdReadOnly();
   act(() => {
-    tree = create(comingView(PROJECT));
+    // The person's membership is read in the app's registry, under its provider.
+    tree = create(
+      h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId: PROJECT })),
+    );
   });
   expect(said()).toContain("You can see the project, but can't operate its Mate.");
   expect(app.connect).not.toHaveBeenCalled();

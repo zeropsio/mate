@@ -203,6 +203,7 @@ export {
   type OrganizationProjects,
   type RosterRead,
 } from "./projections/projects.ts";
+export { mateVisibility } from "./projections/mateVisibility.ts";
 export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
@@ -249,6 +250,7 @@ export {
   accountReadsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
+  shownMateVisibilityAtom,
   hqMateSetupAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,

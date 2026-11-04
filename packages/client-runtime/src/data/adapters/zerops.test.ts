@@ -39,6 +39,8 @@ import { usageScope, usageOwnerOf } from "../families/usage.ts";
 import { usageHistoryScope } from "../families/usageHistory.ts";
 import { projectVariablesScope } from "../families/projectVariables.ts";
 import { serviceVariablesScope } from "../families/serviceVariables.ts";
+import { zeropsClientsFromUser } from "../../zerops/api.ts";
+import { resolveMateVisibility } from "../../zerops/mateAccess.ts";
 
 import {
   RECORDED_ROUTING,
@@ -410,7 +412,7 @@ describe("zeropsNavigationLink", () => {
       expect(fixture.opens()).toBe(2);
       expect(
         fixture.requests.filter((request) => request.body?.receiverId === "receiver-2"),
-      ).toHaveLength(12);
+      ).toHaveLength(13);
       // One project was taken from the viewer meanwhile: every scope is registered once more.
       const again = store.state().streams.get(linkKeys.zerops(ORG));
       yield* TestClock.adjust(again?.next.kind === "retry" ? again.next.at : 0);
@@ -2099,5 +2101,195 @@ describe("menu rows from Zerops owner evidence", () => {
       expect(fixture.opens()).toBe(1);
       yield* Fiber.interrupt(fiber);
     }),
+  );
+});
+
+// Brief W3 (Karel, 2026-11-04): a Mate's visibility is the client's verdict from live Zerops data —
+// the project row Zerops pushes and the person's own org role — and a membership frame
+// (`client-user`, ZEROPS-070) reads again what Zerops pushes no listing for (ZEROPS-073).
+describe("visibility from what Zerops pushes", () => {
+  const MATE = "mate-project";
+  const CLIENT_USER_SEARCH = "/client-user/search";
+  const USER_INFO = "/user/info";
+  const MEMBERS_PATH = `/client/${ORG}/user/list?limit=100`;
+  const mateRow = (userRoles: ReadonlyArray<unknown> = [], version = 1) => ({
+    id: MATE,
+    name: "Fen",
+    status: "ACTIVE",
+    clientId: ORG,
+    userRoles,
+    _version: version,
+  });
+  /** The account Zerops answers for, its org role and the projects it reaches as they are now. */
+  const account = (roleCode: string, projects: ReadonlyArray<unknown>) => {
+    const now = { roleCode, projects };
+    const answer = (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
+      if (request.path === USER_INFO)
+        return Effect.succeed({
+          status: 200,
+          body: {
+            id: "user",
+            email: "ada@example.test",
+            clientUserList: [
+              {
+                id: "member",
+                clientId: ORG,
+                status: "ACTIVE",
+                roleCode: now.roleCode,
+                canCreateProjects: false,
+              },
+            ],
+          },
+        });
+      if (request.path === MEMBERS_PATH)
+        return Effect.succeed({ status: 200, body: { clientUserList: [{ id: "member" }] } });
+      if (request.path === `/project/${MATE}`) return Effect.succeed({ status: 403, body: {} });
+      if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+      return Effect.succeed({
+        items: request.path === PROJECT_SEARCH ? now.projects : [],
+      });
+    };
+    return { now, answer };
+  };
+  const membershipFrame = (userId: string, roleCode: string) => ({
+    update: [{ id: `cu-${userId}`, clientId: ORG, userId, roleCode, status: "ACTIVE" }],
+  });
+  const projectReads = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter(
+      (request) => request.path === PROJECT_SEARCH && request.body?.wsOutputType === undefined,
+    ).length;
+  const readsOf = (fixture: ReturnType<typeof fixtureWire>, path: string) =>
+    fixture.requests.filter((request) => request.path === path).length;
+  /** The person's verdict on the Mate from the store's project row and their own membership. */
+  const visibility = (store: ReturnType<typeof makeAccountStore>) => {
+    const reads = readsOfState(store.state());
+    const user = reads.fact("organizationUser", ORG);
+    const project = reads.fact("project", MATE);
+    if (user.kind !== "known" || project.kind !== "known") return "hidden";
+    const viewer = zeropsClientsFromUser(user.value).find((org) => org.id === ORG);
+    return viewer === undefined
+      ? "hidden"
+      : resolveMateVisibility({ project: project.value, viewer });
+  };
+
+  it.effect("subscribes to the organization's membership changes and never lists them", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(account("OWNER", []).answer);
+      const { fiber } = yield* runLink(store, fixture);
+      expect(
+        fixture.requests
+          .filter((request) => request.path === CLIENT_USER_SEARCH)
+          .map((request) => [request.body?.wsOutputType, request.body?.search]),
+      ).toEqual([["updateStream", [{ name: "clientId", operator: "eq", value: ORG }]]]);
+      expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect(
+    "a project push granting the person Basic user opens a Mate they were only shown, with no HQ call",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(account("READ_ONLY", [mateRow()]).answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("listed");
+        const asked = fixture.requests.length;
+        yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "updateStream"), {
+          update: [mateRow([{ clientUserId: "member", roleCode: "BASIC_USER" }], 2)],
+        });
+        yield* settle;
+        expect(visibility(store)).toBe("open");
+        // The push alone: nothing read again, and this link talks to Zerops only.
+        expect(fixture.requests.length).toBe(asked);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a membership frame for another member reads the organization's members again, never the projects",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(account("OWNER", [mateRow()]).answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        link.demandDetail({ family: "organizationMembers", ownerId: ORG });
+        yield* settle;
+        expect([readsOf(fixture, MEMBERS_PATH), readsOf(fixture, USER_INFO)]).toEqual([1, 1]);
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("colleague", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+        expect(readsOf(fixture, USER_INFO)).toBe(1);
+        expect(projectReads(fixture)).toBe(0);
+        // The same frame again says nothing new: nothing is read again.
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("colleague", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(readsOf(fixture, MEMBERS_PATH)).toBe(2);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a membership frame for the signed-in person reads their own role and the projects they reach again",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const { now, answer } = account("NO_ACCESS", []);
+        const fixture = fixtureWire(answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("hidden");
+        // Promoted to Read only: Zerops pushes the membership, and no project (ZEROPS-073).
+        now.roleCode = "READ_ONLY";
+        now.projects = [mateRow()];
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("user", "READ_ONLY"),
+        );
+        yield* settle;
+        expect(projectReads(fixture)).toBe(1);
+        expect(readsOf(fixture, USER_INFO)).toBe(2);
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get(MATE)).toBe("member");
+        expect(visibility(store)).toBe("listed");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "a demotion to No access hides the organization's Mates once the projects read again answer none",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const { now, answer } = account("READ_ONLY", [mateRow()]);
+        const fixture = fixtureWire(answer);
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail({ family: "organizationUser", ownerId: ORG });
+        yield* settle;
+        expect(visibility(store)).toBe("listed");
+        now.roleCode = "NO_ACCESS";
+        now.projects = [];
+        yield* fixture.push(
+          fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
+          membershipFrame("user", "NO_ACCESS"),
+        );
+        yield* settle;
+        expect(projectReads(fixture)).toBe(1);
+        expect(store.state().memberships.get(projectsScope(ORG))?.members.get(MATE)).not.toBe(
+          "member",
+        );
+        expect(visibility(store)).toBe("hidden");
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 });
