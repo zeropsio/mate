@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
-import { EnvironmentId, type ProjectReadFileResult } from "@t3tools/contracts";
+import { EnvironmentId, McpServersError, type ProjectReadFileResult } from "@t3tools/contracts";
 import { makeAccountStore, readsOfState } from "../store.ts";
 import { NO_ANSWER_IN_TIME, STREAM_POLICY } from "../streamMachine.ts";
 import { makeWorkspaceReads, workspaceFailure, type WorkspaceWire } from "./mateWorkspace.ts";
@@ -588,3 +588,41 @@ it.each([
     }
   },
 );
+
+it("a refused MCP sign-in says why the Mate refused it", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const detail = "adobe-test didn't sign in: that address belongs to a different sign-in.";
+  const act = makeWorkspaceActions({
+    store,
+    current: () => true,
+    makeId: () => "mcp-finish",
+    wire: {
+      call: () =>
+        Effect.fail(new McpServersError({ operation: "mcp.servers.finishSignIn", detail })),
+    } as unknown as WorkspaceMutationWire,
+  });
+  const result = await act("mate-mcp-finish-sign-in", {
+    environmentId: file.environmentId,
+    input: { name: "adobe-test", flow: "f", landed: "http://localhost:1/callback?code=c" },
+  });
+  expect(result).toMatchObject({
+    _tag: "Failure",
+    cause: { reasons: [{ error: { message: detail } }] },
+  });
+  registry.dispose();
+});
+
+it.each([
+  {
+    case: "a Mate error's own detail",
+    cause: new McpServersError({
+      operation: "mcp.servers.list",
+      detail: "Codex's config isn't valid.",
+    }),
+    message: "Codex's config isn't valid.",
+  },
+  { case: "an error's message", cause: new Error("socket closed"), message: "socket closed" },
+])("a workspace refusal keeps the Mate's own words: $case", ({ cause, message }) => {
+  expect(workspaceFailure(cause).message).toBe(message);
+});

@@ -27,9 +27,17 @@ import type { LinkKey } from "../model.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 
 const denied = Schema.is(EnvironmentAuthorizationError);
+/** A failure's own words: a Mate error's `detail` (its message is empty), else its message. */
+function failureWords(cause: unknown): string | undefined {
+  if (typeof cause !== "object" || cause === null) return undefined;
+  const { detail, message } = cause as { detail?: unknown; message?: unknown };
+  if (typeof detail === "string" && detail.trim() !== "") return detail;
+  if (typeof message === "string" && message.trim() !== "") return message;
+  return undefined;
+}
+
 export function workspaceFailure(cause: unknown): StreamFault {
-  const message =
-    cause instanceof Error ? cause.message : "The Mate could not read this workspace detail.";
+  const message = failureWords(cause) ?? "The Mate could not read this workspace detail.";
   if (
     typeof cause === "object" &&
     cause !== null &&
