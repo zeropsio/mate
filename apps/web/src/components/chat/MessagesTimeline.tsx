@@ -4045,8 +4045,10 @@ const ProposalTimelineRow = memo(function ProposalTimelineRow({
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ProposalCardContainer
+        driver={ctx.driver ?? null}
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
+        threadId={ctx.threadRef?.threadId ?? null}
       />
     </div>
   );

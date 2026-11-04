@@ -318,6 +318,10 @@ export function proposalOutcomeWords(
       const place = proposal.projectName ?? "the project";
       return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
     }
+    case "mcp.add": {
+      const { title } = proposal.params.server;
+      return running ? `Adding ${title}…` : `${title} is added.`;
+    }
   }
 }
 
@@ -454,6 +458,8 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
       return proposal.params.projects.length > 1
         ? `All of ${project ?? "the application"}: its environments and Mates`
         : (proposal.params.projects[0]?.name ?? project ?? null);
+    case "mcp.add":
+      return "This Mate's agents";
     case "mate.message":
     case "chief.message":
       return null;
@@ -678,6 +684,8 @@ export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
       return `Send to ${proposal.params.to.mateName}`;
     case "chief.message":
       return "Ask your Chief";
+    case "mcp.add":
+      return `Add ${proposal.params.server.title ?? proposal.params.server.name}`;
   }
 }
 
@@ -697,6 +705,7 @@ function placeIn(proposal: ZeropsProposal): string | null {
       return proposalWhere(proposal);
     case "mate.message":
     case "chief.message":
+    case "mcp.add":
       return null;
   }
 }
