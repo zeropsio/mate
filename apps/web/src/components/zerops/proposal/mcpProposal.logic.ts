@@ -632,8 +632,7 @@ export function mcpProgress(
   if (server.auth.kind !== "oauth" && server.auth.kind !== "oauth-app") return null;
   // Not now leaves nothing to do: no steps.
   if (status.kind === "declined") return null;
-  const added =
-    status.kind !== "proposed" && status.kind !== "adding" && status.kind !== "declined";
+  const added = status.kind !== "proposed" && status.kind !== "adding";
   const signedIn = status.kind === "connected";
   const address = connects(proposal).replace(/^(Connects to|Runs) /u, "");
   return [
