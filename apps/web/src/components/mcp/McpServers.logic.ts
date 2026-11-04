@@ -317,6 +317,18 @@ function agentsLine(
   return groups.map((group) => `${group.names.join(", ")} ${group.word}`).join(" · ");
 }
 
+/**
+ * A server set up and not yet reported on. A URL server may want a sign-in that only a running
+ * agent finds out about: say so, and what would check. An agent that never reports (the ACP
+ * ones) and a command, which signs in by its environment, are only set up.
+ */
+function unreportedNote(entry: McpServerEntry, driver: ProviderDriverKind | null): string {
+  if (entry.transport.type !== "http") return STATE_LABEL.configured;
+  if (driver === null) return "May need a sign-in. Open a conversation with this Mate to check.";
+  if (!SIGNING_AGENTS.has(driver)) return STATE_LABEL.configured;
+  return `May need a sign-in. ${agentDisplayName(driver)} checks when this conversation next runs.`;
+}
+
 function buildRow(
   entry: McpServerEntry,
   installed: ReadonlyArray<ProviderDriverKind>,
@@ -339,7 +351,7 @@ function buildRow(
             ? { kind: "quiet", text: absentLabel }
             : // A grey dot says why in a word: the agent has it, and cannot say how it is doing.
               state === "configured"
-              ? { kind: "quiet", text: STATE_LABEL.configured }
+              ? { kind: "quiet", text: unreportedNote(entry, driver) }
               : null;
   const toolSource =
     agent?.tools !== undefined && agent.tools.length > 0

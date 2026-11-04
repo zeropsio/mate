@@ -484,6 +484,48 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
     });
   });
 
+  it.each<{
+    case: string;
+    driver: ProviderDriverKind | null;
+    transport: McpServerEntry["transport"];
+    note: string;
+  }>([
+    {
+      case: "a URL server no conversation has checked may need a sign-in; a conversation checks",
+      driver: null,
+      transport: { type: "http", url: "https://mcp.example.com" },
+      note: "May need a sign-in. Open a conversation with this Mate to check.",
+    },
+    {
+      case: "a URL server this conversation's agent hasn't reached yet is checked when it runs",
+      driver: CLAUDE,
+      transport: { type: "http", url: "https://mcp.example.com" },
+      note: "May need a sign-in. Claude checks when this conversation next runs.",
+    },
+    {
+      case: "an agent that can't report a server's state only says it is set up",
+      driver: CURSOR,
+      transport: { type: "http", url: "https://mcp.example.com" },
+      note: "Set up",
+    },
+    {
+      case: "a command never needs a sign-in",
+      driver: CLAUDE,
+      transport: { type: "stdio", command: "x", args: [] },
+      note: "Set up",
+    },
+  ])("$case", ({ driver, transport, note }) => {
+    const agents = [CLAUDE, CURSOR].map((agent) => ({
+      driver: agent,
+      state: "configured" as const,
+    }));
+    const row = buildMcpRows(
+      { agents: [CLAUDE, CURSOR], servers: [{ name: "x", managed: false, transport, agents }] },
+      driver,
+    )[0]!;
+    expect(row.note).toEqual({ kind: "quiet", text: note });
+  });
+
   it("is empty for an empty list", () => {
     expect(buildMcpRows({ agents: [CLAUDE], servers: [] }, CLAUDE)).toEqual([]);
   });
