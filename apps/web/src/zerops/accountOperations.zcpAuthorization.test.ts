@@ -341,7 +341,10 @@ it.each(["mint", "regenerate"] as const)(
         {
           path: "/api/mates/p/zcp-authorization",
           person: "Bearer actual-finisher",
-          body: { keyHash: "4b8ea91d2ae14171d28e8d578b07bf090e4d3af8b3c9577549b2fc8c66bad650" },
+          body: {
+            keyHash: "4b8ea91d2ae14171d28e8d578b07bf090e4d3af8b3c9577549b2fc8c66bad650",
+            accessToken: "person-native-access",
+          },
         },
       ]);
       expect(JSON.stringify([...store.state().operations])).not.toContain("actual-key");

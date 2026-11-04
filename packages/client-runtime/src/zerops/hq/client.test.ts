@@ -185,13 +185,13 @@ describe("makeHqApi", () => {
     });
 
     await api.structure();
-    await api.createApp("Acme");
+    await api.mateTicket("p1");
 
     expect(door.minted).toEqual(["access-1"]);
     expect(hq.seen.map((entry) => [entry.method, entry.path, entry.authorization])).toEqual([
       ["POST", "/api/door", null],
       ["GET", "/api/structure", "Bearer session-1"],
-      ["POST", "/api/apps", "Bearer session-1"],
+      ["POST", "/api/mates/p1/ticket", "Bearer session-1"],
     ]);
     expect(hq.seen[0]?.body).toEqual({ accessToken: "access-1", orgId: "org-1" });
   });
@@ -421,7 +421,7 @@ describe("makeHqApi", () => {
       openSocket: NO_SOCKET,
     });
 
-    await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
+    await Promise.all([api.structure(), api.structure(), api.mateTicket("p1")]);
 
     expect(door.minted).toEqual(["access-1"]);
     expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
@@ -464,7 +464,7 @@ describe("makeHqApi", () => {
     await api.structure();
     hq.expire();
 
-    await Promise.all([api.structure(), api.structure(), api.createApp("Acme")]);
+    await Promise.all([api.structure(), api.structure(), api.mateTicket("p1")]);
     expect(door.minted).toEqual(["access-1", "access-2"]);
   });
 
@@ -1490,62 +1490,6 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
-  it("A merge, a release, a roll back, a deletion, a lifecycle step and an attach carry the person's current Zerops access token in their body; a comment does not", async () => {
-    const hq = fakeHq((seen) =>
-      seen.path === "/api/door"
-        ? undefined
-        : seen.path.endsWith("/merge")
-          ? json(200, { ...CHANGE, state: "merged", mergedSha: SHA, landedHead: SHA })
-          : seen.path.includes("/releases")
-            ? json(201, RELEASE)
-            : seen.path.startsWith("/api/lifecycle/")
-              ? json(409, { code: "conflict", reason: "project_still_exists" })
-              : seen.path.endsWith("/comments")
-                ? json(201, COMMENT)
-                : seen.method === "DELETE" || seen.path.endsWith("/projects")
-                  ? new Response(null, { status: 204 })
-                  : undefined,
-    );
-    const hqApi = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
-    await hqApi.mergeChange(LINK, SHA);
-    await hqApi.release("app-1", request);
-    await hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA });
-    await hqApi.deleteApp("app-1");
-    await expect(
-      hqApi.lifecycleWrite("r1", {
-        kind: "prepare-mate-deletion",
-        orgId: ORG,
-        hqProjectId: "hq",
-        projectId: "p1",
-      }),
-    ).rejects.toMatchObject({ reason: "project_still_exists" });
-    await hqApi.attachProject("app-1", { projectId: "p9", kind: "stage" });
-    await hqApi.commentOnChange(LINK, "Ship it");
-    const bodies = hq.seen
-      .filter((seen) => seen.path !== "/api/door")
-      .map((seen) => [
-        seen.method,
-        seen.path,
-        (seen.body as { accessToken?: unknown })?.accessToken,
-      ]);
-    expect(bodies).toEqual([
-      ["POST", "/api/apps/app-1/changes/app/3/merge", "person-token"],
-      ["POST", "/api/apps/app-1/releases", "person-token"],
-      ["POST", "/api/apps/app-1/releases/v0.1.0/rollback", "person-token"],
-      ["DELETE", "/api/apps/app-1", "person-token"],
-      ["POST", "/api/lifecycle/r1", "person-token"],
-      ["POST", "/api/apps/app-1/projects", "person-token"],
-      ["POST", "/api/apps/app-1/changes/app/3/comments", undefined],
-    ]);
-  });
-
   it("A Mate's hand-over is one HQ call whose body is the person's current Zerops access token and the person picked as its owner", async () => {
     const hq = fakeHq((seen) =>
       seen.path === "/api/door" ? undefined : new Response(null, { status: 204 }),
@@ -1987,7 +1931,7 @@ describe("makeHqApi — a write HQ may have made", () => {
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      accessToken: doors().accessToken,
+      accessToken: async () => ({ token: "access" }),
       orgId: ORG,
       openSocket: NO_SOCKET,
     });
@@ -2175,8 +2119,9 @@ describe("HQ's final account fence", () => {
     async (phase) => {
       let active = true;
       let kept: string | null = "expired";
+      const revoked = "/api/apps/app-1/git-credentials/c1";
       const hq = fakeHq((seen) =>
-        seen.path === "/api/apps" && phase === "repair"
+        seen.path === revoked && phase === "repair"
           ? json(401, { code: "session_required" })
           : undefined,
       );
@@ -2202,8 +2147,10 @@ describe("HQ's final account fence", () => {
         },
         isCurrent: () => active,
       });
-      await expect(api.createApp("Acme")).rejects.toMatchObject({ code: "account_changed" });
-      expect(hq.seen.filter((seen) => seen.path === "/api/apps")).toHaveLength(
+      await expect(api.revokeGitCredential("app-1", "c1")).rejects.toMatchObject({
+        code: "account_changed",
+      });
+      expect(hq.seen.filter((seen) => seen.path === revoked)).toHaveLength(
         phase === "repair" ? 1 : 0,
       );
     },
@@ -2299,11 +2246,10 @@ it("Git transport keeps candidate plaintext in one incoming write body and recov
       return json(200, { receipt: { ...receipt, sealed: marker } });
     return undefined;
   });
-  const door = doors();
   const api = makeHqApi({
     address: ADDRESS,
     fetch: hq.fetch,
-    accessToken: door.accessToken,
+    accessToken: async () => ({ token: "access" }),
     orgId: ORG,
     openSocket: NO_SOCKET,
   });
@@ -2316,8 +2262,8 @@ it("Git transport keeps candidate plaintext in one incoming write body and recov
     { method: "POST", path: "/api/git-targets/original", search: "" },
     { method: "POST", path: "/api/git-targets/original/receipt", search: "" },
   ]);
-  expect(sent[0]!.body).toEqual({ intent, candidate: marker });
-  expect(sent[1]!.body).toEqual({ intent });
+  expect(sent[0]!.body).toEqual({ intent, candidate: marker, accessToken: "access" });
+  expect(sent[1]!.body).toEqual({ intent, accessToken: "access" });
   expect(JSON.stringify(sent.map(({ body: _incoming, ...safe }) => safe))).not.toContain(marker);
   expect(JSON.stringify(intent)).not.toContain(marker);
 });
@@ -2354,7 +2300,7 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
       call: (api: HqApi) => api.makeWebhook!("app-1", { name: "Sentry" }),
       method: "POST",
       path: "/api/apps/app-1/webhooks",
-      sent: { name: "Sentry" },
+      sent: { name: "Sentry", accessToken: "access-1" },
       status: 201,
       answer: { ...hook, secret: "s" },
       read: { ...hook, secret: "s" },
@@ -2378,7 +2324,12 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
         }),
       method: "POST",
       path: "/api/apps/app-1/schedules",
-      sent: { name: schedule.name, brief: schedule.brief, rule: schedule.rule },
+      sent: {
+        name: schedule.name,
+        brief: schedule.brief,
+        rule: schedule.rule,
+        accessToken: "access-1",
+      },
       status: 201,
       answer: schedule,
       read: schedule,
@@ -2397,7 +2348,7 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
       call: (api: HqApi) => api.setAppChannel!("app-1", "discord", { channelId: "123456789" }),
       method: "PUT",
       path: "/api/apps/app-1/discord",
-      sent: { channelId: "123456789" },
+      sent: { channelId: "123456789", accessToken: "access-1" },
       status: 200,
       answer: channel,
       read: channel,
@@ -2407,7 +2358,7 @@ describe("makeHqApi — where automated Mates take tasks from besides GitHub", (
       call: (api: HqApi) => api.setTaskLimits!({ minutes: 30, costUsd: 5 }),
       method: "PUT",
       path: "/api/org/task-limits",
-      sent: { minutes: 30, costUsd: 5 },
+      sent: { minutes: 30, costUsd: 5, accessToken: "access-1" },
       status: 200,
       answer: { minutes: 30, costUsd: 5 },
       read: { minutes: 30, costUsd: 5 },
@@ -2604,5 +2555,468 @@ describe("HQ structured refusal findings", () => {
       reason: "invalid_recipe",
       problems,
     });
+  });
+});
+
+describe("Every HQ verb that decides on the person's role carries their current Zerops access token", () => {
+  const SHA = "a".repeat(40);
+  const LINK = { appId: "app-1", repo: "app", number: 3 } as const;
+  const RELEASE_REQUEST = {
+    tag: "v0.1.1",
+    groupHead: SHA,
+    entries: [{ service: "app", sha: "b".repeat(40) }],
+  };
+  const REMOTE_INTENT = {
+    kind: "connect-git-remote" as const,
+    orgId: ORG,
+    appId: "app-1",
+    hqProjectId: "hq",
+    repo: "app",
+    url: "https://github.com/example/repository.git",
+  };
+
+  /** Each call HQ decides on a fresh read of the person's role, by the route it writes. */
+  const ROLE_VERBS: ReadonlyArray<{
+    readonly call: keyof HqApi;
+    readonly method: string;
+    readonly path: string;
+    readonly ask: (api: HqApi) => Promise<unknown> | undefined;
+  }> = [
+    {
+      call: "attachProject",
+      method: "POST",
+      path: "/api/apps/app-1/projects",
+      ask: (api) => api.attachProject("app-1", { projectId: "p9", kind: "stage" }),
+    },
+    {
+      call: "handOver",
+      method: "POST",
+      path: "/api/mates/p1/hand-over",
+      ask: (api) => api.handOver("p1", "user-bob"),
+    },
+    {
+      call: "lifecycleWrite",
+      method: "POST",
+      path: "/api/lifecycle/r1",
+      ask: (api) =>
+        api.lifecycleWrite("r1", {
+          kind: "prepare-mate-deletion",
+          orgId: ORG,
+          hqProjectId: "hq",
+          projectId: "p1",
+        }),
+    },
+    {
+      call: "deleteApp",
+      method: "DELETE",
+      path: "/api/apps/app-1",
+      ask: (api) => api.deleteApp("app-1"),
+    },
+    {
+      call: "mergeChange",
+      method: "POST",
+      path: "/api/apps/app-1/changes/app/3/merge",
+      ask: (api) => api.mergeChange(LINK, SHA),
+    },
+    {
+      call: "release",
+      method: "POST",
+      path: "/api/apps/app-1/releases",
+      ask: (api) => api.release("app-1", RELEASE_REQUEST),
+    },
+    {
+      call: "rollback",
+      method: "POST",
+      path: "/api/apps/app-1/releases/v0.1.0/rollback",
+      ask: (api) => api.rollback("app-1", "v0.1.0", { groupHead: SHA }),
+    },
+    {
+      call: "reviewRelease",
+      method: "POST",
+      path: "/api/apps/app-1/releases/review",
+      ask: (api) => api.reviewRelease("app-1", RELEASE_REQUEST),
+    },
+    {
+      call: "closeChange",
+      method: "POST",
+      path: "/api/apps/app-1/changes/app/3/close",
+      ask: (api) => api.closeChange(LINK, SHA),
+    },
+    {
+      call: "commentOnChange",
+      method: "POST",
+      path: "/api/apps/app-1/changes/app/3/comments",
+      ask: (api) => api.commentOnChange(LINK, "Ship it"),
+    },
+    {
+      call: "handChange",
+      method: "POST",
+      path: "/api/apps/app-1/changes/app/3/hand",
+      ask: (api) => api.handChange(LINK, "p2"),
+    },
+    { call: "createApp", method: "POST", path: "/api/apps", ask: (api) => api.createApp("Acme") },
+    {
+      call: "renameApp",
+      method: "PATCH",
+      path: "/api/apps/app-1",
+      ask: (api) => api.renameApp("app-1", "Shop"),
+    },
+    {
+      call: "recordBirth",
+      method: "POST",
+      path: "/api/births",
+      ask: (api) => api.recordBirth({ appId: "app-1", face: "rose:seal" }),
+    },
+    {
+      call: "bindBirth",
+      method: "PUT",
+      path: "/api/births/b1/project",
+      ask: (api) => api.bindBirth("b1", "p1"),
+    },
+    {
+      call: "createMate",
+      method: "POST",
+      path: "/api/mates",
+      ask: (api) => api.createMate({ projectId: "p1", face: "sky" }),
+    },
+    {
+      call: "updateMate",
+      method: "PATCH",
+      path: "/api/mates/p1",
+      ask: (api) => api.updateMate("p1", { face: "sky" }),
+    },
+    {
+      call: "recordClosedOff",
+      method: "POST",
+      path: "/api/mates/p1/closed-off",
+      ask: (api) => api.recordClosedOff("p1"),
+    },
+    {
+      call: "holdPress",
+      method: "PUT",
+      path: "/api/presses/p1",
+      ask: (api) => api.holdPress("p1", { owner: "tab-1", kind: "mate", appId: "app-1" }),
+    },
+    {
+      call: "endPress",
+      method: "DELETE",
+      path: "/api/presses/p1/tab-1",
+      ask: (api) => api.endPress("p1", "tab-1", true),
+    },
+    {
+      call: "endPress",
+      method: "POST",
+      path: "/api/presses/p1/tab-1/stopped",
+      ask: (api) => api.endPress("p1", "tab-1", false),
+    },
+    {
+      call: "answerKeptGit",
+      method: "POST",
+      path: "/api/apps/app-1/kept-git",
+      ask: (api) => api.answerKeptGit("app-1", "keep"),
+    },
+    {
+      call: "deleteRepo",
+      method: "DELETE",
+      path: "/api/apps/app-1/repos/app",
+      ask: (api) => api.deleteRepo?.("app-1", "app"),
+    },
+    {
+      call: "keepDeployToken",
+      method: "PUT",
+      path: "/api/apps/app-1/environments/stage/deploy-token",
+      ask: (api) => api.keepDeployToken("app-1", "stage", "deploy-token"),
+    },
+    {
+      call: "redeploy",
+      method: "POST",
+      path: "/api/apps/app-1/environments/stage/redeploy",
+      ask: (api) => api.redeploy("app-1", "stage", { service: "app", sha: SHA }),
+    },
+    {
+      call: "addService",
+      method: "POST",
+      path: "/api/apps/app-1/environments/stage/services",
+      ask: (api) => api.addService("app-1", "stage", "db"),
+    },
+    {
+      call: "setAutoUpdatePolicy",
+      method: "PUT",
+      path: "/api/auto-update",
+      ask: (api) => api.setAutoUpdatePolicy(true),
+    },
+    {
+      call: "gitTargetWrite",
+      method: "POST",
+      path: "/api/git-targets/r2",
+      ask: (api) => api.gitTargetWrite("r2", REMOTE_INTENT, "candidate"),
+    },
+    {
+      call: "gitTargetReceipt",
+      method: "POST",
+      path: "/api/git-targets/r2/receipt",
+      ask: (api) => api.gitTargetReceipt("r2", REMOTE_INTENT),
+    },
+    {
+      call: "repoRemoteViaApp",
+      method: "PUT",
+      path: "/api/apps/app-1/repos/app/remote/app",
+      ask: (api) => api.repoRemoteViaApp?.("app-1", "app", { repository: "acme/shop" }),
+    },
+    {
+      call: "followRepoUpstream",
+      method: "PUT",
+      path: "/api/apps/app-1/repos/app/upstream",
+      ask: (api) =>
+        api.followRepoUpstream?.("app-1", "app", { url: "https://github.com/acme/shop.git" }),
+    },
+    {
+      call: "unfollowRepoUpstream",
+      method: "DELETE",
+      path: "/api/apps/app-1/repos/app/upstream",
+      ask: (api) => api.unfollowRepoUpstream?.("app-1", "app"),
+    },
+    {
+      call: "establishZcpAuthorization",
+      method: "POST",
+      path: "/api/mates/p1/zcp-authorization",
+      ask: (api) => api.establishZcpAuthorization?.("p1", {}),
+    },
+    {
+      call: "issueGitCredential",
+      method: "POST",
+      path: "/api/apps/app-1/git-credentials",
+      ask: (api) => api.issueGitCredential("app-1"),
+    },
+    {
+      call: "setIntake",
+      method: "PUT",
+      path: "/api/apps/app-1/intake",
+      ask: (api) => api.setIntake?.("app-1", { repo: "acme/shop", label: "mate" }),
+    },
+    {
+      call: "stopIntake",
+      method: "DELETE",
+      path: "/api/apps/app-1/intake",
+      ask: (api) => api.stopIntake?.("app-1"),
+    },
+    {
+      call: "setAiKey",
+      method: "PUT",
+      path: "/api/org/ai-keys/anthropic",
+      ask: (api) => api.setAiKey?.("anthropic", "sk-1"),
+    },
+    {
+      call: "removeAiKey",
+      method: "DELETE",
+      path: "/api/org/ai-keys/anthropic",
+      ask: (api) => api.removeAiKey?.("anthropic"),
+    },
+    {
+      call: "setTaskLimits",
+      method: "PUT",
+      path: "/api/org/task-limits",
+      ask: (api) => api.setTaskLimits?.({ minutes: 30, costUsd: null }),
+    },
+    {
+      call: "makeWebhook",
+      method: "POST",
+      path: "/api/apps/app-1/webhooks",
+      ask: (api) => api.makeWebhook?.("app-1", { name: "deploys" }),
+    },
+    {
+      call: "deleteWebhook",
+      method: "DELETE",
+      path: "/api/apps/app-1/webhooks/w1",
+      ask: (api) => api.deleteWebhook?.("app-1", "w1"),
+    },
+    {
+      call: "makeSchedule",
+      method: "POST",
+      path: "/api/apps/app-1/schedules",
+      ask: (api) =>
+        api.makeSchedule?.("app-1", {
+          name: "nightly",
+          brief: "Tidy up",
+          rule: { every: "day", at: "03:00", timeZone: "Europe/Prague" },
+        }),
+    },
+    {
+      call: "deleteSchedule",
+      method: "DELETE",
+      path: "/api/apps/app-1/schedules/s1",
+      ask: (api) => api.deleteSchedule?.("app-1", "s1"),
+    },
+    {
+      call: "stopAppTask",
+      method: "POST",
+      path: "/api/apps/app-1/tasks/t1/stop",
+      ask: (api) => api.stopAppTask?.("app-1", "t1"),
+    },
+    {
+      call: "connectSlack",
+      method: "PUT",
+      path: "/api/org/slack",
+      ask: (api) => api.connectSlack?.({ botToken: "xoxb-1", signingSecret: "secret" }),
+    },
+    {
+      call: "disconnectSlack",
+      method: "DELETE",
+      path: "/api/org/slack",
+      ask: (api) => api.disconnectSlack?.(),
+    },
+    {
+      call: "connectDiscord",
+      method: "PUT",
+      path: "/api/org/discord",
+      ask: (api) =>
+        api.connectDiscord?.({ applicationId: "a1", publicKey: "k1", botToken: "bot-1" }),
+    },
+    {
+      call: "disconnectDiscord",
+      method: "DELETE",
+      path: "/api/org/discord",
+      ask: (api) => api.disconnectDiscord?.(),
+    },
+    {
+      call: "allowDiscord",
+      method: "PUT",
+      path: "/api/org/discord/allow",
+      ask: (api) => api.allowDiscord?.({ userIds: ["d1"] }),
+    },
+    {
+      call: "setAppChannel",
+      method: "PUT",
+      path: "/api/apps/app-1/slack",
+      ask: (api) => api.setAppChannel?.("app-1", "slack", { channelId: "C1" }),
+    },
+    {
+      call: "stopAppChannel",
+      method: "DELETE",
+      path: "/api/apps/app-1/discord",
+      ask: (api) => api.stopAppChannel?.("app-1", "discord"),
+    },
+    {
+      call: "githubManifest",
+      method: "POST",
+      path: "/api/org/github/manifest",
+      ask: (api) =>
+        api.githubManifest?.({ owner: null, name: "acme-mate", returnTo: "https://mate/x" }),
+    },
+    {
+      call: "githubDisconnect",
+      method: "DELETE",
+      path: "/api/org/github",
+      ask: (api) => api.githubDisconnect?.(),
+    },
+    {
+      call: "githubInstall",
+      method: "POST",
+      path: "/api/org/github/install",
+      ask: (api) => api.githubInstall?.({ returnTo: "https://mate/x" }),
+    },
+    {
+      call: "githubAcceptInstallation",
+      method: "POST",
+      path: "/api/org/github/installations/7/accept",
+      ask: (api) => api.githubAcceptInstallation?.(7),
+    },
+    {
+      call: "githubSuspendInstallation",
+      method: "POST",
+      path: "/api/org/github/installations/7/suspend",
+      ask: (api) => api.githubSuspendInstallation?.(7),
+    },
+    {
+      call: "githubResumeInstallation",
+      method: "POST",
+      path: "/api/org/github/installations/7/resume",
+      ask: (api) => api.githubResumeInstallation?.(7),
+    },
+    { call: "setChief", method: "PUT", path: "/api/chief", ask: (api) => api.setChief("p1") },
+    {
+      call: "decideProposal",
+      method: "PUT",
+      path: "/api/proposals/x1",
+      ask: (api) => api.decideProposal("x1", { projectId: "p1", decision: "approved" }),
+    },
+  ];
+
+  /** HQ's calls that decide on no fresh read of the person's role: none of them carries the token. */
+  const ROLELESS: ReadonlyArray<keyof HqApi> = [
+    "structure",
+    "mateTicket",
+    "openScopeSocket",
+    "autoUpdatePolicy",
+    "lifecycleReceipt",
+    "changeMetadata",
+    "changeCommits",
+    "changeVerdict",
+    "changeAttachment",
+    "aiKeys",
+    "slack",
+    "slackManifest",
+    "slackChannels",
+    "discord",
+    "appChannel",
+    "webhooks",
+    "schedules",
+    "appTasks",
+    "taskLimits",
+    "github",
+    "observeCredential",
+    "gitCredentials",
+    "revokeGitCredential",
+    "gitBrowse",
+    "gitBrowseBytes",
+    "mateRecipe",
+    "proposalDecisions",
+    "withAccess",
+  ];
+
+  const asking = () => {
+    const hq = fakeHq();
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    /** What `ask` sent HQ, the door and the reads that confirm a lost answer aside. */
+    const sent = async (ask: (api: HqApi) => Promise<unknown> | undefined) => {
+      // Only the request is judged here: HQ's empty answer may not read as the verb's.
+      await ask(api)?.catch(() => undefined);
+      return hq.seen
+        .filter((seen) => seen.path !== "/api/door" && seen.method !== "GET")
+        .map((seen) => ({
+          method: seen.method,
+          path: seen.path,
+          accessToken: (seen.body as { accessToken?: unknown } | undefined)?.accessToken,
+        }));
+    };
+    return { api, sent };
+  };
+
+  it.each(ROLE_VERBS)(
+    "$method $path carries the person's current Zerops access token in its body",
+    async ({ method, path, ask }) => {
+      expect(await asking().sent(ask)).toEqual([{ method, path, accessToken: "person-token" }]);
+    },
+  );
+
+  it("A new HQ call is either listed with the token it carries or named as deciding on no role", () => {
+    const listed = new Set<string>([...ROLE_VERBS.map((verb) => verb.call), ...ROLELESS]);
+    const calls = Object.keys(asking().api).filter((call) => !listed.has(call));
+    expect(calls).toEqual([]);
+  });
+
+  it("No call to a route that decides on no role sends the person's access token", async () => {
+    const { sent } = asking();
+    await sent((api) => api.mateTicket("p1"));
+    expect(await sent((api) => api.revokeGitCredential("app-1", "c1"))).toEqual([
+      { method: "POST", path: "/api/mates/p1/ticket", accessToken: undefined },
+      { method: "DELETE", path: "/api/apps/app-1/git-credentials/c1", accessToken: undefined },
+    ]);
   });
 });

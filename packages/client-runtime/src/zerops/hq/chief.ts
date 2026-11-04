@@ -14,6 +14,8 @@
  */
 import * as Schema from "effect/Schema";
 
+import type { HqApi } from "./client.ts";
+
 /** The reader's own Chief: its project, and since when HQ holds it. */
 export const HqChief = Schema.Struct({ projectId: Schema.NonEmptyString, since: Schema.String });
 export type HqChief = typeof HqChief.Type;
@@ -63,15 +65,23 @@ export interface HqChiefCalls {
   ) => Promise<HqProposalDecision>;
 }
 
-/** The client's session call (`makeHqApi`'s `authorized`) and its schema read (`decoded`). */
+/**
+ * The client's session call (`makeHqApi`'s `authorized`), its schema read (`decoded`) and the body
+ * carrying the person's access token (`withAccess`).
+ */
 export interface HqChiefTransport {
   readonly authorized: (path: string, init?: RequestInit, write?: boolean) => Promise<Response>;
+  readonly withAccess: HqApi["withAccess"];
   readonly decoded: <S extends Schema.Decoder<unknown>>(
     schema: S,
   ) => (response: Response) => Promise<S["Type"]>;
 }
 
-export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChiefCalls {
+export function makeChiefCalls({
+  authorized,
+  decoded,
+  withAccess,
+}: HqChiefTransport): HqChiefCalls {
   const readRegistration = decoded(HqChiefRegistration);
   const readDecisions = decoded(DecisionsAnswer);
   const readDecision = decoded(HqProposalDecision);
@@ -80,7 +90,7 @@ export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChi
       readRegistration(
         await authorized(
           "/api/chief",
-          { method: "PUT", body: JSON.stringify({ projectId }) },
+          { method: "PUT", body: JSON.stringify(await withAccess({ projectId })) },
           true,
         ),
       ),
@@ -105,7 +115,7 @@ export function makeChiefCalls({ authorized, decoded }: HqChiefTransport): HqChi
       readDecision(
         await authorized(
           `/api/proposals/${encodeURIComponent(id)}`,
-          { method: "PUT", body: JSON.stringify(write) },
+          { method: "PUT", body: JSON.stringify(await withAccess(write)) },
           true,
         ),
       ),
