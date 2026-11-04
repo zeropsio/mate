@@ -20,6 +20,7 @@
 import { StrictMode, useEffect, useState, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
+import type { FlowPullRequest } from "@t3tools/client-runtime/zerops";
 import { crewSnapshotFixture } from "@t3tools/client-runtime/zerops/crew/testing/fixtures";
 import { deriveCrewView } from "@t3tools/client-runtime/zerops/projections/crew";
 import {
@@ -38,6 +39,7 @@ import { EllipsisIcon } from "lucide-react";
 
 import { ConversationStripView } from "~/components/chat/ConversationStrip";
 import { MatePersonaPress } from "~/components/chat/MatePersonaPress";
+import { changeReviewItem, HeaderReviewDoor } from "~/components/zerops/SidebarProjectReview";
 import {
   lineChats,
   lineCrew,
@@ -68,6 +70,31 @@ const at = (minute: number) => new Date(Date.UTC(2026, 8, 29, 9, minute)).toISOS
 
 const FEN = { name: "Fen", tint: "amber" as MateTintId, connected: true };
 const FEN_TASK = "Build the game server and its rules engine from the spec, tests first.";
+
+/** Two of Fen's changes waiting on the person: the header's Review door. */
+const REVIEW_DOOR = {
+  review: {
+    groupId: "game",
+    projectName: "Game",
+    items: [12, 13].map((number) =>
+      changeReviewItem({
+        pull: {
+          repository: "server",
+          number,
+          title: `Change ${String(number)}`,
+          kind: "code",
+          mateProjectId: "mate-fen",
+        } as unknown as FlowPullRequest,
+        among: [],
+        groupId: "game",
+        by: undefined,
+        mine: true,
+      }),
+    ),
+    release: undefined,
+  },
+  held: false,
+};
 
 type Activity = "idle" | "working" | "needs" | "done";
 
@@ -285,6 +312,10 @@ interface HeadState {
   readonly lateSubject?: true;
   /** The Mate's persona, after its name. */
   readonly persona?: string;
+  /** The persona arrives a moment after the line is painted, as late settings do. */
+  readonly latePersona?: true;
+  /** Changes wait on the person: the Review door stands after the name. */
+  readonly review?: true;
 }
 
 const LONG_SUBJECT =
@@ -392,6 +423,29 @@ const STATES: ReadonlyArray<HeadState> = [
     persona: "Acme house style for client work",
   },
   {
+    id: "persona-late-review",
+    title:
+      "A persona arriving late beside a Review door at 570 px: the door stays put, the subject gives way",
+    width: 570,
+    chats: [{ title: FEN_TASK, activity: "idle" }],
+    crew: [],
+    on: 0,
+    persona: "Careful engineer",
+    latePersona: true,
+    review: true,
+  },
+  {
+    id: "persona-narrow",
+    title: "No subject at 300 px, a Review door and a long persona: the persona's label gives way",
+    width: 300,
+    chats: [{ title: "New chat", activity: "idle" }],
+    crew: [],
+    on: 0,
+    subject: null,
+    persona: "Acme house style for client work",
+    review: true,
+  },
+  {
     id: "reload",
     title: "A reload: the crew this browser remembers, at rest, then the feed's",
     chats: [{ title: FEN_TASK, activity: "idle" }],
@@ -464,6 +518,13 @@ function Frame({
     const timer = setTimeout(() => setLive(true), 1500);
     return () => clearTimeout(timer);
   }, [live]);
+  // A persona arriving late: none on the first paint, the Mate's settings a moment later.
+  const [personaRead, setPersonaRead] = useState(state.latePersona !== true);
+  useEffect(() => {
+    if (personaRead) return;
+    const timer = setTimeout(() => setPersonaRead(true), 1500);
+    return () => clearTimeout(timer);
+  }, [personaRead]);
   // A subject arriving late: none on the first paint, the first words a moment later.
   const [spoken, setSpoken] = useState(state.lateSubject !== true);
   useEffect(() => {
@@ -598,11 +659,12 @@ function Frame({
               }}
               onRename={() => {}}
               persona={
-                state.persona === undefined ? undefined : (
+                state.persona === undefined || !personaRead ? undefined : (
                   <MatePersonaPress mateName={FEN.name} onOpen={() => {}} persona={state.persona} />
                 )
               }
               renameField={null}
+              trailing={state.review === true ? <HeaderReviewDoor {...REVIEW_DOOR} /> : undefined}
             />
             <HeaderActions />
           </div>

@@ -640,11 +640,11 @@ export const ChatHeader = memo(function ChatHeader({
               onRename={isServerThread && crewOrigin === null ? startRename : null}
               persona={
                 // A crewmate's chat takes no persona: only the Mate's own chats show it.
-                crewOrigin === null && mate !== undefined ? (
+                crewOrigin === null && mate !== undefined && settings.persona != null ? (
                   <MatePersonaPress
                     mateName={mate.name}
                     onOpen={() => useRightPanelStore.getState().open(activeThreadRef, "persona")}
-                    persona={settings.persona?.name ?? null}
+                    persona={settings.persona.name}
                   />
                 ) : null
               }
