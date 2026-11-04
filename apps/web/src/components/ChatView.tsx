@@ -270,6 +270,7 @@ import {
   useZeropsProductionLive,
 } from "../zerops/useZeropsChangeLandedEvents";
 import { useVaultTurnNotes } from "../zerops/vaultTurnNotes";
+import { useMcpTurnNotes } from "../zerops/mcpTurnNotes";
 import { vaultChipsOnlyText } from "../zerops/vaultTurnNotes.logic";
 import {
   agentLastSpokeAt,
@@ -3153,17 +3154,20 @@ function ConversationView(props: ChatViewProps) {
   const agentSpokeAt = useMemo(() => agentLastSpokeAt(timelineMessages), [timelineMessages]);
   // What the Mate hears of its vault: the person's changes since it last spoke, as chips and a note.
   const vaultTurn = useVaultTurnNotes(activeThreadEnvironmentId, activeThreadKey, agentSpokeAt);
+  // What the Mate hears of an MCP server the person added from its proposal card.
+  const mcpTurn = useMcpTurnNotes(activeThreadEnvironmentId);
   // Fitted to the bound a send takes: a vault change a line, the rest counted and told later.
   const turnContext = useMemo(() => {
     const context = agentContext(
       [
         ...agentTurnNotes(changeLandedEvents, agentSpokeAt),
         ...productionTurnNotes(productionLive, agentSpokeAt),
+        ...mcpTurn.lines,
       ],
       vaultTurn.changes,
     );
     return { notes: context.lines, vaultChanges: context.told };
-  }, [agentSpokeAt, changeLandedEvents, productionLive, vaultTurn.changes]);
+  }, [agentSpokeAt, changeLandedEvents, mcpTurn.lines, productionLive, vaultTurn.changes]);
   const agentNotes = turnContext.notes;
   // The Mate hears of every landing; this conversation shows the ones it named.
   const conversationLandedEvents = useZeropsConversationLandings(
@@ -7148,6 +7152,7 @@ function ConversationView(props: ChatViewProps) {
       } else {
         turnStartSucceeded = true;
         vaultTurn.told(toldVault);
+        mcpTurn.told(turnAgentNotes);
         // The turn is under way and will spend quota, so that thread's limits
         // snapshot is stale. Uploads may have outlasted a navigation, so only
         // the sending thread's panel clears.
