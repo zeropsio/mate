@@ -232,6 +232,7 @@ function MatePill({
   const [subjectRef, cut] = useCut();
   const { subject, hover } = mateWords(mate, { crew, cut });
   const arrived = useArrival(subject !== null);
+  const personaArrived = useArrival(persona != null);
   // The header's face is carried to the opening stage, outside the header: it takes its mark along.
   const asMark = useContext(MateFaceAsMark);
   // Its row's face, playing what the row's plays: each Mate's line is drawn anew (its `key`), so
@@ -322,8 +323,9 @@ function MatePill({
     <div
       className={cn(
         "conversation-mate flex h-8 min-w-0 items-center",
-        // Only a subject gives way to the line's end; the name never does.
-        subject === null ? "shrink-0" : "flex-1",
+        // Only a subject gives way to the line's end, and before it the persona's label; the name
+        // never does.
+        subject !== null ? "flex-1" : persona != null ? "min-w-0 shrink" : "shrink-0",
       )}
       data-conversation-mate
       data-on={band ? "" : undefined}
@@ -341,8 +343,16 @@ function MatePill({
       {chats === null ? null : (
         <MateChatsMenu chats={chats} mateName={mate.name} onClose={onCloseChat} onOpen={onOpen} />
       )}
-      {persona}
       {trailing}
+      {/* After what waits on the person, so arriving late it moves nothing already placed. */}
+      {persona == null ? null : (
+        <span
+          className="conversation-persona flex min-w-0 shrink overflow-hidden"
+          data-arrived={personaArrived ? "" : undefined}
+        >
+          {persona}
+        </span>
+      )}
       {subjectLine}
     </div>
   );

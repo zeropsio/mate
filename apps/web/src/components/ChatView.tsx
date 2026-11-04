@@ -8292,7 +8292,7 @@ function ConversationView(props: ChatViewProps) {
                 <PersonaPanel
                   environmentId={activeThreadRef.environmentId}
                   key={activeThreadRef.environmentId}
-                  mate={pageMateName ?? "this Mate"}
+                  mate={pageMateName ?? null}
                 />
               );
             case "overview":

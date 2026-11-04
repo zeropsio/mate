@@ -32,6 +32,7 @@ import { useServerConfigs } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
 import { useOrgPersonaTemplates, usePersonaTemplateWriter } from "~/zerops/usePersonaTemplates";
 import { RightPanelPageEdge } from "~/components/RightPanelPage";
+import { ZeropsMateUpdateControl } from "~/components/zerops/ZeropsMateUpdateControl";
 
 import { Button, InlineButton } from "../ui/button";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
@@ -41,9 +42,15 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import {
   PERSONA_WORDS,
+  mateIn,
+  mateLeads,
   orgTemplateDraft,
   personaFromEditor,
-  personaLinkedToSavedTemplate,
+  samePersona,
+  savedTemplateLink,
+  type MateName,
+  type SavedTemplateLink,
+  type SavingTemplate,
   personaFromTemplate,
   personaInstructionsCount,
   personaPage,
@@ -56,22 +63,24 @@ import {
 export const PERSONA_PAGE_WORDS = {
   edit: "Edit",
   remove: "Remove",
-  removeAsk: (name: string, mate: string) => `Remove ${name}? ${mate} goes back to its own way.`,
+  removeAsk: (name: string, mate: MateName) =>
+    `Remove ${name}? ${mateLeads(mate)} goes back to its own way.`,
   keep: "Keep",
   showAll: "Show all",
   showLess: "Show less",
-  appliesNext: (mate: string) => `${mate}'s chats follow it from their next message.`,
+  appliesNext: (mate: MateName) => `${mateLeads(mate)}'s chats follow it from their next message.`,
   newer: (name: string) => `${name} has a newer version.`,
   takeNewer: "Use it",
-  chooseFor: (mate: string) => `Use for ${mate}`,
-  inUse: (mate: string) => `${mate} uses this.`,
+  chooseFor: (mate: MateName) => `Use for ${mateIn(mate)}`,
+  inUse: (mate: MateName) => `${mateLeads(mate)} uses this.`,
   inUseMark: "In use",
   templates: "Templates",
   writeOwn: "Write your own",
   name: "Name",
   instructions: "Instructions",
   namePlaceholder: "e.g. Terse",
-  instructionsPlaceholder: (mate: string) => `How ${mate} works and talks, in your words.`,
+  instructionsPlaceholder: (mate: MateName) =>
+    `How ${mateIn(mate)} works and talks, in your words.`,
   save: "Save",
   cancel: "Cancel",
   saveAsOrg: (org: string | null) =>
@@ -80,12 +89,16 @@ export const PERSONA_PAGE_WORDS = {
     org === null ? "Saved to your organization's templates." : `Saved to ${org}'s templates.`,
   tryAgain: "Try again",
   readAgain: "Read again",
-  orgConflict: "HQ already holds a template by that id.",
+  orgConflict: "the template changed while it was being saved.",
+  notShown: (mate: MateName) => `${mateLeads(mate)} took it but doesn't show it yet.`,
   writeFailed: "Couldn't save the persona:",
   orgSaveFailed: "Couldn't save the template:",
 } as const;
 
-/** A write's outcome: `null` once the server took it, else what to tell the person. */
+/**
+ * A write's outcome: `null` once the Mate shows what was written, else the sentence that tells the
+ * person what happened.
+ */
 type PersonaWrite = (persona: MatePersona | null) => Promise<string | null>;
 
 /** Where Save as the organization's template stands, through tying the Mate to it. */
@@ -94,11 +107,53 @@ export type OrgSaveView =
   | { readonly stage: "failed"; readonly message: string; readonly retry: () => void }
   | { readonly stage: "unconfirmed"; readonly message: string };
 
+/** How long a write waits for the Mate's settings to show it before saying it is not confirmed. */
+const ECHO_WAIT_MS = 10_000;
+
+/**
+ * Waits for the Mate's settings to show a persona: `updateSettings` answers before its
+ * `settingsUpdated` reaches this page, and the page shows only what the Mate shows.
+ */
+function usePersonaEcho(shown: MatePersona | null, mate: MateName) {
+  const shownRef = useRef(shown);
+  const waiters = useRef(
+    new Set<{
+      readonly persona: MatePersona | null;
+      readonly settle: (failure: string | null) => void;
+    }>(),
+  );
+  useEffect(() => {
+    shownRef.current = shown;
+    for (const waiter of waiters.current)
+      if (samePersona(waiter.persona, shown)) waiter.settle(null);
+  }, [shown]);
+  return (persona: MatePersona | null) =>
+    new Promise<string | null>((resolve) => {
+      if (samePersona(persona, shownRef.current)) {
+        resolve(null);
+        return;
+      }
+      const waiter = {
+        persona,
+        settle: (failure: string | null) => {
+          clearTimeout(timer);
+          waiters.current.delete(waiter);
+          resolve(failure);
+        },
+      };
+      const timer = setTimeout(
+        () => waiter.settle(PERSONA_PAGE_WORDS.notShown(mate)),
+        ECHO_WAIT_MS,
+      );
+      waiters.current.add(waiter);
+    });
+}
+
 export function PersonaPanel(props: {
   readonly environmentId: EnvironmentId;
-  readonly mate: string;
+  readonly mate: MateName;
 }) {
-  const { environmentId } = props;
+  const { environmentId, mate } = props;
   const config = useServerConfigs().get(environmentId);
   const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
   const org = useOrgPersonaTemplates();
@@ -111,7 +166,7 @@ export function PersonaPanel(props: {
   const model = useMemo(
     () =>
       personaPage({
-        mate: props.mate,
+        mate,
         capability:
           config === undefined ? null : config.environment.capabilities.matePersona === true,
         settingsLoaded: settings !== null,
@@ -119,80 +174,100 @@ export function PersonaPanel(props: {
         premade: PREMADE_PERSONA_TEMPLATES,
         org,
       }),
-    [config, org, persona, props.mate, settings],
+    [config, org, persona, mate, settings],
   );
-  const write: PersonaWrite = async (next) => {
+  const shown = usePersonaEcho(persona, mate);
+  const send: PersonaWrite = async (next) => {
     const result = await updateSettings({ environmentId, input: { patch: { persona: next } } });
-    if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return null;
-    const failure = squashAtomCommandFailure(result);
-    return failure instanceof Error ? failure.message : "The Mate did not take it.";
+    if (result._tag === "Failure" && !isAtomCommandInterrupted(result)) {
+      const failure = squashAtomCommandFailure(result);
+      return `${PERSONA_PAGE_WORDS.writeFailed} ${failure instanceof Error ? failure.message : "the Mate did not take it."}`;
+    }
+    return shown(next);
+  };
+  // Every write a person makes on the page; a save as a template begun before one never ties.
+  const [writes, setWrites] = useState(0);
+  const write: PersonaWrite = (next) => {
+    setWrites((count) => count + 1);
+    return send(next);
   };
 
-  // The persona being saved as a template, by the template's id: once the organization's list
-  // shows that template, the Mate takes it, tied to it (`personaLinkedToSavedTemplate`).
-  const [saving, setSaving] = useState<{ readonly id: string; readonly persona: MatePersona }>();
+  // The persona being saved as a template, until the Mate is tied to it or that is abandoned.
+  const [saving, setSaving] = useState<SavingTemplate>();
   // How tying the Mate to it went, by template id; absent while that write is under way.
   const [tied, setTied] = useState<{ readonly id: string; readonly failure: string | null }>();
+  // Templates whose tie was decided: a list dropping out and back never ties one again.
+  const decided = useRef(new Set<string>());
   const saveAsOrg = (current: MatePersona) => {
     const id = randomUUID();
-    setSaving({ id, persona: current });
+    // HQ creates it at revision 1 (`PUT /api/persona-templates/{id}` with revision 0).
+    setSaving({ id, persona: current, revision: 1, writesAtStart: writes });
+    setTied(undefined);
     writer.save(orgTemplateDraft(current, id));
   };
-  const tieTo = async (id: string, next: MatePersona) => {
-    const failure = await write(next);
-    setTied({ id, failure });
-  };
-  const linked =
-    saving !== undefined && writer.write.stage === "done"
-      ? personaLinkedToSavedTemplate(saving, org.templates, persona)
-      : null;
-  const linkedId = linked === null || saving === undefined ? null : saving.id;
-  const onLinked = useEffectEvent((id: string) => {
-    if (linked === null) return;
-    void write(linked).then((failure) => setTied({ id, failure }));
+  const tie = (id: string, next: MatePersona) =>
+    void send(next).then((failure) => {
+      setTied({ id, failure });
+      if (failure === null) setSaving((current) => (current?.id === id ? undefined : current));
+    });
+  const found =
+    saving === undefined ? null : savedTemplateLink(saving, org.templates, persona, writes);
+  const link: SavedTemplateLink | null =
+    found?.kind === "link" && writer.write.stage !== "done" ? { kind: "wait" } : found;
+  const linkId = saving !== undefined && link?.kind === "link" ? saving.id : null;
+  const abandonId = saving !== undefined && link?.kind === "abandon" ? saving.id : null;
+  const onLink = useEffectEvent((id: string) => {
+    if (decided.current.has(id) || link?.kind !== "link") return;
+    decided.current.add(id);
+    tie(id, link.persona);
+  });
+  const onAbandon = useEffectEvent((id: string) => {
+    decided.current.add(id);
+    // Forgotten once this render is done: nothing is left to tie.
+    queueMicrotask(() => setSaving((current) => (current?.id === id ? undefined : current)));
   });
   useEffect(() => {
-    if (linkedId !== null) onLinked(linkedId);
-  }, [linkedId]);
+    if (linkId !== null) onLink(linkId);
+  }, [linkId]);
+  useEffect(() => {
+    if (abandonId !== null) onAbandon(abandonId);
+  }, [abandonId]);
 
   const stage = writer.write;
   const orgSave: OrgSaveView =
-    // A save of an earlier text no longer speaks for the persona shown.
-    saving === undefined ||
-    persona === null ||
-    persona.name !== saving.persona.name ||
-    persona.instructions !== saving.persona.instructions
+    saving === undefined || link === null || link.kind === "abandon"
       ? { stage: "idle" }
-      : linked !== null
-        ? tied?.id !== saving.id
+      : tied?.id === saving.id && tied.failure !== null
+        ? {
+            stage: "failed",
+            message: tied.failure,
+            retry: () => {
+              if (link.kind !== "link") return;
+              setTied(undefined);
+              tie(saving.id, link.persona);
+            },
+          }
+        : link.kind === "link"
           ? { stage: "pending" }
-          : tied.failure === null
-            ? { stage: "saved" }
-            : {
-                stage: "failed",
-                message: tied.failure,
-                retry: () => {
-                  setTied(undefined);
-                  void tieTo(saving.id, linked);
-                },
-              }
-        : stage.stage === "pending"
-          ? { stage: "pending" }
-          : stage.stage === "done"
-            ? { stage: "saved" }
-            : stage.stage === "unconfirmed"
-              ? { stage: "unconfirmed", message: stage.reason }
-              : stage.stage === "failed" || stage.stage === "conflict"
-                ? {
-                    stage: "failed",
-                    message:
-                      stage.stage === "failed" ? stage.reason : PERSONA_PAGE_WORDS.orgConflict,
-                    retry: () => saveAsOrg(saving.persona),
-                  }
-                : { stage: "idle" };
+          : stage.stage === "pending"
+            ? { stage: "pending" }
+            : // Saved, and no current list will show it: the Mate stays as it is.
+              stage.stage === "done"
+              ? { stage: "saved" }
+              : stage.stage === "unconfirmed"
+                ? { stage: "unconfirmed", message: stage.reason }
+                : stage.stage === "failed" || stage.stage === "conflict"
+                  ? {
+                      stage: "failed",
+                      message: `${PERSONA_PAGE_WORDS.orgSaveFailed} ${
+                        stage.stage === "failed" ? stage.reason : PERSONA_PAGE_WORDS.orgConflict
+                      }`,
+                      retry: () => saveAsOrg(saving.persona),
+                    }
+                  : { stage: "idle" };
   return (
     <PersonaPanelBody
-      mate={props.mate}
+      mate={mate}
       model={model}
       onReadOrgAgain={org.retry}
       onSaveAsOrg={() => {
@@ -201,6 +276,11 @@ export function PersonaPanel(props: {
       orgName={org.orgName}
       orgSave={orgSave}
       persona={persona}
+      update={
+        <ZeropsMateUpdateControl environmentId={environmentId} mateName={mate ?? undefined}>
+          {({ line }) => line}
+        </ZeropsMateUpdateControl>
+      }
       write={write}
     />
   );
@@ -216,7 +296,9 @@ interface PersonaFailure {
 }
 
 export function PersonaPanelBody(props: {
-  readonly mate: string;
+  readonly mate: MateName;
+  /** The Mate's update, where its server takes no persona (`ZeropsMateUpdateControl`). */
+  readonly update?: ReactNode;
   readonly model: PersonaPageModel;
   readonly persona: MatePersona | null;
   readonly orgName: string | null;
@@ -250,10 +332,7 @@ export function PersonaPanelBody(props: {
     run(action, () => props.write(next));
   const failureAt = (action: PersonaAction) =>
     failure?.action === action ? (
-      <FailureLine
-        message={`${PERSONA_PAGE_WORDS.writeFailed} ${failure.message}`}
-        onRetry={failure.retry}
-      />
+      <FailureLine message={failure.message} onRetry={failure.retry} />
     ) : null;
   const openEditor = (which: "edit" | "write" | null) => {
     setEditor(which);
@@ -273,9 +352,11 @@ export function PersonaPanelBody(props: {
             </span>
           </RightPanelPageEdge>
           {model.kind === "update" ? (
-            <p className="mt-3 text-line leading-4.5 text-muted-foreground" data-persona-update>
-              {PERSONA_WORDS.update(mate)}
-            </p>
+            <div className="mt-3 flex flex-col gap-2" data-persona-update>
+              <p className="text-line leading-4.5 text-muted-foreground">{model.line}</p>
+              {/* The problem comes with its fix: the Mate's own update, where it may be updated. */}
+              {props.update}
+            </div>
           ) : null}
         </div>
       </ScrollArea>
@@ -353,10 +434,7 @@ export function PersonaPanelBody(props: {
                 )}
                 {failureAt("newer")}
                 {props.orgSave.stage === "failed" ? (
-                  <FailureLine
-                    message={`${PERSONA_PAGE_WORDS.orgSaveFailed} ${props.orgSave.message}`}
-                    onRetry={props.orgSave.retry}
-                  />
+                  <FailureLine message={props.orgSave.message} onRetry={props.orgSave.retry} />
                 ) : props.orgSave.stage === "unconfirmed" ? (
                   // It may have been saved: nothing offers to send it again.
                   <p className="text-xs leading-4.5 text-muted-foreground" role="status">
@@ -526,7 +604,7 @@ function FoldedText(props: { readonly text: string }) {
 }
 
 function PersonaActions(props: {
-  readonly mate: string;
+  readonly mate: MateName;
   readonly name: string;
   readonly editing: boolean;
   readonly pending: PersonaAction | null;
@@ -586,7 +664,7 @@ function PersonaActions(props: {
 
 function TemplateRow(props: {
   readonly row: PersonaTemplateRow;
-  readonly mate: string;
+  readonly mate: MateName;
   readonly open: boolean;
   readonly pending: PersonaAction | null;
   readonly failure: ReactNode;
@@ -657,7 +735,7 @@ function EditorReveal(props: { readonly open: boolean; readonly children: ReactN
 
 function PersonaEditor(props: {
   readonly initial: PersonaDraft;
-  readonly mate: string;
+  readonly mate: MateName;
   readonly pending: boolean;
   readonly failure: ReactNode;
   readonly onSave: (draft: PersonaDraft) => PersonaDraftErrors;
