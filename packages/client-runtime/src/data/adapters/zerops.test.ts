@@ -2045,7 +2045,13 @@ describe("menu rows from Zerops owner evidence", () => {
       listed = [];
       yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), { delete: ["Bea"] });
       yield* settle;
-      expect(menuRows(store).map((row) => row.project.name)).toEqual(["Ada"]);
+      // Bea's read proves it deleted: HQ still places it, so it is drawn gone on Zerops.
+      expect(
+        menuRows(store).map((row) => [row.project.name, row.projectGone === true] as const),
+      ).toEqual([
+        ["Ada", false],
+        ["Bea", true],
+      ]);
       expect(observed.length).toBeGreaterThan(0);
       expect(observed.every((rows) => rows.includes("Ada"))).toBe(true);
       stop();

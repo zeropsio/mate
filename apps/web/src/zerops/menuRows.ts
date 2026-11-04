@@ -65,6 +65,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
     const directory = get(shownHqMateDirectoryAtom);
     const allPlacements = get(hqPlacementsAtom);
     // HQ places every Mate of the organization: one the person cannot reach is not theirs to see.
+    // One whose project their own read proved deleted they saw, and see gone (`placedMenuRows`).
     const placements =
       allPlacements === null
         ? null
@@ -72,7 +73,7 @@ export function menuRowsAtom<Row extends CandidateRow>(
             [...allPlacements].filter(
               ([id]) =>
                 isListedMateProject(directory, { id }) &&
-                get(shownMateVisibilityAtom(id)) !== "hidden",
+                (get(shownMateVisibilityAtom(id)) !== "hidden" || get(projectGoneAtom(id))),
             ),
           );
     const listedCandidates = candidates.filter((row) =>

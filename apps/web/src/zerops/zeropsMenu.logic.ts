@@ -1,7 +1,8 @@
 /**
  * The menu's rows: every row HQ places, as HQ places it, then every project only Zerops lists so
  * far — a project created a moment ago anywhere, ungrouped until somebody places it. A row never
- * waits on HQ; a project its owner proved deleted is drawn no more.
+ * waits on HQ; a project its owner proved deleted that nothing places is drawn no more, and one HQ
+ * still places is drawn gone (`placedMenuRows`).
  */
 import type { HqNavigationRead, OrganizationProjects } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";

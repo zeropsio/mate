@@ -242,7 +242,8 @@ export function birthFaceOf(
 /**
  * The menu's rows HQ places, each enriched with the platform's facts by project id: a project HQ
  * places that no inventory row or store fact names yet is drawn by HQ's name for it, its presence
- * unknown.
+ * unknown. One its person's own read proved deleted (`gone`) is drawn gone on Zerops, HQ still
+ * holding it (`projectGone`), never dropped as if HQ had let it go.
  */
 export function placedMenuRows(input: {
   readonly organizationId: string;
@@ -262,9 +263,10 @@ export function placedMenuRows(input: {
   }
   return [...input.placements].flatMap(([id, placement]): ReadonlyArray<CandidateRow> => {
     // A press's record alone places no row: HQ holds the project nowhere yet.
-    if (input.gone.has(id) || ("unregistered" in placement && placement.unregistered === true))
-      return [];
-    const row = candidates.get(id);
+    if ("unregistered" in placement && placement.unregistered === true) return [];
+    const gone = input.gone.has(id);
+    // A gone project's last row is no longer what it is: none of its container is carried on.
+    const row = gone ? undefined : candidates.get(id);
     const project = projects.get(id) ??
       row?.project ?? {
         id,
@@ -274,7 +276,10 @@ export function placedMenuRows(input: {
       };
     return [
       {
-        ...(row ?? { key: id, group: "unavailable", presence: "unknown" }),
+        ...(row ??
+          (gone
+            ? { key: id, group: "unavailable", presence: "known", projectGone: true }
+            : { key: id, group: "unavailable", presence: "unknown" })),
         project: { ...project, hq: placement },
       },
     ];
