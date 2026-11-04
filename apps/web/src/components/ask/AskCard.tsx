@@ -43,6 +43,8 @@ export interface AskCardProps {
   readonly face?: ReactNode;
   /** Compact: goes to the card in the conversation. */
   readonly onShowInConversation?: (() => void) | undefined;
+  /** Compact: one quiet line under the title ("Goes to the vault, not the chat"). */
+  readonly note?: ReactNode;
   readonly children?: ReactNode;
   readonly footer: ReactNode;
 }
@@ -78,32 +80,28 @@ function AskCardFace(
 
   if (props.density === "compact") {
     return (
-      <section
-        {...marks}
-        className="@container border-foreground/8 border-b"
-        // It stands over the conversation's end and never moves it (`ChatView`).
-        data-chat-composer-asks="true"
-        data-composer-top={props.kind}
-      >
-        <div className="grid grid-cols-[28px_minmax(0,1fr)] items-center gap-x-3 gap-y-2 pt-3 pe-3 pb-3 ps-4">
-          <div className="col-start-1 row-start-1 grid place-items-center">{props.face}</div>
-          <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
-            <WhereChip where={props.where} />
-            <p className="min-w-0 truncate font-medium text-foreground text-line leading-4.5">
-              {title}
-            </p>
-          </div>
-          {body === undefined ? null : <div className="col-start-2 grid min-w-0 gap-2">{body}</div>}
-          <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-            <div className="min-w-0 flex-1">{props.footer}</div>
+      <AskDock
+        actions={
+          <>
+            {props.footer}
             {props.onShowInConversation === undefined ? null : (
               <Button onClick={props.onShowInConversation} size="sm" variant="ghost">
                 Show in conversation
               </Button>
             )}
-          </div>
-        </div>
-      </section>
+          </>
+        }
+        askId={props.askId}
+        detail={props.note}
+        face={props.face}
+        kind={props.kind}
+        label={title}
+        state={props.state}
+        title={title}
+        where={props.where}
+      >
+        {body}
+      </AskDock>
     );
   }
 
@@ -123,6 +121,75 @@ function AskCardFace(
         {props.footer}
       </div>
     </Card>
+  );
+}
+
+/**
+ * The compact density: an ask above the composer, where the Mate waits on the person, in the one
+ * look every ask there has (the owner's pick, "Composer Strips" S6): the asking Mate's face, where
+ * it acts and what it asks in one line, a quiet line under it, the presses at the end — under
+ * everything once the composer is too narrow for both — and what it asks with under the line.
+ */
+export function AskDock(props: {
+  /** What a screen reader calls it. */
+  readonly label: string;
+  /** Which ask it is, for what reads the composer's top (`data-composer-top`). */
+  readonly kind: string;
+  readonly face: ReactNode;
+  readonly where?: AskWhere | null | undefined;
+  /** What it asks, in one line. */
+  readonly title: ReactNode;
+  readonly detail?: ReactNode;
+  /** Its presses: the main one and Not now, or the kind's own. */
+  readonly actions?: ReactNode;
+  /** What it asks with: the options, a value's field. */
+  readonly children?: ReactNode;
+  readonly askId?: string | undefined;
+  readonly state?: AskStateKind | undefined;
+}) {
+  return (
+    <section
+      aria-label={props.label}
+      className="@container border-foreground/8 border-b"
+      // It stands over the conversation's end and never moves it (`ChatView`).
+      data-chat-composer-asks="true"
+      data-composer-top={props.kind}
+      data-ask-density="compact"
+      data-ask-id={props.askId}
+      data-ask-kind={props.kind}
+      data-ask-state={props.state}
+      role="group"
+    >
+      {/* What is asked comes before its presses, for a reader and for the Tab key; the grid sets
+          the presses beside the line, and under everything once the composer is too narrow. */}
+      <div className="grid grid-cols-[28px_minmax(0,1fr)_auto] items-center gap-x-3 gap-y-2 pt-3 pe-2 pb-3 ps-4 @max-xl:grid-cols-[28px_minmax(0,1fr)]">
+        <div className="col-start-1 row-start-1 grid place-items-center">{props.face}</div>
+        <div className="col-start-2 row-start-1 min-w-0">
+          <div className="flex min-w-0 items-center gap-2">
+            <WhereChip where={props.where ?? null} />
+            <p className="min-w-0 truncate font-medium text-foreground text-line leading-4.5">
+              {props.title}
+            </p>
+          </div>
+          {props.detail === undefined ? null : (
+            <div className="min-w-0 text-muted-foreground text-line leading-4.5">
+              {props.detail}
+            </div>
+          )}
+        </div>
+        {/* A folded panel leaves it empty, and an empty row would still take the grid's gap. */}
+        {props.children === undefined ? null : (
+          <div className="col-start-2 -col-end-1 row-start-2 min-w-0 empty:hidden">
+            {props.children}
+          </div>
+        )}
+        {props.actions === undefined ? null : (
+          <div className="col-start-3 row-start-1 flex min-w-0 flex-wrap items-center justify-end gap-1 @max-xl:col-start-2 @max-xl:-col-end-1 @max-xl:row-start-auto">
+            {props.actions}
+          </div>
+        )}
+      </div>
+    </section>
   );
 }
 

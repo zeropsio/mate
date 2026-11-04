@@ -66,7 +66,7 @@ describe("ComposerPendingUserInputPanel", () => {
     expect(questionMarkup).toContain('data-pending-request-kind="question"');
     expect(questionMarkup).toContain(">The agent asks<");
     expect(approvalMarkup).toContain('data-pending-request-kind="command-approval"');
-    expect(approvalMarkup).toContain(">The agent wants to run this command<");
+    expect(approvalMarkup).toContain(">Run this command<");
   });
 
   it("says whom an approval waits on when that is not the viewer", () => {

@@ -58,6 +58,7 @@ export function VaultAsk(props: VaultAskProps) {
   const press = () => (view.main?.does === "useGiven" ? props.onUseGiven() : void save());
   const canPress = view.main?.does === "useGiven" || (field?.ready === true && value !== "");
   const size = density === "compact" ? "sm" : "md";
+  const note = field === null ? undefined : "Goes to the vault, not the chat";
   const warning =
     view.warning === null || field === null ? null : (
       <p
@@ -114,12 +115,13 @@ export function VaultAsk(props: VaultAskProps) {
               ? null
               : { label: view.main.label, onPress: press, disabled: !canPress }
           }
-          note={field === null ? undefined : "Goes to the vault, not the chat"}
+          note={density === "full" ? note : undefined}
           onNotNow={props.onNotNow}
           state={view.state}
         />
       }
       kind="vault"
+      note={note}
       onShowInConversation={props.onShowInConversation}
       state={view.state.kind}
       title={view.title}
