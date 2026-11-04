@@ -61,6 +61,12 @@ export interface ZeropsCandidate {
    * and whose line carries the platform's own words when it gave any.
    */
   readonly creationFailed?: { readonly message: string | undefined };
+  /**
+   * Its project is gone on Zerops — its person's own read proved it deleted (`projectGone`) — while
+   * HQ still holds its Mate: nothing runs it and nothing opens it, and HQ has no verb yet to be
+   * told so. Structural, as `creationFailed`: the row says so, never a guess from a reason string.
+   */
+  readonly projectGone?: true;
   readonly service?: ZeropsCandidateService;
   readonly containerOrigin?: string;
   readonly environmentId?: EnvironmentId;

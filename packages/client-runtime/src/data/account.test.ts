@@ -578,7 +578,7 @@ describe("readDetail", () => {
   );
 });
 
-it.live("a deleted project disappears after access renewal", () =>
+it.live("a deleted project HQ still places is drawn gone after access renewal", () =>
   Effect.gen(function* () {
     const store = makeAccountStore(AtomRegistry.make());
     let deleted = false;
@@ -627,7 +627,7 @@ it.live("a deleted project disappears after access renewal", () =>
             .filter(({ id }) => projectGone.derive(read, { orgId: "org", projectId: id }))
             .map(({ id }) => id),
         ),
-      }).map((row) => row.project.name);
+      }).map((row) => `${row.project.name}${row.projectGone === true ? " (gone)" : ""}`);
     };
     try {
       yield* until(
@@ -648,7 +648,7 @@ it.live("a deleted project disappears after access renewal", () =>
         () => projectGone.derive(readsOfState(store.state()), { orgId: "org", projectId: "Ada" }),
         "Ada's deletion after renewal",
       );
-      expect(menu()).toEqual(["Bea"]);
+      expect(menu()).toEqual(["Ada (gone)", "Bea"]);
       expect(fixture.requests.filter(({ path }) => path === "/project/Ada")).toHaveLength(2);
       expect(fixture.opens()).toBe(1);
     } finally {

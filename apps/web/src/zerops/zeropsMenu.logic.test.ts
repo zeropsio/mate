@@ -40,7 +40,7 @@ describe("menuRows", () => {
       expected: ["ada"],
     },
     {
-      name: "a project proven deleted is drawn no more, placed or not",
+      name: "a project proven deleted that nothing places is drawn no more",
       placed: [],
       candidates: [row("ada"), row("bea")],
       gone: ["bea"],

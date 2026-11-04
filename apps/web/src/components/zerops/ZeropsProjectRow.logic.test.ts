@@ -110,6 +110,24 @@ describe("a Mate the platform restarts", () => {
   });
 });
 
+describe("a Mate whose project is gone on Zerops while HQ still holds it", () => {
+  const GONE: ZeropsRowCandidate = {
+    key: "p-gone",
+    project: { id: "p-gone", name: "Shop - Zoe", status: "UNKNOWN" },
+    group: "unavailable",
+    presence: "known",
+    projectGone: true,
+  };
+
+  it("reads as gone on Zerops, HQ still holding it, and offers nothing", () => {
+    expect(deriveZeropsRowPresentation(input(GONE, undefined))).toEqual({
+      status: { label: "Gone", tone: "off" },
+      detail: "Its project is gone on Zerops. HQ still holds this Mate.",
+    });
+    expect(deriveZeropsRowAction(input(GONE, undefined))).toEqual({ kind: "none" });
+  });
+});
+
 describe("a project the platform failed to create", () => {
   const FAILED_CREATION: ZeropsRowCandidate = {
     key: "p-new",
