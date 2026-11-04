@@ -3,22 +3,23 @@ import type { OrchestrationThreadActivity } from "@t3tools/contracts";
 import type { ZeropsEnvChange, ZeropsOperation } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
+import { askWhereWords } from "../../ask/ask.logic";
+
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "./vaultFixture";
 import {
   type VaultAsk,
   engineVaultAskFor,
   openVaultAsk,
-  vaultAskFace,
   vaultAskOf,
-  vaultAskLine,
   vaultAskLooksLikeZeropsSignIn,
-  vaultAskNote,
   vaultAskRestartWords,
   vaultAskResult,
+  vaultAskRowHolds,
+  vaultAskView,
   vaultAskWarning,
-  vaultAskReach,
   vaultAskState,
   vaultAskWrite,
+  type VaultAskSource,
 } from "./vaultRequest.logic";
 
 const MINUTE = 60_000;
@@ -267,22 +268,7 @@ describe("vaultAskWrite — whose word makes it secret", () => {
   );
 });
 
-describe("vaultAskReach — who can read it, in our words", () => {
-  it.each([
-    {
-      name: "Shared reaches every app",
-      ask: { key: "API_KEY", scope: { kind: "shared" } as const },
-      want: "Every app in this project can read it, Fen included. Never paste your own password or Zerops token.",
-    },
-    {
-      name: "an app's own reaches that app",
-      ask: { key: "API_KEY", scope: { kind: "service", hostname: "appdev" } as const },
-      want: "appdev reads it, and Fen can reach it. Never paste your own password or Zerops token.",
-    },
-  ])("$name", ({ ask, want }) => {
-    expect(vaultAskReach(ask, "Fen")).toBe(want);
-  });
-
+describe("vaultAskLooksLikeZeropsSignIn — the card warns before a Zerops sign-in is given", () => {
   // Milo, 2026-10-10: "MATE_PROBE_TOKEN looks like a Zerops sign-in" fired on the MATE prefix.
   it.each([
     ["ZEROPS_TOKEN", true],
@@ -301,21 +287,6 @@ describe("vaultAskReach — who can read it, in our words", () => {
     ["ESTIMATE_URL", false],
   ] as const)("%s looks like a Zerops sign-in: %s", (key, want) => {
     expect(vaultAskLooksLikeZeropsSignIn(key)).toBe(want);
-  });
-});
-
-describe("vaultAskFace — what the card draws", () => {
-  it.each([
-    { state: "open", said: null, want: "open" },
-    { state: "open", said: "not-now", want: "not-now" },
-    { state: "open", said: "put", want: "put" },
-    { state: "filled", said: "put", want: "put" },
-    { state: "filled", said: null, want: "filled" },
-    { state: "filled", said: "not-now", want: "filled" },
-    { state: "reading", said: null, want: "reading" },
-    { state: "unplaced", said: null, want: "unplaced" },
-  ] as const)("$state, said $said → $want", ({ state, said, want }) => {
-    expect(vaultAskFace(state, said)).toBe(want);
   });
 });
 
@@ -392,57 +363,6 @@ describe("the ask in the composer drawer, in words", () => {
     reason: "for checkout",
     askedAt: ago(5 * MINUTE),
   };
-  it.each([
-    {
-      name: "labelled, with its why",
-      ask: stripe,
-      want: "Milo needs your Stripe secret key, for checkout",
-    },
-    {
-      name: "a why written as a sentence",
-      ask: { ...stripe, reason: "For the questionnaire API." },
-      want: "Milo needs your Stripe secret key, for the questionnaire API",
-    },
-    {
-      name: "from a zcp that names no label",
-      ask: { ...stripe, label: null, reason: null },
-      want: "Milo needs your STRIPE_SECRET_KEY",
-    },
-  ])("one line says what Milo needs and why: $name", ({ ask, want }) => {
-    expect(vaultAskLine(ask, "Milo")).toBe(want);
-  });
-
-  it.each([
-    {
-      state: "open",
-      ask: stripe,
-      want: "Goes to this project's vault for every app, never into this chat.",
-    },
-    {
-      state: "open",
-      ask: { ...stripe, scope: { kind: "service", hostname: "apidev" } as const },
-      want: "Goes to apidev's vault, never into this chat.",
-    },
-    {
-      state: "reading",
-      ask: stripe,
-      want: "Goes to this project's vault for every app, never into this chat.",
-    },
-    { state: "filled", ask: stripe, want: "You added it in the Vault." },
-    {
-      state: "reserved",
-      ask: { ...stripe, key: "MATE_PROBE_TOKEN" },
-      want: "MATE_PROBE_TOKEN is a name Milo keeps for itself, so the vault won't list it.",
-    },
-    {
-      state: "unplaced",
-      ask: { ...stripe, scope: { kind: "service", hostname: "gone" } as const },
-      want: "gone isn't in this project any more.",
-    },
-  ] as const)("one plain sentence says what happens: $state", ({ state, ask, want }) => {
-    expect(vaultAskNote(ask, state, "Milo")).toBe(want);
-  });
-
   it.each([
     ["ZEROPS_TOKEN", "Looks like a Zerops sign-in. Milo never needs yours."],
     ["STRIPE_SECRET_KEY", null],
@@ -538,5 +458,215 @@ describe("openVaultAsk — the ask the composer's drawer holds", () => {
       reason: "Stripe charges cards.",
       askedAt: ago(3 * MINUTE),
     });
+  });
+});
+
+describe("vaultAskView — the ask's card, read off the engine's record and the vault", () => {
+  const ana = { kind: "person", subject: "user-ana" } as const;
+  const asked = (over: Partial<VaultAsk> = {}): VaultAsk => ({
+    key: "NEW_STRIPE_KEY",
+    label: "Stripe secret key",
+    scope: { kind: "shared" },
+    sensitive: true,
+    reason: "for checkout",
+    askedAt: ago(5 * MINUTE),
+    ...over,
+  });
+  const unread: VaultView = { status: "unread", complete: false, scopes: [], notLive: [] };
+  const source = (over: Partial<VaultAskSource> & { readonly view?: VaultView } = {}) => {
+    const { view = VAULT_FIXTURE, ...rest } = over;
+    const ask = rest.ask ?? asked();
+    return {
+      ask,
+      mateName: "Fen",
+      record: { state: "open", answer: null },
+      vault: vaultAskState(view, ask),
+      pending: null,
+      refusal: null,
+      nameOf: (subject: string) => (subject === "user-ana" ? "Aleš" : undefined),
+      clock: () => "15:04",
+      ...rest,
+    } satisfies VaultAskSource;
+  };
+  const answered = (state: "saved" | "declined" | "closed", by = ana) =>
+    ({ state, answer: state === "closed" ? null : { by, at: VAULT_FIXTURE_NOW } }) as const;
+
+  it.each([
+    {
+      name: "asked: the field, Save to vault and Not now",
+      source: source(),
+      want: { state: "waiting", body: "field", main: "Save to vault" },
+    },
+    {
+      name: "the vault not read yet: the field waits for it",
+      source: source({ view: unread }),
+      want: { state: "waiting", body: "field-waiting", main: "Save to vault" },
+    },
+    {
+      name: "given in the Vault since it was asked: offered as the answer",
+      source: source({ ask: asked({ key: "STRIPE_SECRET_KEY" }) }),
+      want: { state: "waiting", body: "given", main: "Use that one" },
+    },
+    {
+      name: "a save under way",
+      source: source({ pending: "save" }),
+      want: { state: "working", body: "field", main: "Save to vault" },
+    },
+    {
+      name: "a refused save: the field kept to try again",
+      source: source({ refusal: "The key exists already." }),
+      want: { state: "failed", body: "field", main: "Save to vault" },
+    },
+    {
+      name: "a name the Mate keeps for itself: nothing to save, Not now only",
+      source: source({ ask: asked({ key: "MATE_PROBE_TOKEN" }) }),
+      want: { state: "failed", body: "none", main: null },
+    },
+    {
+      name: "a service no longer in the project: nothing to save",
+      source: source({ ask: asked({ scope: { kind: "service", hostname: "gone" } }) }),
+      want: { state: "failed", body: "none", main: null },
+    },
+    {
+      name: "saved: the result, with nothing left to press",
+      source: source({ record: answered("saved") }),
+      want: { state: "done", body: "none", main: null },
+    },
+    {
+      name: "Not now on the record",
+      source: source({ record: answered("declined") }),
+      want: { state: "notNow", body: "none", main: null },
+    },
+    {
+      name: "closed without an answer",
+      source: source({ record: answered("closed") }),
+      want: { state: "replaced", body: "none", main: null },
+    },
+    {
+      name: "the record outranks a press still under way here",
+      source: source({ record: answered("saved"), pending: "save" }),
+      want: { state: "done", body: "none", main: null },
+    },
+  ])("$name", ({ source: given, want }) => {
+    const view = vaultAskView(given);
+    expect({
+      state: view.state.kind,
+      body:
+        view.body.kind === "field" ? (view.body.ready ? "field" : "field-waiting") : view.body.kind,
+      main: view.main?.label ?? null,
+    }).toEqual(want);
+  });
+
+  it.each([
+    {
+      name: "every app",
+      ask: asked(),
+      want: { where: "This Mate · every app", title: "Add NEW_STRIPE_KEY to Fen's vault" },
+    },
+    {
+      name: "an app's own",
+      ask: asked({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" } }),
+      want: { where: "This Mate · appdev", title: "Add MAIL_FROM to appdev's vault" },
+    },
+  ])("the chip and the title name where the value goes: $name", ({ ask, want }) => {
+    const view = vaultAskView(source({ ask }));
+    expect({ where: askWhereWords(view.where), title: view.title }).toEqual(want);
+  });
+
+  it.each([
+    {
+      name: "saved hidden, by a person",
+      source: source({ ask: asked({ key: "STRIPE_SECRET_KEY" }), record: answered("saved") }),
+      want: {
+        words: "In Fen's vault · hidden · set by Aleš",
+        told: "Fen hears: STRIPE_SECRET_KEY is saved for every app",
+      },
+    },
+    {
+      name: "saved to an app's own, the vault not read",
+      source: source({
+        ask: asked({ key: "MAIL_FROM", scope: { kind: "service", hostname: "appdev" } }),
+        record: answered("saved"),
+        view: unread,
+      }),
+      want: {
+        words: "In appdev's vault · set by Aleš",
+        told: "Fen hears: MAIL_FROM is saved for appdev",
+      },
+    },
+    {
+      name: "saved by nobody the record names",
+      source: source({
+        ask: asked({ key: "STRIPE_SECRET_KEY" }),
+        record: answered("saved", { kind: "engine" } as never),
+      }),
+      want: {
+        words: "In Fen's vault · hidden",
+        told: "Fen hears: STRIPE_SECRET_KEY is saved for every app",
+      },
+    },
+  ])("done says the real result and who: $name", ({ source: given, want }) => {
+    const { state } = vaultAskView(given);
+    expect(state.kind === "done" ? { words: state.words, told: state.told } : null).toEqual(want);
+  });
+
+  it.each([
+    {
+      name: "Not now, who and when",
+      source: source({ record: answered("declined") }),
+      want: "Not now · Aleš, 15:04",
+    },
+    {
+      name: "closed some other way",
+      source: source({ record: answered("closed") }),
+      want: "Fen isn't waiting on this any more.",
+    },
+    {
+      name: "a refusal, in Zerops' words",
+      source: source({ refusal: "The key exists already." }),
+      want: "The key exists already.",
+    },
+    {
+      name: "a name the Mate keeps",
+      source: source({ ask: asked({ key: "MATE_PROBE_TOKEN" }) }),
+      want: "MATE_PROBE_TOKEN is a name Fen keeps for itself, so the vault won't list it.",
+    },
+    {
+      name: "a service gone",
+      source: source({ ask: asked({ scope: { kind: "service", hostname: "gone" } }) }),
+      want: "gone isn't in this project any more.",
+    },
+  ])("a settled or failed card says it in the source's words: $name", ({ source: given, want }) => {
+    const { state } = vaultAskView(given);
+    expect("words" in state ? state.words : null).toBe(want);
+  });
+
+  it("the value given since it was asked says it is there, hidden as the vault keeps it", () => {
+    const { body } = vaultAskView(source({ ask: asked({ key: "STRIPE_SECRET_KEY" }) }));
+    expect(body).toEqual({ kind: "given", words: "Added in the Vault since Fen asked · hidden" });
+  });
+});
+
+describe("vaultAskRowHolds — Show in conversation finds the ask's card", () => {
+  const rows = [
+    { kind: "vault-request", operation: sharedAsk("STRIPE_SECRET_KEY") },
+    { kind: "message" },
+    { kind: "vault-request", operation: sharedAsk("OTHER_KEY", { anchorAt: ago(20 * MINUTE) }) },
+    {
+      kind: "vault-request",
+      operation: sharedAsk("STRIPE_SECRET_KEY", { anchorAt: ago(10 * MINUTE) }),
+    },
+  ];
+  it.each([
+    { name: "the call that asked before the record", recordedAgo: 30, want: 0 },
+    { name: "the latest call when the key was asked twice", recordedAgo: 9, want: 3 },
+    { name: "none recorded before any call", recordedAgo: 90, want: -1 },
+  ])("$name", ({ recordedAgo, want }) => {
+    const holds = vaultAskRowHolds({
+      key: "STRIPE_SECRET_KEY",
+      scope: { kind: "shared" },
+      askedAt: ago(recordedAgo * MINUTE),
+    });
+    expect(rows.findLastIndex(holds)).toBe(want);
   });
 });

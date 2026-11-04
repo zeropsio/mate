@@ -235,7 +235,8 @@ import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer"
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
-import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
+import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
+import { useAskReveal } from "../ask/askReveal";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -1389,6 +1390,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
     personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
   }, []);
+  // "Show in conversation" on an ask docked above the composer: the person's way to its card.
+  useAskReveal(rows, (index) => {
+    onManualNavigation();
+    notePersonSession({ type: "input", at: performance.now() });
+    return listRef.current?.scrollToIndex({ index, animated: !reducedMotion(), viewOffset: 24 });
+  });
   // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
   const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
   const onPersonInputRef = useRef(onPersonInput);

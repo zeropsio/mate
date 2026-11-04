@@ -530,16 +530,22 @@
       "id": "zerops-vault-request",
       "title": "Zerops vault request card",
       "components": [
-        "apps/web/src/components/zerops/vault/VaultRequestCard.tsx",
-        "apps/web/src/components/zerops/vault/VaultRequestCardContainer.tsx",
-        "apps/web/src/components/zerops/vault/ComposerVaultAsk.tsx",
-        "apps/web/src/components/zerops/vault/ComposerVaultAskContainer.tsx",
-        "apps/web/src/components/zerops/vault/vaultRequest.logic.ts"
+        "apps/web/src/components/zerops/vault/VaultAsk.tsx",
+        "apps/web/src/components/zerops/vault/VaultAskContainer.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.ts",
+        "apps/web/src/components/ask/AskCard.tsx",
+        "apps/web/src/components/ask/AskSecret.tsx",
+        "apps/web/src/components/ask/ask.logic.ts",
+        "apps/web/src/components/ask/askReveal.ts"
       ],
       "entryPoints": [
         {
           "kind": "inline",
-          "value": "Conversation, after a run whose Mate called zerops_env action=request"
+          "value": "Conversation, where a Mate called zerops_env action=request"
+        },
+        {
+          "kind": "inline",
+          "value": "Above the composer, while the Mate's turn has stopped on an open ask"
         }
       ],
       "clients": {
@@ -555,20 +561,26 @@
       "contracts": ["@t3tools/client-runtime/data", "@t3tools/client-runtime/zerops/model"],
       "reverseStates": [
         {
-          "action": "Put in vault",
-          "reverse": "none: a sensitive value is never read back; the Vault tab removes or replaces it."
+          "action": "Save to vault",
+          "reverse": "none: a hidden value is never read back; the Vault tab removes or replaces it."
         },
         {
           "action": "Not now",
-          "reverse": "none: kept in memory only; a reload draws the request open until the key is in the vault."
+          "reverse": "none: the engine's record keeps who said it and when; the Mate can ask again."
+        },
+        {
+          "action": "Show in conversation",
+          "reverse": "none: it only scrolls the conversation to the ask's card."
         }
       ],
       "docs": {
         "none": "No docs/user page documents the vault request yet."
       },
       "tests": [
-        "apps/web/src/components/zerops/vault/VaultRequestCard.test.tsx",
-        "apps/web/src/components/zerops/vault/vaultRequest.logic.test.ts"
+        "apps/web/src/components/zerops/vault/VaultAsk.test.tsx",
+        "apps/web/src/components/zerops/vault/vaultRequest.logic.test.ts",
+        "apps/web/src/components/ask/ask.logic.test.ts",
+        "apps/web/src/components/ask/askReveal.test.tsx"
       ],
       "captures": []
     },
