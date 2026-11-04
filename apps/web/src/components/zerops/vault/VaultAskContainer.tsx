@@ -63,7 +63,7 @@ interface RecordedAsk {
 /**
  * The card where the Mate asked, for an operation that asks for a value. Without the engine's
  * record of it (a conversation from before the engine recorded asks), the operation reads as it
- * did: `fallback`.
+ * did: `fallback`. Until the conversation is read, neither shows.
  */
 export function VaultRequestCardContainer({
   operation,
@@ -77,15 +77,33 @@ export function VaultRequestCardContainer({
   readonly fallback: ReactNode;
 }) {
   const ask = useMemo(() => vaultAskOf(operation), [operation]);
+  // `undefined` until the conversation is read: whether the engine holds a record is not known.
   const record = useThreadDetail(
     threadRef,
     useCallback(
       (detail: { readonly activities?: unknown } | null) =>
-        ask === null ? null : engineVaultAskFor(activitiesOf(detail), ask),
+        detail === null
+          ? undefined
+          : ask === null
+            ? null
+            : engineVaultAskFor(activitiesOf(detail), ask),
       [ask],
     ),
   );
-  if (ask === null || record === null || environmentId === null || threadRef === null)
+  // Neither card is drawn before it is known which one stands: the operation's holds the room unseen.
+  if (record === undefined && threadRef !== null)
+    return fallback === null ? null : (
+      <div aria-hidden="true" className="invisible" inert>
+        {fallback}
+      </div>
+    );
+  if (
+    ask === null ||
+    record === null ||
+    record === undefined ||
+    environmentId === null ||
+    threadRef === null
+  )
     return fallback;
   return (
     <VaultAskHome
