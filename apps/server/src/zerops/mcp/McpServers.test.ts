@@ -346,6 +346,102 @@ describe("McpServers.update", () => {
   );
 });
 
+describe("McpServers — how a URL server signs in", () => {
+  const SECRET = ["app", "s3cret"].join("-");
+  const KEY = ["live", "k3y"].join("-");
+  const named = (list: McpServersList, name: string) =>
+    list.servers.find((server) => server.name === name);
+
+  it.effect("an API key is sent as its header to every agent", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["claudeAgent", "codex"] });
+      const list = yield* service.add({
+        name: "keyed" as McpServerAddInput["name"],
+        transport: { type: "http", url: "https://mcp.example.com/mcp" },
+        auth: { kind: "header", name: "Authorization", value: `Bearer ${KEY}` },
+      });
+      expect(named(list, "keyed")?.secretNames).toEqual(["Authorization"]);
+      expect(parseJson(rig.files.get(`${HOME}/.claude.json`)!).mcpServers).toMatchObject({
+        keyed: { headers: { Authorization: `Bearer ${KEY}` } },
+      });
+      expect(rig.files.get(`${HOME}/.codex/config.toml`)).toContain(
+        `Authorization = "Bearer ${KEY}"`,
+      );
+      expect(JSON.stringify(list)).not.toContain(KEY);
+    }),
+  );
+
+  it.effect(
+    "an SSE server is set up for the agents that speak it, and the others say they can't",
+    () =>
+      Effect.gen(function* () {
+        const { service } = yield* setup({ installed: ["claudeAgent", "codex"] });
+        const list = yield* service.add({
+          name: "events" as McpServerAddInput["name"],
+          transport: { type: "sse", url: "https://mcp.example.com/sse" },
+        });
+        const events = named(list, "events");
+        expect(events?.agents.map((agent) => agent.driver)).toEqual(["claudeAgent"]);
+        expect(events?.cannot).toEqual([
+          { driver: "codex", reason: "Codex can't use SSE servers." },
+        ]);
+      }),
+  );
+
+  it.effect("a server no installed agent can use is refused, saying why", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({ installed: ["codex"] });
+      const error = yield* Effect.flip(
+        service.add({
+          name: "events" as McpServerAddInput["name"],
+          transport: { type: "sse", url: "https://mcp.example.com/sse" },
+        }),
+      );
+      expect(error.detail).toBe("No agent here can use it. Codex can't use SSE servers.");
+    }),
+  );
+
+  it.effect(
+    "an own-app sign-in lists its client id and that a secret is stored, never the secret",
+    () =>
+      Effect.gen(function* () {
+        const { service } = yield* setup({ installed: ["opencode", "cursor"] });
+        const list = yield* service.add({
+          name: "app" as McpServerAddInput["name"],
+          transport: { type: "http", url: "https://mcp.example.com/mcp" },
+          auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: SECRET, scopes: ["read"] },
+        });
+        expect(named(list, "app")?.auth).toEqual({
+          kind: "oauth-app",
+          clientId: "mate-app",
+          scopes: ["read"],
+          secret: true,
+        });
+        expect(JSON.stringify(list)).not.toContain(SECRET);
+      }),
+  );
+
+  it.effect("changing a server to sign in with an API key drops its other sign-in", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["opencode"] });
+      yield* service.add({
+        name: "app" as McpServerAddInput["name"],
+        transport: { type: "http", url: "https://mcp.example.com/mcp" },
+        auth: { kind: "oauth", scopes: ["read"] },
+      });
+      const list = yield* service.update({
+        name: "app" as McpServerAddInput["name"],
+        values: {},
+        keep: [],
+        auth: { kind: "header", name: "X-Api-Key", value: KEY },
+      });
+      const entry = JSON.parse(rig.files.get(`${HOME}/.config/opencode/opencode.json`)!).mcp.app;
+      expect(entry).toMatchObject({ headers: { "X-Api-Key": KEY }, oauth: false });
+      expect(named(list, "app")?.auth).toEqual({ kind: "none" });
+    }),
+  );
+});
+
 describe("McpServers.add", () => {
   it.effect("writes the server for every installed agent and tells the running ones", () =>
     Effect.gen(function* () {

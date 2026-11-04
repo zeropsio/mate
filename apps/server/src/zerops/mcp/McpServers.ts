@@ -17,6 +17,7 @@ import {
   McpServerName,
   McpServersError,
   type McpServerAddInput,
+  type McpServerAuth,
   type McpServerFinishSignInInput,
   type McpServerSignIn,
   type McpServerSignInInput,
@@ -57,6 +58,7 @@ import {
   makeMcpAgentStores,
   McpConfigEditError,
   McpConfigParseError,
+  McpConfigUnsupported,
   type McpAgentPaths,
   type McpAgentStore,
   type McpConfigServer,
@@ -91,6 +93,7 @@ export function describeMcpConfigRefusal(driver: string, cause: unknown): string
   if (cause instanceof McpConfigParseError) {
     return `${agent}'s config at ${cause.path} isn't valid (${cause.detail}), so Mate left it as it is.`;
   }
+  if (cause instanceof McpConfigUnsupported) return cause.message;
   if (cause instanceof McpConfigEditError) {
     return `${agent}'s config at ${cause.path} is written in a way Mate can't change safely (${cause.reason}); change it there by hand.`;
   }
@@ -226,6 +229,7 @@ export function mergeMcpServers(
       first: McpConfigServer;
       scopes: Set<string>;
       secretNames: Set<string>;
+      auth: McpConfigServer["auth"];
       agents: McpServerAgent[];
     }
   >();
@@ -252,24 +256,36 @@ export function mergeMcpServers(
           first: server,
           scopes: new Set([server.scope]),
           secretNames: new Set(server.secretNames),
+          auth: server.auth,
           agents: [agent],
         });
       } else {
         found.scopes.add(server.scope);
+        found.auth ??= server.auth;
         for (const secret of server.secretNames) found.secretNames.add(secret);
         found.agents.push(agent);
       }
     }
   }
   return [...byName.values()]
-    .map(({ first, scopes, secretNames, agents: serverAgents }) => ({
-      name: McpServerName.make(first.name),
-      transport: first.transport,
-      managed: first.name === MANAGED_MCP_SERVER,
-      scope: scopes.has("user") ? ("user" as const) : ("project" as const),
-      ...(secretNames.size > 0 ? { secretNames: [...secretNames].toSorted() } : {}),
-      agents: serverAgents,
-    }))
+    .map(({ first, scopes, secretNames, auth, agents: serverAgents }) => {
+      // An installed agent without it, that couldn't take it as it is set up, says why.
+      const cannot = agents.flatMap(({ store }) => {
+        if (serverAgents.some((agent) => agent.driver === store.driver)) return [];
+        const reason = store.cannot({ transport: first.transport, auth });
+        return reason === null ? [] : [{ driver: store.driver, reason }];
+      });
+      return {
+        name: McpServerName.make(first.name),
+        transport: first.transport,
+        managed: first.name === MANAGED_MCP_SERVER,
+        scope: scopes.has("user") ? ("user" as const) : ("project" as const),
+        ...(secretNames.size > 0 ? { secretNames: [...secretNames].toSorted() } : {}),
+        ...(auth !== undefined ? { auth } : {}),
+        ...(cannot.length > 0 ? { cannot } : {}),
+        agents: serverAgents,
+      };
+    })
     .toSorted((a, b) =>
       a.managed !== b.managed ? (a.managed ? -1 : 1) : a.name.localeCompare(b.name),
     );
@@ -466,7 +482,20 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
         : {
             name: input.name,
             transport: input.transport,
-            ...(input.headers ? { headers: input.headers } : {}),
+            // An API key is one more header; the rest of a sign-in is each agent's to write.
+            ...(input.headers || input.auth?.kind === "header"
+              ? {
+                  headers: {
+                    ...input.headers,
+                    ...(input.auth?.kind === "header"
+                      ? { [input.auth.name]: input.auth.value }
+                      : {}),
+                  },
+                }
+              : {}),
+            ...(input.auth !== undefined && input.auth.kind !== "header"
+              ? { auth: input.auth }
+              : {}),
           };
     return change({
       operation,
@@ -481,6 +510,10 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           if (loaded.stores.length === 0) {
             return yield* fail(operation, "No agent is installed here to add the server to.");
           }
+          const reasons = loaded.stores.flatMap((store) => store.cannot(server) ?? []);
+          if (reasons.length === loaded.stores.length) {
+            return yield* fail(operation, `No agent here can use it. ${reasons.join(" ")}`);
+          }
           // A later attempt finds the server its first one already wrote somewhere.
           if (index > 0) return;
           const agents = yield* readAgents(loaded);
@@ -488,7 +521,9 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
             return yield* fail(operation, `A server named ${input.name} is already set up.`);
           }
         }),
-      edit: (store, loaded) => store.add(loaded.files, server),
+      // An agent that can't use it is left out, and the list says why.
+      edit: (store, loaded) =>
+        store.cannot(server) === null ? store.add(loaded.files, server) : [],
       nudge: (store) => ({ kind: "added", name: server.name, entry: store.entry(server) }),
     });
   };
@@ -650,17 +685,34 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
         if (server === undefined || server.scope !== "user") return [];
         const stored = store.readSecrets(loaded.files, input.name);
         const values: Record<string, string> = { ...input.values };
+        // An API key is a header, and a server reached by one signs in no other way.
+        if (input.auth?.kind === "header") values[input.auth.name] = input.auth.value;
         for (const name of input.keep) {
           const kept = stored[name];
           if (kept !== undefined && !(name in values)) values[name] = kept;
         }
-        const edits = store.setSecrets(loaded.files, input.name, values);
+        const secrets = store.setSecrets(loaded.files, input.name, values);
+        const auth: McpServerAuth | undefined =
+          input.auth?.kind === "header" ? { kind: "none" } : input.auth;
+        if (auth !== undefined) {
+          const reason = store.cannot({ transport: server.transport, auth });
+          if (reason !== null) throw new McpConfigUnsupported(reason);
+        }
+        // The sign-in is changed over the secrets' change, in the same files.
+        const afterSecrets = new Map(loaded.files);
+        for (const edit of secrets) afterSecrets.set(edit.path, edit.text);
+        const authEdits = auth === undefined ? [] : store.setAuth(afterSecrets, input.name, auth);
+        const edits = [
+          ...secrets.filter((edit) => !authEdits.some((later) => later.path === edit.path)),
+          ...authEdits,
+        ];
         changed.set(
           store.driver,
           store.entry({
             name: input.name,
             transport: server.transport,
             ...(server.transport.type === "stdio" ? { env: values } : { headers: values }),
+            ...(auth !== undefined ? { auth } : {}),
           }),
         );
         return edits;

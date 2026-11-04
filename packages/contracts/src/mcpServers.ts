@@ -32,8 +32,71 @@ export const McpServerTransport = Schema.Union([
     type: Schema.Literal("http"),
     url: TrimmedNonEmptyString,
   }),
+  /** The older server-sent-events transport, which some agents still speak and others don't. */
+  Schema.Struct({
+    type: Schema.Literal("sse"),
+    url: TrimmedNonEmptyString,
+  }),
 ]);
 export type McpServerTransport = typeof McpServerTransport.Type;
+
+/**
+ * How a URL server signs in. `header`: an API key sent as one request header;
+ * `oauth`: the agent signs in when the server asks (dynamic registration),
+ * with optional scopes; `oauth-app`: sign in through the person's own
+ * registered app. Secret values are written, never read back.
+ */
+export const McpServerAuth = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("none") }),
+  Schema.Struct({
+    kind: Schema.Literal("header"),
+    name: TrimmedNonEmptyString,
+    value: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth"),
+    scopes: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth-app"),
+    clientId: TrimmedNonEmptyString,
+    clientSecret: Schema.optionalKey(TrimmedNonEmptyString),
+    scopes: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+  }),
+]);
+export type McpServerAuth = typeof McpServerAuth.Type;
+
+/**
+ * The redirect address a person registers in their own OAuth app, per agent
+ * that signs in through one from Mate: Claude Code listens on a fixed port;
+ * OpenCode is told this address and finishes from the code it carries.
+ */
+export const MCP_APP_REDIRECTS: Readonly<
+  Record<string, { readonly port: number; readonly url: string }>
+> = {
+  claudeAgent: { port: 33418, url: "http://localhost:33418/callback" },
+  opencode: { port: 33419, url: "http://127.0.0.1:33419/mcp/oauth/callback" },
+};
+
+/**
+ * A URL server's sign-in as the agents' configs hold it, without its secret:
+ * the app's client id and scopes, and whether a client secret is stored.
+ */
+export const McpServerAuthView = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("oauth"),
+    scopes: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth-app"),
+    clientId: Schema.String,
+    scopes: Schema.Array(Schema.String),
+    secret: Schema.Boolean,
+  }),
+  /** Told not to sign in (OpenCode's `oauth: false`). */
+  Schema.Struct({ kind: Schema.Literal("none") }),
+]);
+export type McpServerAuthView = typeof McpServerAuthView.Type;
 
 /**
  * How a server stands for one agent. `configured`: the agent has it but
@@ -86,6 +149,12 @@ export const McpServerEntry = Schema.Struct({
    * (a URL), across the agents: never their values.
    */
   secretNames: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** How it signs in, as the agents' configs say: never a secret. */
+  auth: Schema.optionalKey(McpServerAuthView),
+  /** The installed agents that can't use it as it is set up, each with why. */
+  cannot: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ driver: ProviderDriverKind, reason: Schema.String })),
+  ),
   agents: Schema.Array(McpServerAgent),
 });
 export type McpServerEntry = typeof McpServerEntry.Type;
@@ -110,6 +179,8 @@ export const McpServerAddInput = Schema.Struct({
   env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** A URL's request headers (bearer tokens); http only. */
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** How a URL server signs in; absent is the agents' own default. */
+  auth: Schema.optionalKey(McpServerAuth),
   /** The conversation whose running agent the answering list asks for live state. */
   threadId: Schema.optionalKey(ThreadId),
 });
@@ -130,6 +201,12 @@ export const McpServerUpdateInput = Schema.Struct({
   name: McpServerName,
   values: Schema.Record(Schema.String, Schema.String),
   keep: Schema.Array(Schema.String),
+  /**
+   * A URL server's sign-in, changed: `none`, `oauth` or `oauth-app`; an
+   * `oauth-app` without a client secret keeps the one stored. An API key is a
+   * header, changed through `values`. Absent leaves the sign-in as it is.
+   */
+  auth: Schema.optionalKey(McpServerAuth),
   threadId: Schema.optionalKey(ThreadId),
 });
 export type McpServerUpdateInput = typeof McpServerUpdateInput.Type;
