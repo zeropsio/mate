@@ -4,6 +4,7 @@ import { AssetImage } from "~/assets/AssetImage";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from "lucide-react";
 import { Button } from "../ui/button";
+import { ExpressMark } from "../express/ExpressMark";
 import { Dialog, DialogMediaPopup } from "../ui/dialog";
 import type { ExpandedImagePreview } from "./ExpandedImagePreview";
 import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
@@ -11,11 +12,14 @@ import { ZoomableImage, type ZoomableImageHandle } from "./ZoomableImage";
 interface ExpandedImageDialogProps {
   preview: ExpandedImagePreview;
   onClose: () => void;
+  /** Opens the original in the Express tab to edit; absent where Express is not available. */
+  onEditInExpress?: ((picture: Blob, name: string) => void) | undefined;
 }
 
 export const ExpandedImageDialog = memo(function ExpandedImageDialog({
   preview,
   onClose,
+  onEditInExpress,
 }: ExpandedImageDialogProps) {
   const [imageOffset, setImageOffset] = useState(0);
   const zoomableImageRef = useRef<ZoomableImageHandle>(null);
@@ -133,6 +137,25 @@ export const ExpandedImageDialog = memo(function ExpandedImageDialog({
               ) : null}
               {preview.images.length > 1 ? ` (${index + 1}/${preview.images.length})` : ""}
             </p>
+            {onEditInExpress !== undefined && original.read.kind === "ready" ? (
+              <div className="mt-3 flex justify-center">
+                <Button
+                  onClick={() => {
+                    if (original.read.kind !== "ready") return;
+                    onEditInExpress(
+                      original.read.blob,
+                      original.read.occurrence?.name ?? item.name,
+                    );
+                    onClose();
+                  }}
+                  size="sm"
+                  variant="secondary"
+                >
+                  <ExpressMark className="size-4 rounded-sm" />
+                  Edit in Adobe Express
+                </Button>
+              </div>
+            ) : null}
           </div>
           {preview.images.length > 1 && (
             <Button

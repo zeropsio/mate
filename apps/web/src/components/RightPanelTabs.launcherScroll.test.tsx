@@ -26,6 +26,7 @@ const ALL_AVAILABLE = {
   persona: "hidden",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 let host: HTMLDivElement;

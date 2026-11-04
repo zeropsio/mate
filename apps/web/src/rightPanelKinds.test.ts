@@ -211,6 +211,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -238,6 +239,7 @@ describe("right panel kinds", () => {
         vault: "unavailable",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -259,6 +261,7 @@ describe("right panel kinds", () => {
         vault: "unknown",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -280,6 +283,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
   ] as const;

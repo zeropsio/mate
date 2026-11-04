@@ -43,6 +43,7 @@ const ALL_AVAILABLE = {
   persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 function renderLauncher(
@@ -111,6 +112,7 @@ describe("RightPanelTabs launcher", () => {
       persona: "unavailable",
       vault: "unavailable",
       overview: "hidden",
+      express: "hidden",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");

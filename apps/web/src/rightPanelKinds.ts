@@ -10,6 +10,7 @@
  */
 import type { CrewStatus } from "@t3tools/contracts";
 
+import { expressClientId } from "./components/express/expressSdk";
 import type { RightPanelSurface } from "./rightPanelStore";
 
 /**
@@ -33,6 +34,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "mcp",
   "persona",
+  "express",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -264,6 +266,18 @@ export const RIGHT_PANEL_KIND_META = {
     page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
     availability: (input) =>
       input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
+  },
+  express: {
+    launcher: {
+      label: "Express",
+      description: "Design pictures with Adobe Express.",
+      shortcut: "E",
+      unavailableHint: "Not set up in this build.",
+    },
+    // Its own head carries Adobe's mark, and its editor fills the panel with no head over it.
+    page: null,
+    // Adobe serves the editor only for a build that carries its API key.
+    availability: () => (expressClientId === null ? "hidden" : "available"),
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
