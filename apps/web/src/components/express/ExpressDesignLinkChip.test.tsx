@@ -13,7 +13,8 @@ import { useOpenExpressDesign } from "./useOpenExpressDesign";
 
 const THREAD = scopeThreadRef(EnvironmentId.make("mate"), ThreadId.make("thread"));
 const DESIGN =
-  "https://new.express.adobe.com/id/urn:aaid:sc:DEU1:9c5077dd-6604-4936-97c3-1bbc4c5e0e05";
+  // A design id built from parts: never one from a real Adobe account.
+  `https://new.express.adobe.com/id/${["urn", "aaid", "sc", "XX1", "00000000-0000-4000-8000-000000000001"].join(":")}`;
 
 function Answer({ enabled }: { readonly enabled: boolean }) {
   const resolve = useOpenExpressDesign(THREAD, enabled);

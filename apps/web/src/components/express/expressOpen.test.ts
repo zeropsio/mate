@@ -2,12 +2,15 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { expressDesignId } from "./expressOpen";
 
+// A design id built from parts: never one from a real Adobe account.
+const DESIGN_ID = ["urn", "aaid", "sc", "XX1", "00000000-0000-4000-8000-000000000001"].join(":");
+
 describe("expressDesignId", () => {
   it.each([
     {
       title: "reads the design an Express edit link names",
-      href: "https://new.express.adobe.com/id/urn:aaid:sc:DEU1:9c5077dd-6604-4936-97c3-1bbc4c5e0e05?referrer=claude",
-      id: "urn:aaid:sc:DEU1:9c5077dd-6604-4936-97c3-1bbc4c5e0e05",
+      href: `https://new.express.adobe.com/id/${DESIGN_ID}?referrer=claude`,
+      id: DESIGN_ID,
     },
     {
       title: "reads an encoded design address",
