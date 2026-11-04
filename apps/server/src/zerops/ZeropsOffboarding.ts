@@ -3,9 +3,12 @@
  * of every login they signed in here (X4), and so is everyone but the new
  * owner once the project changes hands.
  *
- * Every 30 seconds it reads who signed each login in (`ZeropsProjectSigners`,
- * an agent's own login and any beyond the two) and asks, for each signer, the
- * answer that keeps a session open (`hasProjectAccess`, X3). A login whose
+ * Whenever whom the access list opens for changes, and whenever a sign-in is
+ * recorded, it reads who signed each login in (`ZeropsProjectSigners`, an
+ * agent's own login and any beyond the two) and asks, for each signer, the
+ * answer that keeps a session open (`hasProjectAccess`, X3). An access list
+ * that only aged changes nobody's answer: past its expiry the answer cannot
+ * say, and signs nobody out. A login whose
  * signer it says no for is signed out by the one sign-out a person can ask for
  * (`ZeropsSignOut`): its login session cancelled, its live provider sessions
  * stopped, its CLI logged out, its credential gone, an agent's flag cleared.
@@ -13,7 +16,7 @@
  * room out — and a sign-out that stumbles is logged, the rest go on.
  *
  * The same pass watches whose the project is: the owners its own row names
- * (`AccessList.owners`, its `OWNER` override). When they change to someone,
+ * (`AccessList.owners`, its `OWNER` override), which move the access list too. When they change to someone,
  * every login whose signer is not among the new owners is signed out the same
  * way, whatever access its signer keeps through their organization role: the
  * old owner's login never runs the new owner's agent. The first owners a pass
@@ -27,14 +30,13 @@ import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
-import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { KNOWN_AGENT_IDS } from "./ZeropsAgentAuth.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { type ProjectSigners, ZeropsProjectSigners } from "./ZeropsProjectSigners.ts";
 import { type SignOutTarget, ZeropsSignOut } from "./ZeropsSignOut.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 
 export class ZeropsOffboarding extends Context.Service<
   ZeropsOffboarding,
@@ -100,9 +102,9 @@ export const make = (options: {
   });
 
 /**
- * One pass every 30 seconds, while this is a Zerops project, and one at once whenever the access
- * list changes whom it opens for or whose the project is (`ZeropsMateAccessList`): the Mate's own
- * recompute, a Zerops websocket frame, or HQ's relay.
+ * While this is a Zerops project, one pass whenever the access list changes whom it opens for or
+ * whose the project is (`ZeropsMateAccessList`: the Mate's own recompute, a Zerops websocket
+ * frame, or HQ's relay), and whenever a sign-in is recorded (`ZeropsProjectSigners.changes`).
  */
 export const layer = Layer.effect(
   ZeropsOffboarding,
@@ -117,8 +119,8 @@ export const layer = Layer.effect(
       signOut: (yield* ZeropsSignOut).signOut,
     });
     if (config.zerops !== undefined) {
-      yield* Effect.forkScoped(service.checkNow.pipe(Effect.repeat(Schedule.spaced("30 seconds"))));
-      yield* Effect.forkScoped(Stream.runForEach(accessList.changes, () => service.checkNow));
+      const moved = yield* subscribeChanges([accessList.changes, signers.changes]);
+      yield* Effect.forkScoped(Effect.forever(Effect.andThen(moved, service.checkNow)));
     }
     return service;
   }),

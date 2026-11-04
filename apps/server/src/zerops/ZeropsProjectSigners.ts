@@ -51,6 +51,7 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
@@ -108,6 +109,8 @@ export class ZeropsProjectSigners extends Context.Service<
   {
     /** Who this server saw sign each login in (`zeropsSignIns`). */
     readonly signers: Effect.Effect<ProjectSigners>;
+    /** Fires after each sign-in record is written or cleared: `signers` may have moved. */
+    readonly changes: Stream.Stream<void>;
     /**
      * {@link turnRefusal} for this session on `agentId`, against who this server saw sign it in.
      * While a code is being checked on it whose outcome decides this turn, the turn waits up to
@@ -241,6 +244,7 @@ export const make = Effect.gen(function* () {
 
   return ZeropsProjectSigners.of({
     signers,
+    changes: signIns.changes,
     turnRefusal: gateTurn,
     loginRefusal: gateLogin,
     hasProjectAccess,
