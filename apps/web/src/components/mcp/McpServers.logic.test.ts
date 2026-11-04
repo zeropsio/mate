@@ -1149,6 +1149,11 @@ describe("the Tools tab: where each tool stands and the one thing to do", () => 
     expect(mcpTileInitials(name, name === "zerops")).toBe(initials);
   });
 
+  it("the conversation's own agent leads the marks, the rest in their installed order", () => {
+    const row = rowOf({ state: "connected", tools }, {}, CODEX);
+    expect(row.marks.map((mark) => mark.driver)).toEqual([CODEX, CLAUDE]);
+  });
+
   it.each<{ case: string; agents: ReadonlyArray<McpServerAgent>; words: string }>([
     {
       case: "a command no agent has reached",

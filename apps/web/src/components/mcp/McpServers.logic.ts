@@ -505,8 +505,10 @@ function buildRow(
       : state !== "disabled";
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
   const unable = new Map((entry.cannot ?? []).map((item) => [item.driver, item.reason]));
+  // The conversation's own agent leads; the rest keep their installed order.
   const marks: McpAgentMark[] = [...installed, ...entry.agents.map((found) => found.driver)]
     .filter((candidate, index, all) => all.indexOf(candidate) === index)
+    .toSorted((a, b) => Number(b === driver) - Number(a === driver))
     .map((candidate) => {
       const reason = unable.get(candidate);
       const found = entry.agents.find((item) => item.driver === candidate);
