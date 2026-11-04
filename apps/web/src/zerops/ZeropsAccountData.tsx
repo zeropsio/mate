@@ -16,6 +16,7 @@ import {
   observeAccount,
   repairZeropsSession,
   accountReadsAtom,
+  followMateRoles,
   platformMembership,
 } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
@@ -100,6 +101,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   useEffect(() => {
     observation.show(orgId);
   }, [observation, orgId]);
+  // The person's role on a project moving in Zerops' own data asks what HQ refused of it again.
+  useEffect(() => followMateRoles(registry, observation.roleChanged), [observation, registry]);
   useEffect(() => () => observation.stop(), [observation]);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;

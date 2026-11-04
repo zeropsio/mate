@@ -167,6 +167,12 @@ export function hqNavigationLink(options: {
   readonly store: AccountStore;
 }): Pick<LinkOptions, "key" | "scopes" | "details" | "attempt" | "childMoved"> & {
   readonly retryDetail: (demand: DetailDemand) => void;
+  /**
+   * The person's role on a project changed in the client's own Zerops data
+   * (`zerops/account/mateRoles.ts`): each refused scope of it — its Mate's, and those of the
+   * application HQ places it in — is asked again.
+   */
+  readonly roleChanged: (projectId: string) => void;
   /** A screen's hold on a detail scope; the release lets it go once nothing holds it. */
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Asks HQ where a Mate may move, on the open socket. */
@@ -319,7 +325,7 @@ export function hqNavigationLink(options: {
   /** Looks at the demanded details again in the attempt under way, if one is. */
   const refresh = new Set<ScopeKey>();
   let wakeAttempt: (() => void) | null = null;
-  /** The scopes HQ refused, by key: asked again only with the person's explicit `retry`. */
+  /** The scopes HQ refused, by key: asked again with `retry`, by the person or a role change. */
   const refused = new Set<string>();
   /** HQ refused the whole socket (`4403`): the next one opens with the person's `retry`. */
   let refusedWhole = false;
@@ -484,7 +490,8 @@ export function hqNavigationLink(options: {
             asked.has(hqScopeKey(registered.wire)),
           );
           for (const registered of registrations) yield* register(registered);
-          // A refused scope comes back only by the person's explicit retry, sent before asking.
+          // A refused scope comes back only by the person's explicit retry or their role on its
+          // project changing (`roleChanged`), sent before asking.
           const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
           if (retried.length > 0)
             yield* open.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
@@ -628,9 +635,9 @@ export function hqNavigationLink(options: {
 
       /**
        * Every scope as this attempt must observe it — the navigation, and each detail demanded
-       * now: one not asked yet, or moved to a new registration (the person's try again, its retry
-       * come due), asked; a detail let go, unsubscribed. A refused one is never asked again by
-       * itself.
+       * now: one not asked yet, or moved to a new registration (the person's try again, their
+       * role on its project changing, its retry come due), asked; a detail let go, unsubscribed. A
+       * refused one is never asked again by itself.
        */
       const observe = Effect.gen(function* () {
         if (open === null) return Number.POSITIVE_INFINITY;
@@ -857,6 +864,26 @@ export function hqNavigationLink(options: {
           wakeAttempt?.();
         }),
       );
+    },
+    roleChanged: (projectId) => {
+      const fact = store.state().facts.get(factKey("placement", projectId));
+      const appId =
+        fact?.content.kind === "value" ? (fact.content.value as PlacementValue).appId : null;
+      const now = Effect.runSync(Clock.currentTimeMillis);
+      for (const demanded of demands.scopes()) {
+        const registered = detailOf(demanded);
+        if (registered === null) continue;
+        const { wire: scope } = registered;
+        const ofProject =
+          "projectId" in scope
+            ? scope.projectId === projectId
+            : "appId" in scope && appId !== null && scope.appId === appId;
+        if (!ofProject) continue;
+        for (const { scope: fed } of registered.families)
+          if (streamOf(store.state(), fed).phase === "refused")
+            store.dispatch({ kind: "stream", key: fed, now, event: { kind: "input-changed" } });
+      }
+      wakeAttempt?.();
     },
     demandDetail: (demand) => (stopped ? () => {} : demands.hold(detailScopeOf(orgId, demand))),
     moveOffers: (projectId) =>
