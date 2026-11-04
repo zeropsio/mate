@@ -183,39 +183,28 @@ export interface VaultAskRestart {
   readonly hostname: string;
 }
 
-/** The answered ask in the run that asked: what it is, how it ended, what still needs doing. */
+/** What an answered ask still needs, in the run that asked: the apps to restart for its value. */
 export interface VaultAskResultRow {
   readonly title: string;
-  readonly words: string;
   readonly restart: ReadonlyArray<VaultAskRestart>;
 }
 
 /**
- * The result row of an answered ask, off the engine's record and the vault: saved, it is added
- * for every app or for one, hidden when the vault keeps it so, and an app that runs the value it
- * started with is offered a restart; not given, "Not now". Nothing while it is still asked.
+ * The run's row for an answered ask, off the engine's record and the vault: only what the ask's
+ * own card does not say (a state is said once) — an app that runs the value it started with, to
+ * restart. Nothing for a value no app needs restarting for, for Not now, or while still asked.
  */
 export function vaultAskResult(
   ask: VaultAsk,
   engine: VaultAskActivityPayload["state"],
   view: VaultView,
 ): VaultAskResultRow | null {
-  const title = vaultAskLabel(ask);
-  if (engine === "declined") return { title, words: "Not now", restart: [] };
-  if (engine !== "saved") return null;
-  const held =
-    view.status === "unread"
-      ? undefined
-      : askScope(view, ask)?.values.find((value) => value.key === ask.key);
-  const place = ask.scope.kind === "shared" ? "every app" : ask.scope.hostname;
+  if (engine !== "saved" || view.status === "unread") return null;
+  const held = askScope(view, ask)?.values.find((value) => value.key === ask.key);
   const restart = (held?.readers ?? [])
     .filter((reader) => reader.state === "restart")
     .map(({ serviceId, hostname }) => ({ serviceId, hostname }));
-  return {
-    title,
-    words: `added for ${place}${held?.sensitive === true ? " · hidden" : ""}`,
-    restart,
-  };
+  return restart.length === 0 ? null : { title: vaultAskLabel(ask), restart };
 }
 
 /** The restart a result row offers, in words. */

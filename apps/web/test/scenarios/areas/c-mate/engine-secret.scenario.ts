@@ -69,8 +69,9 @@ describe("C: a secret the Mate asks the person for", () => {
         yield* chat.then.noText("Put in vault");
         yield* chat.when.fill(LABEL, SECRET);
         yield* chat.when.press("Save to vault");
-        // Answered, it is a result of the run that asked.
-        yield* chat.then.text("added for every app · hidden");
+        // Answered, the card says where it is, once.
+        yield* chat.then.text("vault · hidden");
+        yield* chat.then.noText("added for every app");
         yield* chat.then.noText("has been told");
         expect(vault.writes, "ASSERTION: the value went to the vault, as the person").toEqual([
           { key: KEY, content: SECRET },

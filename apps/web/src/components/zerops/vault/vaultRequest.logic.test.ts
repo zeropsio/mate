@@ -383,10 +383,10 @@ describe("the answered ask as a result row of the run that asked", () => {
   });
   it.each([
     {
-      name: "saved for every app, hidden, nothing reads it yet",
+      name: "saved, nothing to restart: nothing the card does not say",
       ask: ask("STRIPE_SECRET_KEY"),
       engine: "saved",
-      want: { title: "Stripe secret key", words: "added for every app · hidden", restart: [] },
+      want: null,
     },
     {
       name: "saved, an app runs the value it started with",
@@ -394,21 +394,14 @@ describe("the answered ask as a result row of the run that asked", () => {
       engine: "saved",
       want: {
         title: "Stripe secret key",
-        words: "added for every app",
         restart: [{ serviceId: "svc-appdev", hostname: "appdev" }],
       },
     },
     {
-      name: "saved for one app's own",
-      ask: ask("FEATURE_FLAGS", "appdev"),
-      engine: "saved",
-      want: { title: "Stripe secret key", words: "added for appdev", restart: [] },
-    },
-    {
-      name: "not given",
+      name: "not given: the card says Not now",
       ask: ask("STRIPE_SECRET_KEY"),
       engine: "declined",
-      want: { title: "Stripe secret key", words: "Not now", restart: [] },
+      want: null,
     },
     {
       name: "still asked: the drawer holds it",
