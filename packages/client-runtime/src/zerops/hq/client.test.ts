@@ -1490,6 +1490,62 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
+  it("A merge, a release, a roll back, a deletion, a lifecycle step and an attach carry the person's current Zerops access token in their body; a comment does not", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door"
+        ? undefined
+        : seen.path.endsWith("/merge")
+          ? json(200, { ...CHANGE, state: "merged", mergedSha: SHA, landedHead: SHA })
+          : seen.path.includes("/releases")
+            ? json(201, RELEASE)
+            : seen.path.startsWith("/api/lifecycle/")
+              ? json(409, { code: "conflict", reason: "project_still_exists" })
+              : seen.path.endsWith("/comments")
+                ? json(201, COMMENT)
+                : seen.method === "DELETE" || seen.path.endsWith("/projects")
+                  ? new Response(null, { status: 204 })
+                  : undefined,
+    );
+    const hqApi = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
+    await hqApi.mergeChange(LINK, SHA);
+    await hqApi.release("app-1", request);
+    await hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA });
+    await hqApi.deleteApp("app-1");
+    await expect(
+      hqApi.lifecycleWrite("r1", {
+        kind: "prepare-mate-deletion",
+        orgId: ORG,
+        hqProjectId: "hq",
+        projectId: "p1",
+      }),
+    ).rejects.toMatchObject({ reason: "project_still_exists" });
+    await hqApi.attachProject("app-1", { projectId: "p9", kind: "stage" });
+    await hqApi.commentOnChange(LINK, "Ship it");
+    const bodies = hq.seen
+      .filter((seen) => seen.path !== "/api/door")
+      .map((seen) => [
+        seen.method,
+        seen.path,
+        (seen.body as { accessToken?: unknown })?.accessToken,
+      ]);
+    expect(bodies).toEqual([
+      ["POST", "/api/apps/app-1/changes/app/3/merge", "person-token"],
+      ["POST", "/api/apps/app-1/releases", "person-token"],
+      ["POST", "/api/apps/app-1/releases/v0.1.0/rollback", "person-token"],
+      ["DELETE", "/api/apps/app-1", "person-token"],
+      ["POST", "/api/lifecycle/r1", "person-token"],
+      ["POST", "/api/apps/app-1/projects", "person-token"],
+      ["POST", "/api/apps/app-1/changes/app/3/comments", undefined],
+    ]);
+  });
+
   // A write whose answer was lost (F22): what HQ holds now decides, read back once.
   const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
   const HARBOR = { id: "app-1", name: "Harbor", projects: [] };
@@ -2070,7 +2126,7 @@ describe("makeHqApi — original lifecycle receipts", () => {
     await expect(api.lifecycleWrite("original:complete", complete)).rejects.toMatchObject({
       reason: "project_still_exists",
     });
-    expect(hq.seen.at(-1)?.body).toEqual(complete);
+    expect(hq.seen.at(-1)?.body).toEqual({ ...complete, accessToken: "access-1" });
   });
 });
 

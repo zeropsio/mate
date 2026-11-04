@@ -1259,6 +1259,14 @@ export function makeHqApi(input: {
     );
   };
 
+  /**
+   * The body of a verb HQ decides on a fresh read of the person's Zerops role (merge, release, roll
+   * back, delete, structure): it carries the person's current access token, which HQ uses for that
+   * one read and keeps nothing of.
+   */
+  const withAccess = async (body: object) =>
+    JSON.stringify({ ...body, accessToken: (await input.accessToken()).token });
+
   const structureOf = async (signal?: AbortSignal) =>
     Option.getOrThrowWith(
       Option.fromUndefinedOr(
@@ -1361,10 +1369,10 @@ export function makeHqApi(input: {
       ),
     attachProject: (appId, attach) =>
       confirmedDone(
-        () =>
+        async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}/projects`,
-            { method: "POST", body: JSON.stringify(attach) },
+            { method: "POST", body: await withAccess(attach) },
             true,
           ),
         async () =>
@@ -1442,7 +1450,7 @@ export function makeHqApi(input: {
       decoded(HqLifecycleRecord)(
         await authorized(
           `/api/lifecycle/${encodeURIComponent(requestId)}`,
-          { method: "POST", body: JSON.stringify(intent) },
+          { method: "POST", body: await withAccess(intent) },
           true,
         ),
       ),
@@ -1471,10 +1479,10 @@ export function makeHqApi(input: {
       ),
     deleteApp: (appId, options) =>
       confirmedDone(
-        () =>
+        async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
-            { method: "DELETE" },
+            { method: "DELETE", body: await withAccess({}) },
             true,
           ),
         async () => (await appOf(appId)) === undefined,
@@ -1539,7 +1547,7 @@ export function makeHqApi(input: {
           readMerged(
             await authorized(
               `${changePath(link)}/merge`,
-              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              { method: "POST", body: await withAccess({ expectedHead }) },
               true,
             ),
           ),
@@ -1894,7 +1902,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               releasesPath(appId),
-              { method: "POST", body: JSON.stringify(request) },
+              { method: "POST", body: await withAccess(request) },
               true,
             ),
           ),
@@ -1917,7 +1925,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
-              { method: "POST", body: JSON.stringify(request) },
+              { method: "POST", body: await withAccess(request) },
               true,
             ),
           ),
