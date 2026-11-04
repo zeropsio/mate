@@ -1,5 +1,5 @@
 import { expect, it } from "vite-plus/test";
-import { EnvironmentId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderDriverKind } from "@t3tools/contracts";
 import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import * as Effect from "effect/Effect";
 import * as Stream from "effect/Stream";
@@ -199,6 +199,53 @@ it("reading a checkout's Git status again asks its owner again after a refusal",
     reads.close();
     vcs.close();
     store.close();
+    registry.dispose();
+  }
+});
+
+it("the MCP tab keeps showing its last list while it reads the servers again", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  const answered: import("@t3tools/contracts").McpServersList = {
+    servers: [],
+    agents: [ProviderDriverKind.make("codex")],
+  };
+  let reads = 0;
+  const workspaceReads = makeWorkspaceReads(store, {
+    // The first read answers; the one a refresh sends never does (a slow Mate).
+    read: () => (++reads === 1 ? Effect.succeed(answered) : Effect.never),
+  } as Parameters<typeof makeWorkspaceReads>[1]);
+  const vcs = makeVcsReads(store, () => Stream.never);
+  registry.set(workspaceHostAtom, {
+    data: store.data,
+    reads: workspaceReads,
+    vcs,
+    act: makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "action",
+      mcpAnswer: workspaceReads.mcpAnswer,
+      wire: { call: () => Effect.never },
+    }),
+    writeFile: makeFileWrites({
+      store,
+      reads: workspaceReads,
+      current: () => true,
+      makeId: () => "save",
+      write: () => Effect.never,
+    }),
+  });
+  const atom = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
+  const unmount = registry.mount(atom);
+  try {
+    await expect.poll(() => AsyncResult.value(registry.get(atom))._tag).toBe("Some");
+    registry.refresh(atom);
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(AsyncResult.value(registry.get(atom))).toMatchObject({ _tag: "Some", value: answered });
+  } finally {
+    unmount();
+    workspaceReads.close();
+    vcs.close();
     registry.dispose();
   }
 });
