@@ -10,8 +10,10 @@
  * neither a warning nor a disagreement with an agent that can tell.
  */
 import {
+  MCP_APP_REDIRECTS,
   PROVIDER_DISPLAY_NAMES,
   type McpServerAddInput,
+  type McpServerAuth,
   type McpServerAgent,
   type McpServerEntry,
   type McpServerState,
@@ -61,7 +63,13 @@ export interface McpServerRow {
   };
   readonly config:
     | { readonly kind: "command"; readonly line: string }
-    | { readonly kind: "url"; readonly url: string };
+    | { readonly kind: "url"; readonly url: string; readonly sse?: true };
+  /** How it signs in, in words, where its config says: never a secret. */
+  readonly signInLabel: string | null;
+  /** Each installed agent that can't use it as it is set up, saying why. */
+  readonly cannot: ReadonlyArray<string>;
+  /** The server's sign-in as its config holds it: what the edit form starts from. */
+  readonly auth: McpServerEntry["auth"];
   readonly actions: {
     readonly reconnect: boolean;
     /** `null` where this tab may not change it (the repo's). */
@@ -132,7 +140,7 @@ function basename(path: string): string {
 }
 
 export function mcpRunsLabel(transport: McpServerTransport): string {
-  if (transport.type === "http") {
+  if (transport.type !== "stdio") {
     try {
       return new URL(transport.url).host || transport.url;
     } catch {
@@ -302,7 +310,9 @@ function agentsLine(
   installed: ReadonlyArray<ProviderDriverKind>,
   current: McpRowState,
 ): string | null {
-  const drivers = [...installed];
+  // An agent that can't use it says why on a line of its own.
+  const unable = new Set((entry.cannot ?? []).map((item) => item.driver));
+  const drivers = installed.filter((driver) => !unable.has(driver));
   for (const agent of entry.agents) {
     if (!drivers.includes(agent.driver)) drivers.push(agent.driver);
   }
@@ -332,10 +342,25 @@ function agentsLine(
  * ones) and a command, which signs in by its environment, are only set up.
  */
 function unreportedNote(entry: McpServerEntry, driver: ProviderDriverKind | null): string {
-  if (entry.transport.type !== "http") return STATE_LABEL.configured;
+  if (entry.transport.type === "stdio") return STATE_LABEL.configured;
   if (driver === null) return "May need a sign-in. Open a conversation with this Mate to check.";
   if (!SIGNING_AGENTS.has(driver)) return STATE_LABEL.configured;
   return `May need a sign-in. ${agentDisplayName(driver)} checks when this conversation next runs.`;
+}
+
+/** A URL server's sign-in in words, from what its config says. */
+function signInLabel(entry: McpServerEntry): string | null {
+  const auth = entry.auth;
+  const scopes = (list: ReadonlyArray<string>) => (list.length > 0 ? ` · ${list.join(" ")}` : "");
+  if (auth?.kind === "oauth-app") {
+    return `Your app ${auth.clientId}${auth.secret ? " · secret stored" : ""}${scopes(auth.scopes)}`;
+  }
+  if (auth?.kind === "oauth") return `Signs in when asked${scopes(auth.scopes)}`;
+  if (auth?.kind === "none") return (entry.secretNames ?? []).length > 0 ? "API key" : "No sign-in";
+  if ((entry.secretNames ?? []).some((name) => name.toLowerCase() === "authorization")) {
+    return "API key";
+  }
+  return null;
 }
 
 function buildRow(
@@ -348,7 +373,10 @@ function buildRow(
       ? mostTelling(entry.agents)
       : (entry.agents.find((candidate) => candidate.driver === driver) ?? null);
   const state: McpRowState = agent?.state ?? "absent";
-  const absentLabel = driver === null ? "Not set up" : `Not set up for ${agentDisplayName(driver)}`;
+  const unableReason =
+    driver === null ? undefined : entry.cannot?.find((item) => item.driver === driver)?.reason;
+  const absentLabel =
+    unableReason ?? (driver === null ? "Not set up" : `Not set up for ${agentDisplayName(driver)}`);
   const note: McpServerRow["note"] =
     state === "failed"
       ? { kind: "error", text: agent?.error?.trim() || "It didn't start." }
@@ -373,7 +401,7 @@ function buildRow(
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
   // Only the conversation's own agent signs in or out, and only one that can; an agent that
   // reaches the server by a token (`signedIn: false`) has no sign-in to renew or drop.
-  const remote = entry.transport.type === "http";
+  const remote = entry.transport.type !== "stdio";
   // Headers on a URL server are how it signs in, unless the agent says it holds an OAuth sign-in.
   const byHeaders = remote && (entry.secretNames?.length ?? 0) > 0 && agent?.signedIn !== true;
   const signing =
@@ -405,12 +433,19 @@ function buildRow(
       mark: toolMark(tool),
     })),
     config:
-      entry.transport.type === "http"
-        ? { kind: "url", url: entry.transport.url }
-        : {
+      entry.transport.type === "stdio"
+        ? {
             kind: "command",
             line: formatCommandLine(entry.transport.command, entry.transport.args),
+          }
+        : {
+            kind: "url",
+            url: entry.transport.url,
+            ...(entry.transport.type === "sse" ? { sse: true as const } : {}),
           },
+    signInLabel: remote ? signInLabel(entry) : null,
+    cannot: (entry.cannot ?? []).map((item) => item.reason),
+    auth: entry.auth,
     actions: {
       // Config alone does not establish a running session to reconnect.
       reconnect: state !== "disabled" && state !== "absent" && state !== "configured",
@@ -440,14 +475,140 @@ export function buildMcpRows(
 
 export interface McpAddForm {
   readonly name: string;
-  readonly kind: "command" | "url";
+  /** A command, a URL (streamable HTTP), or an SSE URL. */
+  readonly kind: "command" | "url" | "sse";
   readonly commandLine: string;
   readonly url: string;
   /** Env lines for a command, header lines for a URL. */
   readonly extra: string;
+  /** How a URL server signs in. */
+  readonly signIn: McpSignInFields;
 }
 
-export type McpAddFormErrors = Partial<Record<"name" | "target" | "extra", string>>;
+export type McpAddFormErrors = Partial<Record<"name" | "target" | "extra" | "auth", string>>;
+
+// ── How a URL server signs in ─────────────────────────────────────────
+
+/** None · API key · Sign in (when the server asks) · Sign in with your own app. */
+export type McpSignInChoice = "none" | "header" | "oauth" | "oauth-app";
+
+export interface McpSignInFields {
+  readonly choice: McpSignInChoice;
+  readonly headerName: string;
+  /** The API key; in the edit form, empty keeps the stored one. */
+  readonly key: string;
+  /** Space- or comma-separated. */
+  readonly scopes: string;
+  readonly clientId: string;
+  /** Optional; in the edit form, empty keeps the stored one. */
+  readonly clientSecret: string;
+}
+
+export const BLANK_SIGN_IN: McpSignInFields = {
+  choice: "oauth",
+  headerName: "Authorization",
+  key: "",
+  scopes: "",
+  clientId: "",
+  clientSecret: "",
+};
+
+const HEADER_NAME = /^[!#$%&'*+.^_`|~0-9A-Za-z-]+$/;
+
+const scopeList = (text: string): string[] =>
+  text.split(/[\s,]+/).filter((scope) => scope.length > 0);
+
+/** An Authorization key without a scheme of its own is a bearer token. */
+const keyValue = (name: string, key: string): string =>
+  name.toLowerCase() === "authorization" && !/\s/.test(key) ? `Bearer ${key}` : key;
+
+type ReadSignIn =
+  | { readonly ok: true; readonly auth: McpServerAuth | undefined }
+  | { readonly ok: false; readonly error: string };
+
+/**
+ * The sign-in fields read into the server's `auth`; `undefined` where it is
+ * the agents' own default (a sign-in when asked, no scopes). `keepSecrets`:
+ * the edit form, where an empty key or client secret keeps the stored one.
+ */
+function readSignIn(fields: McpSignInFields, keepSecrets: boolean): ReadSignIn {
+  switch (fields.choice) {
+    case "none":
+      return { ok: true, auth: { kind: "none" } };
+    case "header": {
+      const name = fields.headerName.trim() || "Authorization";
+      if (!HEADER_NAME.test(name)) return { ok: false, error: `${name} isn't a header name.` };
+      const key = fields.key.trim();
+      if (key === "") {
+        // The stored key stays as its header; the server signs in no other way.
+        return keepSecrets
+          ? { ok: true, auth: { kind: "none" } }
+          : { ok: false, error: "Paste the key." };
+      }
+      return { ok: true, auth: { kind: "header", name, value: keyValue(name, key) } };
+    }
+    case "oauth": {
+      const scopes = scopeList(fields.scopes);
+      return { ok: true, auth: scopes.length > 0 ? { kind: "oauth", scopes } : undefined };
+    }
+    case "oauth-app": {
+      const clientId = fields.clientId.trim();
+      if (clientId === "") return { ok: false, error: "Give your app's client ID." };
+      const secret = fields.clientSecret.trim();
+      const scopes = scopeList(fields.scopes);
+      return {
+        ok: true,
+        auth: {
+          kind: "oauth-app",
+          clientId,
+          ...(secret !== "" ? { clientSecret: secret } : {}),
+          ...(scopes.length > 0 ? { scopes } : {}),
+        },
+      };
+    }
+  }
+}
+
+/** The edit form's sign-in fields, from what the server's config says. */
+export function mcpSignInStart(row: Pick<McpServerRow, "auth" | "secrets">): McpSignInFields {
+  const { auth } = row;
+  if (auth?.kind === "oauth-app") {
+    return {
+      ...BLANK_SIGN_IN,
+      choice: "oauth-app",
+      clientId: auth.clientId,
+      scopes: auth.scopes.join(" "),
+    };
+  }
+  if (auth?.kind === "oauth")
+    return { ...BLANK_SIGN_IN, choice: "oauth", scopes: auth.scopes.join(" ") };
+  const keyHeader = row.secrets.names.find((name) => name.toLowerCase() === "authorization");
+  if (keyHeader !== undefined) return { ...BLANK_SIGN_IN, choice: "header", headerName: keyHeader };
+  if (auth?.kind === "none") return { ...BLANK_SIGN_IN, choice: "none" };
+  return BLANK_SIGN_IN;
+}
+
+/** The edited sign-in: `undefined` when nothing changed, else what to write. */
+export function readMcpSignInEdit(start: McpSignInFields, fields: McpSignInFields): ReadSignIn {
+  const same = (Object.keys(start) as Array<keyof McpSignInFields>).every(
+    (key) => start[key] === fields[key],
+  );
+  if (same) return { ok: true, auth: undefined };
+  const read = readSignIn(fields, true);
+  // Choosing a sign-in when asked with no scopes is still a change: it clears the old one.
+  if (read.ok && read.auth === undefined) return { ok: true, auth: { kind: "oauth" } };
+  return read;
+}
+
+/** The redirect each installed agent's own-app sign-in needs registered in the app. */
+export function mcpAppRedirects(
+  agents: ReadonlyArray<ProviderDriverKind>,
+): ReadonlyArray<{ readonly agent: string; readonly url: string }> {
+  return agents.flatMap((driver) => {
+    const redirect = MCP_APP_REDIRECTS[driver];
+    return redirect === undefined ? [] : [{ agent: agentDisplayName(driver), url: redirect.url }];
+  });
+}
 
 export type ReadMcpAddForm =
   | { readonly ok: true; readonly input: McpServerAddInput }
@@ -483,8 +644,10 @@ export function readMcpAddForm(form: McpAddForm, existing: ReadonlyArray<string>
     const url = form.url.trim();
     if (url === "") errors.target = "Paste the server's URL.";
     else if (!isHttpUrl(url)) errors.target = "That isn't an http or https URL.";
-    else transport = { type: "http", url };
+    else transport = { type: form.kind === "sse" ? "sse" : "http", url };
   }
+  const signIn = form.kind === "command" ? undefined : readSignIn(form.signIn, false);
+  if (signIn !== undefined && !signIn.ok) errors.auth = signIn.error;
 
   const extra = form.kind === "command" ? parseEnvLines(form.extra) : parseHeaderLines(form.extra);
   if (!extra.ok) errors.extra = extra.error;
@@ -493,6 +656,7 @@ export function readMcpAddForm(form: McpAddForm, existing: ReadonlyArray<string>
     return { ok: false, errors };
   }
   const hasExtra = Object.keys(extra.value).length > 0;
+  const auth = signIn?.ok ? signIn.auth : undefined;
   return {
     ok: true,
     input: {
@@ -503,6 +667,7 @@ export function readMcpAddForm(form: McpAddForm, existing: ReadonlyArray<string>
           ? { env: extra.value }
           : { headers: extra.value }
         : {}),
+      ...(auth !== undefined ? { auth } : {}),
     },
   };
 }

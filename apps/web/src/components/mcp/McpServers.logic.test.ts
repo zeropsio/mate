@@ -18,6 +18,11 @@ import {
   parseHeaderLines,
   readMcpAddForm,
   readMcpSecretsForm,
+  readMcpSignInEdit,
+  mcpAppRedirects,
+  mcpSignInStart,
+  BLANK_SIGN_IN,
+  type McpSignInFields,
   mcpSecretsFormText,
   MCP_SECRET_MASK,
   splitCommandLine,
@@ -607,7 +612,14 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
 });
 
 describe("readMcpAddForm — the add form, read into the add call or its errors", () => {
-  const BLANK: McpAddForm = { name: "", kind: "command", commandLine: "", url: "", extra: "" };
+  const BLANK: McpAddForm = {
+    name: "",
+    kind: "command",
+    commandLine: "",
+    url: "",
+    extra: "",
+    signIn: BLANK_SIGN_IN,
+  };
   const EXISTING = ["zerops", "playwright"];
 
   it.each<{ case: string; form: Partial<McpAddForm>; input: unknown }>([
@@ -704,6 +716,184 @@ describe("readMcpAddForm — the add form, read into the add call or its errors"
     },
   ])("refuses $case", ({ form, errors }) => {
     expect(readMcpAddForm({ ...BLANK, ...form }, EXISTING)).toEqual({ ok: false, errors });
+  });
+});
+
+describe("how a URL server signs in, chosen in the form", () => {
+  const URL_FORM: McpAddForm = {
+    name: "docs",
+    kind: "url",
+    commandLine: "",
+    url: "https://mcp.example.com/mcp",
+    extra: "",
+    signIn: BLANK_SIGN_IN,
+  };
+  const transport = { type: "http", url: "https://mcp.example.com/mcp" };
+
+  it.each<{ case: string; signIn: Partial<McpSignInFields>; auth: unknown }>([
+    {
+      case: "an API key goes in the Authorization header as a bearer token",
+      signIn: { choice: "header", key: "k3y" },
+      auth: { kind: "header", name: "Authorization", value: "Bearer k3y" },
+    },
+    {
+      case: "an API key that names its own scheme is sent as it is",
+      signIn: { choice: "header", key: "Token k3y" },
+      auth: { kind: "header", name: "Authorization", value: "Token k3y" },
+    },
+    {
+      case: "an API key in another header is sent bare",
+      signIn: { choice: "header", headerName: "X-Api-Key", key: "k3y" },
+      auth: { kind: "header", name: "X-Api-Key", value: "k3y" },
+    },
+    {
+      case: "a sign-in may ask for scopes",
+      signIn: { choice: "oauth", scopes: "read, write  admin" },
+      auth: { kind: "oauth", scopes: ["read", "write", "admin"] },
+    },
+    {
+      case: "signing in with your own app takes its client id, secret and scopes",
+      signIn: { choice: "oauth-app", clientId: " mate-app ", clientSecret: "s3", scopes: "read" },
+      auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: "s3", scopes: ["read"] },
+    },
+    {
+      case: "a server that needs no sign-in is told so",
+      signIn: { choice: "none" },
+      auth: { kind: "none" },
+    },
+  ])("$case", ({ signIn, auth }) => {
+    const read = readMcpAddForm({ ...URL_FORM, signIn: { ...BLANK_SIGN_IN, ...signIn } }, []);
+    expect(read).toEqual({ ok: true, input: { name: "docs", transport, auth } });
+  });
+
+  it("a plain sign-in when asked writes nothing of its own", () => {
+    expect(readMcpAddForm(URL_FORM, [])).toEqual({ ok: true, input: { name: "docs", transport } });
+  });
+
+  it("an SSE server is read as SSE", () => {
+    expect(readMcpAddForm({ ...URL_FORM, kind: "sse" }, [])).toEqual({
+      ok: true,
+      input: { name: "docs", transport: { type: "sse", url: "https://mcp.example.com/mcp" } },
+    });
+  });
+
+  it.each<{ case: string; signIn: Partial<McpSignInFields>; error: string }>([
+    { case: "an API key left empty", signIn: { choice: "header" }, error: "Paste the key." },
+    {
+      case: "a header name that isn't one",
+      signIn: { choice: "header", headerName: "bad name", key: "k" },
+      error: "bad name isn't a header name.",
+    },
+    {
+      case: "your own app without its client ID",
+      signIn: { choice: "oauth-app" },
+      error: "Give your app's client ID.",
+    },
+  ])("refuses $case", ({ signIn, error }) => {
+    expect(readMcpAddForm({ ...URL_FORM, signIn: { ...BLANK_SIGN_IN, ...signIn } }, [])).toEqual({
+      ok: false,
+      errors: { auth: error },
+    });
+  });
+
+  it("names the redirect each installed agent's own-app sign-in needs registered", () => {
+    expect(mcpAppRedirects([CLAUDE, CODEX, OPENCODE, CURSOR])).toEqual([
+      { agent: "Claude", url: "http://localhost:33418/callback" },
+      { agent: "OpenCode", url: "http://127.0.0.1:33419/mcp/oauth/callback" },
+    ]);
+  });
+});
+
+describe("a server's sign-in, edited in place", () => {
+  const row = (entry: Partial<McpServerEntry>) =>
+    buildMcpRows(
+      {
+        agents: [CLAUDE],
+        servers: [
+          {
+            name: "x",
+            managed: false,
+            transport: { type: "http", url: "https://mcp.example.com" },
+            agents: [{ driver: CLAUDE, state: "connected" }],
+            ...entry,
+          },
+        ],
+      },
+      CLAUDE,
+    )[0]!;
+
+  it.each<{ case: string; entry: Partial<McpServerEntry>; start: Partial<McpSignInFields> }>([
+    {
+      case: "your own app, its secret never shown",
+      entry: { auth: { kind: "oauth-app", clientId: "mate-app", scopes: ["read"], secret: true } },
+      start: { choice: "oauth-app", clientId: "mate-app", scopes: "read", clientSecret: "" },
+    },
+    {
+      case: "an API key in its header",
+      entry: { secretNames: ["Authorization"] },
+      start: { choice: "header", headerName: "Authorization", key: "" },
+    },
+    { case: "no sign-in", entry: { auth: { kind: "none" } }, start: { choice: "none" } },
+    {
+      case: "a sign-in with scopes",
+      entry: { auth: { kind: "oauth", scopes: ["a", "b"] } },
+      start: { choice: "oauth", scopes: "a b" },
+    },
+  ])("opens with the sign-in it has: $case", ({ entry, start }) => {
+    expect(mcpSignInStart(row(entry))).toEqual({ ...BLANK_SIGN_IN, ...start });
+  });
+
+  it.each<{ case: string; change: Partial<McpSignInFields>; auth: unknown }>([
+    { case: "left as it was changes nothing", change: {}, auth: undefined },
+    {
+      case: "a new client secret replaces the stored one",
+      change: { clientSecret: "n3w" },
+      auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: "n3w", scopes: ["read"] },
+    },
+    {
+      case: "a new client ID with the secret left empty keeps the stored secret",
+      change: { clientId: "other" },
+      auth: { kind: "oauth-app", clientId: "other", scopes: ["read"] },
+    },
+    {
+      case: "switching to an API key sends the key",
+      change: { choice: "header", key: "k3y" },
+      auth: { kind: "header", name: "Authorization", value: "Bearer k3y" },
+    },
+  ])("$case", ({ change, auth }) => {
+    const start = mcpSignInStart(
+      row({ auth: { kind: "oauth-app", clientId: "mate-app", scopes: ["read"], secret: true } }),
+    );
+    expect(readMcpSignInEdit(start, { ...start, ...change })).toEqual({ ok: true, auth });
+  });
+});
+
+describe("agents that can't use a server", () => {
+  const list: McpServersList = {
+    agents: [CLAUDE, CODEX],
+    servers: [
+      {
+        name: "events",
+        managed: false,
+        transport: { type: "sse", url: "https://mcp.example.com/sse" },
+        cannot: [{ driver: CODEX, reason: "Codex can't use SSE servers." }],
+        agents: [{ driver: CLAUDE, state: "connected" }],
+      },
+    ],
+  };
+
+  it("each says why, in place of a bare 'not set up'", () => {
+    const row = buildMcpRows(list, CLAUDE)[0]!;
+    expect(row.cannot).toEqual(["Codex can't use SSE servers."]);
+    expect(row.agentsLine).toBeNull();
+    expect(row.config).toEqual({ kind: "url", url: "https://mcp.example.com/sse", sse: true });
+  });
+
+  it("a conversation on an agent that can't use it says why on the row", () => {
+    expect(buildMcpRows(list, CODEX)[0]!.note).toEqual({
+      kind: "quiet",
+      text: "Codex can't use SSE servers.",
+    });
   });
 });
 

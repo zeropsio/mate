@@ -8,6 +8,7 @@ import { ObserveCredentialControl } from "./ObserveCredentialControl";
  * (`/design-mcp.html`) draws the body over a fixture.
  */
 import type { EnvironmentId, ProviderDriverKind, ThreadId } from "@t3tools/contracts";
+import type { McpSignInChoice } from "./McpServers.logic";
 import { ChevronRightIcon, PlusIcon } from "lucide-react";
 import { useMemo, useState, type ReactNode } from "react";
 
@@ -23,7 +24,12 @@ import { Toggle, ToggleGroup } from "../ui/toggle-group";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MicroLabel, STATUS_BADGE_TONE } from "../zerops/primitives";
 import {
+  BLANK_SIGN_IN,
   buildMcpRows,
+  mcpAppRedirects,
+  mcpSignInStart,
+  readMcpSignInEdit,
+  type McpSignInFields,
   MCP_SECRET_MASK,
   mcpSecretsFormText,
   readMcpAddForm,
@@ -59,7 +65,24 @@ export const MCP_WORDS = {
   signInAgain: "Sign in again",
   signOut: "Sign out",
   editEnv: "Edit environment",
-  editHeaders: "Edit headers",
+  editHeaders: "Edit sign-in and headers",
+  sse: "SSE URL",
+  signInHow: "How does it sign in?",
+  signInNone: "None",
+  signInKey: "API key",
+  signInWhenAsked: "Sign in",
+  signInApp: "Your own app",
+  signInLabel: "Sign-in",
+  headerName: "Header",
+  key: "Key",
+  keyKeepHint: "Leave empty to keep the stored key.",
+  scopes: "Scopes",
+  scopesHint: "optional, space-separated",
+  clientId: "Client ID",
+  clientSecret: "Client secret",
+  clientSecretHint: "optional",
+  clientSecretKeepHint: "Leave empty to keep the stored one.",
+  redirects: "Register these redirect addresses in your app:",
   editHint: "Leave •••••• to keep a value; take a line out to drop it.",
   save: "Save",
   signInMate: "Finish signing in on the page that opened. This row updates when you come back.",
@@ -163,6 +186,7 @@ export function McpPanelBody(props: {
             {rows.map((row) => (
               <McpServerRowView
                 act={act}
+                agents={state.list?.agents ?? []}
                 key={row.name}
                 onRefresh={props.onRetry}
                 signIn={props.signIn}
@@ -179,6 +203,7 @@ export function McpPanelBody(props: {
         {state.list === null ? null : (
           <McpAddServer
             act={act}
+            agents={state.list.agents}
             existing={state.list.servers.map((entry) => entry.name)}
             onAdded={(name) => toggleOpen(name, true)}
           />
@@ -195,6 +220,7 @@ function McpServerRowView(props: {
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly signIn: (name: string) => Promise<McpSignInResult>;
   readonly onRefresh: () => void;
+  readonly agents: ReadonlyArray<ProviderDriverKind>;
 }) {
   const { row } = props;
   return (
@@ -242,6 +268,11 @@ function McpServerRowView(props: {
                 {row.agentsLine}
               </span>
             )}
+            {row.cannot.length === 0 ? null : (
+              <span className="text-xs leading-4.5 text-muted-foreground" data-mcp-cannot>
+                {row.cannot.join(" ")}
+              </span>
+            )}
           </span>
           <ChevronRightIcon
             aria-hidden="true"
@@ -251,6 +282,7 @@ function McpServerRowView(props: {
         <CollapsiblePanel>
           <McpServerDetails
             act={props.act}
+            agents={props.agents}
             onRefresh={props.onRefresh}
             row={row}
             signIn={props.signIn}
@@ -287,6 +319,7 @@ function McpServerDetails(props: {
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly signIn: (name: string) => Promise<McpSignInResult>;
   readonly onRefresh: () => void;
+  readonly agents: ReadonlyArray<ProviderDriverKind>;
 }) {
   const { row, act } = props;
   const [pending, setPending] = useState<
@@ -298,10 +331,21 @@ function McpServerDetails(props: {
   const [editError, setEditError] = useState<string | null>(null);
   const { secrets } = row;
 
+  const remote = row.config.kind === "url";
+  const signInStart = useMemo(() => mcpSignInStart(row), [row]);
+  const [signInFields, setSignInFields] = useState<McpSignInFields>(signInStart);
+
   const saveSecrets = async (text: string) => {
     const read = readMcpSecretsForm(secrets.kind, text);
     if (!read.ok) {
       setEditError(read.error);
+      return;
+    }
+    const signIn = remote
+      ? readMcpSignInEdit(signInStart, signInFields)
+      : { ok: true as const, auth: undefined };
+    if (!signIn.ok) {
+      setEditError(signIn.error);
       return;
     }
     setPending("save");
@@ -311,6 +355,7 @@ function McpServerDetails(props: {
       name: row.name,
       values: read.values,
       keep: read.keep,
+      ...(signIn.auth !== undefined ? { auth: signIn.auth } : {}),
     });
     setPending(null);
     if (result.ok) setEditing(null);
@@ -403,6 +448,14 @@ function McpServerDetails(props: {
         </span>
       </DetailBlock>
 
+      {row.signInLabel === null ? null : (
+        <DetailBlock label={MCP_WORDS.signInLabel}>
+          <span className="text-xs" data-mcp-sign-in-label>
+            {row.signInLabel}
+          </span>
+        </DetailBlock>
+      )}
+
       {secrets.names.length === 0 ? null : (
         <DetailBlock label={secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}>
           <ul className="flex flex-col gap-0.5" data-mcp-secrets>
@@ -425,6 +478,14 @@ function McpServerDetails(props: {
             void saveSecrets(editing);
           }}
         >
+          {remote ? (
+            <SignInFields
+              editing
+              fields={signInFields}
+              onChange={setSignInFields}
+              redirects={mcpAppRedirects(props.agents)}
+            />
+          ) : null}
           <span className="flex items-baseline gap-2 text-xs">
             <span className="font-medium">
               {secrets.kind === "env" ? MCP_WORDS.env : MCP_WORDS.headers}
@@ -545,6 +606,7 @@ function McpServerDetails(props: {
                 disabled={pending !== null}
                 onClick={() => {
                   setEditError(null);
+                  setSignInFields(signInStart);
                   setEditing(mcpSecretsFormText(secrets.kind, secrets.names));
                 }}
                 size="sm"
@@ -623,7 +685,112 @@ function McpServerDetails(props: {
   );
 }
 
-const BLANK_FORM: McpAddForm = { name: "", kind: "command", commandLine: "", url: "", extra: "" };
+const BLANK_FORM: McpAddForm = {
+  name: "",
+  kind: "command",
+  commandLine: "",
+  url: "",
+  extra: "",
+  signIn: BLANK_SIGN_IN,
+};
+
+const SIGN_IN_CHOICES: ReadonlyArray<{ readonly value: McpSignInChoice; readonly label: string }> =
+  [
+    { value: "none", label: MCP_WORDS.signInNone },
+    { value: "header", label: MCP_WORDS.signInKey },
+    { value: "oauth", label: MCP_WORDS.signInWhenAsked },
+    { value: "oauth-app", label: MCP_WORDS.signInApp },
+  ];
+
+/** How a URL server signs in: one choice, and the fields that choice needs. */
+function SignInFields(props: {
+  readonly fields: McpSignInFields;
+  readonly onChange: (fields: McpSignInFields) => void;
+  readonly redirects: ReadonlyArray<{ readonly agent: string; readonly url: string }>;
+  /** The edit form: an empty key or client secret keeps the stored one. */
+  readonly editing?: boolean;
+  readonly error?: string | undefined;
+}) {
+  const { fields } = props;
+  const set = (patch: Partial<McpSignInFields>) => props.onChange({ ...fields, ...patch });
+  const text = (
+    label: string,
+    key: "headerName" | "key" | "scopes" | "clientId" | "clientSecret",
+    hint?: string,
+    secret = false,
+  ) => (
+    <FieldLine error={undefined} label={label} {...(hint === undefined ? {} : { hint })}>
+      <Input
+        autoCapitalize="off"
+        autoComplete="off"
+        nativeInput
+        onChange={(event) => set({ [key]: event.target.value })}
+        size="sm"
+        spellCheck={false}
+        type={secret ? "password" : "text"}
+        value={fields[key]}
+      />
+    </FieldLine>
+  );
+  return (
+    <div className="flex flex-col gap-3" data-mcp-sign-in={fields.choice}>
+      <div className="flex flex-col gap-1">
+        <span className="font-medium text-xs">{MCP_WORDS.signInHow}</span>
+        <ToggleGroup
+          aria-label={MCP_WORDS.signInHow}
+          className="self-start"
+          onValueChange={(next) => {
+            const choice = SIGN_IN_CHOICES.find((option) => option.value === next[0])?.value;
+            if (choice !== undefined) set({ choice });
+          }}
+          value={[fields.choice]}
+          variant="segmented"
+        >
+          {SIGN_IN_CHOICES.map((option) => (
+            <Toggle key={option.value} value={option.value}>
+              {option.label}
+            </Toggle>
+          ))}
+        </ToggleGroup>
+      </div>
+      {fields.choice === "header" ? (
+        <>
+          {text(MCP_WORDS.headerName, "headerName")}
+          {text(MCP_WORDS.key, "key", props.editing ? MCP_WORDS.keyKeepHint : undefined, true)}
+        </>
+      ) : null}
+      {fields.choice === "oauth" ? text(MCP_WORDS.scopes, "scopes", MCP_WORDS.scopesHint) : null}
+      {fields.choice === "oauth-app" ? (
+        <>
+          {text(MCP_WORDS.clientId, "clientId")}
+          {text(
+            MCP_WORDS.clientSecret,
+            "clientSecret",
+            props.editing ? MCP_WORDS.clientSecretKeepHint : MCP_WORDS.clientSecretHint,
+            true,
+          )}
+          {text(MCP_WORDS.scopes, "scopes", MCP_WORDS.scopesHint)}
+          {props.redirects.length === 0 ? null : (
+            <div className="flex flex-col gap-0.5 text-xs" data-mcp-redirects>
+              <span className="text-muted-foreground">{MCP_WORDS.redirects}</span>
+              {props.redirects.map((redirect) => (
+                <span className="flex min-w-0 gap-2" key={redirect.agent}>
+                  <span className="shrink-0">{redirect.agent}</span>
+                  <span className="min-w-0 break-all font-mono">{redirect.url}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </>
+      ) : null}
+      {props.error === undefined ? null : (
+        <span className="text-xs text-destructive-foreground" role="alert">
+          {props.error}
+        </span>
+      )}
+    </div>
+  );
+}
 
 function FieldLine(props: {
   readonly label: string;
@@ -651,6 +818,7 @@ function FieldLine(props: {
 
 function McpAddServer(props: {
   readonly existing: ReadonlyArray<string>;
+  readonly agents: ReadonlyArray<ProviderDriverKind>;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
   readonly onAdded: (name: string) => void;
 }) {
@@ -737,13 +905,17 @@ function McpAddServer(props: {
         className="self-start"
         onValueChange={(next) => {
           const kind = next[0];
-          if (kind === "command" || kind === "url") edit({ kind, extra: "" }, "target");
+          if (kind === "command" || kind === "url" || kind === "sse") {
+            // A command's environment isn't a URL's headers: switching between them starts afresh.
+            edit({ kind, ...((kind === "command") !== command ? { extra: "" } : {}) }, "target");
+          }
         }}
         value={[form.kind]}
         variant="segmented"
       >
         <Toggle value="command">{MCP_WORDS.command}</Toggle>
         <Toggle value="url">{MCP_WORDS.url2}</Toggle>
+        <Toggle value="sse">{MCP_WORDS.sse}</Toggle>
       </ToggleGroup>
       <FieldLine error={errors.target} label={command ? MCP_WORDS.command : MCP_WORDS.url2}>
         <Input
@@ -762,6 +934,14 @@ function McpAddServer(props: {
           value={command ? form.commandLine : form.url}
         />
       </FieldLine>
+      {command ? null : (
+        <SignInFields
+          error={errors.auth}
+          fields={form.signIn}
+          onChange={(signIn) => edit({ signIn }, "auth")}
+          redirects={mcpAppRedirects(props.agents)}
+        />
+      )}
       <FieldLine
         error={errors.extra}
         hint={command ? MCP_WORDS.envHint : MCP_WORDS.headersHint}

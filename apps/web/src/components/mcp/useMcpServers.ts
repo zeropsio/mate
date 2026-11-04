@@ -11,6 +11,7 @@ import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import type {
   EnvironmentId,
   McpServerAddInput,
+  McpServerAuth,
   McpServerSignIn,
   ThreadId,
 } from "@t3tools/contracts";
@@ -33,6 +34,8 @@ export type McpAction =
       readonly name: string;
       readonly values: Readonly<Record<string, string>>;
       readonly keep: ReadonlyArray<string>;
+      /** A URL server's sign-in, changed; absent leaves it as it is. */
+      readonly auth?: McpServerAuth;
     }
   | { readonly kind: "setEnabled"; readonly name: string; readonly enabled: boolean }
   /** Finishes a sign-in with the address the person's browser landed on. */
@@ -107,6 +110,7 @@ export function useMcpServers(input: {
                         name: action.name,
                         values: { ...action.values },
                         keep: [...action.keep],
+                        ...(action.auth !== undefined ? { auth: action.auth } : {}),
                         ...scope,
                       },
                     },
