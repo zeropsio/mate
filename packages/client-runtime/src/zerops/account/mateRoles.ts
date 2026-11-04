@@ -2,8 +2,9 @@
  * The person's role on each Mate as the client's own live Zerops data gives it: the project row
  * Zerops pushes (`userRoles`) and their own membership, read again on a `client-user` frame
  * naming them, through the one role function (`placedMateVisibilities`). A verdict moving between
- * two readings is the receipt that their access changed, so a Mate refused to them is asked
- * again. A first reading, or one not read yet, changes nothing.
+ * two readings is the receipt that their access changed: a Mate refused to them (the Mate adapter)
+ * and what HQ refused them of its project (the account observation) are asked again. A first
+ * reading, or one not read yet, changes nothing.
  *
  * @module zerops/account/mateRoles
  */
