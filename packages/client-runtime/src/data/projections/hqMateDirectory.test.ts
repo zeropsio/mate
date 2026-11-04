@@ -23,8 +23,6 @@ import { hqListedMateIdentities } from "./hqMateDirectory.ts";
 
 const ORG = "orchard";
 const person = {
-  role: "OWNER",
-  mayWrite: true,
   mine: true,
   ownerUserId: "person",
   waitsOnViewer: false,

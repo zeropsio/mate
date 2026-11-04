@@ -1,23 +1,21 @@
 /**
- * What HQ offers the person to do with an application, as its structure streamed it (`can`,
- * `@t3tools/shared/hqOffers`): its changes' verbs, a deploy asked again, and each
- * environment's deploy key. Drawn here, never decided: HQ decides each over the very target its
- * write is enforced with, and decides the write again at the press. While HQ does not answer,
- * every one of them is unavailable since then; before HQ has said, none is known.
+ * What the person may do with an application (`can`, `@t3tools/shared/hqOffers`), decided from
+ * their live Zerops roles: its changes' verbs, a deploy asked again, and each environment's deploy
+ * key. Drawn here, never decided; HQ decides the write again at the press. While HQ does not
+ * answer, every one of them is unavailable since then; before the roles are read, none is known.
  */
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { useCallback } from "react";
 
 import { useHqOffers } from "./useHqOffers";
 
-type ChangeVerb = "read" | "comment" | "merge" | "close" | "redeploy";
+type ChangeVerb = "read" | "comment" | "merge" | "close";
 
 const VERBS: { readonly [V in ChangeVerb]: string } = {
   read: "read_change",
   comment: "comment_change",
   merge: "merge_change",
   close: "close_change",
-  redeploy: "redeploy",
 };
 
 /**
@@ -51,7 +49,6 @@ export function useChangeOffers(): ZeropsChangeOffersOf {
         comment: states.comment.kind === "allowed",
         merge: states.merge.kind === "allowed",
         close: states.close.kind === "allowed",
-        redeploy: states.redeploy.kind === "allowed",
         why,
         readRefused: states.read.kind === "refused",
       };
@@ -69,9 +66,7 @@ export function useKeepDeployKeyOffer(): (projectId: string) => boolean | undefi
   return useCallback(
     (projectId) => {
       const environment = structure?.apps
-        .flatMap((app) =>
-          app.environments === undefined || "refused" in app.environments ? [] : app.environments,
-        )
+        .flatMap((app) => app.environments ?? [])
         .find(
           (candidate) =>
             candidate.target.kind === "zerops" && candidate.target.projectId === projectId,
@@ -89,9 +84,7 @@ export function useEnvironmentDeployOffer(): (projectId: string) => boolean {
   return useCallback(
     (projectId) => {
       const environment = structure?.apps
-        .flatMap((app) =>
-          app.environments === undefined || "refused" in app.environments ? [] : app.environments,
-        )
+        .flatMap((app) => app.environments ?? [])
         .find((row) => row.target.kind === "zerops" && row.target.projectId === projectId);
       return state(environment?.can, "redeploy").kind === "allowed";
     },

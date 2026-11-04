@@ -141,7 +141,6 @@ describe("lastMateDeletionTarget — what deleting a project with its last Mate 
               order: 1,
               keyHeld: false,
               keyInvalid: false,
-              can: {},
               birth: null,
               release: null,
               jobs: [],

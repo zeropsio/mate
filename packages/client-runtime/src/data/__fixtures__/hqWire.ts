@@ -57,7 +57,6 @@ export const gitEnvironment = {
   order: 2,
   keyHeld: true,
   keyInvalid: false,
-  can: {},
   jobs: [
     {
       id: "push-v2",

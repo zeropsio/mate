@@ -18,7 +18,6 @@ const STAGE = {
   order: 1,
   keyHeld: true,
   keyInvalid: false,
-  can: {},
   jobs: [],
   release: null,
   birth: null,
@@ -33,7 +32,6 @@ const app = (id: string, environments: unknown, more: object = {}): Row =>
     value: {
       id,
       name: id,
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: [],
       births: [],
@@ -64,9 +62,7 @@ const demanded = apply(emptyAccount, [
   { kind: "stream", key: SCOPE, now: 0, event: { kind: "attempt" } },
   { kind: "stream", key: SCOPE, now: 0, event: { kind: "handshake" } },
 ]);
-const told = apply(demanded, [
-  deliver([app("shop", [STAGE, PRODUCTION]), app("blog", { refused: "read_change" })]),
-]);
+const told = apply(demanded, [deliver([app("shop", [STAGE, PRODUCTION]), app("blog", [STAGE])])]);
 const outage = apply(told, [
   {
     kind: "stream",
@@ -75,9 +71,7 @@ const outage = apply(told, [
     event: { kind: "fault", fault: { outcome: "transient", message: "down" }, jitter: 0 },
   },
 ]);
-const partial = apply(told, [
-  { ...deliver([app("blog", { refused: "read_change" })]), reset: true },
-]);
+const partial = apply(told, [{ ...deliver([app("blog", [STAGE])]), reset: true }]);
 const refused = apply(told, [
   {
     kind: "stream",
@@ -118,18 +112,9 @@ describe("appEnvironments", () => {
       environments: [STAGE, PRODUCTION],
     },
     { name: "the application withheld", state: removed, appId: "shop", environments: undefined },
-    { name: "refused to the reader", state: told, appId: "blog", environments: undefined },
     { name: "an application HQ never named", state: told, appId: "none", environments: undefined },
   ])("reads $name", ({ state, appId, environments }) => {
     expect(of(state, appId).environments).toEqual(environments);
-  });
-
-  it.each([
-    { appId: "blog", refused: "read_change" },
-    { appId: "shop", refused: null },
-    { appId: "none", refused: null },
-  ])("says HQ's refusal of $appId's environments as $refused", ({ appId, refused }) => {
-    expect(of(told, appId).refused).toBe(refused);
   });
 
   it("reads an application's recent rollouts beside its environments, none from an older HQ", () => {
@@ -147,7 +132,7 @@ describe("appEnvironments", () => {
       appIds: ["shop", "blog"],
     });
     expect(read.shop?.environments).toEqual([STAGE, PRODUCTION]);
-    expect(read.blog).toEqual({ environments: undefined, refused: "read_change", unread: [] });
+    expect(read.blog?.environments).toEqual([STAGE]);
   });
 
   it.each([

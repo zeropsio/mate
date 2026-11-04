@@ -169,7 +169,6 @@ export interface AppsChanges {
 }
 
 const NO_CHANGES: ReadonlyMap<string, GroupChanges> = new Map();
-const NO_REFUSALS: ReadonlyMap<string, string> = new Map();
 
 /** The named applications' open changes as HQ's navigation lists them, by id. */
 function useOpenChanges(appIds: ReadonlyArray<string>) {
@@ -185,16 +184,13 @@ function useOpenChanges(appIds: ReadonlyArray<string>) {
 
 /**
  * The named applications' changes as rows, at HQ's official address: the open ones from HQ's
- * navigation with what a held detail adds, and HQ's refusal of them to this person, apart.
+ * navigation with what a held detail adds.
  */
 function useChangeRows(appIds: ReadonlyArray<string>, hqAddress: string | undefined) {
   const open = useOpenChanges(appIds);
   const { changes: detail } = useHqAppReleases(appIds);
   return useMemo(
-    () =>
-      hqAddress === undefined
-        ? { rows: NO_CHANGES, refused: NO_REFUSALS }
-        : groupChangesOf(open, detail, hqAddress),
+    () => (hqAddress === undefined ? NO_CHANGES : groupChangesOf(open, detail, hqAddress)),
     [detail, hqAddress, open],
   );
 }
@@ -206,7 +202,7 @@ function useChangeRows(appIds: ReadonlyArray<string>, hqAddress: string | undefi
  */
 export function useAppsChanges(appIds: ReadonlyArray<string>): AppsChanges {
   const hqAddress = useHqAddress();
-  const { rows } = useChangeRows(appIds, hqAddress);
+  const rows = useChangeRows(appIds, hqAddress);
   return useMemo(() => ({ hqAddress, changes: rows }), [hqAddress, rows]);
 }
 

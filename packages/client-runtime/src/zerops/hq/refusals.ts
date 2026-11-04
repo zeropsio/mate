@@ -404,15 +404,14 @@ export function hqRefusalWords(refusal: {
   return `HQ refused this (${reason ?? refusal.code}).`;
 }
 
-/** How a verb's state is worded: a wall time, and when Zerops answered HQ's view of the roles. */
+/** How a verb's state is worded: a wall time. */
 interface OfferWording {
   readonly at: (ms: number) => string;
-  readonly rolesAnsweredAt: string | null;
 }
 
 /**
- * What a control says beside a verb HQ does not offer (`hqOffer`): HQ's refusal, as of when Zerops
- * answered the roles it was decided over; that HQ has not said; since when HQ does not answer.
+ * What a control says beside a verb not offered (`hqOffer`): the refusal the person's Zerops roles
+ * decide; that it is not decided yet; since when HQ does not answer.
  * Nothing for an offered one. `at` words a wall time; nothing here compares one with now.
  */
 export function hqOfferWords(
@@ -424,11 +423,8 @@ export function hqOfferWords(state: HqOfferState, input: OfferWording): string |
   switch (state.kind) {
     case "allowed":
       return undefined;
-    case "refused": {
-      const words = hqRefusalWords({ code: "forbidden", reason: state.reason });
-      const answered = input.rolesAnsweredAt === null ? NaN : Date.parse(input.rolesAnsweredAt);
-      return Number.isNaN(answered) ? words : `${words} Zerops roles as of ${input.at(answered)}.`;
-    }
+    case "refused":
+      return hqRefusalWords({ code: "forbidden", reason: state.reason });
     case "unknown":
       return "HQ has not said yet.";
     case "unavailable":

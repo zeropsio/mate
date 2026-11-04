@@ -167,10 +167,12 @@ export interface HqMate extends Partial<HqMateRecord> {
 }
 
 /**
- * What the reader may do with a Mate (`observe_mate`, `edit_mate_record`, `detach`); absent where
- * HQ sent none, or none this build can read. Where it may go HQ answers as the move opens.
+ * What the person may do with a thing HQ streams, decided by the verb rule over their live Zerops
+ * roles (`@t3tools/shared/zeropsOffers`): of a Mate `observe_mate`, `edit_mate_record`, `detach`;
+ * of an environment its deploys and removal, and `finish`. Absent while those roles are not read.
+ * Where a Mate may go HQ answers as the move opens.
  */
-export interface HqMateOffers {
+export interface HqOffered {
   readonly can?: HqOffers;
 }
 
@@ -182,20 +184,15 @@ export interface HqAppContents {
   readonly deletingProjectIds: ReadonlyArray<string>;
 }
 
-/** What `GET /api/structure` answers: the applications as the reader sees them in Zerops. */
+/** HQ's structure: the organization's applications, and the Mates HQ holds in none. */
 export interface HqStructure {
-  /** What the reader may do with the organization's applications; absent where HQ sent none. */
+  /** What the person may do with the organization's applications (`organizationOffers`). */
   readonly can?: HqOffers;
   /**
-   * Each project the reader reads that HQ holds nowhere, by id, with whether they may write its
-   * Mate's record (`create_mate_record`); absent where HQ sent none.
+   * Each project of the organization HQ holds nowhere, by id, with whether the person may write its
+   * Mate's record (`create_mate_record`), where their roles are read.
    */
   readonly unheld?: Readonly<Record<string, HqOffers>>;
-  /**
-   * When Zerops answered the org view HQ decides its offers over (ISO 8601): shown, never compared
-   * with now. None until HQ's stream names one.
-   */
-  readonly rolesAnsweredAt?: string | null;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<
@@ -203,7 +200,7 @@ export interface HqStructure {
       readonly projectId: string;
       readonly name: string;
       readonly mate: HqMate;
-    } & HqMateOffers
+    } & HqOffered
   >;
   readonly apps: ReadonlyArray<{
     readonly problems?: ReadonlyArray<HqProblem> | undefined;
@@ -215,18 +212,17 @@ export interface HqStructure {
         readonly name: string;
         readonly kind: string;
         readonly mate: HqMate | null | undefined;
-      } & HqMateOffers
+      } & HqOffered
     >;
-    /** What the reader may do with it: its changes, its deploys, its release; absent where none. */
+    /** What the person may do with it: its changes, its deploys, its release (`applicationOffers`). */
     readonly can?: HqOffers;
     /** Absent from an older HQ: projected projects cannot establish emptiness. */
     readonly contents?: HqAppContents;
     /**
-     * Its stage and production with their deploys (`hq/environments.ts`), to whoever reads its
-     * changes; refused, with HQ's reason, to one who only sees it — never an empty list; absent
-     * where HQ sent none this build can read.
+     * Its stage and production with their deploys (`hq/environments.ts`); absent where HQ sent none
+     * this build can read.
      */
-    readonly environments?: ReadonlyArray<HqEnvironment> | { readonly refused: string };
+    readonly environments?: ReadonlyArray<HqEnvironment & HqOffered>;
     /** The Mates on their way into it whose attach has not landed; absent from an older HQ. */
     readonly births?: ReadonlyArray<HqBirth>;
     /**
@@ -241,7 +237,7 @@ export interface HqStructure {
 export type CanonicalHqStructure = Omit<HqStructure, "apps"> & {
   readonly apps: ReadonlyArray<
     Omit<HqStructure["apps"][number], "environments"> & {
-      readonly environments?: ReadonlyArray<CanonicalHqEnvironment> | { readonly refused: string };
+      readonly environments?: ReadonlyArray<CanonicalHqEnvironment & HqOffered>;
     }
   >;
 };

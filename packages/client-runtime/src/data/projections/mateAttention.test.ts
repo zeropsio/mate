@@ -135,8 +135,6 @@ const placed = (unseen: number | null): ReadonlyArray<AccountInput> => [
           kind: "mate",
           mate: null,
           person: {
-            role: "DEVELOPER",
-            mayWrite: true,
             mine: true,
             ownerUserId: null,
             waitsOnViewer: false,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vite-plus/test";
 
 import { hqAppsScope, hqPressesScope, placementsScope } from "../families/hqNavigation.ts";
 import { liveProjects, pastGrace } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { emptyAccount, linkKeys, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -21,7 +22,6 @@ const environment = {
   jobs: [],
   release: null,
   birth: null,
-  can: { keep_deploy_token: { allow: true } },
 } as const;
 const app = (environments: unknown): Row =>
   ({
@@ -31,7 +31,6 @@ const app = (environments: unknown): Row =>
     value: {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["stage"],
       births: [],
@@ -54,7 +53,13 @@ const deliver = (
   rows,
   removals: [],
 });
-const project = liveProjects(ORG, [{ id: "stage", name: "Stage" }]).reduce(apply, emptyAccount);
+// A Basic user of the organization with Full access on the stage: they key it, never finish it.
+const project = [
+  ...membershipInputs("BASIC_USER"),
+  ...liveProjects(ORG, [
+    { id: "stage", name: "Stage", userRoles: [{ clientUserId: "member", roleCode: "ADMIN" }] },
+  ]),
+].reduce(apply, emptyAccount);
 const scopes = [apps, placementsScope(ORG), hqPressesScope(ORG)];
 let connected = apply(project, {
   kind: "stream",
@@ -87,8 +92,6 @@ const delivered = apply(
         kind: "stage",
         mate: null,
         person: {
-          role: "DEVELOPER",
-          mayWrite: false,
           mine: false,
           ownerUserId: null,
           waitsOnViewer: false,
@@ -127,14 +130,6 @@ describe("environmentSetup", () => {
     },
     { name: "unread navigation", state: project, expected: [] },
     {
-      name: "refused environments",
-      state: apply(
-        placed,
-        deliver([{ ...app({ refused: "read_change" }), revision: { ...revision, revision: 2 } }]),
-      ),
-      expected: [],
-    },
-    {
       name: "a partial navigation reset",
       state: apply(placed, { ...deliver([]), reset: true }),
       expected: [
@@ -168,25 +163,16 @@ describe("environmentSetup", () => {
     },
   ])("reads $name", ({ state, expected }) => expect(of(state)).toEqual(expected));
 
-  it.each([true, false])("preserves HQ's finish offer: %s", (allow) => {
-    const previous = readsOfState(placed).fact("placement", "stage");
-    if (previous.kind !== "known") throw new Error("Missing stage placement");
-    const state = apply(
-      placed,
-      deliver([
-        {
-          family: "placement",
-          id: "stage",
-          revision: { ...revision, revision: 2 },
-          value: {
-            ...previous.value,
-            can: { finish: allow ? { allow: true } : { allow: false, reason: "read_only" } },
-          },
-        },
-      ]),
-    );
-    expect(of(state)[0]?.finish).toBe(allow);
-  });
+  it.each([
+    ["ADMIN", true],
+    ["BASIC_USER", false],
+  ])(
+    "offers finishing an environment to whoever writes the organization's structure: %s",
+    (orgRole, finish) => {
+      const state = membershipInputs(orgRole, false, 2).reduce(apply, placed);
+      expect(of(state)[0]?.finish).toBe(finish);
+    },
+  );
 
   it("does not offer keeping a key while HQ cannot verify its offer", () => {
     const outage = pastGrace(

@@ -99,7 +99,6 @@ const environment = (jobs: ReadonlyArray<HqPushNavigationJob>): HqGitNavigationE
   order: 1,
   keyHeld: false,
   keyInvalid: false,
-  can: {},
   birth: null,
   release: {
     id: "rollout-2",
@@ -141,7 +140,6 @@ describe("Git standing from the accepted release", () => {
           order: 1,
           keyHeld: false,
           keyInvalid: false,
-          can: {},
           birth: null,
         },
       ],

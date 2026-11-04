@@ -1,6 +1,7 @@
 /** One application's flow from keyed owner facts; reading it holds no app detail. */
 import { ProjectId } from "@t3tools/contracts";
 import type { RepoListEntry } from "@t3tools/shared/hqChanges";
+import { changePermission } from "@t3tools/shared/zeropsPermissions";
 import {
   canonicalGroupStopsOf,
   codeRepositoriesOf,
@@ -33,6 +34,7 @@ import {
   type ReleaseLive,
 } from "./projectFlowJoin.ts";
 import { sameValue } from "./equal.ts";
+import { decided, livePermissionFacts } from "./permissionFacts.ts";
 import { scopeFreshness, scopeSlow } from "./freshness.ts";
 import type { HqAppContents } from "../../zerops/hq/index.ts";
 
@@ -63,7 +65,10 @@ export const projectApplications: Projection<
   equals: sameValue,
 };
 
-/** A row's current contents and explicit changes refusal come from its own app record. */
+/**
+ * A row's current contents, from its own app record, and whether the person may not read its
+ * changes, by their own live roles (`read_change`).
+ */
 export const projectSummary: Projection<
   { readonly orgId: string; readonly appId: string },
   {
@@ -84,8 +89,9 @@ export const projectSummary: Projection<
       changesRefused:
         listed &&
         app.kind === "known" &&
-        app.value.changes !== undefined &&
-        "refused" in app.value.changes,
+        decided(livePermissionFacts(read, orgId), app.value.projectIds ?? [], (live) =>
+          changePermission(live, "read_change", app.value.projectIds ?? []),
+        )?.allow === false,
     };
   },
   equals: sameValue,
@@ -253,9 +259,8 @@ export const canonicalProjectFlow: Projection<ProjectFlowKey, CanonicalProjectFl
         key.review?.permission === undefined ? [] : [[appId, key.review.permission]],
       ),
       live: new Map(key.review === undefined ? [] : [[appId, key.review.live]]),
-      changes: changes?.rows ?? null,
+      changes: changes ?? null,
       changesFailure: unavailable ? HQ_CHANGES_UNANSWERED : undefined,
-      changesRefused: changes?.refused ?? new Map(),
       withheld,
     }).get(appId);
     if (flow === undefined) return undefined;

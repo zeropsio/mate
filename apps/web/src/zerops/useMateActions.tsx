@@ -55,7 +55,7 @@ import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
 import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
-import { isMateKind } from "@t3tools/shared/zeropsRoles";
+import { handsOverMates, isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import {
   useCallback,
@@ -123,7 +123,7 @@ import {
   shownMateVisibilitiesAtom,
   type MembersRead,
 } from "@t3tools/client-runtime/data";
-import { HAND_OVER_VERB, handOverCandidates, handOverOffered } from "./mateHandOver.logic";
+import { HAND_OVER_VERB, handOverCandidates } from "./mateHandOver.logic";
 import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
@@ -408,7 +408,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           },
     [activeOrganization],
   );
-  /** What HQ offers of each project and of the organization: drawn here, decided by HQ. */
+  const handsOver = handsOverMates(viewer ?? undefined);
+  /** What is offered of each project and of the organization: drawn here, decided from Zerops roles. */
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
   /**
@@ -709,17 +710,16 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     [activeOrganization, operations, captureDialogReply],
   );
 
-  /** Opens a Mate's hand-over where HQ says this person may hand it over (`mayHandOver`). */
+  /** Opens a Mate's hand-over for an owner or admin of the organization (`handsOverMates`). */
   const handOver = useCallback(
     (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
-      if (busyKey === candidate.key || !handOverOffered(projectPeople[candidate.project.id]))
-        return undefined;
+      if (busyKey === candidate.key || !handsOver) return undefined;
       return () => {
         setPress(UNPRESSED);
         setDialog({ kind: "assign", candidate });
       };
     },
-    [busyKey, projectPeople, setDialog],
+    [busyKey, handsOver, setDialog],
   );
 
   /**
@@ -1337,8 +1337,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): ReadonlyArray<ZeropsMenuEntry> => {
-      // The platform's own verbs — delete, rename — by the role function the platform enforces;
-      // HQ's, its hand-over among them, by HQ's word. Either way, a person the session does not name is offered none.
+      // The platform's own verbs — delete, rename — and HQ's, its hand-over among them, by the
+      // person's Zerops roles. Either way, a person the session does not name is offered none.
       const platformVerbs = platformVerbsOf(candidate);
       const hqVerbs = hqVerbsOf(candidate);
       const deletable = deleteMateOffered({
@@ -1414,7 +1414,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 onSelect: () => finishSetup(candidate),
               },
             ]),
-        ...(handOverOffered(projectPeople[candidate.project.id])
+        ...(handsOver
           ? [
               {
                 id: "assign",
@@ -1517,7 +1517,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       start,
       hqVerbsOf,
       platformVerbsOf,
-      projectPeople,
+      handsOver,
     ],
   );
 

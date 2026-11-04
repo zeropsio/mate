@@ -63,7 +63,6 @@ it("navigation preserves production release standing and deploy evidence", () =>
   const value = {
     id: "app",
     name: "Shop",
-    can: { read_change: { allow: true } },
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
@@ -90,7 +89,6 @@ it("navigation preserves production release standing and deploy evidence", () =>
         order: 1,
         keyHeld: true,
         keyInvalid: false,
-        can: { keep_deploy_token: { allow: true } },
         jobs: [
           {
             id: "job",
@@ -139,12 +137,6 @@ it("navigation preserves production release standing and deploy evidence", () =>
       target: { kind: "zerops", projectId: environment.projectId },
     })),
   });
-  expect(
-    readApp({
-      ...value,
-      environments: { refused: "changes_not_seen" },
-    }).environments,
-  ).toEqual({ refused: "changes_not_seen" });
   const press = {
     kind: "production",
     appId: "app",
@@ -198,8 +190,6 @@ const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
 const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
 it("defines person ownership separately from who the Mate waits on", () => {
   const facts = {
-    role: "OWNER",
-    mayWrite: true,
     mine: true,
     ownerUserId: "owner",
     waitsOnViewer: false,
@@ -257,7 +247,7 @@ it.each([
   ).toThrow();
 });
 
-it("navigation distinguishes current and historical login people and carries finish decisions", () => {
+it("navigation distinguishes current and historical login people", () => {
   const read = Schema.decodeUnknownSync(HqNavigationProject);
   const value = {
     projectId: "P",
@@ -265,10 +255,7 @@ it("navigation distinguishes current and historical login people and carries fin
     name: "Stage",
     kind: "devstage",
     mate: null,
-    can: { finish: { allow: false, reason: "not_structure_writer" } },
     person: {
-      role: "OWNER",
-      mayWrite: true,
       mine: true,
       ownerUserId: "owner",
       waitsOnViewer: false,
@@ -292,7 +279,6 @@ it("An older navigation reader accepts a modern Zerops emission.", () => {
     order: 1,
     keyHeld: true,
     keyInvalid: false,
-    can: { keep_deploy_token: { allow: true } },
     jobs: [],
     release: {
       id: "rollout",
@@ -321,7 +307,6 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
   const value = {
     id: "app",
     name: "Shop",
-    can: {},
     contents: { empty: false, deletingProjectIds: [] },
     projectIds: ["production"],
     births: [],
@@ -337,7 +322,6 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
         order: 1,
         keyHeld: true,
         keyInvalid: false,
-        can: {},
         jobs: [],
         release: null,
         birth: null,
@@ -348,12 +332,6 @@ it("Canonical navigation round-trips identity and retains list refusals.", () =>
   const wire = Schema.encodeUnknownSync(codec)(value);
   expect(wire).toEqual(value);
   expect(Schema.decodeUnknownSync(codec)(wire)).toEqual(value);
-  expect(
-    Schema.decodeUnknownSync(codec)({ ...value, environments: { refused: "forbidden" } }),
-  ).toEqual({
-    ...value,
-    environments: { refused: "forbidden" },
-  });
 });
 
 it("The navigation release offer retains missing Production service names for its review.", () => {
@@ -434,7 +412,6 @@ it("Push navigation carries attempted and confirmed hand-over evidence without t
     order: 1,
     keyHeld: false,
     keyInvalid: false,
-    can: {},
     jobs: [value],
     release: null,
     birth: null,

@@ -175,7 +175,6 @@ const offers = vi.hoisted(() => {
       comment: true,
       merge: true,
       close: true,
-      redeploy: true,
       why: {},
       readRefused: false,
     },
@@ -251,7 +250,6 @@ const DEVELOPS: ZeropsChangeOffers = {
   comment: true,
   merge: true,
   close: true,
-  redeploy: true,
   why: {},
   readRefused: false,
 };
@@ -791,7 +789,6 @@ describe("ChangeReviewView: an open change", () => {
         comment: false,
         merge: false,
         close: false,
-        redeploy: false,
         why: { merge: "HQ unavailable since 10:00." },
         readRefused: false,
       },
@@ -945,7 +942,7 @@ describe("ChangeReviewView: an open change", () => {
   // Guide 0.8: a verb this person cannot finish is not offered.
   it("offers neither where HQ's rule does not, and says what merging takes", () => {
     const html = render(open, files, {
-      offers: { ...DEVELOPS, merge: false, close: false, redeploy: false },
+      offers: { ...DEVELOPS, merge: false, close: false },
     });
     expect(footOf(html)).not.toContain("<button");
     expect(textOf(html)).toContain(

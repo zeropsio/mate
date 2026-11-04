@@ -245,15 +245,11 @@ export const hqScopeKey = (scope: HqScope): string => {
 };
 
 export const HqPersonFacts = Schema.Struct({
-  role: Schema.String,
-  mayWrite: Schema.Boolean,
   mine: Schema.Boolean,
   ownerUserId: Schema.NullOr(Schema.String),
   /** This Mate's person's registered Chief; absent from an older HQ. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
-  /** The viewer may hand the Mate over (HQ's _Hand-over_); absent from an older HQ: they may not. */
-  mayHandOver: Schema.optionalKey(Schema.Boolean),
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
   /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
@@ -261,7 +257,6 @@ export const HqPersonFacts = Schema.Struct({
 });
 export type HqPersonFacts = typeof HqPersonFacts.Type;
 
-const Decisions = Schema.Record(Schema.String, HqDecision);
 /** The task an automated Mate is on, as its row names it. */
 export const HqNavigationMateTask = Schema.Struct({
   id: Schema.String,
@@ -394,7 +389,6 @@ export const HqNavigationEnvironment = Schema.Struct({
   keyHeld: Schema.Boolean,
   keyInvalid: Schema.Boolean,
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
-  can: Decisions,
   jobs: Schema.Array(HqNavigationJob),
   release: Schema.NullOr(ReleaseRollout),
   birth: Schema.NullOr(EnvironmentBirth),
@@ -402,10 +396,7 @@ export const HqNavigationEnvironment = Schema.Struct({
 });
 export type HqNavigationEnvironment = typeof HqNavigationEnvironment.Type;
 /** @deprecated Use CanonicalHqNavigationEnvironments at the HQ read boundary. */
-export const HqNavigationEnvironments = Schema.Union([
-  Schema.Array(HqNavigationEnvironment),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationEnvironments = Schema.Array(HqNavigationEnvironment);
 /** Canonical readers normalize older HQ rows at this boundary only. */
 export const CanonicalHqNavigationEnvironment = hqEnvironmentCodec(
   Struct.omit(HqNavigationEnvironment.fields, ["projectId"]),
@@ -419,10 +410,7 @@ export const HqGitNavigationEnvironment = Schema.Struct({
 });
 export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
 
-export const CanonicalHqNavigationEnvironments = Schema.Union([
-  Schema.Array(CanonicalHqNavigationEnvironment),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const CanonicalHqNavigationEnvironments = Schema.Array(CanonicalHqNavigationEnvironment);
 export type CanonicalHqNavigationEnvironments = typeof CanonicalHqNavigationEnvironments.Type;
 /** Remaining hold duration from HQ's read; transport silence never decides its outcome. */
 export const HqNavigationPress = Schema.Struct({
@@ -449,10 +437,7 @@ export const HqNavigationChange = Schema.Struct({
   pullRequest: HqChange.fields.pullRequest,
 });
 export type HqNavigationChange = typeof HqNavigationChange.Type;
-export const HqNavigationChanges = Schema.Union([
-  Schema.Array(HqNavigationChange),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationChanges = Schema.Array(HqNavigationChange);
 /** Compact navigation offer; review contents and service entries remain in detail. */
 export const HqNavigationReleaseOffer = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
@@ -479,10 +464,7 @@ export const HqNavigationReleaseOffer = Schema.Struct({
   inFlight: Schema.NullOr(Schema.String),
 });
 export type HqNavigationReleaseOffer = typeof HqNavigationReleaseOffer.Type;
-export const HqNavigationRelease = Schema.Union([
-  Schema.NullOr(HqNavigationReleaseOffer),
-  Schema.Struct({ refused: Schema.String }),
-]);
+export const HqNavigationRelease = Schema.NullOr(HqNavigationReleaseOffer);
 
 /** An application's intake as its menu reads it: where its tasks come from, and how many wait. */
 export const HqNavigationIntake = Schema.Struct({
@@ -511,7 +493,6 @@ export const HqNavigationApp = Schema.Struct({
   problems: Schema.optionalKey(Schema.Array(HqProblem)),
   id: Schema.String,
   name: Schema.String,
-  can: Decisions,
   contents: Schema.Struct({
     empty: Schema.Boolean,
     deletingProjectIds: Schema.Array(Schema.String),
@@ -545,8 +526,6 @@ export const HqNavigationProject = Schema.Struct({
   name: Schema.String,
   kind: Schema.String,
   mate: Schema.NullOr(HqNavigationMate),
-  /** Environment projects include finish: the attach decision for their current placement. */
-  can: Schema.optionalKey(Decisions),
   person: HqPersonFacts,
   /** Login ID to current person; only credentials present and not API tokens. */
   signedInNow: Schema.Record(Schema.String, Schema.String),

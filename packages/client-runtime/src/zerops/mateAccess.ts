@@ -7,6 +7,7 @@
 
 import {
   asOrgRole,
+  effectiveRole,
   roleAtLeast,
   zeropsRoleAnswer,
   type RoleMateVisibility,
@@ -55,7 +56,7 @@ export function resolveMateVisibility(input: {
   readonly viewer: MateAccessViewer;
 }): RoleMateVisibility {
   if (input.project.clientId !== input.viewer.id) return "hidden";
-  const override = viewerOverride(input);
+  const override = viewerProjectGrant(input);
   // An override this membership cannot be matched against is no override: the
   // project named per-person roles and we cannot tell which one is ours.
   if (
@@ -86,7 +87,7 @@ export function resolveMateVisibility(input: {
 }
 
 /** The viewer's grant on this project: the one its roles name for them, else their own one. */
-function viewerOverride(input: {
+export function viewerProjectGrant(input: {
   readonly project: MateAccessProject;
   readonly viewer: MateAccessViewer;
 }): string | undefined {
@@ -105,8 +106,7 @@ export function resolveMateProjectRole(input: {
   readonly viewer: MateAccessViewer;
 }): ZeropsOrgRole {
   if (input.project.clientId !== input.viewer.id) return "NO_ACCESS";
-  const override = viewerOverride(input);
-  return override === undefined ? asOrgRole(input.viewer.roleCode) : asOrgRole(override);
+  return effectiveRole(viewerProjectGrant(input), input.viewer.roleCode);
 }
 
 /**
@@ -128,7 +128,7 @@ export function resolveMateProjectRole(input: {
  *   `PUT /project/{id}`, which needs effective `OWNER` or `ADMIN` there as
  *   deleting it does (measured: tags and rename need effective `OWNER`/`ADMIN`).
  *
- * Handing a Mate over is HQ's (`mayHandOver`), never decided here.
+ * Handing a Mate over is an organization owner's or admin's (`handsOverMates`).
  */
 export interface MateVerbs {
   readonly delete: boolean;

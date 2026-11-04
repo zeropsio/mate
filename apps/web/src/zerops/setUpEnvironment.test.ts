@@ -1,4 +1,5 @@
 import { makeAccountStore, type HqWrites } from "@t3tools/client-runtime/data";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { AtomRegistry } from "effect/reactivity";
 import { accountOperations } from "./accountOperations";
@@ -123,7 +124,6 @@ it("The account candidate bridge uses the existing coordinator once and never re
         value: {
           id: "app",
           name: "Shop",
-          can: { structure: { allow: true } },
           projectIds: [],
           environments: [],
           births: [],
@@ -133,6 +133,9 @@ it("The account candidate bridge uses the existing coordinator once and never re
     ],
     removals: [],
   });
+  // Connecting a remote writes the organization's structure: the viewer administers it in Zerops.
+  for (const input of [...membershipInputs("ADMIN"), ...liveProjects("org", [])])
+    store.dispatch(input);
   const probe = {
     ok: true as const,
     remote: {

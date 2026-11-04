@@ -20,12 +20,11 @@ export function sharedEnvironmentRows(
     readonly name: string;
     readonly environments?:
       | ReadonlyArray<{ readonly id: string; readonly tier: string; readonly name: string }>
-      | { readonly refused: string }
       | undefined;
   }>,
 ): ReadonlyArray<SharedEnvironmentRow> {
   return apps.flatMap((app) => {
-    if (app.environments === undefined || "refused" in app.environments) return [];
+    if (app.environments === undefined) return [];
     const shared = app.environments.flatMap((environment) =>
       environment.tier === "production" || environment.tier === "stage"
         ? [

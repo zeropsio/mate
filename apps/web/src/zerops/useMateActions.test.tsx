@@ -895,14 +895,8 @@ describe("useMateActions — Change face…", () => {
   });
 });
 
-/**
- * The hook mounted over HQ's navigation holding `candidates` in Acme Docs, HQ saying of each
- * whether this person may hand it over (`mayHandOver`), as its stream carries it.
- */
-function mountHeld(
-  mayHandOver: boolean | undefined,
-  candidates: ReadonlyArray<ZeropsCandidatePresentation> = [FEN],
-): void {
+/** The hook mounted over HQ's navigation holding `candidates` in Acme Docs. */
+function mountHeld(candidates: ReadonlyArray<ZeropsCandidatePresentation> = [FEN]): void {
   const registry = AtomRegistry.make();
   mountHqNavigation(registry, "org-acme", {
     structure: {
@@ -920,13 +914,10 @@ function mountHeld(
       ],
     } as never,
     person: {
-      role: "DEVELOPER",
-      mayWrite: true,
       mine: false,
       ownerUserId: null,
       waitsOnViewer: false,
       unseen: null,
-      ...(mayHandOver === undefined ? {} : { mayHandOver }),
     },
   });
   mount(registry);
@@ -943,20 +934,25 @@ describe("useMateActions — Hand this Mate over", () => {
     });
   };
 
-  // No client-side role check: HQ's `mayHandOver` alone puts the verb in the Mate's menu.
-  it("offers Hand over this Mate in the Mate's menu where HQ says the person may, and nowhere else", () => {
-    mountHeld(true);
-    expect(verbs(FEN).find((verb) => verb.id === "assign")?.label).toBe("Hand over this Mate");
-    mountHeld(false);
-    expect(verbs(FEN).map((verb) => verb.id)).not.toContain("assign");
-    mountHeld(undefined);
-    expect(verbs(FEN).map((verb) => verb.id)).not.toContain("assign");
-  });
+  // The person's role in the organization, as Zerops reads it, puts the verb in the Mate's menu.
+  it.each([
+    ["OWNER", true],
+    ["ADMIN", true],
+    ["BASIC_USER", false],
+    ["READ_ONLY", false],
+  ])(
+    "offers Hand over this Mate in the Mate's menu to an owner or admin of the organization, and nowhere else: %s",
+    (role, offered) => {
+      mock.roleCode = role;
+      mountHeld();
+      expect(verbs(FEN).some((verb) => verb.id === "assign")).toBe(offered);
+    },
+  );
 
   // Whom to hand it to is the organization's members, read with the person's own Zerops token.
   it("reads the organization's members once its picker opens, never on load, and lists them by person", () => {
     mock.members = { status: "ready", members: [EVA] };
-    mountHeld(true);
+    mountHeld();
     expect(mock.demanded).toEqual([]);
     openAssign();
     expect(mock.demanded).toContain("organizationMembers:org-acme");
@@ -965,14 +961,14 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 
   it("says it reads the organization until its people are there to pick", () => {
-    mountHeld(true);
+    mountHeld();
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
   it("says it could not read the organization's people, and asks again on Try again", () => {
     mock.members = { status: "failed", members: [] };
-    mountHeld(true);
+    mountHeld();
     openAssign();
     expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
     act(() => {
@@ -991,7 +987,7 @@ describe("useMateActions — Hand this Mate over", () => {
     mock.handOverMate.mockResolvedValue(
       answered({ stage: "refused", reason: "HQ refused the hand-over." }),
     );
-    mountHeld(true);
+    mountHeld();
     openAssign();
     expect(mock.assignDialog.current).toMatchObject({ pending: false, error: null });
     await act(async () => {
@@ -1018,7 +1014,7 @@ describe("useMateActions — Hand this Mate over", () => {
     mock.handOverMate.mockResolvedValue(
       answered({ stage: "refused", reason: stopped, code: "handover_unfinished" }),
     );
-    mountHeld(true);
+    mountHeld();
     openAssign();
     await act(async () => {
       mock.assignDialog.current!.onSubmit("u-eva");
@@ -1033,7 +1029,7 @@ describe("useMateActions — Hand this Mate over", () => {
     mock.handOverMate.mockResolvedValue(
       answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
     );
-    mountHeld(true);
+    mountHeld();
     openAssign();
     await act(async () => {
       mock.assignDialog.current!.onSubmit("u-eva");
@@ -1050,7 +1046,7 @@ describe("useMateActions — Hand this Mate over", () => {
         nextAction: "Check who owns the Mate, then hand it over again",
       }),
     );
-    mountHeld(true);
+    mountHeld();
     openAssign();
     await act(async () => {
       mock.assignDialog.current!.onSubmit("u-eva");
@@ -1069,7 +1065,7 @@ describe("useMateActions — Hand this Mate over", () => {
         answer = resolve;
       }),
     );
-    mountHeld(true);
+    mountHeld();
     openAssign();
     await act(async () => {
       mock.assignDialog.current!.onSubmit("u-eva");
@@ -2318,21 +2314,17 @@ const menuAccessCases: ReadonlyArray<{
   person: { readonly role: string; readonly grants?: Readonly<Record<string, string>> };
   actions: ReadonlyArray<string>;
   recordWritable: boolean;
-  /** HQ's word on whether this person may hand the Mate over (`mayHandOver`). */
-  handOver?: true;
 }> = [
   {
     name: "org OWNER",
     person: { role: "OWNER" },
     recordWritable: true,
-    handOver: true,
     actions: ["rename", "face", "assign", "move", "delete"],
   },
   {
     name: "org ADMIN",
     person: { role: "ADMIN" },
     recordWritable: true,
-    handOver: true,
     actions: ["rename", "face", "assign", "move", "delete"],
   },
   {
@@ -2392,7 +2384,7 @@ describe("B: Mate menu access", () => {
         userRoles: grant === undefined ? [] : [{ clientUserId: "member-ada", roleCode: grant }],
       },
     };
-    mountHeld(row.handOver === true, [candidate]);
+    mountHeld([candidate]);
     const html = renderToStaticMarkup(
       <Menu>
         <MateMenuItems

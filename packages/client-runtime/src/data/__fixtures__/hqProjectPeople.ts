@@ -68,8 +68,6 @@ export function seedHqProjectPeople(
         kind: "mate",
         mate: null,
         person: {
-          role: "DEVELOPER",
-          mayWrite: true,
           mine: person.mine ?? false,
           ownerUserId: person.ownerUserId ?? null,
           waitsOnViewer: person.waitsOnViewer ?? false,

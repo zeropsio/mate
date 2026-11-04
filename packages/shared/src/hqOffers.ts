@@ -1,37 +1,32 @@
 /**
- * What HQ offers a person, beside each thing its structure streams them (`mate-hq apps/hq/src/offers.ts`):
- * a `can` record of verb to decision — the same `can` (`mate-hq apps/hq/src/permissions.ts`) over the same target
- * HQ enforces the write with, over the org as HQ last read it. The write itself is decided again at
- * the press, and its refusal wins.
+ * What the client offers a person of HQ's verbs, beside each thing HQ's structure streams: a `can`
+ * record of verb to decision, decided by the verb rule (`zeropsOffers.ts`) over the client's own
+ * live read of Zerops — the person's membership and each project's override for them.
+ * HQ streams no verdict; it decides each write again on the person's fresh read, and its refusal
+ * wins.
  *
- * - **The record is open.** A verb this build does not know, or a decision it cannot read, is
- *   unknown — never a broken snapshot, never a guess. Each decision is read on its own.
+ * - **A verb not decided is unknown** — Zerops not read yet, the thing absent — never a guess.
  * - **A Mate's moves** (`moveTo`) are choices, not a verb: each application, or `new`, with the
- *   kinds the move rule lets it take there; none listed is nowhere.
- * - **Four states a control draws** (`hqOffer`): allowed, refused with HQ's reason (its words are
- *   `hq/refusals.ts`'), unknown — nothing streamed yet, the thing absent, the verb unanswered — and
- *   unavailable since HQ stopped answering. A re-read in flight keeps the last record. Nothing
- *   compares a time to now.
+ *   kinds the move rule lets it take there; HQ answers them as the move opens.
+ * - **Four states a control draws** (`hqOffer`): allowed, refused with the rule's reason (its words
+ *   are `hq/refusals.ts`'), unknown, and unavailable since HQ stopped answering: nothing HQ
+ *   enforces can be pressed then. Nothing compares a time to now.
  *
  * Pure.
  *
  * @module hqOffers
  */
-import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { Decision } from "./zeropsPermissions.ts";
-
-/** One verb's decision as HQ sends it: its reason open, so a later HQ's reason is still read. */
+/** One verb's decision as a gate HQ streams carries it: its reason open, so a later HQ's is read. */
 export const HqDecision = Schema.Union([
   Schema.Struct({ allow: Schema.Literal(true) }),
   Schema.Struct({ allow: Schema.Literal(false), reason: Schema.String }),
 ]);
 export type HqDecision = typeof HqDecision.Type;
 
-/** A `can` record as it travels: open, each decision read on its own (`hqOffer`). */
-export const HqOffers = Schema.Record(Schema.String, Schema.Unknown);
-export type HqOffers = typeof HqOffers.Type;
+/** A `can` record: each verb decided, by verb. */
+export type HqOffers = Readonly<Record<string, HqDecision>>;
 
 /**
  * Where HQ lets the reader move a Mate (`moveTo`): each application by id, and `new` — one they
@@ -46,16 +41,7 @@ export const HqMoveRefusals = Schema.Record(
 );
 export type HqMoveRefusals = typeof HqMoveRefusals.Type;
 
-/** A `can` record as HQ writes it: a decision for each of `V`. */
-export type HqOffersOf<V extends string> = { readonly [K in V]: Decision };
-
-/**
- * An application's verbs as every HQ in service streams them (`mate-hq apps/hq/src/offers.ts`
- * `applicationOffers`, `offers/environments.ts` `environmentCreationOffers`). A fixture typed so
- * cannot offer a verb an HQ may not send: a newer HQ repeats `structure`'s verdict under
- * `connect_remote`, `replace_remote_token`, `update_remote_address` and `disconnect_remote`; an
- * older one sends none of them.
- */
+/** An application's verbs as `applicationOffers` decides the ones a fixture names. */
 export type HqApplicationVerb =
   | "add_mate"
   | "structure"
@@ -67,9 +53,7 @@ export type HqApplicationOffers = { readonly [K in HqApplicationVerb]?: HqDecisi
 
 /**
  * The verb HQ admits every write to a repository's remote on: mirroring it through the GitHub app
- * or with a token, its token, its address, disconnecting it, following a GitHub repository
- * (`mate-hq apps/hq/src/repoRemotes.ts` `structureWriter`). Read rather than the remote verbs,
- * which only a newer HQ sends.
+ * or with a token, its token, its address, disconnecting it, following a GitHub repository.
  */
 export const HQ_REMOTE_WRITE_VERB = "structure" satisfies HqApplicationVerb;
 
@@ -81,12 +65,10 @@ export type HqOfferState =
   /** HQ does not answer: since when, wall ms. */
   | { readonly kind: "unavailable"; readonly since: number };
 
-const readDecision = Schema.decodeUnknownOption(HqDecision);
-
 /**
- * One verb's state, from the `can` record HQ last streamed and whether HQ answers now: once it
- * stopped answering, every HQ-enforced verb is unavailable since then, whatever it said before;
- * while it is only being read again, what it said last stands.
+ * One verb's state, from its `can` record and whether HQ answers now: once it stopped answering,
+ * every HQ-enforced verb is unavailable since then; while it is only being read again, the record
+ * stands.
  */
 export function hqOffer(
   can: HqOffers | undefined,
@@ -96,9 +78,7 @@ export function hqOffer(
   if (!hq.current && hq.unavailableSince !== null) {
     return { kind: "unavailable", since: hq.unavailableSince };
   }
-  return Option.match(readDecision(can?.[verb]), {
-    onNone: (): HqOfferState => ({ kind: "unknown" }),
-    onSome: (decision): HqOfferState =>
-      decision.allow ? { kind: "allowed" } : { kind: "refused", reason: decision.reason },
-  });
+  const decision = can?.[verb];
+  if (decision === undefined) return { kind: "unknown" };
+  return decision.allow ? { kind: "allowed" } : { kind: "refused", reason: decision.reason };
 }

@@ -84,46 +84,40 @@ describe("a Mate's observation section", () => {
   it.each([
     {
       label: "who may operate a Mate that is not authorized",
-      mayWrite: true,
+      operates: true,
       metadata: known(NONE),
       offers: true,
     },
     {
       label: "who may operate a Mate last known not authorized",
-      mayWrite: true,
+      operates: true,
       metadata: known(NONE, true),
       offers: true,
     },
     {
       label: "who may operate an authorized Mate",
-      mayWrite: true,
+      operates: true,
       metadata: known(AUTH),
       offers: false,
     },
     {
       label: "who may operate a Mate whose authorization is being read",
-      mayWrite: true,
+      operates: true,
       metadata: { state: "reading" },
       offers: false,
     },
     {
       label: "who may not operate the Mate",
-      mayWrite: false,
-      metadata: known(NONE),
-      offers: false,
-    },
-    {
-      label: "HQ says nothing of operating",
-      mayWrite: undefined,
+      operates: false,
       metadata: known(NONE),
       offers: false,
     },
   ] satisfies ReadonlyArray<{
     label: string;
-    mayWrite: boolean | undefined;
+    operates: boolean;
     metadata: ObserveCredentialRead["metadata"];
     offers: boolean;
-  }>)("offers Authorize to a viewer $label: $offers", ({ mayWrite, metadata, offers }) => {
-    expect(offersObserveAuthorize({ mayWrite, metadata })).toBe(offers);
+  }>)("offers Authorize to a viewer $label: $offers", ({ operates, metadata, offers }) => {
+    expect(offersObserveAuthorize({ operates, metadata })).toBe(offers);
   });
 });

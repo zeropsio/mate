@@ -240,11 +240,11 @@ function Remote({
   const guide = gitTokenGuide(reviewingAddress ? url : (remote?.url ?? url), appName);
   const keep = remote == null ? actions?.connect : actions?.replaceToken;
   // HQ admits every remote write on one offer (`HQ_REMOTE_WRITE_VERB`).
-  const mayWrite = allowed(HQ_REMOTE_WRITE_VERB);
-  const permitted = mayWrite && keep !== undefined;
+  const writesRemote = allowed(HQ_REMOTE_WRITE_VERB);
+  const permitted = writesRemote && keep !== undefined;
   // Through the app: one of its repositories, no token.
   const viaApp =
-    app !== null && mayWrite && actions?.viaApp !== undefined ? actions.viaApp : undefined;
+    app !== null && writesRemote && actions?.viaApp !== undefined ? actions.viaApp : undefined;
   const pick = chosen ?? app?.repositories[0] ?? null;
   // Followed only: the way out is connecting it on GitHub through the app, or no longer following.
   const follows = remote == null ? repo.follows : undefined;
@@ -253,7 +253,7 @@ function Remote({
     viaApp !== undefined && followedName !== null && app !== null
       ? app.repositories.find((name) => name.toLowerCase() === followedName.toLowerCase())
       : undefined;
-  const unfollow = follows !== undefined && mayWrite ? actions?.unfollow : undefined;
+  const unfollow = follows !== undefined && writesRemote ? actions?.unfollow : undefined;
   const tokenRemote = remote != null && remote.via !== "app";
   const sameRepository = tokenRemote && app !== null ? githubName(remote.url) : null;
   const switchable =
@@ -266,12 +266,12 @@ function Remote({
     remote?.repositoryId != null &&
     remote.via !== "app" &&
     new URL(remote.url).hostname === "github.com" &&
-    mayWrite &&
+    writesRemote &&
     actions?.reviewAddress !== undefined &&
     actions.updateAddress !== undefined &&
     !editing;
   const disconnectOffered =
-    remote != null && mayWrite && actions?.disconnect !== undefined && !editing;
+    remote != null && writesRemote && actions?.disconnect !== undefined && !editing;
   const canDisconnect = disconnectOffered && dependencies.length === 0;
   const showDisconnect = canDisconnect && !disconnecting;
   // What keeps Disconnect away, said where Disconnect would stand.
@@ -343,7 +343,7 @@ function Remote({
   };
   const submit = async () => {
     if (
-      !(reviewingAddress ? mayWrite && actions?.reviewAddress !== undefined : permitted) ||
+      !(reviewingAddress ? writesRemote && actions?.reviewAddress !== undefined : permitted) ||
       !token ||
       guide.kind !== "guide" ||
       busy
@@ -650,7 +650,7 @@ function Remote({
               }}
               disabled={
                 busy ||
-                !(reviewingAddress ? mayWrite : permitted) ||
+                !(reviewingAddress ? writesRemote : permitted) ||
                 !token ||
                 guide.kind !== "guide"
               }
@@ -713,7 +713,7 @@ function Remote({
           </div>
         ) : null
       ) : null}
-      {sameId && mayWrite ? (
+      {sameId && writesRemote ? (
         <div className="grid gap-2">
           <p className="rv-note">
             Same GitHub repository · Review new address:{" "}

@@ -416,7 +416,6 @@ export interface CanonicalGroupsOptions extends Omit<DeriveZeropsGroupsOptions, 
     readonly name: string;
     readonly environments?:
       | ReadonlyArray<CanonicalHqEnvironment | HqGitNavigationEnvironment>
-      | { readonly refused: string }
       | undefined;
   }>;
 }
@@ -524,7 +523,7 @@ export function deriveCanonicalGroups(
   const targetsByApp = new Map<string, Set<string>>();
   const managedProjects = new Set<string>();
   for (const app of options.apps ?? []) {
-    if (app.environments === undefined || "refused" in app.environments) continue;
+    if (app.environments === undefined) continue;
     const targets = new Set<string>();
     for (const environment of app.environments) {
       if (environment.target.kind !== "zerops") continue;
@@ -555,7 +554,7 @@ export function deriveCanonicalGroups(
 
   const byProject = new Map(projects.map((project) => [project.id, project]));
   for (const app of options.apps ?? []) {
-    if (app.environments === undefined || "refused" in app.environments) continue;
+    if (app.environments === undefined) continue;
     const bucket = members.get(app.id) ?? [];
     for (const environment of app.environments) {
       bucket.push({

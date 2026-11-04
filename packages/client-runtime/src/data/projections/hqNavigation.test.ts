@@ -51,8 +51,6 @@ const PRESS = {
   until: "2026-10-06T00:00:30.000Z",
 } as const;
 const person = {
-  role: "DEVELOPER",
-  mayWrite: true,
   mine: true,
   ownerUserId: null,
   waitsOnViewer: false,
@@ -70,7 +68,7 @@ const rows: ReadonlyArray<Row> = [
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: { can: {}, unheld: {}, build: "b1" },
+    value: { unheld: [], build: "b1" },
   },
   {
     family: "hqStatus",
@@ -85,7 +83,6 @@ const rows: ReadonlyArray<Row> = [
     value: {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["ada", "stage"],
       births: [],
@@ -205,7 +202,6 @@ it("the delivery reader keeps mixed targets while existing project navigation ke
       order: 2,
       keyHeld: true,
       keyInvalid: false,
-      can: {},
       jobs: [],
       release: null,
       birth: null,
@@ -330,7 +326,6 @@ describe("hqNavigation", () => {
     const raw = {
       id: "shop",
       name: "Shop",
-      can: {},
       contents: { empty: false, deletingProjectIds: [] },
       environments: [],
       changes: [],
@@ -425,7 +420,6 @@ describe("hqNavigation", () => {
         {
           id: "shop",
           name: "Shop",
-          can: {},
           contents: { empty: false, deletingProjectIds: [] },
           environments: [],
           changes: [],

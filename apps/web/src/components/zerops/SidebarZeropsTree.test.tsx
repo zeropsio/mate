@@ -1,5 +1,10 @@
 import { HQ_SLOW } from "@t3tools/client-runtime/data";
-import { hqDrops, graceOver } from "@t3tools/client-runtime/data/fixtures";
+import {
+  hqDrops,
+  graceOver,
+  liveProjects,
+  membershipInputs,
+} from "@t3tools/client-runtime/data/fixtures";
 import { markupDom } from "../../../test/markupDom";
 import {
   buildZeropsGroupTree,
@@ -1559,22 +1564,18 @@ describe("a Mate's face follows its work in the menu", () => {
         organizationStatus: "selected",
         activeOrganization: organization,
       });
-      mountHqNavigation(registry, organization.organizationId, {
+      const { store } = mountHqNavigation(registry, organization.organizationId, {
         structure: {
-          can: {
-            delete_app: may ? { allow: true } : { allow: false, reason: "not_structure_writer" },
-          },
-          apps: [
-            {
-              id: "aaa",
-              name: "Beviro CRM",
-              projects: [],
-              can: { add_mate: { allow: true } },
-            },
-          ],
+          apps: [{ id: "aaa", name: "Beviro CRM", projects: [] }],
           ungrouped: [],
         },
       });
+      // Deleting an application writes the organization's structure: an owner or admin there.
+      for (const input of [
+        ...membershipInputs(may ? "ADMIN" : "BASIC_USER", true, 1, organization.organizationId),
+        ...liveProjects(organization.organizationId, []),
+      ])
+        store.dispatch(input);
       useDeleteApplicationDialog.getState().close();
       const mounted = mount(
         <RegistryContext.Provider value={registry}>
@@ -5103,8 +5104,6 @@ it("a reader sees the protocol notice without an update action", () => {
   const { store } = mountHqNavigation(registry, "org", {
     structure: { apps: [], ungrouped: [{ projectId: "Ada", name: "Ada", mate: { face: "" } }] },
     person: {
-      role: "READER",
-      mayWrite: false,
       mine: false,
       ownerUserId: null,
       waitsOnViewer: false,

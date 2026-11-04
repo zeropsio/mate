@@ -208,17 +208,18 @@ const RUNS_ON_TARGET: ReadonlySet<ZeropsProposal["kind"]> = new Set([
 ]);
 
 /**
- * Why the viewer may not decide a card, where HQ says so: HQ keeps a decision only from someone who
- * may work in the conversation's Mate, and an approval runs on its project as the person who
- * approves. Nothing while HQ has not said: Zerops still refuses what they may not do.
+ * Why the viewer may not decide a card: HQ keeps a decision only from someone who works in the
+ * conversation's Mate, and an approval runs on its project as the person who approves — each Basic
+ * user or above there (`projectOperator`). Nothing while Zerops is not read yet: Zerops still
+ * refuses what they may not do.
  */
 export function approveAuthority(
   proposal: ZeropsProposal,
-  home: { readonly mayWrite?: boolean | undefined } | undefined,
-  target: { readonly mayWrite?: boolean | undefined } | undefined,
+  operatesHome: boolean | undefined,
+  operatesTarget: boolean | undefined,
 ): string | undefined {
-  if (home?.mayWrite === false) return "Only someone who can work in this Mate can decide this.";
-  if (RUNS_ON_TARGET.has(proposal.kind) && target?.mayWrite === false) {
+  if (operatesHome === false) return "Only someone who can work in this Mate can decide this.";
+  if (RUNS_ON_TARGET.has(proposal.kind) && operatesTarget === false) {
     return `Only someone who can change ${proposal.projectName ?? "this project"} can approve this.`;
   }
   return undefined;

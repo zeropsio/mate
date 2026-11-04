@@ -114,6 +114,13 @@ const MAIN = {
 };
 
 const app = vi.hoisted(() => ({
+  /** The person's organization as their session reads it; none unless a test names one. */
+  organization: null as null | {
+    readonly id: string;
+    readonly membershipId: string;
+    readonly roleCode: string;
+    readonly canCreateProjects: boolean;
+  },
   recovery: {
     standing: { kind: "unknown" },
     status: undefined,
@@ -281,8 +288,8 @@ vi.mock("~/zerops/zeropsDataContext", () => ({
   runZeropsCommand: () => Promise.resolve(),
 }));
 vi.mock("~/zerops/ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
-  useZeropsSessionOptional: () => ({ activeOrganization: null, user: { id: "u-ada" } }),
+  useZeropsSession: () => ({ activeOrganization: app.organization, user: { id: "u-ada" } }),
+  useZeropsSessionOptional: () => ({ activeOrganization: app.organization, user: { id: "u-ada" } }),
 }));
 // Off unless a test reads how far a birth has got: then the real derivation, at a fixed clock.
 vi.mock("~/zerops/useZeropsBirthProgress", async () => {
@@ -538,6 +545,7 @@ beforeEach(() => {
   app.handingOver.mockReset();
   app.cancelHandOver.mockReset();
   app.handOverOpened.mockReset();
+  app.organization = null;
   app.listing = listingOf([QUINN]);
   app.actionTrouble = null;
   app.setupFailure = undefined;
@@ -956,24 +964,23 @@ describe("a Mate's own view while its link is made", () => {
 // coming up for the first time holds its composer back for its stand-up, and one that cannot be
 // opened has nothing to write to.
 // A Mate whose key Zerops refused never connects again by itself: HQ says so on its record
-// (`keyRefused`) and says who may hand it over (`mayHandOver`); its page offers that instead.
+// (`keyRefused`); an owner or admin of the organization hands it over, which its page offers instead.
 describe("a Mate's own view where Zerops refused its key", () => {
-  const refusedKey = (mayHandOver: boolean) =>
+  const refusedKey = (roleCode: string) => {
+    app.organization = { id: "org-1", membershipId: "member", roleCode, canCreateProjects: true };
     seedHqNavigation(appAtomRegistry.get(creationPressStoreAtom)!, "org-1", {
       structure: {
         ungrouped: [{ projectId: PROJECT, name: "Quinn", mate: { face: "", keyRefused: true } }],
         apps: [],
       } as never,
       person: {
-        role: "DEVELOPER",
-        mayWrite: true,
         mine: false,
         ownerUserId: null,
         waitsOnViewer: false,
         unseen: null,
-        mayHandOver,
       },
     });
+  };
   // HQ's word is the app's registry's, read under its provider as the app mounts every page.
   const openInApp = () => {
     act(() => {
@@ -983,8 +990,8 @@ describe("a Mate's own view where Zerops refused its key", () => {
     });
   };
 
-  it("says its key was refused and offers Hand over this Mate as its one action, for whoever HQ says may", () => {
-    refusedKey(true);
+  it("says its key was refused and offers Hand over this Mate as its one action, to an owner or admin of the organization", () => {
+    refusedKey("ADMIN");
     openInApp();
     expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
     expect(buttons()).toEqual(["Hand over this Mate"]);
@@ -997,8 +1004,8 @@ describe("a Mate's own view where Zerops refused its key", () => {
     expect(app.handOverOpened).toHaveBeenCalledTimes(1);
   });
 
-  it("says who can bring it back, offering nothing to whom HQ does not let hand it over", () => {
-    refusedKey(false);
+  it("says who can bring it back, offering nothing to a member who does not hand Mates over", () => {
+    refusedKey("BASIC_USER");
     openInApp();
     expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
     expect(said()).toContain(

@@ -28,20 +28,20 @@ describe("releaseGateOf", () => {
     {
       name: "HQ's offer",
       reading: LIVE,
-      can: { release: { allow: true } },
+      can: { release: { allow: true } as const },
       gate: { allowed: true },
     },
     {
       name: "HQ's refusal, in its words",
       reading: LIVE,
-      can: { release: { allow: false, reason: "not_releaser" } },
+      can: { release: { allow: false, reason: "not_releaser" } as const },
       gate: { allowed: false, reason: "HQ: not_releaser", refusedBy: "hq" },
     },
     { name: "HQ not saying", reading: LIVE, can: {}, gate: { allowed: false, reason: "unsaid" } },
     {
       name: "HQ not answering",
       reading: DOWN,
-      can: { release: { allow: true } },
+      can: { release: { allow: true } as const },
       gate: { allowed: false, reason: "HQ unavailable" },
     },
   ])("reads $name", ({ reading, can, gate }) => {

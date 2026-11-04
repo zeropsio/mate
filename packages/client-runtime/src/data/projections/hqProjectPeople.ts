@@ -1,12 +1,11 @@
 /**
  * Who each project HQ places is, for the reader, as HQ computed it: its
  * owner — named and pictured from HQ's person records —, whether its Mate waits on the reader, and
- * who is signed in to each agent's own login now and who ever was — of a Mate the reader operates. Nothing is computed here from member lists or roles; an
- * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
- * none of it. To a viewer who may not operate a Mate (`mayWrite` false: HQ's `observe_mate`), HQ
- * sends no signers and no owner it read off the Mate: empty there is withheld, never "nobody".
- * Whether the reader may hand a Mate over, and whether Zerops refused its key — the case a
- * hand-over answers — are HQ's words too (`mayHandOver`, `keyRefused`); no role is computed here.
+ * who is signed in to each agent's own login now and who ever was. Nothing is computed here from member lists or roles; an
+ * owner HQ names no person record of is drawn as nobody's. A project HQ removed is in none of it.
+ * Whether Zerops refused its key — the case a hand-over answers — is HQ's word too (`keyRefused`).
+ * What the reader may do with it is no HQ word: the client decides that from live Zerops data
+ * (`@t3tools/shared/zeropsPermissions`).
  *
  * @module data/projections/hqProjectPeople
  */
@@ -35,20 +34,12 @@ export interface HqProjectPeople {
   readonly mine: boolean | undefined;
   /** Its Mate waits on the reader, as HQ says (`waitsOnViewer`). */
   readonly waitsOnViewer: boolean | undefined;
-  /** The reader may work in it, as HQ says (`mayWrite`); `undefined` where HQ does not say. */
-  readonly mayWrite?: boolean | undefined;
-  /** The reader may hand it over, as HQ says (`mayHandOver`); `undefined` where HQ does not say. */
-  readonly mayHandOver?: boolean | undefined;
   /** Zerops refused its key and HQ admitted none since: it cannot connect until handed over. */
   readonly keyRefused?: true | undefined;
-  /**
-   * Who is signed in to each login now, by login id: whose the composer is. `undefined` for a Mate
-   * the reader may not operate: HQ sends them no overview of it, and its empty record is no fact.
-   */
+  /** Who is signed in to each login now, by login id: whose the composer is. */
   readonly signedInNow: PlacementValue["signedInNow"] | undefined;
   /**
    * Who last signed each login in, by login id, signed out since or not: whether anybody has.
-   * Undefined where HQ withholds it from the viewer.
    */
   readonly everSignedIn: PlacementValue["everSignedIn"] | undefined;
 }
@@ -60,25 +51,19 @@ function peopleOf(
   placement: PlacementValue,
 ): HqProjectPeople {
   const { person, signedInNow, everSignedIn } = placement;
-  const withheld = person?.mayWrite === false;
   return {
     ...(person?.chiefProjectId === undefined
       ? {}
       : {
           chief: { projectId: person.chiefProjectId, mine: person.mine },
         }),
-    owned:
-      person?.ownerUserId === undefined || (withheld && person.ownerUserId === null)
-        ? undefined
-        : person.ownerUserId !== null,
+    owned: person?.ownerUserId === undefined ? undefined : person.ownerUserId !== null,
     owner: ownerOf(read, orgId, person?.ownerUserId),
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
-    mayWrite: person?.mayWrite,
-    mayHandOver: person?.mayHandOver,
     keyRefused: placement.mate?.keyRefused,
-    signedInNow: withheld ? undefined : signedInNow,
-    everSignedIn: withheld ? undefined : everSignedIn,
+    signedInNow,
+    everSignedIn,
   };
 }
 

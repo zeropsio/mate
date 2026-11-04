@@ -69,12 +69,6 @@ describe("recordedEnvironment — an attached project as HQ's navigation records
       {},
       { kind: "recorded", name: "stage", keyed: false },
     ],
-    [
-      "the reader may not read its environments",
-      { refused: "You may not read them." },
-      {},
-      { kind: "refused", reason: "You may not read them." },
-    ],
     ["HQ no longer observed", [], { paused: true }, { kind: "unobserved" }],
   ] as const)("%s", (_label, environments, options, expected) => {
     expect(derive(environments, options)).toEqual(expected);

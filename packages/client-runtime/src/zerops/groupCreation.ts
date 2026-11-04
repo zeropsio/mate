@@ -46,12 +46,12 @@ export function resolveAddProjectVerb(input: {
       reason:
         input.offer.reason === "not_structure_writer"
           ? ONLY_ADMINS_ADD_A_PROJECT
-          : hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+          : hqOfferWords(input.offer, { at: input.at }),
     };
   }
   return {
     offered: false,
-    reason: hqOfferWords(input.offer, { at: input.at, rolesAnsweredAt: null }),
+    reason: hqOfferWords(input.offer, { at: input.at }),
   };
 }
 

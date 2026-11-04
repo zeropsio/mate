@@ -608,7 +608,7 @@ function indexKey(
 function releaseEnded(state: AccountState, appId: string, tag: string): boolean {
   const fact = state.facts.get(factKey("hqApp", appId)) as Fact<FamilyValues["hqApp"]> | undefined;
   const environments = fact?.content.kind === "value" ? fact.content.value.environments : undefined;
-  if (environments === undefined || "refused" in environments) return false;
+  if (environments === undefined) return false;
   const rollouts = environments
     .filter((environment) => environment.tier === "production")
     .map((environment) => environment.release);

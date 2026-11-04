@@ -1,5 +1,6 @@
 import { describe, expect, it } from "@effect/vitest";
 
+import type { HqStructure } from "./client.ts";
 import { canonicalHqStructureOf } from "./structure.ts";
 import type { Known } from "../knowledge/known.ts";
 import {
@@ -281,7 +282,7 @@ describe("birthFaceOf", () => {
 
 describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds nowhere", () => {
   const LIVE = { current: true, unavailableSince: null } as const;
-  const OFFERED = {
+  const OFFERED: HqStructure = {
     ...STRUCTURE,
     unheld: { "p-free": { create_mate_record: { allow: true } } },
     ungrouped: [

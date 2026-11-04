@@ -1,12 +1,11 @@
 /**
  * Environments missing their final setup, from the account's project and HQ navigation facts.
- * Unread or refused environments make no claim of missing setup. A creation HQ still holds is
+ * Unread environments make no claim of missing setup. A creation HQ still holds is
  * its own to finish; elapsed time never ends that hold here.
  *
  * @module data/projections/environmentSetup
  */
-import { ProjectId } from "@t3tools/contracts";
-import { hqOffer } from "@t3tools/shared/hqOffers";
+import { type HqOffers, hqOffer } from "@t3tools/shared/hqOffers";
 
 import {
   halfMadeGroupEnvironments,
@@ -56,29 +55,38 @@ export const environmentSetup: Projection<
             ];
       }),
     );
-    const byProject = new Map(
-      [...environments.values()].flat().map((environment) => [environment.projectId, environment]),
+    // What the person may do with each, as the structure decides it from their live roles.
+    const environmentCan = new Map<string, HqOffers | undefined>(
+      structure.apps.flatMap(({ environments: told }) =>
+        (told ?? []).flatMap((environment) =>
+          environment.target.kind === "zerops"
+            ? [[environment.target.projectId, environment.can] as const]
+            : [],
+        ),
+      ),
+    );
+    const projectCan = new Map(
+      structure.apps.flatMap(({ projects: placed }) =>
+        placed.map((project) => [project.projectId, project.can] as const),
+      ),
     );
     return halfMadeGroupEnvironments({
       projects,
       registry: registryFromHq(structure),
       environments,
       mayKey: (projectId) =>
-        hqOffer(byProject.get(ProjectId.make(projectId))?.can, "keep_deploy_token", {
+        hqOffer(environmentCan.get(projectId), "keep_deploy_token", {
           current: true,
           unavailableSince: null,
         }).kind === "allowed",
       pressing: (projectId) => Object.hasOwn(navigation.presses, projectId),
-    }).map((entry) => {
-      const project = read.fact("placement", entry.projectId);
-      return {
-        ...entry,
-        finish:
-          hqOffer(project.kind === "known" ? project.value.can : undefined, "finish", {
-            current: navigation.live,
-            unavailableSince: null,
-          }).kind === "allowed",
-      };
-    });
+    }).map((entry) => ({
+      ...entry,
+      finish:
+        hqOffer(projectCan.get(entry.projectId), "finish", {
+          current: navigation.live,
+          unavailableSince: null,
+        }).kind === "allowed",
+    }));
   },
 };

@@ -241,29 +241,21 @@ describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () =>
 
 describe("hqOfferWords — what a control says beside a verb HQ does not offer", () => {
   const at = (ms: number) => `@${String(ms)}`;
-  it.each<[string, HqOfferState, string | null, string | undefined]>([
-    ["nothing for an offered verb", { kind: "allowed" }, null, undefined],
-    [
-      "HQ's refusal, as of the roles it was decided over",
-      { kind: "refused", reason: "not_releaser" },
-      "1970-01-01T00:00:01.000Z",
-      "To release, this project needs a Zerops project, and you need more than Read access to its production. Zerops roles as of @1000.",
-    ],
+  it.each<[string, HqOfferState, string | undefined]>([
+    ["nothing for an offered verb", { kind: "allowed" }, undefined],
     [
       "HQ's refusal alone where it named no time",
       { kind: "refused", reason: "not_structure_writer" },
-      null,
       "Only an owner or admin of the organization can do this.",
     ],
-    ["that HQ has not said yet", { kind: "unknown" }, null, "HQ has not said yet."],
+    ["that HQ has not said yet", { kind: "unknown" }, "HQ has not said yet."],
     [
       "since when HQ does not answer",
       { kind: "unavailable", since: 2_000 },
-      null,
       "HQ unavailable since @2000.",
     ],
-  ])("%s", (_, state, rolesAnsweredAt, words) => {
-    expect(hqOfferWords(state, { at, rolesAnsweredAt })).toBe(words);
+  ])("%s", (_, state, words) => {
+    expect(hqOfferWords(state, { at })).toBe(words);
   });
 });
 

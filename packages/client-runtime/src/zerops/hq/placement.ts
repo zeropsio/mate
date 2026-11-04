@@ -297,9 +297,10 @@ export function placedNames(structure: MatePlacementStructure): ReadonlyMap<stri
 }
 
 /**
- * What HQ offers the reader of a project (`can`, `@t3tools/shared/hqOffers`): of a Mate it holds,
- * its record and leaving its application — none while HQ does not answer; of a project it holds
- * nowhere, writing its Mate's record. HQ decides each, and decides the write again at the press.
+ * What the reader of a project is offered (`can`, `@t3tools/shared/hqOffers`), decided from their
+ * live Zerops roles: of a Mate it holds, its record and leaving its application — none while HQ
+ * does not answer; of a project it holds nowhere, writing its Mate's record. HQ decides the write
+ * again at the press.
  * Whether the reader may see or open the Mate is never HQ's offer: its visibility is the client's
  * verdict from live Zerops data (`mateVisibility`).
  */

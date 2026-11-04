@@ -73,8 +73,6 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
       }
     : null,
   person: {
-    role: "DEVELOPER",
-    mayWrite: true,
     mine: false,
     ownerUserId: null,
     waitsOnViewer: false,
