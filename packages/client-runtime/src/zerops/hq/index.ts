@@ -80,6 +80,7 @@ export {
 } from "./environments.ts";
 export {
   enrollmentRefusalWords,
+  HQ_HANDOVER_UNFINISHED,
   HQ_NOT_OPEN,
   hqOfferWords,
   hqRefusalWords,

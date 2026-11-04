@@ -276,6 +276,8 @@ export const HqPersonFacts = Schema.Struct({
   /** This Mate's person's registered Chief; absent from an older HQ. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
+  /** The viewer may hand the Mate over (HQ's _Hand-over_); absent from an older HQ: they may not. */
+  mayHandOver: Schema.optionalKey(Schema.Boolean),
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
   /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
@@ -339,6 +341,11 @@ export const HqNavigationMate = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
   /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Zerops refused the Mate's key and HQ has admitted none since: it cannot connect until somebody
+   * hands it over. Present only as `true`.
+   */
+  keyRefused: Schema.optionalKey(Schema.Literal(true)),
   /** The task an automated Mate is on, or none: what its row names while it works. */
   task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
 });

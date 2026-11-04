@@ -278,6 +278,7 @@ export const HQ_CLIENT_VERBS = [
   "mergeChange",
   "closeChange",
   "handChange",
+  "handOver",
   "changeAttachment",
   "changeCommits",
   "changeMetadata",

@@ -1,9 +1,9 @@
 /**
  * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
  * Mate's birth intent and its bind to a project, a project attached to an application, a Mate's
- * record in none and its close-off, an environment's deploy key. HQ keeps no request id for them:
- * after a lost answer, HQ's navigation showing the write's effect — absent at the send — adopts
- * it, and nothing is sent again blindly.
+ * record in none and its close-off, an environment's deploy key, a Mate's hand-over. HQ keeps no
+ * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
+ * the send — adopts it, and nothing is sent again blindly.
  *
  * @module data/operations/hqWrites
  */
@@ -52,6 +52,12 @@ declare module "../model.ts" {
     readonly "mark-closed-off": {
       readonly orgId: string;
       readonly projectId: string;
+    };
+    /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
+    readonly "hand-over-mate": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly ownerUserId: string;
     };
     readonly "keep-deploy-key": {
       readonly orgId: string;
@@ -199,6 +205,31 @@ export const updateMateFace = shown(
   (read, intent) => placementOf(read, intent.projectId)?.mate?.face === intent.face,
 );
 
+/**
+ * HQ's `204` is its end: the Mate's owner and key are replaced. Its navigation shows it as the
+ * person picked named its owner and its key no longer refused — what adopts a lost answer, never
+ * what ends an answered one (a person who handed their own Mate away may no longer read it).
+ */
+const handedOver = (read: ProjectionReads, intent: IntentOf<"hand-over-mate">) => {
+  const placement = placementOf(read, intent.projectId);
+  return (
+    placement?.person?.ownerUserId === intent.ownerUserId && placement.mate?.keyRefused !== true
+  );
+};
+export const handOverMate: OperationKind<"hand-over-mate"> = {
+  kind: "hand-over-mate",
+  executor: "hq",
+  reflected: (read, intent) => handedOver(read, intent),
+  // Ends an adopted lost answer; an answered one HQ's receipt ended already.
+  settledBy: (read, intent) => (handedOver(read, intent) ? { kind: "succeeded" } : null),
+  effectHandles: (read, intent) =>
+    placementOf(read, intent.projectId) === undefined
+      ? null
+      : handedOver(read, intent)
+        ? [intent.projectId]
+        : [],
+};
+
 /** Each HQ write's kind. */
 export const setAutoUpdatePolicy: OperationKind<"set-auto-update-policy"> = {
   kind: "set-auto-update-policy",
@@ -225,6 +256,7 @@ export const HQ_WRITE_KINDS = [
   createMateRecord,
   markClosedOff,
   keepDeployKey,
+  handOverMate,
 ] as const;
 
 export type HqWriteIntent = Extract<

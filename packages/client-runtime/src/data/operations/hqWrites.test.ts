@@ -51,6 +51,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         createMate: asked("createMate"),
         recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
+        handOver: asked("handOver"),
         commentOnChange: asked("commentOnChange"),
         release: asked("release"),
         rollback: asked("rollback"),
@@ -511,6 +512,90 @@ describe("changing a Mate's face", () => {
       yield* operations.retry("r1");
       expect(progress(store).stage).toBe("refused");
     }),
+  );
+});
+
+describe("handing a Mate over", () => {
+  const owned = (store: AccountStore, ownerUserId: string | null) =>
+    seedHqNavigation(store, ORG, {
+      structure: { apps: [], ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }] },
+      person: {
+        role: "ADMIN",
+        mayWrite: true,
+        mine: false,
+        ownerUserId,
+        waitsOnViewer: false,
+        mayHandOver: true,
+        unseen: null,
+      },
+    });
+  const intent = {
+    kind: "hand-over-mate",
+    orgId: ORG,
+    projectId: "p1",
+    ownerUserId: "u-bob",
+  } as const;
+  it.effect("is HQ's one call for the person picked, done at HQ's answer", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      const sent: Array<[string, string]> = [];
+      const { operations } = operationsOf(store, {
+        handOver: async (projectId, ownerUserId) => {
+          sent.push([projectId, ownerUserId]);
+        },
+      });
+      yield* operations.submit(intent);
+      expect(sent).toEqual([["p1", "u-bob"]]);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+    }),
+  );
+  it.effect("names the phase HQ stopped at, and is asked again only deliberately", () =>
+    Effect.gen(function* () {
+      const store = account();
+      owned(store, "u-ann");
+      let sends = 0;
+      const { operations } = operationsOf(store, {
+        handOver: async () => {
+          sends++;
+          throw new HqError({
+            kind: "refused",
+            code: "handover_unfinished",
+            reason: "projectNotFound",
+            message: "The hand-over stopped while making its new key (projectNotFound).",
+          });
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({
+        stage: "refused",
+        reason: "The hand-over stopped while making its new key (projectNotFound).",
+        code: "handover_unfinished",
+      });
+      yield* operations.retry("r1");
+      expect(sends).toBe(1);
+    }),
+  );
+  it.effect(
+    "keeps a lost answer uncertain until HQ names the person picked its owner, never asking again",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        owned(store, "u-ann");
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          handOver: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit(intent);
+        expect(progress(store).stage).toBe("uncertain");
+        owned(store, "u-bob");
+        yield* operations.retry("r1");
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(sends).toBe(1);
+      }),
   );
 });
 

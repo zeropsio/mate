@@ -152,6 +152,12 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
     "This Move needs a credential and job migration that HQ cannot complete yet.",
   key_still_exists: "The original Mate key still exists. Finish its key cleanup first.",
   held_changed: "Somebody changed this project in HQ meanwhile. Try again.",
+  // A Mate's hand-over (`POST /api/mates/:projectId/hand-over`).
+  not_owner_or_admin:
+    "Only an owner or admin of the organization, or this Mate's owner, can hand it over.",
+  owner_not_member: "That person is not an active member of this organization.",
+  mate_service_unknown: "HQ could not find this Mate's service to give it a new key.",
+  key_unverified: "HQ has not verified this Mate's key yet. Try again in a few minutes.",
   // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
   repo_not_found: "HQ has no such repository.",
   // A repository HQ will not delete (`DELETE /api/apps/:appId/repos/:repo`).
@@ -332,13 +338,44 @@ const isGitEnvironmentRefusal = Schema.is(HqGitEnvironmentRefusalReason);
 const isGitRequestRefusal = Schema.is(HqGitRequestRefusalReason);
 
 /** What HQ's refusal says to the person: its reason in words, else named by its reason or code. */
+/** HQ's code for a hand-over that stopped part way: something was written, asking again finishes it. */
+export const HQ_HANDOVER_UNFINISHED = "handover_unfinished";
+
+/** Where a hand-over stopped (`409 handover_unfinished`'s `phase`), as what it was doing. */
+const HANDOVER_PHASE_WORDS: Readonly<Record<string, string>> = {
+  override: "moving its owner",
+  mint: "making its new key",
+  secret: "writing its new key to its container",
+  install: "installing its new key",
+  revoke: "revoking the key it replaced",
+};
+
+/** A hand-over HQ stopped part way: where, Zerops' own code for why, and who finishes it. */
+function handoverUnfinishedWords(phase: string | undefined, reason: string | undefined): string {
+  const doing = phase === undefined ? undefined : HANDOVER_PHASE_WORDS[phase];
+  const where =
+    doing === undefined
+      ? `The hand-over stopped part way${phase === undefined ? "" : ` (${phase})`}`
+      : `The hand-over stopped while ${doing}`;
+  // An admin may not revoke an owner's key: Zerops' `ownerRoleRequired`, finished by an owner.
+  const finish =
+    reason === "ownerRoleRequired"
+      ? "An owner of the organization must hand it over again to finish."
+      : "Hand it over again to finish.";
+  return `${where}${reason === undefined ? "" : ` (${reason})`}. ${finish}`;
+}
+
 export function hqRefusalWords(refusal: {
   readonly code: string;
   readonly reason: string | undefined;
+  /** A hand-over's phase, where HQ named one. */
+  readonly phase?: string | undefined;
   readonly remote?: HqRemoteRefusal;
   readonly gitSetup?: boolean;
 }): string {
   const { reason } = refusal;
+  if (refusal.code === HQ_HANDOVER_UNFINISHED)
+    return handoverUnfinishedWords(refusal.phase, reason);
   if (refusal.code === "remote_refused") {
     return isRemoteRefusal(reason)
       ? remoteRefusalWords(refusal.remote ?? { reason })
