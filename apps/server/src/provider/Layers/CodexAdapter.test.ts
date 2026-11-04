@@ -286,7 +286,10 @@ validationLayer("CodexAdapterLive validation", (it) => {
         runtimeMode: "full-access",
       });
 
-      NodeAssert.deepStrictEqual(validationRuntimeFactory.factory.mock.calls[0]?.[0], {
+      // The persona reader is the Mate's settings, read per turn; its shape is not an option.
+      const { persona, ...runtimeOptions } = validationRuntimeFactory.factory.mock.calls[0]![0];
+      NodeAssert.ok(Effect.isEffect(persona));
+      NodeAssert.deepStrictEqual(runtimeOptions, {
         binaryPath: "codex",
         cwd: process.cwd(),
         launchArgs: "",

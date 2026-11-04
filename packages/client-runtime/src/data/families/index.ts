@@ -5,6 +5,7 @@ import {
 import { hqReleaseReviewFamily } from "./hqReleaseReview.ts";
 import { agentUsageFamily } from "./agentUsage.ts";
 import { hqAutoUpdatePolicyFamily } from "./hqAutoUpdatePolicy.ts";
+import { hqPersonaTemplatesFamily } from "./hqPersonaTemplates.ts";
 import { mateShellFamily } from "./mateConversation.ts";
 import { mateGitRemoteFamily } from "./mateGitRemote.ts";
 import { mateRepositoryDiscoveryFamily } from "./mateRepositoryDiscovery.ts";
@@ -177,6 +178,7 @@ export const FAMILIES = defineFamilies([
 
   hqGitBrowseFamily,
   hqAutoUpdatePolicyFamily,
+  hqPersonaTemplatesFamily,
   mateSetupFamily,
   ...Object.values(MATE_FEED_FAMILIES),
   mateActionRequestFamily,

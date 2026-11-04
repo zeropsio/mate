@@ -14,7 +14,8 @@ import type { RightPanelSurface } from "./rightPanelStore";
 
 /**
  * In the order a person reaches for them after a reply (the onboarding run, 2026-10-16): the app,
- * what changed and where it runs come before the developer's tools. The launcher lists them so.
+ * what changed and where it runs come before the developer's tools, and the Mate's own setup, how
+ * it works and talks, comes last. The launcher lists them so.
  */
 export const RIGHT_PANEL_KINDS = [
   "overview",
@@ -31,6 +32,7 @@ export const RIGHT_PANEL_KINDS = [
   "vault",
   "terminal",
   "mcp",
+  "persona",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -51,6 +53,8 @@ export interface RightPanelAvailabilityInput {
    * own to browse, so its panel offers only what it uses (`CHIEF_PANEL_KINDS`).
    */
   readonly chief?: boolean;
+  /** The Mate's server keeps a persona (`matePersona`); `null` while its config is unread. */
+  readonly matePersona: boolean | null;
 }
 
 /** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
@@ -68,6 +72,8 @@ export interface RightPanelKindMeta {
     /** The launcher's letter: the label's first, or `null` where another page holds that one. */
     readonly shortcut: string | null;
     readonly unavailableHint: string;
+    /** What the card says while its answer is `unknown`, where the unavailable hint would claim one. */
+    readonly unknownHint?: string;
   } | null;
   /**
    * The page's head (`RightPanelPage`): its title and one line saying what it shows, `mate` the
@@ -246,6 +252,19 @@ export const RIGHT_PANEL_KIND_META = {
     },
     availability: () => "available",
   },
+  persona: {
+    launcher: {
+      label: "Persona",
+      description: "Choose how this Mate works and talks.",
+      shortcut: "P",
+      unavailableHint: "Update this Mate to give it a persona.",
+      // An offline or restarting Mate has not said: an update is offered only once it has.
+      unknownHint: "Waiting for this Mate to answer.",
+    },
+    page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
+    availability: (input) =>
+      input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
+  },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
 /** The head a side-panel page opens with; `mate` is the Mate's name while it is known. */
@@ -295,7 +314,16 @@ export function launcherActions(availability: Record<RightPanelKind, RightPanelA
   return RIGHT_PANEL_KINDS.filter(rightPanelKindHasLauncher)
     .filter((kind) => availability[kind] !== "hidden")
     .map((kind) => {
-      const launcher = RIGHT_PANEL_KIND_META[kind].launcher;
-      return { kind, ...launcher, available: availability[kind] === "available" };
+      const { unknownHint, ...launcher }: NonNullable<RightPanelKindMeta["launcher"]> =
+        RIGHT_PANEL_KIND_META[kind].launcher;
+      const waiting = availability[kind] === "unknown" && unknownHint !== undefined;
+      return {
+        kind,
+        ...launcher,
+        unavailableHint: waiting ? unknownHint : launcher.unavailableHint,
+        /** Its card waits for an answer: the hint is the wait's, not the refusal's. */
+        waiting,
+        available: availability[kind] === "available",
+      };
     });
 }

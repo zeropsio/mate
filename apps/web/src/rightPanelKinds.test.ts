@@ -17,6 +17,7 @@ const AVAILABLE_INPUT: RightPanelAvailabilityInput = {
   serverThread: true,
   zeropsPanel: "available",
   crewStatus: "applied",
+  matePersona: true,
 };
 
 describe("right panel kinds", () => {
@@ -123,6 +124,13 @@ describe("right panel kinds", () => {
         shortcut: "M",
         unavailableHint: "Available from a conversation.",
       },
+      {
+        kind: "persona",
+        label: "Persona",
+        description: "Choose how this Mate works and talks.",
+        shortcut: "P",
+        unavailableHint: "Update this Mate to give it a persona.",
+      },
     ]);
   });
 
@@ -162,6 +170,7 @@ describe("right panel kinds", () => {
         "vault",
         "terminal",
         "mcp",
+        "persona",
       ],
     ],
   ] as const)("%s", (_title, chief, kinds) => {
@@ -200,6 +209,7 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
       },
     },
@@ -226,6 +236,7 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unavailable",
+        persona: "available",
         overview: "hidden",
       },
     },
@@ -246,6 +257,7 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unknown",
+        persona: "available",
         overview: "hidden",
       },
     },
@@ -266,6 +278,7 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
       },
     },
@@ -316,6 +329,39 @@ describe("right panel kinds", () => {
         resolveRightPanelAvailability({ ...AVAILABLE_INPUT, gitRepo, zeropsPanel, serverThread })
           .diff,
       ).toBe(diff);
+    },
+  );
+
+  it("the Chief's panel never offers Persona, even on a Mate that takes one", () => {
+    const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, chief: true });
+    expect(availability.persona).toBe("hidden");
+    expect(launcherActions(availability).some(({ kind }) => kind === "persona")).toBe(false);
+  });
+
+  it.each([
+    { matePersona: true, persona: "available" },
+    { matePersona: null, persona: "unknown" },
+    { matePersona: false, persona: "unavailable" },
+  ] as const)(
+    "a Mate whose server says persona support is $matePersona: Persona $persona",
+    ({ matePersona, persona }) => {
+      expect(resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }).persona).toBe(
+        persona,
+      );
+    },
+  );
+
+  it.each([
+    { matePersona: null, hint: "Waiting for this Mate to answer." },
+    { matePersona: false, hint: "Update this Mate to give it a persona." },
+  ] as const)(
+    "Persona says a Mate needs an update only once its server says so: $hint",
+    ({ matePersona, hint }) => {
+      const persona = launcherActions(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }),
+      ).find(({ kind }) => kind === "persona");
+      expect(persona?.available).toBe(false);
+      expect(persona?.unavailableHint).toBe(hint);
     },
   );
 

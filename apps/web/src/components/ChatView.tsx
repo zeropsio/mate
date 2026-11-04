@@ -676,6 +676,11 @@ const ZeropsProjectsPage = lazy(
 const McpPanel = lazy(
   appChunk(() => import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel }))),
 );
+const PersonaPanel = lazy(
+  appChunk(() =>
+    import("./persona/PersonaPanel").then((module) => ({ default: module.PersonaPanel })),
+  ),
+);
 const ZeropsPanel = lazy(
   appChunk(() =>
     import("./zerops/ZeropsPanel").then((module) => ({ default: module.ZeropsPanel })),
@@ -4199,6 +4204,10 @@ function ConversationView(props: ChatViewProps) {
   const addVaultSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "vault");
+  }, [activeThreadRef]);
+  const addPersonaSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "persona");
   }, [activeThreadRef]);
   const addOverviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
@@ -8105,6 +8114,10 @@ function ConversationView(props: ChatViewProps) {
     zeropsPanel: zeropsChrome.panel,
     crewStatus: crew.status,
     chief: chiefConversation,
+    matePersona:
+      attachmentEnvironmentConfig === null
+        ? null
+        : attachmentEnvironmentConfig.environment.capabilities.matePersona === true,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
@@ -8140,6 +8153,9 @@ function ConversationView(props: ChatViewProps) {
         return;
       case "vault":
         addVaultSurface();
+        return;
+      case "persona":
+        addPersonaSurface();
         return;
       case "overview":
         addOverviewSurface();
@@ -8268,6 +8284,15 @@ function ConversationView(props: ChatViewProps) {
                 <VaultPanelContainer
                   environmentId={activeThreadRef.environmentId}
                   key={activeThreadRef.environmentId}
+                />
+              );
+            case "persona":
+              // One Mate's persona: another Mate's draws afresh, no editor or draft carried over.
+              return (
+                <PersonaPanel
+                  environmentId={activeThreadRef.environmentId}
+                  key={activeThreadRef.environmentId}
+                  mate={pageMateName ?? null}
                 />
               );
             case "overview":

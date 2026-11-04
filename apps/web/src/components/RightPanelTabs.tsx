@@ -4,6 +4,7 @@ import {
   Bot,
   Cloud,
   Database,
+  Drama as PersonaIcon,
   FileDiff,
   Files,
   GitBranch,
@@ -104,6 +105,7 @@ const SURFACE_DISABLED_REASONS = {
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
   mcp: "MCP servers are only available from a conversation.",
+  persona: "Update this Mate to give it a persona.",
   vault: "The vault is only available from a Zerops project thread.",
   overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
@@ -230,6 +232,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Users;
     case "mcp":
       return Plug;
+    case "persona":
+      return PersonaIcon;
     case "vault":
       return Vault;
     case "overview":
@@ -448,6 +452,8 @@ function surfaceTitle(
       return "Crew";
     case "mcp":
       return "MCP";
+    case "persona":
+      return "Persona";
     case "vault":
       return "Vault";
     case "overview":
@@ -490,6 +496,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Users className="size-3 shrink-0" />;
     case "mcp":
       return <Plug className="size-3 shrink-0" />;
+    case "persona":
+      return <PersonaIcon className="size-3 shrink-0" />;
     case "vault":
       return <Vault className="size-3 shrink-0" />;
     case "overview":
@@ -739,7 +747,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       <SurfaceMenuItem
                         key={action.label}
                         available={action.available}
-                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
+                        disabledReason={
+                          action.waiting
+                            ? action.unavailableHint
+                            : SURFACE_DISABLED_REASONS[action.kind]
+                        }
                         shortcut={action.shortcut}
                         onClick={action.onClick}
                         icon={<Icon />}

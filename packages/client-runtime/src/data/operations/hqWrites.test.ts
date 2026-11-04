@@ -10,12 +10,15 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { operationResult, type OperationIntent } from "../model.ts";
+import { linkKeys, operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
 import { makeOperations } from "./coordinator.ts";
 import { makeHqExecutor, type HqWrites } from "./executors/hq.ts";
+import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
+import { personaTemplateWrite } from "../projections/hqPersonaTemplates.ts";
+import { deletePersonaTemplate, savePersonaTemplate } from "./hqPersonaTemplates.ts";
 
 type App = HqStructure["apps"][number];
 const app = (patch: Partial<App> = {}): App =>
@@ -594,6 +597,263 @@ describe("organization automatic-update writes", () => {
     }),
   );
 });
+
+describe("organization persona template writes", () => {
+  const SAVE = {
+    kind: "save-persona-template",
+    orgId: ORG,
+    templateId: "t-1",
+    revision: 2,
+    name: "Reviewer",
+    description: "Reads every change twice.",
+    instructions: "Review before you merge.",
+  } as const;
+  const DELETE = {
+    kind: "delete-persona-template",
+    orgId: ORG,
+    templateId: "t-1",
+    revision: 2,
+  } as const;
+  const template = (revision: number, instructions: string = SAVE.instructions) => ({
+    id: "t-1",
+    name: SAVE.name,
+    description: SAVE.description,
+    instructions,
+    revision,
+  });
+  const write = (store: AccountStore) =>
+    personaTemplateWrite.derive(readsOfState(store.state()), "r1");
+
+  it.each([
+    {
+      title: "a save shows once the record holds its text past the revision it saw",
+      templates: [template(3)],
+      intent: SAVE,
+      shown: true,
+    },
+    {
+      title: "a save does not show while the record holds the revision it saw",
+      templates: [template(2)],
+      intent: SAVE,
+      shown: false,
+    },
+    {
+      title: "a save does not show in another writer's text",
+      templates: [template(3, "Ship fast.")],
+      intent: SAVE,
+      shown: false,
+    },
+    {
+      title: "a delete shows once the complete record holds no such template",
+      templates: [],
+      intent: DELETE,
+      shown: true,
+    },
+    {
+      title: "a delete does not show while the record still holds the template",
+      templates: [template(2)],
+      intent: DELETE,
+      shown: false,
+    },
+    {
+      title: "a delete does not show before any record is known",
+      templates: undefined,
+      intent: DELETE,
+      shown: false,
+    },
+    {
+      title:
+        "a delete does not show while the record holds a template of that id this version cannot read",
+      templates: [],
+      unreadable: ["t-1"],
+      intent: DELETE,
+      shown: false,
+    },
+  ])("$title", ({ templates, unreadable, intent, shown }) => {
+    const store = account();
+    if (templates !== undefined) observeTemplates(store, templates, unreadable);
+    const kind =
+      intent.kind === "save-persona-template" ? savePersonaTemplate : deletePersonaTemplate;
+    const answered = {
+      requestId: "r1",
+      operationId: "t-1",
+      executor: "hq" as const,
+      affected: [],
+      handles: ["t-1"],
+      acceptance: { kind: "accepted" as const },
+      outcome: { kind: "succeeded" as const, evidence: "HQ answered the write." },
+    };
+    expect(kind.reflected(readsOfState(store.state()), intent as never, answered)).toBe(shown);
+  });
+
+  it.effect(
+    "a save over a revision HQ no longer holds offers HQ's version and is never sent again",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        observeTemplates(store, [template(2)]);
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          savePersonaTemplate: async () => {
+            sends++;
+            observeTemplates(store, [template(3, "Ship fast.")]);
+            throw new HqError({
+              kind: "refused",
+              code: "conflict",
+              reason: "revision_conflict",
+              status: 409,
+              message: "Someone else changed this template meanwhile.",
+            });
+          },
+        });
+        yield* operations.submit(SAVE);
+        yield* operations.retry("r1");
+        expect(write(store)).toEqual({ stage: "conflict", current: template(3, "Ship fast.") });
+        expect(sends).toBe(1);
+      }),
+  );
+
+  it.effect.each([
+    {
+      title: "a delete over a template someone changed meanwhile offers their version",
+      record: [template(3, "Ship fast.")],
+      intent: DELETE,
+      current: template(3, "Ship fast."),
+    },
+    {
+      title: "a save over a template someone deleted meanwhile says it is gone",
+      record: [],
+      intent: SAVE,
+      current: null,
+    },
+  ])("$title", ({ record, intent, current }) =>
+    Effect.gen(function* () {
+      const store = account();
+      observeTemplates(store, record);
+      const refuse = async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "conflict",
+          reason: "revision_conflict",
+          status: 409,
+          message: "Someone else changed this template meanwhile.",
+        });
+      };
+      const { operations } = operationsOf(store, {
+        deletePersonaTemplate: refuse,
+        savePersonaTemplate: refuse,
+      });
+      yield* operations.submit(intent);
+      expect(write(store)).toEqual({ stage: "conflict", current });
+    }),
+  );
+
+  it.effect.each([
+    {
+      title: "an answered edit stays pending until the list shows it",
+      before: [template(2)],
+      intent: SAVE,
+      after: [template(3)],
+    },
+    {
+      title: "an answered new template stays pending until the list shows it",
+      before: [],
+      intent: { ...SAVE, revision: 0 },
+      after: [template(1)],
+    },
+  ])("$title", ({ before, intent, after }) =>
+    Effect.gen(function* () {
+      const store = account();
+      for (const key of [linkKeys.hq(ORG), personaTemplatesScope(ORG)])
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+          { kind: "baseline-committed" },
+        ] as const)
+          store.dispatch({ kind: "stream", key, now: 0, event });
+      observeTemplates(store, before);
+      const { operations } = operationsOf(store, { savePersonaTemplate: async () => after[0]! });
+      yield* operations.submit(intent);
+      expect(write(store)).toEqual({ stage: "pending" });
+      observeTemplates(store, after);
+      expect(write(store)).toEqual({ stage: "done" });
+    }),
+  );
+
+  it.effect(
+    "a new template whose answer was lost is adopted once the record shows it under its id",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        observeTemplates(store, []);
+        let sends = 0;
+        const { operations } = operationsOf(store, {
+          savePersonaTemplate: async () => {
+            sends++;
+            throw lost;
+          },
+        });
+        yield* operations.submit({ ...SAVE, revision: 0 });
+        expect(write(store).stage).toBe("unconfirmed");
+        observeTemplates(store, [template(1)]);
+        yield* operations.retry("r1");
+        expect(write(store)).toEqual({ stage: "done" });
+        expect(sends).toBe(1);
+      }),
+  );
+
+  it.effect("an edit whose answer was lost stays unconfirmed and is never sent again", () =>
+    Effect.gen(function* () {
+      const store = account();
+      observeTemplates(store, [template(2)]);
+      let sends = 0;
+      const { operations } = operationsOf(store, {
+        savePersonaTemplate: async () => {
+          sends++;
+          throw lost;
+        },
+      });
+      yield* operations.submit(SAVE);
+      observeTemplates(store, [template(3)]);
+      yield* operations.retry("r1");
+      expect(write(store).stage).toBe("unconfirmed");
+      expect(sends).toBe(1);
+    }),
+  );
+});
+
+function observeTemplates(
+  store: AccountStore,
+  templates: ReadonlyArray<{
+    id: string;
+    name: string;
+    description: string;
+    instructions: string;
+    revision: number;
+  }>,
+  unreadable: ReadonlyArray<string | null> = [],
+) {
+  const scope = personaTemplatesScope(ORG);
+  const revision =
+    Math.max(0, ...templates.map((template) => template.revision)) + templates.length;
+  store.dispatch({
+    kind: "rows",
+    scope,
+    generation: readsOfState(store.state()).stream(scope).generation,
+    method: "read",
+    via: "hq-stream",
+    rows: [
+      {
+        family: "hqPersonaTemplates",
+        id: ORG,
+        value: { templates, unreadable },
+        revision: { kind: "hq", incarnation: "core", revision: ++templateRevisions + revision },
+      },
+    ],
+  });
+}
+let templateRevisions = 0;
 
 function observePolicy(
   store: ReturnType<typeof makeAccountStore>,

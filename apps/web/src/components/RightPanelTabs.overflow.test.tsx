@@ -23,6 +23,7 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  persona: "available",
   vault: "available",
   overview: "hidden",
 } as const;

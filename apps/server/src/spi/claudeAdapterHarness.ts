@@ -15,6 +15,7 @@ import type {
   Options as ClaudeQueryOptions,
   PermissionMode,
   SDKMessage,
+  SDKUserMessage,
 } from "@anthropic-ai/claude-agent-sdk";
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { ClaudeSettings, type ProviderRuntimeEvent } from "@t3tools/contracts";
@@ -103,6 +104,8 @@ export class RecordingClaudeQuery implements AsyncIterable<SDKMessage> {
 export interface RecordedClaudeSession {
   readonly options: ClaudeQueryOptions;
   readonly query: RecordingClaudeQuery;
+  /** The messages the adapter sends, in order, as Claude would pull them. */
+  readonly prompt: AsyncIterable<SDKUserMessage>;
 }
 
 /**
@@ -120,7 +123,7 @@ export const makeClaudeAdapterHarness = Effect.fn("makeClaudeAdapterHarness")(fu
     modelCatalog: Effect.succeed(SYNTHETIC_CLAUDE_MODEL_CATALOG),
     createQuery: (input) => {
       const query = new RecordingClaudeQuery();
-      sessions.push({ options: input.options, query });
+      sessions.push({ options: input.options, query, prompt: input.prompt });
       return query;
     },
   });

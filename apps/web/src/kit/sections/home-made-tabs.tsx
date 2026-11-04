@@ -52,6 +52,7 @@ function SidePanelStrip() {
           serverThread: true,
           zeropsPanel: "available",
           crewStatus: "applied",
+          matePersona: true,
         })}
         defaultWidth={640}
         liveAgentCount={0}
