@@ -14,6 +14,7 @@
  */
 
 import {
+  mcpSignInPageRefusal,
   McpServerName,
   McpServersError,
   type McpServerAddInput,
@@ -591,6 +592,11 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           ),
         );
       if (started === "signed-in") return { kind: "signed-in" } as const;
+      // The server names its own sign-in page: only a web address is handed to a browser.
+      const refused = mcpSignInPageRefusal(started.url);
+      if (refused !== null) {
+        return yield* fail(operation, `${input.name} can't sign in: ${refused}.`);
+      }
       const page = options.signInPage === undefined ? undefined : new URL(options.signInPage).href;
       const landing: McpSignInLanding =
         page !== undefined && redirectOf(started.url) === page ? "mate" : "paste";

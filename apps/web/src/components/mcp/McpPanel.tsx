@@ -48,6 +48,7 @@ import {
   mcpAppRedirects,
   mcpRunKey,
   mcpSecretsFormText,
+  openSignInPage,
   mcpSignInStart,
   mcpTileInitials,
   mcpWhere,
@@ -530,8 +531,11 @@ function ToolRow(props: {
       return;
     }
     const { flow, url, landing } = result.signIn;
-    if (tab !== null) tab.location.href = url;
-    else window.open(url, "_blank", "noopener,noreferrer");
+    const refused = openSignInPage(tab, url);
+    if (refused !== null) {
+      setFailure(refused);
+      return;
+    }
     setLanded("");
     setSigning({ flow, url, landing });
   };
@@ -676,10 +680,7 @@ function ToolRow(props: {
             {signing === null ? null : signing.landing === "mate" ? (
               <p className="text-xs text-muted-foreground" data-mcp-signing="mate">
                 {MCP_WORDS.signInMate}{" "}
-                <InlineButton
-                  onClick={() => window.open(signing.url, "_blank", "noopener,noreferrer")}
-                  tone="muted"
-                >
+                <InlineButton onClick={() => void openSignInPage(null, signing.url)} tone="muted">
                   {MCP_WORDS.signInOpenAgain}
                 </InlineButton>
               </p>

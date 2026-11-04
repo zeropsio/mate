@@ -10,6 +10,7 @@
  * neither a warning nor a disagreement with an agent that can tell.
  */
 import {
+  mcpSignInPageRefusal,
   MCP_APP_REDIRECTS,
   PROVIDER_DISPLAY_NAMES,
   type McpServerAddInput,
@@ -883,6 +884,23 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
     else values[name] = value;
   }
   return { ok: true, values, keep };
+}
+
+// ── Opening a sign-in page ────────────────────────────────────────────
+
+/**
+ * Points the tab opened in the press at a sign-in page, only once it is a web address (the Mate
+ * checks too); else closes the tab and answers why, in a sentence for the row.
+ */
+export function openSignInPage(tab: Window | null, url: string): string | null {
+  const refused = mcpSignInPageRefusal(url);
+  if (refused !== null) {
+    tab?.close();
+    return `${refused[0]!.toUpperCase()}${refused.slice(1)}.`;
+  }
+  if (tab !== null) tab.location.href = url;
+  else window.open(url, "_blank", "noopener,noreferrer");
+  return null;
 }
 
 // ── When to read again ────────────────────────────────────────────────

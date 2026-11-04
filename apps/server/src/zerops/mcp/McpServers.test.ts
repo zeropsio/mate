@@ -852,6 +852,36 @@ describe("McpServers sign-in", () => {
     }),
   );
 
+  it.effect.each([
+    "javascript:alert(document.cookie)",
+    "data:text/html,<script>alert(1)</script>",
+    "http://auth.example.com/authorize?state=s-1",
+  ])("a sign-in page that isn't an https address is refused, and no sign-in starts: %s", (url) =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({
+        installed: ["claudeAgent"],
+        running: {
+          driver: "claudeAgent",
+          servers: [],
+          signIn: { url, finish: () => Effect.void },
+        },
+      });
+      const refused = yield* Effect.flip(service.signIn({ name: NAME, threadId: THREAD }));
+      expect(refused.detail).toBe(
+        "adobe can't sign in: its sign-in page isn't an https address, so Mate won't open it.",
+      );
+      const ended = yield* Effect.flip(
+        service.finishSignIn({
+          name: NAME,
+          flow: "flow-1",
+          landed: `${url}&code=c`,
+          threadId: THREAD,
+        }),
+      );
+      expect(ended.detail).toBe("This sign-in to adobe has ended. Press Sign in to start again.");
+    }),
+  );
+
   it.effect("an agent that already holds the sign-in opens nothing", () =>
     Effect.gen(function* () {
       const { service } = yield* setup({
