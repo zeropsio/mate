@@ -24,6 +24,14 @@ import { createRoot } from "react-dom/client";
 import { RightPanelPage } from "~/components/RightPanelPage";
 import { McpPanelBody } from "~/components/mcp/McpPanel";
 import { ObserveLineBody } from "~/components/mcp/ObserveCredentialControl";
+import { McpProposalCard } from "~/components/zerops/proposal/McpProposalCard";
+import {
+  mcpAskFace,
+  mcpProgress,
+  mcpProposalView,
+  type McpProposal,
+} from "~/components/zerops/proposal/mcpProposal.logic";
+import { MateFace } from "~/components/zerops/primitives";
 import { MCP_TAB_START, type McpTabState } from "~/components/mcp/McpServers.logic";
 import { MCP_SERVERS_FIXTURE } from "~/components/mcp/mcpServersFixture";
 import type { McpAction, McpActionResult, McpSignInResult } from "~/components/mcp/useMcpServers";
@@ -284,16 +292,79 @@ function Tab() {
   );
 }
 
-/** The Mate's proposal as the tab lists it; its card is the conversation's (`McpProposalCard`). */
-const GITHUB_PROPOSAL = {
+/** The Mate's proposal as the tab lists it, its card the kit's (`McpProposalCard`), as proposed. */
+const GITHUB: McpProposal = {
   id: "proposal-github",
-  name: "GitHub",
+  kind: "mcp.add",
+  summary: "Set up GitHub",
   reason: "To open pull requests for the checkout fixes",
-  card: (
-    <p className="text-xs text-muted-foreground">
-      The proposal's card opens here, as it does in the conversation.
-    </p>
-  ),
+  projectId: "p-juno",
+  params: {
+    scope: "mate",
+    server: {
+      name: "github",
+      title: "GitHub",
+      transport: { type: "http", url: "https://api.githubcopilot.com/mcp/" },
+      auth: { kind: "header" },
+    },
+    credentials: [
+      {
+        key: "GITHUB_TOKEN",
+        label: "GitHub token (read-only is enough)",
+        placement: "header",
+        headerName: "Authorization",
+        prefix: "Bearer ",
+      },
+    ],
+  },
+};
+
+function GithubCard() {
+  const status = { kind: "proposed" } as const;
+  const signing = { phase: "idle" } as const;
+  const view = mcpProposalView({
+    proposal: GITHUB,
+    mateName: "Juno",
+    status,
+    signing,
+    approveBlocked: undefined,
+    agents: [CLAUDE, CODEX],
+  });
+  return (
+    <McpProposalCard
+      askId={GITHUB.id}
+      density="full"
+      face={mcpAskFace({
+        view,
+        status,
+        signing,
+        busy: false,
+        title: GITHUB.params.server.title,
+        signsIn: false,
+        keyed: true,
+        by: null,
+        at: null,
+      })}
+      mateFace={<MateFace size={24} state="needs" tint="sky" />}
+      onAdd={noop}
+      onChangeKey={async () => true}
+      onDecline={noop}
+      onFinishSignIn={noop}
+      onOpenAgain={noop}
+      onSignIn={noop}
+      onTryAgain={noop}
+      progress={mcpProgress(GITHUB, status, null)}
+      signing={signing}
+      view={view}
+    />
+  );
+}
+
+const GITHUB_PROPOSAL = {
+  id: GITHUB.id,
+  name: GITHUB.params.server.title,
+  reason: GITHUB.reason ?? null,
+  card: <GithubCard />,
 };
 
 function Harness() {
