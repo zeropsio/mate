@@ -190,6 +190,7 @@ export function beginHarnessPress(input: {
       ...state.creations,
       [id]: {
         organizationId: "org-harness",
+        creator: "cu-harness",
         birthId: id,
         name: input.project,
         botName: input.botName,

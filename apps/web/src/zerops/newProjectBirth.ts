@@ -48,7 +48,7 @@ import {
 } from "@t3tools/client-runtime/zerops/birthProgress";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
 import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
-import type { ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
+import { type ProjectGrant, withProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 
 import type {
   BirthLineProgress,
@@ -67,6 +67,8 @@ export type NewProjectStep = "registry" | "create";
 /** What Create or Add asked for: the project, its Mate, and where. */
 export interface NewProjectAsk {
   readonly organizationId: string;
+  /** Who presses it: their membership (`clientUser`) id in the organization. */
+  readonly creator: string;
   /** The creation's own id, made on the press: where its view is, and its group until HQ names one. */
   readonly birthId: string;
   /** The project's name. */
@@ -222,8 +224,11 @@ export interface NewProjectCreation {
   readonly appId: string;
   /** The birth intent HQ holds of its Mate. */
   readonly birth: string;
-  /** Who reaches it from birth beyond their organization role. */
-  readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /**
+   * Who reaches it from birth beyond their organization role: its creator as its `OWNER`, the
+   * Mate's owner marker, beside the access chosen at Create.
+   */
+  readonly userRoles: ReadonlyArray<ProjectGrant>;
 }
 
 /**
@@ -498,9 +503,9 @@ export async function runNewProjectBirth(
           appId,
           ...(ask.locationId === null ? {} : { location: ask.locationId }),
           birth: intent,
-          ...(ask.userRoles === undefined || ask.userRoles.length === 0
-            ? {}
-            : { userRoles: ask.userRoles }),
+          // Every Mate carries its owner marker from birth, whatever its creator's organization
+          // role: their own `OWNER` override, which a hand-over later moves.
+          userRoles: withProjectGrant(ask.userRoles ?? [], ask.creator, "OWNER"),
         })
       ).projectId,
   );

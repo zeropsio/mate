@@ -102,6 +102,7 @@ vi.mock("../ui/button", () => ({
 /** Acme CRM, pressed a moment ago: registering it in the organization's HQ. */
 const ACME: NewProjectBirth = {
   organizationId: "org-acme",
+  creator: "cu-me",
   birthId: "b-acme",
   name: "Acme CRM",
   botName: "Vera",
