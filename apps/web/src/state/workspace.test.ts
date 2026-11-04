@@ -249,3 +249,54 @@ it("the MCP tab keeps showing its last list while it reads the servers again", a
     registry.dispose();
   }
 });
+
+it("a window focus that several views of the tools list answer reads it once", async () => {
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  let reads = 0;
+  const workspaceReads = makeWorkspaceReads(store, {
+    read: () =>
+      Effect.sync(() => {
+        reads += 1;
+        return { servers: [], agents: [] } as never;
+      }),
+  });
+  const vcs = makeVcsReads(store, () => Stream.never);
+  registry.set(workspaceHostAtom, {
+    data: store.data,
+    reads: workspaceReads,
+    vcs,
+    act: makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "action",
+      mcpAnswer: workspaceReads.mcpAnswer,
+      wire: { call: () => Effect.never },
+    }),
+    writeFile: makeFileWrites({
+      store,
+      reads: workspaceReads,
+      current: () => true,
+      makeId: () => "save",
+      write: () => Effect.never,
+    }),
+  });
+  const list = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
+  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  const unmount = registry.mount(list);
+  try {
+    await settle();
+    expect(reads).toBe(1);
+    // The Tools tab, a proposal card and its docked copy each read again on focus.
+    for (let view = 0; view < 3; view++) registry.refresh(list);
+    await settle();
+    expect(reads).toBe(2);
+    expect(registry.get(list)).toMatchObject({ _tag: "Success" });
+  } finally {
+    unmount();
+    workspaceReads.close();
+    vcs.close();
+    store.close();
+    registry.dispose();
+  }
+});

@@ -163,7 +163,8 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       made.fiber = Effect.runFork(
         Effect.scoped(
           Effect.gen(function* () {
-            const changes = yield* Queue.unbounded<void>();
+            // One read waiting is enough: asks landing before it starts share it.
+            const changes = yield* Queue.dropping<void>(1);
             const supervisor: LinkSupervisor = yield* superviseLink({
               store,
               key,
@@ -363,8 +364,16 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
       release = demand(kind, target, true);
       check();
     });
+  /**
+   * Reads a demanded read again without letting its demand go: however many views ask before the
+   * read starts, it is read once. Nothing is read for a read no view demands.
+   */
+  const refresh = <K extends WorkspaceRead>(kind: K, target: WorkspaceTarget<K>) => {
+    if (!closed) active.get(workspaceScope(kind, target))?.wake?.();
+  };
   return {
     demand,
+    refresh,
     sample,
     invalidateRefs: (environmentId: string, cwd: string) => {
       for (const entry of active.values())
