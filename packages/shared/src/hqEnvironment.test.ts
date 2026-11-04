@@ -14,7 +14,6 @@ const payload = {
   order: 2,
   keyHeld: true,
   keyInvalid: false,
-  can: {},
   jobs: [],
   release: null,
   birth: null,
@@ -98,7 +97,6 @@ it("A git environment beside a Zerops environment does not make the environment 
     target: { kind: "zerops", projectId: "destination" },
   };
   expect(readList([git, zerops])).toEqual([git, zerops]);
-  expect(readList({ refused: "forbidden" })).toEqual({ refused: "forbidden" });
 });
 
 it.each(["feature/release-1", "main", "release_2026"])(

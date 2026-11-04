@@ -17,6 +17,7 @@ import {
   addresses,
   vaultAtom,
   hqProjectPerson,
+  projectOperator,
   initialStream,
   inventoryPlacementStatus,
   organizationMembers,
@@ -67,6 +68,7 @@ import {
 } from "./proposal.logic";
 
 const UNKNOWN_PERSON = Atom.make<HqProjectPeople | undefined>(undefined);
+const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
 const UNREAD = Atom.make(NOT_READ_VAULT);
 
@@ -149,12 +151,13 @@ function Proposal({
         : { orgId: home.orgId, projectId: proposal.projectId },
     [home, proposal.projectId],
   );
-  const targetPerson = useProjection(hqProjectPerson, target, UNKNOWN_PERSON);
+  const operatesHome = useProjection(projectOperator, home ?? null, UNDECIDED);
+  const operatesTarget = useProjection(projectOperator, target, UNDECIDED);
   const readOnlyReason = readOnlyChief
     ? person?.chief === undefined
       ? "Finding this Mate's Chief…"
       : "Only this Mate's person can ask their Chief."
-    : approveAuthority(proposal, person, targetPerson);
+    : approveAuthority(proposal, operatesHome, operatesTarget);
   const proposer = useKnownMate(environmentId);
   const directory = useZeropsMateDirectory();
   const recipient = useMemo(

@@ -1804,7 +1804,6 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
-                      can: {},
                       birth: null,
                       release: null,
                       jobs: [],
@@ -1872,7 +1871,6 @@ describe("environment route target dispatch", () => {
                       order: 1,
                       keyHeld: false,
                       keyInvalid: false,
-                      can: {},
                       birth: null,
                       release: null,
                       jobs: [],
@@ -2023,46 +2021,6 @@ it("Environment navigation keeps its identity when the target's project name cha
   ]);
 });
 
-it("An environment page explains HQ's refusal in words without opening project readers.", () => {
-  const registry = AtomRegistry.make();
-  const { store } = mountHqNavigation(registry, "org", {
-    structure: {
-      apps: [
-        { id: "shop", name: "Shop", projects: [], environments: { refused: "changes_not_seen" } },
-      ],
-      ungrouped: [],
-    },
-  });
-  platform.routeWitness = true;
-  platform.projectReads = [];
-  try {
-    const markup = renderToStaticMarkup(
-      <RegistryContext.Provider value={registry}>
-        <AccountDataContext.Provider
-          value={
-            { data: store.data, orgId: "org", demandDetail: () => () => {} } as Pick<
-              AccountData,
-              "data" | "orgId" | "demandDetail"
-            > as AccountData
-          }
-        >
-          <InventoryContext.Provider value={EMPTY_ROUTE_INVENTORY}>
-            <ZeropsStopDetailPage groupId="shop" environmentId="stage" />
-          </InventoryContext.Provider>
-        </AccountDataContext.Provider>
-      </RegistryContext.Provider>,
-    );
-    expect(markup).toContain(
-      "You need more than Read access to one of this project&#x27;s Zerops projects to see its changes.",
-    );
-    expect(markup).not.toContain("changes_not_seen");
-    expect(platform.projectReads).toEqual([]);
-  } finally {
-    platform.routeWitness = false;
-    registry.dispose();
-  }
-});
-
 const EMPTY_ROUTE_INVENTORY: Inventory = {
   projects: [],
   projectRefs: new Map(),
@@ -2157,9 +2115,9 @@ it("a deleted production names its removal before opening runtime readers", () =
   }
 });
 
-it.each(["empty", "refused"] as const)(
+it.each(["empty"] as const)(
   "A placed stage keeps its runtime page while HQ has no environment row (%s).",
-  (standing) => {
+  () => {
     const registry = AtomRegistry.make();
     const { store } = mountHqNavigation(registry, "org", {
       structure: {
@@ -2168,7 +2126,7 @@ it.each(["empty", "refused"] as const)(
             id: "shop",
             name: "Shop",
             projects: [{ projectId: "placed-stage", name: "Stage", kind: "stage", mate: null }],
-            environments: standing === "refused" ? { refused: "changes_not_seen" } : [],
+            environments: [],
           },
         ],
         ungrouped: [],

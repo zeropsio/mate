@@ -1092,7 +1092,7 @@ describe("approveAuthority", () => {
   };
   it.each<[string, ZeropsProposal, boolean | undefined, boolean | undefined, string | undefined]>([
     ["a viewer who may work in the Mate and change its target", restart, true, true, undefined],
-    ["a viewer whose rights HQ has not said yet", restart, undefined, undefined, undefined],
+    ["a viewer whose Zerops roles are not read yet", restart, undefined, undefined, undefined],
     [
       "a viewer who may not work in the Mate",
       restart,
@@ -1109,9 +1109,9 @@ describe("approveAuthority", () => {
     ],
     ["a message, which changes no project of the viewer's", message, true, false, undefined],
   ])(
-    "Approve is held back only where HQ says the viewer may not do it: %s",
+    "Approve is held back only where the viewer's Zerops role does not let them do it: %s",
     (_case, proposal, home, target, words) => {
-      expect(approveAuthority(proposal, { mayWrite: home }, { mayWrite: target })).toBe(words);
+      expect(approveAuthority(proposal, home, target)).toBe(words);
     },
   );
 });

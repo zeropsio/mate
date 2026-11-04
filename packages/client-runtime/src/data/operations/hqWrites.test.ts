@@ -520,12 +520,9 @@ describe("handing a Mate over", () => {
     seedHqNavigation(store, ORG, {
       structure: { apps: [], ungrouped: [{ projectId: "p1", name: "p1", mate: { face: "" } }] },
       person: {
-        role: "ADMIN",
-        mayWrite: true,
         mine: false,
         ownerUserId,
         waitsOnViewer: false,
-        mayHandOver: true,
         unseen: null,
       },
     });

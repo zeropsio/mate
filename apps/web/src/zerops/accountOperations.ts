@@ -185,7 +185,7 @@ export function accountOperations(
           if (ended || recorded.kind === "waiting") return;
           ended = true;
           if (recorded.kind === "recorded") resolve({ name: recorded.name, keyed: recorded.keyed });
-          else reject(new Error(recorded.kind === "refused" ? recorded.reason : HQ_UNOBSERVED));
+          else reject(new Error(HQ_UNOBSERVED));
           cancel?.();
         },
         { immediate: true },

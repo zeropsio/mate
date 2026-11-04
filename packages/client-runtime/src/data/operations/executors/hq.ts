@@ -1,7 +1,7 @@
 import type { HqLifecycleRecord } from "@t3tools/shared/hqLifecycle";
 import type { HqDeliveryAnswer } from "@t3tools/shared/hqDeploys";
 import { hqOffer } from "@t3tools/shared/hqOffers";
-import { canonicalHqNavigation } from "../../projections/hqNavigation.ts";
+import { canonicalHqNavigation, hqEnvironmentOffers } from "../../projections/hqNavigation.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { sameValue } from "../../projections/equal.ts";
 import {
@@ -344,14 +344,10 @@ export function makeHqExecutor(ports: {
       const app = read.fact("hqApp", intent.appId);
       if (app.kind !== "known")
         return yield* Effect.fail(gitFault("HQ has not offered this Git operation."));
-      let can = app.value.can;
-      if ("environmentId" in intent) {
-        const environments = app.value.environments;
-        can =
-          environments === undefined || "refused" in environments
-            ? undefined
-            : environments.find((environment) => environment.id === intent.environmentId)?.can;
-      }
+      const can =
+        "environmentId" in intent
+          ? hqEnvironmentOffers.derive(read, intent)
+          : nav.structure?.apps.find((candidate) => candidate.id === intent.appId)?.can;
       const offer = hqOffer(can, HQ_GIT_OPERATION_VERBS[intent.kind], {
         current: nav.live,
         unavailableSince: nav.downSince ?? null,

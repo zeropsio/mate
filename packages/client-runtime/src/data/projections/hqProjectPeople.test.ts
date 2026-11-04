@@ -16,12 +16,7 @@ const person = (fields: {
   waitsOnViewer: boolean;
   chiefProjectId?: string | null;
   mine?: boolean;
-  role?: string;
-  mayWrite?: boolean;
-  mayHandOver?: boolean;
 }) => ({
-  role: "DEVELOPER",
-  mayWrite: true,
   mine: false,
   unseen: null,
   ...fields,
@@ -53,14 +48,6 @@ const rows: ReadonlyArray<Row> = [
   placement("nobody", { ownerUserId: null, waitsOnViewer: false }, {}),
   // HQ named an owner it sends no person record of: nobody is drawn.
   placement("ghost", { ownerUserId: "u-ghost", waitsOnViewer: false }, {}),
-  // A read-only viewer, who may not operate this Mate: HQ withholds who signs it in and owns it.
-  placement(
-    "guest",
-    { ownerUserId: null, waitsOnViewer: false, role: "READ_ONLY", mayWrite: false },
-    {},
-  ),
-  // A Mate the reader may read and not operate: HQ sends it no overview, so no signer.
-  placement("watched", { ownerUserId: "u-jan", waitsOnViewer: false, mayWrite: false }, {}),
   {
     family: "hqPerson",
     id: "u-jan",
@@ -133,9 +120,9 @@ describe("hqProjectPeople", () => {
     expect(people(next).ada?.mine).toBe(true);
     expect(people(read).bob?.mine).toBe(false);
   });
-  it("a Mate is offered for hand-over only where HQ says the reader may, and its key is refused only where HQ says so", () => {
+  it("a Mate's key is refused only where HQ says so", () => {
     const refused: Row = {
-      ...placement("ada", { ownerUserId: "u-jan", waitsOnViewer: false, mayHandOver: true }, {}),
+      ...placement("ada", { ownerUserId: "u-jan", waitsOnViewer: false }, {}),
       revision: { ...revision, revision: 2 },
     };
     const next = apply(read, [
@@ -163,17 +150,10 @@ describe("hqProjectPeople", () => {
         removals: [],
       },
     ]);
-    expect(people(next).ada).toMatchObject({ mayHandOver: true, keyRefused: true });
-    // HQ said neither: nothing is offered and nothing is refused.
-    expect(people(next).bob?.mayHandOver).not.toBe(true);
+    expect(people(next).ada).toMatchObject({ keyRefused: true });
+    // HQ did not say so: nothing is refused.
     expect(people(next).bob?.keyRefused).not.toBe(true);
   });
-  it("a Mate the reader may not operate says nothing of its sign-in, which HQ does not tell them", () => {
-    expect(people(read).watched).toMatchObject({ signedInNow: undefined, everSignedIn: undefined });
-    // A Mate the reader operates says whether anybody ever signed in, nobody included.
-    expect(people(read).nobody).toMatchObject({ signedInNow: {}, everSignedIn: {} });
-  });
-
   it("a Mate's Chief identity arrives from HQ after first paint and never from its reader", () => {
     expect(people(read).ada?.chief).toBeUndefined();
     const next = apply(read, [
@@ -261,7 +241,6 @@ describe("hqProjectPeople", () => {
         mine: false,
         owner: { userId: "u-jan", name: "Jan Novák", avatarUrl: "https://img/jan.png" },
         waitsOnViewer: true,
-        mayWrite: true,
         signedInNow: { "claude-code": "u-jan" },
         everSignedIn: { "claude-code": "u-jan" },
       },
@@ -274,7 +253,6 @@ describe("hqProjectPeople", () => {
         mine: false,
         owner: { userId: "u-eva", name: "Eva", avatarUrl: null },
         waitsOnViewer: false,
-        mayWrite: true,
         signedInNow: {},
         everSignedIn: { codex: "u-eva" },
       },
@@ -287,7 +265,6 @@ describe("hqProjectPeople", () => {
         mine: false,
         owner: null,
         waitsOnViewer: false,
-        mayWrite: true,
         signedInNow: {},
         everSignedIn: {},
       },
@@ -300,22 +277,8 @@ describe("hqProjectPeople", () => {
         mine: false,
         owner: null,
         waitsOnViewer: false,
-        mayWrite: true,
         signedInNow: {},
         everSignedIn: {},
-      },
-    },
-    {
-      name: "a viewer who may not operate it is told nothing of who signed it in or owns it",
-      project: "guest",
-      expected: {
-        owned: undefined,
-        owner: null,
-        mine: false,
-        waitsOnViewer: false,
-        mayWrite: false,
-        signedInNow: undefined,
-        everSignedIn: undefined,
       },
     },
   ])("$name", ({ project, expected }) => {
@@ -356,7 +319,6 @@ describe("hqProjectPeople", () => {
       mine: false,
       owner: null,
       waitsOnViewer: true,
-      mayWrite: true,
       signedInNow: { "claude-code": "u-jan" },
       everSignedIn: { "claude-code": "u-jan" },
     });

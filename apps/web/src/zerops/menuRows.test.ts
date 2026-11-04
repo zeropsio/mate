@@ -420,8 +420,6 @@ it("known Mate details include only ordinary Mates and the person's own Chief", 
         kind: "mate" as const,
         mate: { face: "" },
         person: {
-          role: "ADMIN" as const,
-          mayWrite: true,
           mine: id === "own-chief",
           ownerUserId: id,
           waitsOnViewer: false,

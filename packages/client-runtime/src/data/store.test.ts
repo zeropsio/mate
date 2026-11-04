@@ -54,8 +54,6 @@ describe("makeAccountStore", () => {
       kind: "mate",
       mate: null,
       person: {
-        role: "DEVELOPER",
-        mayWrite: true,
         mine: false,
         ownerUserId: null,
         waitsOnViewer: false,

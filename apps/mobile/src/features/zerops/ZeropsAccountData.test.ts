@@ -35,7 +35,6 @@ const environmentPayload = {
   keyHeld: true,
   keyInvalid: false,
   jobs: [],
-  can: {},
   release: null,
   birth: null,
 } as const;

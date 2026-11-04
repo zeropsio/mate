@@ -1,12 +1,18 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { type HqOfferState, hqOffer } from "./hqOffers.ts";
+import { type HqOfferState, type HqOffers, hqOffer } from "./hqOffers.ts";
 
 const LIVE = { current: true, unavailableSince: null } as const;
 
 describe("hqOffer", () => {
   it.each<
-    [string, unknown, string, { current: boolean; unavailableSince: number | null }, HqOfferState]
+    [
+      string,
+      HqOffers | undefined,
+      string,
+      { current: boolean; unavailableSince: number | null },
+      HqOfferState,
+    ]
   >([
     ["an allow", { merge_change: { allow: true } }, "merge_change", LIVE, { kind: "allowed" }],
     [
@@ -32,13 +38,6 @@ describe("hqOffer", () => {
       { kind: "unknown" },
     ],
     [
-      "a decision this build cannot read",
-      { release: { allow: "yes" } },
-      "release",
-      LIVE,
-      { kind: "unknown" },
-    ],
-    [
       "any verb while HQ does not answer, since when",
       { release: { allow: true } },
       "release",
@@ -54,6 +53,6 @@ describe("hqOffer", () => {
       { kind: "allowed" },
     ],
   ])("%s", (_, can, verb, hq, expected) => {
-    expect(hqOffer(can as Record<string, unknown> | undefined, verb, hq)).toEqual(expected);
+    expect(hqOffer(can, verb, hq)).toEqual(expected);
   });
 });

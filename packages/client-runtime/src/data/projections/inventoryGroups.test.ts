@@ -223,7 +223,7 @@ function placedFixture() {
   };
 }
 
-it.each(["refused", "unknown", "absent", "undecodable", "empty", "partial"] as const)(
+it.each(["unknown", "absent", "undecodable", "empty", "partial"] as const)(
   "Known stage and production placements remain visible when environments are %s.",
   (state) => {
     const f = placedFixture();
@@ -235,12 +235,7 @@ it.each(["refused", "unknown", "absent", "undecodable", "empty", "partial"] as c
             id: "shop",
             name: "Shop",
             projects: placed,
-            environments:
-              state === "partial"
-                ? [stage]
-                : state === "empty"
-                  ? []
-                  : { refused: "changes_not_seen" },
+            environments: state === "partial" ? [stage] : [],
           },
         ],
       },
@@ -354,7 +349,7 @@ it("An HQ non-empty application with no visible placements is never offered as a
           name: "Hidden",
           projects: [],
           contents: { empty: false, deletingProjectIds: [] },
-          environments: { refused: "changes_not_seen" },
+          environments: [],
         },
         {
           id: "empty",

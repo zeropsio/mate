@@ -2,6 +2,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "vite-plus/test";
 import { mountRoster } from "../../zerops/testing/accountRoster.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqAppFamily, hqAppsScope } from "../families/hqNavigation.ts";
 import { hqMateScope } from "../families/hqMate.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
@@ -176,12 +177,13 @@ describe("Projects compact flow", () => {
               name: "Shop",
               projects: [],
               environments: [],
-              can: { add_production: { allow: true } },
             },
           ],
           ungrouped: [],
         },
       });
+      // An organization admin, whom the production slot is offered to.
+      for (const input of membershipInputs("ADMIN")) f.store.dispatch(input);
       const read = readsOfState(f.store.state());
       const flow = f.registry.get(atom)!;
       expect(read.fact("project", "prod").kind).toBe("known");
@@ -439,7 +441,6 @@ const gitEnvironment: CanonicalHqEnvironment = {
   target: { kind: "git", branch: "main", delivery: "direct" },
   order: 1,
   name: "Git",
-  can: {},
   birth: null,
   release: null,
   jobs: [],
@@ -697,30 +698,6 @@ it.each(
     if (app.kind !== "known" || !Array.isArray(app.value.environments))
       throw new Error("App fixture missing");
     const environments = app.value.environments;
-    f.store.dispatch({
-      kind: "delivery",
-      via: "hq-stream",
-      reset: false,
-      removals: [],
-      scopes: [
-        {
-          scope: hqAppsScope("org"),
-          generation: f.store.state().streams.get(hqAppsScope("org"))!.generation,
-        },
-      ],
-      rows: [
-        {
-          family: "hqApp",
-          id: "shop",
-          revision: { kind: "hq", incarnation: "seed", revision: 100 },
-          value: { ...app.value, releaseOffer: { refused: "forbidden" } },
-        },
-      ],
-    });
-    expect(
-      read().gate,
-      "ASSERTION: accepted work cannot override HQ's explicit refusal",
-    ).toMatchObject({ allowed: false, refusedBy: "hq" });
     const publish = (ended: boolean) =>
       f.store.dispatch({
         kind: "delivery",

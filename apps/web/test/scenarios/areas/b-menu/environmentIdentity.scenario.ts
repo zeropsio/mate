@@ -264,7 +264,7 @@ describe("B: environment identity compatibility", () => {
     );
 
     it.effect(
-      "Unknown, refused and unavailable environment routes never read a project by environment id.",
+      "Unknown and unavailable environment routes never read a project by environment id.",
       () =>
         Effect.gen(function* () {
           const wire = environmentIdentityWire("modern");
@@ -283,24 +283,10 @@ describe("B: environment identity compatibility", () => {
               { polling: "raf" },
             ),
           );
-          wire.set("refused");
-          yield* s.when.hq.colleague.renamesProject("Shop", "Shop refused");
-          // The refused name is the receipt that the revision reached the tab: a resumed cursor sends
-          // only what differs from the last frame, so renaming back counts only from this name.
-          yield* Effect.promise(() =>
-            s.page.waitForFunction(
-              () =>
-                document.body.innerText.includes("Shop refused") &&
-                document.querySelector("main")?.textContent?.includes("identity fixture refused"),
-              { polling: "raf" },
-            ),
-          );
-          wire.set("modern");
           yield* s.when.hq.socket.drops;
           yield* s.then.hq.isUnavailable;
           expect(s.drivers.zerops.requests.get("GET /project/unknown-environment") ?? 0).toBe(0);
           yield* s.when.hq.socket.returns;
-          yield* s.when.hq.colleague.renamesProject("Shop", "Shop");
           yield* s.menu.opensApplication("Shop");
           yield* environmentRows(s.page, ["Preview"]);
           yield* openEnvironment(s.page, appId, "Preview", "preview");

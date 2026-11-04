@@ -1,6 +1,6 @@
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
 import { platformMembership, type AccountStore } from "@t3tools/client-runtime/data";
-import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
@@ -17,9 +17,9 @@ afterEach(() => {
   mounted = undefined;
 });
 
-// Whether a person may create an application or add a Mate is HQ's answer from their reach; the
-// client draws it and computes no role of its own over it.
-it("creation offers are HQ's word alone, whatever the native membership says", () => {
+// Whether a person may create an application or add a Mate follows their Zerops membership: its
+// own *can create projects*, read live, never a hint HQ sends.
+it("creation offers follow whether the person's Zerops membership may create projects", () => {
   const registry = AtomRegistry.make();
   registry.set(zeropsSessionAtom, {
     status: "signed-in",
@@ -28,20 +28,10 @@ it("creation offers are HQ's word alone, whatever the native membership says", (
   } as never);
   const { store } = mountHqNavigation(registry, "org", {
     live: true,
-    structure: {
-      can: { create_app: { allow: true } },
-      ungrouped: [],
-      apps: [
-        {
-          id: "app",
-          name: "App",
-          projects: [],
-          can: { add_mate: { allow: false, reason: "cannot_create_projects" } },
-        },
-      ],
-    },
+    structure: { ungrouped: [], apps: [{ id: "app", name: "App", projects: [] }] },
   });
-  for (const input of membershipInputs("NO_ACCESS", false)) store.dispatch(input);
+  for (const input of membershipInputs("BASIC_USER", false)) store.dispatch(input);
+  for (const input of liveProjects("org", [])) store.dispatch(input);
   let seen: readonly string[] = [];
   function Offers() {
     seen = [useOrgOffers()("create_app").kind, useAddMateOffer()("app").kind];
@@ -65,9 +55,9 @@ it("creation offers are HQ's word alone, whatever the native membership says", (
       </RegistryContext>,
     );
   });
-  expect(seen).toEqual(["allowed", "refused"]);
+  expect(seen).toEqual(["refused", "refused"]);
   act(() => {
-    for (const input of membershipInputs("NO_ACCESS", true, 1)) store.dispatch(input);
+    for (const input of membershipInputs("BASIC_USER", true, 2)) store.dispatch(input);
   });
-  expect(seen).toEqual(["allowed", "refused"]);
+  expect(seen).toEqual(["allowed", "allowed"]);
 });

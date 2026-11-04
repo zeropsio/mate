@@ -20,7 +20,6 @@ const placements = placementsScope(ORG);
 const app = (id: string, name: string): HqAppValue => ({
   id,
   name,
-  can: {},
   contents: { empty: false, deletingProjectIds: [] },
   projectIds: [],
   births: [],
@@ -35,8 +34,6 @@ const project = (projectId: string, appId: string | null): PlacementValue => ({
   kind: "mate",
   mate: null,
   person: {
-    role: "DEVELOPER",
-    mayWrite: true,
     mine: false,
     ownerUserId: null,
     waitsOnViewer: false,
@@ -137,7 +134,7 @@ describe("an HQ scope's delivery", () => {
       expect(readsOfState(next).coverage(apps)).toBe("complete");
     },
   );
-  it("incomplete Git input preserves evidence, while an explicit environment denial replaces it", () => {
+  it("incomplete Git input preserves evidence, while an explicit empty environment list replaces it", () => {
     const value = hqAppFamily.hq!.decode(
       { ...app("shop", "Shop"), environments: [gitEnvironment] },
       "app:shop",
@@ -159,15 +156,13 @@ describe("an HQ scope's delivery", () => {
       gitEnvironment,
     ]);
     const denied = hqAppFamily.hq!.decode(
-      { ...app("shop", "Shop"), environments: { refused: "Cannot read changes" } },
+      { ...app("shop", "Shop"), environments: [] },
       "app:shop",
     )!;
     const purged = apply(preserved, [
       delivery({ revision: 3, rows: [{ family: "hqApp", id: "shop", value: denied }] }),
     ]);
-    expect(hqNavigation.derive(readsOfState(purged), ORG).deliveryEnvironments.shop).toEqual({
-      refused: "Cannot read changes",
-    });
+    expect(hqNavigation.derive(readsOfState(purged), ORG).deliveryEnvironments.shop).toEqual([]);
     expect(JSON.stringify([...purged.facts.values()])).not.toContain("push-v2");
   });
   it.each([

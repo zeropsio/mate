@@ -6,7 +6,7 @@ const Frame = Schema.fromJsonString(Schema.Unknown);
 const decodeFrame = Schema.decodeUnknownOption(Frame);
 const encodeFrame = Schema.encodeSync(Frame);
 
-export type EnvironmentWire = "legacy" | "modern" | "partial" | "refused";
+export type EnvironmentWire = "legacy" | "modern" | "partial";
 export type EnvironmentBinding =
   | {
       readonly id: string;
@@ -48,12 +48,7 @@ export function environmentIdentityWire(
       return binding === undefined ? record : { ...record, ...binding };
     }
     return Object.fromEntries(
-      Object.entries(record).map(([key, entry]) => [
-        key,
-        key === "environments" && wire === "refused"
-          ? { refused: "identity fixture refused" }
-          : transform(entry),
-      ]),
+      Object.entries(record).map(([key, entry]) => [key, transform(entry)]),
     );
   };
   const map = (encoded: string) => {

@@ -31,6 +31,7 @@ export {
   canonicalHqNavigation,
   canonicalHqMenuNavigation,
   type CanonicalHqNavigationRead,
+  hqEnvironmentOffers,
   hqNavigation,
   hqPersonFacts,
   hqStatus,
@@ -819,3 +820,4 @@ export {
   automaticObserveRequestId,
   offersObserveAuthorize,
 } from "./projections/observeAuthorization.ts";
+export { projectOperator } from "./projections/permissionFacts.ts";

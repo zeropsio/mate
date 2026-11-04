@@ -8,7 +8,6 @@
  *
  * @module data/families/hqNavigation
  */
-import { HqOffers } from "@t3tools/shared/hqOffers";
 import {
   CanonicalHqNavigationApp,
   CanonicalHqNavigationEnvironment,
@@ -28,11 +27,10 @@ import type { ScopeKey } from "../model.ts";
 import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-/** The organization's own record: its offers and the Core its HQ runs. */
+/** The organization's own record: the projects HQ holds nowhere and the Core its HQ runs. */
 export interface HqOrganizationValue {
-  readonly can: HqOffers;
-  /** Each project HQ holds nowhere the reader reads, by id, with what it offers of it. */
-  readonly unheld: Readonly<Record<string, HqOffers>>;
+  /** Each project of the organization HQ holds nowhere, by id. */
+  readonly unheld: ReadonlyArray<string>;
   /** The Core HQ runs. */
   readonly build: string;
   /**
@@ -60,19 +58,16 @@ const Birth = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
 });
 // The old outward reader remains Zerops-only; the account admits each target's own job contract.
-const DeliveryEnvironments = Schema.Union([
-  Schema.Array(
-    Schema.Union([
-      HqGitNavigationEnvironment,
-      CanonicalHqNavigationEnvironment.check(
-        Schema.makeFilter((row) =>
-          row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
-        ),
+const DeliveryEnvironments = Schema.Array(
+  Schema.Union([
+    HqGitNavigationEnvironment,
+    CanonicalHqNavigationEnvironment.check(
+      Schema.makeFilter((row) =>
+        row.target.kind === "zerops" ? undefined : "Expected Zerops deploy jobs",
       ),
-    ]),
-  ),
-  Schema.Struct({ refused: Schema.String }),
-]);
+    ),
+  ]),
+);
 const App = navigationRecord({
   ...CanonicalHqNavigationApp.fields,
   environments: DeliveryEnvironments,
@@ -110,8 +105,7 @@ declare module "../model.ts" {
 }
 
 const Organization = Schema.Struct({
-  can: HqOffers,
-  unheld: Schema.Record(Schema.String, HqOffers),
+  unheld: Schema.Record(Schema.String, Schema.Unknown),
   build: Schema.String,
 });
 
@@ -125,7 +119,8 @@ const decodeViewer = Schema.decodeUnknownOption(Viewer);
 
 /** The record, its reader's first sign-in apart: one unreadable never loses the other. */
 const decodeOrganization = (raw: unknown): Option.Option<HqOrganizationValue> =>
-  Option.map(decodeOrganizationRecord(raw), (organization) => {
+  Option.map(decodeOrganizationRecord(raw), ({ unheld, build }) => {
+    const organization = { unheld: Object.keys(unheld), build };
     const viewer =
       typeof raw === "object" && raw !== null && "viewer" in raw
         ? Option.getOrUndefined(decodeViewer(raw.viewer))

@@ -62,8 +62,8 @@ describe("questionFactsOf", () => {
 // a refusal, an unknown verb and an HQ that stopped answering offer nothing.
 describe("environmentOffersOf", () => {
   const LIVE = { current: true, unavailableSince: null };
-  const ALLOW = { allow: true };
-  const SLOT_TAKEN = { allow: false, reason: "slot_taken" };
+  const ALLOW = { allow: true } as const;
+  const SLOT_TAKEN = { allow: false, reason: "slot_taken" } as const;
   it.each([
     {
       case: "both offered",
@@ -100,17 +100,17 @@ describe("environmentOffersOf", () => {
 describe("finishOffered", () => {
   const LIVE = { current: true, unavailableSince: null };
   it.each([
-    { case: "HQ offers it", can: { finish: { allow: true } }, hq: LIVE, want: true },
+    { case: "HQ offers it", can: { finish: { allow: true } as const }, hq: LIVE, want: true },
     {
       case: "HQ refuses it",
-      can: { finish: { allow: false, reason: "not_project_admin" } },
+      can: { finish: { allow: false, reason: "not_project_admin" } as const },
       hq: LIVE,
       want: false,
     },
     { case: "HQ has not said", can: undefined, hq: LIVE, want: false },
     {
       case: "HQ stopped answering",
-      can: { finish: { allow: true } },
+      can: { finish: { allow: true } as const },
       hq: { current: false, unavailableSince: 1_000 },
       want: false,
     },
@@ -121,7 +121,7 @@ describe("finishOffered", () => {
 
 it("HQ's Git target verb reaches the shared Add gate without a recipe", () => {
   const offers = environmentOffersOf(
-    { add_git_environment: { allow: true } },
+    { add_git_environment: { allow: true } as const },
     { current: true, unavailableSince: null },
   );
   expect(offers).toEqual({

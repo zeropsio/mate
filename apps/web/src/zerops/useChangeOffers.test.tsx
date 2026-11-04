@@ -1,9 +1,10 @@
 /**
- * What a person is offered of an application, as HQ's structure streamed it (`can`): drawn as HQ
- * decided it, refused in HQ's words, unavailable since HQ stopped answering, and nothing said
- * while HQ has not said it.
+ * What a person is offered of an application, decided from their live Zerops roles over HQ's
+ * structure: refused in the rule's words, unavailable since HQ stopped answering, and nothing
+ * said before the roles are read.
  */
-import { accountReadsAtom } from "@t3tools/client-runtime/data";
+import { accountReadsAtom, type AccountStore } from "@t3tools/client-runtime/data";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { RegistryContext } from "@effect/atom-react";
 import type { HqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { AtomRegistry } from "effect/reactivity";
@@ -32,67 +33,29 @@ function Probe({ use }: { readonly use: () => unknown }) {
   return null;
 }
 
-const ALLOW = { allow: true } as const;
-const refused = (reason: string) => ({ allow: false, reason }) as const;
+const environment = (projectId: string, tier: "stage" | "production", order: number) => ({
+  projectId,
+  tier,
+  name: tier,
+  sources: [tier === "stage" ? "main" : "release"],
+  order,
+  keyHeld: false,
+  keyInvalid: false,
+  jobs: [],
+  release: null,
+  birth: null,
+});
 
-/** A developer of Shop who may not release it, nor keep its production's deploy key. */
+/** Shop, worked in through its stage project; its production is another project. */
 const SHOP: HqStructure["apps"][number] = {
   id: "app-shop",
   name: "Shop",
   projects: [{ projectId: "p-stage", name: "stage", kind: "stage", mate: null }],
-  can: {
-    read_change: ALLOW,
-    comment_change: ALLOW,
-    merge_change: ALLOW,
-    close_change: ALLOW,
-    redeploy: ALLOW,
-    release: refused("not_releaser"),
-  },
-  environments: [
-    {
-      projectId: "p-stage",
-      tier: "stage",
-      name: "stage",
-      sources: ["main"],
-      order: 1,
-      keyHeld: false,
-      keyInvalid: false,
-      jobs: [],
-      release: null,
-      birth: null,
-      can: { keep_deploy_token: ALLOW },
-    },
-    {
-      projectId: "p-prod",
-      tier: "production",
-      name: "production",
-      sources: ["release"],
-      order: 2,
-      keyHeld: false,
-      keyInvalid: false,
-      jobs: [],
-      release: null,
-      birth: null,
-      can: { keep_deploy_token: refused("not_project_admin") },
-    },
-  ],
+  environments: [environment("p-stage", "stage", 1), environment("p-prod", "production", 2)],
 };
 
-/** An application whose changes the person may not read, and one HQ sent no offers for. */
-const GALLERY: HqStructure["apps"][number] = {
-  id: "app-gallery",
-  name: "Gallery",
-  projects: [],
-  can: {
-    read_change: refused("changes_not_seen"),
-    comment_change: refused("changes_not_seen"),
-    merge_change: refused("app_not_seen"),
-    close_change: refused("app_not_seen"),
-    redeploy: refused("app_not_seen"),
-    release: refused("not_releaser"),
-  },
-};
-const SEED: HqStructure["apps"][number] = { id: "app-seed", name: "Seed", projects: [] };
+/** An application with no project the person is given. */
+const GALLERY: HqStructure["apps"][number] = { id: "app-gallery", name: "Gallery", projects: [] };
 
 interface Hq {
   /** The organization the structure was read for. */
@@ -100,6 +63,35 @@ interface Hq {
   readonly structure: HqStructure | null;
   readonly current?: boolean;
   readonly unavailableSince?: number | null;
+  /** The person's role in the organization and their own on each project; unread where absent. */
+  readonly roles?: Roles | undefined;
+}
+
+interface Roles {
+  readonly org: string;
+  readonly projects: Readonly<Record<string, string | undefined>>;
+}
+
+/**
+ * Of no access to the organization; Full access on Shop's stage project, none of their own on its
+ * production, which Zerops still lists them.
+ */
+const STAGE_ADMIN: Roles = {
+  org: "NO_ACCESS",
+  projects: { "p-stage": "ADMIN", "p-prod": undefined },
+};
+
+/** Zerops' answer of the person's roles, into the account's store. */
+function answerRoles(store: AccountStore, orgId: string, roles: Roles): void {
+  const projects = Object.entries(roles.projects).map(([id, roleCode]) => ({
+    id,
+    ...(roleCode === undefined ? {} : { userRoles: [{ clientUserId: "member", roleCode }] }),
+  }));
+  for (const input of [
+    ...membershipInputs(roles.org, false, 1, orgId),
+    ...liveProjects(orgId, projects),
+  ])
+    store.dispatch(input);
 }
 
 /** `use`'s answer over HQ's structure as the tab last held it. */
@@ -110,10 +102,12 @@ function answerOf<T>(hq: Hq, use: () => T): T {
     organizationStatus: "selected",
     activeOrganization: { organizationId: "org-acme" },
   } as never);
-  mountHqNavigation(registry, hq.organizationId ?? "org-acme", {
+  const orgId = hq.organizationId ?? "org-acme";
+  const { store } = mountHqNavigation(registry, orgId, {
     ...(hq.structure === null ? {} : { structure: hq.structure }),
     live: hq.current ?? true,
   });
+  if (hq.roles !== undefined) answerRoles(store, orgId, hq.roles);
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   act(() => {
     mounted.push(
@@ -129,11 +123,8 @@ function answerOf<T>(hq: Hq, use: () => T): T {
 }
 
 const STREAMED: Hq = {
-  structure: {
-    can: { create_app: refused("not_structure_writer") },
-    ungrouped: [],
-    apps: [SHOP, GALLERY, SEED],
-  },
+  structure: { ungrouped: [], apps: [SHOP, GALLERY] },
+  roles: STAGE_ADMIN,
 };
 
 describe("useChangeOffers", () => {
@@ -143,6 +134,7 @@ describe("useChangeOffers", () => {
       structure: STREAMED.structure!,
       live: true,
     });
+    answerRoles(store, "org-acme", STAGE_ADMIN);
     mountHqNavigation(
       registry,
       "org-beta",
@@ -187,21 +179,7 @@ describe("useChangeOffers", () => {
 
   it("a reader can review but cannot merge", () => {
     const offers = answerOf(
-      {
-        structure: {
-          apps: [
-            {
-              ...SHOP,
-              can: {
-                ...SHOP.can,
-                merge_change: refused("not_app_developer"),
-                close_change: refused("not_app_developer"),
-              },
-            },
-          ],
-          ungrouped: [],
-        },
-      },
+      { ...STREAMED, roles: { org: "READ_ONLY", projects: { "p-stage": undefined } } },
       useChangeOffers,
     )("app-shop");
     expect(offers?.read).toBe(true);
@@ -212,22 +190,19 @@ describe("useChangeOffers", () => {
     );
   });
 
-  it("draws what HQ offers, and says HQ's refusal", () => {
+  it("offers what the person's Zerops roles let them do, and says the refusal", () => {
     const offers = answerOf(STREAMED, useChangeOffers);
     expect(offers("app-shop")).toEqual({
       read: true,
       comment: true,
       merge: true,
       close: true,
-      redeploy: true,
       why: {},
       readRefused: false,
     });
     const gallery = offers("app-gallery");
     expect([gallery?.read, gallery?.merge, gallery?.readRefused]).toEqual([false, false, true]);
-    expect(gallery?.why.read).toMatch(
-      /^You need more than Read access to one of this project's Zerops projects to see its changes\.$/u,
-    );
+    expect(gallery?.why.read).toBe("You have no access to that project.");
   });
 
   it.each<[string, Hq, string]>([
@@ -242,11 +217,11 @@ describe("useChangeOffers", () => {
     expect(answerOf(hq, useChangeOffers)(appId)).toBeUndefined();
   });
 
-  // The web review, 2026-10-05: an HQ from before its offers sends an application with none: its
-  // verbs are drawn not pressable, saying so, never read as refused.
-  it("offers nothing HQ has not said, and says so: an application HQ sent no offers for", () => {
-    const seed = answerOf(STREAMED, useChangeOffers)("app-seed");
-    expect([seed?.read, seed?.merge, seed?.readRefused, seed?.why.merge]).toEqual([
+  // The web review, 2026-10-05: verbs not decided yet are drawn not pressable, saying so, never
+  // read as refused.
+  it("offers nothing before the person's Zerops roles are read, and says so", () => {
+    const shop = answerOf({ ...STREAMED, roles: undefined }, useChangeOffers)("app-shop");
+    expect([shop?.read, shop?.merge, shop?.readRefused, shop?.why.merge]).toEqual([
       false,
       false,
       false,
@@ -265,7 +240,7 @@ describe("useChangeOffers", () => {
 });
 
 describe("useKeepDeployKeyOffer", () => {
-  it("says per environment whether HQ offers keeping its key; nothing where it has not said", () => {
+  it("says per environment whether the person may keep its key; nothing where it is not held", () => {
     const mayKeep = answerOf(STREAMED, useKeepDeployKeyOffer);
     expect([mayKeep("p-stage"), mayKeep("p-prod"), mayKeep("p-elsewhere")]).toEqual([
       true,

@@ -33,11 +33,8 @@ describe("Settings › Environments", () => {
       ],
     },
     {
-      case: "nothing of an application whose environments HQ refused or has not sent",
-      apps: [
-        { id: "a", name: "A", environments: { refused: "no access" } },
-        { id: "b", name: "B", environments: undefined },
-      ],
+      case: "nothing of an application whose environments HQ has not sent",
+      apps: [{ id: "b", name: "B", environments: undefined }],
       rows: [],
     },
   ] as const)("Settings lists $case", ({ apps, rows }) => {

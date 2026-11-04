@@ -1,7 +1,8 @@
 /**
- * HQ's offers as its structure last streamed them (`can`, `@t3tools/shared/hqOffers`), for the
- * organization in view: whether HQ answers now, each verb's state, and its words. Drawn, never
- * decided here.
+ * The offers of the organization in view as its structure holds them (`can`,
+ * `@t3tools/shared/hqOffers`), decided from the person's live Zerops roles
+ * (`@t3tools/shared/zeropsOffers`): whether HQ answers now, each verb's state, and its words.
+ * Drawn, never decided here.
  */
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -34,7 +35,7 @@ export function useHqOffers() {
       hq,
       at,
       state: (can: HqOffers | undefined, verb: string): HqOfferState => hqOffer(can, verb, hq),
-      words: (state: HqOfferState) => hqOfferWords(state, { at, rolesAnsweredAt: null }),
+      words: (state: HqOfferState) => hqOfferWords(state, { at }),
     };
   }, [downSince, organizationId, timestampFormat, view]);
 }

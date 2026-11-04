@@ -164,6 +164,7 @@ import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
+import { handsOverMates } from "@t3tools/shared/zeropsRoles";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { MateDetailFailure } from "./MateDetailFailure";
@@ -956,9 +957,13 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
   // A Mate whose key Zerops refused cannot connect until somebody hands it over (HQ's
-  // `keyRefused`): its page says so, its hand-over the primary action for whoever HQ says may.
+  // `keyRefused`): its page says so, its hand-over the primary action for an owner or admin of the
+  // organization (`handsOverMates`).
   const projectPerson = useAtomValue(shownHqProjectPeopleAtom)[projectId];
-  const keyRefused = shown === undefined ? mateKeyRefused(projectPerson, named.name) : null;
+  const keyRefused =
+    shown === undefined
+      ? mateKeyRefused(projectPerson, named.name, handsOverMates(activeOrganization ?? undefined))
+      : null;
   const openHandOver = candidate === undefined ? undefined : mateActions.handOver(candidate);
   const keyRefusedView =
     keyRefused === null ? null : (

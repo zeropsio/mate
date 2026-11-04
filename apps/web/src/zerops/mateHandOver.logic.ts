@@ -1,8 +1,8 @@
 /**
- * A Mate's hand-over as the web offers it: wherever HQ says the person may (`mayHandOver`), to one
- * of the organization's active members as Zerops answers the person's own read of them, and — where
- * Zerops refused the Mate's key (`keyRefused`) — as the one way its page offers back. HQ decides who
- * may hand over and to whom at the call; nothing here computes a role.
+ * A Mate's hand-over as the web offers it: to an owner or admin of the organization
+ * (`handsOverMates`), to one of the organization's active members as Zerops answers the person's own
+ * read of them, and — where Zerops refused the Mate's key (`keyRefused`) — as the one way its page
+ * offers back. HQ decides again who may hand over and to whom at the call.
  *
  * Pure (rule R1).
  */
@@ -38,21 +38,18 @@ export function handOverCandidates(
     .toSorted((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The Mate's menu offers its hand-over where HQ says this person may. */
-export const handOverOffered = (people: HqProjectPeople | undefined): boolean =>
-  people?.mayHandOver === true;
-
 /**
  * What a Mate whose key Zerops refused says in place of a Mate that does not connect, and whether
- * its hand-over is offered there; `null` for a Mate HQ does not say that of.
+ * its hand-over is offered there — to whoever hands Mates over (`handsOverMates`); `null` for a
+ * Mate HQ does not say that of.
  */
 export function mateKeyRefused(
   people: HqProjectPeople | undefined,
   name: string,
+  handOver: boolean,
 ): { readonly headline: string; readonly sentence: string; readonly handOver: boolean } | null {
   if (people?.keyRefused !== true) return null;
   const mate = name.length > 0 ? name : "This Mate";
-  const handOver = handOverOffered(people);
   return {
     headline: `${mate} can't connect: Zerops refused its key.`,
     sentence: handOver

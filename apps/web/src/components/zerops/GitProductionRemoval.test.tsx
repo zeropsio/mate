@@ -4,6 +4,8 @@ import { createRoot } from "react-dom/client";
 import { RegistryContext } from "@effect/atom-react";
 import { AtomRegistry } from "effect/reactivity";
 import { HqEnvironmentId } from "@t3tools/contracts";
+import type { AccountStore } from "@t3tools/client-runtime/data";
+import { liveProjects, membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import { describe, expect, it, vi } from "vite-plus/test";
 import { AccountDataContext, type AccountData } from "~/zerops/accountData";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
@@ -34,7 +36,7 @@ vi.mock("~/zerops/useHqAppDetail", () => ({
     ],
   }),
 }));
-const environment = (allowed: boolean) => ({
+const environment = () => ({
   id: HqEnvironmentId.make("git-prod"),
   name: "Production",
   tier: "production" as const,
@@ -46,12 +48,12 @@ const environment = (allowed: boolean) => ({
   jobs: [],
   birth: null,
   release: null,
-  can: {
-    remove_git_environment: allowed
-      ? { allow: true as const }
-      : { allow: false as const, reason: "not_app_developer" },
-  },
 });
+/** The person's role in the organization, as Zerops answers it: removing production is an admin's. */
+const member = (store: AccountStore, roleCode: string) => {
+  for (const input of [...membershipInputs(roleCode), ...liveProjects("org", [])])
+    store.dispatch(input);
+};
 const structure = (environments: ReturnType<typeof environment>[]) => ({
   apps: [{ id: "shop", name: "Shop", projects: [], environments }],
   ungrouped: [],
@@ -61,6 +63,7 @@ describe("Git production removal from account records", () => {
   it("A production arriving after first paint can be removed without a checking gap after HQ removes its record", async () => {
     const registry = AtomRegistry.make();
     const { store, seed } = mountHqNavigation(registry, "org", { structure: structure([]) });
+    member(store, "ADMIN");
     const account: Pick<AccountData, "data" | "orgId" | "demandDetail"> = {
       data: store.data,
       orgId: "org",
@@ -86,7 +89,7 @@ describe("Git production removal from account records", () => {
         ),
       );
       expect(host.textContent).toBe("");
-      await act(async () => seed({ structure: structure([environment(true)]) }));
+      await act(async () => seed({ structure: structure([environment()]) }));
       const button = (label: string) =>
         [...host.querySelectorAll("button")].find((b) => b.textContent === label)!;
       await act(async () => button("Remove production").click());
@@ -110,8 +113,9 @@ describe("Git production removal from account records", () => {
   it("A person without the production creation role cannot open removal from its account record", async () => {
     const registry = AtomRegistry.make();
     const { store } = mountHqNavigation(registry, "org", {
-      structure: structure([environment(false)]),
+      structure: structure([environment()]),
     });
+    member(store, "BASIC_USER");
     const account: Pick<AccountData, "data" | "orgId" | "demandDetail"> = {
       data: store.data,
       orgId: "org",

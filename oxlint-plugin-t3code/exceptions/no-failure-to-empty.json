@@ -324,15 +324,6 @@
     "class": "justified"
   },
   {
-    "path": "packages/client-runtime/src/data/projections/environmentSetup.ts",
-    "kind": "ConditionalExpression",
-    "fingerprint": "project.kind === \"known\" ? project.value.can : undefined",
-    "owner": "maintainers",
-    "reason": "Setup permissions and project assembly conservatively include only known authorized records; setup state remains separate.",
-    "expires": "never",
-    "class": "justified"
-  },
-  {
     "path": "packages/client-runtime/src/data/projections/gitCredentials.ts",
     "kind": "ConditionalExpression",
     "fingerprint": "request.kind === \"known\" ? read.operation(request.value.requestId) : undefined",

@@ -353,7 +353,6 @@ const DEVELOPS: ZeropsChangeOffers = {
   comment: true,
   merge: true,
   close: true,
-  redeploy: true,
   why: {},
   readRefused: false,
 };
@@ -1103,7 +1102,7 @@ export const REVIEW_STATES: ReadonlyArray<{
   {
     id: "not-offered",
     label: "Ready, to a person HQ's rule offers neither Merge nor Close",
-    node: <Change offers={{ ...DEVELOPS, merge: false, close: false, redeploy: false }} />,
+    node: <Change offers={{ ...DEVELOPS, merge: false, close: false }} />,
   },
   { id: "merging", label: "Merging", node: <Change press={{ kind: "running" }} /> },
   {
