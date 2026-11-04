@@ -4,7 +4,7 @@
  * writes; while Express is off (`useExpressGate`) nothing is read.
  */
 import type { EnvironmentId } from "@t3tools/contracts";
-import { createContext, useMemo } from "react";
+import { createContext, useMemo, useState } from "react";
 
 import type { ChatMessage } from "~/types";
 import { type ExpressHistoryEntry, expressHistoryOf } from "./expressHistory.logic";
@@ -13,6 +13,8 @@ export interface ExpressHistoryScope {
   readonly environmentId: EnvironmentId | null;
   readonly history: ReadonlyArray<ExpressHistoryEntry>;
 }
+
+const NONE: ReadonlyArray<ExpressHistoryEntry> = [];
 
 export const ExpressHistoryContext = createContext<ExpressHistoryScope>({
   environmentId: null,
@@ -24,15 +26,13 @@ export function useExpressHistoryScope(
   messages: ReadonlyArray<ChatMessage> | undefined,
   enabled: boolean,
 ): ExpressHistoryScope {
-  const written = useMemo(
-    () => (enabled ? JSON.stringify(expressHistoryOf(messages ?? [])) : "[]"),
-    [enabled, messages],
+  // Each message is read once (`expressHistoryOf` keeps what it read of it); a history like the one
+  // held is that one, so the scope changes only when the history does.
+  const [held, hold] = useState(NONE);
+  const history = useMemo(
+    () => (enabled ? expressHistoryOf(messages ?? [], held) : NONE),
+    [enabled, held, messages],
   );
-  return useMemo(
-    () => ({
-      environmentId,
-      history: JSON.parse(written) as ReadonlyArray<ExpressHistoryEntry>,
-    }),
-    [environmentId, written],
-  );
+  if (history !== held) hold(history);
+  return useMemo(() => ({ environmentId, history }), [environmentId, history]);
 }

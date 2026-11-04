@@ -98,4 +98,27 @@ describe("expressHistoryOf", () => {
     ]);
     expect(entry?.kind === "picture" ? entry.original?.attachmentId : null).toBe("original");
   });
+
+  it("a link the Mate is still writing is read once its message is done", () => {
+    const text = `See [the banner](https://new.express.adobe.com/id/${OTHER})`;
+    const writing = { ...said("assistant", text), streaming: true } as ChatMessage;
+    expect(expressHistoryOf([writing])).toEqual([]);
+    expect(expressHistoryOf([{ ...writing, streaming: false }])).toHaveLength(1);
+  });
+
+  it.each([
+    { title: "the same history again is the one already held", next: ["one", "two"], kept: true },
+    { title: "a new entry is a new history", next: ["one", "two", "three"], kept: false },
+    { title: "entries in another order are a new history", next: ["two", "one"], kept: false },
+  ])("$title", ({ next, kept }) => {
+    const linked = (names: ReadonlyArray<string>) =>
+      names.map((name, index) =>
+        said(
+          "assistant",
+          `[${name}](https://new.express.adobe.com/id/${DESIGN.slice(0, -1)}${index})`,
+        ),
+      );
+    const held = expressHistoryOf(linked(["one", "two"]));
+    expect(expressHistoryOf(linked(next), held) === held).toBe(kept);
+  });
 });

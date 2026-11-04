@@ -87,7 +87,8 @@ function entriesOf(message: ChatMessage): ReadonlyArray<ExpressHistoryEntry> {
       ];
     });
   }
-  if (message.role !== "assistant") return [];
+  // A link still being written is read once its message is done, not on each word.
+  if (message.role !== "assistant" || message.streaming) return [];
   return [...message.text.matchAll(LINK)].flatMap((match): ExpressHistoryEntry[] => {
     const documentId = expressDesignId(match[2] ?? match[0]);
     if (documentId === null) return [];
@@ -99,12 +100,20 @@ function entriesOf(message: ChatMessage): ReadonlyArray<ExpressHistoryEntry> {
 // A conversation's messages keep their identity until they change: only a changed one is read again.
 const read = new WeakMap<ChatMessage, ReadonlyArray<ExpressHistoryEntry>>();
 
+/** Two histories list the same entries in the same order: an entry's key names all of it. */
+const sameHistory = (
+  left: ReadonlyArray<ExpressHistoryEntry>,
+  right: ReadonlyArray<ExpressHistoryEntry>,
+): boolean =>
+  left.length === right.length && left.every((entry, index) => entry.key === right[index]!.key);
+
 /**
  * Newest first, each design once: its newest picture stands for it, else the Mate's newest link
- * to it.
+ * to it. The same history as `held` is `held` itself, so what draws it does not draw again.
  */
 export function expressHistoryOf(
   messages: ReadonlyArray<ChatMessage>,
+  held?: ReadonlyArray<ExpressHistoryEntry>,
 ): ReadonlyArray<ExpressHistoryEntry> {
   const history: ExpressHistoryEntry[] = [];
   const designAt = new Map<string, number>();
@@ -130,5 +139,5 @@ export function expressHistoryOf(
       }
     }
   }
-  return history;
+  return held !== undefined && sameHistory(held, history) ? held : history;
 }
