@@ -10,7 +10,7 @@ import { AtomRegistry } from "effect/reactivity";
 
 import { liveZerops, ORG } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
-import { operationResult, type OperationIntent } from "../model.ts";
+import { linkKeys, operationResult, type OperationIntent } from "../model.ts";
 import { operationProgress } from "../projections/operation.ts";
 import { makeAccountStore, readsOfState, type AccountStore } from "../store.ts";
 import { HqError, type HqStructure } from "../../zerops/hq/client.ts";
@@ -661,9 +661,17 @@ describe("organization persona template writes", () => {
       intent: DELETE,
       shown: false,
     },
-  ])("$title", ({ templates, intent, shown }) => {
+    {
+      title:
+        "a delete does not show while the record holds a template of that id this version cannot read",
+      templates: [],
+      unreadable: ["t-1"],
+      intent: DELETE,
+      shown: false,
+    },
+  ])("$title", ({ templates, unreadable, intent, shown }) => {
     const store = account();
-    if (templates !== undefined) observeTemplates(store, templates);
+    if (templates !== undefined) observeTemplates(store, templates, unreadable);
     const kind =
       intent.kind === "save-persona-template" ? savePersonaTemplate : deletePersonaTemplate;
     const answered = {
@@ -705,42 +713,70 @@ describe("organization persona template writes", () => {
       }),
   );
 
-  it.effect("a delete over a template someone deleted meanwhile says it is gone", () =>
+  it.effect.each([
+    {
+      title: "a delete over a template someone changed meanwhile offers their version",
+      record: [template(3, "Ship fast.")],
+      intent: DELETE,
+      current: template(3, "Ship fast."),
+    },
+    {
+      title: "a save over a template someone deleted meanwhile says it is gone",
+      record: [],
+      intent: SAVE,
+      current: null,
+    },
+  ])("$title", ({ record, intent, current }) =>
     Effect.gen(function* () {
       const store = account();
-      observeTemplates(store, []);
+      observeTemplates(store, record);
+      const refuse = async () => {
+        throw new HqError({
+          kind: "refused",
+          code: "conflict",
+          reason: "revision_conflict",
+          status: 409,
+          message: "Someone else changed this template meanwhile.",
+        });
+      };
       const { operations } = operationsOf(store, {
-        deletePersonaTemplate: async () => {
-          throw new HqError({
-            kind: "refused",
-            code: "conflict",
-            reason: "revision_conflict",
-            status: 409,
-            message: "Someone else changed this template meanwhile.",
-          });
-        },
+        deletePersonaTemplate: refuse,
+        savePersonaTemplate: refuse,
       });
-      yield* operations.submit(DELETE);
-      expect(write(store)).toEqual({ stage: "conflict", current: null });
+      yield* operations.submit(intent);
+      expect(write(store)).toEqual({ stage: "conflict", current });
     }),
   );
 
-  it.effect("an answered save stays pending until the list shows it", () =>
+  it.effect.each([
+    {
+      title: "an answered edit stays pending until the list shows it",
+      before: [template(2)],
+      intent: SAVE,
+      after: [template(3)],
+    },
+    {
+      title: "an answered new template stays pending until the list shows it",
+      before: [],
+      intent: { ...SAVE, revision: 0 },
+      after: [template(1)],
+    },
+  ])("$title", ({ before, intent, after }) =>
     Effect.gen(function* () {
       const store = account();
-      const scope = personaTemplatesScope(ORG);
-      for (const event of [
-        { kind: "demand", demanded: true },
-        { kind: "attempt" },
-        { kind: "handshake" },
-        { kind: "baseline-committed" },
-      ] as const)
-        store.dispatch({ kind: "stream", key: scope, now: 0, event });
-      observeTemplates(store, [template(2)]);
-      const { operations } = operationsOf(store, { savePersonaTemplate: async () => template(3) });
-      yield* operations.submit(SAVE);
+      for (const key of [linkKeys.hq(ORG), personaTemplatesScope(ORG)])
+        for (const event of [
+          { kind: "demand", demanded: true },
+          { kind: "attempt" },
+          { kind: "handshake" },
+          { kind: "baseline-committed" },
+        ] as const)
+          store.dispatch({ kind: "stream", key, now: 0, event });
+      observeTemplates(store, before);
+      const { operations } = operationsOf(store, { savePersonaTemplate: async () => after[0]! });
+      yield* operations.submit(intent);
       expect(write(store)).toEqual({ stage: "pending" });
-      observeTemplates(store, [template(3)]);
+      observeTemplates(store, after);
       expect(write(store)).toEqual({ stage: "done" });
     }),
   );
@@ -796,6 +832,7 @@ function observeTemplates(
     instructions: string;
     revision: number;
   }>,
+  unreadable: ReadonlyArray<string | null> = [],
 ) {
   const scope = personaTemplatesScope(ORG);
   const revision =
@@ -810,7 +847,7 @@ function observeTemplates(
       {
         family: "hqPersonaTemplates",
         id: ORG,
-        value: { orgId: ORG, templates },
+        value: { templates, unreadable },
         revision: { kind: "hq", incarnation: "core", revision: ++templateRevisions + revision },
       },
     ],

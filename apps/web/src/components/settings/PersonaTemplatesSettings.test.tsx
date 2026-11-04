@@ -37,7 +37,12 @@ const READY: OrgPersonaTemplatesView = {
 const IDLE: PersonaTemplateWrite = { stage: "idle" };
 
 function view(read: Partial<OrgPersonaTemplatesView> = {}, write = IDLE) {
-  const handlers = { onSave: vi.fn(), onDelete: vi.fn(), onReset: vi.fn() };
+  const handlers = {
+    onSave: vi.fn(),
+    onDelete: vi.fn(),
+    onReset: vi.fn(),
+    onAskAgain: vi.fn(),
+  };
   return {
     element: <PersonaTemplatesView read={{ ...READY, ...read }} write={write} {...handlers} />,
     ...handlers,
@@ -125,7 +130,12 @@ describe("an organization's persona templates in Settings", () => {
     {
       title: "a failed read gives its cause",
       read: { state: "failed" as const, templates: [], failure: "HQ is not answering right now." },
-      says: "HQ could not read the persona templates.",
+      says: "HQ could not read the persona templates. HQ is not answering right now.",
+    },
+    {
+      title: "a list HQ no longer keeps current says it may be out of date, and why",
+      read: { failure: "Zerops refused HQ's access." },
+      says: "This list may be out of date. Zerops refused HQ's access.",
     },
   ])("$title", ({ read, says }) => {
     expect(shown(read)).toContain(says);
@@ -144,12 +154,13 @@ describe("an organization's persona templates in Settings", () => {
     press(tree, "Add template");
     const [name, description] = tree.root.findAll((node) => node.type === "input");
     const instructions = tree.root.find((node) => node.type === "textarea");
-    act(() => name!.props.onChange(typed("Pairer")));
-    act(() => description!.props.onChange(typed("Thinks aloud.")));
-    act(() => instructions.props.onChange(typed("Explain each step.")));
+    act(() => name!.props.onChange(typed("  Pairer ")));
+    act(() => description!.props.onChange(typed(" Thinks aloud.  ")));
+    act(() => instructions.props.onChange(typed("\n Explain each step.\n\n")));
     expect(JSON.stringify(tree.toJSON())).toContain('"18"," / ","3,000"');
     act(() => tree.root.find((node) => node.type === "form").props.onSubmit(EVENT));
     expect(onSave).toHaveBeenCalledWith({
+      templateId: expect.any(String),
       revision: 0,
       name: "Pairer",
       description: "Thinks aloud.",
@@ -171,8 +182,8 @@ describe("an organization's persona templates in Settings", () => {
 
   it("a conflict says someone else changed the template and offers their version", () => {
     const theirs = { ...REVIEWER, instructions: "Ship fast.", revision: 3 };
-    const { onSave, onDelete, onReset } = view();
-    const props = { onSave, onDelete, onReset };
+    const { element: _, ...props } = view();
+    const { onSave } = props;
     const tree = mount(<PersonaTemplatesView read={READY} write={IDLE} {...props} />);
     press(tree, "Show instructions");
     press(tree, "Edit");
@@ -194,5 +205,92 @@ describe("an organization's persona templates in Settings", () => {
     expect(onSave).toHaveBeenLastCalledWith(
       expect.objectContaining({ revision: 3, templateId: "t-1" }),
     );
+  });
+
+  it("a new template keeps its id across presses, and one HQ could not confirm is asked after, never sent again", () => {
+    const { element: _, ...props } = view();
+    const tree = mount(<PersonaTemplatesView read={READY} write={IDLE} {...props} />);
+    press(tree, "Add template");
+    const [name] = tree.root.findAll((node) => node.type === "input");
+    act(() => name!.props.onChange(typed("Pairer")));
+    act(() => tree.root.find((node) => node.type === "textarea").props.onChange(typed("Pair.")));
+    const submit = () =>
+      act(() => tree.root.find((node) => node.type === "form").props.onSubmit(EVENT));
+    submit();
+    act(() =>
+      tree.update(
+        <PersonaTemplatesView read={READY} write={{ stage: "failed", reason: "x" }} {...props} />,
+      ),
+    );
+    submit();
+    const [first, second] = props.onSave.mock.calls.map(([draft]) => draft.templateId);
+    expect(first).toEqual(expect.any(String));
+    expect(second).toBe(first);
+    act(() =>
+      tree.update(
+        <PersonaTemplatesView
+          read={READY}
+          write={{ stage: "unconfirmed", reason: "HQ could not confirm this change." }}
+          {...props}
+        />,
+      ),
+    );
+    expect(button(tree, "Save").props.disabled).toBe(true);
+    submit();
+    expect(props.onSave).toHaveBeenCalledTimes(2);
+    press(tree, "Ask HQ again");
+    expect(props.onAskAgain).toHaveBeenCalledOnce();
+  });
+
+  it("an edit whose template someone deleted keeps its draft and can keep it as a new template", () => {
+    const { element: _, ...props } = view();
+    const tree = mount(<PersonaTemplatesView read={READY} write={IDLE} {...props} />);
+    press(tree, "Show instructions");
+    press(tree, "Edit");
+    act(() =>
+      tree.root.find((node) => node.type === "textarea").props.onChange(typed("Mine, typed.")),
+    );
+    act(() =>
+      tree.update(
+        <PersonaTemplatesView read={{ ...READY, templates: [SHIPPER] }} write={IDLE} {...props} />,
+      ),
+    );
+    expect(tree.root.find((node) => node.type === "textarea").props.value).toBe("Mine, typed.");
+    expect(JSON.stringify(tree.toJSON())).toContain(
+      "Someone else deleted this template meanwhile.",
+    );
+    expect(button(tree, "Save").props.disabled).toBe(true);
+    press(tree, "Keep it as a new template");
+    act(() => tree.root.find((node) => node.type === "form").props.onSubmit(EVENT));
+    expect(props.onSave).toHaveBeenCalledWith(
+      expect.objectContaining({ revision: 0, name: "Reviewer", instructions: "Mine, typed." }),
+    );
+    expect(props.onSave.mock.calls[0]![0].templateId).not.toBe("t-1");
+  });
+
+  it("while a save is under way no other template's edit or delete can drop its outcome", () => {
+    const { element: _, ...props } = view();
+    const tree = mount(<PersonaTemplatesView read={READY} write={IDLE} {...props} />);
+    press(tree, "Show instructions");
+    press(tree, "Edit");
+    act(() =>
+      tree.update(<PersonaTemplatesView read={READY} write={{ stage: "pending" }} {...props} />),
+    );
+    press(tree, "Show instructions");
+    expect(button(tree, "Edit").props.disabled).toBe(true);
+    expect(button(tree, "Delete").props.disabled).toBe(true);
+    const resets = props.onReset.mock.calls.length;
+    press(tree, "Edit");
+    expect(props.onReset).toHaveBeenCalledTimes(resets);
+    act(() =>
+      tree.update(
+        <PersonaTemplatesView
+          read={READY}
+          write={{ stage: "failed", reason: "HQ refused this." }}
+          {...props}
+        />,
+      ),
+    );
+    expect(JSON.stringify(tree.toJSON())).toContain("HQ refused this.");
   });
 });

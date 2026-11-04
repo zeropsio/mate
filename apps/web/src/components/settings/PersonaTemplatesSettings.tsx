@@ -12,6 +12,7 @@ import type { PersonaTemplateWrite } from "@t3tools/client-runtime/data";
 import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { useState } from "react";
 
+import { randomUUID } from "~/lib/utils";
 import {
   useOrgPersonaTemplates,
   usePersonaTemplateWriter,
@@ -38,6 +39,7 @@ export function PersonaTemplatesSettings() {
       onSave={writer.save}
       onDelete={writer.remove}
       onReset={writer.reset}
+      onAskAgain={writer.askAgain}
     />
   );
 }
@@ -63,12 +65,19 @@ const draftOf = (template: PersonaTemplate): PersonaTemplateDraft => ({
   instructions: template.instructions,
 });
 
-const NEW_DRAFT: PersonaTemplateDraft = {
+/**
+ * A new template's draft, its id made now: every press of Save sends the same template, so a
+ * create whose answer was lost is never made twice.
+ */
+const newDraft = (
+  text: Pick<PersonaTemplateDraft, "name" | "description" | "instructions">,
+): PersonaTemplateDraft => ({
+  templateId: randomUUID(),
   revision: 0,
-  name: "",
-  description: "",
-  instructions: "",
-};
+  name: text.name,
+  description: text.description,
+  instructions: text.instructions,
+});
 
 export function PersonaTemplatesView({
   read,
@@ -76,12 +85,14 @@ export function PersonaTemplatesView({
   onSave,
   onDelete,
   onReset,
+  onAskAgain,
 }: {
   readonly read: OrgPersonaTemplatesView;
   readonly write: PersonaTemplateWrite;
   readonly onSave: (draft: PersonaTemplateDraft) => void;
   readonly onDelete: (template: PersonaTemplate) => void;
   readonly onReset: () => void;
+  readonly onAskAgain: () => void;
 }) {
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<PersonaTemplateDraft | null>(null);
@@ -90,12 +101,35 @@ export function PersonaTemplatesView({
   const finished = write.stage === "done";
   const editor = finished ? null : editing;
   const confirming = finished ? null : deleting;
+  // A write under way keeps its form, so its outcome is said where it was asked.
+  const busy = write.stage === "pending";
   const start = (draft: PersonaTemplateDraft | null, confirm: string | null = null) => {
+    if (busy) return;
     onReset();
     setEditing(draft);
     setDeleting(confirm);
   };
-  const mayWrite = read.mayWrite && read.state === "ready";
+  const ready = read.state === "ready";
+  const mayWrite = read.mayWrite && ready;
+  // An edit stays in its row while the template is listed; one someone deleted keeps its draft.
+  const editorInRow =
+    editor !== null &&
+    editor.revision > 0 &&
+    read.templates.some((template) => template.id === editor.templateId);
+  const editorProps =
+    editor === null
+      ? null
+      : {
+          draft: editor,
+          write,
+          gone: ready && editor.revision > 0 && !editorInRow,
+          onChange: setEditing,
+          onSave,
+          onAskAgain,
+          onCancel: () => start(null),
+          onTakeTheirs: (theirs: PersonaTemplate) => start(draftOf(theirs)),
+          onSaveAsNew: () => start(newDraft(editor)),
+        };
 
   return (
     <SettingsSection
@@ -103,7 +137,12 @@ export function PersonaTemplatesView({
       title="Persona templates"
       headerAction={
         mayWrite && editor === null ? (
-          <Button size="sm" variant="secondary" onClick={() => start(NEW_DRAFT)}>
+          <Button
+            size="sm"
+            variant="secondary"
+            disabled={busy}
+            onClick={() => start(newDraft({ name: "", description: "", instructions: "" }))}
+          >
             Add template
           </Button>
         ) : null
@@ -114,16 +153,7 @@ export function PersonaTemplatesView({
         template here changes no Mate.
         {read.mayWrite ? null : " Owners and Admins edit these."}
       </p>
-      {editor !== null && editor.templateId === undefined ? (
-        <TemplateEditor
-          draft={editor}
-          write={write}
-          onChange={setEditing}
-          onSave={onSave}
-          onCancel={() => start(null)}
-          onTakeTheirs={(theirs) => start(draftOf(theirs))}
-        />
-      ) : null}
+      {editorProps !== null && !editorInRow ? <TemplateEditor {...editorProps} /> : null}
       {read.state === "loading" ? (
         <div className="px-3">
           <Loading count={2} label="The organization's persona templates" shape="rows" />
@@ -137,51 +167,37 @@ export function PersonaTemplatesView({
         <div className="px-3">
           <Failure
             cause="HQ could not read the persona templates."
-            details={read.failure}
             action={
               <Button size="sm" variant="secondary" onClick={read.retry}>
                 Read again
               </Button>
             }
-          />
+          >
+            {read.failure}
+          </Failure>
         </div>
       ) : (
         <>
           {read.failure === null ? null : (
             <div className="px-3">
               <Failure
-                cause="This list may be out of date: HQ is not answering."
-                details={read.failure}
+                cause="This list may be out of date."
                 action={
                   <Button size="sm" variant="secondary" onClick={read.retry}>
                     Read again
                   </Button>
                 }
-              />
+              >
+                {read.failure}
+              </Failure>
             </div>
           )}
           {read.templates.length === 0 && editor === null ? (
             <p className="px-3 text-sm text-muted-foreground">No templates yet.</p>
           ) : null}
           {read.templates.map((template) =>
-            editor?.templateId === template.id ? (
-              <TemplateEditor
-                key={template.id}
-                draft={editor}
-                write={write}
-                onChange={setEditing}
-                onSave={onSave}
-                onCancel={() => start(null)}
-                onTakeTheirs={(theirs) => start(draftOf(theirs))}
-                onSaveAsNew={() =>
-                  start({
-                    revision: 0,
-                    name: editor.name,
-                    description: editor.description,
-                    instructions: editor.instructions,
-                  })
-                }
-              />
+            editorProps !== null && editorInRow && editor?.templateId === template.id ? (
+              <TemplateEditor key={template.id} {...editorProps} />
             ) : (
               <SettingsRow
                 key={template.id}
@@ -215,11 +231,17 @@ export function PersonaTemplatesView({
                         <Button
                           size="sm"
                           variant="secondary"
+                          disabled={busy}
                           onClick={() => start(draftOf(template))}
                         >
                           Edit
                         </Button>
-                        <Button size="sm" variant="ghost" onClick={() => start(null, template.id)}>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          disabled={busy}
+                          onClick={() => start(null, template.id)}
+                        >
                           Delete
                         </Button>
                       </div>
@@ -274,29 +296,29 @@ function TemplateDeletion({
 function WriteProblem({
   write,
   onTakeTheirs,
-  onSaveAsNew,
+  onAskAgain,
 }: {
   readonly write: PersonaTemplateWrite;
   readonly onTakeTheirs?: (theirs: PersonaTemplate) => void;
-  readonly onSaveAsNew?: () => void;
+  readonly onAskAgain?: () => void;
 }) {
-  if (write.stage === "failed" || write.stage === "unconfirmed")
-    return <Failure cause={write.reason} />;
-  if (write.stage !== "conflict") return null;
-  const { current } = write;
-  if (current === null)
+  if (write.stage === "failed") return <Failure cause={write.reason} />;
+  if (write.stage === "unconfirmed")
     return (
       <Failure
-        cause="Someone else deleted this template meanwhile."
+        cause={write.reason}
         action={
-          onSaveAsNew === undefined ? undefined : (
-            <Button size="sm" variant="secondary" onClick={onSaveAsNew}>
-              Keep it as a new template
+          onAskAgain === undefined ? undefined : (
+            <Button size="sm" variant="secondary" onClick={onAskAgain}>
+              Ask HQ again
             </Button>
           )
         }
       />
     );
+  // A conflict over a deleted template is said with the draft it strands (`TemplateEditor`).
+  if (write.stage !== "conflict" || write.current === null) return null;
+  const { current } = write;
   return (
     <Failure
       cause="Someone else changed this template meanwhile."
@@ -316,30 +338,44 @@ function WriteProblem({
 function TemplateEditor({
   draft,
   write,
+  gone,
   onChange,
   onSave,
+  onAskAgain,
   onCancel,
   onTakeTheirs,
   onSaveAsNew,
 }: {
   readonly draft: PersonaTemplateDraft;
   readonly write: PersonaTemplateWrite;
+  /** The template it edits is no longer listed: someone deleted it. */
+  readonly gone: boolean;
   readonly onChange: (draft: PersonaTemplateDraft) => void;
   readonly onSave: (draft: PersonaTemplateDraft) => void;
+  readonly onAskAgain: () => void;
   readonly onCancel: () => void;
   readonly onTakeTheirs: (theirs: PersonaTemplate) => void;
-  readonly onSaveAsNew?: () => void;
+  readonly onSaveAsNew: () => void;
 }) {
   const pending = write.stage === "pending";
+  // Sent and not confirmed: asked after, never sent again over itself.
+  const unconfirmed = write.stage === "unconfirmed";
+  const deleted = gone || (write.stage === "conflict" && write.current === null);
   const problem = draftProblem(draft);
   const over = draft.instructions.trim().length > MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH;
   return (
     <form
       className="flex flex-col gap-3 px-3 py-2"
-      aria-label={draft.templateId === undefined ? "New persona template" : `Edit ${draft.name}`}
+      aria-label={draft.revision === 0 ? "New persona template" : `Edit ${draft.name}`}
       onSubmit={(event) => {
         event.preventDefault();
-        if (problem === null && !pending) onSave(draft);
+        if (problem !== null || pending || unconfirmed || deleted) return;
+        onSave({
+          ...draft,
+          name: draft.name.trim(),
+          description: draft.description.trim(),
+          instructions: draft.instructions.trim(),
+        });
       }}
     >
       <Field className="w-full">
@@ -376,13 +412,25 @@ function TemplateEditor({
         </span>
         {over ? <FieldError match>{problem}</FieldError> : null}
       </Field>
-      <WriteProblem
-        write={write}
-        onTakeTheirs={onTakeTheirs}
-        {...(onSaveAsNew ? { onSaveAsNew } : {})}
-      />
+      {deleted ? (
+        <Failure
+          cause="Someone else deleted this template meanwhile."
+          action={
+            <Button size="sm" variant="secondary" type="button" onClick={onSaveAsNew}>
+              Keep it as a new template
+            </Button>
+          }
+        />
+      ) : (
+        <WriteProblem write={write} onTakeTheirs={onTakeTheirs} onAskAgain={onAskAgain} />
+      )}
       <div className="flex gap-2">
-        <Button size="sm" variant="primary" type="submit" disabled={pending || problem !== null}>
+        <Button
+          size="sm"
+          variant="primary"
+          type="submit"
+          disabled={pending || unconfirmed || deleted || problem !== null}
+        >
           {pending ? "Saving…" : "Save"}
         </Button>
         <Button size="sm" variant="ghost" type="button" disabled={pending} onClick={onCancel}>

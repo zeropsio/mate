@@ -33,7 +33,7 @@ export const PERSONA_TEMPLATE_CONFLICT = "revision_conflict";
 
 /**
  * The template as the organization's complete record holds it: `null` where the record proves it
- * absent, `undefined` while no record is known.
+ * absent, `undefined` while no record is known or the template may be one it could not read.
  */
 export const personaTemplateIn = (
   read: ProjectionReads,
@@ -42,7 +42,13 @@ export const personaTemplateIn = (
 ): PersonaTemplate | null | undefined => {
   const record = read.fact("hqPersonaTemplates", orgId);
   if (record.kind !== "known") return undefined;
-  return record.value.templates.find((template) => template.id === templateId) ?? null;
+  const template = record.value.templates.find((candidate) => candidate.id === templateId);
+  if (template !== undefined) return template;
+  // A template this version could not read may be this one: absence is not proved.
+  const { unreadable } = record.value;
+  return unreadable === "record" || unreadable.includes(templateId) || unreadable.includes(null)
+    ? undefined
+    : null;
 };
 
 /** The record holds the saved text at a revision past the one its writer saw. */

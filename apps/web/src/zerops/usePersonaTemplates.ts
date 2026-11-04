@@ -58,7 +58,10 @@ export function useOrgPersonaTemplates(): OrgPersonaTemplatesView {
   };
 }
 
-/** What a save sends: a new template has no `templateId` and revision 0. */
+/**
+ * What a save sends: a new template has revision 0. Give it its `templateId` once, before the
+ * first press, so pressing Save again sends the same template; without one each save makes one.
+ */
 export interface PersonaTemplateDraft {
   readonly templateId?: string;
   /** The revision its writer saw; 0 for a new template. */
@@ -75,6 +78,8 @@ export interface PersonaTemplateWriter {
   readonly remove: (template: PersonaTemplate) => void;
   /** Forgets the last write's state, as a closed editor does; the write itself goes on. */
   readonly reset: () => void;
+  /** Asks HQ after an unconfirmed write, by what it holds: never a second send. */
+  readonly askAgain: () => void;
 }
 
 const IDLE = Atom.make<PersonaTemplateWrite>({ stage: "idle" });
@@ -122,5 +127,8 @@ export function usePersonaTemplateWriter(): PersonaTemplateWriter {
       });
     },
     reset: () => setRequestId(null),
+    askAgain: () => {
+      if (operations !== null && requestId !== null) void operations.askAgain(requestId);
+    },
   };
 }

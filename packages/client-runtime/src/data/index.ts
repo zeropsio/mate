@@ -446,7 +446,11 @@ export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
-export { hqPersonaTemplatesFamily, personaTemplatesScope } from "./families/hqPersonaTemplates.ts";
+export {
+  hqPersonaTemplatesFamily,
+  personaTemplatesScope,
+  type HqPersonaTemplatesRecord,
+} from "./families/hqPersonaTemplates.ts";
 export {
   PERSONA_TEMPLATE_CONFLICT,
   personaTemplateGone,

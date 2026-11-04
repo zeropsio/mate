@@ -200,7 +200,8 @@ export function ZeropsSettings() {
           />
         ) : null}
       </SettingsSection>
-      {activeOrganization ? <PersonaTemplatesSettings /> : null}
+      {/* Keyed by organization: a draft or a write's state never carries into another one. */}
+      {activeOrganization ? <PersonaTemplatesSettings key={activeOrganization.id} /> : null}
       {activeOrganization ? (
         <SettingsSection {...searchableSetting("zerops-hq")} title="HQ">
           <div className="px-3 sm:px-4">
