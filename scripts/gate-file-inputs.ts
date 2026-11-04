@@ -127,6 +127,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/zerops/ZeropsGitCredentialFile.test.ts": [],
   "apps/server/src/zerops/ZeropsObserveCredentialFile.test.ts": [],
   "apps/server/src/zerops/ZeropsGitWorkingTreeDiff.test.ts": [],
+  "apps/server/src/zerops/ZeropsHqLink.test.ts": [],
   "apps/server/src/zerops/ZeropsLoginsIo.test.ts": [],
   "apps/server/src/zerops/ZeropsMateAttention.test.ts": [],
   "apps/server/src/zerops/ZeropsSetup.test.ts": [],

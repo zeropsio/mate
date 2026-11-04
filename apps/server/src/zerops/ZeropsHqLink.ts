@@ -20,7 +20,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
- *   every session on a moved Chief mark (`chief`); who HQ says its project opens for and lists (`access`, advisory), handed on to
+ *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
+ *   Mate's changes from every state where zcp reads them; who HQ says its project opens for and lists (`access`, advisory), handed on to
  *   `ZeropsMateAccessList`; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
  *   when the Mate's own list does not open for its person; the Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
@@ -98,11 +99,13 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
@@ -214,6 +217,8 @@ export interface ZeropsHqLinkOptions {
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
+  /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
+  readonly mateChanges?: (changes: MateChanges) => Effect.Effect<void>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
   readonly chief?: (projectId: string | null) => Effect.Effect<void>;
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
@@ -569,6 +574,7 @@ export const makeZeropsHqLink = (
             return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
+              Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
               Effect.andThen(options.automation?.heard(frame.mate) ?? Effect.void),
               Effect.andThen(options.chief?.(frame.mate.chief?.projectId ?? null) ?? Effect.void),
               Effect.andThen(
@@ -962,6 +968,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
         closeSession: connections.closeSession,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
+        mateChanges: yield* makeChangesFile(
+          paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
+        ),
         gitFingerprint: credential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({

@@ -1,4 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationRow,
@@ -21,8 +22,10 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -37,6 +40,7 @@ import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import {
@@ -203,6 +207,7 @@ const rig = (
     readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
     /** The Mate's own access reports; none unless a test says. */
     readonly accessReports?: Stream.Stream<AccessReport>;
+    readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -251,6 +256,7 @@ const rig = (
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
       ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
       ...(options.accessReports === undefined ? {} : { accessReports: options.accessReports }),
+      ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
           (options.credentialLands?.(credential) ?? Effect.void).pipe(
@@ -1096,6 +1102,56 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(chiefs, [null, "P_MATE", "P_OTHER"]);
         }),
       ),
+  );
+
+  it.effect(
+    "Decision: every state HQ sends lands as the Mate's changes, and only them, in the file zcp reads",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-changes-file-" });
+        const directory = path.join(root, ".zcp", "hq");
+        const at = path.join(directory, "changes.json");
+        const { sockets } = yield* rig({ mateChanges: yield* makeChangesFile(at) });
+        const socket = yield* linked(sockets, 0);
+        const change = {
+          repo: "shop",
+          number: 3,
+          title: "Mate: shop",
+          head: "a".repeat(40),
+          mergedSha: null,
+          landedHead: null,
+          branch: "mate/ada",
+        } as const;
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "open", updatedAt: "2026-11-05T10:00:00.000Z" }],
+          ownerUserId: "owner",
+        });
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+          ownerUserId: "owner",
+        });
+        // Frames are taken in order: the pong is the receipt that both states were handled.
+        const ponged = yield* Deferred.make<void>();
+        socket.onSent = (message) => {
+          if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
+        };
+        socket.hear({ type: "ping" });
+        yield* Deferred.await(ponged);
+        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(at)), {
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+        });
+        assert.deepStrictEqual(yield* fs.readDirectory(directory), ["changes.json"]);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.
