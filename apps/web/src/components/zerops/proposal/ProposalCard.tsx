@@ -16,6 +16,7 @@ import {
   GlobeIcon,
   KeyRoundIcon,
   PlayIcon,
+  PlugIcon,
   RotateCwIcon,
   SendIcon,
   SquareIcon,
@@ -96,6 +97,7 @@ const KIND_ICON: Record<ZeropsProposal["kind"], LucideIcon> = {
   "chief.message": SendIcon,
   "domain.add": GlobeIcon,
   "access.set": UsersIcon,
+  "mcp.add": PlugIcon,
 };
 
 /** A secret value is never drawn: the card says it is hidden. */

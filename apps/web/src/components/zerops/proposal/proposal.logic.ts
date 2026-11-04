@@ -310,6 +310,10 @@ export function proposalOutcomeWords(
       const place = proposal.projectName ?? "the project";
       return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
     }
+    case "mcp.add": {
+      const { title } = proposal.params.server;
+      return running ? `Adding ${title}…` : `${title} is added.`;
+    }
   }
 }
 
@@ -446,6 +450,8 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
       return proposal.params.projects.length > 1
         ? `All of ${project ?? "the application"}: its environments and Mates`
         : (proposal.params.projects[0]?.name ?? project ?? null);
+    case "mcp.add":
+      return "This Mate's agents";
     case "mate.message":
     case "chief.message":
       return null;

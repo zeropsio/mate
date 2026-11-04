@@ -8,12 +8,21 @@
  * at each step its domain goes through. First, the Chief proposing who has access to an
  * application: undecided, held for a name nobody in the organization has, and done. Every face is
  * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
- * refuses it. `?theme=dark` for dark.
+ * refuses it. `?theme=dark` for dark. At the top, a Mate proposing an MCP server for its agents:
+ * with a key to type, proposed for the whole project, waiting for a sign-in and its paste
+ * fallback, connected, and failed; `?only=mcp` shows those alone.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+import { McpProposalCard } from "~/components/zerops/proposal/McpProposalCard";
+import {
+  mcpProposalView,
+  type McpProposal,
+  type McpProposalStatus,
+  type McpSigning,
+} from "~/components/zerops/proposal/mcpProposal.logic";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
@@ -32,6 +41,81 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FAIL = params.get("fail") === "1";
 const MENU = Number(params.get("menu") ?? 435);
+const ONLY_MCP = params.get("only") === "mcp";
+
+const LINEAR: McpProposal = {
+  id: "mcp-linear",
+  kind: "mcp.add",
+  summary: "Set up Linear",
+  reason: "So I can read the issues you link and move them along as the work lands.",
+  projectId: "p-juno",
+  params: {
+    scope: "mate",
+    server: {
+      name: "linear",
+      title: "Linear",
+      transport: { type: "http", url: "https://mcp.linear.app/mcp" },
+      auth: { kind: "oauth" },
+    },
+    credentials: [],
+  },
+};
+
+const SENTRY: McpProposal = {
+  ...LINEAR,
+  id: "mcp-sentry",
+  summary: "Set up Sentry",
+  reason: "To read production's errors myself instead of asking you to paste them.",
+  params: {
+    scope: "mate",
+    server: {
+      name: "sentry",
+      title: "Sentry",
+      transport: { type: "http", url: "https://mcp.sentry.dev/mcp" },
+      auth: { kind: "header" },
+    },
+    credentials: [
+      {
+        key: "SENTRY_TOKEN",
+        label: "Sentry auth token",
+        placement: "header",
+        headerName: "Authorization",
+        prefix: "Bearer ",
+      },
+    ],
+  },
+};
+
+const MCP_CARDS: ReadonlyArray<{
+  readonly id: string;
+  readonly proposal: McpProposal;
+  readonly status: McpProposalStatus;
+  readonly signing?: McpSigning;
+}> = [
+  { id: "sentry-proposed", proposal: SENTRY, status: { kind: "proposed" } },
+  {
+    id: "linear-project",
+    proposal: { ...LINEAR, params: { ...LINEAR.params, scope: "project" } },
+    status: { kind: "proposed" },
+  },
+  { id: "linear-sign-in", proposal: LINEAR, status: { kind: "needs-sign-in", agent: "Claude" } },
+  {
+    id: "linear-paste",
+    proposal: LINEAR,
+    status: { kind: "needs-sign-in", agent: "Codex" },
+    signing: { phase: "paste", url: "https://linear.app/oauth/authorize", finishing: false },
+  },
+  {
+    id: "linear-connected",
+    proposal: LINEAR,
+    status: { kind: "connected", tools: 23, agents: ["Claude", "Codex"] },
+  },
+  {
+    id: "sentry-failed",
+    proposal: SENTRY,
+    status: { kind: "failed", words: "HTTP 401: Invalid token", agent: "Codex" },
+  },
+];
 
 const RESTART: ZeropsProposal = {
   id: "restart",
@@ -291,7 +375,20 @@ function Harness() {
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8">
         <MateFaceAsMark value>
           <div className="mx-auto grid w-full max-w-3xl gap-3">
-            {CARDS.map((card) => (
+            {MCP_CARDS.map((card) => (
+              <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
+                <McpProposalCard
+                  view={mcpProposalView({
+                    proposal: card.proposal,
+                    mateName: "Juno",
+                    status: card.status,
+                    signing: card.signing ?? { phase: "idle" },
+                    approveBlocked: undefined,
+                  })}
+                />
+              </div>
+            ))}
+            {(ONLY_MCP ? [] : CARDS).map((card) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`${card.proposal.id}:${card.stage}`}

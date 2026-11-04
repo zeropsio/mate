@@ -29,7 +29,7 @@ import {
   type PlaceAddresses,
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -48,6 +48,7 @@ import { useProposalDecision } from "~/zerops/proposalRecord";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
+import { McpProposalCardContainer } from "./McpProposalCardContainer";
 import { ProposalCard } from "./ProposalCard";
 import {
   chiefAsk,
@@ -112,12 +113,27 @@ const SERVICE_OPERATION = {
 export function ProposalCardContainer({
   operation,
   environmentId,
+  threadId = null,
+  driver = null,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
+  /** The conversation the card is in: whose agent an MCP server's sign-in is. */
+  readonly threadId?: ThreadId | null;
+  readonly driver?: string | null;
 }) {
   const proposal = operation.proposal;
   if (proposal === undefined || environmentId === null) return null;
+  if (proposal.kind === "mcp.add") {
+    return (
+      <McpProposalCardContainer
+        driver={driver}
+        environmentId={environmentId}
+        proposal={proposal}
+        threadId={threadId}
+      />
+    );
+  }
   return <Proposal environmentId={environmentId} proposal={proposal} />;
 }
 
@@ -125,7 +141,7 @@ function Proposal({
   proposal,
   environmentId,
 }: {
-  readonly proposal: ZeropsProposal;
+  readonly proposal: Exclude<ZeropsProposal, { readonly kind: "mcp.add" }>;
   readonly environmentId: EnvironmentId;
 }) {
   // The conversation's own project: the organization every approval acts in, and where HQ keeps
