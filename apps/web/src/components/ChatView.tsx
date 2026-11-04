@@ -2732,6 +2732,16 @@ function ConversationView(props: ChatViewProps) {
     ],
   );
   useRunningBuildDemand(zeropsBuilds.projectId, zeropsThreadModel.running);
+  // The conversation's MCP proposals: the Tools tab lists the ones still waiting on the person.
+  const mcpProposals = useMemo(
+    () =>
+      zeropsThreadModel.entries.flatMap((entry) =>
+        entry.kind === "operation" && entry.operation.proposal?.kind === "mcp.add"
+          ? [entry.operation.proposal]
+          : [],
+      ),
+    [zeropsThreadModel.entries],
+  );
   const workLogEntries = useMemo(
     () => deriveWorkLogEntries(threadActivities, { exclude: zeropsThreadModel.zeropsActivityIds }),
     [threadActivities, zeropsThreadModel.zeropsActivityIds],
@@ -8344,6 +8354,7 @@ function ConversationView(props: ChatViewProps) {
                   driver={selectedProvider}
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
+                  proposals={mcpProposals}
                   threadId={isServerThread ? activeThreadRef.threadId : undefined}
                 />
               );

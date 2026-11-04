@@ -105,7 +105,7 @@ const SURFACE_DISABLED_REASONS = {
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
-  mcp: "MCP servers are only available from a conversation.",
+  mcp: "Tools are only available from a conversation.",
   persona: "Update this Mate to give it a persona.",
   express: "Adobe Express is not set up in this build.",
   vault: "The vault is only available from a Zerops project thread.",
@@ -463,7 +463,7 @@ function surfaceTitle(
     case "crew":
       return "Crew";
     case "mcp":
-      return "MCP";
+      return "Tools";
     case "persona":
       return "Persona";
     case "express":

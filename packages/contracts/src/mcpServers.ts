@@ -78,6 +78,21 @@ export const MCP_APP_REDIRECTS: Readonly<
   opencode: { port: 33419, url: "http://127.0.0.1:33419/mcp/oauth/callback" },
 };
 
+/** What a server asks of an agent: its transport and how it signs in. */
+export interface McpServerNeeds {
+  readonly transport: McpServerTransport;
+  readonly auth?: McpServerAuth | McpServerAuthView | undefined;
+}
+
+const MCP_AGENT_NAMES: Readonly<Record<string, string>> = {
+  claudeAgent: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  opencode: "OpenCode",
+  grok: "Grok",
+  antigravity: "Antigravity",
+};
+
 /**
  * What each agent's config can take, as Mate writes it: an SSE server, a sign-in through the
  * person's own OAuth app, and that app's client secret. The server's writers refuse exactly what
@@ -96,6 +111,28 @@ export const MCP_AGENT_LIMITS: Readonly<
   antigravity: { sse: false, ownApp: false, ownAppSecret: false },
   opencode: { sse: false, ownApp: true, ownAppSecret: true },
 };
+
+/**
+ * Why an agent can't use a server as it is set up, or `null` when it can, read from
+ * `MCP_AGENT_LIMITS` (the one table): the sentences the Mate's list says after an add and the
+ * tab's add card says before it. Codex says why its own-app sign-in can't work.
+ */
+export function mcpAgentCannot(driver: string, needs: McpServerNeeds): string | null {
+  const limits = MCP_AGENT_LIMITS[driver];
+  if (limits === undefined) return null;
+  const agent = MCP_AGENT_NAMES[driver] ?? driver;
+  if (needs.transport.type === "sse" && !limits.sse) return `${agent} can't use SSE servers.`;
+  if (needs.auth?.kind !== "oauth-app") return null;
+  if (!limits.ownApp) {
+    return driver === "codex"
+      ? "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register."
+      : `${agent} can't sign in with your own app.`;
+  }
+  const secret = "secret" in needs.auth ? needs.auth.secret : needs.auth.clientSecret !== undefined;
+  return secret && !limits.ownAppSecret
+    ? `${agent} can't take your app's client secret from Mate.`
+    : null;
+}
 
 /**
  * A URL server's sign-in as the agents' configs hold it, without its secret:

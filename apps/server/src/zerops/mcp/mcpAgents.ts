@@ -33,6 +33,8 @@
  */
 import {
   MCP_APP_REDIRECTS,
+  mcpAgentCannot,
+  type McpServerNeeds,
   type McpServerAuth,
   type McpServerAuthView,
   ProviderDriverKind,
@@ -76,19 +78,6 @@ export interface McpConfigServer {
   readonly auth?: McpServerAuthView;
 }
 
-/** What a server asks of an agent: its transport and how it signs in. */
-export interface McpServerNeeds {
-  readonly transport: McpServerTransport;
-  readonly auth?: McpServerAuth | McpServerAuthView | undefined;
-}
-
-/** Whether a sign-in brings an app's client secret. */
-const bringsSecret = (auth: McpServerNeeds["auth"]): boolean =>
-  auth?.kind === "oauth-app" && ("secret" in auth ? auth.secret : auth.clientSecret !== undefined);
-
-const SSE_REFUSED = (agent: string) => `${agent} can't use SSE servers.`;
-const APP_REFUSED = (agent: string) => `${agent} can't sign in with your own app.`;
-
 /** The text of each file an agent reads; a missing file is absent. */
 export type McpFiles = ReadonlyMap<string, string>;
 
@@ -128,6 +117,11 @@ export class McpConfigUnsupported extends Error {
     this.name = "McpConfigUnsupported";
   }
 }
+
+export type { McpServerNeeds };
+
+/** An agent's config writer; what it can't use is the contracts' one table (`mcpAgentCannot`). */
+type AgentWriter = Omit<McpAgentStore, "cannot">;
 
 export interface McpAgentStore {
   readonly driver: ProviderDriverKind;
@@ -409,7 +403,7 @@ function claudeProject(doc: JsonRecord, cwd: string): JsonRecord {
   return isRecord(projects[cwd]) ? projects[cwd] : {};
 }
 
-function claudeStore(paths: McpAgentPaths): McpAgentStore {
+function claudeStore(paths: McpAgentPaths): AgentWriter {
   const projectFile = `${paths.cwd.replace(/\/+$/, "")}/.mcp.json`;
   const homes = paths.claudeConfigs;
   const disabledPath: JSONPath = ["projects", paths.cwd, "disabledMcpServers"];
@@ -509,10 +503,6 @@ function claudeStore(paths: McpAgentPaths): McpAgentStore {
         return setJson(text, disabledPath, toggled(disabled, name, !enabled));
       }),
     entry: claudeEntry,
-    cannot: (needs) =>
-      bringsSecret(needs.auth)
-        ? "Claude Code can't take your app's client secret from Mate."
-        : null,
     setAuth: (files, name, auth) =>
       editEach(files, homes, (text, path) => {
         const doc = parseJson(path, text);
@@ -586,12 +576,11 @@ function tomlStore(
   entry: (input: McpServerAddInput) => Record<string, TomlPlain>,
   fields: SecretFields,
   auth: {
-    readonly cannot: (needs: McpServerNeeds) => string | null;
     readonly view: (server: Record<string, TomlPlain>) => McpServerAuthView | undefined;
     /** The server's sign-in keys and their values; `undefined` removes one. */
     readonly keys: (auth: McpServerAuth) => ReadonlyArray<[string, TomlPlain | undefined]>;
   },
-): McpAgentStore {
+): AgentWriter {
   return {
     driver: ProviderDriverKind.make(driver),
     paths: configs,
@@ -640,7 +629,6 @@ function tomlStore(
         );
       }),
     entry,
-    cannot: auth.cannot,
     setAuth: (files, name, next) =>
       editEach(files, configs, (text, path) => {
         if (tomlServers(path, text)[name] === undefined) return undefined;
@@ -687,12 +675,6 @@ const codexEntry = (input: McpServerAddInput): Record<string, TomlPlain> =>
       };
 
 const codexAuth = {
-  cannot: (needs: McpServerNeeds) =>
-    needs.transport.type === "sse"
-      ? SSE_REFUSED("Codex")
-      : needs.auth?.kind === "oauth-app"
-        ? "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register."
-        : null,
   view: (server: Record<string, TomlPlain>): McpServerAuthView | undefined => {
     const scopes = scopesOf(server["scopes"]);
     const oauth = server["oauth"];
@@ -710,12 +692,6 @@ const codexAuth = {
 
 /** Grok's sign-in Mate doesn't write: plain URLs and their headers only. */
 const grokAuth = {
-  cannot: (needs: McpServerNeeds) =>
-    needs.transport.type === "sse"
-      ? SSE_REFUSED("Grok")
-      : needs.auth?.kind === "oauth-app"
-        ? APP_REFUSED("Grok")
-        : null,
   view: () => undefined,
   keys: () => [],
 };
@@ -745,14 +721,13 @@ function jsonStore(input: {
   readonly mark: (entry: JsonRecord, enabled: boolean) => ReadonlyArray<[string, unknown]>;
   readonly entry: (input: McpServerAddInput) => JsonRecord;
   readonly fields: SecretFields;
-  readonly cannot: (needs: McpServerNeeds) => string | null;
   /** Where its sign-in lives in an entry, read without secrets and written keeping a stored one. */
   readonly auth?: {
     readonly field: string;
     readonly view: (entry: JsonRecord) => McpServerAuthView | undefined;
     readonly write: (auth: McpServerAuth, stored: unknown) => unknown;
   };
-}): McpAgentStore {
+}): AgentWriter {
   const { key, fields } = input;
   return {
     driver: ProviderDriverKind.make(input.driver),
@@ -792,7 +767,6 @@ function jsonStore(input: {
           .reduce((next, [field, value]) => setJson(next, [key, name, field], value), text);
       }),
     entry: input.entry,
-    cannot: input.cannot,
     setAuth: (files, name, auth) =>
       editEach(files, input.targets(files), (text, path) => {
         const entry = serverMap(parseJson(path, text), key)[name];
@@ -932,7 +906,7 @@ const cursorEntry = (input: McpServerAddInput): JsonRecord => {
   };
 };
 
-function cursorStore(paths: McpAgentPaths): McpAgentStore {
+function cursorStore(paths: McpAgentPaths): AgentWriter {
   const config = `${paths.cursorHome}/mcp.json`;
   const disabledFile = `${paths.cursorHome}/projects/${cursorProjectDir(paths.cwd)}/mcp-disabled.json`;
   const readDisabled = (files: McpFiles): ReadonlyArray<string> => {
@@ -985,7 +959,6 @@ function cursorStore(paths: McpAgentPaths): McpAgentStore {
         ? markDisabled(files, name, !enabled)
         : [],
     entry: cursorEntry,
-    cannot: () => null,
     setAuth: (files, name, auth) =>
       editEach(files, [config], (text) => {
         const entry = serverMap(parseJson(config, text), "mcpServers")[name];
@@ -1028,7 +1001,7 @@ const sameServer = (a: McpConfigServer, b: McpConfigServer): boolean =>
  * must stand as it did — else {@link McpConfigEditError}, and nothing of this
  * agent is written.
  */
-function readBack(store: McpAgentStore): McpAgentStore {
+function readBack(store: AgentWriter): AgentWriter {
   const check = (
     files: McpFiles,
     edits: ReadonlyArray<McpFileEdit>,
@@ -1122,7 +1095,7 @@ export function makeMcpAgentStores(
   paths: McpAgentPaths,
 ): ReadonlyMap<ProviderDriverKind, McpAgentStore> {
   const openCodeJsonc = paths.openCodeConfig.replace(/\.json$/, ".jsonc");
-  const stores: McpAgentStore[] = [
+  const stores: Array<AgentWriter> = [
     claudeStore(paths),
     tomlStore(
       "codex",
@@ -1142,12 +1115,6 @@ export function makeMcpAgentStores(
       mark: (_entry, enabled) => [["disabled", enabled ? undefined : true]],
       entry: antigravityEntry,
       fields: STANDARD_FIELDS,
-      cannot: (needs) =>
-        needs.transport.type === "sse"
-          ? SSE_REFUSED("Antigravity")
-          : needs.auth?.kind === "oauth-app"
-            ? APP_REFUSED("Antigravity")
-            : null,
     }),
     jsonStore({
       driver: "opencode",
@@ -1163,10 +1130,13 @@ export function makeMcpAgentStores(
       mark: (_entry, enabled) => [["enabled", enabled]],
       entry: openCodeEntry,
       fields: { stdio: "environment", http: "headers" },
-      // The OpenCode installed beside Mate speaks streamable HTTP only.
-      cannot: (needs) => (needs.transport.type === "sse" ? SSE_REFUSED("OpenCode") : null),
       auth: { field: "oauth", view: openCodeAuthView, write: openCodeOauth },
     }),
   ];
-  return new Map(stores.map((store) => [store.driver, readBack(store)]));
+  return new Map(
+    stores.map((store) => [
+      store.driver,
+      { ...readBack(store), cannot: (needs) => mcpAgentCannot(store.driver, needs) },
+    ]),
+  );
 }

@@ -19,6 +19,9 @@ import {
   readMcpAddForm,
   readMcpSecretsForm,
   readMcpSignInEdit,
+  groupMcpRows,
+  mcpTileInitials,
+  mcpWhere,
   mcpAppRedirects,
   mcpSignInStart,
   BLANK_SIGN_IN,
@@ -1040,4 +1043,137 @@ describe("the secrets form — a server's environment or headers, edited without
       expect(readMcpSecretsForm(kind, text)).toEqual(read);
     },
   );
+});
+
+describe("the Tools tab: where each tool stands and the one thing to do", () => {
+  const rowOf = (
+    agent: Omit<McpServerAgent, "driver">,
+    entry: Partial<McpServerEntry> = {},
+    driver: ProviderDriverKind | null = CLAUDE,
+  ) =>
+    buildMcpRows(
+      {
+        agents: [CLAUDE, CODEX],
+        servers: [
+          {
+            name: "linear",
+            managed: false,
+            transport: { type: "http", url: "https://mcp.linear.app/mcp" },
+            agents: [{ driver: CLAUDE, ...agent }],
+            ...entry,
+          },
+        ],
+      },
+      driver,
+    )[0]!;
+  const tools = [{ name: "list_issues", readOnly: true }, { name: "create_issue" }];
+
+  it.each<{
+    case: string;
+    agent: Omit<McpServerAgent, "driver">;
+    entry?: Partial<McpServerEntry>;
+    group: string;
+    right: unknown;
+  }>([
+    {
+      case: "a tool that works says how many tools it brings",
+      agent: { state: "connected", tools },
+      group: "ready",
+      right: { kind: "state", words: "2 tools", tone: "ok" },
+    },
+    {
+      case: "a tool waiting for a sign-in asks for it",
+      agent: { state: "needs-auth" },
+      group: "waiting",
+      right: { kind: "action", action: "signIn", label: "Sign in" },
+    },
+    {
+      case: "a tool whose key was refused asks for a key",
+      agent: { state: "failed", error: "HTTP 401 Unauthorized" },
+      entry: { secretNames: ["Authorization"] },
+      group: "waiting",
+      right: { kind: "action", action: "addKey", label: "Add key" },
+    },
+    {
+      case: "a tool whose sign-in ran out asks to sign in again",
+      agent: { state: "failed", error: "401: invalid_token" },
+      group: "waiting",
+      right: { kind: "action", action: "signIn", label: "Sign in again" },
+    },
+    {
+      case: "a tool that failed for another reason offers to try again",
+      agent: { state: "failed", error: "connection refused" },
+      group: "waiting",
+      right: { kind: "action", action: "tryAgain", label: "Try again" },
+    },
+    {
+      case: "a tool connecting says so, with nothing to press",
+      agent: { state: "connecting" },
+      group: "ready",
+      right: { kind: "state", words: "Connecting", tone: "busy" },
+    },
+    {
+      case: "a tool no agent has reached yet says so",
+      agent: { state: "configured" },
+      group: "ready",
+      right: { kind: "state", words: "Not reached yet", tone: "off" },
+    },
+    {
+      case: "a tool turned off stands with the others that are off",
+      agent: { state: "disabled" },
+      group: "off",
+      right: { kind: "state", words: "Off", tone: "off" },
+    },
+  ])("$case", ({ agent, entry, group, right }) => {
+    const row = rowOf(agent, entry);
+    expect({ group: row.group, right: row.right }).toEqual({ group, right });
+  });
+
+  it("each installed agent is a mark with its own state, one that can't use it named why", () => {
+    const row = rowOf(
+      { state: "connected", tools },
+      { cannot: [{ driver: CODEX, reason: "Codex can't use SSE servers." }] },
+    );
+    expect(row.marks).toEqual([
+      { driver: CLAUDE, tone: "ok", label: "Claude: connected" },
+      { driver: CODEX, tone: "off", label: "Codex can't use SSE servers." },
+    ]);
+  });
+
+  it.each([
+    ["linear", "Li"],
+    ["DeepWiki", "Dw"],
+    ["zerops", "Z"],
+    ["x", "X"],
+  ])("%s's tile reads %s", (name, initials) => {
+    expect(mcpTileInitials(name, name === "zerops")).toBe(initials);
+  });
+
+  it("the tab groups what waits on you first, then what is ready, then what is off", () => {
+    const list: McpServersList = {
+      agents: [CLAUDE],
+      servers: (["disabled", "connected", "needs-auth"] as const).map((state, index) => ({
+        name: `s${String(index)}`,
+        managed: false,
+        transport: { type: "stdio", command: "x", args: [] },
+        agents: [{ driver: CLAUDE, state }],
+      })),
+    };
+    const groups = groupMcpRows(buildMcpRows(list, CLAUDE));
+    expect(groups.map((group) => [group.id, group.rows.map((row) => row.name)])).toEqual([
+      ["waiting", ["s2"]],
+      ["ready", ["s1"]],
+      ["off", ["s0"]],
+    ]);
+  });
+});
+
+describe("where a tool connects, typed in one field", () => {
+  it.each([
+    ["https://mcp.linear.app/mcp", "url", "A streamable HTTP server."],
+    ["https://mcp.deepwiki.com/sse", "sse", "An SSE server: an older kind not every agent speaks."],
+    ["npx -y @modelcontextprotocol/server-postgres", "command", "A command this Mate runs."],
+  ])("%s is read as a %s server, said in a line", (text, kind, words) => {
+    expect(mcpWhere(text)).toMatchObject({ form: { kind }, words });
+  });
 });

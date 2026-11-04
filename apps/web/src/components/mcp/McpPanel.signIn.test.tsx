@@ -133,7 +133,7 @@ it("editing a server's headers sends the new values and keeps the masked ones, n
     await act(async () =>
       container.querySelector<HTMLElement>('[data-mcp-server="linear"] button')!.click(),
     );
-    await act(async () => button(MCP_WORDS.editHeaders)!.click());
+    await act(async () => button(MCP_WORDS.edit)!.click());
     const area = container.querySelector<HTMLTextAreaElement>("[data-mcp-editing] textarea")!;
     expect(area.value).toBe("Authorization: ••••••");
     await act(async () => {
@@ -146,62 +146,6 @@ it("editing a server's headers sends the new values and keeps the masked ones, n
     await act(async () => button(MCP_WORDS.save)!.click());
     expect(actions).toEqual([
       { kind: "update", name: "linear", values: { "X-Team": "eng" }, keep: ["Authorization"] },
-    ]);
-  } finally {
-    await act(() => root.unmount());
-    container.remove();
-  }
-});
-
-it("adding a URL server that signs in with an API key sends the key as its header", async () => {
-  const container = document.createElement("div");
-  document.body.append(container);
-  const root = createRoot(container);
-  const actions: McpAction[] = [];
-  const type = async (input: HTMLInputElement, value: string) =>
-    act(async () => {
-      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-    });
-  try {
-    await act(() =>
-      root.render(
-        <McpPanelBody
-          act={async (next) => {
-            actions.push(next);
-            return { ok: true };
-          }}
-          driver={CLAUDE}
-          onRetry={() => {}}
-          signIn={async () => ({ ok: false, message: "" })}
-          state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
-        />,
-      ),
-    );
-    const button = (name: string) =>
-      Array.from(container.querySelectorAll("button")).find(
-        (candidate) => candidate.textContent?.trim() === name,
-      )!;
-    await act(async () => button(MCP_WORDS.addTitle).click());
-    await act(async () => button(MCP_WORDS.url2).click());
-    await act(async () => button(MCP_WORDS.signInKey).click());
-    const inputs = () => [...container.querySelectorAll<HTMLInputElement>("[data-mcp-add] input")];
-    await type(inputs()[0]!, "docs");
-    await type(inputs()[1]!, "https://mcp.example.com/mcp");
-    const key = container.querySelector<HTMLInputElement>(
-      '[data-mcp-sign-in="header"] input[data-secret]',
-    )!;
-    await type(key, "k3y");
-    await act(async () => button(MCP_WORDS.add).click());
-    expect(actions).toEqual([
-      {
-        kind: "add",
-        input: {
-          name: "docs",
-          transport: { type: "http", url: "https://mcp.example.com/mcp" },
-          auth: { kind: "header", name: "Authorization", value: "Bearer k3y" },
-        },
-      },
     ]);
   } finally {
     await act(() => root.unmount());
