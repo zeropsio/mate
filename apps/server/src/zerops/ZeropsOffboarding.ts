@@ -73,8 +73,8 @@ export const make = (options: {
   );
 
 /**
- * One pass every 30 seconds, while this is a Zerops project, and one at once whenever HQ relays
- * a different list (`ZeropsMateAccessList`).
+ * One pass every 30 seconds, while this is a Zerops project, and one at once whenever the access
+ * list changes whom it opens for (`ZeropsMateAccessList`): the Mate's own recompute or HQ's relay.
  */
 export const layer = Layer.effect(
   ZeropsOffboarding,
