@@ -1,4 +1,4 @@
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { EnvironmentId, ProviderDriverKind } from "@t3tools/contracts";
 import { AsyncResult, AtomRegistry } from "effect/reactivity";
 import * as Effect from "effect/Effect";
@@ -293,6 +293,68 @@ it("a window focus that several views of the tools list answer reads it once", a
     expect(reads).toBe(2);
     expect(registry.get(list)).toMatchObject({ _tag: "Success" });
   } finally {
+    unmount();
+    workspaceReads.close();
+    vcs.close();
+    store.close();
+    registry.dispose();
+  }
+});
+
+it("a refresh recovers a read that never answers", async () => {
+  const start = 1_800_000_000_000;
+  vi.useFakeTimers({ toFake: ["Date"], now: start });
+  const registry = AtomRegistry.make();
+  const store = makeAccountStore(registry);
+  let reads = 0;
+  let asked!: () => void;
+  const firstAsked = new Promise<void>((resolve) => {
+    asked = resolve;
+  });
+  const workspaceReads = makeWorkspaceReads(store, {
+    read: () =>
+      ++reads === 1
+        ? Effect.sync(asked).pipe(Effect.andThen(Effect.never))
+        : Effect.succeed({ servers: [], agents: ["codex"] } as never),
+  });
+  const vcs = makeVcsReads(store, () => Stream.never);
+  registry.set(workspaceHostAtom, {
+    data: store.data,
+    reads: workspaceReads,
+    vcs,
+    act: makeWorkspaceActions({
+      store,
+      current: () => true,
+      makeId: () => "action",
+      mcpAnswer: workspaceReads.mcpAnswer,
+      wire: { call: () => Effect.never },
+    }),
+    writeFile: makeFileWrites({
+      store,
+      reads: workspaceReads,
+      current: () => true,
+      makeId: () => "save",
+      write: () => Effect.never,
+    }),
+  });
+  const list = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
+  const answered = new Promise<void>((resolve) => {
+    const check = () => {
+      if (registry.get(list)._tag === "Success") resolve();
+    };
+    registry.subscribe(list, check);
+  });
+  const unmount = registry.mount(list);
+  try {
+    await firstAsked;
+    // Long enough to be no view's shared read, well within the read's own deadline.
+    vi.setSystemTime(start + 2_000);
+    registry.refresh(list);
+    await answered;
+    expect(registry.get(list)).toMatchObject({ _tag: "Success", value: { agents: ["codex"] } });
+    expect(reads).toBe(2);
+  } finally {
+    vi.useRealTimers();
     unmount();
     workspaceReads.close();
     vcs.close();

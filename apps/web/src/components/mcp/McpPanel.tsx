@@ -48,6 +48,9 @@ import {
   mcpAppRedirects,
   mcpRunKey,
   mcpEditSecrets,
+  MCP_NEEDS_UPDATE,
+  MCP_UPDATE_TO_SIGN_IN,
+  type McpEditSecrets,
   mcpSecretsFormText,
   openSignInPage,
   mcpSignInStart,
@@ -151,8 +154,8 @@ export const MCP_WORDS = {
   headers: "Headers",
   headersHint: "Name: value, one a line",
   cancel: "Cancel",
-  needsUpdate: "Needs an update",
-  updateToSignIn: "Update this Mate to sign in and edit tools here.",
+  needsUpdate: MCP_NEEDS_UPDATE,
+  updateToSignIn: MCP_UPDATE_TO_SIGN_IN,
 } as const;
 
 /** One of the Mate's proposals still waiting on the person, with the card that answers it. */
@@ -604,12 +607,14 @@ function ToolRow(props: {
     }
     setPending("save");
     setEditError(null);
-    const { values, keep } = mcpEditSecrets(read, signInStart, signIn.auth);
+    const edited: McpEditSecrets = remote ? mcpEditSecrets(read, signInStart, signInFields) : read;
+    const { values, keep, renamed } = edited;
     const result = await act({
       kind: "update",
       name: row.name,
       values,
       keep,
+      ...(renamed !== undefined ? { renamed } : {}),
       ...(signIn.auth !== undefined ? { auth: signIn.auth } : {}),
     });
     setPending(null);

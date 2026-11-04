@@ -722,6 +722,10 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           const kept = stored[name];
           if (kept !== undefined && !(name in values)) values[name] = kept;
         }
+        for (const [name, from] of Object.entries(input.renamed ?? {})) {
+          const kept = stored[from];
+          if (kept !== undefined && !(name in values)) values[name] = kept;
+        }
         const secrets = store.setSecrets(loaded.files, input.name, values);
         const auth: McpServerAuth | undefined =
           input.auth?.kind === "header" ? { kind: "none" } : input.auth;

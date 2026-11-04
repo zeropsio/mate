@@ -6,6 +6,7 @@ import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
 import * as Cause from "effect/Cause";
 import * as Queue from "effect/Queue";
+import * as Deferred from "effect/Deferred";
 import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -97,10 +98,22 @@ interface Entry {
   environmentId: string;
   cwd?: string;
   wake?: () => void;
+  /** Asked to read again before `wake` was there: woken as it arrives. */
+  wakeAsked?: boolean;
+  /** The read under way: since when, and how to give it up for a fresh one. */
+  reading?: { readonly since: number; readonly restart: Deferred.Deferred<void> };
   supervisor?: LinkSupervisor;
   fiber?: Fiber.Fiber<never>;
   expiry?: Fiber.Fiber<void>;
 }
+/**
+ * Views asking again within this long of a read starting share it (one window focus answered by
+ * several views); a read under way longer is given up for a fresh one, so a read that never
+ * answers recovers on a refresh, not only at its deadline.
+ */
+const SHARED_READ_MS = 1_000;
+const RESTARTED = Symbol("restarted");
+
 export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
   let closed = false;
   const active = new Map<string, Entry>();
@@ -181,8 +194,14 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                     yield* signal(scope, { kind: "attempt" });
                     yield* signal(scope, { kind: "handshake" });
                     const generation = streamOf(store.state(), scope).generation;
-                    const answer = yield* Effect.result(wire.read(kind, target));
+                    const restart = yield* Deferred.make<void>();
+                    made.reading = { since: yield* Clock.currentTimeMillis, restart };
+                    const answer = yield* Effect.raceFirst(
+                      Effect.result(wire.read(kind, target)),
+                      Deferred.await(restart).pipe(Effect.as(RESTARTED)),
+                    ).pipe(Effect.ensuring(Effect.sync(() => delete made.reading)));
                     if (closed || active.get(scope) !== made) return yield* Effect.never;
+                    if (answer === RESTARTED) continue;
                     if (streamOf(store.state(), scope).generation !== generation) {
                       yield* Queue.take(changes);
                       continue;
@@ -310,6 +329,13 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
                 Queue.offerUnsafe(changes, undefined);
               }
             };
+            // A refresh asked before now: the first read is still to come and answers it, unless
+            // a refusal from before stands in its way.
+            if (made.wakeAsked) {
+              delete made.wakeAsked;
+              if (["refused", "recovering", "paused"].includes(streamOf(store.state(), key).phase))
+                made.wake();
+            }
             return yield* supervisor.run;
           }),
         ),
@@ -369,7 +395,15 @@ export function makeWorkspaceReads(store: AccountStore, wire: WorkspaceWire) {
    * read starts, it is read once. Nothing is read for a read no view demands.
    */
   const refresh = <K extends WorkspaceRead>(kind: K, target: WorkspaceTarget<K>) => {
-    if (!closed) active.get(workspaceScope(kind, target))?.wake?.();
+    const entry = closed ? undefined : active.get(workspaceScope(kind, target));
+    if (entry === undefined) return;
+    if (entry.reading !== undefined) {
+      const age = Effect.runSync(Clock.currentTimeMillis) - entry.reading.since;
+      if (age >= SHARED_READ_MS) Deferred.doneUnsafe(entry.reading.restart, Effect.void);
+      return;
+    }
+    if (entry.wake === undefined) entry.wakeAsked = true;
+    else entry.wake();
   };
   return {
     demand,

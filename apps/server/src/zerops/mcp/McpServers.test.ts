@@ -340,6 +340,21 @@ describe("McpServers.update", () => {
     }),
   );
 
+  it.effect("renaming a key's header keeps the stored key under the new name", () =>
+    Effect.gen(function* () {
+      const { service, rig } = yield* setup({ installed: ["opencode"] });
+      yield* service.add(ADOBE);
+      yield* service.update({
+        name: ADOBE.name,
+        values: {},
+        keep: [],
+        renamed: { "X-Api-Key": "Authorization" },
+      });
+      const entry = JSON.parse(rig.files.get(`${HOME}/.config/opencode/opencode.json`)!).mcp.adobe;
+      expect(entry.headers).toEqual({ "X-Api-Key": OLD });
+    }),
+  );
+
   it.effect(
     "editing a turned-off server's headers leaves it off in running OpenCode sessions, keeping its own app",
     () =>
