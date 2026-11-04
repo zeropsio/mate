@@ -318,6 +318,8 @@ export function proposalOutcomeWords(
       const place = proposal.projectName ?? "the project";
       return running ? `Changing access to ${place}…` : `Access to ${place} changed.`;
     }
+    case "env.reveal":
+      return running ? "Revealing…" : `${proposal.params.key} was revealed.`;
   }
 }
 
@@ -444,6 +446,7 @@ export function proposalWhere(proposal: ZeropsProposal): string | null {
     case "service.stop":
       return within(proposal.serviceName ?? "A service");
     case "env.set":
+    case "env.reveal":
       return proposal.params.scope === "project"
         ? `Every app${project === undefined ? "" : ` in ${project}`}`
         : within(`${proposal.serviceName ?? "The service"}'s own`);
@@ -678,6 +681,8 @@ export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
       return `Send to ${proposal.params.to.mateName}`;
     case "chief.message":
       return "Ask your Chief";
+    case "env.reveal":
+      return tier === "production" ? "Reveal production value" : "Reveal";
   }
 }
 
@@ -688,6 +693,7 @@ function placeIn(proposal: ZeropsProposal): string | null {
     case "service.start":
     case "service.stop":
     case "domain.add":
+    case "env.reveal":
       return proposal.serviceName ?? null;
     case "env.set":
       return proposal.params.scope === "project"
