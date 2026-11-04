@@ -1,21 +1,21 @@
 /**
  * An Adobe Express design's address a Mate wrote into its conversation, opened in the panel's
  * Express tab beside it. An `AppLinkResolver`: `null` for every other address, and for every
- * address in a build without Adobe's key or outside a conversation.
+ * address while Express is off (`useExpressGate`) or outside a conversation.
  */
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useCallback } from "react";
 
 import { useRightPanelStore } from "../../rightPanelStore";
-import { expressClientId } from "./expressSdk";
 import { expressDesignId, useExpressOpen } from "./expressOpen";
 
 export function useOpenExpressDesign(
   threadRef: ScopedThreadRef | null | undefined,
+  enabled: boolean,
 ): (href: string) => (() => void) | null {
   return useCallback(
     (href) => {
-      if (expressClientId === null || !threadRef) return null;
+      if (!enabled || !threadRef) return null;
       const documentId = expressDesignId(href);
       if (documentId === null) return null;
       const ref = threadRef;
@@ -24,16 +24,17 @@ export function useOpenExpressDesign(
         useExpressOpen.getState().request({ kind: "design", documentId });
       };
     },
-    [threadRef],
+    [enabled, threadRef],
   );
 }
 
 /**
  * A picture in the conversation (one a Mate showed, one the person attached), opened in the
- * Express tab to edit; `undefined` where the app cannot take it (no Adobe key, no conversation).
+ * Express tab to edit; `undefined` while Express is off or outside a conversation.
  */
 export function useEditPictureInExpress(
   threadRef: ScopedThreadRef | null | undefined,
+  enabled: boolean,
 ): ((picture: Blob, name: string) => void) | undefined {
   const edit = useCallback(
     (picture: Blob, name: string) => {
@@ -43,5 +44,5 @@ export function useEditPictureInExpress(
     },
     [threadRef],
   );
-  return expressClientId === null || !threadRef ? undefined : edit;
+  return !enabled || !threadRef ? undefined : edit;
 }

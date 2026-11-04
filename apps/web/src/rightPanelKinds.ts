@@ -10,7 +10,6 @@
  */
 import type { CrewStatus } from "@t3tools/contracts";
 
-import { expressClientId } from "./components/express/expressSdk";
 import type { RightPanelSurface } from "./rightPanelStore";
 
 /**
@@ -57,6 +56,8 @@ export interface RightPanelAvailabilityInput {
   readonly chief?: boolean;
   /** The Mate's server keeps a persona (`matePersona`); `null` while its config is unread. */
   readonly matePersona: boolean | null;
+  /** The person's Adobe Express Labs switch is on in a build with Adobe's key (`useExpressGate`). */
+  readonly express?: boolean;
 }
 
 /** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
@@ -276,8 +277,8 @@ export const RIGHT_PANEL_KIND_META = {
     },
     // Its own head carries Adobe's mark, and its editor fills the panel with no head over it.
     page: null,
-    // Adobe serves the editor only for a build that carries its API key.
-    availability: () => (expressClientId === null ? "hidden" : "available"),
+    // A Labs preview: nothing of it shows until the person turns it on (`useExpressGate`).
+    availability: (input) => (input.express === true ? "available" : "hidden"),
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

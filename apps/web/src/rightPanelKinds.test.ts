@@ -369,6 +369,17 @@ describe("right panel kinds", () => {
     },
   );
 
+  it.each([
+    { express: true, launcher: true },
+    { express: false, launcher: false },
+  ] as const)(
+    "the panel offers Adobe Express only while the person's Labs switch is on: $express",
+    ({ express, launcher }) => {
+      const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, express });
+      expect(launcherActions(availability).some(({ kind }) => kind === "express")).toBe(launcher);
+    },
+  );
+
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });

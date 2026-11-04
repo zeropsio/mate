@@ -211,6 +211,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/general",
   },
   {
+    id: "labs-adobe-express",
+    title: "Adobe Express panel (preview)",
+    to: "/settings/general",
+    searchTerms: ["labs preview adobe express design pictures images side panel"],
+  },
+  {
     id: "legacy-plan-mode",
     title: "Plan mode (legacy)",
     to: "/settings/general",

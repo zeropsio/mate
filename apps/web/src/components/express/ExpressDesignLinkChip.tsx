@@ -1,7 +1,7 @@
 /**
  * An Adobe Express design's address in a conversation, drawn as the design it names and the way to
  * continue it here: the Express tab beside the conversation opens on it. A link the app cannot take
- * (no Adobe key in this build, no conversation, not a design's address) renders unchanged.
+ * (Express off, no conversation, not a design's address) renders unchanged.
  */
 import { PanelRightIcon } from "lucide-react";
 import { useContext, type ReactNode } from "react";

@@ -43,6 +43,7 @@ function Harness() {
           zeropsPanel: "available",
           crewStatus: "applied",
           matePersona: true,
+          express: true,
         })}
         defaultWidth={540}
         liveAgentCount={0}
