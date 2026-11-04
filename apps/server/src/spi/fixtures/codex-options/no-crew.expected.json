@@ -73,6 +73,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -114,6 +122,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -199,6 +215,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -242,6 +266,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -330,6 +362,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -383,6 +423,14 @@
             "mate_persona": {
               "kind": "application",
               "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }

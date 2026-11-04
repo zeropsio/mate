@@ -1052,13 +1052,17 @@ describe("CodexSessionRuntime compaction", () => {
         assert.equal(item.role, "developer");
         return item.content[0].text;
       });
-      assert.lengthOf(texts, 3);
+      assert.lengthOf(texts, 5);
       assert.match(
         texts[0] ?? "",
         /^<mate_runtime><runtime_info>.*as GPT-5\.6 Sol \(model slug: gpt-5\.6-sol\).*<\/mate_runtime>$/s,
       );
       assert.equal(texts[1], `<mate_places>${MATE_PLACES_INSTRUCTIONS}</mate_places>`);
-      assert.equal(texts[2], `<mate_persona>${PERSONA}</mate_persona>`);
+      assert.deepStrictEqual(texts.slice(2), [
+        `<mate_persona>${PERSONA}</mate_persona>`,
+        "<mate_persona_2></mate_persona_2>",
+        "<mate_persona_3></mate_persona_3>",
+      ]);
 
       yield* runtime.close;
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

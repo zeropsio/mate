@@ -7,6 +7,7 @@
  */
 import { assert, describe, it } from "@effect/vitest";
 import {
+  type MatePersona,
   type ModelSelection,
   ProviderDriverKind,
   type ProviderSessionStartInput,
@@ -251,16 +252,21 @@ const turnMessages: ReadonlyArray<PeerMessage> = [
 
 describe("the Mate's persona on the Codex adapter", () => {
   const PIRATE = { name: "Pirate", instructions: "Talk like a pirate." };
+  const LONG = { name: "Long", instructions: "诚实地回答问题并保持简洁。".repeat(230) };
+  /** Each turn's three persona entries' values, or undefined where a turn carries none. */
   const personaEntries = (wire: ReadonlyArray<WireRecord>) =>
-    paramsOf(wire, "turn/start").map(
-      (turn) =>
-        (turn.additionalContext as Record<string, { kind: string; value: string }> | undefined)
-          ?.mate_persona,
-    );
-  const twoTurns = (threadId: ThreadId) =>
+    paramsOf(wire, "turn/start").map((turn) => {
+      const context = turn.additionalContext as
+        | Record<string, { kind: string; value: string }>
+        | undefined;
+      return context?.mate_persona === undefined
+        ? undefined
+        : ["mate_persona", "mate_persona_2", "mate_persona_3"].map((key) => context[key]?.value);
+    });
+  const twoTurns = (threadId: ThreadId, from: MatePersona = PIRATE) =>
     Effect.gen(function* () {
       const settings = yield* ServerSettingsService;
-      yield* settings.updateSettings({ persona: PIRATE });
+      yield* settings.updateSettings({ persona: from });
       const { adapter, wire } = yield* withProfile(PROFILE);
       yield* adapter.startSession(startInput({ threadId }));
       yield* adapter.sendTurn({
@@ -284,10 +290,19 @@ describe("the Mate's persona on the Codex adapter", () => {
     () =>
       Effect.gen(function* () {
         assert.deepStrictEqual(yield* twoTurns(PERSON_THREAD), [
-          { kind: "application", value: personaInstructions(PIRATE) },
-          { kind: "application", value: personaInstructions(null) },
+          [personaInstructions(PIRATE), "", ""],
+          [personaInstructions(null), "", ""],
         ]);
       }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a persona that shrinks clears Codex's later entries", () =>
+    Effect.gen(function* () {
+      const [long, removed] = yield* twoTurns(PERSON_THREAD, LONG);
+      assert.strictEqual(long?.join(""), personaInstructions(LONG));
+      assert.isTrue(long?.every((value) => value !== ""));
+      assert.deepStrictEqual(removed, [personaInstructions(null), "", ""]);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
   );
 
   it.effect("a Codex crewmate takes no persona", () =>
