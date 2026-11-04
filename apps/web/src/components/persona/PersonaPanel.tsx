@@ -222,66 +222,69 @@ export function PersonaPanelBody(props: {
                 {summary.origin}
               </span>
             </div>
-            <FoldedText key={summary.instructions} text={summary.instructions} />
-            <PersonaActions
-              mate={mate}
-              name={summary.name}
-              editing={editor === "edit"}
-              onEdit={() => openEditor(editor === "edit" ? null : "edit")}
-              onRemove={() => void writing("remove", null)}
-              pending={pending}
-            />
-            {failureAt("remove")}
-            {summary.newer === null ? null : (
-              <div className="flex min-h-7 flex-wrap items-center gap-2" data-persona-newer>
-                <span className="text-xs">
-                  {PERSONA_PAGE_WORDS.newer(summary.newer.template.name)}
-                </span>
-                <Button
-                  disabled={pending !== null}
-                  onClick={() => {
-                    const newer = summary.newer;
-                    if (newer !== null)
-                      void writing("newer", personaFromTemplate(newer.source, newer.template));
-                  }}
-                  size="sm"
-                  variant="secondary"
-                >
-                  {pending === "newer" ? <Spinner size="xs" /> : null}
-                  {PERSONA_PAGE_WORDS.takeNewer}
-                </Button>
+            {/* Editing, its text and presses give way to the editor, which opens in their place. */}
+            <EditorReveal open={editor !== "edit"}>
+              <div className="flex flex-col gap-2">
+                <FoldedText key={summary.instructions} text={summary.instructions} />
+                <PersonaActions
+                  mate={mate}
+                  name={summary.name}
+                  editing={editor === "edit"}
+                  onEdit={() => openEditor(editor === "edit" ? null : "edit")}
+                  onRemove={() => void writing("remove", null)}
+                  pending={pending}
+                  saveAsOrg={
+                    !summary.saveAsOrg ? null : savedAsOrg === personaKey ? (
+                      <span className="text-xs text-muted-foreground" role="status">
+                        {PERSONA_PAGE_WORDS.savedAsOrg(props.orgName)}
+                      </span>
+                    ) : (
+                      <Button
+                        disabled={pending !== null}
+                        onClick={() =>
+                          void run("org", () => props.saveAsOrg(persona)).then((saved) => {
+                            if (saved) setSavedAsOrg(personaKey);
+                          })
+                        }
+                        size="sm"
+                        variant="ghost"
+                      >
+                        {pending === "org" ? <Spinner size="xs" /> : null}
+                        {PERSONA_PAGE_WORDS.saveAsOrg(props.orgName)}
+                      </Button>
+                    )
+                  }
+                />
+                {failureAt("remove")}
+                {summary.newer === null ? null : (
+                  <div className="flex min-h-7 flex-wrap items-center gap-2" data-persona-newer>
+                    <span className="text-xs">
+                      {PERSONA_PAGE_WORDS.newer(summary.newer.template.name)}
+                    </span>
+                    <Button
+                      disabled={pending !== null}
+                      onClick={() => {
+                        const newer = summary.newer;
+                        if (newer !== null)
+                          void writing("newer", personaFromTemplate(newer.source, newer.template));
+                      }}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      {pending === "newer" ? <Spinner size="xs" /> : null}
+                      {PERSONA_PAGE_WORDS.takeNewer}
+                    </Button>
+                  </div>
+                )}
+                {failureAt("newer")}
+                {failure?.action === "org" ? (
+                  <FailureLine
+                    message={`${PERSONA_PAGE_WORDS.orgSaveFailed} ${failure.message}`}
+                    onRetry={failure.retry}
+                  />
+                ) : null}
               </div>
-            )}
-            {failureAt("newer")}
-            {summary.saveAsOrg ? (
-              savedAsOrg === personaKey ? (
-                <p className="text-xs text-muted-foreground" role="status">
-                  {PERSONA_PAGE_WORDS.savedAsOrg(props.orgName)}
-                </p>
-              ) : (
-                <div className="-ms-2">
-                  <Button
-                    disabled={pending !== null}
-                    onClick={() =>
-                      void run("org", () => props.saveAsOrg(persona)).then((saved) => {
-                        if (saved) setSavedAsOrg(personaKey);
-                      })
-                    }
-                    size="sm"
-                    variant="ghost"
-                  >
-                    {pending === "org" ? <Spinner size="xs" /> : null}
-                    {PERSONA_PAGE_WORDS.saveAsOrg(props.orgName)}
-                  </Button>
-                </div>
-              )
-            ) : null}
-            {failure?.action === "org" ? (
-              <FailureLine
-                message={`${PERSONA_PAGE_WORDS.orgSaveFailed} ${failure.message}`}
-                onRetry={failure.retry}
-              />
-            ) : null}
+            </EditorReveal>
             <EditorReveal open={editor === "edit"}>
               <PersonaEditor
                 // Prefilled from the persona as it stood when the editor opened.
@@ -414,10 +417,10 @@ function FoldedText(props: { readonly text: string }) {
     return () => observer.disconnect();
   }, [whole]);
   return (
-    <div className="flex flex-col items-start gap-0.5">
+    <div className="flex flex-col items-start gap-0.5 text-xs">
       <p
         className={cn(
-          "whitespace-pre-wrap break-words text-sm leading-5",
+          "whitespace-pre-wrap break-words text-line leading-5",
           !whole && "line-clamp-6",
         )}
         data-persona-instructions
@@ -441,6 +444,8 @@ function PersonaActions(props: {
   readonly pending: PersonaAction | null;
   readonly onEdit: () => void;
   readonly onRemove: () => void;
+  /** Owners' and Admins' Save as the organization's template, last in the row. */
+  readonly saveAsOrg: ReactNode;
 }) {
   // Removing is its own decision: the first press asks, the second removes.
   const [armed, setArmed] = useState(false);
@@ -486,6 +491,7 @@ function PersonaActions(props: {
       >
         {PERSONA_PAGE_WORDS.remove}
       </Button>
+      {props.saveAsOrg}
     </div>
   );
 }
@@ -529,7 +535,7 @@ function TemplateRow(props: {
         </CollapsibleTrigger>
         <CollapsiblePanel>
           <div className="flex flex-col gap-3 pt-1 pr-2 pb-4 pl-2" data-persona-preview={row.key}>
-            <p className="whitespace-pre-wrap break-words text-sm leading-5">
+            <p className="whitespace-pre-wrap break-words text-line leading-5">
               {row.template.instructions}
             </p>
             <div className="flex min-h-7 flex-wrap items-center gap-2">

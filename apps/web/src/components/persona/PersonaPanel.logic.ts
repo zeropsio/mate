@@ -97,7 +97,7 @@ export const PERSONA_WORDS = {
     org === null ? "From your organization's templates" : `From ${org}'s templates`,
   writtenFor: (mate: string) => `Written for ${mate}`,
   noTemplates: "No templates yet.",
-  orgUnavailable: "Your organization's templates aren't available here.",
+  orgUnavailable: "Not available here.",
   orgFailed: (org: string | null, cause: string) =>
     `Couldn't read ${org === null ? "your organization's" : `${org}'s`} templates: ${cause}`,
   nameRequired: "Give it a name.",

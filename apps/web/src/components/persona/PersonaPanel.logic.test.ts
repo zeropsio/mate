@@ -226,7 +226,7 @@ describe("the Persona page", () => {
     {
       title: "the organization's templates say plainly when they cannot be had",
       org: { state: "unavailable", templates: [], orgName: null, mayWrite: false },
-      note: { kind: "unavailable", text: "Your organization's templates aren't available here." },
+      note: { kind: "unavailable", text: "Not available here." },
     },
     {
       title: "a failed read of the organization's templates gives its cause",
