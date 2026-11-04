@@ -158,16 +158,3 @@ export function projectAccess(input: {
   }
   return restrictChiefAccess(access, input.chief);
 }
-
-/** Every user the project `projectId` opens for: what keeps a session open in its Mate. */
-export function opensForOf(
-  projectId: string,
-  project: ProjectRoles,
-  entries: ReadonlyArray<unknown>,
-): ReadonlySet<string> {
-  return new Set(
-    projectAccess({ projectId, members: readOrgMembers(entries), overrides: project.overrides })
-      .filter((member) => member.visibility === "open")
-      .map((member) => member.userId),
-  );
-}
