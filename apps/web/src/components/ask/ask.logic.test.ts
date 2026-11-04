@@ -25,6 +25,11 @@ describe("where an ask acts, in one chip", () => {
     { name: "stage alone", where: { scope: "stage", detail: null }, want: "Stage" },
     { name: "the project", where: { scope: "project", detail: null }, want: "Project" },
     {
+      name: "another Mate, by its name",
+      where: { scope: "otherMate", detail: "Rossy" },
+      want: "Rossy",
+    },
+    {
       name: "an organization by its name",
       where: { scope: "organization", detail: "Acme" },
       want: "Organization · Acme",

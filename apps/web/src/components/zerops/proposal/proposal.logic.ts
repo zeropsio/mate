@@ -698,9 +698,7 @@ function placeIn(proposal: ZeropsProposal): string | null {
     case "domain.add":
       return proposal.serviceName ?? null;
     case "env.set":
-      return proposal.params.scope === "project"
-        ? "every app"
-        : `${proposal.serviceName ?? "the service"}'s own`;
+      return proposal.params.scope === "project" ? "every app" : (proposal.serviceName ?? null);
     case "access.set":
       return proposalWhere(proposal);
     case "mate.message":
@@ -712,25 +710,22 @@ function placeIn(proposal: ZeropsProposal): string | null {
 
 /**
  * The chip: Stage or Production where the proposal's project is one (HQ's structure says), this
- * Mate where it is the conversation's own project (`home`), else the project by its name. A
- * message acts nowhere: the Mate it goes to is drawn instead.
+ * Mate where it is the conversation's own project (`home`), else the project — the title names
+ * which —, each with the service or values it acts on; a message, the Mate it goes to.
  */
 export function proposalAskWhere(
   proposal: ZeropsProposal,
   tier: Tier,
   home: string | null,
 ): AskWhere | null {
-  if (proposal.kind === "mate.message" || proposal.kind === "chief.message") return null;
+  // A message acts in the Mate it goes to: the chip names it.
+  if (proposal.kind === "mate.message")
+    return { scope: "otherMate", detail: proposal.params.to.mateName };
+  if (proposal.kind === "chief.message") return { scope: "otherMate", detail: "Your Chief" };
   const place = placeIn(proposal);
   if (tier !== null) return { scope: tier, detail: place };
   if (proposal.projectId === home) return { scope: "mate", detail: place };
-  if (proposal.kind === "access.set") return { scope: "project", detail: place };
-  const project = proposal.projectName;
-  return {
-    scope: "project",
-    detail:
-      [place, project].filter((part) => part !== null && part !== undefined).join(" · ") || null,
-  };
+  return { scope: "project", detail: place };
 }
 
 /**
