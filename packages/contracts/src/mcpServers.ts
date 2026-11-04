@@ -78,6 +78,53 @@ export const MCP_APP_REDIRECTS: Readonly<
   opencode: { port: 33419, url: "http://127.0.0.1:33419/mcp/oauth/callback" },
 };
 
+/** What a server asks of an agent: its transport and how it signs in. */
+export interface McpServerNeeds {
+  readonly transport: McpServerTransport;
+  readonly auth?: McpServerAuth | McpServerAuthView | undefined;
+}
+
+const MCP_AGENT_NAMES: Readonly<Record<string, string>> = {
+  claudeAgent: "Claude Code",
+  codex: "Codex",
+  cursor: "Cursor",
+  opencode: "OpenCode",
+  grok: "Grok",
+  antigravity: "Antigravity",
+};
+
+/**
+ * Why an agent can't use a server as it is set up, or `null` when it can: the one table the
+ * Mate's config writers and the tab's add card both read, checked against each agent's installed
+ * CLI and SDK types. SSE: Claude Code and Cursor only (the installed OpenCode speaks streamable
+ * HTTP alone). An own app: Claude Code without a secret (it keeps one in its own store), Cursor
+ * and OpenCode; Codex picks a new sign-in port each time.
+ */
+export function mcpAgentCannot(driver: string, needs: McpServerNeeds): string | null {
+  const agent = MCP_AGENT_NAMES[driver] ?? driver;
+  const sse = needs.transport.type === "sse";
+  const app = needs.auth?.kind === "oauth-app";
+  const secret =
+    needs.auth?.kind === "oauth-app" &&
+    ("secret" in needs.auth ? needs.auth.secret : needs.auth.clientSecret !== undefined);
+  switch (driver) {
+    case "claudeAgent":
+      return secret ? "Claude Code can't take your app's client secret from Mate." : null;
+    case "cursor":
+      return null;
+    case "opencode":
+      return sse ? "OpenCode can't use SSE servers." : null;
+    case "codex":
+      if (sse) return "Codex can't use SSE servers.";
+      return app
+        ? "Codex can't sign in with your own app: it picks a new sign-in address each time, which an app can't register."
+        : null;
+    default:
+      if (sse) return `${agent} can't use SSE servers.`;
+      return app ? `${agent} can't sign in with your own app.` : null;
+  }
+}
+
 /**
  * A URL server's sign-in as the agents' configs hold it, without its secret:
  * the app's client id and scopes, and whether a client secret is stored.
