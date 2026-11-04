@@ -32,6 +32,8 @@ import { Button } from "~/components/ui/button";
 import { Input } from "~/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "~/components/ui/toggle-group";
 import { MateFace } from "~/components/zerops/primitives";
+import { OriginAskCard } from "~/components/zerops/origin/OriginAskCard";
+import { originAskState } from "~/components/zerops/origin/originAsk.logic";
 import { VaultAsk } from "~/components/zerops/vault/VaultAsk";
 import { VAULT_FIXTURE, VAULT_FIXTURE_NOW } from "~/components/zerops/vault/vaultFixture";
 import {
@@ -123,6 +125,7 @@ function Card(props: {
         />
       }
       kind={props.id}
+      note={props.footer.note}
       onShowInConversation={props.density === "compact" ? () => undefined : undefined}
       state={props.state.kind}
       title={props.title}
@@ -441,6 +444,66 @@ function Reveal({ density }: { readonly density: AskDensity }) {
   );
 }
 
+// ── choose: where the code is kept (the origin ask itself) ──────────────────────────────────
+
+const CHOOSE_STATES = [
+  ["open", "Waiting on you"],
+  ["pending", "Working"],
+  ["connected", "Kept on GitHub"],
+  ["declined", "Kept in Mate"],
+  ["closed", "Replaced"],
+] as const;
+type ChooseState = (typeof CHOOSE_STATES)[number][0];
+const ORIGIN = {
+  url: "https://github.com/acme/shop",
+  repo: "appdev",
+  reason: "So my changes open as pull requests where your team reviews them.",
+};
+
+function Choose({ density }: { readonly density: AskDensity }) {
+  const [state, setState] = useState<ChooseState>("open");
+  if (density === "compact") return null;
+  return (
+    <Specimen
+      chips={<States label="Choose" onChange={setState} states={CHOOSE_STATES} value={state} />}
+      density={density}
+      name="Choose: where the code is kept"
+    >
+      <OriginAskCard
+        ask={ORIGIN}
+        github={{
+          app: {
+            kind: "connected",
+            name: "Acme Mate",
+            appId: 7,
+            repositories: ["acme/shop"],
+            installUrl: "https://github.com/apps/acme-mate/installations/new",
+          },
+          repos: [],
+          mountable: true,
+          refusal: undefined,
+          onMount: async () => null,
+          onCheckAgain: NOTHING,
+          onOpenAutomation: NOTHING,
+          admin: false,
+          onInstall: NOTHING,
+        }}
+        mateName={MATE}
+        onAnswer={async () => null}
+        state={originAskState({
+          state: state === "pending" ? "open" : state,
+          pending: state === "pending" ? "declined" : null,
+          connected: false,
+          url: ORIGIN.url,
+          mateName: MATE,
+          by: state === "connected" || state === "declined" ? "Aleš" : null,
+          at: state === "connected" || state === "declined" ? "15:44" : null,
+        })}
+      />
+    </Specimen>
+  );
+}
+
 // ── an organization's proposal, narrowed by the approver ─────────────────────────────────────
 
 const SCOPE_STATES = [
@@ -535,6 +598,7 @@ function Harness() {
           <Provide density={density} />
           <Connect density={density} />
           <Reveal density={density} />
+          <Choose density={density} />
           <OrganizationScope density={density} />
         </div>
       </div>

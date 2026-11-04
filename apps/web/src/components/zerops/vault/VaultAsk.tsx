@@ -115,7 +115,7 @@ export function VaultAsk(props: VaultAskProps) {
               ? null
               : { label: view.main.label, onPress: press, disabled: !canPress }
           }
-          note={density === "full" ? note : undefined}
+          note={note}
           onNotNow={props.onNotNow}
           state={view.state}
         />

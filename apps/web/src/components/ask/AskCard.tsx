@@ -291,7 +291,8 @@ function Presses(props: AskFooterProps & { readonly size: "sm" | "md" }) {
           {NOT_NOW}
         </Button>
       )}
-      {working === null && props.note !== undefined ? (
+      {/* Compact, the card's line under its title says it (`AskCard`'s `note`). */}
+      {working === null && props.note !== undefined && props.density === "full" ? (
         <span className="text-caption text-muted-foreground">{props.note}</span>
       ) : null}
     </div>
