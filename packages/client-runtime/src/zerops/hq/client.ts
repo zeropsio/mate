@@ -351,11 +351,6 @@ export interface HqApi {
    */
   readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
   /**
-   * Renews the held session so HQ reads the person's reach again, as its structure came to hold a
-   * project the reach was read without; whether HQ renewed it. Nothing is asked before a session.
-   */
-  readonly renewReach: () => Promise<boolean>;
-  /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` once it is open, of every text message and of its close
    * code. A socket HQ closed for its session (`4401`) forgets that session first, so the next
@@ -680,8 +675,6 @@ const WRITE_TIMEOUT_MS = 45_000;
 
 /** A session is renewed once it is this close to its end. */
 const RENEW_BEFORE_MS = 15 * 60_000;
-/** HQ's reason for a ticket the session's reach, read when it began, does not cover. */
-export const REACH_STALE = "reach_stale";
 
 interface DoorAnswer {
   readonly session: string;
@@ -1157,31 +1150,22 @@ export function makeHqApi(input: {
     return entering;
   };
 
-  /** The renewal under way, shared by the calls that meet it; whether HQ renewed the session. */
-  let renewal: Promise<boolean> | null = null;
+  /** The renewal under way, shared by the calls that meet it. */
+  let renewal: Promise<void> | null = null;
 
   /**
-   * Renews the session: the same request with a current access token and the session as its
-   * bearer, which keeps the session's id and has HQ read the person afresh. A renewal that fails
-   * leaves the session as it was; its own end is met by the call that finds it ended.
+   * Renews a session close to its end, silently: the same request with a current access token and
+   * the session as its bearer, which keeps the session's id. A renewal that fails leaves the
+   * session as it was; its own end is met by the call that finds it ended.
    */
-  const renew = (token: string): Promise<boolean> =>
-    (renewal ??= enterDoor(token)
-      .then(
-        (answer) => {
-          remember(answer);
-          return true;
-        },
-        () => false,
-      )
-      .finally(() => {
-        renewal = null;
-      }));
-
-  /** Renews a session close to its end, silently. */
   const renewIfDue = async (token: string): Promise<void> => {
     if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
-    await renew(token);
+    renewal ??= enterDoor(token)
+      .then(remember, () => undefined)
+      .finally(() => {
+        renewal = null;
+      });
+    await renewal;
   };
 
   /**
@@ -1304,37 +1288,13 @@ export function makeHqApi(input: {
   return {
     ...makeChiefCalls({ authorized, decoded }),
     structure: structureOf,
-    // HQ read the person's reach when the session began; a Mate's project it came to hold since is
-    // known to the session once it is renewed (`409 reach_stale`), so the ticket is asked once more.
-    mateTicket: async (projectId, signal) => {
-      const ask = async () =>
-        json<HqMateTicket>(
-          await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
-            method: "POST",
-            ...(signal === undefined ? {} : { signal }),
-          }),
-        );
-      try {
-        return await ask();
-      } catch (cause) {
-        const held = session;
-        if (!(cause instanceof HqError && cause.reason === REACH_STALE) || held === null)
-          throw cause;
-        if (!(await renew(await held))) throw cause;
-        signal?.throwIfAborted();
-        return ask();
-      }
-    },
-    renewReach: async () => {
-      const held = session;
-      if (held === null) return false;
-      try {
-        return await renew(await held);
-      } catch {
-        // A sign-in that refused is no session to renew: the next call enters the door again.
-        return false;
-      }
-    },
+    mateTicket: async (projectId, signal) =>
+      json<HqMateTicket>(
+        await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
+          method: "POST",
+          ...(signal === undefined ? {} : { signal }),
+        }),
+      ),
     openScopeSocket: async (on, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),

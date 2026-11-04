@@ -58,7 +58,6 @@ describe("mateTicketIssuer", () => {
   );
 
   it.effect.each([
-    { case: "a second reach_stale after renewal", code: "conflict", reason: "reach_stale" },
     { case: "a zerops_read_only refusal", code: "forbidden", reason: "zerops_read_only" },
     { case: "a not_in_list refusal", code: "forbidden", reason: "not_in_list" },
   ])("$case shows the Mate as not openable instead of opening it again", ({ code, reason }) =>

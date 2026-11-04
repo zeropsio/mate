@@ -2491,88 +2491,17 @@ describe("makeHqApi — a Mate's ticket", () => {
     await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind, code });
   });
 
-  const REACH_STALE = { code: "conflict", reason: "reach_stale" };
-  const TICKET = { ticket: "T-1", expiresIn: 30, origin: "https://mate.example" };
-  /** HQ answering the ticket with `tickets` in turn and the door's renewal with `renewal`. */
-  const staleApi = (tickets: ReadonlyArray<Response>, renewal?: Response) => {
-    let asked = 0;
-    const hq = fakeHq((seen) => {
-      if (seen.path === "/api/mates/P1/ticket") return tickets[asked++]?.clone();
-      if (seen.path === "/api/door" && seen.authorization !== null) return renewal?.clone();
-      return undefined;
-    });
-    const api = makeHqApi({
-      address: ADDRESS,
-      fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-    });
-    const calls = (path: string) => hq.seen.filter((entry) => entry.path === path);
-    return { api, calls };
-  };
-
-  it("A ticket refused reach_stale renews the session once and retries", async () => {
-    const { api, calls } = staleApi([json(409, REACH_STALE), json(200, TICKET)]);
-
-    await expect(api.mateTicket("P1")).resolves.toEqual(TICKET);
-    expect(calls("/api/door")).toMatchObject([
-      { authorization: null, body: { accessToken: "access-1", orgId: ORG } },
-      { authorization: "Bearer session-1", body: { accessToken: "access-2", orgId: ORG } },
-    ]);
-    expect(calls("/api/mates/P1/ticket").map((entry) => entry.authorization)).toEqual([
-      "Bearer session-1",
-      "Bearer session-1",
-    ]);
-  });
-
-  it.each([
-    {
-      case: "a second reach_stale after renewal",
-      tickets: [json(409, REACH_STALE), json(409, REACH_STALE)],
-      renewal: undefined,
-      asked: 2,
-    },
-    {
-      case: "a renewal HQ refuses",
-      tickets: [json(409, REACH_STALE)],
-      renewal: json(403, { code: "forbidden", reason: "zerops_person_refused" }),
-      asked: 1,
-    },
-  ])("$case ends the ticket in HQ's reach_stale refusal", async ({ tickets, renewal, asked }) => {
-    const { api, calls } = staleApi(tickets, renewal);
-
-    await expect(api.mateTicket("P1")).rejects.toMatchObject({
-      kind: "refused",
-      code: "conflict",
-      reason: "reach_stale",
-    });
-    expect(calls("/api/door")).toHaveLength(2);
-    expect(calls("/api/mates/P1/ticket")).toHaveLength(asked);
-  });
-
-  it.each(["zerops_read_only", "not_in_list"])(
+  it.each(["zerops_read_only", "not_in_list", "reach_stale"])(
     "A %s refusal of a ticket is HQ's answer at once, with no renewal or retry",
     async (reason) => {
-      const { api, calls } = staleApi([json(403, { code: "forbidden", reason })]);
+      const code = reason === "reach_stale" ? "conflict" : "forbidden";
+      const { hq, api } = ticketApi(json(code === "conflict" ? 409 : 403, { code, reason }));
 
-      await expect(api.mateTicket("P1")).rejects.toMatchObject({ code: "forbidden", reason });
-      expect(calls("/api/door")).toHaveLength(1);
-      expect(calls("/api/mates/P1/ticket")).toHaveLength(1);
+      await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind: "refused", code, reason });
+      expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
+      expect(hq.seen.filter((entry) => entry.path === "/api/mates/P1/ticket")).toHaveLength(1);
     },
   );
-  it("A reach renewed for a grown structure asks the door once with the held session as its bearer; before any session it asks nothing", async () => {
-    const { api, calls } = staleApi([json(200, TICKET)]);
-
-    await expect(api.renewReach()).resolves.toBe(false);
-    expect(calls("/api/door")).toHaveLength(0);
-    await api.mateTicket("P1");
-    await expect(api.renewReach()).resolves.toBe(true);
-    expect(calls("/api/door")).toMatchObject([
-      { authorization: null, body: { accessToken: "access-1", orgId: ORG } },
-      { authorization: "Bearer session-1", body: { accessToken: "access-2", orgId: ORG } },
-    ]);
-  });
 });
 
 describe("makeHqApi — kept Git answers", () => {
