@@ -29,7 +29,7 @@ const ASKED: ZeropsOperation = {
   envChange: {
     action: "request",
     scope: "project",
-    request: { key: "STRIPE_SECRET_KEY", sensitive: true, reason: null, alreadySet: false },
+    request: { key: "STRIPE_SECRET_KEY", sensitive: true, alreadySet: false },
   },
 };
 
