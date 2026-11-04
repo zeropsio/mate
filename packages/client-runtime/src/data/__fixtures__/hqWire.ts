@@ -108,6 +108,8 @@ export interface HqFixtureWire {
   /** Breaks the open segment with a classified fault. */
   readonly drop: (fault: StreamFault) => Effect.Effect<void>;
   readonly opens: () => number;
+  /** How many times the link said HQ's structure came to hold a project it did not. */
+  readonly grew: () => number;
   /** The open segment's reader has terminated, including its message handler. */
   readonly closed: Effect.Effect<void>;
 }
@@ -121,6 +123,7 @@ export function hqFixtureWire(
   const sent: Array<{ readonly segment: number; readonly request: HqStreamRequest }> = [];
   let messages: Queue.Queue<string, StreamFault | Cause.Done> | null = null;
   let opens = 0;
+  let grew = 0;
   let closed = Deferred.makeUnsafe<void>();
   return {
     closed: Effect.suspend(() => Deferred.await(closed)).pipe(
@@ -129,6 +132,7 @@ export function hqFixtureWire(
     ),
     sent,
     opens: () => opens,
+    grew: () => grew,
     send: (message) =>
       Effect.suspend(() =>
         messages === null
@@ -143,6 +147,9 @@ export function hqFixtureWire(
         messages === null ? Effect.void : Effect.asVoid(Queue.fail(messages, fault)),
       ),
     wire: {
+      structureGrew: () => {
+        grew += 1;
+      },
       open: (socketCreated) =>
         Effect.gen(function* () {
           if (options.open !== undefined) yield* options.open(socketCreated);

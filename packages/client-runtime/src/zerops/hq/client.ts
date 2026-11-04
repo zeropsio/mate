@@ -349,6 +349,11 @@ export interface HqApi {
    */
   readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
   /**
+   * Renews the held session so HQ reads the person's reach again, as its structure came to hold a
+   * project the reach was read without; whether HQ renewed it. Nothing is asked before a session.
+   */
+  readonly renewReach: () => Promise<boolean>;
+  /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` once it is open, of every text message and of its close
    * code. A socket HQ closed for its session (`4401`) forgets that session first, so the next
@@ -1308,6 +1313,16 @@ export function makeHqApi(input: {
         if (!(await renew(await held))) throw cause;
         signal?.throwIfAborted();
         return ask();
+      }
+    },
+    renewReach: async () => {
+      const held = session;
+      if (held === null) return false;
+      try {
+        return await renew(await held);
+      } catch {
+        // A sign-in that refused is no session to renew: the next call enters the door again.
+        return false;
       }
     },
     openScopeSocket: async (on, signal) => {

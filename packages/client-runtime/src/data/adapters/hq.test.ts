@@ -1612,6 +1612,40 @@ describe("an HQ session", () => {
   );
 });
 
+describe("an HQ session's reach", () => {
+  // HQ read the person's reach when the session began; a project it came to hold since stays
+  // unknown to the session (`409 reach_stale`) until a renewal reads the reach again.
+  it.effect(
+    "a project HQ's structure comes to hold renews the HQ session once for that change; the first structure and a project it already held renew nothing",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        const { fiber } = yield* live(store, fixture);
+        expect(fixture.grew()).toBe(0);
+        yield* fixture.send(
+          navigation("scope-values", 4, [{ key: "project:ada", value: project("ada", "shop") }]),
+        );
+        yield* settle;
+        expect(fixture.grew()).toBe(0);
+        yield* fixture.send(
+          navigation("scope-values", 5, [
+            { key: "project:bob", value: project("bob", "shop") },
+            { key: "project:cy", value: project("cy", null) },
+          ]),
+        );
+        yield* settle;
+        expect(fixture.grew()).toBe(1);
+        yield* fixture.send(
+          navigation("scope-values", 6, [{ key: "project:bob", value: project("bob", "shop") }]),
+        );
+        yield* settle;
+        expect(fixture.grew()).toBe(1);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+});
+
 describe("classifyHqClose", () => {
   it.each([
     { code: 4403, outcome: "definitive-refusal" },

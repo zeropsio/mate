@@ -2522,6 +2522,18 @@ describe("makeHqApi — a Mate's ticket", () => {
       expect(calls("/api/mates/P1/ticket")).toHaveLength(1);
     },
   );
+  it("A reach renewed for a grown structure asks the door once with the held session as its bearer; before any session it asks nothing", async () => {
+    const { api, calls } = staleApi([json(200, TICKET)]);
+
+    await expect(api.renewReach()).resolves.toBe(false);
+    expect(calls("/api/door")).toHaveLength(0);
+    await api.mateTicket("P1");
+    await expect(api.renewReach()).resolves.toBe(true);
+    expect(calls("/api/door")).toMatchObject([
+      { authorization: null, body: { accessToken: "access-1", orgId: ORG } },
+      { authorization: "Bearer session-1", body: { accessToken: "access-2", orgId: ORG } },
+    ]);
+  });
 });
 
 describe("makeHqApi — kept Git answers", () => {
