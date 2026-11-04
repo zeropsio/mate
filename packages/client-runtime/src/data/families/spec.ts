@@ -181,6 +181,12 @@ export interface FamilyIndex<Value> {
   readonly keyOf: (value: Value, listed: MemberState | undefined) => string | null;
 }
 
+/**
+ * Where a row came from: a member's own row read by its id, a listing's update frame, or a
+ * listing's read or baseline.
+ */
+export type RowSource = "own" | "push" | "listing";
+
 export interface FamilySpec<F extends Family> {
   /** Nonsensitive content that remains public while access is unverified; denial still purges it. */
   readonly retainUnverified?: true;
@@ -231,16 +237,16 @@ export interface FamilySpec<F extends Family> {
    */
   readonly merge?: (held: FamilyValues[F], pushed: FamilyValues[F]) => FamilyValues[F];
   /**
-   * What a row of any kind — a push, a read, a baseline — says, by where it came from: `own`, the
-   * member's own row read by its id (a `member` detail listing), Zerops' whole word on it; else a
-   * listing's row, which may leave unsaid what the value held says (a project's listing never
-   * names everybody's grants). `held` is the value held, if any. Without it, a row that is not
-   * merged replaces the value whole.
+   * What a row of any kind — a push, a read, a baseline — says, by where it came from
+   * ({@link RowSource}): `own`, the member's own row read by its id (a `member` detail listing),
+   * Zerops' whole word on it; `push`, a listing's update frame; else a listing's row, which may
+   * leave unsaid what the value held says (a project's listing never names everybody's grants).
+   * `held` is the value held, if any. Without it, a row that is not merged replaces the value whole.
    */
   readonly keepUnsaid?: (
     held: FamilyValues[F] | undefined,
     row: FamilyValues[F],
-    own: boolean,
+    from: RowSource,
   ) => FamilyValues[F];
   /**
    * The owner's own ordering of a read that carries no revision (a by-id read, or a detail

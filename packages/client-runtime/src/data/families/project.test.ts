@@ -311,12 +311,24 @@ describe("a project's own row", () => {
       grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
     },
     {
-      name: "a listing's empty list keeps the viewer's own grant: only the membership drops it",
+      name: "A project updateStream frame's userRoles is the whole override list: an empty list removes every known override",
       after: [
         listingRead({ ...row, viewerRoleCode: "READ_ONLY" }),
         listingPush({ ...row, userRoles: [] }),
       ],
-      grants: { name: "Renamed", userRoles: grants, viewerRoleCode: "READ_ONLY" },
+      grants: { name: "Renamed", userRoles: [], viewerRoleCode: undefined },
+    },
+    {
+      name: "a push naming grants replaces everybody's and retires the viewer's own grant",
+      after: [
+        listingRead({ ...row, viewerRoleCode: "READ_ONLY" }),
+        listingPush({ ...row, userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }] }),
+      ],
+      grants: {
+        name: "Renamed",
+        userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }],
+        viewerRoleCode: undefined,
+      },
     },
   ])("$name", ({ after, grants: expected }) => {
     expect(grantsOf([...held(), ownRead("2026-10-06T10:00:00Z"), ...after])).toEqual(expected);

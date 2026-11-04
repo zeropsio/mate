@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { liveProjects } from "../__fixtures__/account.ts";
+import { liveProjects, projectValue, zeropsVersion } from "../__fixtures__/account.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
+import { projectsScope } from "../families/project.ts";
 import { emptyAccount } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
@@ -24,6 +25,31 @@ describe("a Mate's visibility from live Zerops data", () => {
     expect(
       verdict([...liveProjects("org", [{ id: "mate", userRoles }]), ...membershipInputs(role)]),
     ).toBe(want);
+  });
+
+  it("flips from open to listed when Zerops pushes the project with its override gone, without a reload", () => {
+    const granted = [
+      ...liveProjects("org", [
+        { id: "mate", userRoles: [{ clientUserId: "member", roleCode: "BASIC_USER" }] },
+      ]),
+      ...membershipInputs("READ_ONLY"),
+    ];
+    const removed: AccountInput = {
+      kind: "rows",
+      scope: projectsScope("org"),
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "project",
+          id: "mate",
+          value: projectValue({ id: "mate", clientId: "org", userRoles: [] }),
+          revision: zeropsVersion(2),
+        },
+      ],
+    };
+    expect([verdict(granted), verdict([...granted, removed])]).toEqual(["open", "listed"]);
   });
 
   it("hides a Mate HQ lists whose project the person's whole roster lacks", () => {

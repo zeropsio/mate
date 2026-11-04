@@ -205,7 +205,7 @@ it.each([[], { refused: "Changes are private" }])(
       "app:shop",
     )!;
     const row = hqAppFamily.hq!.decode({ ...app, environments }, "app:shop")!;
-    expect(hqAppFamily.keepUnsaid?.(held, row, false) ?? row).toEqual(row);
+    expect(hqAppFamily.keepUnsaid?.(held, row, "listing") ?? row).toEqual(row);
   },
 );
 

@@ -114,7 +114,7 @@ describe("hqAppDetailFamily", () => {
     (remote) => {
       const held = hq.decode([{ ...repo, remote: gitRemote }], "repos")!;
       const row = hq.decode([{ ...repo, ...(remote === undefined ? {} : { remote }) }], "repos")!;
-      expect(hqAppDetailFamily.keepUnsaid!(held, row, false)).toEqual({
+      expect(hqAppDetailFamily.keepUnsaid!(held, row, "listing")).toEqual({
         kind: "repos",
         value: [{ ...repo, ...(remote === null ? { remote: null } : { remote: gitRemote }) }],
       });

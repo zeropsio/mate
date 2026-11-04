@@ -22,7 +22,7 @@ import {
 } from "./families/index.ts";
 import { sameValue } from "./projections/equal.ts";
 
-import type { FamilyIndex } from "./families/spec.ts";
+import type { FamilyIndex, RowSource } from "./families/spec.ts";
 import {
   factKey,
   type Access,
@@ -342,7 +342,7 @@ function reduceRows(
     const spec = familySpec(row.family);
     const merge = spec.merge as ((held: unknown, pushed: unknown) => unknown) | undefined;
     const keepUnsaid = spec.keepUnsaid as
-      | ((held: unknown, row: unknown, own: boolean) => unknown)
+      | ((held: unknown, row: unknown, from: RowSource) => unknown)
       | undefined;
     const held = current?.content.kind === "value" ? current.content : null;
     const merged =
@@ -352,7 +352,15 @@ function reduceRows(
     const value =
       keepUnsaid === undefined
         ? merged
-        : keepUnsaid(held?.value, merged, scopeListing(input.scope).detail?.member === true);
+        : keepUnsaid(
+            held?.value,
+            merged,
+            scopeListing(input.scope).detail?.member === true
+              ? "own"
+              : input.method === "push"
+                ? "push"
+                : "listing",
+          );
     const label = (spec.labelOf as ((value: unknown) => string) | undefined)?.(value);
     const fact: Fact<unknown> = {
       ...(label === undefined ? {} : { label }),
