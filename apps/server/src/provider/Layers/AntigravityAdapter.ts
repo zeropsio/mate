@@ -36,7 +36,7 @@ import * as EffectAcpErrors from "effect-acp/errors";
 import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { ServerConfig } from "../../config.ts";
-import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import type { AntigravityAuth } from "../AntigravityAuth.ts";
@@ -319,7 +319,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
-  const serverSettings = yield* ServerSettingsService;
+  const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
   const threadPolicies = yield* readAcpThreadPolicies;
   const ownerScope = yield* Effect.scope;
   const makeNativeLoggers = yield* makeAcpNativeLoggerFactory();
@@ -1056,9 +1056,7 @@ export const makeAntigravityAdapter = Effect.fn("makeAntigravityAdapter")(functi
             undefined,
           );
           const requestedModel = turnProfile.modelSelection?.model ?? context.session.model;
-          const persona = turnProfile.profiled
-            ? undefined
-            : yield* readPersonaInstructions(serverSettings);
+          const persona = turnProfile.profiled ? undefined : yield* readPersona;
           const configOptions = yield* context.runtime.getConfigOptions;
           const model = resolveAntigravityModel({
             configOptions,

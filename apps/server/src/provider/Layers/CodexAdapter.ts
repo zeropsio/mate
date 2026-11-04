@@ -60,7 +60,7 @@ import {
 import { type CodexAdapterShape } from "../Services/CodexAdapter.ts";
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
-import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   codexThreadStart,
@@ -1821,7 +1821,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
   const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const crypto = yield* Crypto.Crypto;
   const serverConfig = yield* Effect.service(ServerConfig);
-  const serverSettings = yield* ServerSettingsService;
+  const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
   const threadPolicies = yield* readCodexThreadPolicies;
   const nativeEventLogger =
     options?.nativeEventLogger ??
@@ -1883,9 +1883,7 @@ export const makeCodexAdapter = Effect.fn("makeCodexAdapter")(function* (
           ...(thread.modelSelection ? { model: thread.modelSelection.model } : {}),
           ...(serviceTier ? { serviceTier } : {}),
           ...(contextWindow ? { contextWindow } : {}),
-          ...(thread.setup
-            ? { threadSetup: thread.setup }
-            : { persona: readPersonaInstructions(serverSettings) }),
+          ...(thread.setup ? { threadSetup: thread.setup } : { persona: readPersona }),
         };
         const sessionScope = yield* Scope.make("sequential");
         let sessionScopeTransferred = false;

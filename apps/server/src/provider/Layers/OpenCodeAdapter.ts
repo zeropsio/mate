@@ -42,7 +42,7 @@ import { openCodeKeyProviderOfModel } from "@t3tools/shared/openCodeKeyProviders
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { withoutPictureOriginals } from "../../providerPictures.ts";
 import { ServerConfig } from "../../config.ts";
-import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
@@ -952,7 +952,7 @@ export function makeOpenCodeAdapter(
   return Effect.gen(function* () {
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("opencode");
     const serverConfig = yield* ServerConfig;
-    const serverSettings = yield* ServerSettingsService;
+    const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const openCodeRuntime = yield* OpenCodeRuntime;
     const threadPolicies = yield* readOpenCodeThreadPolicies;
     const crypto = yield* Crypto.Crypto;
@@ -3246,9 +3246,7 @@ export function makeOpenCodeAdapter(
             : undefined),
       );
       const modelSelection = turnProfile.modelSelection;
-      const persona = turnProfile.profiled
-        ? undefined
-        : yield* readPersonaInstructions(serverSettings);
+      const persona = turnProfile.profiled ? undefined : yield* readPersona;
       if (modelSelection !== undefined && modelSelection.instanceId !== boundInstanceId) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,

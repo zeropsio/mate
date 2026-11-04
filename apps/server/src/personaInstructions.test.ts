@@ -1,6 +1,7 @@
 import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
-import { personaInstructions, readPersonaInstructions } from "./personaInstructions.ts";
+import { ServerSettingsError } from "@t3tools/contracts";
+import { makePersonaReader, personaInstructions } from "./personaInstructions.ts";
 import { ServerSettingsService } from "./serverSettings.ts";
 
 describe("personaInstructions", () => {
@@ -54,15 +55,47 @@ describe("personaInstructions", () => {
   });
 });
 
-describe("readPersonaInstructions", () => {
+const CALM = { name: "Calm", instructions: "Stay calm." };
+
+describe("makePersonaReader", () => {
   it.effect("coding agents hear the persona the Mate holds now", () =>
     Effect.gen(function* () {
       const settings = yield* ServerSettingsService;
-      expect(yield* readPersonaInstructions(settings)).toBe(personaInstructions(null));
-      yield* settings.updateSettings({ persona: { name: "Calm", instructions: "Stay calm." } });
-      expect(yield* readPersonaInstructions(settings)).toBe(
-        personaInstructions({ name: "Calm", instructions: "Stay calm." }),
-      );
+      const read = yield* makePersonaReader(settings);
+      expect(yield* read).toBe(personaInstructions(null));
+      yield* settings.updateSettings({ persona: CALM });
+      expect(yield* read).toBe(personaInstructions(CALM));
+    }).pipe(Effect.provide(ServerSettingsService.layerTest())),
+  );
+
+  it.effect("coding agents keep the last persona heard while the settings cannot be read", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      let failing = false;
+      const read = yield* makePersonaReader({
+        ...settings,
+        getSettings: Effect.suspend(() =>
+          failing
+            ? Effect.fail(
+                new ServerSettingsError({
+                  settingsPath: "/srv/mate/settings.json",
+                  operation: "read-file",
+                  cause: new Error("EIO"),
+                }),
+              )
+            : settings.getSettings,
+        ),
+      });
+      yield* settings.updateSettings({ persona: CALM });
+      expect(yield* read).toBe(personaInstructions(CALM));
+      failing = true;
+      expect([yield* read, yield* read]).toEqual([
+        personaInstructions(CALM),
+        personaInstructions(CALM),
+      ]);
+      failing = false;
+      yield* settings.updateSettings({ persona: null });
+      expect(yield* read).toBe(personaInstructions(null));
     }).pipe(Effect.provide(ServerSettingsService.layerTest())),
   );
 });

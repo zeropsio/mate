@@ -40,7 +40,7 @@ import type * as EffectAcpSchema from "effect-acp/schema";
 
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { ServerConfig } from "../../config.ts";
-import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import {
@@ -369,7 +369,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
     const path = yield* Path.Path;
     const childProcessSpawner = yield* ChildProcessSpawner.ChildProcessSpawner;
     const serverConfig = yield* Effect.service(ServerConfig);
-    const serverSettings = yield* ServerSettingsService;
+    const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const threadPolicies = yield* readAcpThreadPolicies;
     const crypto = yield* Crypto.Crypto;
     const nativeEventLogger =
@@ -1627,9 +1627,7 @@ export function makeGrokAdapter(grokSettings: GrokSettings, options?: GrokAdapte
                 GROK_EFFORT_OPTION,
               );
               const turnModelSelection = turnProfile.modelSelection;
-              const persona = turnProfile.profiled
-                ? undefined
-                : yield* readPersonaInstructions(serverSettings);
+              const persona = turnProfile.profiled ? undefined : yield* readPersona;
               const requestedTurnModelId = turnModelSelection?.model
                 ? resolveGrokAcpBaseModelId(turnModelSelection.model)
                 : undefined;

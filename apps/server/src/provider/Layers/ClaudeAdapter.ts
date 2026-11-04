@@ -118,7 +118,7 @@ import {
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
-import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
@@ -2315,18 +2315,18 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
-  const serverSettings = yield* ServerSettingsService;
+  const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
   const crypto = yield* Crypto.Crypto;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const threadRegistries = yield* readClaudeThreadRegistries;
   /**
-   * The instructions a session should hold now: a crewmate's carry no persona. Undefined when the
-   * persona cannot be read, and the session keeps what it heard.
+   * The instructions a session should hold now: a crewmate's carry no persona. Undefined when no
+   * persona was ever read, and the session keeps what it heard.
    */
   const currentInstructions = (profiled: boolean) =>
     profiled
       ? Effect.succeed(CLAUDE_INSTRUCTIONS)
-      : readPersonaInstructions(serverSettings).pipe(
+      : readPersona.pipe(
           Effect.map((persona) =>
             persona === undefined ? undefined : claudeInstructions(persona),
           ),

@@ -1,5 +1,6 @@
 import type { MatePersona } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
+import * as Ref from "effect/Ref";
 import type { ServerSettingsService } from "./serverSettings.ts";
 
 /** An opening or closing tag of a wrapper the persona travels inside. */
@@ -25,16 +26,26 @@ ${instructions}
 }
 
 /**
- * The persona text for a turn, read fresh from the settings each time. When the settings cannot
- * be read it is undefined, and a coding agent keeps the persona it last heard.
+ * Reads the persona text fresh from the settings for each turn. While the settings cannot be
+ * read it hands back the last text read, so a coding agent keeps the persona it heard; before
+ * any read succeeded that is undefined, and the turn carries none.
  */
-export const readPersonaInstructions = (
-  settings: ServerSettingsService["Service"],
-): Effect.Effect<string | undefined> =>
-  settings.getSettings.pipe(
-    Effect.map((current) => personaInstructions(current.persona)),
-    Effect.catchTags({
-      ServerSettingsError: (cause) =>
-        Effect.logWarning("persona.read-failed", { cause }).pipe(Effect.as(undefined)),
-    }),
-  );
+export const makePersonaReader = (settings: ServerSettingsService["Service"]) =>
+  Effect.gen(function* () {
+    const lastRead = yield* Ref.make<string | undefined>(undefined);
+    const failing = yield* Ref.make(false);
+    return settings.getSettings.pipe(
+      Effect.map((current) => personaInstructions(current.persona)),
+      Effect.tap((text) => Ref.set(lastRead, text).pipe(Effect.andThen(Ref.set(failing, false)))),
+      Effect.catchTags({
+        ServerSettingsError: (cause) =>
+          Effect.gen(function* () {
+            // Once per failing stretch: a read is retried every turn.
+            if (!(yield* Ref.getAndSet(failing, true))) {
+              yield* Effect.logWarning("persona.read-failed", { cause });
+            }
+            return yield* Ref.get(lastRead);
+          }),
+      }),
+    );
+  });
