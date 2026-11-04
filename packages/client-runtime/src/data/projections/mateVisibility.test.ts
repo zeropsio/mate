@@ -58,6 +58,13 @@ describe("a Mate's visibility from live Zerops data", () => {
     ).toBe("hidden");
   });
 
+  it("answers unknown, not hidden, for a project in the roster whose row is not known yet", () => {
+    const rowless = liveProjects("org", [{ id: "mate" }]).map((input) =>
+      input.kind === "baseline-commit" ? { ...input, rows: [] } : input,
+    );
+    expect(verdict([...rowless, ...membershipInputs("NO_ACCESS")])).toBe("unknown");
+  });
+
   it("hides nothing before the person's membership or roster is read", () => {
     expect(verdict(liveProjects("org", [{ id: "other" }]))).toBe("unknown");
     expect(verdict(membershipInputs("NO_ACCESS"))).toBe("unknown");
