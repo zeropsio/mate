@@ -8,7 +8,10 @@
 import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { personaTemplatesScope } from "../families/hqPersonaTemplates.ts";
 import { PERSONA_TEMPLATE_CONFLICT, personaTemplateIn } from "../operations/hqPersonaTemplates.ts";
-import type { Projection } from "../store.ts";
+import { linkKeys } from "../model.ts";
+import type { Projection, ProjectionReads } from "../store.ts";
+import { streamTrouble } from "../streamMachine.ts";
+import { scopeFreshness } from "./freshness.ts";
 import { sameValue } from "./equal.ts";
 import { operationProgress } from "./operation.ts";
 
@@ -22,24 +25,49 @@ export type OrgPersonaTemplates =
   | { readonly state: "loading" | "unavailable" }
   | { readonly state: "failed"; readonly failure: string };
 
+const unreadableWords = (count: number) =>
+  `HQ sent ${count === 1 ? "a persona template" : `${count} persona templates`} in a form this version of Mate doesn't read.`;
+
+/**
+ * Why the organization's templates are not current now, from its HQ link and their own scope: a
+ * refusal at once, a reconnect only past its grace; `null` while they are.
+ */
+const outageOf = (read: ProjectionReads, orgId: string): string | null => {
+  const scope = personaTemplatesScope(orgId);
+  if (scopeFreshness(read, scope).live) return null;
+  const trouble = [read.stream(linkKeys.hq(orgId)), read.stream(scope)].find(
+    (stream) => streamTrouble(stream) !== null,
+  );
+  return trouble === undefined
+    ? null
+    : (trouble.fault?.message ?? "HQ is not answering right now.");
+};
+
 export const orgPersonaTemplates: Projection<string, OrgPersonaTemplates> = {
   name: "orgPersonaTemplates",
   keyOf: (orgId) => orgId,
   equals: sameValue,
   derive: (read, orgId) => {
     const record = read.fact("hqPersonaTemplates", orgId);
-    const stream = read.stream(personaTemplatesScope(orgId));
-    if (record.kind === "known")
+    const outage = outageOf(read, orgId);
+    if (record.kind === "known") {
+      const { templates, unreadable } = record.value;
+      if (unreadable === "record")
+        return {
+          state: "failed",
+          failure: "HQ sent persona templates in a form this version of Mate doesn't read.",
+        };
       return {
         state: "ready",
-        templates: record.value.templates,
-        failure: stream.fault?.message ?? null,
+        templates,
+        failure: outage ?? (unreadable.length === 0 ? null : unreadableWords(unreadable.length)),
       };
-    if (stream.fault !== null) return { state: "failed", failure: stream.fault.message };
+    }
     if (record.kind === "withheld")
       return { state: "failed", failure: "HQ did not let this account read the templates." };
-    // The navigation's baseline is committed and complete: an HQ that sends no templates.
-    return { state: stream.phase === "live" ? "unavailable" : "loading" };
+    // A committed navigation without them stays HQ's answer through a reconnect.
+    if (read.coverage(personaTemplatesScope(orgId)) === "complete") return { state: "unavailable" };
+    return outage === null ? { state: "loading" } : { state: "failed", failure: outage };
   },
 };
 
@@ -103,9 +131,13 @@ export const personaTemplateWrite: Projection<string, PersonaTemplateWrite> = {
         // Answered: done once the list has moved past the revision this write saw, or at once
         // where no current list will show it.
         const current = personaTemplateIn(read, intent.orgId, intent.templateId);
-        return current == null ||
-          current.revision > intent.revision ||
-          read.stream(personaTemplatesScope(intent.orgId)).phase !== "live"
+        const shown =
+          current === undefined ||
+          (current === null
+            ? // Gone: deleted as asked, or deleted by someone after an edit; a new one not yet listed.
+              intent.kind === "delete-persona-template" || intent.revision > 0
+            : current.revision > intent.revision);
+        return shown || !scopeFreshness(read, personaTemplatesScope(intent.orgId)).live
           ? { stage: "done" }
           : { stage: "pending" };
       }
