@@ -577,6 +577,36 @@ describe("container machine (DESIGN §4.5)", () => {
     expect(ours.machine.intent).toBeNull();
   });
 
+  it("a container coming up whose Mate HQ speaks for is read once HQ newly says it is online, never on a timer; one HQ cannot speak for is polled", () => {
+    const up = drive([{ type: "HQ", online: true }], ready());
+    const asked = drive(
+      [
+        { type: "INTENT", intent: { kind: "restart", since: instant(up.nowMs + 1_000) } },
+        { type: "HQ", online: false },
+      ],
+      up,
+    );
+    expect(asked.machine.state.level).toBe("restarting");
+    expect(probeCadence(asked.machine, true)).toEqual({ kind: "on-demand" });
+    expect(probeCadence(drive([{ type: "HQ", online: null }], asked).machine, true)).toEqual({
+      kind: "poll",
+      overdue: false,
+    });
+
+    const back = transitionContainer(
+      asked.machine,
+      { type: "HQ", online: true },
+      { now: instant(asked.nowMs + 1_000) },
+    );
+    expect(back.effects).toEqual([{ kind: "probe" }]);
+    expect(
+      transitionContainer(back.state, { type: "HQ", online: true }, { now: instant(asked.nowMs) })
+        .effects,
+    ).toEqual([]);
+    // HQ's word asks for a read and proves nothing: the restart holds until a reading ends it.
+    expect(back.state.state.level).toBe("restarting");
+  });
+
   it("a container predating Mate is Enable only on a flag read off", () => {
     const predates = transitionContainer(
       drive([active]).machine,
