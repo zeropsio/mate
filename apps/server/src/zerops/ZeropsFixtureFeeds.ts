@@ -671,6 +671,6 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       }),
     ),
     // No HQ sends a fixture scene an access list: the list stays empty.
-    ZeropsMateAccessListModule.layer,
+    ZeropsMateAccessListModule.relayLayer,
   );
 };

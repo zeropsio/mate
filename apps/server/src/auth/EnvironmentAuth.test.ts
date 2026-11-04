@@ -22,7 +22,7 @@ import * as EnvironmentAuth from "./EnvironmentAuth.ts";
 import * as ServerSecretStore from "./ServerSecretStore.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import * as SessionStore from "./SessionStore.ts";
-import { layer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
+import { relayLayer as accessListLayer } from "../zerops/ZeropsMateAccessList.ts";
 import * as ProcessRunner from "../processRunner.ts";
 import * as TerminalManager from "../terminal/Manager.ts";
 import type * as PtyAdapter from "../terminal/PtyAdapter.ts";

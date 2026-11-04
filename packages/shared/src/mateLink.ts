@@ -463,7 +463,8 @@ export type MateLinkDown = typeof MateLinkDown.Type;
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
  * its state, then the organisation's access with a version and the time of the view it was
- * computed from. Today's frames of tasks, usage and the update policy ride on it unchanged.
+ * computed from — advisory: the Mate admits by its own read of Zerops and reports it up
+ * (`access_report`), refusing a ticket its own list does not admit (`ticket_refused`). Today's frames of tasks, usage and the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
  */
@@ -518,8 +519,29 @@ export const KeyLinkUp = Schema.Union([
     ok: Schema.Boolean,
   }),
   Schema.Struct({ type: Schema.Literal("key-refused") }),
+  /** A ticket the Mate's own list does not admit, sent instead of `ticket-ack`: definitive. */
+  Schema.Struct({
+    type: Schema.Literal("ticket_refused"),
+    ticket: Ticket,
+    reason: Schema.Literals(["not_in_list", "read_only"]),
+  }),
+  /**
+   * The Mate's own access list after every recompute (`at`, ISO 8601): whom its project opens for,
+   * whom it only lists, and `missing` — opened for or listed in the previous report, neither now.
+   */
+  Schema.Struct({
+    type: Schema.Literal("access_report"),
+    at: Schema.String,
+    openers: Schema.Array(Schema.String),
+    listed: Schema.Array(Schema.String),
+    missing: Schema.Array(Schema.String),
+  }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;
+/** Why the Mate refused a ticket (`ticket_refused`). */
+export type TicketRefusal = Extract<KeyLinkUp, { readonly type: "ticket_refused" }>["reason"];
+/** The Mate's own access list as it reports it to HQ (`access_report`). */
+export type AccessReport = Omit<Extract<KeyLinkUp, { readonly type: "access_report" }>, "type">;
 
 /**
  * The organisation's key was refused: the Mate admits nobody until a full frame without it.
