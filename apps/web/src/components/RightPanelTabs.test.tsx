@@ -73,9 +73,9 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="BDZHCFGVTMP"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="BDZHCFGVTP"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="BDHCFGVTMP"',
+      'data-surface-launcher-keys="BDHCFGVTP"',
     );
   });
 
@@ -84,13 +84,13 @@ describe("RightPanelTabs launcher", () => {
     expect(html).toContain("Watch and use the app on the paired Mac.");
     expect(html.indexOf(">Mac<")).toBeGreaterThan(html.indexOf(">Browser<"));
     expect(html.indexOf(">Mac<")).toBeLessThan(html.indexOf(">Diff<"));
-    expect(html).toContain('data-surface-launcher-keys="BDZHCFGVTMP"');
+    expect(html).toContain('data-surface-launcher-keys="BDZHCFGVTP"');
   });
 
   it("draws a crew card only while the crew kind is not hidden", () => {
     expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
-    expect(hidden).toContain('data-surface-launcher-keys="BDZHFGVTMP"');
+    expect(hidden).toContain('data-surface-launcher-keys="BDZHFGVTP"');
     expect(hidden).not.toContain(">Crew<");
   });
 

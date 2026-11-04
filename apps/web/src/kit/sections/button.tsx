@@ -13,6 +13,7 @@ const VARIANTS = variantsOf<ButtonVariant>({
   ghost: true,
   destructive: true,
   link: true,
+  "destructive-ghost": true,
 });
 
 const SIZES = variantsOf<ButtonSize>({

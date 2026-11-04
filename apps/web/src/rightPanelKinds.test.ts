@@ -119,9 +119,9 @@ describe("right panel kinds", () => {
       },
       {
         kind: "mcp",
-        label: "MCP",
-        description: "Add and check this Mate's tools.",
-        shortcut: "M",
+        label: "Tools",
+        description: "Add and check the tools this Mate's agents use.",
+        shortcut: null,
         unavailableHint: "Available from a conversation.",
       },
       {
@@ -405,7 +405,11 @@ describe("a side-panel page's head", () => {
   it.each([
     { kind: "terminal", mate: "Nova", line: "A shell on Nova's computer." },
     { kind: "terminal", mate: undefined, line: "A shell on this Mate's computer." },
-    { kind: "mcp", mate: "Nova", line: "Tools Nova can use, with each of its coding agents." },
+    {
+      kind: "mcp",
+      mate: "Nova",
+      line: "Nova's agents use these while they work.",
+    },
     { kind: "vault", mate: "Nova", line: "Settings and secrets your apps read." },
   ] as const)(
     "a page's line names the Mate once its name is known: $kind for $mate reads $line",

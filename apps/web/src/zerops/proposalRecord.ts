@@ -240,6 +240,18 @@ export function useProposalDecisionsRead(ids: ReadonlyArray<string>): void {
   }, [at, key]);
 }
 
+/**
+ * What HQ holds of several proposals, read in one call: the Tools tab lists the ones still open
+ * and known to be (`known`), so it never offers a proposal HQ has already decided.
+ */
+export function useProposalDecisions(
+  ids: ReadonlyArray<string>,
+): (id: string) => ProposalRecordEntry {
+  useProposalDecisionsRead(ids);
+  const drawn = useSyncExternalStore(record.subscribe, record.drawing, record.drawing);
+  return drawn.entry;
+}
+
 export interface ProposalDecisionHandle extends ProposalRecordEntry {
   /** HQ is not open here yet: nothing can be decided. */
   readonly unreachable: boolean;

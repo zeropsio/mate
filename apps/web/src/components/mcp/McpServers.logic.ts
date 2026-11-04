@@ -33,8 +33,35 @@ export interface McpToolRow {
   readonly mark: "reads" | "changes" | null;
 }
 
+/** Where a tool stands in the tab: waiting on the person, ready, or turned off. */
+export type McpRowGroup = "waiting" | "ready" | "off";
+
+/**
+ * A row's right column says one thing: the one action it needs from the person (Sign in, Add
+ * key, Try again), else its state in a word or two.
+ */
+export type McpRowRight =
+  | {
+      readonly kind: "action";
+      readonly action: "signIn" | "addKey" | "tryAgain";
+      readonly label: string;
+    }
+  | { readonly kind: "state"; readonly words: string; readonly tone: ServiceStatusToneId };
+
+/** One installed agent as a mark on the row: its state, said in words for its tooltip. */
+export interface McpAgentMark {
+  readonly driver: ProviderDriverKind;
+  readonly tone: ServiceStatusToneId;
+  readonly label: string;
+}
+
 export interface McpServerRow {
   readonly name: string;
+  readonly group: McpRowGroup;
+  readonly right: McpRowRight;
+  readonly marks: ReadonlyArray<McpAgentMark>;
+  /** The neutral tile's letters. */
+  readonly initials: string;
   readonly managed: boolean;
   /**
    * Who keeps it: `builtin` (Zerops wrote it), `repo` (the repo's `.mcp.json`,
@@ -348,6 +375,74 @@ function unreportedNote(entry: McpServerEntry, driver: ProviderDriverKind | null
   return `May need a sign-in. ${agentDisplayName(driver)} checks when this conversation next runs.`;
 }
 
+/** A server's refusal of its key or token, in the words servers use. */
+const REFUSED_CREDENTIAL = /\b40[13]\b|unauthori[sz]ed|forbidden|invalid[_ ]token|expired/i;
+
+/** The tile's letters: Zerops' own "Z"; else two, the second a camel hump's where there is one. */
+export function mcpTileInitials(name: string, managed: boolean): string {
+  if (managed) return "Z";
+  const letters = name.replace(/[^A-Za-z0-9]/g, "");
+  if (letters.length === 0) return "?";
+  const first = letters[0]!.toUpperCase();
+  const hump = letters.slice(1).search(/[A-Z]/);
+  const second = hump === -1 ? letters[1] : letters[hump + 1];
+  return second === undefined ? first : `${first}${second.toLowerCase()}`;
+}
+
+function rowRight(input: {
+  readonly state: McpRowState;
+  readonly toolCount: number;
+  readonly error: string | undefined;
+  readonly byHeaders: boolean;
+  readonly signIn: McpServerRow["actions"]["signIn"];
+  readonly reconnect: boolean;
+  readonly unable: boolean;
+}): McpRowRight {
+  const refused = input.error !== undefined && REFUSED_CREDENTIAL.test(input.error);
+  switch (input.state) {
+    case "connected":
+      return {
+        kind: "state",
+        words:
+          input.toolCount === 0
+            ? "Ready"
+            : `${String(input.toolCount)} ${input.toolCount === 1 ? "tool" : "tools"}`,
+        tone: "ok",
+      };
+    case "needs-auth":
+      if (input.byHeaders) return { kind: "action", action: "addKey", label: "Add key" };
+      return input.signIn === null
+        ? { kind: "state", words: "Needs sign-in", tone: "attention" }
+        : { kind: "action", action: "signIn", label: "Sign in" };
+    case "failed":
+      if (refused && input.byHeaders) return { kind: "action", action: "addKey", label: "Add key" };
+      if (refused && input.signIn !== null) {
+        return { kind: "action", action: "signIn", label: "Sign in again" };
+      }
+      return input.reconnect
+        ? { kind: "action", action: "tryAgain", label: "Try again" }
+        : { kind: "state", words: "Failed", tone: "failed" };
+    case "connecting":
+      return { kind: "state", words: "Connecting", tone: "busy" };
+    case "configured":
+      return { kind: "state", words: "Not reached yet", tone: "off" };
+    case "disabled":
+      return { kind: "state", words: "Off", tone: "off" };
+    case "absent":
+      return { kind: "state", words: input.unable ? "Can't use it" : "Not set up", tone: "off" };
+  }
+}
+
+/** Waiting on you · Ready · Off, each with its rows in the server's order; empty ones left out. */
+export function groupMcpRows(
+  rows: ReadonlyArray<McpServerRow>,
+): ReadonlyArray<{ readonly id: McpRowGroup; readonly rows: ReadonlyArray<McpServerRow> }> {
+  return (["waiting", "ready", "off"] as const).flatMap((id) => {
+    const inGroup = rows.filter((row) => row.group === id);
+    return inGroup.length === 0 ? [] : [{ id, rows: inGroup }];
+  });
+}
+
 /** A URL server's sign-in in words, from what its config says. */
 function signInLabel(entry: McpServerEntry): string | null {
   const auth = entry.auth;
@@ -355,7 +450,7 @@ function signInLabel(entry: McpServerEntry): string | null {
   if (auth?.kind === "oauth-app") {
     return `Your app ${auth.clientId}${auth.secret ? " · secret stored" : ""}${scopes(auth.scopes)}`;
   }
-  if (auth?.kind === "oauth") return `Signs in when asked${scopes(auth.scopes)}`;
+  if (auth?.kind === "oauth") return `In the browser, when the server asks${scopes(auth.scopes)}`;
   if (auth?.kind === "none") return (entry.secretNames ?? []).length > 0 ? "API key" : "No sign-in";
   if ((entry.secretNames ?? []).some((name) => name.toLowerCase() === "authorization")) {
     return "API key";
@@ -399,6 +494,19 @@ function buildRow(
       ? entry.agents.some((candidate) => candidate.state !== "disabled")
       : state !== "disabled";
   const origin = entry.managed ? "builtin" : entry.scope === "project" ? "repo" : "mate";
+  const unable = new Map((entry.cannot ?? []).map((item) => [item.driver, item.reason]));
+  const marks: McpAgentMark[] = [...installed, ...entry.agents.map((found) => found.driver)]
+    .filter((candidate, index, all) => all.indexOf(candidate) === index)
+    .map((candidate) => {
+      const reason = unable.get(candidate);
+      const found = entry.agents.find((item) => item.driver === candidate);
+      const markState: McpRowState = found?.state ?? "absent";
+      return {
+        driver: candidate,
+        tone: STATE_TONE[markState],
+        label: reason ?? `${agentDisplayName(candidate)}: ${STATE_WORD[markState]}`,
+      };
+    });
   // Only the conversation's own agent signs in or out, and only one that can; an agent that
   // reaches the server by a token (`signedIn: false`) has no sign-in to renew or drop.
   const remote = entry.transport.type !== "stdio";
@@ -412,8 +520,26 @@ function buildRow(
       : signing && remote && state === "failed"
         ? "again"
         : null;
+  const right = rowRight({
+    state,
+    toolCount: toolSource.length,
+    error: agent?.error?.trim() || undefined,
+    byHeaders,
+    signIn,
+    reconnect: state !== "disabled" && state !== "absent" && state !== "configured",
+    unable: driver !== null && unable.has(driver),
+  });
   return {
     name: entry.name,
+    group:
+      state === "disabled"
+        ? "off"
+        : right.kind === "action" || state === "needs-auth"
+          ? "waiting"
+          : "ready",
+    right,
+    marks,
+    initials: mcpTileInitials(entry.name, entry.managed),
     managed: entry.managed,
     origin,
     state,
@@ -486,6 +612,37 @@ export interface McpAddForm {
 }
 
 export type McpAddFormErrors = Partial<Record<"name" | "target" | "extra" | "auth", string>>;
+
+/**
+ * The add card's one "Where it connects" field, read as the add form's: an http(s) address is a
+ * URL server (SSE where its path ends in /sse, as SSE servers' addresses do), anything else a
+ * command; with a line saying which, so the person sees what will be written.
+ */
+export function mcpWhere(text: string): {
+  readonly form: Pick<McpAddForm, "kind" | "commandLine" | "url">;
+  readonly words: string | null;
+} {
+  const value = text.trim();
+  if (value === "") return { form: { kind: "url", commandLine: "", url: "" }, words: null };
+  if (/^https?:\/\//i.test(value)) {
+    let sse = false;
+    try {
+      sse = /\/sse\/?$/i.test(new URL(value).pathname);
+    } catch {
+      sse = false;
+    }
+    return sse
+      ? {
+          form: { kind: "sse", commandLine: "", url: value },
+          words: "An SSE server: an older kind not every agent speaks.",
+        }
+      : { form: { kind: "url", commandLine: "", url: value }, words: "A streamable HTTP server." };
+  }
+  return {
+    form: { kind: "command", commandLine: value, url: "" },
+    words: "A command this Mate runs.",
+  };
+}
 
 // ── How a URL server signs in ─────────────────────────────────────────
 

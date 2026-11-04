@@ -55,9 +55,8 @@ describe("C: the built-in MCP server", () => {
     expect(html).toContain("zcp serve");
     if (report.state === "connected") {
       expect(html).toContain("zerops_discover");
-      expect(html).toContain("Inspect the project");
     } else {
-      expect(html).toContain("No tools reported yet.");
+      expect(html).toContain("None reported yet");
       if (report.error !== undefined) expect(html).toContain(report.error);
     }
     expect(html.includes(">Reconnect<")).toBe(report.state !== "configured");

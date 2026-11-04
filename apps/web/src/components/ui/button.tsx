@@ -40,6 +40,9 @@ const buttonVariants = cva(
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
+        /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
+        "destructive-ghost":
+          "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",
       },
     },
   },
