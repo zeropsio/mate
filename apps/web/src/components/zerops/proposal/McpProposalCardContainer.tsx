@@ -27,6 +27,7 @@ import { McpProposalCard } from "./McpProposalCard";
 import {
   mcpAddInput,
   mcpAskFace,
+  mcpKeyUpdate,
   mcpProgress,
   mcpProposalStatus,
   mcpProposalView,
@@ -87,6 +88,7 @@ export function McpProposalCardContainer(props: McpProposalHomeProps) {
           busy: false,
           title: proposal.params.server.title,
           signsIn: false,
+          keyed: false,
           by: decision?.by === undefined ? null : (nameOf(decision.by) ?? null),
           at: decision === undefined ? null : formatDayAwareTimestamp(decision.at, timestampFormat),
         })}
@@ -243,6 +245,7 @@ function LiveMcpProposal(
     signsIn:
       proposal.params.server.auth.kind === "oauth" ||
       proposal.params.server.auth.kind === "oauth-app",
+    keyed: proposal.params.credentials.length > 0,
     by: null,
     at: null,
   });
@@ -280,6 +283,23 @@ function LiveMcpProposal(
       face={face}
       mateFace={compact ? <ComposerAskFace environmentId={environmentId} /> : undefined}
       onAdd={(values) => void add(values)}
+      onChangeKey={async (values) => {
+        const mapped = mcpKeyUpdate(proposal, values);
+        if ("refused" in mapped) {
+          setRefusal(mapped.refused);
+          return false;
+        }
+        setRefusal(undefined);
+        const result = await mcp.act({ kind: "update", name, values: mapped.values, keep: [] });
+        if (!result.ok) setRefusal(result.message);
+        return result.ok;
+      }}
+      onTryAgain={() => {
+        setRefusal(undefined);
+        void mcp.act({ kind: "reconnect", name }).then((result) => {
+          if (!result.ok) setRefusal(result.message);
+        });
+      }}
       onDecline={() => void decide(mine({ state: "declined", at: new Date().toISOString() }))}
       onFinishSignIn={(landed) => void finish(landed)}
       onOpenAgain={(url) => void window.open(url, "_blank", "noopener,noreferrer")}

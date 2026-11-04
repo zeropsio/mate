@@ -10,6 +10,7 @@ import {
   mcpAddInput,
   mcpAskFace,
   mcpCannot,
+  mcpKeyUpdate,
   mcpProgress,
   mcpProposalStatus,
   mcpProposalView,
@@ -137,7 +138,7 @@ describe("an MCP server's proposal card", () => {
     const shown = view(linear, { kind: "proposed" });
     expect(shown.title).toBe("Set up Linear for Juno");
     expect(shown.connects).toBe("Connects to mcp.linear.app/mcp");
-    expect(shown.signsIn).toBe("You sign in on Linear's page once it is added");
+    expect(shown.signsIn).toBe("on Linear's page once it is added");
     expect(shown.reason).toBe("to read the issues you link");
     expect(shown.proposer).toBe("Juno");
     expect(view(linear, { kind: "connecting" }).signsIn).toBeNull();
@@ -518,6 +519,7 @@ describe("the MCP setup on the ask card", () => {
       busy,
       title: "Linear",
       signsIn: true,
+      keyed: false,
       by: "Aleš",
       at: "15:20",
     });
@@ -622,5 +624,56 @@ describe("the MCP setup on the ask card", () => {
       },
     ]);
     expect(mcpProgress(github, { kind: "proposed" }, null)).toBeNull();
+  });
+});
+
+describe("a failed server always offers the way forward", () => {
+  const failed: McpProposalStatus = {
+    kind: "failed",
+    words: "HTTP 401: Invalid token",
+    agent: "Codex",
+  };
+  it.each([
+    {
+      name: "signing in when asked: sign in again",
+      signsIn: true,
+      keyed: false,
+      want: "signInAgain",
+    },
+    { name: "added with a key: change the key", signsIn: false, keyed: true, want: "changeKey" },
+    { name: "anything else: try again", signsIn: false, keyed: false, want: "tryAgain" },
+  ])("$name", ({ signsIn, keyed, want }) => {
+    expect(
+      mcpAskFace({
+        view: view(sentry, failed),
+        status: failed,
+        signing: { phase: "idle" },
+        busy: false,
+        title: "Sentry",
+        signsIn,
+        keyed,
+        by: null,
+        at: null,
+      }).action,
+    ).toBe(want);
+  });
+
+  it("a changed key replaces the stored one where Add put it, the old one never read back", () => {
+    expect(mcpKeyUpdate(sentry, { SENTRY_TOKEN: " new-value " })).toEqual({
+      values: { Authorization: "Bearer new-value" },
+    });
+    expect(mcpKeyUpdate(github, { GITHUB_TOKEN: "new-value" })).toEqual({
+      values: { GITHUB_TOKEN: "new-value" },
+    });
+    expect(mcpKeyUpdate(sentry, {})).toEqual({ refused: "Type the Sentry auth token first." });
+  });
+
+  it.each([
+    { name: "a key", proposal: sentry, want: "with the key you type here" },
+    { name: "the server's own page", proposal: linear, want: "on Linear's page once it is added" },
+    { name: "an own app", proposal: app, want: "with an OAuth app you registered (read)" },
+    { name: "a command's key", proposal: github, want: "with the key you type here" },
+  ])("the signs-in fact goes on after its label, lowercase: $name", ({ proposal, want }) => {
+    expect(view(proposal, { kind: "proposed" }).signsIn).toBe(want);
   });
 });

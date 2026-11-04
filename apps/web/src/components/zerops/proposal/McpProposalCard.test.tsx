@@ -75,11 +75,16 @@ async function mount(status: McpProposalStatus, signing: McpSigning = { phase: "
           busy: false,
           title: "Sentry",
           signsIn: false,
+          keyed: true,
           by: null,
           at: null,
         })}
         onAdd={(values) => pressed.push({ kind: "add", value: values })}
         onDecline={() => pressed.push({ kind: "not-now" })}
+        onChangeKey={async (values) => {
+          pressed.push({ kind: "change-key", value: values });
+          return true;
+        }}
         onFinishSignIn={(landed) => pressed.push({ kind: "finish", value: landed })}
         signing={signing}
         view={view}
@@ -128,5 +133,21 @@ describe("an MCP server proposed on the ask card", () => {
     await type(paste, "http://localhost:1455/callback?code=abc");
     await act(async () => button(container, "Finish")!.click());
     expect(pressed).toEqual([{ kind: "finish", value: "http://localhost:1455/callback?code=abc" }]);
+  });
+
+  it("Change key asks for the key again, masked, and a new one replaces it", async () => {
+    const { container, pressed } = await mount({
+      kind: "failed",
+      words: "HTTP 401: Invalid token",
+      agent: "Codex",
+    });
+    expect(container.querySelector('input[data-secret=""]')).toBeNull();
+    await act(async () => button(container, "Change key")!.click());
+    const field = container.querySelector<HTMLInputElement>('input[data-secret=""]')!;
+    expect(field.value).toBe("");
+    await type(field, "new-value");
+    await act(async () => button(container, "Save the key")!.click());
+    expect(pressed).toEqual([{ kind: "change-key", value: { SENTRY_TOKEN: "new-value" } }]);
+    expect(container.querySelector('input[data-secret=""]')).toBeNull();
   });
 });

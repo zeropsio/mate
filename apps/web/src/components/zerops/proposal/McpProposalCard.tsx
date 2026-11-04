@@ -38,6 +38,10 @@ export interface McpProposalCardProps {
   readonly onOpenAgain?: (url: string) => void;
   /** Finishes a sign-in with the address the browser landed on. */
   readonly onFinishSignIn?: (landed: string) => void;
+  /** Replaces the key it was added with, by field key; resolves once the Mate took it. */
+  readonly onChangeKey?: (values: Readonly<Record<string, string>>) => Promise<boolean>;
+  /** Starts it again after a failure. */
+  readonly onTryAgain?: () => void;
   readonly onShowInConversation?: (() => void) | undefined;
 }
 
@@ -51,9 +55,14 @@ export function McpProposalCard(props: McpProposalCardProps) {
   const size = full ? "md" : "sm";
   const [values, setValues] = useState<Readonly<Record<string, string>>>({});
   const [landed, setLanded] = useState("");
-  const provide = view.steps.find(
-    (step): step is Extract<McpProposalStep, { kind: "provide" }> => step.kind === "provide",
-  );
+  // "Change key" asks for the keys again, masked: a new one replaces the stored one.
+  const [changing, setChanging] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const provide = changing
+    ? { kind: "provide" as const, fields: view.keys }
+    : view.steps.find(
+        (step): step is Extract<McpProposalStep, { kind: "provide" }> => step.kind === "provide",
+      );
   const approve = view.steps.find(
     (step): step is Extract<McpProposalStep, { kind: "approve" }> => step.kind === "approve",
   );
@@ -64,7 +73,21 @@ export function McpProposalCard(props: McpProposalCardProps) {
   const signing = props.signing ?? { phase: "idle" };
   const pasting = signing.phase === "paste";
 
+  const saveKey = async () => {
+    if (!typed || saving) return;
+    setSaving(true);
+    const saved = (await props.onChangeKey?.(values)) ?? false;
+    setSaving(false);
+    if (saved) {
+      setValues({});
+      setChanging(false);
+    }
+  };
   const press = () => {
+    if (changing) {
+      void saveKey();
+      return;
+    }
     switch (face.main?.does) {
       case "add":
         props.onAdd?.(values);
@@ -94,7 +117,26 @@ export function McpProposalCard(props: McpProposalCardProps) {
       <Button onClick={props.onSignIn} size={size} variant="secondary">
         Sign in again
       </Button>
+    ) : face.action === "changeKey" ? (
+      <Button onClick={() => setChanging(true)} size={size} variant="secondary">
+        Change key
+      </Button>
+    ) : face.action === "tryAgain" ? (
+      <Button onClick={props.onTryAgain} size={size} variant="secondary">
+        Try again
+      </Button>
     ) : undefined;
+  // Changing the key, the card asks for it again in place of the failure, until it is saved.
+  const footerState: McpAskFace["state"] = changing
+    ? saving
+      ? { kind: "working", words: "Saving the key…", pressed: "main" }
+      : { kind: "waiting" }
+    : face.state;
+  const footerMain = changing
+    ? { label: "Save the key", onPress: press, disabled: !typed }
+    : face.main === null
+      ? null
+      : { label: face.main.label, onPress: press, disabled };
 
   const fields =
     provide === undefined
@@ -103,7 +145,7 @@ export function McpProposalCard(props: McpProposalCardProps) {
           field.hidden ? (
             <AskSecretField
               density={density}
-              disabled={working}
+              disabled={working || saving}
               hint={full ? `${field.where} — it goes to the Mate, not the chat` : undefined}
               key={field.key}
               label={field.label}
@@ -211,18 +253,25 @@ export function McpProposalCard(props: McpProposalCardProps) {
         face={props.mateFace}
         footer={
           <AskFooter
-            action={action}
+            action={changing ? undefined : action}
+            also={
+              changing && !saving ? (
+                <Button onClick={() => setChanging(false)} size={size} variant="ghost">
+                  Cancel
+                </Button>
+              ) : undefined
+            }
             density={density}
-            main={face.main === null ? null : { label: face.main.label, onPress: press, disabled }}
-            note={note}
-            onNotNow={face.notNow ? props.onDecline : undefined}
-            state={face.state}
+            main={footerMain}
+            note={changing ? undefined : note}
+            onNotNow={face.notNow && !changing ? props.onDecline : undefined}
+            state={footerState}
           />
         }
         kind="mcp"
         note={full ? undefined : note}
         onShowInConversation={props.onShowInConversation}
-        state={face.state.kind}
+        state={footerState.kind}
         title={view.title}
         where={{ scope: "mate", detail: null }}
         why={view.reason === null ? null : { who: view.proposer, words: view.reason }}

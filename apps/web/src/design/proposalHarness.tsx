@@ -186,11 +186,14 @@ function McpCard(card: (typeof MCP_CARDS)[number]) {
         busy: false,
         title: card.proposal.params.server.title,
         signsIn: auth === "oauth" || auth === "oauth-app",
+        keyed: card.proposal.params.credentials.length > 0,
         by: "Aleš",
         at: "15:20",
       })}
       mateFace={<MateFace size={24} state="needs" tint="sky" />}
       onAdd={() => undefined}
+      onChangeKey={async () => true}
+      onTryAgain={() => undefined}
       onDecline={() => undefined}
       onFinishSignIn={() => undefined}
       onOpenAgain={() => undefined}

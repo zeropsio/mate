@@ -96,6 +96,8 @@ export interface McpProposalView {
   readonly cannot: string | null;
   /** Where its own app sends each agent back: the addresses the person registers in it. */
   readonly redirects: ReadonlyArray<{ readonly agent: string; readonly url: string }>;
+  /** The keys it is added with: what "Change key" asks for again, masked. */
+  readonly keys: ReadonlyArray<McpProposalField>;
 }
 
 function agentName(driver: ProviderDriverKind): string {
@@ -243,6 +245,7 @@ function connects(proposal: McpProposal): string {
   }
 }
 
+/** How it signs in, as the facts' "signs in" row goes on: lowercase, after the label. */
 function signsIn(proposal: McpProposal): string {
   const { server, credentials } = proposal.params;
   const scopes =
@@ -251,13 +254,13 @@ function signsIn(proposal: McpProposal): string {
       : ` (${server.auth.scopes.join(", ")})`;
   switch (server.auth.kind) {
     case "oauth":
-      return `You sign in on ${server.title}'s page once it is added${scopes}`;
+      return `on ${server.title}'s page once it is added${scopes}`;
     case "oauth-app":
-      return `Signs in with an OAuth app you registered${scopes}`;
+      return `with an OAuth app you registered${scopes}`;
     case "header":
-      return "Signs in with the key you type here";
+      return "with the key you type here";
     case "none":
-      return credentials.length === 0 ? "No sign-in" : "Uses the key you type here";
+      return credentials.length === 0 ? "not needed" : "with the key you type here";
   }
 }
 
@@ -383,6 +386,7 @@ export function mcpProposalView(input: {
     steps,
     outcome: outcomeOf(status, server.title),
     cannot: proposed ? mcpCannot(proposal, agents) : null,
+    keys: fieldsOf(proposal).filter((field) => !field.key.startsWith("oauth-app:")),
     redirects:
       proposed && server.auth.kind === "oauth-app"
         ? agents.flatMap((driver) => {
@@ -516,8 +520,11 @@ export interface McpAskFace {
   readonly main: { readonly label: string; readonly does: "add" | "signIn" | "finish" } | null;
   /** Not now, while the proposal is undecided. */
   readonly notNow: boolean;
-  /** The one press beside a line: open the sign-in page again, or sign in again. */
-  readonly action: "openAgain" | "signInAgain" | null;
+  /**
+   * The one press beside a line: open the sign-in page again; after a failure the way forward —
+   * sign in again (OAuth), change the key it was added with, or try again.
+   */
+  readonly action: "openAgain" | "signInAgain" | "changeKey" | "tryAgain" | null;
   /** A quiet note after the presses ("as Claude"). */
   readonly note: string | null;
 }
@@ -538,6 +545,8 @@ export function mcpAskFace(input: {
   readonly title: string;
   /** Whether it signs in when asked (OAuth): a failure may be a sign-in run out. */
   readonly signsIn: boolean;
+  /** Whether it is added with keys the person typed: a failure may be a key that no longer works. */
+  readonly keyed: boolean;
   /** Who said Not now, by name, and when. */
   readonly by: string | null;
   readonly at: string | null;
@@ -598,7 +607,7 @@ export function mcpAskFace(input: {
     case "failed":
       return {
         ...none,
-        action: input.signsIn ? "signInAgain" : null,
+        action: input.signsIn ? "signInAgain" : input.keyed ? "changeKey" : "tryAgain",
         state: { kind: "failed", words },
       };
     case "add-failed":
@@ -651,4 +660,23 @@ export function mcpProgress(
       end: signedIn ? "Signed in" : undefined,
     },
   ];
+}
+
+/**
+ * A new key for a server already added, as `mcp.servers.update` replaces it for every agent: each
+ * key the person typed in its place, as Add puts it. The stored one is never read back. Refused
+ * until every key is typed.
+ */
+export function mcpKeyUpdate(
+  proposal: McpProposal,
+  values: Readonly<Record<string, string>>,
+): { readonly values: Readonly<Record<string, string>> } | { readonly refused: string } {
+  const typed: Record<string, string> = {};
+  for (const field of proposal.params.credentials) {
+    const value = values[field.key]?.trim() ?? "";
+    if (value === "") return { refused: `Type the ${field.label} first.` };
+    if (field.placement === "env") typed[field.key] = value;
+    else typed[field.headerName ?? field.key] = `${field.prefix ?? ""}${value}`;
+  }
+  return { values: typed };
 }
