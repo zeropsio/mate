@@ -351,6 +351,20 @@ describe("right panel kinds", () => {
     },
   );
 
+  it.each([
+    { matePersona: null, hint: "Waiting for this Mate to answer." },
+    { matePersona: false, hint: "Update this Mate to give it a persona." },
+  ] as const)(
+    "Persona says a Mate needs an update only once its server says so: $hint",
+    ({ matePersona, hint }) => {
+      const persona = launcherActions(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }),
+      ).find(({ kind }) => kind === "persona");
+      expect(persona?.available).toBe(false);
+      expect(persona?.unavailableHint).toBe(hint);
+    },
+  );
+
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });

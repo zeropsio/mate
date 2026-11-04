@@ -747,7 +747,11 @@ export function RightPanelTabs(props: RightPanelTabsProps) {
                       <SurfaceMenuItem
                         key={action.label}
                         available={action.available}
-                        disabledReason={SURFACE_DISABLED_REASONS[action.kind]}
+                        disabledReason={
+                          action.waiting
+                            ? action.unavailableHint
+                            : SURFACE_DISABLED_REASONS[action.kind]
+                        }
                         shortcut={action.shortcut}
                         onClick={action.onClick}
                         icon={<Icon />}

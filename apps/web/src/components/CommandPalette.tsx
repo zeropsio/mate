@@ -1954,8 +1954,9 @@ export function OpenCommandPaletteDialog(props: {
   if (activeThread && personaMate?.kind === "mate" && personaMate.mate.chief !== true) {
     const threadRef = scopeThreadRef(activeThread.environmentId, activeThread.id);
     const mateName = personaMate.mate.name;
-    const takesPersona =
-      serverConfigs.get(activeThread.environmentId)?.environment.capabilities.matePersona === true;
+    // An update is said only once the Mate's server answered without persona support.
+    const config = serverConfigs.get(activeThread.environmentId);
+    const takesPersona = config?.environment.capabilities.matePersona === true;
     actionItems.push({
       kind: "action",
       value: "action:persona",
@@ -1972,7 +1973,13 @@ export function OpenCommandPaletteDialog(props: {
       icon: <PersonaIcon className={ITEM_ICON_CLASS} />,
       ...(takesPersona
         ? {}
-        : { disabled: true, description: `Update ${mateName} to give it a persona.` }),
+        : {
+            disabled: true,
+            description:
+              config === undefined
+                ? `Waiting for ${mateName} to answer.`
+                : `Update ${mateName} to give it a persona.`,
+          }),
       run: async () => {
         useRightPanelStore.getState().open(threadRef, "persona");
       },

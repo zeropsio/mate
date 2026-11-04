@@ -72,6 +72,8 @@ export interface RightPanelKindMeta {
     /** The launcher's letter: the label's first, or `null` where another page holds that one. */
     readonly shortcut: string | null;
     readonly unavailableHint: string;
+    /** What the card says while its answer is `unknown`, where the unavailable hint would claim one. */
+    readonly unknownHint?: string;
   } | null;
   /**
    * The page's head (`RightPanelPage`): its title and one line saying what it shows, `mate` the
@@ -256,6 +258,8 @@ export const RIGHT_PANEL_KIND_META = {
       description: "Choose how this Mate works and talks.",
       shortcut: "P",
       unavailableHint: "Update this Mate to give it a persona.",
+      // An offline or restarting Mate has not said: an update is offered only once it has.
+      unknownHint: "Waiting for this Mate to answer.",
     },
     page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
     availability: (input) =>
@@ -310,7 +314,16 @@ export function launcherActions(availability: Record<RightPanelKind, RightPanelA
   return RIGHT_PANEL_KINDS.filter(rightPanelKindHasLauncher)
     .filter((kind) => availability[kind] !== "hidden")
     .map((kind) => {
-      const launcher = RIGHT_PANEL_KIND_META[kind].launcher;
-      return { kind, ...launcher, available: availability[kind] === "available" };
+      const { unknownHint, ...launcher }: NonNullable<RightPanelKindMeta["launcher"]> =
+        RIGHT_PANEL_KIND_META[kind].launcher;
+      const waiting = availability[kind] === "unknown" && unknownHint !== undefined;
+      return {
+        kind,
+        ...launcher,
+        unavailableHint: waiting ? unknownHint : launcher.unavailableHint,
+        /** Its card waits for an answer: the hint is the wait's, not the refusal's. */
+        waiting,
+        available: availability[kind] === "available",
+      };
     });
 }
