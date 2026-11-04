@@ -107,6 +107,7 @@ describe("Add a tool", () => {
         input: {
           name: "docs",
           transport: { type: "http", url: "https://mcp.example.com/mcp" },
+          headers: { Authorization: "Bearer k3y" },
           auth: { kind: "header", name: "Authorization", value: "Bearer k3y" },
         },
       },

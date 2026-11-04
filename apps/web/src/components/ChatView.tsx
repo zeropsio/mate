@@ -8354,6 +8354,10 @@ function ConversationView(props: ChatViewProps) {
                   driver={selectedProvider}
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
+                  mateCanSignIn={
+                    attachmentEnvironmentConfig === null ||
+                    attachmentEnvironmentConfig.environment.capabilities.mcpSignIn === true
+                  }
                   proposals={mcpProposals}
                   run={{
                     phase,
