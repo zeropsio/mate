@@ -1,6 +1,6 @@
 /**
- * Handing a Mate over (E2E F8): the list is the people HQ answers, and nobody is picked until the
- * person picks — pressing *Hand it over* without looking once handed a Mate to a token.
+ * Handing a Mate over (E2E F8): the list is the organization's members, and nobody is picked until
+ * the person picks — pressing *Hand it over* without looking once handed a Mate to a token.
  */
 import { act, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -12,8 +12,8 @@ import { ZeropsAssignMateForm } from "./ZeropsAssignMateDialog";
 
 type FormProps = Parameters<typeof ZeropsAssignMateForm>[0];
 
-const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada Lovelace", avatarUrl: null };
-const EVA = { userId: "u-eva", clientUserId: "cu-eva", name: "Eva Dvořák", avatarUrl: null };
+const ADA = { userId: "u-ada", name: "Ada Lovelace" };
+const EVA = { userId: "u-eva", name: "Eva Dvořák" };
 
 function form(props: Partial<FormProps> = {}): ReactElement {
   // The title and the description are Base UI's, and both need the dialog's context.
@@ -33,11 +33,11 @@ function form(props: Partial<FormProps> = {}): ReactElement {
 }
 
 describe("ZeropsAssignMateForm", () => {
-  it("lists the people HQ answers, each by name, picked by their member id", () => {
+  it("lists the organization's members, each by name, picked by their person id", () => {
     const html = renderToStaticMarkup(form());
-    expect(html).toContain('value="cu-ada"');
+    expect(html).toContain('value="u-ada"');
     expect(html).toContain("Ada Lovelace");
-    expect(html).toContain('value="cu-eva"');
+    expect(html).toContain('value="u-eva"');
     expect(html).toContain("Eva Dvořák");
   });
 
@@ -70,23 +70,14 @@ describe("ZeropsAssignMateForm", () => {
     expect(html).toMatch(/<button[^>]*>Try again<\/button>/u);
   });
 
-  // HQ's definitive refusal is its word, not a read to try again.
-  it("says HQ refused to list the organization's people, with no Try again", () => {
-    const html = renderToStaticMarkup(
-      form({ candidates: [], readRefused: { organization: "Acme" } }),
-    );
-    expect(html).toMatch(/role="alert"[^>]*>HQ refused to list Acme(&#x27;|')s people\.</u);
-    expect(html).not.toContain("Try again");
-  });
-
   it("picks nobody: the hand-over waits on the person's own pick", () => {
     const html = renderToStaticMarkup(form());
     expect(html).toMatch(/<option(?=[^>]*selected="")[^>]*>Pick a person<\/option>/u);
-    expect(html).not.toMatch(/<option(?=[^>]*selected="")[^>]*value="cu-/u);
+    expect(html).not.toMatch(/<option(?=[^>]*selected="")[^>]*value="u-/u);
     expect(html).toMatch(/<button type="submit"[^>]*disabled=""[^>]*>Hand it over/u);
   });
 
-  it("withholds a selected person when HQ no longer offers them", () => {
+  it("withholds a selected person no longer listed", () => {
     (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
     const onSubmit = vi.fn();
     let tree!: ReturnType<typeof create>;
@@ -94,9 +85,7 @@ describe("ZeropsAssignMateForm", () => {
       tree = create(form({ onSubmit }));
     });
     try {
-      act(() =>
-        tree.root.findByType("select").props.onChange({ target: { value: EVA.clientUserId } }),
-      );
+      act(() => tree.root.findByType("select").props.onChange({ target: { value: EVA.userId } }));
       act(() => tree.update(form({ onSubmit, candidates: [ADA] })));
       act(() => tree.root.findByType("form").props.onSubmit({ preventDefault: () => {} }));
       expect(onSubmit).not.toHaveBeenCalled();

@@ -1546,6 +1546,45 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
+  it("A Mate's hand-over is one HQ call whose body is the person's current Zerops access token and the person picked as its owner", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door" ? undefined : new Response(null, { status: 204 }),
+    );
+    const hqApi = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    await hqApi.handOver("p1", "user-bob");
+    const sent = hq.seen.filter((seen) => seen.path !== "/api/door");
+    expect(sent.map((seen) => [seen.method, seen.path, seen.body])).toEqual([
+      ["POST", "/api/mates/p1/hand-over", { accessToken: "person-token", ownerUserId: "user-bob" }],
+    ]);
+  });
+
+  it("A hand-over HQ stopped part way names the phase it stopped at, and who finishes it", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door"
+        ? undefined
+        : json(409, { code: "handover_unfinished", phase: "revoke", reason: "ownerRoleRequired" }),
+    );
+    const hqApi = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    await expect(hqApi.handOver("p1", "user-bob")).rejects.toMatchObject({
+      kind: "refused",
+      code: "handover_unfinished",
+      message:
+        "The hand-over stopped while revoking the key it replaced (ownerRoleRequired). An owner of the organization must hand it over again to finish.",
+    });
+  });
+
   // A write whose answer was lost (F22): what HQ holds now decides, read back once.
   const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
   const HARBOR = { id: "app-1", name: "Harbor", projects: [] };

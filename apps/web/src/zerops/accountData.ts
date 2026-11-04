@@ -31,8 +31,6 @@ export interface AccountData extends AccountReads {
   readonly showHq: AccountObservation["showHq"];
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: AccountObservation["moveOffers"];
-  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
-  readonly handoverCandidates: AccountObservation["handoverCandidates"];
   /** `null` until the mount has made them. */
   readonly logs: BuildLogRegistry | null;
   /** A secret of the vault, decrypted for the person who asks to see it; held by nothing else. */

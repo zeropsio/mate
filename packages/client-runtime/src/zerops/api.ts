@@ -19,7 +19,6 @@ import {
   severalMatesLine,
   zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
-import { withMateProjectRole } from "./mateAccess.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
 import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
@@ -1398,65 +1397,6 @@ export class ZeropsApiClient {
         ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
       },
     );
-  }
-
-  /**
-   * Hands a Mate to a person — or takes it away (guide 0.8, D11).
-   *
-   * A per-project role override, written by an org owner or admin. It is the
-   * verb the hand-over cases need: a Mate created for a colleague, a leaver's,
-   * a reassignment. Without one the colleague is whatever the org says they
-   * are, which for a plain member is `READ_ONLY` — they see the Mate and never
-   * open it.
-   *
-   * It is written on the person, `PUT /client-user/{id}/roles`, never on the
-   * project: `PUT /project/{id}` with `userRoles` replaces the project's whole
-   * list, refuses to name an integration token (`400 userNotFound`), and a
-   * list of people only drops the Mate key's own grant (measured 2026-10-03,
-   * `f7-handover-probe.json`). The person's list is read and sent back whole
-   * with this project's role set — or, `null`, without it: what a hand over
-   * takes from the Mate's previous owner (F23) — so their other projects keep
-   * theirs. What it answers is the project as the platform holds it after the
-   * write.
-   */
-  async setProjectMemberRole(
-    input: {
-      readonly projectId: string;
-      /** The `clientUser` id — what a project's `userRoles` names. */
-      readonly clientUserId: string;
-      readonly roleCode: ZeropsProjectRole | null;
-    },
-    beforeWrite?: () => Promise<void>,
-  ): Promise<ZeropsProject> {
-    const generation = this.#generation;
-    this.#assertGeneration(generation);
-    const roles = `/client-user/${input.clientUserId}/roles`;
-    const held = await this.#request<{
-      readonly projectRoleList?: ReadonlyArray<{
-        readonly projectId: string;
-        readonly roleCode: string;
-      }>;
-    }>(roles, {}, { operationKind: "read" });
-    this.#assertGeneration(generation);
-    await this.#request(
-      roles,
-      {
-        method: "PUT",
-        body: JSON.stringify({
-          projectRoleList: withMateProjectRole(
-            held.projectRoleList,
-            input.projectId,
-            input.roleCode,
-          ),
-        }),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
-    );
-    this.#assertGeneration(generation);
-    return this.fetchProject(input.projectId);
   }
 
   /**

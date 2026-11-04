@@ -25,7 +25,6 @@ import {
   hqStreamCloseFailure,
   HqStreamMessage,
   type HqCursor,
-  type HqHandoverCandidate,
   type HqScope,
   type HqScopeDelivery,
   type HqStreamRequest,
@@ -144,9 +143,6 @@ const ON_THE_SOCKET: StreamEvent = {
 /** The link's socket exists; its upgrade is waited for. */
 const SOCKET_CREATED: StreamEvent = { kind: "socket-created" };
 
-/** Whom a Mate may be handed over to, as HQ answers when the hand-over opens. */
-export type HqHandoverCandidates = ReadonlyArray<HqHandoverCandidate>;
-
 const protocolIdentity = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 const decodeMessage = Schema.decodeUnknownOption(Schema.fromJsonString(HqStreamMessage));
 
@@ -176,10 +172,6 @@ export function hqNavigationLink(options: {
   readonly demandDetail: (demand: DetailDemand) => () => void;
   /** Asks HQ where a Mate may move, on the open socket. */
   readonly moveOffers: (projectId: string) => Effect.Effect<HqMoveOffers, StreamFault>;
-  /** Asks HQ whom a Mate may be handed over to, on the open socket. */
-  readonly handoverCandidates: (
-    projectId: string,
-  ) => Effect.Effect<HqHandoverCandidates, StreamFault>;
   /** Asks HQ what lies between two commits of an application's repository, on the open socket. */
   readonly compare: (
     ask: { readonly appId: string; readonly repo: string } & CompareQuery,
@@ -625,8 +617,6 @@ export function hqNavigationLink(options: {
             }
             case "move-offers":
             case "move-offers-error":
-            case "handover-candidates":
-            case "handover-candidates-error":
             case "compare":
             case "compare-error": {
               const waiting = pendingOffers.get(message.requestId);
@@ -637,8 +627,6 @@ export function hqNavigationLink(options: {
                   moveTo: message.moveTo,
                   refused: message.refused ?? {},
                 });
-              if (message.type === "handover-candidates")
-                return yield* Deferred.succeed(waiting, message.candidates);
               if (message.type === "compare")
                 return yield* Deferred.succeed(waiting, message.result);
               return yield* Deferred.fail(waiting, {
@@ -837,7 +825,7 @@ export function hqNavigationLink(options: {
 
   /** One question to HQ on the open socket, answered by its request id; none without a socket. */
   const ask = <A>(
-    type: "move-offers" | "handover-candidates" | "compare",
+    type: "move-offers" | "compare",
     request: (requestId: string) => HqStreamRequest,
   ): Effect.Effect<A, StreamFault> =>
     Effect.suspend(() => {
@@ -884,12 +872,6 @@ export function hqNavigationLink(options: {
     moveOffers: (projectId) =>
       ask<HqMoveOffers>("move-offers", (requestId) => ({
         type: "move-offers",
-        requestId,
-        projectId,
-      })),
-    handoverCandidates: (projectId) =>
-      ask<HqHandoverCandidates>("handover-candidates", (requestId) => ({
-        type: "handover-candidates",
         requestId,
         projectId,
       })),

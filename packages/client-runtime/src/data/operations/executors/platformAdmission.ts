@@ -29,11 +29,6 @@ export function admitPlatformOperation(input: {
         viewer,
       });
     if (viewer === undefined) return yield* refused("Your Zerops access is still being checked.");
-    if (
-      (intent.kind === "assign-mate-owner" || intent.kind === "finish-mate-handover") &&
-      !capabilities().manageOrganization
-    )
-      return yield* refused("An organization owner or admin must hand over this Mate.");
     // Who works on an app: the organization's to decide, by its owners and admins alone.
     if (
       intent.kind === "check-invitee" ||

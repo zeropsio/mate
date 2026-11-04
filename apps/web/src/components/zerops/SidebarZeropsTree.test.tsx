@@ -4565,7 +4565,6 @@ describe("the menu's release offer", () => {
       retry: unexpectedRead,
       showHq: unexpectedRead,
       moveOffers: unexpectedRead,
-      handoverCandidates: unexpectedRead,
       readDetail: unexpectedRead,
       revalidate: unexpectedRead,
       retryDetail: unexpectedRead,

@@ -48,15 +48,14 @@ import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
 
 interface AssignDialogProps {
-  readonly candidates: ReadonlyArray<{ readonly clientUserId: string; readonly name: string }>;
+  readonly candidates: ReadonlyArray<{ readonly userId: string; readonly name: string }>;
   readonly readingOrganization?: string | undefined;
   readonly readFailed?:
     | { readonly organization: string; readonly onReadAgain: () => void }
     | undefined;
-  readonly readRefused?: { readonly organization: string } | undefined;
   readonly pending: boolean;
   readonly error: string | null;
-  readonly onSubmit: (clientUserId: string) => void;
+  readonly onSubmit: (ownerUserId: string) => void;
 }
 
 interface FaceDialogProps {
@@ -140,7 +139,7 @@ const mock = vi.hoisted(() => ({
   markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
   /** The account's hand-over operation, answered with where it stands: a promise the test answers. */
-  assignMateOwner: vi.fn(),
+  handOverMate: vi.fn(),
   assignDialog: { current: null as AssignDialogProps | null },
   /** What the hook asked the account's bus to read again. */
   invalidated: [] as Array<unknown>,
@@ -171,12 +170,15 @@ const mock = vi.hoisted(() => ({
   asked: [] as Array<string>,
   /** The organization's token list, as the platform would answer it were it read. */
   tokens: [] as Array<unknown>,
-  /** The Mates HQ was asked whom to hand over to, in order. */
-  handoverAsked: [] as Array<string>,
-  /** HQ's answer of whom a Mate may be handed over to. */
-  handoverAnswer: (): Promise<ReadonlyArray<unknown>> => Promise.resolve([]),
-  /** No account data is mounted: there is no HQ to ask. */
-  noAccountData: false,
+  /** The organization's members as the person's own Zerops read holds them. */
+  members: { status: "loading", members: [] } as {
+    readonly status: string;
+    readonly members: ReadonlyArray<unknown>;
+  },
+  /** The details the hook held, by family and owner, in order. */
+  demanded: [] as Array<string>,
+  /** The details the hook asked to read again. */
+  retried: [] as Array<unknown>,
   /** The Move dialog as the hook mounts it: where it offers the Mate to go. */
   moveDialog: {
     current: null as {
@@ -215,26 +217,26 @@ vi.mock("./ZeropsAccountData", () => ({
         : fallback,
     );
     if (projection.name === "faceAction") return value;
+    if (projection.name === "organizationMembers") return key === null ? value : mock.members;
     return {
       renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
       deletions: [],
     };
   },
   useAccountOrgId: () => null,
-  useAccountDataOptional: () =>
-    mock.noAccountData
-      ? null
-      : {
-          moveOffers: () =>
-            (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
-              moveTo,
-              refused: {},
-            })),
-          handoverCandidates: (projectId: string) => {
-            mock.handoverAsked.push(projectId);
-            return mock.handoverAnswer();
-          },
-        },
+  useDetailDemand: (family: string, _listing: unknown, ownerId: string | null) => {
+    if (ownerId !== null) mock.demanded.push(`${family}:${ownerId}`);
+  },
+  useAccountDataOptional: () => ({
+    moveOffers: () =>
+      (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
+        moveTo,
+        refused: {},
+      })),
+    retryDetail: (demand: unknown) => {
+      mock.retried.push(demand);
+    },
+  }),
 }));
 vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
@@ -292,7 +294,7 @@ vi.mock("./ZeropsSessionProvider", () => ({
 vi.mock("./accountOperations", () => ({
   useAccountOperations: () => ({
     submit: async (intent: { readonly kind: string }) => {
-      if (intent.kind === "assign-mate-owner") return mock.assignMateOwner(intent);
+      if (intent.kind === "hand-over-mate") return mock.handOverMate(intent);
       try {
         await mock.renameProject(intent);
         if ("projectId" in intent) mock.moveRemainders.delete(String(intent.projectId));
@@ -567,7 +569,7 @@ beforeEach(() => {
   mock.registry = { groups: [] };
   mock.dialog.current = null;
   mock.assignDialog.current = null;
-  mock.assignMateOwner.mockReset();
+  mock.handOverMate.mockReset();
   mock.invalidated = [];
   mock.deletedTokens = [];
   mock.retirementCompleted.mockClear();
@@ -578,9 +580,9 @@ beforeEach(() => {
   mock.completeProjectDeletion.mockReset().mockResolvedValue(undefined);
   mock.deleteProject.mockReset().mockResolvedValue({ value: undefined });
   mock.setDeleting.mockReset();
-  mock.handoverAsked = [];
-  mock.handoverAnswer = () => Promise.resolve([]);
-  mock.noAccountData = false;
+  mock.members = { status: "loading", members: [] };
+  mock.demanded = [];
+  mock.retried = [];
   mock.mateKey = null;
   mock.keyAnswer = null;
   mock.deleteDialog.current = null;
@@ -647,6 +649,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           handChange: unused,
           setChief: unused,
           decideProposal: unused,
+          handOver: unused,
         }),
       }),
     },
@@ -893,9 +896,47 @@ describe("useMateActions — Change face…", () => {
   });
 });
 
-// E2E F7: a refused hand-over closed its dialog and said nothing. The dialog stays until the
-// platform answers, says a refusal there, and closes only on the platform's yes.
+/**
+ * The hook mounted over HQ's navigation holding `candidates` in Acme Docs, HQ saying of each
+ * whether this person may hand it over (`mayHandOver`), as its stream carries it.
+ */
+function mountHeld(
+  mayHandOver: boolean | undefined,
+  candidates: ReadonlyArray<ZeropsCandidatePresentation> = [FEN],
+): void {
+  const registry = AtomRegistry.make();
+  mountHqNavigation(registry, "org-acme", {
+    structure: {
+      ungrouped: [],
+      apps: [
+        {
+          id: "acme",
+          name: "Acme Docs",
+          projects: candidates.map((candidate) => ({
+            projectId: candidate.project.id,
+            kind: "mate",
+            mate: { name: candidate.project.name, face: "" },
+          })),
+        },
+      ],
+    } as never,
+    person: {
+      role: "DEVELOPER",
+      mayWrite: true,
+      mine: false,
+      ownerUserId: null,
+      waitsOnViewer: false,
+      unseen: null,
+      ...(mayHandOver === undefined ? {} : { mayHandOver }),
+    },
+  });
+  mount(registry);
+}
+
+// E2E F7: a refused hand-over closed its dialog and said nothing. The dialog stays until HQ
+// answers, says a refusal there, and closes only on HQ's yes.
 describe("useMateActions — Hand this Mate over", () => {
+  const EVA = { id: "cu-eva", userId: "u-eva", status: "ACTIVE", user: { fullName: "Eva" } };
   const openAssign = () => {
     const entry = verbs(FEN).find((verb) => verb.id === "assign");
     act(() => {
@@ -903,69 +944,42 @@ describe("useMateActions — Hand this Mate over", () => {
     });
   };
 
-  // Whom a Mate may be handed over to is HQ's answer, asked as the picker opens.
-  it("asks HQ whom to hand it to once its picker opens, never on load", () => {
-    mount();
-    expect(mock.handoverAsked).toEqual([]);
-    openAssign();
-    expect(mock.handoverAsked).toEqual([FEN.project.id]);
+  // No client-side role check: HQ's `mayHandOver` alone puts the verb in the Mate's menu.
+  it("offers Hand over this Mate in the Mate's menu where HQ says the person may, and nowhere else", () => {
+    mountHeld(true);
+    expect(verbs(FEN).find((verb) => verb.id === "assign")?.label).toBe("Hand over this Mate");
+    mountHeld(false);
+    expect(verbs(FEN).map((verb) => verb.id)).not.toContain("assign");
+    mountHeld(undefined);
+    expect(verbs(FEN).map((verb) => verb.id)).not.toContain("assign");
   });
 
-  it("lists the people HQ answers", async () => {
-    const ADA = { userId: "u-ada", clientUserId: "cu-ada", name: "Ada", avatarUrl: null };
-    mock.handoverAnswer = () => Promise.resolve([ADA]);
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
-    expect(mock.assignDialog.current?.candidates).toEqual([ADA]);
+  // Whom to hand it to is the organization's members, read with the person's own Zerops token.
+  it("reads the organization's members once its picker opens, never on load, and lists them by person", () => {
+    mock.members = { status: "ready", members: [EVA] };
+    mountHeld(true);
+    expect(mock.demanded).toEqual([]);
+    openAssign();
+    expect(mock.demanded).toContain("organizationMembers:org-acme");
+    expect(mock.assignDialog.current?.candidates).toEqual([{ userId: "u-eva", name: "Eva" }]);
     expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
   });
 
   it("says it reads the organization until its people are there to pick", () => {
-    mock.handoverAnswer = () => new Promise(() => {});
-    mount();
+    mountHeld(true);
     openAssign();
     expect(mock.assignDialog.current?.readingOrganization).toBe("Acme");
   });
 
-  it("says it could not read the organization's people, and asks again on Try again", async () => {
-    mock.handoverAnswer = () => Promise.reject(new Error("refused"));
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
+  it("says it could not read the organization's people, and asks again on Try again", () => {
+    mock.members = { status: "failed", members: [] };
+    mountHeld(true);
+    openAssign();
     expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
-    await act(async () => {
+    act(() => {
       mock.assignDialog.current!.readFailed!.onReadAgain();
     });
-    expect(mock.handoverAsked).toEqual([FEN.project.id, FEN.project.id]);
-  });
-
-  it("says HQ refused to list them, and asks nothing again", async () => {
-    mock.handoverAnswer = () =>
-      Promise.reject({ outcome: "definitive-refusal", message: "HQ refused." });
-    mount();
-    await act(async () => {
-      verbs(FEN)
-        .find((verb) => verb.id === "assign")!
-        .onSelect();
-    });
-    expect(mock.assignDialog.current?.readRefused?.organization).toBe("Acme");
-    expect(mock.assignDialog.current?.readFailed).toBeUndefined();
-    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
-  });
-
-  it("says it could not read them where there is no HQ to ask, never reading forever", () => {
-    mock.noAccountData = true;
-    mount();
-    openAssign();
-    expect(mock.assignDialog.current?.readingOrganization).toBeUndefined();
-    expect(mock.assignDialog.current?.readFailed?.organization).toBe("Acme");
+    expect(mock.retried).toEqual([{ family: "organizationMembers", ownerId: "org-acme" }]);
   });
 
   const answered = (progress: unknown, evidence: string | null = null) => ({
@@ -975,66 +989,61 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 
   it("says a refused hand-over's reason in the dialog, which stays open", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered({ stage: "refused", reason: "Zerops refused the hand-over." }),
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "refused", reason: "HQ refused the hand-over." }),
     );
-    mount();
+    mountHeld(true);
     openAssign();
     expect(mock.assignDialog.current).toMatchObject({ pending: false, error: null });
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
-    expect(mock.assignMateOwner).toHaveBeenCalledWith({
-      kind: "assign-mate-owner",
+    expect(mock.handOverMate).toHaveBeenCalledWith({
+      kind: "hand-over-mate",
       orgId: "org-acme",
       projectId: FEN.project.id,
-      clientUserId: "cu-eva",
+      ownerUserId: "u-eva",
     });
     expect(mock.assignDialog.current).toMatchObject({
       pending: false,
-      error: "Zerops refused the hand-over.",
+      error: "HQ refused the hand-over.",
     });
     // Nothing changed hands: the grant is not asked again.
     expect(mock.invalidated).toEqual([]);
   });
 
-  // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
-  // the project's grants again — never only after the next round.
-  it("asks the access grant to read the projects again once the platform takes it", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
+  // HQ stopped part way: its owner may have moved already, so the grants are read again.
+  it("names the phase HQ stopped the hand-over at in the dialog, and reads the grants again", async () => {
+    const stopped =
+      "The hand-over stopped while installing its new key (unavailable). Hand it over again to finish.";
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "refused", reason: stopped, code: "handover_unfinished" }),
     );
-    mount();
+    mountHeld(true);
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
+    expect(mock.assignDialog.current).toMatchObject({ pending: false, error: stopped });
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
-  // F23 (e2e, 2026-10-03): a Mate has one OWNER. A hand over its previous owner still holds is
-  // not complete, and says so; the first write landed, so the grant is read again.
-  it("says the hand over is not complete where its previous owner keeps it, and reads the grants again", async () => {
-    mock.assignMateOwner.mockResolvedValue(
-      answered(
-        { stage: "done", operationId: FEN.project.id, outcome: "failed" },
-        "It was handed over, but its previous owner still owns it too: Zerops refused it.",
-      ),
+  // F11: the person who handed a Mate over sees its new owner at once — the grant's round reads
+  // the project's grants again — never only after the next round.
+  it("asks the access grant to read the projects again once the platform takes it", async () => {
+    mock.handOverMate.mockResolvedValue(
+      answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }),
     );
-    mount();
+    mountHeld(true);
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
-    });
-    expect(mock.assignDialog.current).toMatchObject({
-      pending: false,
-      error: "It was handed over, but its previous owner still owns it too: Zerops refused it.",
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.invalidated).toEqual([{ topic: "access", change: "grants-written" }]);
   });
 
   it("says a hand-over it could not tell landed, and reads the grants again", async () => {
-    mock.assignMateOwner.mockResolvedValue(
+    mock.handOverMate.mockResolvedValue(
       answered({
         stage: "unresolved",
         operationId: null,
@@ -1042,10 +1051,10 @@ describe("useMateActions — Hand this Mate over", () => {
         nextAction: "Check who owns the Mate, then hand it over again",
       }),
     );
-    mount();
+    mountHeld(true);
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.assignDialog.current).toMatchObject({
       pending: false,
@@ -1056,15 +1065,15 @@ describe("useMateActions — Hand this Mate over", () => {
 
   it("closes once the platform takes it", async () => {
     let answer: (value: unknown) => void = () => {};
-    mock.assignMateOwner.mockReturnValue(
+    mock.handOverMate.mockReturnValue(
       new Promise((resolve) => {
         answer = resolve;
       }),
     );
-    mount();
+    mountHeld(true);
     openAssign();
     await act(async () => {
-      mock.assignDialog.current!.onSubmit("cu-eva");
+      mock.assignDialog.current!.onSubmit("u-eva");
     });
     expect(mock.assignDialog.current).toMatchObject({ pending: true, error: null });
     mock.assignDialog.current = null;
@@ -1072,7 +1081,7 @@ describe("useMateActions — Hand this Mate over", () => {
       answer(answered({ stage: "done", operationId: FEN.project.id, outcome: "succeeded" }));
     });
     act(() => {
-      mounted[0]!.update(<Probe />);
+      mounted.at(-1)!.update(<Probe />);
     });
     expect(mock.assignDialog.current).toBeNull();
   });
@@ -2303,17 +2312,21 @@ const menuAccessCases: ReadonlyArray<{
   person: { readonly role: string; readonly grants?: Readonly<Record<string, string>> };
   actions: ReadonlyArray<string>;
   recordWritable: boolean;
+  /** HQ's word on whether this person may hand the Mate over (`mayHandOver`). */
+  handOver?: true;
 }> = [
   {
     name: "org OWNER",
     person: { role: "OWNER" },
     recordWritable: true,
+    handOver: true,
     actions: ["rename", "face", "assign", "move", "delete"],
   },
   {
     name: "org ADMIN",
     person: { role: "ADMIN" },
     recordWritable: true,
+    handOver: true,
     actions: ["rename", "face", "assign", "move", "delete"],
   },
   {
@@ -2373,7 +2386,7 @@ describe("B: Mate menu access", () => {
         userRoles: grant === undefined ? [] : [{ clientUserId: "member-ada", roleCode: grant }],
       },
     };
-    mount();
+    mountHeld(row.handOver === true, [candidate]);
     const html = renderToStaticMarkup(
       <Menu>
         <MateMenuItems

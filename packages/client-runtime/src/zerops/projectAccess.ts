@@ -10,8 +10,8 @@
  * with `userRoles`, or `PUT /project/{id}` right after an import, `writeNewProjectAccess`). A change
  * to a project that exists is written on each person's own list (`PUT /client-user/{id}/roles`),
  * never on the project: `PUT /project/{id}` with `userRoles` replaces the whole list, cannot name an
- * integration token and drops a Mate key's own grant (measured 2026-10-03, `zerops/api.ts`
- * `setProjectMemberRole`).
+ * integration token and drops a Mate key's own grant (measured 2026-10-03,
+ * `f7-handover-probe.json`).
  *
  * Pure: the lists arrive read.
  *

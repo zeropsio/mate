@@ -33,7 +33,6 @@ import { creationWritesExecutor } from "./creationWrites.ts";
 import { mateDeployExecutor } from "./mateDeploy.ts";
 import { mateRestartOwner } from "./mateRestart.ts";
 import {
-  assignMateOwnerExecutor,
   renameProjectExecutor,
   startProjectExecutor,
   updateProjectTagsExecutor,
@@ -66,7 +65,6 @@ type ZeropsOperationsClient = Pick<
   | "startProject"
   | "fetchProject"
   | "writeProject"
-  | "setProjectMemberRole"
   | "createProject"
   | "listClientProjects"
   | "importProject"
@@ -188,10 +186,6 @@ export function makeZeropsExecutor(input: {
     const tags = makeProjectTagWriter({ source: client, locks: tagLocks });
     const rename = renameProjectExecutor(tags);
     const retag = updateProjectTagsExecutor(tags);
-    const assign = assignMateOwnerExecutor({
-      setProjectMemberRole: (input) => client.setProjectMemberRole(input),
-      fetchProject: (projectId) => client.fetchProject(projectId),
-    });
     const vault = vaultWriteExecutor({
       addProjectVariable: (projectId, write) => client.addProjectVariable(projectId, write),
       updateProjectVariable: (id, write) => client.updateProjectVariable(id, write),
@@ -288,9 +282,6 @@ export function makeZeropsExecutor(input: {
               return rename(requestId, intent);
             case "update-project-tags":
               return retag(requestId, intent);
-            case "assign-mate-owner":
-            case "finish-mate-handover":
-              return assign(requestId, intent);
             case "create-project":
               return create(requestId, intent);
             case "import-project":
@@ -404,7 +395,6 @@ export function makeZeropsExecutor(input: {
         writeMateFlag: (id) => source.writeMateFlag(id, check),
         startProject: (id) => source.startProject(id, check),
         writeProject: (project, record) => source.writeProject(project, record, check),
-        setProjectMemberRole: (input) => source.setProjectMemberRole(input, check),
         createProject: (input, signal) => source.createProject(input, signal, check),
         importProject: (id, yaml, signal) => source.importProject(id, yaml, signal, check),
         importServicesIntoProject: (id, yaml, signal) =>

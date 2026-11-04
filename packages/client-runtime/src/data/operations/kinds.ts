@@ -16,7 +16,6 @@ import { MATE_ENGINE_KINDS } from "./mateEngine.ts";
  * @module data/operations/kinds
  */
 import type { OperationIntent } from "../model.ts";
-import { assignMateOwner, finishMateHandover } from "./assignMateOwner.ts";
 import { createProject } from "./createProject.ts";
 import { changeComment } from "./changeComment.ts";
 import { deleteProject } from "./deleteProject.ts";
@@ -90,8 +89,6 @@ export const OPERATION_KINDS = defineOperationKinds([
   enableZeropsMate,
   renameProject,
   updateProjectTags,
-  assignMateOwner,
-  finishMateHandover,
   moveProject,
   ...MATE_DELETION_KINDS,
   createProject,

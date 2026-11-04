@@ -18,6 +18,7 @@ const person = (fields: {
   mine?: boolean;
   role?: string;
   mayWrite?: boolean;
+  mayHandOver?: boolean;
 }) => ({
   role: "DEVELOPER",
   mayWrite: true,
@@ -131,6 +132,41 @@ describe("hqProjectPeople", () => {
     ]);
     expect(people(next).ada?.mine).toBe(true);
     expect(people(read).bob?.mine).toBe(false);
+  });
+  it("a Mate is offered for hand-over only where HQ says the reader may, and its key is refused only where HQ says so", () => {
+    const refused: Row = {
+      ...placement("ada", { ownerUserId: "u-jan", waitsOnViewer: false, mayHandOver: true }, {}),
+      revision: { ...revision, revision: 2 },
+    };
+    const next = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          {
+            ...refused,
+            value: {
+              ...(refused.value as object),
+              mate: {
+                face: "sleep",
+                madeBy: null,
+                standupRequestedBy: null,
+                closedOff: true,
+                setupMarker: true,
+                keyRefused: true,
+              },
+            } as never,
+          },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(people(next).ada).toMatchObject({ mayHandOver: true, keyRefused: true });
+    // HQ said neither: nothing is offered and nothing is refused.
+    expect(people(next).bob?.mayHandOver).not.toBe(true);
+    expect(people(next).bob?.keyRefused).not.toBe(true);
   });
   it("a Mate the reader may not operate says nothing of its sign-in, which HQ does not tell them", () => {
     expect(people(read).watched).toMatchObject({ signedInNow: undefined, everSignedIn: undefined });

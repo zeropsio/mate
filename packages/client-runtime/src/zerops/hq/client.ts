@@ -162,6 +162,8 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly automated?: boolean | undefined;
   /** The task an automated Mate is on, or none; absent from an older HQ. */
   readonly task?: HqNavigationMateTask | null | undefined;
+  /** Zerops refused its key and HQ dropped it, until a hand-over admits a new one. */
+  readonly keyRefused?: true | undefined;
 }
 
 /**
@@ -419,6 +421,12 @@ export interface HqApi {
   readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
+  /**
+   * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
+   * project's `OWNER` override and replaces its key, with the person's own access token. A stop part
+   * way is HQ's `409 handover_unfinished`, its words naming the phase; asking again finishes it.
+   */
+  readonly handOver: (projectId: string, ownerUserId: string) => Promise<void>;
   /**
    * An environment's deploy token, minted by the person's own client, kept by HQ (`PUT
    * /api/apps/:appId/environments/:name/deploy-token`); the structure says only that it holds one.
@@ -695,6 +703,7 @@ function said(text: string): {
   readonly code?: unknown;
   readonly problems?: unknown;
   readonly reason?: unknown;
+  readonly phase?: unknown;
   readonly message?: unknown;
   readonly repository?: unknown;
   readonly applicationName?: unknown;
@@ -757,6 +766,7 @@ async function errorOf(response: Response, gitSetup = false): Promise<HqError> {
       hqRefusalWords({
         code,
         reason,
+        ...(typeof body.phase === "string" ? { phase: body.phase } : {}),
         gitSetup,
         ...(isRemoteRefusal(body) ? { remote: body } : {}),
       }),
@@ -1395,6 +1405,13 @@ export function makeHqApi(input: {
             (project) => project.projectId === attach.projectId && project.kind === attach.kind,
           ) === true,
       ),
+    handOver: async (projectId, ownerUserId) => {
+      await authorized(
+        `/api/mates/${encodeURIComponent(projectId)}/hand-over`,
+        { method: "POST", body: await withAccess({ ownerUserId }) },
+        true,
+      );
+    },
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
         `${environmentPath(appId, environment)}/deploy-token`,

@@ -17,8 +17,6 @@ import {
   HqPersonFacts,
   HqNavigationPerson,
   HqNavigationProject,
-  HqHandoverCandidatesMessage,
-  HqHandoverCandidatesError,
 } from "./hqStream.ts";
 
 it.each([
@@ -198,9 +196,7 @@ it.each(["forbidden", "zerops_refused", "scope_not_found"])(
 
 const readFacts = Schema.decodeUnknownSync(HqPersonFacts);
 const readPerson = Schema.decodeUnknownSync(HqNavigationPerson);
-const readCandidates = Schema.decodeUnknownSync(HqHandoverCandidatesMessage);
-const readCandidatesError = Schema.decodeUnknownSync(HqHandoverCandidatesError);
-it("defines person ownership separately from who the Mate waits on, and correlated candidates", () => {
+it("defines person ownership separately from who the Mate waits on", () => {
   const facts = {
     role: "OWNER",
     mayWrite: true,
@@ -212,20 +208,6 @@ it("defines person ownership separately from who the Mate waits on, and correlat
   expect(readFacts(facts)).toEqual(facts);
   const person = { name: "Ada", clientUserId: "client-user", avatarUrl: null };
   expect(readPerson(person)).toEqual(person);
-  const request = { type: "handover-candidates", requestId: "request", projectId: "project" };
-  expect(readRequest(request)).toEqual(request);
-  const reply = { ...request, candidates: [{ ...person, userId: "ada" }] };
-  expect(readCandidates(reply)).toEqual(reply);
-  for (const disposition of ["refused", "transient"]) {
-    const failure = {
-      ...request,
-      type: "handover-candidates-error",
-      code: "unavailable",
-      reason: null,
-      disposition,
-    };
-    expect(readCandidatesError(failure)).toEqual(failure);
-  }
 });
 
 it.each(

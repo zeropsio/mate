@@ -5,6 +5,8 @@
  * owner HQ names no person record of is drawn as nobody's. A project HQ removed, or withheld, is in
  * none of it. To a viewer who may not operate a Mate (`mayWrite` false: HQ's `observe_mate`), HQ
  * sends no signers and no owner it read off the Mate: empty there is withheld, never "nobody".
+ * Whether the reader may hand a Mate over, and whether Zerops refused its key — the case a
+ * hand-over answers — are HQ's words too (`mayHandOver`, `keyRefused`); no role is computed here.
  *
  * @module data/projections/hqProjectPeople
  */
@@ -35,6 +37,10 @@ export interface HqProjectPeople {
   readonly waitsOnViewer: boolean | undefined;
   /** The reader may work in it, as HQ says (`mayWrite`); `undefined` where HQ does not say. */
   readonly mayWrite?: boolean | undefined;
+  /** The reader may hand it over, as HQ says (`mayHandOver`); `undefined` where HQ does not say. */
+  readonly mayHandOver?: boolean | undefined;
+  /** Zerops refused its key and HQ admitted none since: it cannot connect until handed over. */
+  readonly keyRefused?: true | undefined;
   /**
    * Who is signed in to each login now, by login id: whose the composer is. `undefined` for a Mate
    * the reader may not operate: HQ sends them no overview of it, and its empty record is no fact.
@@ -69,6 +75,8 @@ function peopleOf(
     mine: person?.mine,
     waitsOnViewer: person?.waitsOnViewer,
     mayWrite: person?.mayWrite,
+    mayHandOver: person?.mayHandOver,
+    keyRefused: placement.mate?.keyRefused,
     signedInNow: withheld ? undefined : signedInNow,
     everSignedIn: withheld ? undefined : everSignedIn,
   };

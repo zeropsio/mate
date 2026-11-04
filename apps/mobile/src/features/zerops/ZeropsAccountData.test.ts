@@ -59,7 +59,6 @@ function mountAccount() {
         renewHeld: () => {},
         showHq: unexpectedObservation,
         moveOffers: unexpectedObservation,
-        handoverCandidates: unexpectedObservation,
         compare: unexpectedObservation,
         seen: unexpectedObservation,
         readDetail: unexpectedObservation,

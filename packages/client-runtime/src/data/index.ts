@@ -14,7 +14,7 @@ export {
 } from "./account.ts";
 export { makeMateAttentionWire, type MateAttentionWire } from "./adapters/mateAttention.ts";
 export { makeHqWire } from "./adapters/hqWire.ts";
-export type { HqHandoverCandidates, HqMoveOffers, HqWire } from "./adapters/hq.ts";
+export type { HqMoveOffers, HqWire } from "./adapters/hq.ts";
 export type {
   HqAppValue,
   HqOrganizationValue,

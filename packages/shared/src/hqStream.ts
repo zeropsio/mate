@@ -128,11 +128,6 @@ export const HqStreamRequest = Schema.Union([
     projectId: Schema.String,
   }),
   Schema.Struct({
-    type: Schema.Literal("handover-candidates"),
-    requestId: Schema.String,
-    projectId: Schema.String,
-  }),
-  Schema.Struct({
     type: Schema.Literal("compare"),
     requestId: Schema.String,
     appId: Schema.String,
@@ -201,25 +196,6 @@ export const HqNavigationPerson = Schema.Struct({
   avatarUrl: Schema.NullOr(Schema.String),
 });
 export type HqNavigationPerson = typeof HqNavigationPerson.Type;
-export const HqHandoverCandidate = Schema.Struct({
-  userId: Schema.String,
-  ...HqNavigationPerson.fields,
-});
-export type HqHandoverCandidate = typeof HqHandoverCandidate.Type;
-export const HqHandoverCandidatesMessage = Schema.Struct({
-  type: Schema.Literal("handover-candidates"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  candidates: Schema.Array(HqHandoverCandidate),
-});
-export const HqHandoverCandidatesError = Schema.Struct({
-  type: Schema.Literal("handover-candidates-error"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  code: Schema.String,
-  reason: Schema.NullOr(Schema.String),
-  disposition: Schema.Literals(["refused", "transient"]),
-});
 /** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
 export const HqCompareMessage = Schema.Struct({
   type: Schema.Literal("compare"),
@@ -243,8 +219,6 @@ export const HqStreamMessage = Schema.Union([
   HqScopeReady,
   HqMoveOffersMessage,
   HqMoveOffersError,
-  HqHandoverCandidatesMessage,
-  HqHandoverCandidatesError,
   HqCompareMessage,
   HqCompareError,
   Schema.Struct({ type: Schema.Literal("ping") }),
@@ -276,6 +250,8 @@ export const HqPersonFacts = Schema.Struct({
   /** This Mate's person's registered Chief; absent from an older HQ. */
   chiefProjectId: Schema.optionalKey(Schema.NullOr(Schema.String)),
   waitsOnViewer: Schema.Boolean,
+  /** The viewer may hand the Mate over (HQ's _Hand-over_); absent from an older HQ: they may not. */
+  mayHandOver: Schema.optionalKey(Schema.Boolean),
   /** Today's overview does not prove result identities: unknown until source attention arrives. */
   unseen: Schema.NullOr(Schema.Int),
   /** The project is a Chief: the viewer's own, or another person's. Absent from an older HQ. */
@@ -339,6 +315,11 @@ export const HqNavigationMate = Schema.Struct({
   importProcessId: Schema.optionalKey(Schema.String),
   /** An automated Mate (`MateState.automated`); absent from an older HQ: not one. */
   automated: Schema.optionalKey(Schema.Boolean),
+  /**
+   * Zerops refused the Mate's key and HQ has admitted none since: it cannot connect until somebody
+   * hands it over. Present only as `true`.
+   */
+  keyRefused: Schema.optionalKey(Schema.Literal(true)),
   /** The task an automated Mate is on, or none: what its row names while it works. */
   task: Schema.optionalKey(Schema.NullOr(HqNavigationMateTask)),
 });

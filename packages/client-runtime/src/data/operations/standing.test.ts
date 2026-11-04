@@ -123,14 +123,13 @@ describe("holdStandingDemands", () => {
   it.effect("reads a held project's own row again once our own write to it is answered", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
-      let roles = [{ clientUserId: "cu-1", roleCode: "OWNER" }];
+      let name = "Cyd";
       const own = () => ({
         id: "p1",
         clientId: ORG,
-        name: "Cyd",
+        name,
         status: "ACTIVE",
         lastUpdate: "2026-10-06T10:00:00Z",
-        userRoles: roles,
       });
       const fixture = fixtureWire((request: WireRequest) =>
         Effect.succeed(
@@ -155,16 +154,17 @@ describe("holdStandingDemands", () => {
       yield* settle;
       expect(ownReads()).toHaveLength(1);
 
-      const handOver = {
-        kind: "assign-mate-owner",
+      const rename = {
+        kind: "rename-project",
         orgId: ORG,
         projectId: "p1",
-        clientUserId: "cu-dev",
+        name: "Cyd Shop",
+        from: "Cyd",
       } as OperationIntent;
       const executor: OperationExecutor = {
         submit: (requestId) =>
           Effect.sync(() => {
-            roles = [{ clientUserId: "cu-dev", roleCode: "OWNER" }];
+            name = "Cyd Shop";
             return {
               requestId,
               operationId: "p1",
@@ -185,13 +185,13 @@ describe("holdStandingDemands", () => {
         store,
         executors: { zerops: executor },
         makeId: () => "request-1",
-      }).submit(handOver);
+      }).submit(rename);
       yield* settle;
 
       expect(ownReads()).toHaveLength(2);
       expect(readsOfState(store.state()).fact("project", "p1")).toMatchObject({
         kind: "known",
-        value: { userRoles: [{ clientUserId: "cu-dev", roleCode: "OWNER" }] },
+        value: { name: "Cyd Shop" },
       });
       expect(
         operationProgressOf(OPERATION_KINDS).derive(readsOfState(store.state()), requestId),
