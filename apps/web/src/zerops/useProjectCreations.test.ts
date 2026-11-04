@@ -62,7 +62,6 @@ function mountedAccount(
     retry: unused,
     showHq: unused,
     moveOffers: unused,
-    handoverCandidates: unused,
     readDetail: unused,
     revalidate: unused,
     retryDetail: unused,

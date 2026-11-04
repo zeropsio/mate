@@ -75,27 +75,22 @@ export function resolveMateProjectRole(input: {
  * - `rename` — renaming the Mate's project, whose name is the Mate's (D3): a
  *   `PUT /project/{id}`, which needs effective `OWNER` or `ADMIN` there as
  *   deleting it does (measured: tags and rename need effective `OWNER`/`ADMIN`).
- * - `assign` — handing a Mate to somebody else, which writes a per-project
- *   role override and is therefore an org `OWNER`/`ADMIN` verb only (D11).
- *   The Mate's own owner cannot give it away; being able to would let anyone
- *   hand their Mate — and whatever is in its conversation — to anyone.
+ *
+ * Handing a Mate over is HQ's (`mayHandOver`), never decided here.
  */
 export interface MateVerbs {
   readonly delete: boolean;
   readonly rename: boolean;
-  readonly assign: boolean;
 }
 
 export function resolveMateVerbs(input: {
   readonly project: MateAccessProject;
   readonly viewer: MateAccessViewer;
 }): MateVerbs {
-  const orgAdmin = roleAtLeast(input.viewer.roleCode, "ADMIN");
   const projectAdmin = roleAtLeast(resolveMateProjectRole(input), "ADMIN");
   return {
     delete: projectAdmin,
     rename: projectAdmin,
-    assign: orgAdmin && input.project.clientId === input.viewer.id,
   };
 }
 
@@ -251,27 +246,4 @@ export function isTokenMember(member: {
   readonly user?: { readonly email?: string | undefined } | undefined;
 }): boolean {
   return TOKEN_EMAIL.test(member.user?.email ?? "");
-}
-
-/**
- * Handing a Mate over: one person's project role list with this project's
- * role set — or, `null`, gone from it — and their every other project's
- * untouched (guide 0.8, D11).
- *
- * `PUT /client-user/{id}/roles` replaces the person's list wholesale, so the
- * caller sends the whole thing; a blind write would drop the person's role on
- * every other project. Measured both ways: the same call, lowered, takes a
- * Mate away, and a list without the project drops it alone (F7, 2026-10-03).
- */
-export function withMateProjectRole(
-  projectRoleList:
-    | ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }>
-    | undefined,
-  projectId: string,
-  roleCode: ZeropsOrgRole | null,
-): ReadonlyArray<{ readonly projectId: string; readonly roleCode: string }> {
-  const others = (projectRoleList ?? [])
-    .filter((entry) => entry.projectId !== projectId)
-    .map((entry) => ({ projectId: entry.projectId, roleCode: entry.roleCode }));
-  return roleCode === null ? others : [...others, { projectId, roleCode }];
 }

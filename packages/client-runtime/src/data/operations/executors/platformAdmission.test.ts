@@ -14,9 +14,6 @@ describe("operation admission from the account store", () => {
     { kind: "delete-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: false },
     { kind: "rename-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: false },
     { kind: "start-project", orgRole: "ADMIN", projectRole: "BASIC_USER", allowed: true },
-    { kind: "assign-mate-owner", orgRole: "NO_ACCESS", projectRole: "OWNER", allowed: false },
-    { kind: "finish-mate-handover", orgRole: "NO_ACCESS", projectRole: "OWNER", allowed: false },
-    { kind: "finish-mate-handover", orgRole: "ADMIN", projectRole: "ADMIN", allowed: true },
   ] as const)("$kind requires its actual project or organization role", (entry) =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -32,22 +29,7 @@ describe("operation admission from the account store", () => {
               projectId: "p",
               name: "New name",
             }
-          : entry.kind === "assign-mate-owner"
-            ? {
-                kind: entry.kind,
-                orgId: "org",
-                projectId: "p",
-                clientUserId: "ada",
-              }
-            : entry.kind === "finish-mate-handover"
-              ? {
-                  kind: entry.kind,
-                  orgId: "org",
-                  projectId: "p",
-                  clientUserId: "ada",
-                  previousOwnerIds: ["bob"],
-                }
-              : { kind: entry.kind, orgId: "org", projectId: "p" };
+          : { kind: entry.kind, orgId: "org", projectId: "p" };
       const result = yield* Effect.result(
         admitPlatformOperation({
           intent,

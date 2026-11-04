@@ -232,8 +232,9 @@ export function makeFakeZeropsRest(): FakeZeropsRest {
       projects.set(projectId!, updated);
       return json(200, updated);
     }
-    // A member's project roles, read and written whole (`setProjectMemberRole`): each project's
-    // `userRoles` names the member with the role the list gives it there, or not at all.
+    // A member's project roles, read and written whole (`readMemberProjectRoles`,
+    // `writeMemberProjectRoles`): each project's `userRoles` names the member with the role the
+    // list gives it there, or not at all.
     const memberRoles = /^(GET|PUT) \/client-user\/([^/]+)\/roles$/.exec(request.route);
     if (memberRoles !== null) {
       const [, method, clientUserId] = memberRoles;

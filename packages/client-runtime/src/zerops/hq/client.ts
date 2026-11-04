@@ -162,6 +162,8 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly automated?: boolean | undefined;
   /** The task an automated Mate is on, or none; absent from an older HQ. */
   readonly task?: HqNavigationMateTask | null | undefined;
+  /** Zerops refused its key and HQ dropped it, until a hand-over admits a new one. */
+  readonly keyRefused?: true | undefined;
 }
 
 /**

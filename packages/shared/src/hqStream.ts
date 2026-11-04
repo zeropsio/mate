@@ -128,11 +128,6 @@ export const HqStreamRequest = Schema.Union([
     projectId: Schema.String,
   }),
   Schema.Struct({
-    type: Schema.Literal("handover-candidates"),
-    requestId: Schema.String,
-    projectId: Schema.String,
-  }),
-  Schema.Struct({
     type: Schema.Literal("compare"),
     requestId: Schema.String,
     appId: Schema.String,
@@ -201,25 +196,6 @@ export const HqNavigationPerson = Schema.Struct({
   avatarUrl: Schema.NullOr(Schema.String),
 });
 export type HqNavigationPerson = typeof HqNavigationPerson.Type;
-export const HqHandoverCandidate = Schema.Struct({
-  userId: Schema.String,
-  ...HqNavigationPerson.fields,
-});
-export type HqHandoverCandidate = typeof HqHandoverCandidate.Type;
-export const HqHandoverCandidatesMessage = Schema.Struct({
-  type: Schema.Literal("handover-candidates"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  candidates: Schema.Array(HqHandoverCandidate),
-});
-export const HqHandoverCandidatesError = Schema.Struct({
-  type: Schema.Literal("handover-candidates-error"),
-  requestId: Schema.String,
-  projectId: Schema.String,
-  code: Schema.String,
-  reason: Schema.NullOr(Schema.String),
-  disposition: Schema.Literals(["refused", "transient"]),
-});
 /** On-demand read; the result has the same shape as Changes.compare. Never broadcast. */
 export const HqCompareMessage = Schema.Struct({
   type: Schema.Literal("compare"),
@@ -243,8 +219,6 @@ export const HqStreamMessage = Schema.Union([
   HqScopeReady,
   HqMoveOffersMessage,
   HqMoveOffersError,
-  HqHandoverCandidatesMessage,
-  HqHandoverCandidatesError,
   HqCompareMessage,
   HqCompareError,
   Schema.Struct({ type: Schema.Literal("ping") }),

@@ -10,6 +10,7 @@ import { Atom } from "effect/reactivity";
 import {
   listedProjectAtom,
   hqMateAnsweredAtom,
+  shownHqProjectPeopleAtom,
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
   mateArrival,
@@ -170,6 +171,7 @@ import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironment
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
+import { HAND_OVER_VERB, mateKeyRefused } from "~/zerops/mateHandOver.logic";
 import { SidebarInset } from "../ui/sidebar";
 import { WorkspacePageHeader } from "../WorkspacePageHeader";
 import { PanelLayoutControls } from "../chat/PanelLayoutControls";
@@ -953,6 +955,39 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // are read, else HQ's last word of it.
   const standInSubject = liveActivity?.subject ?? toldActivity?.subject ?? null;
 
+  // A Mate whose key Zerops refused cannot connect until somebody hands it over (HQ's
+  // `keyRefused`): its page says so, its hand-over the primary action for whoever HQ says may.
+  const projectPerson = useAtomValue(shownHqProjectPeopleAtom)[projectId];
+  const keyRefused = shown === undefined ? mateKeyRefused(projectPerson, named.name) : null;
+  const openHandOver = candidate === undefined ? undefined : mateActions.handOver(candidate);
+  const keyRefusedView =
+    keyRefused === null ? null : (
+      <MateEmptyStateView
+        mate={named}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+        coming={{
+          kind: "unreachable",
+          face: "sleep",
+          severity: "danger",
+          headline: keyRefused.headline,
+          sentence: keyRefused.sentence,
+          below: keyRefused.handOver ? (
+            <Button
+              disabled={openHandOver === undefined}
+              onClick={openHandOver}
+              size="md"
+              variant="primary"
+            >
+              {HAND_OVER_VERB}
+            </Button>
+          ) : null,
+        }}
+      />
+    );
+
   const chiefRefused =
     page?.kind === "unreachable" &&
     page.reachability?.kind === "refused-role" &&
@@ -983,14 +1018,20 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         }}
       />
     ) : null;
-  if (chiefRegistration === null && detailFailure !== null && !projectUnavailable && !chiefRefused)
+  if (
+    chiefRegistration === null &&
+    keyRefusedView === null &&
+    detailFailure !== null &&
+    !projectUnavailable &&
+    !chiefRefused
+  )
     return <MateDetailFailure mate={mate} message={detailFailure.message} again={readAgain} />;
   return (
     // The person's Chief wears the product's mark here as in its conversation (`chief.ts`).
     <MateFaceAsMark.Provider value={isChief}>
       <MateComingFrame
         composer={
-          chiefRegistration === null && standsInComposer ? (
+          chiefRegistration === null && keyRefusedView === null && standsInComposer ? (
             <ConversationFooterStandIn draft={draft} />
           ) : null
         }
@@ -1009,6 +1050,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
         }
       >
         {chiefRegistration ??
+          keyRefusedView ??
           (opening ? (
             <ConversationOpeningStage
               ready={false}

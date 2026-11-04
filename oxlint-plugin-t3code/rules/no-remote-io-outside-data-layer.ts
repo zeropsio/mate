@@ -183,7 +183,6 @@ export const ZEROPS_CLIENT_VERBS = [
   "revealServiceVariable",
   "revokeSession",
   "setIntegrationTokenProjects",
-  "setProjectMemberRole",
   "startProject",
   "startService",
   "stopService",

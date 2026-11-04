@@ -7,7 +7,12 @@ import {
   creationPressStoreAtom,
   makeAccountStore,
 } from "@t3tools/client-runtime/data";
-import { liveProjects, projectValue, zeropsVersion } from "@t3tools/client-runtime/data/fixtures";
+import {
+  liveProjects,
+  projectValue,
+  seedHqNavigation,
+  zeropsVersion,
+} from "@t3tools/client-runtime/data/fixtures";
 import { hqMateScope, projectsScope } from "@t3tools/client-runtime/data";
 import type { CandidateRow } from "@t3tools/client-runtime/zerops/projections";
 import type { Shown } from "@t3tools/client-runtime/zerops/knowledge";
@@ -131,6 +136,8 @@ const app = vi.hoisted(() => ({
   refresh: vi.fn(),
   handingOver: vi.fn(),
   cancelHandOver: vi.fn(),
+  /** The Mate's hand-over dialog, opened from its page. */
+  handOverOpened: vi.fn(),
   link: { key: undefined, environmentId: undefined, reachability: null } as unknown,
   listing: { state: "unread", waitingFor: null } as unknown,
   threads: [] as Array<unknown>,
@@ -236,7 +243,12 @@ vi.mock("~/zerops/useZeropsCandidates", () => ({
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
-  useMateActions: () => ({ actionsFor: () => [], busyKey: null, trouble: app.actionTrouble }),
+  useMateActions: () => ({
+    actionsFor: () => [],
+    busyKey: null,
+    trouble: app.actionTrouble,
+    handOver: () => app.handOverOpened,
+  }),
 }));
 vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => null }));
 vi.mock("~/zerops/newMate", () => ({
@@ -527,6 +539,7 @@ beforeEach(() => {
   app.refresh.mockClear();
   app.handingOver.mockReset();
   app.cancelHandOver.mockReset();
+  app.handOverOpened.mockReset();
   app.listing = listingOf([QUINN]);
   app.actionTrouble = null;
   app.setupFailure = undefined;
@@ -946,6 +959,59 @@ describe("a Mate's own view while its link is made", () => {
 // conversation opens, and never a composer or a strip before who writes there is known. A Mate
 // coming up for the first time holds its composer back for its stand-up, and one that cannot be
 // opened has nothing to write to.
+// A Mate whose key Zerops refused never connects again by itself: HQ says so on its record
+// (`keyRefused`) and says who may hand it over (`mayHandOver`); its page offers that instead.
+describe("a Mate's own view where Zerops refused its key", () => {
+  const refusedKey = (mayHandOver: boolean) =>
+    seedHqNavigation(appAtomRegistry.get(creationPressStoreAtom)!, "org-1", {
+      structure: {
+        ungrouped: [{ projectId: PROJECT, name: "Quinn", mate: { face: "", keyRefused: true } }],
+        apps: [],
+      } as never,
+      person: {
+        role: "DEVELOPER",
+        mayWrite: true,
+        mine: false,
+        ownerUserId: null,
+        waitsOnViewer: false,
+        unseen: null,
+        mayHandOver,
+      },
+    });
+  // HQ's word is the app's registry's, read under its provider as the app mounts every page.
+  const openInApp = () => {
+    act(() => {
+      tree = create(
+        h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId: PROJECT })),
+      );
+    });
+  };
+
+  it("says its key was refused and offers Hand over this Mate as its one action, for whoever HQ says may", () => {
+    refusedKey(true);
+    openInApp();
+    expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
+    expect(buttons()).toEqual(["Hand over this Mate"]);
+    act(() => {
+      tree!.root
+        .findAllByType("button")
+        .find((node) => node.children.join("") === "Hand over this Mate")!
+        .props.onClick();
+    });
+    expect(app.handOverOpened).toHaveBeenCalledTimes(1);
+  });
+
+  it("says who can bring it back, offering nothing to whom HQ does not let hand it over", () => {
+    refusedKey(false);
+    openInApp();
+    expect(said()).toContain("Quinn can't connect: Zerops refused its key.");
+    expect(said()).toContain(
+      "It connects again once an owner or admin of the organization, or its owner, hands it over.",
+    );
+    expect(buttons()).not.toContain("Hand over this Mate");
+  });
+});
+
 describe("the footer in a Mate's own view", () => {
   const composer = () =>
     tree?.root.findAll((node) => typeof node.type === "string" && node.type === "textarea") ?? [];

@@ -4,7 +4,7 @@ import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
  * What can be done to a Mate, from wherever a Mate is listed.
  *
  * Nine verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*, *Finish
- * setup*, *Hand this Mate over*, *Change project or role*, *Leave the project*,
+ * setup*, *Hand over this Mate*, *Change project or role*, *Leave the project*,
  * *Delete {name}…* — and the server's version under them. Most lived inside
  * the projects screen's own row menu, wired to that page's state, so a
  * project's own page listed its Mates and could do nothing to any of them.
@@ -72,7 +72,7 @@ import { useMateComingOf } from "./useMenuMateReadings";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
 import type { HqMoveTo } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "./useHqOffers";
-import { useAccountDataOptional } from "./ZeropsAccountData";
+import { useAccountDataOptional, useDetailDemand } from "./ZeropsAccountData";
 import { useComposerDraftStore } from "../composerDraftStore";
 import {
   deriveZeropsRestartAction,
@@ -116,7 +116,13 @@ import {
 import { currentAccountEnvironments } from "./accountEnvironments";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
 import { resolveThreadRouteTarget } from "../threadRoutes";
-import { shownHqProjectPeopleAtom, type HqHandoverCandidates } from "@t3tools/client-runtime/data";
+import {
+  initialStream,
+  organizationMembers,
+  shownHqProjectPeopleAtom,
+  type MembersRead,
+} from "@t3tools/client-runtime/data";
+import { HAND_OVER_VERB, handOverCandidates, handOverOffered } from "./mateHandOver.logic";
 import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
@@ -166,6 +172,7 @@ import { useRenameProjects } from "./useRenameProjects";
 import { useAccountOperations } from "./accountOperations";
 import { useZeropsData } from "./zeropsDataContext";
 import { submitZeropsWrite, writeTrouble, type ZeropsWrite } from "./zeropsWrite";
+import { HQ_HANDOVER_UNFINISHED } from "@t3tools/client-runtime/zerops/hq";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** Which Mate a dialog is about, and which dialog it is. */
@@ -219,6 +226,16 @@ const faceRequests = Atom.family((key: string) =>
 const NO_FACE_REQUEST = Atom.make<FaceRequestIntent | null>(null);
 const EMPTY_FACE_ACTION = Atom.make(NO_FACE_ACTION);
 const UNPRESSED: DialogPress = { pending: false, error: null };
+const UNREAD_MEMBERS = Atom.make<MembersRead>({
+  fact: { kind: "unknown" },
+  coverage: "unknown",
+  stream: initialStream({ parent: null, mode: "sampled" }),
+  link: null,
+  members: [],
+  status: "loading",
+  settled: false,
+  refused: false,
+});
 
 export interface MateActions {
   /**
@@ -234,6 +251,11 @@ export interface MateActions {
   ) => ReadonlyArray<ZeropsMenuEntry>;
   /** Mounted once by the caller: rename, hand over, move. */
   readonly dialogs: ReactNode;
+  /**
+   * Opens the Mate's hand-over, for a surface that places the verb itself (a Mate whose key Zerops
+   * refused): `undefined` where HQ does not say this person may hand it over.
+   */
+  readonly handOver: (candidate: ZeropsCandidatePresentation) => (() => void) | undefined;
   /**
    * *Rename Mate* without its dialog, for a surface that renames in place:
    * the same validation and the same write. `undefined` where this person
@@ -483,38 +505,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [mateOffersOf],
   );
-  const askHandoverCandidates = useAccountDataOptional()?.handoverCandidates;
-  // Whom a Mate may be handed over to is HQ's answer, asked once its picker opens: a load asks
-  // nothing. HQ alone decides who may hand over and to whom; its refusal is a failed read.
-  const [handover, setHandover] = useState<{
-    readonly projectId: string;
-    readonly read:
-      | { readonly kind: "reading" }
-      | { readonly kind: "read"; readonly candidates: HqHandoverCandidates }
-      /** HQ refused it for good: its word, nothing asked again on its own. */
-      | { readonly kind: "refused" }
-      | { readonly kind: "failed" };
-  } | null>(null);
-  const askHandover = useCallback(
-    (projectId: string) => {
-      const isCurrent = captureAccountLifetime();
-      const attempt = ++choiceRead.current.attempt;
-      // No HQ to ask: the read has failed, never left reading.
-      if (askHandoverCandidates === undefined) {
-        setHandover({ projectId, read: { kind: "failed" } });
-        return;
-      }
-      setHandover({ projectId, read: { kind: "reading" } });
-      const settle = (read: NonNullable<typeof handover>["read"]) => {
-        if (!isCurrent() || attempt !== choiceRead.current.attempt) return;
-        setHandover((now) => (now?.projectId === projectId ? { projectId, read } : now));
-      };
-      askHandoverCandidates(projectId).then(
-        (candidates) => settle({ kind: "read", candidates }),
-        (fault: unknown) => settle({ kind: definitiveRefusal(fault) ? "refused" : "failed" }),
-      );
-    },
-    [askHandoverCandidates],
+  const account = useAccountDataOptional();
+  // Whom a Mate may be handed to: the organization's members as Zerops answers the person's own
+  // read, demanded while its picker is open. HQ alone decides who may hand over, and to whom.
+  const handingOver = dialog?.kind === "assign" ? activeOrganization : null;
+  useDetailDemand("organizationMembers", undefined, handingOver?.id ?? null);
+  const members = useProjection(
+    organizationMembers,
+    handingOver === null ? null : { orgId: handingOver.id, clientId: handingOver.id },
+    UNREAD_MEMBERS,
   );
 
   /** One write, with its busy key and its refusal, wherever it came from. */
@@ -648,23 +647,21 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   const platformVerbsOf = useCallback(
     (candidate: ZeropsCandidatePresentation) =>
       viewer === null || user === null
-        ? { delete: false, rename: false, assign: false }
+        ? { delete: false, rename: false }
         : resolveMateVerbs({ project: candidate.project, viewer }),
     [user, viewer],
   );
 
   /**
-   * Hands a Mate over (guide 0.8, D11), as the account's `assign-mate-owner` operation: a transfer
-   * — a Mate has one OWNER (F23, 2026-10-03). The person picked is made its OWNER, then whoever
-   * else the project names OWNER has it taken off theirs. The key's grant, not an OWNER, stays. The
-   * dialog stays open until the platform answers: a refusal of the first write is said there and
-   * nothing changes; one of a later write says the hand over is not complete — the person picked
-   * has it, the previous owner still does too. Once anything was written, the access grant reads
-   * every project's grants again at once (`grants-written`), so the person who handed the Mate
-   * over sees what the platform holds now (F11).
+   * Hands a Mate over, as the account's `hand-over-mate` operation: one HQ call with the person's
+   * own token, which moves its project's `OWNER` override to the person picked and replaces its key.
+   * The dialog stays open until HQ answers: a refusal, or the phase a stop part way names, is said
+   * there, and Hand it over asks again (HQ finishes what it started). Wherever something may have
+   * been written, the access grant reads every project's grants again at once (`grants-written`),
+   * so the person who handed the Mate over sees what the platform holds now (F11).
    */
   const assign = useCallback(
-    (candidate: ZeropsCandidatePresentation, clientUserId: string) => {
+    (candidate: ZeropsCandidatePresentation, ownerUserId: string) => {
       if (activeOrganization === null) return;
       const isCurrent = captureAccountLifetime();
       const replyToDialog = captureDialogReply();
@@ -674,17 +671,21 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       setPress({ pending: true, error: null });
       void operations
         .submit({
-          kind: "assign-mate-owner",
+          kind: "hand-over-mate",
           orgId: activeOrganization.id,
           projectId: candidate.project.id,
-          clientUserId,
+          ownerUserId,
         })
         .then(
           ({ progress, evidence }) => {
             if (!isCurrent()) return;
             const trouble = writeTrouble(progress, evidence);
-            // Something may have been written: the grants are read again.
-            if (progress.stage === "done" || progress.stage === "unresolved")
+            if (
+              progress.stage === "done" ||
+              progress.stage === "unresolved" ||
+              progress.stage === "uncertain" ||
+              (progress.stage === "refused" && progress.code === HQ_HANDOVER_UNFINISHED)
+            )
               invalidateZerops({ topic: "access", change: "grants-written" });
             if (trouble !== null) setPress({ pending: false, error: trouble });
             else replyToDialog(null);
@@ -699,6 +700,19 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         });
     },
     [activeOrganization, operations, captureDialogReply],
+  );
+
+  /** Opens a Mate's hand-over where HQ says this person may hand it over (`mayHandOver`). */
+  const handOver = useCallback(
+    (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
+      if (busyKey === candidate.key || !handOverOffered(projectPeople[candidate.project.id]))
+        return undefined;
+      return () => {
+        setPress(UNPRESSED);
+        setDialog({ kind: "assign", candidate });
+      };
+    },
+    [busyKey, projectPeople, setDialog],
   );
 
   /**
@@ -1316,8 +1330,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       tags: ZeropsMembership,
       extraQuick: ReadonlyArray<ZeropsMenuEntry> = [],
     ): ReadonlyArray<ZeropsMenuEntry> => {
-      // The platform's own verbs — delete, rename, hand over — by the role function the platform
-      // enforces; HQ's by HQ's rule. Either way, a person the session does not name is offered none.
+      // The platform's own verbs — delete, rename — by the role function the platform enforces;
+      // HQ's, its hand-over among them, by HQ's word. Either way, a person the session does not name is offered none.
       const platformVerbs = platformVerbsOf(candidate);
       const hqVerbs = hqVerbsOf(candidate);
       const deletable = deleteMateOffered({
@@ -1393,16 +1407,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                 onSelect: () => finishSetup(candidate),
               },
             ]),
-        ...(platformVerbs.assign
+        ...(handOverOffered(projectPeople[candidate.project.id])
           ? [
               {
                 id: "assign",
-                label: "Hand this Mate over",
+                label: HAND_OVER_VERB,
                 disabled: busy,
                 onSelect: () => {
                   setPress(UNPRESSED);
                   setDialog({ kind: "assign", candidate });
-                  askHandover(candidate.project.id);
                 },
               },
             ]
@@ -1482,7 +1495,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       ];
     },
     [
-      askHandover,
       askMove,
       busyKey,
       changeFace,
@@ -1498,6 +1510,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       start,
       hqVerbsOf,
       platformVerbsOf,
+      projectPeople,
     ],
   );
 
@@ -1612,22 +1625,21 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         <ZeropsAssignMateDialog
           error={press.error}
           key={`assign:${dialog.candidate.key}`}
-          candidates={handover?.read.kind === "read" ? handover.read.candidates : []}
+          candidates={handOverCandidates(members.members)}
           readingOrganization={
-            handover === null || handover.read.kind === "reading"
+            members.status === "loading" && members.members.length === 0
               ? activeOrganization?.name
               : undefined
           }
-          readRefused={
-            handover?.read.kind === "refused" && activeOrganization !== null
-              ? { organization: activeOrganization.name }
-              : undefined
-          }
           readFailed={
-            handover?.read.kind === "failed" && activeOrganization !== null
+            members.status === "failed" && activeOrganization !== null
               ? {
                   organization: activeOrganization.name,
-                  onReadAgain: () => askHandover(dialog.candidate.project.id),
+                  onReadAgain: () =>
+                    account?.retryDetail({
+                      family: "organizationMembers",
+                      ownerId: activeOrganization.id,
+                    }),
                 }
               : undefined
           }
@@ -1635,8 +1647,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           onOpenChange={(open) => {
             if (!open) close();
           }}
-          onSubmit={(clientUserId) => {
-            assign(dialog.candidate, clientUserId);
+          onSubmit={(ownerUserId) => {
+            assign(dialog.candidate, ownerUserId);
           }}
           pending={press.pending}
           projectName={projectNameInApp(dialog.candidate.project)}
@@ -1710,7 +1722,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     </>
   );
 
-  return { actionsFor, dialogs, busyKey, trouble, renameInPlace, changeFace };
+  return { actionsFor, dialogs, handOver, busyKey, trouble, renameInPlace, changeFace };
 }
 
 /**

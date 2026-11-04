@@ -9,12 +9,7 @@ import type { CompareQuery, CompareResponse } from "@t3tools/shared/hqChanges";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 
-import {
-  hqNavigationLink,
-  type HqHandoverCandidates,
-  type HqMoveOffers,
-  type HqWire,
-} from "./adapters/hq.ts";
+import { hqNavigationLink, type HqMoveOffers, type HqWire } from "./adapters/hq.ts";
 import { mateHealthLink, type MateHealthWire } from "./adapters/mateHealth.ts";
 import { mateAttentionLink, type MateAttentionWire } from "./adapters/mateAttention.ts";
 import { zeropsNavigationLink, type ZeropsWire } from "./adapters/zerops.ts";
@@ -90,8 +85,6 @@ export interface RunningHq extends Omit<RunningLink, "revalidate" | "renew" | "r
   readonly rewire: (wire: HqWire) => void;
   /** Asks HQ where a Mate may move, as the move opens. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
-  /** Asks HQ whom a Mate may be handed over to, as the hand-over opens. */
-  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Asks HQ what lies between two commits; rejects with HQ's words for why it did not answer. */
   readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
   /** Tells HQ the reader saw these results of a Mate. */
@@ -120,7 +113,6 @@ export function startHqNavigation(options: {
     demandDetail: link.demandDetail,
     retryDetail: link.retryDetail,
     moveOffers: (projectId) => Effect.runPromise(link.moveOffers(projectId)),
-    handoverCandidates: (projectId) => Effect.runPromise(link.handoverCandidates(projectId)),
     compare: (ask) =>
       // HQ's words for why it did not answer, as what the promise rejects with.
       Effect.runPromise(
@@ -196,8 +188,6 @@ export interface AccountObservation {
   readonly showHq: (hq: ShownHq | null) => void | Promise<void>;
   /** Asks the shown organization's HQ where a Mate may move; refused without one. */
   readonly moveOffers: (projectId: string) => Promise<HqMoveOffers>;
-  /** Asks the shown organization's HQ whom a Mate may be handed over to; refused without one. */
-  readonly handoverCandidates: (projectId: string) => Promise<HqHandoverCandidates>;
   /** Asks the shown organization's HQ what lies between two commits; refused without one. */
   readonly compare: (ask: CompareAsk) => Promise<CompareResponse>;
   /** Tells the shown organization's HQ the reader saw these results of a Mate. */
@@ -352,10 +342,6 @@ export function observeAccount(options: {
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))
         : hq.link.moveOffers(projectId),
-    handoverCandidates: (projectId) =>
-      hq === null
-        ? Promise.reject(new Error("No HQ is observed for the organization shown."))
-        : hq.link.handoverCandidates(projectId),
     compare: (ask) =>
       hq === null
         ? Promise.reject(new Error("No HQ is observed for the organization shown."))

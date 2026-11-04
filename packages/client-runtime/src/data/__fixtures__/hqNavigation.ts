@@ -139,6 +139,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),
     ...(mate.task === undefined ? {} : { task: mate.task }),
+    ...(mate.keyRefused === true ? { keyRefused: true as const } : {}),
   });
   const rows: Row[] = [
     ...(seed.lifecycle ?? []).map((record): Row => ({
