@@ -155,8 +155,8 @@ numbered steps of these. Every ask is the same card, in two densities.
   conversation".
 - **Secrets go card to store**: a value travels from the card to where it is stored, as the
   person. It never enters the agent's context, the conversation, logs, telemetry or a tool
-  result; cards show names, masks and facts. The Mate hears only outcomes that change what it
-  can do, never a value.
+  result; cards show names, masks and facts. The Mate hears outcomes, including Not now, never
+  values.
 - **Authority**: anyone in the conversation sees the ask; only someone with the authority acts,
   and the card names who can.
 
