@@ -641,6 +641,34 @@ export const SourceControlWritingStyleMode = Schema.Literals([
 ]);
 export type SourceControlWritingStyleMode = typeof SourceControlWritingStyleMode.Type;
 
+export const MATE_PERSONA_NAME_MAX_LENGTH = 40;
+export const MATE_PERSONA_DESCRIPTION_MAX_LENGTH = 120;
+/** Codex delivers the persona as one `additionalContext` entry, which sits under its per-entry cap. */
+export const MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH = 3000;
+
+export const MatePersonaName = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(MATE_PERSONA_NAME_MAX_LENGTH),
+);
+export const MatePersonaInstructions = TrimmedNonEmptyString.check(
+  Schema.isMaxLength(MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH),
+);
+
+/** The template a persona was copied from, while its text is still that revision's. */
+export const MatePersonaTemplateRef = Schema.Struct({
+  source: Schema.Literals(["premade", "org"]),
+  id: TrimmedNonEmptyString,
+  revision: Schema.Int.check(Schema.isGreaterThanOrEqualTo(0)),
+});
+export type MatePersonaTemplateRef = typeof MatePersonaTemplateRef.Type;
+
+/** How a Mate works and talks in every chat: text its coding agents follow. */
+export const MatePersona = Schema.Struct({
+  name: MatePersonaName,
+  instructions: MatePersonaInstructions,
+  template: Schema.optionalKey(MatePersonaTemplateRef),
+});
+export type MatePersona = typeof MatePersona.Type;
+
 export const SourceControlWritingStyleSettings = Schema.Struct({
   mode: SourceControlWritingStyleMode.pipe(
     Schema.withDecodingDefault(Effect.succeed("repo_conventions" as const)),
@@ -768,6 +796,8 @@ export const ServerSettings = Schema.Struct({
   sourceControlWriterModelSelection: Schema.NullOr(ModelSelection).pipe(
     Schema.withDecodingDefault(Effect.succeed(null)),
   ),
+  /** The Mate's persona; its chats outside a crew follow it from their next message. */
+  persona: Schema.NullOr(MatePersona).pipe(Schema.withDecodingDefault(Effect.succeed(null))),
 
   // Legacy single-instance-per-driver settings. Continues to be the source
   // of truth until `providerInstances` (below) lands per-driver migration
@@ -995,6 +1025,8 @@ export const ServerSettingsPatch = Schema.Struct({
     }),
   ),
   sourceControlWriterModelSelection: Schema.optionalKey(Schema.NullOr(ModelSelection)),
+  /** Replaces the whole persona; `null` removes it. */
+  persona: Schema.optionalKey(Schema.NullOr(MatePersona)),
   observability: Schema.optionalKey(
     Schema.Struct({
       otlpTracesUrl: Schema.optionalKey(TrimmedString),

@@ -101,6 +101,10 @@ export const ExecutionEnvironmentCapabilities = Schema.Struct({
       send the call and offer the Data surface as unsupported under version
       skew. */
   dataConsole: Schema.optionalKey(Schema.Boolean),
+  /** Server keeps a persona in its settings and gives it to its coding agents.
+      Absent on older servers, which drop the setting, so clients offer an
+      update instead of a persona that would never apply. */
+  matePersona: Schema.optionalKey(Schema.Boolean),
   /** Server understands `zerops.agentLogin.submitCode`, so the sign-in dialog
       takes Claude's code in a field. Absent on older servers, where the code
       is pasted into the login terminal instead. */

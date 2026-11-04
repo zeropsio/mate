@@ -36,6 +36,8 @@ One word for each thing:
 - **coding agent** — Claude, Codex and the others, only where a Mate is signed in. Source: provider, agent. Say
   "Sign {Mate} in with Claude or ChatGPT", or "Sign this Mate in"; never "Sign in an agent".
 - **helpers** — a Mate's own sub-agents; on a crew they are crewmates.
+- **persona** — how a Mate works and talks in every chat: a name and instructions its coding agents follow.
+  It starts from a template, **from Zerops** or **{organization}'s**, or is written by hand.
 - **workspace** — a Mate's own place to build (the engine's dev service, `appdev`); its private address is
   **{Mate}'s preview** (the stage half of a dev/stage pair, `appstage`). Engine service names never stand as copy.
 - **Stage**, **Production** — the project's shared environments; "environment" is only their collective word.
