@@ -75,10 +75,12 @@ export const MCP_WORDS = {
   tryAgain: "Try again",
   none: "No tools yet.",
   addTool: "Add a tool",
-  groups: { waiting: "Waiting on you", ready: "Ready", off: "Off" } satisfies Record<
-    McpRowGroup,
-    string
-  >,
+  groups: {
+    waiting: "Waiting on you",
+    ready: "Ready",
+    unchecked: "Not checked yet",
+    off: "Off",
+  } satisfies Record<McpRowGroup, string>,
   proposedBy: (mate: string) => `Proposed by ${mate}`,
   review: "Review",
   reads: "Reads",

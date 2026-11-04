@@ -80,7 +80,7 @@ describe("the built-in server's reported state", () => {
       expected: {
         state: "configured",
         tone: "off",
-        note: { kind: "quiet", text: "Set up" },
+        note: { kind: "quiet", text: "Claude checks it when this conversation next runs." },
         tools: [],
         actions: { reconnect: false },
       },
@@ -523,7 +523,7 @@ describe("buildMcpRows — one row per server, as the conversation's agent stand
       case: "a command never needs a sign-in",
       driver: CLAUDE,
       transport: { type: "stdio", command: "x", args: [] },
-      note: "Set up",
+      note: "Claude checks it when this conversation next runs.",
     },
   ])("$case", ({ driver, transport, note }) => {
     const agents = [CLAUDE, CURSOR].map((agent) => ({
@@ -1115,7 +1115,7 @@ describe("the Tools tab: where each tool stands and the one thing to do", () => 
     {
       case: "a tool no agent has reached yet says so",
       agent: { state: "configured" },
-      group: "ready",
+      group: "unchecked",
       right: { kind: "state", words: "Not reached yet", tone: "off" },
     },
     {
@@ -1149,20 +1149,58 @@ describe("the Tools tab: where each tool stands and the one thing to do", () => 
     expect(mcpTileInitials(name, name === "zerops")).toBe(initials);
   });
 
+  it.each<{ case: string; agents: ReadonlyArray<McpServerAgent>; words: string }>([
+    {
+      case: "a command no agent has reached",
+      agents: [{ driver: CLAUDE, state: "configured" }],
+      words: "Claude checks it when this conversation next runs.",
+    },
+    {
+      case: "a server set up for another agent only",
+      agents: [{ driver: CODEX, state: "configured" }],
+      words: "Not set up for Claude",
+    },
+  ])(
+    "Ready holds only what an agent reached; $case waits below it, saying what checks it",
+    ({ agents, words }) => {
+      const row = buildMcpRows(
+        {
+          agents: [CLAUDE, CODEX],
+          servers: [
+            {
+              name: "x",
+              managed: false,
+              transport: { type: "stdio", command: "x", args: [] },
+              agents,
+            },
+          ],
+        },
+        CLAUDE,
+      )[0]!;
+      expect({ group: row.group, note: row.note?.text }).toEqual({
+        group: "unchecked",
+        note: words,
+      });
+    },
+  );
+
   it("the tab groups what waits on you first, then what is ready, then what is off", () => {
     const list: McpServersList = {
       agents: [CLAUDE],
-      servers: (["disabled", "connected", "needs-auth"] as const).map((state, index) => ({
-        name: `s${String(index)}`,
-        managed: false,
-        transport: { type: "stdio", command: "x", args: [] },
-        agents: [{ driver: CLAUDE, state }],
-      })),
+      servers: (["disabled", "connected", "needs-auth", "configured"] as const).map(
+        (state, index) => ({
+          name: `s${String(index)}`,
+          managed: false,
+          transport: { type: "stdio", command: "x", args: [] },
+          agents: [{ driver: CLAUDE, state }],
+        }),
+      ),
     };
     const groups = groupMcpRows(buildMcpRows(list, CLAUDE));
     expect(groups.map((group) => [group.id, group.rows.map((row) => row.name)])).toEqual([
       ["waiting", ["s2"]],
       ["ready", ["s1"]],
+      ["unchecked", ["s3"]],
       ["off", ["s0"]],
     ]);
   });
