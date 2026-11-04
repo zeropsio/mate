@@ -166,6 +166,12 @@ describe("the capabilities the client reads", () => {
     assert.strictEqual(capabilities.vcsStackedActions, true);
     assert.strictEqual(capabilities.worktreesAllowed, true);
   });
+
+  it("a Mate tells clients it carries a persona to its coding agents", () => {
+    for (const policy of [ZEROPS_POLICY, UPSTREAM_POLICY]) {
+      assert.strictEqual(makeServerEnvironmentCapabilities(policy).matePersona, true);
+    }
+  });
 });
 
 const recordingDriverLayer = (recorded: Ref.Ref<ReadonlyArray<unknown>>) =>
