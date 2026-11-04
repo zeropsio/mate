@@ -33,6 +33,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "mcp",
   "persona",
+  "express",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -55,6 +56,8 @@ export interface RightPanelAvailabilityInput {
   readonly chief?: boolean;
   /** The Mate's server keeps a persona (`matePersona`); `null` while its config is unread. */
   readonly matePersona: boolean | null;
+  /** The person's Adobe Express Labs switch is on in a build with Adobe's key (`useExpressGate`). */
+  readonly express?: boolean;
 }
 
 /** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
@@ -264,6 +267,18 @@ export const RIGHT_PANEL_KIND_META = {
     page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
     availability: (input) =>
       input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
+  },
+  express: {
+    launcher: {
+      label: "Express",
+      description: "Design pictures with Adobe Express.",
+      shortcut: "E",
+      unavailableHint: "Not set up in this build.",
+    },
+    // Its own head carries Adobe's mark, and its editor fills the panel with no head over it.
+    page: null,
+    // A Labs preview: nothing of it shows until the person turns it on (`useExpressGate`).
+    availability: (input) => (input.express === true ? "available" : "hidden"),
   },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 

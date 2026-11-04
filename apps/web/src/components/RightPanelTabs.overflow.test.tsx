@@ -26,6 +26,7 @@ const ALL_AVAILABLE = {
   persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 const SURFACES = [

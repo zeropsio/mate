@@ -211,6 +211,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -238,6 +239,7 @@ describe("right panel kinds", () => {
         vault: "unavailable",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -259,6 +261,7 @@ describe("right panel kinds", () => {
         vault: "unknown",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -280,6 +283,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
   ] as const;
@@ -362,6 +366,17 @@ describe("right panel kinds", () => {
       ).find(({ kind }) => kind === "persona");
       expect(persona?.available).toBe(false);
       expect(persona?.unavailableHint).toBe(hint);
+    },
+  );
+
+  it.each([
+    { express: true, launcher: true },
+    { express: false, launcher: false },
+  ] as const)(
+    "the panel offers Adobe Express only while the person's Labs switch is on: $express",
+    ({ express, launcher }) => {
+      const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, express });
+      expect(launcherActions(availability).some(({ kind }) => kind === "express")).toBe(launcher);
     },
   );
 

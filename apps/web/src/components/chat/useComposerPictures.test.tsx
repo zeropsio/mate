@@ -282,6 +282,33 @@ describe("a picture's copy", () => {
     expect(copies.fit).not.toHaveBeenCalled();
   });
 
+  it.each([
+    {
+      title: "a picture added to keep its original sends it beside a fitted copy",
+      copy: {
+        kind: "fitted",
+        blob: new Blob([new Uint8Array(32)], { type: "image/jpeg" }),
+        width: 2000,
+        height: 2000,
+        type: "image/jpeg",
+      },
+      keepOriginal: true,
+    },
+    {
+      title: "a picture added to keep its original sends no second file when its copy is itself",
+      copy: { kind: "as-pasted" },
+      keepOriginal: false,
+    },
+  ])("$title", async ({ copy, keepOriginal }) => {
+    copies.fit.mockResolvedValue(copy);
+    await show(A);
+
+    await act(() => api.add([pngFile("design-3000x3000.png")], { keepOriginal: true }));
+    await settle();
+
+    expect(draftOf(A)!.images[0]!.picture!.keepOriginal).toBe(keepOriginal);
+  });
+
   it("a copy that cannot be made leaves the picture as it was, ready to send", async () => {
     copies.fit.mockRejectedValue(new Error("The canvas went away"));
     await show(A);

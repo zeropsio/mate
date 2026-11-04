@@ -222,6 +222,9 @@ import { useMateAddresses } from "../zerops/useMateAddresses";
 import { useCrew } from "../zerops/crew/useCrew";
 import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
+import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
+import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
+import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
 import { zeropsMateAt } from "../zerops/mateIdentities";
@@ -314,7 +317,11 @@ import {
   NO_PROVIDER_MODEL_SELECTION,
   sortProviderInstanceEntries,
 } from "../providerInstances";
-import { useClientSettings, useEnvironmentSettings } from "../hooks/useSettings";
+import {
+  useClientSettings,
+  useClientSettingsHydrated,
+  useEnvironmentSettings,
+} from "../hooks/useSettings";
 import { useNowMinute } from "../hooks/useNowMinute";
 import { useNewThreadHandler } from "../hooks/useHandleNewThread";
 import { useRemoveClonedProject } from "../hooks/useRemoveClonedProject";
@@ -676,6 +683,11 @@ const ZeropsProjectsPage = lazy(
 );
 const McpPanel = lazy(
   appChunk(() => import("./mcp/McpPanel").then((module) => ({ default: module.McpPanel }))),
+);
+const ExpressPanel = lazy(
+  appChunk(() =>
+    import("./express/ExpressPanel").then((module) => ({ default: module.ExpressPanel })),
+  ),
 );
 const PersonaPanel = lazy(
   appChunk(() =>
@@ -2590,6 +2602,14 @@ function ConversationView(props: ChatViewProps) {
   ]);
   // The task this conversation works, on an automated Mate: the header names it.
   const activeThreadMessages = activeThread?.messages;
+  // Adobe Express is a Labs preview: while the person's switch is off, nothing of it shows.
+  const expressOn = useExpressGate() === "on";
+  // What the conversation holds of Express: the panel's history and a design card's picture.
+  const expressHistory = useExpressHistoryScope(
+    activeThreadEnvironmentId,
+    activeThreadMessages,
+    expressOn,
+  );
   const activeThreadTask = useMemo(
     () => conversationTask(activeThreadMessages ?? []),
     [activeThreadMessages],
@@ -4213,6 +4233,30 @@ function ConversationView(props: ChatViewProps) {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "persona");
   }, [activeThreadRef]);
+  const addExpressSurface = useCallback(() => {
+    if (!activeThreadRef) return;
+    useRightPanelStore.getState().open(activeThreadRef, "express");
+  }, [activeThreadRef]);
+  // Turning Express off closes its tab; read only once the switch is known, so a reload keeps it.
+  const clientSettingsHydrated = useClientSettingsHydrated();
+  const expressTabOpen = rightPanelState.surfaces.some((surface) => surface.kind === "express");
+  useEffect(() => {
+    if (expressOn || !clientSettingsHydrated || !expressTabOpen || !activeThreadRef) return;
+    useRightPanelStore.getState().closeSurface(activeThreadRef, "express");
+  }, [activeThreadRef, clientSettingsHydrated, expressOn, expressTabOpen]);
+  /**
+   * A change's address at HQ a Mate wrote into its conversation opens on the
+   * change's own page here. Anything this account's HQ does not own is left
+   * exactly as it was.
+   */
+  const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
+  // An Adobe Express design a Mate made opens in the Express tab, to continue it there.
+  const resolveExpressDesign = useOpenExpressDesign(activeThreadRef, expressOn);
+  const resolveAppLink = useCallback(
+    (href: string) => resolveChangeLink(href) ?? resolveExpressDesign(href),
+    [resolveChangeLink, resolveExpressDesign],
+  );
+  const editPictureInExpress = useEditPictureInExpress(activeThreadRef, expressOn);
   const addOverviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "overview");
@@ -4462,6 +4506,22 @@ function ConversationView(props: ChatViewProps) {
       threadKey === routeThreadKey ? null : routeThreadKey,
     );
   }, [canMaximizeRightPanel, routeThreadKey]);
+  // Adobe's editor is a desktop tool: the panel takes the room while it is open and gives back
+  // only the room it took.
+  const expressMaximizedPanel = useRef(false);
+  const onExpressEditingChange = useCallback(
+    (editing: boolean) => {
+      if (editing) {
+        if (!canMaximizeRightPanel || maximizedRightPanelThreadKey === routeThreadKey) return;
+        expressMaximizedPanel.current = true;
+        setMaximizedRightPanelThreadKey(routeThreadKey);
+      } else if (expressMaximizedPanel.current) {
+        expressMaximizedPanel.current = false;
+        setMaximizedRightPanelThreadKey(null);
+      }
+    },
+    [canMaximizeRightPanel, maximizedRightPanelThreadKey, routeThreadKey],
+  );
   const cleanupRightPanelSurfaces = useCallback(
     (surfaces: readonly RightPanelSurface[]) => {
       if (!activeThreadRef) return;
@@ -8123,6 +8183,7 @@ function ConversationView(props: ChatViewProps) {
       attachmentEnvironmentConfig === null
         ? null
         : attachmentEnvironmentConfig.environment.capabilities.matePersona === true,
+    express: expressOn,
   });
   const onAddRightPanelSurface = (kind: Exclude<RightPanelKind, "file" | "terminal">): void => {
     switch (kind) {
@@ -8161,6 +8222,9 @@ function ConversationView(props: ChatViewProps) {
         return;
       case "persona":
         addPersonaSurface();
+        return;
+      case "express":
+        addExpressSurface();
         return;
       case "overview":
         addOverviewSurface();
@@ -8291,6 +8355,19 @@ function ConversationView(props: ChatViewProps) {
                   key={activeThreadRef.environmentId}
                 />
               );
+            case "express":
+              // What the person saves lands in the composer like a pasted picture.
+              return expressOn ? (
+                <ExpressPanel
+                  environmentId={expressHistory.environmentId}
+                  history={expressHistory.history}
+                  mate={pageMateName}
+                  onAttach={(files) =>
+                    composerRef.current?.addDroppedFiles(files, { keepOriginal: true })
+                  }
+                  onEditingChange={onExpressEditingChange}
+                />
+              ) : null;
             case "persona":
               // One Mate's persona: another Mate's draws afresh, no editor or draft carried over.
               return (
@@ -8375,18 +8452,11 @@ function ConversationView(props: ChatViewProps) {
     composerBannerItems.length > 0 ||
     Boolean(shownThreadSyncPhase && !activeEnvironmentUnavailable);
 
-  /**
-   * A change's address at HQ a Mate wrote into its conversation opens on the
-   * change's own page here. Anything this account's HQ does not own is left
-   * exactly as it was.
-   */
-  const resolveChangeLink = useOpenZeropsChange(activeThreadRef);
-
-  return (
+  const page = (
     <ServiceBrowserScope
       threadRef={activeThreadRef}
       services={zeropsTopology?.services}
-      resolveAppLink={resolveChangeLink}
+      resolveAppLink={resolveAppLink}
       className="relative flex min-h-0 min-w-0 flex-1 overflow-hidden bg-background"
     >
       {rightPanelOpen && !shouldUseRightPanelSheet ? panelLayoutControls : null}
@@ -9080,10 +9150,12 @@ function ConversationView(props: ChatViewProps) {
           key={`${expandedImage.images[expandedImage.index]?.src ?? "image"}:${expandedImage.index}`}
           preview={expandedImage}
           onClose={closeExpandedImage}
+          onEditInExpress={editPictureInExpress}
         />
       )}
     </ServiceBrowserScope>
   );
+  return <ExpressHistoryContext value={expressHistory}>{page}</ExpressHistoryContext>;
 }
 
 /** Whether the person asked for less motion: a scroll's way then is a cut. */
