@@ -12,7 +12,9 @@ import {
   codexMcpLiveServers,
   openCodeMcpControl,
   openCodeMcpLiveServers,
+  loopbackRedirect,
   type ClaudeMcpQuery,
+  type McpSignInStart,
   type OpenCodeMcpClient,
   layer as McpLiveLayer,
   McpLive,
@@ -323,6 +325,114 @@ describe("openCodeMcpControl", () => {
         "connect e",
       ]);
     }),
+  );
+});
+
+describe("signing in to a remote MCP server", () => {
+  const CODE = ["c0de", "0n3", "t1me"].join("-");
+  const PAGE = "https://mate.example.app/mate/mcp/oauth/callback";
+  const started = (answer: McpSignInStart | "signed-in"): McpSignInStart => {
+    if (answer === "signed-in") throw new Error("expected a sign-in to open");
+    return answer;
+  };
+
+  it.effect(
+    "Claude Code opens its own OAuth flow, sent back to the Mate's page, and takes the landing",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const query: ClaudeMcpQuery = {
+          mcpAuthenticate: async (name, redirectUri) => {
+            calls.push(`authenticate ${name} ${redirectUri ?? ""}`);
+            return {
+              requiresUserAction: true,
+              callbackExpected: true,
+              authUrl: "https://auth.example.com/a",
+            };
+          },
+          mcpSubmitOAuthCallbackUrl: async (name, url) => {
+            calls.push(`landed ${name} ${url}`);
+          },
+        };
+        const control = claudeMcpControl({ get: () => live(query), all: () => [] });
+        const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+        expect(start.url).toBe("https://auth.example.com/a");
+        yield* start.finish(new URL(`${PAGE}?code=${CODE}&state=s`));
+        expect(calls).toEqual([
+          `authenticate adobe ${PAGE}`,
+          `landed adobe ${PAGE}?code=${CODE}&state=s`,
+        ]);
+      }),
+  );
+
+  it.effect("Claude Code holding a valid sign-in opens nothing", () =>
+    Effect.gen(function* () {
+      const query: ClaudeMcpQuery = {
+        mcpAuthenticate: async () => ({ requiresUserAction: false, callbackExpected: false }),
+        mcpSubmitOAuthCallbackUrl: async () => undefined,
+      };
+      const control = claudeMcpControl({ get: () => live(query), all: () => [] });
+      expect(yield* control.signIn!(THREAD, "adobe", PAGE)).toBe("signed-in");
+    }),
+  );
+
+  it.effect(
+    "Codex's sign-in lands on its listener in the container and ends when the app-server says so",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const runtime = {
+          loginMcpServer: (name: string) =>
+            Effect.succeed({
+              authorizationUrl: `https://auth.example.com/a?redirect_uri=${encodeURIComponent("http://127.0.0.1:5555/callback")}&state=s`,
+              completed: Effect.sync(() => {
+                calls.push(`completed ${name}`);
+              }),
+            }),
+          reloadMcpServers: Effect.sync(() => {
+            calls.push("reload");
+          }),
+        };
+        const control = codexMcpControl({ get: () => live(runtime), all: () => [] });
+        const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+        expect(start.listener?.href).toBe("http://127.0.0.1:5555/callback");
+        yield* start.finish(new URL(`http://127.0.0.1:5555/callback?code=${CODE}&state=s`));
+        expect(calls).toEqual(["completed adobe", "reload"]);
+      }),
+  );
+
+  it.effect("OpenCode exchanges the code the landing carries", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const client: OpenCodeMcpClient = {
+        status: async () => ({}),
+        connect: async () => undefined,
+        disconnect: async () => undefined,
+        add: async () => undefined,
+        startAuth: async () => ({ authorizationUrl: "https://auth.example.com/a?state=s" }),
+        finishAuth: async (name, code) => calls.push(`${name} ${code}`),
+      };
+      const control = openCodeMcpControl({ get: () => live(client), all: () => [] });
+      const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+      yield* start.finish(
+        new URL(`http://127.0.0.1:19876/mcp/oauth/callback?code=${CODE}&state=s`),
+      );
+      expect(calls).toEqual([`adobe ${CODE}`]);
+    }),
+  );
+
+  it.each([
+    ["http://127.0.0.1:5555/callback", "http://127.0.0.1:5555/callback"],
+    ["http://localhost:19876/mcp/oauth/callback", "http://localhost:19876/mcp/oauth/callback"],
+    ["https://127.0.0.1:5555/callback", undefined],
+    ["http://10.0.0.5:5555/callback", undefined],
+    ["https://mate.example.app/mate/mcp/oauth/callback", undefined],
+  ])(
+    "only a plain-http loopback redirect is a listener in the container: %s",
+    (redirect, listener) => {
+      const url = `https://auth.example.com/a?redirect_uri=${encodeURIComponent(redirect)}`;
+      expect(loopbackRedirect(url)?.href).toBe(listener);
+    },
   );
 });
 

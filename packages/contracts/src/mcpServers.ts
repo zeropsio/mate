@@ -118,6 +118,46 @@ export const McpServerSetEnabledInput = Schema.Struct({
 });
 export type McpServerSetEnabledInput = typeof McpServerSetEnabledInput.Type;
 
+/**
+ * Sign in to a remote server that answers "needs sign-in" for the
+ * conversation's agent: the agent starts its own OAuth flow, and the person
+ * completes it in their own browser.
+ */
+export const McpServerSignInInput = McpServerTargetInput;
+export type McpServerSignInInput = typeof McpServerSignInInput.Type;
+
+/**
+ * Where the browser comes back after the provider's page: `mate`, this Mate's
+ * own sign-in page, which hands the agent the result by itself; `paste`, the
+ * agent's listener inside the container, which the person's browser cannot
+ * reach — they paste the address it landed on into the tab instead.
+ */
+export const McpSignInLanding = Schema.Literals(["mate", "paste"]);
+export type McpSignInLanding = typeof McpSignInLanding.Type;
+
+export const McpServerSignIn = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("open"),
+    /** The provider's page the person signs in on. */
+    url: TrimmedNonEmptyString,
+    landing: McpSignInLanding,
+    /** Names this sign-in when the person pastes where it landed. */
+    flow: TrimmedNonEmptyString,
+  }),
+  /** The agent already holds a valid sign-in: nothing to open. */
+  Schema.Struct({ kind: Schema.Literal("signed-in") }),
+]);
+export type McpServerSignIn = typeof McpServerSignIn.Type;
+
+export const McpServerFinishSignInInput = Schema.Struct({
+  name: McpServerName,
+  flow: TrimmedNonEmptyString,
+  /** The address the browser landed on after the provider's page. */
+  landed: TrimmedNonEmptyString,
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpServerFinishSignInInput = typeof McpServerFinishSignInInput.Type;
+
 export class McpServersError extends Schema.TaggedError<McpServersError>()("McpServersError", {
   operation: Schema.String,
   detail: Schema.String,

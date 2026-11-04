@@ -17,6 +17,10 @@ import {
   McpServerName,
   McpServersError,
   type McpServerAddInput,
+  type McpServerFinishSignInInput,
+  type McpServerSignIn,
+  type McpServerSignInInput,
+  type McpSignInLanding,
   type McpServerAgent,
   type McpServerEntry,
   type McpServersList,
@@ -26,17 +30,26 @@ import {
   type ProviderDriverKind,
   type ThreadId,
 } from "@t3tools/contracts";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
+import * as Crypto from "effect/Crypto";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import { HttpClient } from "effect/http";
 
 import { ServerConfig } from "../../config.ts";
 import { currentProviderThread } from "../../engineSessionDirectory.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import * as McpLiveModule from "../../spi/mcpLive.ts";
-import { McpLive, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
+import {
+  landingRefusal,
+  McpLive,
+  type McpConfigChange,
+  type McpLiveServer,
+  type McpSignInStart,
+} from "../../spi/mcpLive.ts";
 import { resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import {
   MANAGED_MCP_SERVER,
@@ -90,7 +103,55 @@ export interface McpServersOptions {
   readonly files: McpFileStore;
   readonly paths: Effect.Effect<McpAgentPaths, McpServersError>;
   readonly live: McpLiveAccess;
+  /**
+   * The Mate's public sign-in page (`mcpSignInPage`): the redirect URI an
+   * agent that registers its own sends the browser back to. Absent off a
+   * Zerops container, where no public origin names it.
+   */
+  readonly signInPage?: string | undefined;
+  /** Carries a landing to an agent's listener inside the container (`McpSignInStart.listener`). */
+  readonly relay?: (target: URL) => Effect.Effect<void, string>;
+  /** A fresh, unguessable name for a started sign-in. */
+  readonly newId?: Effect.Effect<string>;
 }
+
+/** The sign-in page's path, at the server's root: `/mate/mcp/oauth/callback` behind the proxy. */
+export const MCP_SIGN_IN_PATH = "/mcp/oauth/callback";
+
+/** The Mate's public sign-in page, when it has a public origin. */
+export function mcpSignInPage(
+  publicOrigin: string | undefined,
+  basePath: string,
+): string | undefined {
+  if (publicOrigin === undefined) return undefined;
+  try {
+    return `${new URL(publicOrigin).origin}${basePath}${MCP_SIGN_IN_PATH}`;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The redirect URI an authorization URL names, normalized; `undefined` when it names none. */
+function redirectOf(url: string): string | undefined {
+  try {
+    const redirect = new URL(url).searchParams.get("redirect_uri");
+    return redirect === null ? undefined : new URL(redirect).href;
+  } catch {
+    return undefined;
+  }
+}
+
+/** The landing's query carried to the listener: only the listener's own address is ever asked. */
+export function relayedLanding(listener: URL, landed: URL): URL {
+  const target = new URL(listener.href);
+  target.search = landed.search;
+  return target;
+}
+
+/** How long a started sign-in waits for its landing. */
+const SIGN_IN_TTL_MS = 10 * 60 * 1000;
+/** How long the agent may take to exchange the code once it has the landing. */
+const SIGN_IN_FINISH_TIMEOUT = "60 seconds";
 
 export class McpServers extends Context.Service<
   McpServers,
@@ -106,8 +167,33 @@ export class McpServers extends Context.Service<
     readonly reconnect: (
       input: McpServerTargetInput,
     ) => Effect.Effect<McpServersList, McpServersError>;
+    /** Starts the conversation's agent's sign-in to a server that needs one. */
+    readonly signIn: (
+      input: McpServerSignInInput,
+    ) => Effect.Effect<McpServerSignIn, McpServersError>;
+    /** Finishes a `paste` sign-in with the address the browser landed on. */
+    readonly finishSignIn: (
+      input: McpServerFinishSignInInput,
+    ) => Effect.Effect<McpServersList, McpServersError>;
+    /**
+     * Finishes a `mate` sign-in from its landing on the sign-in page, found by
+     * its OAuth `state`; answers the server's name.
+     */
+    readonly landed: (url: URL) => Effect.Effect<string, McpServersError>;
   }
 >()("t3/zerops/mcp/McpServers") {}
+
+/** A sign-in started and not yet landed. */
+interface SignInFlow {
+  readonly id: string;
+  readonly name: string;
+  readonly threadId: ThreadId | undefined;
+  readonly landing: McpSignInLanding;
+  /** The authorization URL's `state`, which the landing must carry back. */
+  readonly state: string | undefined;
+  readonly start: McpSignInStart;
+  readonly expiresAt: number;
+}
 
 const NUDGE_TIMEOUT = "5 seconds";
 /** A file an agent changed while Mate planned its change: plan again, this many times. */
@@ -427,12 +513,120 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
       return yield* list(operation, input.threadId);
     });
 
+  const newId = options.newId ?? Effect.die("No sign-in names here.");
+  const flows = new Map<string, SignInFlow>();
+  const liveFlows = Effect.map(Clock.currentTimeMillis, (now) => {
+    for (const [id, flow] of flows) if (flow.expiresAt <= now) flows.delete(id);
+    return flows;
+  });
+
+  const signIn: McpServers["Service"]["signIn"] = (input) =>
+    Effect.gen(function* () {
+      const operation = "mcp.servers.signIn";
+      const session = yield* sessionThread(input.threadId);
+      if (session === undefined) {
+        return yield* fail(
+          operation,
+          "Open a conversation with this Mate first: its agent is the one that signs in.",
+        );
+      }
+      const { started } = yield* live
+        .signIn(session, input.name, options.signInPage)
+        .pipe(
+          Effect.mapError((error) =>
+            fail(operation, `${input.name} can't sign in: ${error.detail}`, error),
+          ),
+        );
+      if (started === "signed-in") return { kind: "signed-in" } as const;
+      const page = options.signInPage === undefined ? undefined : new URL(options.signInPage).href;
+      const landing: McpSignInLanding =
+        page !== undefined && redirectOf(started.url) === page ? "mate" : "paste";
+      const open = yield* liveFlows;
+      // A newer sign-in to the same server replaces the one it abandoned.
+      for (const [id, flow] of open) {
+        if (flow.name === input.name && flow.threadId === input.threadId) open.delete(id);
+      }
+      const id = yield* newId;
+      open.set(id, {
+        id,
+        name: input.name,
+        threadId: input.threadId,
+        landing,
+        state: new URL(started.url).searchParams.get("state") ?? undefined,
+        start: started,
+        expiresAt: (yield* Clock.currentTimeMillis) + SIGN_IN_TTL_MS,
+      });
+      return { kind: "open", url: started.url, landing, flow: id } as const;
+    });
+
+  /** One landing, once: the flow is spent whether the agent takes it or not. */
+  const complete = (operation: string, flow: SignInFlow, landed: URL) =>
+    Effect.gen(function* () {
+      const refuse = (detail: string) => fail(operation, `${flow.name} didn't sign in: ${detail}`);
+      if (flow.state !== undefined && landed.searchParams.get("state") !== flow.state) {
+        return yield* refuse("that address belongs to a different sign-in.");
+      }
+      if (!landed.searchParams.has("code")) return yield* refuse(`${landingRefusal(landed)}.`);
+      flows.delete(flow.id);
+      const listener = flow.start.listener;
+      if (listener !== undefined) {
+        if (options.relay === undefined) return yield* refuse("this Mate can't reach the agent.");
+        yield* options
+          .relay(relayedLanding(listener, landed))
+          .pipe(Effect.mapError((detail) => refuse(`${detail}.`)));
+      }
+      yield* flow.start.finish(landed).pipe(
+        Effect.timeoutOrElse({
+          duration: SIGN_IN_FINISH_TIMEOUT,
+          orElse: () => Effect.fail({ detail: "the agent did not finish in 60 seconds" }),
+        }),
+        Effect.mapError((error) => refuse(`${error.detail}.`)),
+      );
+    });
+
+  const finishSignIn: McpServers["Service"]["finishSignIn"] = (input) =>
+    Effect.gen(function* () {
+      const operation = "mcp.servers.finishSignIn";
+      const flow = (yield* liveFlows).get(input.flow);
+      if (flow === undefined || flow.name !== input.name) {
+        return yield* fail(
+          operation,
+          `This sign-in to ${input.name} has ended. Press Sign in to start again.`,
+        );
+      }
+      let landed: URL;
+      try {
+        landed = new URL(input.landed);
+      } catch {
+        return yield* fail(operation, "Paste the whole address from the browser's address bar.");
+      }
+      yield* complete(operation, flow, landed);
+      return yield* list(operation, input.threadId);
+    });
+
+  const landed: McpServers["Service"]["landed"] = (url) =>
+    Effect.gen(function* () {
+      const operation = "mcp.servers.landed";
+      const state = url.searchParams.get("state");
+      const flow = [...(yield* liveFlows).values()].find(
+        (candidate) => candidate.landing === "mate" && state !== null && candidate.state === state,
+      );
+      if (flow === undefined) {
+        return yield* fail(operation, "This Mate isn't waiting for this sign-in any more.");
+      }
+      yield* complete(operation, flow, url);
+      return flow.name;
+    });
+
   return {
     list: (input) => list("mcp.servers.list", input.threadId),
     add,
     remove,
     setEnabled,
     reconnect,
+    signIn,
+    finishSignIn,
+    landed,
   } satisfies McpServers["Service"];
 });
 
@@ -445,11 +639,28 @@ export const layer = Layer.effect(
     const settings = yield* ServerSettingsService;
     const live = yield* McpLive;
     const files = yield* nodeFileStore;
+    const http = yield* HttpClient.HttpClient;
+    const crypto = yield* Crypto.Crypto;
     const resolve =
       yield* Effect.context<Effect.Services<ReturnType<typeof resolveMcpAgentPaths>>>();
     return yield* make({
       files,
       live,
+      signInPage: mcpSignInPage(config.zerops?.publicOrigin, config.basePath),
+      newId: crypto.randomUUIDv4.pipe(Effect.orDie),
+      // Only an agent's own loopback listener is asked (`loopbackRedirect`); its answer is a page.
+      relay: (target) =>
+        http.get(target).pipe(
+          Effect.flatMap((response) =>
+            response.status >= 400
+              ? Effect.fail(`the agent's sign-in listener answered ${String(response.status)}`)
+              : Effect.void,
+          ),
+          Effect.catchTags({
+            HttpClientError: () => Effect.fail("the agent's sign-in listener didn't answer"),
+          }),
+          Effect.scoped,
+        ),
       paths: settings.getSettings.pipe(
         Effect.mapError(
           (cause) =>

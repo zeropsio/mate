@@ -13,7 +13,12 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 
 import { MateEngine } from "../../engine/MateEngine.ts";
-import { ProviderMcpError, type McpConfigChange, type McpLiveServer } from "../../spi/mcpLive.ts";
+import {
+  ProviderMcpError,
+  type McpConfigChange,
+  type McpLiveServer,
+  type McpSignInStart,
+} from "../../spi/mcpLive.ts";
 import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
@@ -60,6 +65,8 @@ const ALL_AGENTS = ["claudeAgent", "codex", "cursor", "opencode", "grok", "antig
 
 const THREAD = ThreadId.make("thread-1");
 
+const SIGN_IN_PAGE = "https://mate-abc.prg1.zerops.app/mate/mcp/oauth/callback";
+
 const parseJson = (text: string): { readonly mcpServers?: unknown } => JSON.parse(text);
 
 interface Rig {
@@ -78,6 +85,8 @@ const setup = (input: {
     readonly driver: string;
     readonly servers: ReadonlyArray<McpLiveServer>;
     readonly reconnectFails?: boolean;
+    /** What the agent answers a sign-in with. */
+    readonly signIn?: McpSignInStart | "signed-in";
   };
   /** An agent writes this file once, between Mate's read and Mate's write. */
   readonly agentWritesOnce?: { readonly path: string; readonly text: string };
@@ -109,13 +118,32 @@ const setup = (input: {
               rig.calls.push(`reconnect ${name}`);
             }),
       setEnabled: () => Effect.void,
+      signIn: (threadId, name, redirectUri) =>
+        Effect.suspend(() => {
+          rig.calls.push(`sign in ${name} back to ${redirectUri ?? "none"}`);
+          return threadId === runningThread && input.running?.signIn !== undefined
+            ? Effect.succeed({
+                driver: ProviderDriverKind.make(input.running.driver),
+                started: input.running.signIn,
+              })
+            : Effect.fail(
+                new ProviderMcpError({ detail: "No conversation is running on this agent." }),
+              );
+        }),
       configChanged: (driver, change: McpConfigChange) =>
         Effect.sync(() => {
           rig.calls.push(`${driver} ${change.kind} ${change.name}`);
         }),
     };
+    let ids = 0;
     const service = yield* make({
       live,
+      signInPage: SIGN_IN_PAGE,
+      relay: (target) =>
+        Effect.sync(() => {
+          rig.calls.push(`relay ${target.href}`);
+        }),
+      newId: Effect.sync(() => `flow-${String(++ids)}`),
       paths: Effect.succeed(PATHS),
       files: {
         read: (path) => Effect.succeed(rig.files.get(path)),
@@ -527,6 +555,130 @@ it.layer(NodeServices.layer, { excludeTestServices: true })("nodeFileStore", (it
         ],
         openCodeConfig: "/xdg/opencode/opencode.json",
       });
+    }),
+  );
+});
+
+describe("McpServers sign-in", () => {
+  // A one-time code as a provider would send it, built from parts.
+  const CODE = ["c0de", "0n3", "t1me"].join("-");
+  const authorize = (redirect: string, state: string) =>
+    `https://auth.example.com/authorize?${new URLSearchParams({ client_id: "mate", redirect_uri: redirect, state }).toString()}`;
+  const signingAgent = (redirect: string, listener?: URL) => {
+    const finished: string[] = [];
+    const start: McpSignInStart = {
+      url: authorize(redirect, "s-1"),
+      ...(listener !== undefined ? { listener } : {}),
+      finish: (landed) =>
+        Effect.sync(() => {
+          finished.push(landed.searchParams.get("code") ?? "");
+        }),
+    };
+    return { start, finished };
+  };
+  const NAME = "adobe" as McpServerAddInput["name"];
+
+  it.effect(
+    "a provider that sends the browser back to the Mate's sign-in page finishes the sign-in there, once",
+    () =>
+      Effect.gen(function* () {
+        const agent = signingAgent(SIGN_IN_PAGE);
+        const { service, rig } = yield* setup({
+          installed: ["claudeAgent"],
+          running: { driver: "claudeAgent", servers: [], signIn: agent.start },
+        });
+        const opened = yield* service.signIn({ name: NAME, threadId: THREAD });
+        expect(opened).toEqual({
+          kind: "open",
+          url: agent.start.url,
+          landing: "mate",
+          flow: "flow-1",
+        });
+        const landing = new URL(`${SIGN_IN_PAGE}?code=${CODE}&state=s-1`);
+        expect(yield* service.landed(landing)).toBe("adobe");
+        expect(agent.finished).toEqual([CODE]);
+        const again = yield* Effect.flip(service.landed(landing));
+        expect(again.detail).toBe("This Mate isn't waiting for this sign-in any more.");
+        expect(rig.calls).toEqual([`sign in adobe back to ${SIGN_IN_PAGE}`]);
+      }),
+  );
+
+  it.effect(
+    "a provider that sends the browser to the agent's own listener is finished with the address the person pastes",
+    () =>
+      Effect.gen(function* () {
+        const listener = new URL("http://127.0.0.1:41234/callback");
+        const agent = signingAgent(listener.href, listener);
+        const { service, rig } = yield* setup({
+          installed: ["codex"],
+          running: { driver: "codex", servers: [], signIn: agent.start },
+        });
+        const opened = yield* service.signIn({ name: NAME, threadId: THREAD });
+        expect(opened).toMatchObject({ kind: "open", landing: "paste", flow: "flow-1" });
+        const list = yield* service.finishSignIn({
+          name: NAME,
+          flow: "flow-1",
+          landed: `http://127.0.0.1:41234/callback?code=${CODE}&state=s-1`,
+          threadId: THREAD,
+        });
+        expect(list.agents).toEqual(["codex"]);
+        expect(agent.finished).toEqual([CODE]);
+        expect(rig.calls.at(-1)).toBe(`relay ${listener.href}?code=${CODE}&state=s-1`);
+      }),
+  );
+
+  it.effect.each([
+    {
+      pasted: `http://localhost:1/callback?code=${CODE}&state=other`,
+      says: "adobe didn't sign in: that address belongs to a different sign-in.",
+    },
+    {
+      pasted:
+        "http://localhost:1/callback?error=access_denied&error_description=User%20cancelled&state=s-1",
+      says: "adobe didn't sign in: the sign-in was refused: User cancelled.",
+    },
+    { pasted: "not an address", says: "Paste the whole address from the browser's address bar." },
+  ])("a pasted address that can't finish the sign-in says why and keeps it open: $pasted", (row) =>
+    Effect.gen(function* () {
+      const agent = signingAgent("http://localhost:1/callback");
+      const { service } = yield* setup({
+        installed: ["opencode"],
+        running: { driver: "opencode", servers: [], signIn: agent.start },
+      });
+      yield* service.signIn({ name: NAME, threadId: THREAD });
+      const refused = yield* Effect.flip(
+        service.finishSignIn({ name: NAME, flow: "flow-1", landed: row.pasted, threadId: THREAD }),
+      );
+      expect(refused.detail).toBe(row.says);
+      yield* service.finishSignIn({
+        name: NAME,
+        flow: "flow-1",
+        landed: `http://localhost:1/callback?code=${CODE}&state=s-1`,
+        threadId: THREAD,
+      });
+      expect(agent.finished).toEqual([CODE]);
+    }),
+  );
+
+  it.effect("an agent that already holds the sign-in opens nothing", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({
+        installed: ["claudeAgent"],
+        running: { driver: "claudeAgent", servers: [], signIn: "signed-in" },
+      });
+      expect(yield* service.signIn({ name: NAME, threadId: THREAD })).toEqual({
+        kind: "signed-in",
+      });
+    }),
+  );
+
+  it.effect("signing in with no conversation open says the conversation's agent signs in", () =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({ installed: ["claudeAgent"] });
+      const refused = yield* Effect.flip(service.signIn({ name: NAME }));
+      expect(refused.detail).toBe(
+        "Open a conversation with this Mate first: its agent is the one that signs in.",
+      );
     }),
   );
 });

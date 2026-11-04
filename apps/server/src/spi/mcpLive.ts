@@ -28,6 +28,7 @@ import { ProviderRegistry } from "../provider/Services/ProviderRegistry.ts";
 import {
   type McpConfigChange,
   type McpLiveServer,
+  type McpSignInStart,
   NOT_RUNNING,
   ProviderMcpError,
 } from "./mcpControl.ts";
@@ -53,6 +54,15 @@ export class McpLive extends Context.Service<
       name: string,
       enabled: boolean,
     ) => Effect.Effect<void, ProviderMcpError>;
+    /** Starts the thread's agent's sign-in to a server (`ProviderAdapterMcp.signIn`). */
+    readonly signIn: (
+      threadId: ThreadId,
+      name: string,
+      redirectUri: string | undefined,
+    ) => Effect.Effect<
+      { readonly driver: ProviderDriverKind; readonly started: McpSignInStart | "signed-in" },
+      ProviderMcpError
+    >;
     /** The drivers installed here, each once: the agents an added server is written for. */
     readonly installedDrivers: Effect.Effect<ReadonlyArray<ProviderDriverKind>>;
     /** Every running session of every instance of `driver`, best effort. */
@@ -111,6 +121,21 @@ export const layer = Layer.effect(
         hookOf(threadId).pipe(
           Effect.flatMap((hook) => answeredInTime(hook.setEnabled(threadId, name, enabled))),
         ),
+      signIn: (threadId, name, redirectUri) =>
+        Effect.gen(function* () {
+          const instance = yield* running(threadId);
+          const signIn = instance?.adapter.mcp?.signIn;
+          if (instance === undefined || instance.adapter.mcp === undefined) {
+            return yield* NOT_RUNNING;
+          }
+          if (signIn === undefined) {
+            return yield* new ProviderMcpError({
+              detail: "This agent can't sign in to MCP servers from Mate.",
+            });
+          }
+          const started = yield* answeredInTime(signIn(threadId, name, redirectUri));
+          return { driver: instance.driverKind, started };
+        }),
       installedDrivers: providers.getProviders.pipe(
         Effect.map((snapshots) => [
           ...new Set(snapshots.filter((snapshot) => snapshot.installed).map((s) => s.driver)),

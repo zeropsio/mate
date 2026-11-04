@@ -230,7 +230,10 @@ import {
 } from "./providerUsageLimits.ts";
 import {
   McpServerAddInput,
+  McpServerFinishSignInInput,
   McpServerSetEnabledInput,
+  McpServerSignIn,
+  McpServerSignInInput,
   McpServersError,
   McpServersList,
   McpServersListInput,
@@ -291,6 +294,8 @@ export const WS_METHODS = {
   mcpServersRemove: "mcp.servers.remove",
   mcpServersSetEnabled: "mcp.servers.setEnabled",
   mcpServersReconnect: "mcp.servers.reconnect",
+  mcpServersSignIn: "mcp.servers.signIn",
+  mcpServersFinishSignIn: "mcp.servers.finishSignIn",
 
   // Provider methods
   providerUploadFeedback: "provider.uploadFeedback",
@@ -797,6 +802,18 @@ const WsMcpServersSetEnabledRpc = Rpc.make(WS_METHODS.mcpServersSetEnabled, {
 
 const WsMcpServersReconnectRpc = Rpc.make(WS_METHODS.mcpServersReconnect, {
   payload: McpServerTargetInput,
+  success: McpServersList,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersSignInRpc = Rpc.make(WS_METHODS.mcpServersSignIn, {
+  payload: McpServerSignInInput,
+  success: McpServerSignIn,
+  error: McpServersRpcError,
+});
+
+const WsMcpServersFinishSignInRpc = Rpc.make(WS_METHODS.mcpServersFinishSignIn, {
+  payload: McpServerFinishSignInInput,
   success: McpServersList,
   error: McpServersRpcError,
 });
@@ -1498,6 +1515,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsMcpServersRemoveRpc,
   WsMcpServersSetEnabledRpc,
   WsMcpServersReconnectRpc,
+  WsMcpServersSignInRpc,
+  WsMcpServersFinishSignInRpc,
   WsSubscribeVcsStatusRpc,
   WsVcsPullRpc,
   WsVcsRefreshStatusRpc,

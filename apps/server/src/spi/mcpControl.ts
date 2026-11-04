@@ -13,6 +13,12 @@
  *   for a server added while it runs.
  * - The ACP agents (Cursor, Grok, Antigravity) carry no hook: `configured`.
  *
+ * Signing in to a remote server is each agent's own OAuth flow, started here
+ * and finished with the address the person's browser landed on: Claude Code's
+ * `mcp_authenticate` takes the Mate's public sign-in page as its redirect;
+ * Codex (`mcpServer/oauth/login`) and OpenCode (`/mcp/{name}/auth`) redirect
+ * to their own listener inside the container, which the landing is relayed to.
+ *
  * One of the inbound SPI files (`spi.md` §1a): it imports nothing from
  * `provider/**`, so the drivers can import it.
  *
@@ -44,8 +50,33 @@ export class ProviderMcpError extends Schema.TaggedError<ProviderMcpError>()("Pr
   detail: Schema.String,
 }) {}
 
+/**
+ * A sign-in the agent started for one server: the person opens `url`, and the
+ * provider sends their browser to the redirect URI the URL names, carrying a
+ * one-time code. Where that is the agent's own `listener` inside the
+ * container, the landing's query is first carried there, as the browser would
+ * have; `finish` then hands the agent the landing and succeeds once the agent
+ * holds the server's tokens.
+ */
+export interface McpSignInStart {
+  readonly url: string;
+  readonly listener?: URL;
+  readonly finish: (landed: URL) => Effect.Effect<void, ProviderMcpError>;
+}
+
 /** The hook a driver's adapter carries (`ProviderAdapterShape.mcp`). */
 export interface ProviderAdapterMcp {
+  /**
+   * Starts the agent's own OAuth sign-in for a server of the thread's running
+   * session. `redirectUri` is the Mate's public sign-in page, which an agent
+   * that can register its own redirect sends the browser to; the others keep
+   * their listener inside the container. Absent: the agent has no sign-in.
+   */
+  readonly signIn?: (
+    threadId: ThreadId,
+    name: string,
+    redirectUri: string | undefined,
+  ) => Effect.Effect<McpSignInStart | "signed-in", ProviderMcpError>;
   /** The thread's running session's servers; `undefined` when it has none running. */
   readonly status: (threadId: ThreadId) => Effect.Effect<ReadonlyArray<McpLiveServer> | undefined>;
   readonly reconnect: (threadId: ThreadId, name: string) => Effect.Effect<void, ProviderMcpError>;
@@ -148,6 +179,14 @@ function toolOf(
 const definedTools = (tools: ReadonlyArray<McpServerTool | undefined>): McpServerTool[] =>
   tools.filter((tool): tool is McpServerTool => tool !== undefined);
 
+/** Why a landing carries no code: the provider's own refusal, or none at all. */
+export function landingRefusal(landed: URL): string {
+  const said = landed.searchParams.get("error_description") ?? landed.searchParams.get("error");
+  return said !== null && said.trim() !== ""
+    ? `the sign-in was refused: ${said.trim()}`
+    : "that address carries no sign-in code";
+}
+
 // ── Claude Code ──────────────────────────────────────────────────────────
 
 /** The fields of the Claude SDK's `McpServerStatus` this reads. */
@@ -201,7 +240,21 @@ export interface ClaudeMcpQuery {
    * ones the MCP tab wrote into Claude's own config, in its shape.
    */
   setMcpServers?(servers: Record<string, Readonly<Record<string, unknown>>>): Promise<unknown>;
+  /**
+   * The CLI's `mcp_authenticate` (present on the SDK's query, not yet in its
+   * types): starts a server's OAuth flow, sending the browser to
+   * `redirectUri` where the provider accepts it and to the CLI's own
+   * localhost listener otherwise.
+   */
+  readonly mcpAuthenticate?: (name: string, redirectUri?: string) => Promise<unknown>;
+  /** The CLI's `mcp_oauth_callback_url`: settles once the tokens are exchanged. */
+  readonly mcpSubmitOAuthCallbackUrl?: (name: string, callbackUrl: string) => Promise<unknown>;
 }
+
+/** Signing in is the agent's own: it has no call for it, or answered something unknown. */
+const NO_SIGN_IN = new ProviderMcpError({
+  detail: "This agent can't sign in to MCP servers from Mate.",
+});
 
 /**
  * The servers the MCP tab added to each running Claude query since it started:
@@ -259,6 +312,31 @@ export function claudeMcpControl(sessions: {
         return toggle === undefined
           ? Effect.fail(NOT_RUNNING)
           : fromPromise(() => toggle.call(query, name, enabled));
+      }),
+    signIn: (threadId, name, redirectUri) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (query) => {
+        const authenticate = query.mcpAuthenticate;
+        const submit = query.mcpSubmitOAuthCallbackUrl;
+        if (authenticate === undefined || submit === undefined) return Effect.fail(NO_SIGN_IN);
+        return fromPromise(() => authenticate.call(query, name, redirectUri)).pipe(
+          Effect.flatMap(
+            (answer): Effect.Effect<McpSignInStart | "signed-in", ProviderMcpError> => {
+              const started = isRecord(answer) ? answer : {};
+              if (started["requiresUserAction"] !== true)
+                return Effect.succeed("signed-in" as const);
+              const url = optionalString(started["authUrl"]);
+              // claude.ai's own connectors finish on claude.ai: no landing comes back here.
+              if (url === undefined || started["callbackExpected"] !== true) {
+                return Effect.fail(NO_SIGN_IN);
+              }
+              return Effect.succeed({
+                url,
+                finish: (landed: URL) =>
+                  fromPromise(() => submit.call(query, name, landed.href)).pipe(Effect.asVoid),
+              } satisfies McpSignInStart);
+            },
+          ),
+        );
       }),
     configChanged: (change) =>
       Effect.forEach(
@@ -327,7 +405,39 @@ export function codexMcpLiveServers(response: unknown): McpLiveServer[] {
 export interface CodexMcpRuntime {
   readonly listMcpServers?: Effect.Effect<unknown, Error> | undefined;
   readonly reloadMcpServers?: Effect.Effect<void, Error> | undefined;
+  /**
+   * `mcpServer/oauth/login`: the authorization URL, and the app-server's
+   * `mcpServer/oauthLogin/completed` for that server as `completed`.
+   */
+  readonly loginMcpServer?:
+    | ((
+        name: string,
+      ) => Effect.Effect<
+        { readonly authorizationUrl: string; readonly completed: Effect.Effect<void, Error> },
+        Error
+      >)
+    | undefined;
 }
+
+const LOOPBACK_HOSTS = new Set(["127.0.0.1", "localhost", "[::1]"]);
+
+/**
+ * The agent's own listener the authorization URL redirects to, when it is one
+ * inside this container: plain http on a loopback host.
+ */
+export function loopbackRedirect(authorizationUrl: string): URL | undefined {
+  try {
+    const redirect = new URL(new URL(authorizationUrl).searchParams.get("redirect_uri") ?? "");
+    return redirect.protocol === "http:" && LOOPBACK_HOSTS.has(redirect.hostname)
+      ? redirect
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/** How long Codex keeps a sign-in open for the person to finish. */
+export const CODEX_SIGN_IN_TIMEOUT_SECONDS = 600;
 
 export function codexMcpControl(sessions: {
   readonly get: (threadId: ThreadId) => McpSession<CodexMcpRuntime> | undefined;
@@ -349,6 +459,26 @@ export function codexMcpControl(sessions: {
         Effect.catch(() => Effect.undefined),
       );
     },
+    signIn: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (runtime) => {
+        const login = runtime.loginMcpServer;
+        if (login === undefined) return Effect.fail(NO_SIGN_IN);
+        return asMcpError(login(name)).pipe(
+          Effect.flatMap(({ authorizationUrl, completed }) => {
+            const listener = loopbackRedirect(authorizationUrl);
+            if (listener === undefined) return Effect.fail(NO_SIGN_IN);
+            return Effect.succeed({
+              url: authorizationUrl,
+              listener,
+              finish: () =>
+                asMcpError(completed).pipe(
+                  // The tokens are Codex's now; a reload connects the server with them.
+                  Effect.andThen(Effect.ignore(runtime.reloadMcpServers ?? Effect.void)),
+                ),
+            } satisfies McpSignInStart);
+          }),
+        );
+      }),
     // Codex reconnects by re-reading its config; the config already holds `enabled`.
     reconnect: (threadId) => reload(threadId),
     setEnabled: (threadId) => reload(threadId),
@@ -392,6 +522,10 @@ export interface OpenCodeMcpClient {
   readonly connect: (name: string) => Promise<unknown>;
   readonly disconnect: (name: string) => Promise<unknown>;
   readonly add: (name: string, config: Readonly<Record<string, unknown>>) => Promise<unknown>;
+  /** `POST /mcp/{name}/auth`: the authorization URL its own listener is the redirect of. */
+  readonly startAuth?: (name: string) => Promise<{ readonly authorizationUrl: string }>;
+  /** `POST /mcp/{name}/auth/callback`: exchanges the code the provider sent. */
+  readonly finishAuth?: (name: string, code: string) => Promise<unknown>;
 }
 
 export function openCodeMcpControl(sessions: {
@@ -413,6 +547,22 @@ export function openCodeMcpControl(sessions: {
         Effect.catch(() => Effect.undefined),
       );
     },
+    signIn: (threadId, name) =>
+      Effect.flatMap(pressable(sessions.get(threadId)), (client) => {
+        const { startAuth, finishAuth } = client;
+        if (startAuth === undefined || finishAuth === undefined) return Effect.fail(NO_SIGN_IN);
+        return fromPromise(() => startAuth.call(client, name)).pipe(
+          Effect.map(({ authorizationUrl }): McpSignInStart => ({
+            url: authorizationUrl,
+            finish: (landed) => {
+              const code = landed.searchParams.get("code");
+              return code === null || code === ""
+                ? Effect.fail(new ProviderMcpError({ detail: landingRefusal(landed) }))
+                : fromPromise(() => finishAuth.call(client, name, code)).pipe(Effect.asVoid);
+            },
+          })),
+        );
+      }),
     reconnect: (threadId, name) =>
       withClient(threadId, async (client) => {
         await client.disconnect(name).catch(() => undefined);
