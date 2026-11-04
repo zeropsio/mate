@@ -1,4 +1,5 @@
 import { randomUUID } from "~/lib/utils";
+import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import { acquireHqPressLease } from "@t3tools/client-runtime/data";
 /**
  * Stands one environment up in a group — a Mate, a stage or a production — from whatever surface
@@ -284,6 +285,9 @@ export function useEnvironmentCreation(): (
       } catch (cause) {
         return { kind: "refused", reason: zeropsErrorMessage(cause) };
       }
+      // A new project names no owner but its creator's choice: its creator is marked it, where they
+      // may (`ownerAtAdd`); Zerops marks a developer itself.
+      const owner = ownerAtAdd({ userRoles: choice.userRoles, adder: organization });
       const plan = planEnvironmentCreation({
         clientId: organization.id,
         role,
@@ -293,6 +297,7 @@ export function useEnvironmentCreation(): (
         withAgent: choice.withAgent,
         ...(intent === undefined ? {} : { birth: intent }),
         ...(choice.userRoles === undefined ? {} : { userRoles: choice.userRoles }),
+        ...(owner === null ? {} : { owner }),
       });
       if (!isCurrent()) return { kind: "refused", reason: null };
       if (!plan.ok) return { kind: "refused", reason: plan.reason };

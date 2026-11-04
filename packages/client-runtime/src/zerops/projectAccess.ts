@@ -17,7 +17,7 @@
  *
  * @module zerops/projectAccess
  */
-import { asOrgRole } from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ProjectGrantEntry } from "./appAccess.ts";
 
@@ -31,15 +31,22 @@ export interface ProjectGrant {
   readonly roleCode: string;
 }
 
-/** One person's grant on one project to set: a level, or `null` to drop their own grant there. */
+/**
+ * One person's grant on one project to set: a level, the Mate's owner marker (`OWNER`), or `null`
+ * to drop their own grant there.
+ */
 export interface ProjectAccessChange {
   readonly clientUserId: string;
   readonly projectId: string;
-  readonly roleCode: ProjectAccessRole | null;
+  readonly roleCode: ProjectAccessRole | "OWNER" | null;
 }
 
-/** Whether `role` already gives what `target` would: a grant naming it changes nothing. */
-const roleGives = (role: string | undefined, target: ProjectAccessRole) => {
+/**
+ * Whether `role` already gives what `target` would: a grant naming it changes nothing. No
+ * organization role gives the owner marker: an organization owner holds it only as a grant.
+ */
+const roleGives = (role: string | undefined, target: ProjectAccessRole | "OWNER") => {
+  if (target === "OWNER") return false;
   const held = asOrgRole(role);
   return held === target || (target === "ADMIN" && held === "OWNER");
 };
@@ -54,7 +61,7 @@ export function planMemberProjectGrants(input: {
   readonly orgRole: string | undefined;
   readonly changes: ReadonlyArray<{
     readonly projectId: string;
-    readonly roleCode: ProjectAccessRole | null;
+    readonly roleCode: ProjectAccessRole | "OWNER" | null;
   }>;
 }): { readonly list: ReadonlyArray<ProjectGrantEntry>; readonly changed: boolean } {
   const held = new Map(input.current.map(({ projectId, roleCode }) => [projectId, roleCode]));
@@ -78,6 +85,24 @@ export function planMemberProjectGrants(input: {
     ),
   ];
   return { list, changed: next.size > 0 };
+}
+
+/**
+ * Who a Mate added to a project that exists is marked the owner of it by (`OWNER`, the marker a
+ * hand-over moves): its adder, where the project's row names no `OWNER` and the adder's
+ * organization role is admin or owner, the roles Zerops lets give themselves that grant
+ * (ZEROPS-075). Nobody otherwise: a project with its owner keeps them, and below admin Zerops
+ * refuses the write (ZEROPS-063), so the Mate stays no one's until it is handed over.
+ */
+export function ownerAtAdd(input: {
+  /** The project's `userRoles`, as its row carries them. */
+  readonly userRoles: ReadonlyArray<ProjectGrant> | undefined;
+  /** The person adding it: their membership id and organization role. */
+  readonly adder: { readonly membershipId: string; readonly roleCode?: string | undefined };
+}): string | null {
+  if (!roleAtLeast(input.adder.roleCode, "ADMIN")) return null;
+  if (input.userRoles?.some((entry) => asOrgRole(entry.roleCode) === "OWNER")) return null;
+  return input.adder.membershipId;
 }
 
 /** A project's list with one person's grant set — or, `null`, dropped — everyone else kept. */

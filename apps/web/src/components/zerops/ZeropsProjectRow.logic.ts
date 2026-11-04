@@ -237,6 +237,9 @@ const RUNNING_PROCESS_DETAIL: Readonly<
   "start-project": "Starting the project",
 };
 
+/** The line under a Mate whose project is gone on Zerops while HQ still holds it. */
+const MATE_PROJECT_GONE_LINE = "Its project is gone on Zerops. HQ still holds this Mate.";
+
 /**
  * The line under a project the platform failed to create, with the
  * platform's own words when it gave any worth repeating. Its empty internal
@@ -469,6 +472,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     };
   }
   if (candidate.group === "unavailable") {
+    // Deleted on Zerops while HQ still holds its Mate: said as it is, nothing offered.
+    if (candidate.projectGone === true) {
+      return { status: { label: "Gone", tone: "off" }, detail: MATE_PROJECT_GONE_LINE };
+    }
     // The platform failed to make the project: it will sit in NEW for good,
     // so the row says so in the failed tone rather than "coming up" forever.
     if (candidate.creationFailed !== undefined) {

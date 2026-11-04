@@ -23,6 +23,7 @@ import {
   type EnvironmentCreationStepProgress,
 } from "@t3tools/client-runtime/zerops";
 import { HqError } from "@t3tools/client-runtime/zerops/hq";
+import { ownerAtAdd, type ProjectGrant } from "@t3tools/client-runtime/zerops/projectAccess";
 import type { RunToEnd } from "@t3tools/client-runtime/data";
 import { ZeropsApiError } from "@t3tools/client-runtime/zerops";
 import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -1465,6 +1466,118 @@ describe("finishMateSetup — the harden path", () => {
       "read isolation",
       "mark",
     ]);
+    forgetPress("p-old");
+  });
+
+  // Decision: Adding a Mate to an existing project whose row carries no OWNER override, by a person
+  // whose org role is ADMIN or OWNER, writes that person's OWNER override on the project before
+  // the Mate record is made; a project that already has an OWNER override is left as it is.
+  // Decision: A Mate on a project with no OWNER override and an adder below ADMIN shows the honest
+  // "no owner yet" state and the hand-over offer for ADMIN/OWNERs; no client-side role invention.
+  // (That state and offer are HQ's words: `mateOwnerView`'s empty seat, `handOverOffered`.)
+  it.each<{
+    readonly case: string;
+    readonly roleCode: string;
+    readonly userRoles: ReadonlyArray<ProjectGrant>;
+    readonly marked: ReadonlyArray<string>;
+  }>([
+    {
+      case: "by an admin, on a project nobody owns, marks them its owner before its record",
+      roleCode: "ADMIN",
+      userRoles: [],
+      marked: ["roles cu-me OWNER p-old"],
+    },
+    {
+      case: "on a project somebody owns leaves its owner as they are",
+      roleCode: "OWNER",
+      userRoles: [{ clientUserId: "cu-ada", roleCode: "OWNER" }],
+      marked: [],
+    },
+    {
+      case: "by a developer, on a project nobody owns, writes no grant: it stays no one's",
+      roleCode: "BASIC_USER",
+      userRoles: [],
+      marked: [],
+    },
+  ])("Set up Mate $case", async ({ roleCode, userRoles, marked }) => {
+    begin();
+    const calls: Array<string> = [];
+    const base = withOperation(
+      inputs(() => true, calls),
+      "set-project-access",
+      (intent) => {
+        for (const { clientUserId, roleCode: grant, projectId } of intent.changes)
+          calls.push(`roles ${clientUserId} ${grant} ${projectId}`);
+        return answered({ value: { written: 1 } });
+      },
+    );
+    const withContainer = withOperation(base, "import-container", () => {
+      calls.push("container");
+      return answered({ value: { serviceName: "zcp", imported: true } });
+    });
+    const endpoint = { projectId: "hq-project", address: "https://hq.test" };
+    const project = { id: "p-old", name: "shop", status: "ACTIVE", tagList: [], userRoles };
+    const owner = ownerAtAdd({ userRoles, adder: { membershipId: "cu-me", roleCode } });
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: withContainer,
+        projectId: "p-old",
+        projectName: "shop",
+        container: { agents: [] },
+        registration: mateFinishRegistration({
+          hq: endpoint,
+          hqKnown: true,
+          structure: { ungrouped: [], apps: [] } as never,
+          project,
+          press: readMatePress("p-old"),
+          mayCreateRecord: true,
+          standUp: false,
+          candidates: [],
+        }),
+        hq: endpoint,
+        isCurrent: () => true,
+        locks: undefined,
+        ...(owner === null ? {} : { owner }),
+      }),
+    ).toMatchObject({ ok: true });
+    expect(calls).toEqual([
+      ...marked,
+      expect.stringMatching(/^record \S+:\S+$/u),
+      "container",
+      "read isolation",
+      "mark",
+    ]);
+    forgetPress("p-old");
+  });
+
+  it("stops before its record where its owner's marker is refused, saying why", async () => {
+    begin();
+    const calls: Array<string> = [];
+    const refused = withOperation(
+      inputs(() => true, calls),
+      "set-project-access",
+      () =>
+        Promise.reject(new Error("Only an organization owner or admin can change who has access.")),
+    );
+    hq.calls = calls;
+    expect(
+      await finishMateSetup({
+        inputs: refused,
+        projectId: "p-old",
+        projectName: "shop",
+        container: { agents: [] },
+        registration: null,
+        hq: { projectId: "hq-project", address: "https://hq.test" },
+        isCurrent: () => true,
+        locks: undefined,
+        owner: "cu-me",
+      }),
+    ).toMatchObject({
+      ok: false,
+      error: "Only an organization owner or admin can change who has access.",
+    });
+    expect(calls).toEqual([]);
     forgetPress("p-old");
   });
 

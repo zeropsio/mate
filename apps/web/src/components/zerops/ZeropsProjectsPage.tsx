@@ -1,3 +1,4 @@
+import { ownerAtAdd } from "@t3tools/client-runtime/zerops/projectAccess";
 import { shownCanonicalHqListNavigationAtom } from "@t3tools/client-runtime/data";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { useAddMateOffer } from "../../zerops/useHqOffers";
@@ -1167,7 +1168,12 @@ export function ZeropsProjectsContent({
           container: true,
           placement: matePressPlacement(held) ?? null,
         });
-        // Its container with its own key, and its project closed off before anyone is let in.
+        // Its owner marked first where the project names none and the person may (`ownerAtAdd`),
+        // then its container with its own key, and its project closed off before anyone is let in.
+        const owner = ownerAtAdd({
+          userRoles: candidate.project.userRoles,
+          adder: activeOrganization,
+        });
         const pressed = await finishMateSetup({
           inputs: { client, operations, organizationId: activeOrganization.id },
           projectId,
@@ -1176,6 +1182,7 @@ export function ZeropsProjectsContent({
           registration,
           hq,
           isCurrent,
+          ...(owner === null ? {} : { owner }),
         });
         if (!pressed.ok) throw new Error(pressed.error);
         if (!isCurrent()) return;

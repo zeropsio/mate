@@ -9,6 +9,7 @@ import { runToEnd, type RunToEnd } from "../data/operations/runToEnd.ts";
 import { makeAccountStore } from "../data/store.ts";
 import { ZeropsApiError } from "./api.ts";
 import { planEnvironmentCreation, type EnvironmentCreationStep } from "./createEnvironment.ts";
+import { withZeropsMateTag } from "./groups.ts";
 import type { ZeropsEnvironmentRole } from "./groups.ts";
 import {
   resumableEnvironmentCreationStep,
@@ -133,6 +134,11 @@ function fakePlatform(overrides: FakeOverrides = {}) {
           `access:${intent.projectId}:${intent.userRoles.map(({ clientUserId, roleCode }) => `${clientUserId}=${roleCode}`).join("|")}`,
         );
         return { projectId: intent.projectId };
+      case "set-project-access":
+        calls.push(
+          `roles:${intent.changes.map(({ clientUserId, roleCode, projectId }) => `${clientUserId}=${roleCode}@${projectId}`).join("|")}`,
+        );
+        return { written: intent.changes.length };
       default:
         throw new Error(`No ${intent.kind} in a creation.`);
     }
@@ -426,6 +432,57 @@ describe("runEnvironmentCreation", () => {
       calls
         .slice(0, expected.length)
         .map((call) => (call.startsWith("importProject:") ? "importProject:0" : call)),
+    ).toEqual(expected);
+  });
+
+  // Decision: Adding a Mate to an existing project whose row carries no OWNER override, by a person
+  // whose org role is ADMIN or OWNER, writes that person's OWNER override on the project before
+  // the Mate record is made. Whole-project recipes set access after import the same way.
+  it.each([
+    {
+      title:
+        "A whole-project recipe's Mate marks its creator its owner after its people, before its record",
+      yaml: `project:\n  name: x\n${TIER_YAML}`,
+      role: "dev" as const,
+      calls: [
+        "importProject:0",
+        "access:proj-1:cu-bo=READ_ONLY",
+        "roles:cu-me=OWNER@proj-1",
+        "register:proj-1",
+      ],
+    },
+    {
+      title: "A created Mate's project is sent with its creator marked its owner",
+      yaml: TIER_YAML,
+      role: "dev" as const,
+      calls: [
+        `create:Sia:${withZeropsMateTag([]).join(",")}:cu-bo=READ_ONLY|cu-me=OWNER`,
+        "register:proj-1",
+      ],
+    },
+    {
+      title: "An environment without a Mate marks no owner",
+      yaml: `project:\n  name: x\n${TIER_YAML}`,
+      role: "stage" as const,
+      calls: ["importProject:0", "access:proj-1:cu-bo=READ_ONLY", "register:proj-1"],
+    },
+  ])("$title", async ({ yaml, role, calls: expected }) => {
+    const { platform, calls } = fakePlatform();
+    const planned = planEnvironmentCreation({
+      clientId: "client-1",
+      name: "Sia",
+      recipe: { kind: "tier", tier: role === "dev" ? "mate" : "stage", yaml },
+      role,
+      userRoles: [{ clientUserId: "cu-bo", roleCode: "READ_ONLY" }],
+      owner: "cu-me",
+    });
+    if (!planned.ok) throw new Error(planned.reason);
+    await run(planned.steps, platform);
+    // Who reaches it and its record, in order; its services' imports are not this case's.
+    expect(
+      calls
+        .filter((call) => /^(create|importProject|access|roles|register):/u.test(call))
+        .map((call) => call.replace(/^importProject:\d+$/u, "importProject:0")),
     ).toEqual(expected);
   });
 
