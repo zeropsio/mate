@@ -37,6 +37,7 @@ vi.mock("~/zerops/accountOperations", () => ({
   useAccountOperations: () => ({ submit: fixture.submit }),
 }));
 import { ZeropsSettings } from "./ZeropsSettings";
+import { PersonaTemplatesSettings } from "./PersonaTemplatesSettings";
 
 let store: ReturnType<typeof makeAccountStore>;
 function render() {
@@ -303,4 +304,9 @@ it("a completed toggle stays settled when a fresh HQ starts at revision zero", (
     policy: { kind: "known", enabled: true },
     words: "On",
   });
+});
+it("persona templates start afresh in another organization: no draft or write state carries over", () => {
+  const section = (tree: unknown) =>
+    visitElements(tree, (element) => element.type === PersonaTemplatesSettings);
+  expect(section(render())?.key).toBe("org");
 });
