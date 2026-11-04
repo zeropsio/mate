@@ -69,10 +69,17 @@ export function namesWords(names: ReadonlyArray<string>): string {
   return `${names.slice(0, -1).join(", ")} and ${names.at(-1) ?? ""}`;
 }
 
+/**
+ * A settled line with who and when, as much as the source records: "Restarted api · Aleš, 15:02".
+ */
+export function answeredWords(words: string, by: string | null, at: string | null): string {
+  const when = [by, at].filter((part): part is string => part !== null).join(", ");
+  return when === "" ? words : `${words} · ${when}`;
+}
+
 /** "Not now · Aleš, 15:04": who said it and when, as much as the source records. */
 export function notNowWords(by: string | null, at: string | null): string {
-  const when = [by, at].filter((part): part is string => part !== null).join(", ");
-  return when === "" ? NOT_NOW : `${NOT_NOW} · ${when}`;
+  return answeredWords(NOT_NOW, by, at);
 }
 
 /** Someone else's ask: the rule, then who can by name — "… Petr and Jana can." */

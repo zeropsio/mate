@@ -117,7 +117,7 @@ function Card(props: {
       footer={
         <AskFooter
           density={props.density}
-          production={isProduction(props.where)}
+          destructive={isProduction(props.where)}
           state={props.state}
           {...props.footer}
         />

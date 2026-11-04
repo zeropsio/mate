@@ -6,7 +6,7 @@
  * changes with the state, so the card stays where the person saw it. Production is the only red:
  * its chip and its main press. Props only: each kind's container reads its source.
  */
-import { Fragment, type ReactNode, useState } from "react";
+import { Children, Fragment, type ReactNode, useState } from "react";
 
 import { cn } from "~/lib/utils";
 
@@ -32,7 +32,8 @@ export interface AskCardProps {
   /** Which kind of ask it is ("vault"), for what reads the card and the composer's top. */
   readonly kind: string;
   readonly density: AskDensity;
-  readonly where: AskWhere;
+  /** Where it acts; `null` for an ask that acts nowhere (a message, a question). */
+  readonly where: AskWhere | null;
   /** A verb and its subject: what the main press does. */
   readonly title: string;
   /** The Mate's own words for why it asks. */
@@ -46,7 +47,8 @@ export interface AskCardProps {
   readonly footer: ReactNode;
 }
 
-function WhereChip({ where }: { readonly where: AskWhere }) {
+function WhereChip({ where }: { readonly where: AskWhere | null }) {
+  if (where === null) return null;
   return <Badge tone={isProduction(where) ? "danger" : "neutral"}>{askWhereWords(where)}</Badge>;
 }
 
@@ -63,6 +65,8 @@ function AskCardFace(
   props: AskCardProps & { readonly cardRef?: ((node: HTMLElement | null) => void) | undefined },
 ) {
   const { title, why } = props;
+  // Nothing to draw is no body, and no gap for one.
+  const body = Children.toArray(props.children).length === 0 ? undefined : props.children;
   const marks = {
     "aria-label": title,
     role: "group",
@@ -89,9 +93,7 @@ function AskCardFace(
               {title}
             </p>
           </div>
-          {props.children === undefined ? null : (
-            <div className="col-start-2 grid min-w-0 gap-2">{props.children}</div>
-          )}
+          {body === undefined ? null : <div className="col-start-2 grid min-w-0 gap-2">{body}</div>}
           <div className="col-start-2 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
             <div className="min-w-0 flex-1">{props.footer}</div>
             {props.onShowInConversation === undefined ? null : (
@@ -117,9 +119,7 @@ function AskCardFace(
             <span className="font-medium">{why.who}:</span> <q>{why.words}</q>
           </p>
         )}
-        {props.children === undefined ? null : (
-          <div className="grid min-w-0 gap-2">{props.children}</div>
-        )}
+        {body === undefined ? null : <div className="grid min-w-0 gap-2">{body}</div>}
         {props.footer}
       </div>
     </Card>
@@ -134,8 +134,8 @@ export interface AskFooterProps {
     | { readonly label: string; readonly onPress: () => void; readonly disabled?: boolean }
     | null
     | undefined;
-  /** Its target is Production: the main press carries the risk colour. */
-  readonly production?: boolean;
+  /** Its target is Production, or it stops or deletes: the main press carries the risk colour. */
+  readonly destructive?: boolean;
   readonly onNotNow?: (() => void) | undefined;
   /** More presses between the main one and Not now: "Only Juno". */
   readonly also?: ReactNode;
@@ -204,7 +204,8 @@ function Presses(props: AskFooterProps & { readonly size: "sm" | "md" }) {
           disabled={working !== null || main.disabled === true}
           onClick={main.onPress}
           size={size}
-          variant={props.production === true ? "destructive" : "primary"}
+          data-ask-main=""
+          variant={props.destructive === true ? "destructive" : "primary"}
         >
           {working?.pressed === "main" ? <Spinner size="xs" /> : null}
           {working?.pressed === "main" ? working.words : main.label}
@@ -212,7 +213,13 @@ function Presses(props: AskFooterProps & { readonly size: "sm" | "md" }) {
       )}
       {working === null ? props.also : null}
       {props.onNotNow === undefined ? null : (
-        <Button disabled={working !== null} onClick={props.onNotNow} size={size} variant="ghost">
+        <Button
+          data-ask-not-now=""
+          disabled={working !== null}
+          onClick={props.onNotNow}
+          size={size}
+          variant="ghost"
+        >
           {working?.pressed === "notNow" ? <Spinner size="xs" /> : null}
           {NOT_NOW}
         </Button>

@@ -30,15 +30,20 @@ import { asOrgRole, roleAtLeast } from "@t3tools/shared/zeropsRoles";
 
 import type { ComposerSendOutcome } from "~/hooks/useComposerSendRequests";
 
+import { type AskState, type AskWhere, answeredWords, notNowWords } from "../../ask/ask.logic";
 import { recordsOf } from "../addresses/addresses.logic";
 import { accessChanges } from "../projects/projectPeople.logic";
 
-/** What the person decided of one proposal, and how what they approved ended. */
-export type ProposalDecision =
+/**
+ * What the person decided of one proposal, and how what they approved ended; `by` is who decided
+ * (their Zerops user id), where it is known.
+ */
+export type ProposalDecision = (
   | { readonly state: "running"; readonly at: string }
   | { readonly state: "done"; readonly at: string }
   | { readonly state: "failed"; readonly at: string; readonly message: string }
-  | { readonly state: "declined"; readonly at: string };
+  | { readonly state: "declined"; readonly at: string }
+) & { readonly by?: string };
 
 /** Each proposal's decision, by its id. */
 export type ProposalDecisions = Readonly<Record<string, ProposalDecision>>;
@@ -92,14 +97,15 @@ const FAILED_WORDS = "Zerops did not do it.";
 
 /** A decision as HQ holds it, in the card's terms: an approval with no end yet is running. */
 export function decisionFromHq(record: HqProposalDecision): ProposalDecision {
-  if (record.decision === "declined") return { state: "declined", at: record.at };
+  const { at, by } = record;
+  if (record.decision === "declined") return { state: "declined", at, by };
   switch (record.outcome) {
     case null:
-      return { state: "running", at: record.at };
+      return { state: "running", at, by };
     case "done":
-      return { state: "done", at: record.at };
+      return { state: "done", at, by };
     case "failed":
-      return { state: "failed", at: record.at, message: record.words ?? FAILED_WORDS };
+      return { state: "failed", at, by, message: record.words ?? FAILED_WORDS };
   }
 }
 
@@ -275,12 +281,14 @@ export function handOverWords(recipient: string, outcome: ComposerSendOutcome): 
   }
 }
 
-/** What a card says of a decided proposal; a failed one says the platform's own words instead. */
+/**
+ * What a card says of an approved proposal; a failed one says the platform's own words instead,
+ * and Not now says who and when (`proposalAskState`).
+ */
 export function proposalOutcomeWords(
   proposal: ZeropsProposal,
-  stage: Exclude<ProposalStage, "open" | "failed">,
+  stage: Exclude<ProposalStage, "open" | "failed" | "declined">,
 ): string {
-  if (stage === "declined") return "Declined. Nothing ran.";
   if (stage === "unseen")
     return "Approved before the page reloaded. How it ended was not seen here.";
   const running = stage === "running";
@@ -642,4 +650,111 @@ export function accessProposalPlan(input: {
     }
   }
   return { kind: "ready", changes, dropped, lines };
+}
+
+// ---------------------------------------------------------------------------
+// The proposal on the ask card
+// ---------------------------------------------------------------------------
+
+/** Stage or Production, where the proposal's project is one of its application's environments. */
+type Tier = "stage" | "production" | null;
+
+/** The main press, named for what it does: "Restart medusa", "Set on production", "Send to Rossy". */
+export function proposalPress(proposal: ZeropsProposal, tier: Tier): string {
+  switch (proposal.kind) {
+    case "service.restart":
+      return `Restart ${proposal.serviceName ?? "it"}`;
+    case "service.start":
+      return `Start ${proposal.serviceName ?? "it"}`;
+    case "service.stop":
+      return `Stop ${proposal.serviceName ?? "it"}`;
+    case "env.set":
+      return tier === null ? `Set ${proposal.params.key}` : `Set on ${tier}`;
+    case "domain.add":
+      return proposal.params.domains.length > 1 ? "Add the domains" : "Add the domain";
+    case "access.set":
+      return "Change access";
+    case "mate.message":
+      return `Send to ${proposal.params.to.mateName}`;
+    case "chief.message":
+      return "Ask your Chief";
+  }
+}
+
+/** Where a proposal acts inside its project: the service, or every app's or a service's values. */
+function placeIn(proposal: ZeropsProposal): string | null {
+  switch (proposal.kind) {
+    case "service.restart":
+    case "service.start":
+    case "service.stop":
+    case "domain.add":
+      return proposal.serviceName ?? null;
+    case "env.set":
+      return proposal.params.scope === "project"
+        ? "every app"
+        : `${proposal.serviceName ?? "the service"}'s own`;
+    case "access.set":
+      return proposalWhere(proposal);
+    case "mate.message":
+    case "chief.message":
+      return null;
+  }
+}
+
+/**
+ * The chip: Stage or Production where the proposal's project is one (HQ's structure says), this
+ * Mate where it is the conversation's own project (`home`), else the project by its name. A
+ * message acts nowhere: the Mate it goes to is drawn instead.
+ */
+export function proposalAskWhere(
+  proposal: ZeropsProposal,
+  tier: Tier,
+  home: string | null,
+): AskWhere | null {
+  if (proposal.kind === "mate.message" || proposal.kind === "chief.message") return null;
+  const place = placeIn(proposal);
+  if (tier !== null) return { scope: tier, detail: place };
+  if (proposal.projectId === home) return { scope: "mate", detail: place };
+  if (proposal.kind === "access.set") return { scope: "project", detail: place };
+  const project = proposal.projectName;
+  return {
+    scope: "project",
+    detail:
+      [place, project].filter((part) => part !== null && part !== undefined).join(" · ") || null,
+  };
+}
+
+/**
+ * The card's state, from HQ's decision record: undecided, someone else's to decide, approved and
+ * running, done with who and when, failed in the platform's words, Not now with who and when, or
+ * approved before a reload with its end unseen.
+ */
+export function proposalAskState(input: {
+  readonly proposal: ZeropsProposal;
+  readonly stage: ProposalStage;
+  readonly failure: string | undefined;
+  readonly readOnlyReason: string | undefined;
+  /** Who decided it, by name, and when, as the conversation's clock says it. */
+  readonly by: string | null;
+  readonly at: string | null;
+}): AskState {
+  const { proposal, stage, by, at } = input;
+  switch (stage) {
+    case "open":
+      return input.readOnlyReason === undefined
+        ? { kind: "waiting" }
+        : { kind: "othersToAnswer", words: input.readOnlyReason };
+    case "running":
+      return { kind: "working", words: proposalOutcomeWords(proposal, "running"), pressed: "main" };
+    case "done": {
+      const words = proposalOutcomeWords(proposal, "done").replace(/\.$/u, "");
+      return { kind: "done", words: answeredWords(words, by, at), told: null };
+    }
+    case "failed":
+      return { kind: "failed", words: input.failure ?? FAILED_WORDS };
+    case "declined":
+      return { kind: "notNow", words: notNowWords(by, at) };
+    case "unseen":
+      return { kind: "replaced", words: proposalOutcomeWords(proposal, "unseen") };
+  }
 }
