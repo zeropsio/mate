@@ -452,6 +452,42 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
     }).pipe(Effect.scoped),
   );
 
+  it.effect(
+    "Reads and frames update the list through one sequential handler so an in-flight REST pair cannot overwrite a newer frame",
+    () =>
+      Effect.gen(function* () {
+        const { answer, frame, own } = yield* liveRead;
+        yield* Ref.set(
+          answer,
+          read([person("jan", "OWNER"), person("eva", "NO_ACCESS")], { "cu-eva": "BASIC_USER" }),
+        );
+        // A read answers what Zerops said when it asked, and lands only once `lands` is done.
+        const slow = yield* Ref.make(false);
+        const lands = yield* Deferred.make<void>();
+        const list = yield* makeAccessList({
+          ...own,
+          read: Effect.gen(function* () {
+            const said = yield* own.read;
+            if (yield* Ref.get(slow)) yield* Deferred.await(lands);
+            return said;
+          }),
+        });
+        yield* TestClock.adjust(Duration.zero);
+        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open,eva:open");
+        yield* Ref.set(slow, true);
+        // A ticket for a stranger starts a search; Eva's override goes while it is in flight.
+        const ticket = yield* list.admits("ben").pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+        yield* Ref.set(answer, read([person("jan", "OWNER"), person("eva", "NO_ACCESS")]));
+        yield* frame({ kind: "project", overrides: {} });
+        yield* TestClock.adjust(Duration.zero);
+        yield* Deferred.succeed(lands, undefined);
+        assert.strictEqual(yield* Fiber.join(ticket), "not_in_list");
+        yield* TestClock.adjust(Duration.zero);
+        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
+      }).pipe(Effect.scoped),
+  );
+
   it.effect("The 5-minute fallback read still runs while the websocket is live", () =>
     Effect.gen(function* () {
       const { own, reads } = yield* liveRead;

@@ -46,6 +46,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpClient } from "effect/http";
@@ -341,6 +342,12 @@ export const make = (own?: {
           );
     };
 
+    /**
+     * Reads and frames apply one at a time, each over what the last left: a frame waits for the
+     * read in flight, so an answer Zerops gave before the frame never lands after it.
+     */
+    const serial = yield* Semaphore.make(1);
+
     const readOnce = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
         const read = yield* from.read.pipe(
@@ -363,7 +370,7 @@ export const make = (own?: {
         if (read.kind !== "read" || after.own === undefined) return;
         yield* report(after, after.own.heardAtMs);
         yield* Deferred.succeed(organisation, read.project.clientId);
-      });
+      }).pipe(serial.withPermits(1));
 
     /**
      * A frame over the last known rows. The list it recomputes holds from the read it builds on:
@@ -380,7 +387,7 @@ export const make = (own?: {
             : { ...current, rows, own: ownAccessList(from.projectId, rows, current.own.heardAtMs) };
         });
         if (after !== before) yield* report(after, now);
-      });
+      }).pipe(serial.withPermits(1));
 
     /**
      * One read at a time, and whoever asks while it runs waits on it. The read runs in the list's
