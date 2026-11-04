@@ -1,8 +1,9 @@
 /**
  * A Mate's ticket as the connection runtime asks for it (spec-mate §3.8): one HQ ticket per
  * attempt, and HQ's refusal told as what it means for reconnecting. Only HQ saying the person may
- * not open the Mate ends it — their role sees it and may not open it (`read-only`), or HQ has no
- * Mate there for them (`not-found`); everything else — no link, no acknowledgement, a follower, an
+ * not open the Mate ends it — their role sees it and may not open it, or its project does not admit
+ * them even after a renewed session (`read-only`), or HQ has no Mate there for them (`not-found`);
+ * everything else — no link, no acknowledgement, a follower, an
  * unreachable HQ, a session being renewed — waits for the next try.
  */
 import * as Effect from "effect/Effect";
@@ -13,7 +14,11 @@ import {
   type ConnectionAttemptError,
 } from "../../connection/model.ts";
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
-import { HqError, type HqApi } from "../../zerops/hq/client.ts";
+import { HqError, REACH_STALE, type HqApi } from "../../zerops/hq/client.ts";
+import { ZEROPS_READ_ONLY_DOOR_REASON } from "../../zerops/mateAccess.ts";
+
+/** HQ's reasons the Mate's project does not admit the person: Zerops's role, or the Mate's list. */
+const PROJECT_REFUSALS = new Set([ZEROPS_READ_ONLY_DOOR_REASON, "not_in_list"]);
 
 const notConnected = (reason: string | undefined): string => {
   switch (reason) {
@@ -32,6 +37,16 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
     return new ConnectionBlockedError({
       reason: "read-only",
       detail: "Your role on this Mate's project lets you see it, not open it.",
+    });
+  }
+  // The ticket call renewed the session once before a reach_stale reached here.
+  if (
+    (cause.code === "forbidden" && PROJECT_REFUSALS.has(cause.reason ?? "")) ||
+    cause.reason === REACH_STALE
+  ) {
+    return new ConnectionBlockedError({
+      reason: "read-only",
+      detail: "This Mate's project does not admit you.",
     });
   }
   if (cause.code === "mate_not_found") {
