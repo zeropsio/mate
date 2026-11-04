@@ -667,6 +667,8 @@ const WRITE_TIMEOUT_MS = 45_000;
 
 /** A session is renewed once it is this close to its end. */
 const RENEW_BEFORE_MS = 15 * 60_000;
+/** HQ's reason for a ticket the session's reach, read when it began, does not cover. */
+export const REACH_STALE = "reach_stale";
 
 interface DoorAnswer {
   readonly session: string;
@@ -1165,22 +1167,31 @@ export function makeHqApi(input: {
     return entering;
   };
 
-  /** The renewal under way, shared by the calls that meet it. */
-  let renewal: Promise<void> | null = null;
+  /** The renewal under way, shared by the calls that meet it; whether HQ renewed the session. */
+  let renewal: Promise<boolean> | null = null;
 
   /**
-   * Renews a session close to its end, silently: the same request with a current access token and
-   * the session as its bearer, which keeps the session's id. A renewal that fails leaves the
-   * session as it was; its own end is met by the call that finds it ended.
+   * Renews the session: the same request with a current access token and the session as its
+   * bearer, which keeps the session's id and has HQ read the person afresh. A renewal that fails
+   * leaves the session as it was; its own end is met by the call that finds it ended.
    */
-  const renewIfDue = async (token: string): Promise<void> => {
-    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
-    renewal ??= enterDoor(token)
-      .then(remember, () => undefined)
+  const renew = (token: string): Promise<boolean> =>
+    (renewal ??= enterDoor(token)
+      .then(
+        (answer) => {
+          remember(answer);
+          return true;
+        },
+        () => false,
+      )
       .finally(() => {
         renewal = null;
-      });
-    await renewal;
+      }));
+
+  /** Renews a session close to its end, silently. */
+  const renewIfDue = async (token: string): Promise<void> => {
+    if (expiresAtMs === null || now() < expiresAtMs - RENEW_BEFORE_MS) return;
+    await renew(token);
   };
 
   /**
@@ -1295,13 +1306,27 @@ export function makeHqApi(input: {
   return {
     ...makeChiefCalls({ authorized, decoded }),
     structure: structureOf,
-    mateTicket: async (projectId, signal) =>
-      json<HqMateTicket>(
-        await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
-          method: "POST",
-          ...(signal === undefined ? {} : { signal }),
-        }),
-      ),
+    // HQ read the person's reach when the session began; a Mate's project it came to hold since is
+    // known to the session once it is renewed (`409 reach_stale`), so the ticket is asked once more.
+    mateTicket: async (projectId, signal) => {
+      const ask = async () =>
+        json<HqMateTicket>(
+          await authorized(`/api/mates/${encodeURIComponent(projectId)}/ticket`, {
+            method: "POST",
+            ...(signal === undefined ? {} : { signal }),
+          }),
+        );
+      try {
+        return await ask();
+      } catch (cause) {
+        const held = session;
+        if (!(cause instanceof HqError && cause.reason === REACH_STALE) || held === null)
+          throw cause;
+        if (!(await renew(await held))) throw cause;
+        signal?.throwIfAborted();
+        return ask();
+      }
+    },
     openScopeSocket: async (on, signal) => {
       const { ticket } = await json<{ readonly ticket: string }>(
         await authorized("/api/stream-ticket", { method: "POST", signal }),

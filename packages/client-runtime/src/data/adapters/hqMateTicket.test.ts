@@ -58,6 +58,23 @@ describe("mateTicketIssuer", () => {
   );
 
   it.effect.each([
+    { case: "a second reach_stale after renewal", code: "conflict", reason: "reach_stale" },
+    { case: "a zerops_read_only refusal", code: "forbidden", reason: "zerops_read_only" },
+    { case: "a not_in_list refusal", code: "forbidden", reason: "not_in_list" },
+  ])("$case shows the Mate as not openable instead of opening it again", ({ code, reason }) =>
+    Effect.gen(function* () {
+      const issuer = mateTicketIssuer(() => ({
+        mateTicket: () => Promise.reject(refusal("refused", code, reason)),
+      }));
+
+      expect(yield* Effect.flip(issuer.issue({ orgId: "O1", projectId: "P1" }))).toMatchObject({
+        _tag: "ConnectionBlockedError",
+        reason: "read-only",
+      });
+    }),
+  );
+
+  it.effect.each([
     {
       case: "not_mate_opener",
       error: refusal("refused", "forbidden", "not_mate_opener"),
