@@ -25,7 +25,7 @@ import * as ZeropsAgentLogin from "./ZeropsAgentLogin.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { makeFixtureZeropsLayer } from "./ZeropsFixtureFeeds.ts";
 import * as ZeropsLifecycle from "./ZeropsLifecycle.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { ZeropsTurnAdmission } from "./ZeropsTurnAdmission.ts";
 import { RunAdmission } from "../engine/ports.ts";
 import { engineHostDoubles } from "../engine/testing/hostDoubles.ts";

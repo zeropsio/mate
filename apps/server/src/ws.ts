@@ -3,7 +3,7 @@ import * as Socket from "effect/socket/Socket";
 import * as HttpServerResponse from "effect/http/HttpServerResponse";
 import { ZeropsConnections } from "./zerops/ZeropsConnections.ts";
 import { isAllowedWebSocketOrigin } from "./auth/origin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zerops/zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { RpcUpdateAdmission } from "./RpcUpdateAdmission.ts";
 import { ZeropsSetup } from "./zerops/ZeropsSetup.ts";
 import { readsAlongOnly, ZeropsHqLink } from "./zerops/ZeropsHqLink.ts";

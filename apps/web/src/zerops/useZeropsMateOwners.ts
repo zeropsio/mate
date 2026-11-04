@@ -8,6 +8,7 @@
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   shownHqProjectPeopleAtom,
@@ -57,16 +58,18 @@ export function useHqPersonNames(
 }
 
 /**
- * Who a record names by their Zerops user id: the person looking by their own account (HQ's
- * people name only those its records hold), anyone else as HQ names them.
+ * Who a record names by their Zerops user id, or by the subject the engine records a person's
+ * answer under: the person looking by their own account (HQ's people name only those its records
+ * hold), anyone else as HQ names them.
  */
 export function personNameOf(
   subject: string,
   viewer: (ZeropsAccountSource & { readonly id?: string }) | null | undefined,
   people: (userId: string) => string | undefined,
 ): string | undefined {
-  if (viewer?.id === subject) return zeropsAccountDisplay(viewer).name;
-  return people(subject);
+  const userId = zeropsUserIdOf(subject);
+  if (viewer?.id === userId) return zeropsAccountDisplay(viewer).name;
+  return people(userId);
 }
 
 /** `personNameOf` for the organization `clientId`, as a surface names who answered its ask. */

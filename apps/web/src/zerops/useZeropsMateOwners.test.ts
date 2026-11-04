@@ -151,6 +151,16 @@ describe("personNameOf — who a record names, by Zerops user id", () => {
     { name: "the person looking, by their own account", subject: "user-ales", want: "Aleš" },
     { name: "a colleague, as HQ names them", subject: "user-petr", want: "Petr" },
     { name: "somebody nobody names", subject: "user-x", want: undefined },
+    {
+      name: "the person looking, by the subject the engine records an answer under",
+      subject: "zerops-user:user-ales",
+      want: "Aleš",
+    },
+    {
+      name: "a colleague, by the subject the engine records an answer under",
+      subject: "zerops-user:user-petr",
+      want: "Petr",
+    },
   ])("$name", ({ subject, want }) => {
     expect(personNameOf(subject, viewer, people)).toBe(want);
   });
