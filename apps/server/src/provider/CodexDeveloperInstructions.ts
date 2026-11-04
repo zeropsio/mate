@@ -170,6 +170,7 @@ export function buildCodexDeveloperInstructions(interactionMode: ProviderInterac
  */
 export function buildCodexAdditionalContext(
   runtime: CodexRuntimeInfo,
+  persona?: string,
 ): Record<string, V2TurnStartParams__AdditionalContextEntry> {
   return {
     mate_runtime: {
@@ -178,5 +179,67 @@ export function buildCodexAdditionalContext(
     },
     // An entry of its own: the runtime entry alone sits near Codex's per-entry cap.
     mate_places: { kind: "application", value: MATE_PLACES_INSTRUCTIONS },
+    ...(persona === undefined ? {} : codexPersonaEntries(persona)),
   };
+}
+
+/** Codex keeps the first and last 2,000 bytes of a longer entry value and drops the middle. */
+const CODEX_ENTRY_MAX_BYTES = 4_000;
+/** How far back from the cap a piece may end early, to break at whitespace. */
+const CODEX_ENTRY_BREAK_WINDOW_BYTES = 400;
+const CODEX_PERSONA_KEYS = ["mate_persona", "mate_persona_2", "mate_persona_3"] as const;
+
+/**
+ * The persona block in pieces under Codex's per-entry cap: 3,000 UTF-16 units are at most
+ * 9,000 UTF-8 bytes, so three entries always hold it. All three are always sent: a persona
+ * that shrinks empties its later pieces, and Codex re-sends only the entries that changed.
+ */
+function codexPersonaEntries(
+  persona: string,
+): Record<string, V2TurnStartParams__AdditionalContextEntry> {
+  const pieces = splitUnderCodexEntryCap(persona);
+  return Object.fromEntries(
+    CODEX_PERSONA_KEYS.map((key, index) => [
+      key,
+      {
+        kind: "application" as const,
+        // The last key takes any remainder; the persona's length cap keeps it under the cap.
+        value:
+          index === CODEX_PERSONA_KEYS.length - 1
+            ? pieces.slice(index).join("")
+            : (pieces[index] ?? ""),
+      },
+    ]),
+  );
+}
+
+/**
+ * Pieces of at most CODEX_ENTRY_MAX_BYTES that join back to `text`. A piece ends after
+ * whitespace near the cap when there is some, and never inside a character.
+ */
+function splitUnderCodexEntryCap(text: string): ReadonlyArray<string> {
+  const pieces: Array<string> = [];
+  let piece = "";
+  let pieceBytes = 0;
+  let breakAt = -1;
+  for (const character of text) {
+    const bytes = Buffer.byteLength(character);
+    if (pieceBytes + bytes > CODEX_ENTRY_MAX_BYTES) {
+      const cut = breakAt > 0 ? breakAt : piece.length;
+      pieces.push(piece.slice(0, cut));
+      piece = piece.slice(cut);
+      pieceBytes = Buffer.byteLength(piece);
+      breakAt = -1;
+    }
+    piece += character;
+    pieceBytes += bytes;
+    if (
+      /\s/u.test(character) &&
+      pieceBytes >= CODEX_ENTRY_MAX_BYTES - CODEX_ENTRY_BREAK_WINDOW_BYTES
+    ) {
+      breakAt = piece.length;
+    }
+  }
+  if (piece.length > 0) pieces.push(piece);
+  return pieces;
 }

@@ -7,6 +7,7 @@
  */
 import { assert, describe, it } from "@effect/vitest";
 import {
+  type MatePersona,
   type ModelSelection,
   ProviderDriverKind,
   type ProviderSessionStartInput,
@@ -24,6 +25,8 @@ import {
   type PeerMessage,
   type WireRecord,
 } from "./codexAdapterHarness.ts";
+import { personaInstructions } from "../personaInstructions.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { type ThreadToolProfile, ThreadToolPolicyRegistry } from "./threadToolPolicy.ts";
 
 const CREW_THREAD = ThreadId.make("crew-thread");
@@ -246,6 +249,59 @@ const turnMessages: ReadonlyArray<PeerMessage> = [
     },
   },
 ];
+
+describe("the Mate's persona on the Codex adapter", () => {
+  const PIRATE = { name: "Pirate", instructions: "Talk like a pirate." };
+  const LONG = { name: "Long", instructions: "诚实地回答问题并保持简洁。".repeat(230) };
+  /** Each turn's three persona entries' values, or undefined where a turn carries none. */
+  const personaEntries = (wire: ReadonlyArray<WireRecord>) =>
+    paramsOf(wire, "turn/start").map((turn) => {
+      const context = turn.additionalContext as
+        | Record<string, { kind: string; value: string }>
+        | undefined;
+      return context?.mate_persona === undefined
+        ? undefined
+        : ["mate_persona", "mate_persona_2", "mate_persona_3"].map((key) => context[key]?.value);
+    });
+  const twoTurns = (threadId: ThreadId, from: MatePersona = PIRATE) =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({ persona: from });
+      const { adapter, wire } = yield* withProfile(PROFILE);
+      yield* adapter.startSession(startInput({ threadId }));
+      // As the engine sends a default-mode turn: with no interaction mode at all.
+      yield* adapter.sendTurn({ threadId, input: "one", attachments: [] });
+      yield* settings.updateSettings({ persona: null });
+      yield* adapter.sendTurn({ threadId, input: "two", attachments: [] });
+      return personaEntries(wire);
+    });
+
+  it.effect(
+    "Codex hears the persona as its own context entry, and is told when it is removed",
+    () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual(yield* twoTurns(PERSON_THREAD), [
+          [personaInstructions(PIRATE), "", ""],
+          [personaInstructions(null), "", ""],
+        ]);
+      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a persona that shrinks clears Codex's later entries", () =>
+    Effect.gen(function* () {
+      const [long, removed] = yield* twoTurns(PERSON_THREAD, LONG);
+      assert.strictEqual(long?.join(""), personaInstructions(LONG));
+      assert.isTrue(long?.every((value) => value !== ""));
+      assert.deepStrictEqual(removed, [personaInstructions(null), "", ""]);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a Codex crewmate takes no persona", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* twoTurns(CREW_THREAD), [undefined, undefined]);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+});
 
 describe("a profiled Codex thread's approval requests, answered by its gate", () => {
   it.effect(

@@ -27,6 +27,7 @@ import { waitForFileContent } from "../../testUtils/waitForFileContent.ts";
 
 import wireFixture from "../testFixtures/codexMultiAgentWire.json" with { type: "json" };
 import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { makeCodexSessionRuntime } from "./CodexSessionRuntime.ts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 
@@ -989,6 +990,7 @@ describe("CodexSessionRuntime collab integration", () => {
 });
 
 describe("CodexSessionRuntime compaction", () => {
+  const PERSONA = personaInstructions({ name: "Pirate", instructions: "Talk like a pirate." });
   it.effect("restores T3 context after the root thread compacts", () =>
     Effect.gen(function* () {
       const compacted = (threadId: string) => ({
@@ -1024,6 +1026,7 @@ describe("CodexSessionRuntime compaction", () => {
         models: Effect.succeed([
           { slug: "gpt-5.6-sol", name: "GPT-5.6 Sol", isCustom: false, capabilities: null },
         ]),
+        persona: Effect.succeed(PERSONA),
       });
       const completedFiber = yield* runtime.events.pipe(
         Stream.filter((event) => event.method === "turn/completed"),
@@ -1049,12 +1052,17 @@ describe("CodexSessionRuntime compaction", () => {
         assert.equal(item.role, "developer");
         return item.content[0].text;
       });
-      assert.lengthOf(texts, 2);
+      assert.lengthOf(texts, 5);
       assert.match(
         texts[0] ?? "",
         /^<mate_runtime><runtime_info>.*as GPT-5\.6 Sol \(model slug: gpt-5\.6-sol\).*<\/mate_runtime>$/s,
       );
       assert.equal(texts[1], `<mate_places>${MATE_PLACES_INSTRUCTIONS}</mate_places>`);
+      assert.deepStrictEqual(texts.slice(2), [
+        `<mate_persona>${PERSONA}</mate_persona>`,
+        "<mate_persona_2></mate_persona_2>",
+        "<mate_persona_3></mate_persona_3>",
+      ]);
 
       yield* runtime.close;
     }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),

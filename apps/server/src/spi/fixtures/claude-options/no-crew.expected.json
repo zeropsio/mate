@@ -7,7 +7,7 @@
       "systemPrompt": {
         "type": "preset",
         "preset": "claude_code",
-        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]\n[personaInstructions(null)]"
       },
       "settingSources": ["user", "project", "local"],
       "thinking": {
@@ -54,7 +54,7 @@
       "systemPrompt": {
         "type": "preset",
         "preset": "claude_code",
-        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]\n[personaInstructions(null)]"
       },
       "settingSources": ["user", "project", "local"],
       "effort": "max",
@@ -104,7 +104,7 @@
       "systemPrompt": {
         "type": "preset",
         "preset": "claude_code",
-        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]"
+        "append": "[buildRuntimeInstructions({ harness: \"Claude Code\" })]\n[personaInstructions(null)]"
       },
       "settingSources": ["user", "project", "local"],
       "thinking": {

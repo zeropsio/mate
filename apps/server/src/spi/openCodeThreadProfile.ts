@@ -301,10 +301,13 @@ export const openCodeTurnProfile = (
   thread: ThreadRef,
   selection: ModelSelection | undefined,
 ): Effect.Effect<{
+  /** A crewmate's thread: it takes no persona. */
+  readonly profiled: boolean;
   readonly instructions: string | undefined;
   readonly modelSelection: ModelSelection | undefined;
 }> =>
   Effect.map(threadProfileFor(policies, thread), (profile) => ({
+    profiled: profile !== undefined,
     instructions:
       profile === undefined
         ? undefined

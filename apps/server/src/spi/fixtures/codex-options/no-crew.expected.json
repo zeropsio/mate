@@ -53,14 +53,6 @@
           },
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "medium"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",
@@ -69,6 +61,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -106,6 +110,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -171,14 +187,6 @@
           "serviceTier": "fast",
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "high"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",
@@ -187,6 +195,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -226,6 +246,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -294,14 +326,6 @@
           },
           "summary": "auto",
           "threadId": "019fcfd6-17bb-72f0-ae12-a1f2dee6e3e5",
-          "collaborationMode": {
-            "mode": "default",
-            "settings": {
-              "developer_instructions": "[buildCodexDeveloperInstructions(\"default\")]",
-              "model": "gpt-5.6-sol",
-              "reasoning_effort": "medium"
-            }
-          },
           "additionalContext": {
             "mate_runtime": {
               "kind": "application",
@@ -310,6 +334,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }
@@ -359,6 +395,18 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
+            },
+            "mate_persona_2": {
+              "kind": "application",
+              "value": ""
+            },
+            "mate_persona_3": {
+              "kind": "application",
+              "value": ""
             }
           }
         }

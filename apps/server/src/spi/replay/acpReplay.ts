@@ -49,6 +49,7 @@ import * as Stream from "effect/Stream";
 import * as ChildProcessSpawner from "effect/process/ChildProcessSpawner";
 
 import { ServerConfig } from "../../config.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   makeAntigravityAdapter,
   type AntigravityAdapterOptions,
@@ -81,7 +82,10 @@ async function makeMockAgentWrapper(env: Readonly<Record<string, string>> = {}):
 
 const testLayer = ServerConfig.layerTest(process.cwd(), {
   prefix: "spi-acp-replay-test-",
-}).pipe(Layer.provideMerge(NodeServices.layer));
+}).pipe(
+  Layer.provideMerge(ServerSettingsService.layerTest()),
+  Layer.provideMerge(NodeServices.layer),
+);
 
 /** Runs `adapter` through the fixed "hello" baseline and returns the turn and all its completed assistant items. */
 function runBaseline<EStart, ESend, EStop>(

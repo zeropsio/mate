@@ -3,6 +3,7 @@
  * with a profile runs with, compared with the same session without one
  * (ARCHITECTURE seam 8, §7 "SPI contract test").
  */
+import type { SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { assert, describe, it } from "@effect/vitest";
 import {
   type ModelSelection,
@@ -17,6 +18,8 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { buildRuntimeInstructions } from "../provider/RuntimeInstructions.ts";
+import { instructionsMark, instructionsRefresh } from "../resumedInstructions.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   claudeAdapterHarnessLayer,
   makeClaudeAdapterHarness,
@@ -159,6 +162,76 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
       });
       assert.strictEqual(crew!.maxBudgetUsd, PROFILE.maxBudgetUsd);
     }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a crewmate takes no persona, at start or on any turn", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({ persona: { name: "Pirate", instructions: "Arr." } });
+      const { adapter, sessions } = yield* withProfile(PROFILE);
+      yield* adapter.startSession(startInput());
+      yield* adapter.sendTurn(turnInput({ input: "first" }));
+      yield* settings.updateSettings({ persona: null });
+      yield* adapter.sendTurn(turnInput({ input: "second" }));
+      const { options, prompt } = sessions[0]!;
+      const iterator = prompt[Symbol.asyncIterator]();
+      const messages = [
+        (yield* Effect.promise(() => iterator.next())).value,
+        (yield* Effect.promise(() => iterator.next())).value,
+      ];
+      assert.notInclude(JSON.stringify(options.systemPrompt), "<persona");
+      assert.notInclude(JSON.stringify(messages), "<persona");
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  const CREW_INSTRUCTIONS = `${buildRuntimeInstructions({ harness: "Claude Code" })}\n\n${PROFILE.sessionContext}`;
+  const RESUMED = { threadId: "crew-thread", resume: "550e8400-e29b-41d4-a716-446655440000" };
+  it.effect.each([
+    {
+      label: "resumes under other instructions",
+      resumeCursor: { ...RESUMED, instructions: instructionsMark("an older release's") },
+      compacts: false,
+      hears: true,
+    },
+    {
+      label: "compacts after a resume from before Mate marked where it began",
+      resumeCursor: { ...RESUMED, instructions: instructionsMark(CREW_INSTRUCTIONS) },
+      compacts: true,
+      hears: true,
+    },
+    {
+      label: "compacts in its first session",
+      resumeCursor: undefined,
+      compacts: true,
+      hears: false,
+    },
+  ])(
+    "a crewmate that $label keeps its crew context in what it hears again: $hears",
+    ({ resumeCursor, compacts, hears }) =>
+      Effect.gen(function* () {
+        const { adapter, sessions, firstEvent } = yield* withProfile(PROFILE);
+        yield* adapter.startSession(startInput(resumeCursor ? { resumeCursor } : {}));
+        if (compacts) {
+          sessions[0]!.query.emit({
+            type: "system",
+            subtype: "compact_boundary",
+            compact_metadata: { trigger: "auto", pre_tokens: 200, post_tokens: 40 },
+            session_id: RESUMED.resume,
+            uuid: "compact-boundary-crew",
+          } as unknown as SDKMessage);
+          yield* firstEvent("thread.state.changed");
+        }
+        yield* adapter.sendTurn(turnInput({ input: "go on" }));
+        const iterator = sessions[0]!.prompt[Symbol.asyncIterator]();
+        const message = (yield* Effect.promise(() => iterator.next())).value;
+        const texts = (message.message.content as Array<{ type: string; text?: string }>).flatMap(
+          (block) => (block.type === "text" && block.text !== undefined ? [block.text] : []),
+        );
+        assert.deepStrictEqual(
+          texts,
+          hears ? [instructionsRefresh(CREW_INSTRUCTIONS), "go on"] : ["go on"],
+        );
+      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
   );
 
   // The PreToolUse hook is the gate: every row is one decideTool behavior

@@ -643,7 +643,7 @@ export type SourceControlWritingStyleMode = typeof SourceControlWritingStyleMode
 
 export const MATE_PERSONA_NAME_MAX_LENGTH = 40;
 export const MATE_PERSONA_DESCRIPTION_MAX_LENGTH = 120;
-/** Codex delivers the persona as one `additionalContext` entry, which sits under its per-entry cap. */
+/** Codex receives the persona split across `additionalContext` entries under its 4,000-byte cap. */
 export const MATE_PERSONA_INSTRUCTIONS_MAX_LENGTH = 3000;
 
 export const MatePersonaName = TrimmedNonEmptyString.check(
