@@ -148,13 +148,14 @@ export function ProposalCard(props: ProposalCardProps) {
             density="full"
             // Production carries the risk; stopping takes a service offline anywhere.
             destructive={tier === "production" || proposal.kind === "service.stop"}
-            main={stage === "open" ? main : null}
+            // While its approval runs the presses stand, held, the main one saying what runs.
+            main={main}
             note={
               stage === "open" && props.onSetUpChief === undefined
                 ? props.approveBlocked
                 : undefined
             }
-            onNotNow={stage === "open" ? props.onDecline : undefined}
+            onNotNow={props.onDecline}
             state={state}
           />
         }
