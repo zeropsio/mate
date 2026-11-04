@@ -5,7 +5,7 @@
  * The real `PersonaPanelBody` over the real `personaPage` model, fed by fixtures. `?persona=` —
  * `none` (the default), `premade` (an unedited Zerops copy), `older` (a copy of an older revision),
  * `org` (an unedited org copy), `custom` (written by hand). `?org=` — `ready` (the default),
- * `empty`, `loading`, `unavailable`, `failed`. `?mate=update` for a Mate whose server takes no
+ * `stale`, `empty`, `loading`, `unavailable`, `failed`. `?mate=update` for a Mate whose server takes no
  * persona, `?mate=loading` for one not yet read. `?write=1` makes the person an Owner or Admin.
  * Writes answer after 600 ms; `?fail=1` makes them fail. `?theme=dark` for dark.
  *
@@ -17,7 +17,7 @@ import { PREMADE_PERSONA_TEMPLATES, type PersonaTemplate } from "@t3tools/shared
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
-import { PersonaPanelBody } from "~/components/persona/PersonaPanel";
+import { PersonaPanelBody, type OrgSaveView } from "~/components/persona/PersonaPanel";
 import {
   personaFromTemplate,
   personaPage,
@@ -84,13 +84,32 @@ const START: Record<string, MatePersona | null> = {
 };
 
 const ORG_INPUT: Record<string, OrgPersonaTemplatesInput> = {
-  ready: { state: "ready", templates: ORG_TEMPLATES, orgName: "Acme", mayWrite: MAY_WRITE },
-  empty: { state: "ready", templates: [], orgName: "Acme", mayWrite: MAY_WRITE },
-  loading: { state: "loading", templates: [], orgName: "Acme", mayWrite: false },
-  unavailable: { state: "unavailable", templates: [], orgName: null, mayWrite: false },
+  ready: {
+    state: "ready",
+    templates: ORG_TEMPLATES,
+    orgName: "Acme",
+    mayWrite: MAY_WRITE,
+    failure: null,
+  },
+  stale: {
+    state: "ready",
+    templates: ORG_TEMPLATES,
+    orgName: "Acme",
+    mayWrite: MAY_WRITE,
+    failure: "HQ stopped answering.",
+  },
+  empty: { state: "ready", templates: [], orgName: "Acme", mayWrite: MAY_WRITE, failure: null },
+  loading: { state: "loading", templates: [], orgName: "Acme", mayWrite: false, failure: null },
+  unavailable: {
+    state: "unavailable",
+    templates: [],
+    orgName: null,
+    mayWrite: false,
+    failure: null,
+  },
   failed: {
     state: "failed",
-    cause: "HQ did not answer in time.",
+    failure: "HQ did not answer in time.",
     templates: [],
     orgName: "Acme",
     mayWrite: false,
@@ -101,6 +120,7 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 600));
 
 function Page() {
   const [persona, setPersona] = useState<MatePersona | null>(START[PERSONA] ?? null);
+  const [orgSave, setOrgSave] = useState<OrgSaveView>({ stage: "idle" });
   const org = ORG_INPUT[ORG] ?? ORG_INPUT.ready!;
   const model = personaPage({
     mate: "Nova",
@@ -117,10 +137,22 @@ function Page() {
         model={model}
         orgName={org.orgName}
         persona={persona}
-        saveAsOrg={async () => {
-          await settle();
-          return FAIL ? "HQ refused it: you need to be an Admin." : null;
+        onReadOrgAgain={noop}
+        onSaveAsOrg={() => {
+          setOrgSave({ stage: "pending" });
+          void settle().then(() =>
+            setOrgSave(
+              FAIL
+                ? {
+                    stage: "failed",
+                    message: "HQ refused it: you need to be an Admin.",
+                    retry: noop,
+                  }
+                : { stage: "saved" },
+            ),
+          );
         }}
+        orgSave={orgSave}
         write={async (next) => {
           await settle();
           if (FAIL) return "Nova did not answer.";

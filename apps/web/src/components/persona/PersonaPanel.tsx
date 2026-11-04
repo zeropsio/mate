@@ -16,13 +16,21 @@ import {
 } from "@t3tools/client-runtime/state/runtime";
 import { useAtomValue } from "@effect/atom-react";
 import { ChevronRightIcon, PencilIcon } from "lucide-react";
-import { useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { cn, randomUUID } from "~/lib/utils";
 import { serverEnvironment } from "~/state/server";
 import { useServerConfigs } from "~/state/entities";
 import { useAtomCommand } from "~/state/use-atom-command";
-import { useOrgPersonaTemplates, useSaveOrgPersonaTemplate } from "~/zerops/usePersonaTemplates";
+import { useOrgPersonaTemplates, usePersonaTemplateWriter } from "~/zerops/usePersonaTemplates";
 import { RightPanelPageEdge } from "~/components/RightPanelPage";
 
 import { Button, InlineButton } from "../ui/button";
@@ -33,8 +41,9 @@ import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import {
   PERSONA_WORDS,
-  orgTemplateFromPersona,
+  orgTemplateDraft,
   personaFromEditor,
+  personaLinkedToSavedTemplate,
   personaFromTemplate,
   personaInstructionsCount,
   personaPage,
@@ -70,13 +79,20 @@ export const PERSONA_PAGE_WORDS = {
   savedAsOrg: (org: string | null) =>
     org === null ? "Saved to your organization's templates." : `Saved to ${org}'s templates.`,
   tryAgain: "Try again",
+  readAgain: "Read again",
+  orgConflict: "HQ already holds a template by that id.",
   writeFailed: "Couldn't save the persona:",
   orgSaveFailed: "Couldn't save the template:",
 } as const;
 
 /** A write's outcome: `null` once the server took it, else what to tell the person. */
 type PersonaWrite = (persona: MatePersona | null) => Promise<string | null>;
-type OrgSave = (persona: MatePersona) => Promise<string | null>;
+
+/** Where Save as the organization's template stands, through tying the Mate to it. */
+export type OrgSaveView =
+  | { readonly stage: "idle" | "pending" | "saved" }
+  | { readonly stage: "failed"; readonly message: string; readonly retry: () => void }
+  | { readonly stage: "unconfirmed"; readonly message: string };
 
 export function PersonaPanel(props: {
   readonly environmentId: EnvironmentId;
@@ -86,7 +102,7 @@ export function PersonaPanel(props: {
   const config = useServerConfigs().get(environmentId);
   const settings = useAtomValue(serverEnvironment.settingsValueAtom(environmentId));
   const org = useOrgPersonaTemplates();
-  const saveOrgTemplate = useSaveOrgPersonaTemplate();
+  const writer = usePersonaTemplateWriter();
   const updateSettings = useAtomCommand(serverEnvironment.updateSettings, {
     reportFailure: false,
     reportDefect: false,
@@ -111,24 +127,87 @@ export function PersonaPanel(props: {
     const failure = squashAtomCommandFailure(result);
     return failure instanceof Error ? failure.message : "The Mate did not take it.";
   };
-  const saveAsOrg: OrgSave = async (current) => {
-    const result = await saveOrgTemplate(randomUUID(), orgTemplateFromPersona(current));
-    return result.ok ? null : result.message;
+
+  // The persona being saved as a template, by the template's id: once the organization's list
+  // shows that template, the Mate takes it, tied to it (`personaLinkedToSavedTemplate`).
+  const [saving, setSaving] = useState<{ readonly id: string; readonly persona: MatePersona }>();
+  // How tying the Mate to it went, by template id; absent while that write is under way.
+  const [tied, setTied] = useState<{ readonly id: string; readonly failure: string | null }>();
+  const saveAsOrg = (current: MatePersona) => {
+    const id = randomUUID();
+    setSaving({ id, persona: current });
+    writer.save(orgTemplateDraft(current, id));
   };
+  const tieTo = async (id: string, next: MatePersona) => {
+    const failure = await write(next);
+    setTied({ id, failure });
+  };
+  const linked =
+    saving !== undefined && writer.write.stage === "done"
+      ? personaLinkedToSavedTemplate(saving, org.templates, persona)
+      : null;
+  const linkedId = linked === null || saving === undefined ? null : saving.id;
+  const onLinked = useEffectEvent((id: string) => {
+    if (linked === null) return;
+    void write(linked).then((failure) => setTied({ id, failure }));
+  });
+  useEffect(() => {
+    if (linkedId !== null) onLinked(linkedId);
+  }, [linkedId]);
+
+  const stage = writer.write;
+  const orgSave: OrgSaveView =
+    // A save of an earlier text no longer speaks for the persona shown.
+    saving === undefined ||
+    persona === null ||
+    persona.name !== saving.persona.name ||
+    persona.instructions !== saving.persona.instructions
+      ? { stage: "idle" }
+      : linked !== null
+        ? tied?.id !== saving.id
+          ? { stage: "pending" }
+          : tied.failure === null
+            ? { stage: "saved" }
+            : {
+                stage: "failed",
+                message: tied.failure,
+                retry: () => {
+                  setTied(undefined);
+                  void tieTo(saving.id, linked);
+                },
+              }
+        : stage.stage === "pending"
+          ? { stage: "pending" }
+          : stage.stage === "done"
+            ? { stage: "saved" }
+            : stage.stage === "unconfirmed"
+              ? { stage: "unconfirmed", message: stage.reason }
+              : stage.stage === "failed" || stage.stage === "conflict"
+                ? {
+                    stage: "failed",
+                    message:
+                      stage.stage === "failed" ? stage.reason : PERSONA_PAGE_WORDS.orgConflict,
+                    retry: () => saveAsOrg(saving.persona),
+                  }
+                : { stage: "idle" };
   return (
     <PersonaPanelBody
       mate={props.mate}
       model={model}
+      onReadOrgAgain={org.retry}
+      onSaveAsOrg={() => {
+        if (persona !== null) saveAsOrg(persona);
+      }}
       orgName={org.orgName}
+      orgSave={orgSave}
       persona={persona}
-      saveAsOrg={saveAsOrg}
       write={write}
     />
   );
 }
 
 /** Which press a write came from: its pending mark and its failure stand at that press. */
-type PersonaAction = "remove" | "newer" | "edit" | "write" | "org" | `use:${string}`;
+type PersonaAction = "remove" | "newer" | "edit" | "write" | `use:${string}`;
 
 interface PersonaFailure {
   readonly action: PersonaAction;
@@ -142,7 +221,9 @@ export function PersonaPanelBody(props: {
   readonly persona: MatePersona | null;
   readonly orgName: string | null;
   readonly write: PersonaWrite;
-  readonly saveAsOrg: OrgSave;
+  readonly orgSave: OrgSaveView;
+  readonly onSaveAsOrg: () => void;
+  readonly onReadOrgAgain: () => void;
 }) {
   const { mate, model, persona } = props;
   const [pending, setPending] = useState<PersonaAction | null>(null);
@@ -151,7 +232,6 @@ export function PersonaPanelBody(props: {
   const [editor, setEditor] = useState<"edit" | "write" | null>(null);
   // Each opening drafts afresh; the key outlives the closing so the closing editor keeps its text.
   const [editorSession, setEditorSession] = useState(0);
-  const [savedAsOrg, setSavedAsOrg] = useState<string | null>(null);
 
   const run = async (action: PersonaAction, attempt: () => Promise<string | null>) => {
     setPending(action);
@@ -182,7 +262,6 @@ export function PersonaPanelBody(props: {
     setPreview(null);
     setEditorSession((current) => current + 1);
   };
-  const personaKey = persona === null ? null : `${persona.name}\u0000${persona.instructions}`;
 
   if (model.kind !== "ready") {
     return (
@@ -234,22 +313,18 @@ export function PersonaPanelBody(props: {
                   onRemove={() => void writing("remove", null)}
                   pending={pending}
                   saveAsOrg={
-                    !summary.saveAsOrg ? null : savedAsOrg === personaKey ? (
+                    !summary.saveAsOrg ? null : props.orgSave.stage === "saved" ? (
                       <span className="text-xs text-muted-foreground" role="status">
                         {PERSONA_PAGE_WORDS.savedAsOrg(props.orgName)}
                       </span>
                     ) : (
                       <Button
-                        disabled={pending !== null}
-                        onClick={() =>
-                          void run("org", () => props.saveAsOrg(persona)).then((saved) => {
-                            if (saved) setSavedAsOrg(personaKey);
-                          })
-                        }
+                        disabled={pending !== null || props.orgSave.stage === "pending"}
+                        onClick={props.onSaveAsOrg}
                         size="sm"
                         variant="ghost"
                       >
-                        {pending === "org" ? <Spinner size="xs" /> : null}
+                        {props.orgSave.stage === "pending" ? <Spinner size="xs" /> : null}
                         {PERSONA_PAGE_WORDS.saveAsOrg(props.orgName)}
                       </Button>
                     )
@@ -277,11 +352,16 @@ export function PersonaPanelBody(props: {
                   </div>
                 )}
                 {failureAt("newer")}
-                {failure?.action === "org" ? (
+                {props.orgSave.stage === "failed" ? (
                   <FailureLine
-                    message={`${PERSONA_PAGE_WORDS.orgSaveFailed} ${failure.message}`}
-                    onRetry={failure.retry}
+                    message={`${PERSONA_PAGE_WORDS.orgSaveFailed} ${props.orgSave.message}`}
+                    onRetry={props.orgSave.retry}
                   />
+                ) : props.orgSave.stage === "unconfirmed" ? (
+                  // It may have been saved: nothing offers to send it again.
+                  <p className="text-xs leading-4.5 text-muted-foreground" role="status">
+                    {props.orgSave.message}
+                  </p>
                 ) : null}
               </div>
             </EditorReveal>
@@ -327,6 +407,14 @@ export function PersonaPanelBody(props: {
                   role={group.note.kind === "failed" ? "alert" : undefined}
                 >
                   {group.note.text}
+                  {group.note.kind === "failed" ? (
+                    <>
+                      {" "}
+                      <InlineButton onClick={props.onReadOrgAgain} tone="muted">
+                        {PERSONA_PAGE_WORDS.readAgain}
+                      </InlineButton>
+                    </>
+                  ) : null}
                 </p>
               )}
               {group.rows.length === 0 ? null : (

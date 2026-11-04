@@ -12,19 +12,17 @@ import {
   type MatePersona,
   type MatePersonaTemplateRef,
 } from "@t3tools/contracts";
-import {
-  ORG_PERSONA_TEMPLATES_MAX,
-  type PersonaTemplate,
-  type SavePersonaTemplate,
-} from "@t3tools/shared/personaTemplates";
+import { ORG_PERSONA_TEMPLATES_MAX, type PersonaTemplate } from "@t3tools/shared/personaTemplates";
+
+import type { PersonaTemplateDraft } from "~/zerops/usePersonaTemplates";
 
 export type PersonaTemplateSource = MatePersonaTemplateRef["source"];
 
 /** The organization's templates as the page reads them (`useOrgPersonaTemplates`). */
 export interface OrgPersonaTemplatesInput {
   readonly state: "loading" | "ready" | "unavailable" | "failed";
-  /** Why the read failed, said to the person; only with `failed`. */
-  readonly cause?: string;
+  /** Why the read failed, or why the list shown may be out of date; `null` while it holds. */
+  readonly failure: string | null;
   readonly templates: readonly PersonaTemplate[];
   readonly orgName: string | null;
   /** Owner or Admin: may save the organization's templates. */
@@ -54,7 +52,7 @@ export interface PersonaTemplateRow {
 
 export type PersonaGroupNote =
   | { readonly kind: "loading" }
-  | { readonly kind: "empty" | "unavailable" | "failed"; readonly text: string };
+  | { readonly kind: "empty" | "unavailable" | "failed" | "stale"; readonly text: string };
 
 export interface PersonaTemplateGroup {
   readonly source: PersonaTemplateSource;
@@ -98,6 +96,7 @@ export const PERSONA_WORDS = {
   writtenFor: (mate: string) => `Written for ${mate}`,
   noTemplates: "No templates yet.",
   orgUnavailable: "Not available here.",
+  orgStale: (failure: string) => `This list may be out of date: ${failure}`,
   orgFailed: (org: string | null, cause: string) =>
     `Couldn't read ${org === null ? "your organization's" : `${org}'s`} templates: ${cause}`,
   nameRequired: "Give it a name.",
@@ -119,8 +118,12 @@ function orgNote(org: OrgPersonaTemplatesInput): PersonaGroupNote | null {
     case "unavailable":
       return { kind: "unavailable", text: PERSONA_WORDS.orgUnavailable };
     case "failed":
-      return { kind: "failed", text: PERSONA_WORDS.orgFailed(org.orgName, org.cause ?? "") };
+      return {
+        kind: "failed",
+        text: PERSONA_WORDS.orgFailed(org.orgName, org.failure ?? "HQ did not answer."),
+      };
     case "ready":
+      if (org.failure !== null) return { kind: "stale", text: PERSONA_WORDS.orgStale(org.failure) };
       return org.templates.length === 0 ? { kind: "empty", text: PERSONA_WORDS.noTemplates } : null;
   }
 }
@@ -247,7 +250,33 @@ export function personaFromEditor(
   };
 }
 
-/** The organization template a persona is saved as: a new one, with no description. */
-export function orgTemplateFromPersona(persona: MatePersona): SavePersonaTemplate {
-  return { name: persona.name, description: "", instructions: persona.instructions, revision: 0 };
+/**
+ * The organization template a persona is saved as: a new one, with no description. Its id is made
+ * here, so the Mate can be tied to the template once the organization's list shows it.
+ */
+export function orgTemplateDraft(persona: MatePersona, templateId: string): PersonaTemplateDraft {
+  return {
+    templateId,
+    revision: 0,
+    name: persona.name,
+    description: "",
+    instructions: persona.instructions,
+  };
+}
+
+/**
+ * The Mate's persona tied to the template it was just saved as, once the organization's list
+ * shows that template: copied from it at its revision, so the Mate later offers its newer ones.
+ * `null` before the list shows it, and for a persona changed or removed meanwhile.
+ */
+export function personaLinkedToSavedTemplate(
+  saved: { readonly id: string; readonly persona: MatePersona },
+  templates: readonly PersonaTemplate[],
+  current: MatePersona | null,
+): MatePersona | null {
+  const template = templates.find((candidate) => candidate.id === saved.id);
+  if (template === undefined || current === null) return null;
+  if (current.name !== saved.persona.name || current.instructions !== saved.persona.instructions)
+    return null;
+  return personaFromTemplate("org", template);
 }

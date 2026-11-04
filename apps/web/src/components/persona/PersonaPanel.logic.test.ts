@@ -3,7 +3,9 @@ import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
+  orgTemplateDraft,
   personaFromEditor,
+  personaLinkedToSavedTemplate,
   personaFromTemplate,
   personaPage,
   type PersonaPageInput,
@@ -37,7 +39,13 @@ const BASE: PersonaPageInput = {
   settingsLoaded: true,
   persona: null,
   premade: [REVIEWER, EXPLAINER],
-  org: { state: "ready", templates: [HOUSE_STYLE], orgName: "Acme", mayWrite: false },
+  org: {
+    state: "ready",
+    templates: [HOUSE_STYLE],
+    orgName: "Acme",
+    mayWrite: false,
+    failure: null,
+  },
 };
 
 const ready = (input: Partial<PersonaPageInput>) => {
@@ -215,29 +223,34 @@ describe("the Persona page", () => {
   it.each([
     {
       title: "the organization's templates say they are still loading",
-      org: { state: "loading", templates: [], orgName: "Acme", mayWrite: false },
+      org: { state: "loading", templates: [], orgName: "Acme", mayWrite: false, failure: null },
       note: { kind: "loading" },
     },
     {
       title: "an organization without templates says it has none yet",
-      org: { state: "ready", templates: [], orgName: "Acme", mayWrite: false },
+      org: { state: "ready", templates: [], orgName: "Acme", mayWrite: false, failure: null },
       note: { kind: "empty", text: "No templates yet." },
     },
     {
       title: "the organization's templates say plainly when they cannot be had",
-      org: { state: "unavailable", templates: [], orgName: null, mayWrite: false },
+      org: { state: "unavailable", templates: [], orgName: null, mayWrite: false, failure: null },
       note: { kind: "unavailable", text: "Not available here." },
     },
     {
       title: "a failed read of the organization's templates gives its cause",
       org: {
         state: "failed",
-        cause: "HQ did not answer.",
+        failure: "HQ did not answer.",
         templates: [],
         orgName: "Acme",
         mayWrite: false,
       },
       note: { kind: "failed", text: "Couldn't read Acme's templates: HQ did not answer." },
+    },
+    {
+      title: "a list that may be out of date says so quietly and keeps its rows",
+      org: { ...BASE.org, failure: "HQ stopped answering." },
+      note: { kind: "stale", text: "This list may be out of date: HQ stopped answering." },
     },
     {
       title: "an organization with templates lists them with no note",
@@ -247,6 +260,7 @@ describe("the Persona page", () => {
   ] as const)("$title", ({ org, note }) => {
     const group = ready({ org }).groups.find((entry) => entry.source === "org");
     expect(group?.note ?? null).toEqual(note);
+    expect(group?.rows.length).toBe(org.state === "ready" ? org.templates.length : 0);
   });
 });
 
@@ -326,5 +340,56 @@ describe("writing a Mate's persona", () => {
       ok: true,
       persona: { name: "Terse", instructions: "One line." },
     });
+  });
+});
+
+describe("saving a persona as the organization's template", () => {
+  const terse: MatePersona = { name: "Terse", instructions: "Answer in one line." };
+  const saved = { id: "t-1", persona: terse };
+  const record: PersonaTemplate = {
+    id: "t-1",
+    name: "Terse",
+    description: "",
+    instructions: "Answer in one line.",
+    revision: 1,
+  };
+
+  it("saving as the organization's template creates a new one from the persona's text", () => {
+    expect(orgTemplateDraft(terse, "t-1")).toEqual({
+      templateId: "t-1",
+      revision: 0,
+      name: "Terse",
+      description: "",
+      instructions: "Answer in one line.",
+    });
+  });
+
+  it.each([
+    {
+      title: "once the saved template is in the organization's list, the Mate is tied to it",
+      templates: [HOUSE_STYLE, record],
+      current: terse,
+      linked: { ...terse, template: { source: "org", id: "t-1", revision: 1 } },
+    },
+    {
+      title: "the Mate is not tied before the saved template is in the list",
+      templates: [HOUSE_STYLE],
+      current: terse,
+      linked: null,
+    },
+    {
+      title: "a persona changed while its template was saved is never tied to it",
+      templates: [record],
+      current: { name: "Terse", instructions: "Answer in two lines." },
+      linked: null,
+    },
+    {
+      title: "a persona removed while its template was saved stays removed",
+      templates: [record],
+      current: null,
+      linked: null,
+    },
+  ] as const)("$title", ({ templates, current, linked }) => {
+    expect(personaLinkedToSavedTemplate(saved, templates, current)).toEqual(linked);
   });
 });
