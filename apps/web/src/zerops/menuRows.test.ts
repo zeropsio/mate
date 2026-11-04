@@ -16,6 +16,7 @@ import { zeropsSessionAtom } from "../state/zerops";
 import { organization } from "./__fixtures__/platformData";
 import { candidateListingAtom, detailCandidateListingAtom } from "./useZeropsCandidates";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
+import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 
 const ORG = "org-example";
 
@@ -82,6 +83,24 @@ describe("menuRowsAtom", () => {
     for (const frame of frames.slice(0, -1)) {
       expect(frame).toEqual({ settled: false, rows: [] });
     }
+  });
+
+  // Brief W3 (Karel, 2026-11-04): HQ places every Mate of the organization; the person's own
+  // roster and org role, as Zerops answers them, decide which of those they see.
+  it("draws no Mate HQ places that Zerops lists the person no way to reach", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    registry.set(accountReadsAtom, {
+      data: store.data,
+      orgId: ORG,
+      demandDetail: () => () => {},
+      renewHeld: () => {},
+    });
+    mountHqNavigation(registry, ORG, { structure: STRUCTURE }, store);
+    const granted = { ...ADA, userRoles: [{ clientUserId: "member", roleCode: "BASIC_USER" }] };
+    mountRoster(registry, ORG, [granted], { into: store });
+    for (const input of membershipInputs("NO_ACCESS", false, 1, ORG)) store.dispatch(input);
+    expect(drawnOrder(registry.get(menuRowsAtom(ORG, [])))).toEqual([ADA.id]);
   });
 
   type Outcome = "transient" | "definitive-refusal" | "slow";

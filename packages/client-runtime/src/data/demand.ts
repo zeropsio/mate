@@ -113,15 +113,20 @@ export function zeropsRegistrations(
       owner.ownerId === null ? scopeOf(spec, orgId) : scopeOf(spec, orgId, owner.ownerId);
     const path = `/${spec.zerops.entity}/search`;
     // Updates register before membership: an update racing the baseline is caught, never lost.
+    const membership = spec.zerops.membership;
     return [
       { scope, family: spec.family, role: "updates", path, search: spec.zerops.updates(owner) },
-      {
-        scope,
-        family: spec.family,
-        role: "membership",
-        path,
-        search: spec.zerops.membership(owner),
-      },
+      ...(membership === undefined
+        ? []
+        : [
+            {
+              scope,
+              family: spec.family,
+              role: "membership" as const,
+              path,
+              search: membership(owner),
+            },
+          ]),
     ];
   };
   return [

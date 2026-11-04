@@ -13,13 +13,14 @@ import {
   shownHqProjectPeopleAtom,
   shownHqMateIdentitiesAtom,
   shownHqMenuNavigationAtom,
+  shownMateVisibilityAtom,
   mateArrival,
   setupFailure as setupFailureProjection,
   setupFailureLogQuery,
   setupFailureReason,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import { birthFaceOf, hqMateListedOnly } from "@t3tools/client-runtime/zerops/hq";
+import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
 import { useAccountDataOptional, useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import { environmentShell } from "~/state/shell";
@@ -59,7 +60,6 @@ import { captureAccountLifetime } from "~/zerops/accountLifetime";
 import { useOwnChief } from "~/zerops/ownChief";
 import { ChiefOverviewButton } from "./chief/ChiefOverviewButton";
 import { MateFaceAsMark } from "./primitives";
-import { useMateOffers } from "~/zerops/useHqOffers";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
@@ -227,8 +227,8 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // What this tab pressed for it, while it holds it.
   const press = useMatePress(projectId);
   const registration = useMateRegistration(projectId);
-  const offers = useMateOffers()(projectId);
-  const listedOnly = hqMateListedOnly(offers);
+  // Seen and never opened: the person's verdict from live Zerops data (`mateVisibility`).
+  const listedOnly = useAtomValue(shownMateVisibilityAtom(projectId)) === "listed";
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const creations = useCreations();

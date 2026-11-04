@@ -1,6 +1,6 @@
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
-import { hqMateListedOnly, type HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
+import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
@@ -881,28 +881,14 @@ describe("deriveZeropsRestartAction", () => {
   });
 });
 
-// HQ answers whether the person may follow a Mate (`observe_mate`), from their reach on its
-// project; the row draws that answer and reads no Zerops role of its own.
 describe("a Mate the person may see and not open (D5)", () => {
-  const offered = (observe: HqOfferState): HqMateOfferStates => ({
-    held: true,
-    observe,
-    edit: observe,
-    detach: observe,
-  });
-  const row = (
-    candidate: ZeropsRowCandidate,
-    offers: HqMateOfferStates,
-    ownerName?: string,
-  ): ZeropsRowInput => ({
+  const listed = (candidate: ZeropsRowCandidate, ownerName?: string): ZeropsRowInput => ({
     candidate,
     health: "ready",
-    can: mateRowCan(offers),
-    listed: hqMateListedOnly(offers),
+    can: ALL,
+    visibility: "listed",
     ...(ownerName === undefined ? {} : { ownerName }),
   });
-  const listed = (candidate: ZeropsRowCandidate, ownerName?: string): ZeropsRowInput =>
-    row(candidate, offered({ kind: "refused", reason: "not_mate_operator" }), ownerName);
 
   it("says whose it is in place of the verb", () => {
     expect(deriveZeropsRowPresentation(listed(READY, "Jan"))).toEqual({
@@ -935,7 +921,12 @@ describe("a Mate the person may see and not open (D5)", () => {
   });
 
   it("leaves a Mate the person can open exactly as it was", () => {
-    const open = row(READY, offered({ kind: "allowed" }));
+    const open: ZeropsRowInput = {
+      candidate: READY,
+      health: "ready",
+      can: ALL,
+      visibility: "open",
+    };
     expect(deriveZeropsRowPresentation(open)).toEqual({ status: { label: "Ready", tone: "ok" } });
     expect(deriveZeropsRowAction(open)).toEqual({ kind: "open", label: "Open" });
   });
@@ -1131,30 +1122,30 @@ describe("releaseRowTone", () => {
 
 // The web review, 2026-10-05: a row's verbs are the door's and Zerops', who refuse in their own
 // words; an HQ that has not said — one from before it streamed offers, or one being read again —
-// takes none of them away. Only HQ's refusal of following the Mate does.
-describe("mateRowCan — a row's verbs, unless HQ refuses following its Mate", () => {
+// takes none of them away. Whether the person may open the Mate at all is its visibility, from
+// live Zerops data (Karel, 2026-11-04), never HQ's offer.
+describe("mateRowCan — a row's verbs, which HQ's offers on a Mate never take away", () => {
   const held = (kind: HqOfferState["kind"]): HqMateOfferStates => {
-    const observe: HqOfferState =
+    const offer: HqOfferState =
       kind === "refused"
-        ? { kind, reason: "not_mate_operator" }
+        ? { kind, reason: "not_project_admin" }
         : kind === "unavailable"
           ? { kind, since: 1 }
           : { kind };
-    return { held: true, observe, edit: observe, detach: observe };
+    return { held: true, edit: offer, detach: offer };
   };
-  it.each<[string, HqMateOfferStates | undefined, boolean]>([
-    ["offered", held("allowed"), true],
-    ["while HQ does not answer: the door and Zerops decide", held("unavailable"), true],
-    ["refused: the door would refuse it too", held("refused"), false],
-    ["not said: an HQ from before its offers", held("unknown"), true],
-    ["before HQ's structure is known", undefined, true],
+  it.each<[string, HqMateOfferStates | undefined]>([
+    ["offered", held("allowed")],
+    ["while HQ does not answer: the door and Zerops decide", held("unavailable")],
+    ["refused its record: its visibility, not HQ, says whether it opens", held("refused")],
+    ["not said: an HQ from before its offers", held("unknown")],
+    ["before HQ's structure is known", undefined],
     [
       "a project HQ holds as no Mate: the door and Zerops decide",
       { held: false, createRecord: { kind: "unknown" } },
-      true,
     ],
-  ])("%s", (_name, offers, offered) => {
-    expect(mateRowCan(offers)).toEqual({ ...(offered ? ALL : NONE), setUpPlainProject: false });
+  ])("%s", (_name, offers) => {
+    expect(mateRowCan(offers)).toEqual({ ...ALL, setUpPlainProject: false });
   });
 
   // Set up Mate on a plain project writes its Mate's record at HQ first: only where HQ offers it

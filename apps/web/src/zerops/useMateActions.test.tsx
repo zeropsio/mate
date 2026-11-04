@@ -74,7 +74,6 @@ const KINDS = ["mate", "devstage", "stage", "production"];
 /** What HQ offers an org owner of a Mate: everything, anywhere. */
 const OWNER_OFFERS: HqMateOfferStates = {
   held: true,
-  observe: { kind: "allowed" },
   edit: { kind: "allowed" },
   detach: { kind: "allowed" },
 };
@@ -723,7 +722,6 @@ describe("useMateActions — Change face…", () => {
     const unsaid = { kind: "unknown" } as const;
     mock.mateOffers = () => ({
       held: true,
-      observe: unsaid,
       edit: unsaid,
       detach: unsaid,
     });
@@ -1545,17 +1543,9 @@ describe("useMateActions — a Mate's own verbs, where its door opens for this p
   ])("$who: Start offered $offered", ({ role, user, known, offered }) => {
     mock.roleCode = role;
     mock.user = user;
-    // HQ offers following the Mate to whom its door opens; it may not have said yet.
-    mock.mateOffers = () =>
-      known
-        ? {
-            ...OWNER_OFFERS,
-            observe:
-              role === "READ_ONLY"
-                ? { kind: "refused", reason: "not_mate_operator" }
-                : { kind: "allowed" },
-          }
-        : undefined;
+    // Whether its door opens is the Mate's visibility from the person's Zerops role; HQ may not
+    // have said anything yet.
+    mock.mateOffers = () => (known ? OWNER_OFFERS : undefined);
     mock.listing.current = {
       state: "known",
       value: [STOPPED],

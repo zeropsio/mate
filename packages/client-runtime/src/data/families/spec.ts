@@ -44,10 +44,19 @@ export interface ScopeOwner {
 export interface ZeropsFamilySource<Value> {
   /** The REST entity: registrations and reads by id go to `/{entity}/search`. */
   readonly entity: string;
-  /** The `listStream` whose answer is the scope's baseline and whose deltas are its membership. */
-  readonly membership: (owner: ScopeOwner) => SearchTerms;
+  /**
+   * The `listStream` whose answer is the scope's baseline and whose deltas are its membership.
+   * Absent: the family is observed by its updates alone — its scope is never listed, and each
+   * pushed row is held as it says.
+   */
+  readonly membership?: (owner: ScopeOwner) => SearchTerms;
   /** The `updateStream` of whole rows. */
   readonly updates: (owner: ScopeOwner) => SearchTerms;
+  /**
+   * A pushed row of another family after which the scope's membership is read again: a change
+   * Zerops pushes no listing for (an organization promotion lists no project, ZEROPS-073).
+   */
+  readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
   readonly decode: (raw: unknown) => ZeropsRow<Value> | null;
   /**
    * Whether the organization's search may be refused to a viewer who reads the rest of it (a
@@ -159,6 +168,11 @@ export interface SampledSource<Value> {
    * again on the sampled cadence while demanded, until an answer no longer holds it.
    */
   readonly agesWhile?: (value: Value) => boolean;
+  /**
+   * A pushed row of another family that says this value changed: it is read again at once while
+   * demanded, and on its next demand whatever its age.
+   */
+  readonly refreshOn?: (owner: ScopeOwner, row: Row, previous: ProjectionReads) => boolean;
 }
 
 /** An index the reducer keeps for the family: under which key a fact counts now, if any. */

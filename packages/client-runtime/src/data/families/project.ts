@@ -17,6 +17,7 @@ import * as Schema from "effect/Schema";
 
 import type { ZeropsProject } from "../../zerops/api.ts";
 import type { ScopeKey } from "../model.ts";
+import { viewerMembershipChanged } from "./clientUser.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
 /**
@@ -162,6 +163,9 @@ export const projectFamily: FamilySpec<"project"> = {
     entity: "project",
     membership: ({ orgId }) => organization(orgId),
     updates: ({ orgId }) => organization(orgId),
+    // A promotion from NO_ACCESS lists no project to the person (ZEROPS-073): any frame of their
+    // own membership reads the roster again.
+    refreshOn: ({ orgId }, row, previous) => viewerMembershipChanged(orgId, row, previous),
     decode: (raw) =>
       Option.match(decodeRow(raw), {
         onNone: () => null,

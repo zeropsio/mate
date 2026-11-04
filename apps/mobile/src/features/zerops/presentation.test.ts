@@ -226,7 +226,7 @@ describe("zeropsCandidatePresentation", () => {
     candidate(container({ level: "restarting", by: "platform", overdue: false })),
     candidate({ group: "unavailable", reason: "container is STOPPED", connectable: false }),
   ])("a listed Mate offers no verb, whatever its container is doing", (row) => {
-    expect(present(row, { listed: true })).toMatchObject({
+    expect(present(row, { visibility: "listed" })).toMatchObject({
       label: "Read-only",
       tone: "off",
       action: null,
@@ -235,7 +235,7 @@ describe("zeropsCandidatePresentation", () => {
   });
 
   it("names the owner when the account can be read for one", () => {
-    expect(present(candidate(), { listed: true, ownerName: "Jan" }).notice).toBe(
+    expect(present(candidate(), { visibility: "listed", ownerName: "Jan" }).notice).toBe(
       "Jan's Mate — you have Read access.",
     );
   });

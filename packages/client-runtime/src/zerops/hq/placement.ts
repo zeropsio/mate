@@ -293,14 +293,14 @@ export function placedNames(structure: MatePlacementStructure): ReadonlyMap<stri
 
 /**
  * What HQ offers the reader of a project (`can`, `@t3tools/shared/hqOffers`): of a Mate it holds,
- * following it, its record and leaving its application — none while HQ does not answer; of a
- * project it holds nowhere, writing its Mate's record. HQ decides each, and decides the
- * write again at the press.
+ * its record and leaving its application — none while HQ does not answer; of a project it holds
+ * nowhere, writing its Mate's record. HQ decides each, and decides the write again at the press.
+ * Whether the reader may see or open the Mate is never HQ's offer: its visibility is the client's
+ * verdict from live Zerops data (`mateVisibility`).
  */
 export type HqMateOfferStates =
   | {
       readonly held: true;
-      readonly observe: HqOfferState;
       readonly edit: HqOfferState;
       readonly detach: HqOfferState;
     }
@@ -324,17 +324,7 @@ export function hqMateOffers(
   }
   return {
     held: true,
-    observe: hqOffer(mate.can, "observe_mate", hq),
     edit: hqOffer(mate.can, "edit_mate_record", hq),
     detach: hqOffer(mate.can, "detach", hq),
   };
-}
-
-/**
- * Whether HQ lists this Mate to the person without letting them open it: it holds the Mate and
- * refuses them following it (`observe_mate`), as their reach on its project answers (`READ_ONLY`).
- * The one place a Mate is "listed, not openable"; nothing here reads a Zerops role for it.
- */
-export function hqMateListedOnly(offers: HqMateOfferStates | undefined): boolean {
-  return offers?.held === true && offers.observe.kind === "refused";
 }
