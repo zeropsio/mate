@@ -7,8 +7,8 @@
  * routing stay owned and a port of a driver only has to keep those calls:
  *
  * - Claude Code: the SDK query's `mcpServerStatus()`, `reconnectMcpServer`,
- *   `toggleMcpServer` (the toggle also persists the project's disabled list).
- *   A server added or removed in a config reaches the next conversation.
+ *   `toggleMcpServer` (the toggle also persists the project's disabled list),
+ *   and `setMcpServers` for a server added while a conversation runs.
  * - Codex: the app-server's `mcpServerStatus/list` for the thread and
  *   `config/mcpServer/reload`, which re-reads `config.toml` — the nudge after
  *   every write, and the closest it has to a reconnect.

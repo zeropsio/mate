@@ -4,8 +4,9 @@
  * has; the routing across instances is `mcpLive.ts`.
  *
  * - Claude Code: the SDK query's `mcpServerStatus()`, `reconnectMcpServer`,
- *   `toggleMcpServer` (the toggle also persists the project's disabled list).
- *   A server added or removed in a config reaches the next conversation.
+ *   `toggleMcpServer` (the toggle also persists the project's disabled list),
+ *   and `setMcpServers`, which hands a running conversation the servers added
+ *   since it started (the next one reads them from its config).
  * - Codex: the app-server's `mcpServerStatus/list` for the thread and
  *   `config/mcpServer/reload`, which re-reads `config.toml`.
  * - OpenCode: its server's `/mcp` status, `connect`, `disconnect`, and `add`
@@ -194,7 +195,41 @@ export interface ClaudeMcpQuery {
   readonly mcpServerStatus?: () => Promise<ReadonlyArray<ClaudeMcpStatus>>;
   readonly reconnectMcpServer?: (name: string) => Promise<void>;
   readonly toggleMcpServer?: (name: string, enabled: boolean) => Promise<void>;
+  /**
+   * Replaces the servers handed to the running query beside its config's. A
+   * method, so the SDK's narrower server type still fits: the entries are the
+   * ones the MCP tab wrote into Claude's own config, in its shape.
+   */
+  setMcpServers?(servers: Record<string, Readonly<Record<string, unknown>>>): Promise<unknown>;
 }
+
+/**
+ * The servers the MCP tab added to each running Claude query since it started:
+ * `setMcpServers` replaces the whole set, so each call carries the earlier ones.
+ */
+const claudeAddedServers = new WeakMap<
+  ClaudeMcpQuery,
+  Record<string, Readonly<Record<string, unknown>>>
+>();
+
+/** One running query hears an added or removed server; one it started with stays to the next. */
+const claudeSetChanged = (
+  query: ClaudeMcpQuery,
+  change: Extract<McpConfigChange, { kind: "added" | "removed" }>,
+): Effect.Effect<void> => {
+  const set = query.setMcpServers;
+  const added = claudeAddedServers.get(query) ?? {};
+  if (set === undefined || (change.kind === "removed" && !(change.name in added))) {
+    return Effect.void;
+  }
+  const next = { ...added };
+  if (change.kind === "added") next[change.name] = change.entry;
+  else delete next[change.name];
+  return fromPromise(() => set.call(query, next)).pipe(
+    Effect.tap(() => Effect.sync(() => claudeAddedServers.set(query, next))),
+    Effect.ignore,
+  );
+};
 
 export function claudeMcpControl(sessions: {
   readonly get: (threadId: ThreadId) => McpSession<ClaudeMcpQuery> | undefined;
@@ -226,20 +261,19 @@ export function claudeMcpControl(sessions: {
           : fromPromise(() => toggle.call(query, name, enabled));
       }),
     configChanged: (change) =>
-      change.kind !== "enabled"
-        ? Effect.void
-        : Effect.forEach(
-            unprofiled(sessions.all()),
-            (query) => {
-              const toggle = query.toggleMcpServer;
-              return toggle === undefined
-                ? Effect.void
-                : fromPromise(() => toggle.call(query, change.name, change.enabled)).pipe(
-                    Effect.ignore,
-                  );
-            },
-            { concurrency: "unbounded", discard: true },
-          ),
+      Effect.forEach(
+        unprofiled(sessions.all()),
+        (query) => {
+          if (change.kind !== "enabled") return claudeSetChanged(query, change);
+          const toggle = query.toggleMcpServer;
+          return toggle === undefined
+            ? Effect.void
+            : fromPromise(() => toggle.call(query, change.name, change.enabled)).pipe(
+                Effect.ignore,
+              );
+        },
+        { concurrency: "unbounded", discard: true },
+      ),
   };
 }
 

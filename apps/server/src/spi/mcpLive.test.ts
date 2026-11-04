@@ -215,19 +215,44 @@ describe("claudeMcpControl", () => {
     }),
   );
 
+  it.effect("turns a server off in every running session", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const control = claudeMcpControl({
+        get: () => undefined,
+        all: () => [live(recordingClaudeQuery(calls)), live(recordingClaudeQuery(calls))],
+      });
+      yield* control.configChanged({ kind: "enabled", name: "x", enabled: false });
+      expect(calls).toEqual(["toggle x false", "toggle x false"]);
+    }),
+  );
+
   it.effect(
-    "turns a server off in every running session, and leaves added or removed ones to the next",
+    "a server added in the MCP tab joins every running Claude conversation, and leaves it when removed",
     () =>
       Effect.gen(function* () {
         const calls: string[] = [];
+        const query = (): ClaudeMcpQuery => ({
+          ...recordingClaudeQuery(calls),
+          setMcpServers: async (servers) => {
+            calls.push(`set ${Object.keys(servers).join(",")}`);
+          },
+        });
         const control = claudeMcpControl({
           get: () => undefined,
-          all: () => [live(recordingClaudeQuery(calls)), live(recordingClaudeQuery(calls))],
+          all: () => sessions,
         });
-        yield* control.configChanged({ kind: "enabled", name: "x", enabled: false });
-        yield* control.configChanged({ kind: "added", name: "y", entry: {} });
-        yield* control.configChanged({ kind: "removed", name: "z" });
-        expect(calls).toEqual(["toggle x false", "toggle x false"]);
+        const sessions = [live(query()), live(query())];
+        yield* control.configChanged({
+          kind: "added",
+          name: "a",
+          entry: { type: "http", url: "u" },
+        });
+        yield* control.configChanged({ kind: "added", name: "b", entry: { command: "c" } });
+        yield* control.configChanged({ kind: "removed", name: "a" });
+        // A server the conversation started with is the next conversation's to drop.
+        yield* control.configChanged({ kind: "removed", name: "zerops" });
+        expect(calls).toEqual(["set a", "set a", "set a,b", "set a,b", "set b", "set b"]);
       }),
   );
 
