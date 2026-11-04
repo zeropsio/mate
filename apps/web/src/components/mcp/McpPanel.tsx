@@ -458,7 +458,8 @@ function ProposalRowView(props: {
           }
         />
         <CollapsiblePanel>
-          <div className="pt-1 pr-3 pb-4 pl-13">{proposal.card}</div>
+          {/* Content ends where the head's right column does: padding, chevron and gap (12 + 14 + 12). */}
+          <div className="pt-1 pr-9.5 pb-4 pl-13">{proposal.card}</div>
         </CollapsiblePanel>
       </Collapsible>
     </li>
@@ -657,7 +658,8 @@ function ToolRow(props: {
           }
         />
         <CollapsiblePanel>
-          <div className="flex flex-col gap-3 pt-2 pr-3 pb-3 pl-13" data-mcp-details={row.name}>
+          {/* Content ends where the head's right column does: padding, chevron and gap (12 + 14 + 12). */}
+          <div className="flex flex-col gap-3 pt-2 pr-9.5 pb-3 pl-13" data-mcp-details={row.name}>
             <ToolFacts
               observe={props.observe}
               onSignOut={() => void run("signOut", { kind: "signOut", name: row.name })}
