@@ -166,6 +166,8 @@ export interface CodexSessionRuntimeOptions {
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   /** A thread with a tool profile: its overrides, and the gate that answers its approvals. */
   readonly threadSetup?: CodexThreadSetup;
+  /** The Mate's persona text, read for each turn; absent in a crew, which takes none. */
+  readonly persona?: Effect.Effect<string | undefined>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -588,6 +590,7 @@ function buildCodexTurnInstructions(input: {
   readonly model?: string;
   readonly modelName?: string;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
+  readonly persona?: string;
 }): Pick<CodexTurnStartParamsWithCollaborationMode, "collaborationMode" | "additionalContext"> {
   if (input.interactionMode === undefined) {
     return {};
@@ -603,11 +606,10 @@ function buildCodexTurnInstructions(input: {
         developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
       },
     },
-    additionalContext: buildCodexAdditionalContext({
-      model,
-      modelName: input.modelName,
-      reasoningEffort,
-    }),
+    additionalContext: buildCodexAdditionalContext(
+      { model, modelName: input.modelName, reasoningEffort },
+      input.persona,
+    ),
   };
 }
 
@@ -629,6 +631,8 @@ export function buildTurnStartParams(input: {
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly interactionMode?: ProviderInteractionMode;
+  /** The persona text, as its own context entry. */
+  readonly persona?: string;
   readonly overrides?: CodexThreadSetup["turn"];
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
@@ -651,6 +655,7 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelName ? { modelName: input.modelName } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
+    ...(input.persona !== undefined ? { persona: input.persona } : {}),
   });
 
   return decodeCodexTurnStartParamsWithCollaborationMode({
@@ -2725,6 +2730,7 @@ export const makeCodexSessionRuntime = (
           );
           const models = options.models ? yield* options.models : [];
           const modelName = models.find((model) => model.slug === normalizedModel)?.name;
+          const persona = options.persona ? yield* options.persona : undefined;
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
@@ -2735,6 +2741,7 @@ export const makeCodexSessionRuntime = (
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
             ...(input.effort ? { effort: input.effort } : {}),
             ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+            ...(persona !== undefined ? { persona } : {}),
             ...(options.threadSetup ? { overrides: options.threadSetup.turn } : {}),
           });
           yield* Ref.set(lastAdditionalContextRef, params.additionalContext);

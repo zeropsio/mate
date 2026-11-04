@@ -69,6 +69,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }
@@ -106,6 +110,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }
@@ -187,6 +195,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }
@@ -226,6 +238,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }
@@ -310,6 +326,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }
@@ -359,6 +379,10 @@
             "mate_places": {
               "kind": "application",
               "value": "[MATE_PLACES_INSTRUCTIONS]"
+            },
+            "mate_persona": {
+              "kind": "application",
+              "value": "[personaInstructions(null)]"
             }
           }
         }

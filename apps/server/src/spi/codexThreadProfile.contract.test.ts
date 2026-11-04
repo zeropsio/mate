@@ -24,6 +24,8 @@ import {
   type PeerMessage,
   type WireRecord,
 } from "./codexAdapterHarness.ts";
+import { personaInstructions } from "../personaInstructions.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import { type ThreadToolProfile, ThreadToolPolicyRegistry } from "./threadToolPolicy.ts";
 
 const CREW_THREAD = ThreadId.make("crew-thread");
@@ -246,6 +248,54 @@ const turnMessages: ReadonlyArray<PeerMessage> = [
     },
   },
 ];
+
+describe("the Mate's persona on the Codex adapter", () => {
+  const PIRATE = { name: "Pirate", instructions: "Talk like a pirate." };
+  const personaEntries = (wire: ReadonlyArray<WireRecord>) =>
+    paramsOf(wire, "turn/start").map(
+      (turn) =>
+        (turn.additionalContext as Record<string, { kind: string; value: string }> | undefined)
+          ?.mate_persona,
+    );
+  const twoTurns = (threadId: ThreadId) =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({ persona: PIRATE });
+      const { adapter, wire } = yield* withProfile(PROFILE);
+      yield* adapter.startSession(startInput({ threadId }));
+      yield* adapter.sendTurn({
+        threadId,
+        input: "one",
+        attachments: [],
+        interactionMode: "default",
+      });
+      yield* settings.updateSettings({ persona: null });
+      yield* adapter.sendTurn({
+        threadId,
+        input: "two",
+        attachments: [],
+        interactionMode: "default",
+      });
+      return personaEntries(wire);
+    });
+
+  it.effect(
+    "Codex hears the persona as its own context entry, and is told when it is removed",
+    () =>
+      Effect.gen(function* () {
+        assert.deepStrictEqual(yield* twoTurns(PERSON_THREAD), [
+          { kind: "application", value: personaInstructions(PIRATE) },
+          { kind: "application", value: personaInstructions(null) },
+        ]);
+      }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a Codex crewmate takes no persona", () =>
+    Effect.gen(function* () {
+      assert.deepStrictEqual(yield* twoTurns(CREW_THREAD), [undefined, undefined]);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+});
 
 describe("a profiled Codex thread's approval requests, answered by its gate", () => {
   it.effect(

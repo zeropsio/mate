@@ -35,6 +35,7 @@ import {
 } from "./codexAdapterHarness.ts";
 import { ThreadToolPolicyRegistry } from "./threadToolPolicy.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
+import { personaInstructions } from "../personaInstructions.ts";
 import { checkOrUpdateGolden, describeFirstDivergence } from "./replay/goldenCheck.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -65,6 +66,7 @@ const markRuntimeContext = (params: Record<string, unknown>): Record<string, unk
     | {
         mate_runtime?: { kind: string; value: string };
         mate_places?: { kind: string; value: string };
+        mate_persona?: { kind: string; value: string };
       }
     | undefined;
   if (!settings || !context?.mate_runtime) return params;
@@ -85,6 +87,9 @@ const markRuntimeContext = (params: Record<string, unknown>): Record<string, unk
       },
       ...(context.mate_places?.value === MATE_PLACES_INSTRUCTIONS
         ? { mate_places: { ...context.mate_places, value: "[MATE_PLACES_INSTRUCTIONS]" } }
+        : {}),
+      ...(context.mate_persona?.value === personaInstructions(null)
+        ? { mate_persona: { ...context.mate_persona, value: "[personaInstructions(null)]" } }
         : {}),
     },
   };

@@ -170,6 +170,7 @@ export function buildCodexDeveloperInstructions(interactionMode: ProviderInterac
  */
 export function buildCodexAdditionalContext(
   runtime: CodexRuntimeInfo,
+  persona?: string,
 ): Record<string, V2TurnStartParams__AdditionalContextEntry> {
   return {
     mate_runtime: {
@@ -178,5 +179,7 @@ export function buildCodexAdditionalContext(
     },
     // An entry of its own: the runtime entry alone sits near Codex's per-entry cap.
     mate_places: { kind: "application", value: MATE_PLACES_INSTRUCTIONS },
+    // Its own entry too, so a switched or removed persona is all Codex re-sends.
+    ...(persona === undefined ? {} : { mate_persona: { kind: "application", value: persona } }),
   };
 }
