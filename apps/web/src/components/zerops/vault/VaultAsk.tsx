@@ -75,11 +75,9 @@ export function VaultAsk(props: VaultAskProps) {
         <AskSecretField
           density={density}
           disabled={!field.ready || working}
-          hiddenAlready={hiddenAlready}
-          keepHidden={keepHidden}
+          keepHidden={{ value: keepHidden, onChange: setKeepHidden, already: hiddenAlready }}
           label={vaultAskLabel(ask)}
           onEnter={() => void save()}
-          onKeepHidden={setKeepHidden}
           onValue={setValue}
           value={value}
         />

@@ -17,8 +17,11 @@
  * route imports this module.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+import { ProviderDriverKind } from "@t3tools/contracts";
 import { McpProposalCard } from "~/components/zerops/proposal/McpProposalCard";
 import {
+  mcpAskFace,
+  mcpProgress,
   mcpProposalView,
   type McpProposal,
   type McpProposalStatus,
@@ -28,7 +31,7 @@ import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { recordsOf } from "~/components/zerops/addresses/addresses.logic";
-import { MateFaceAsMark } from "~/components/zerops/primitives";
+import { MateFace, MateFaceAsMark } from "~/components/zerops/primitives";
 import {
   ProposalCard,
   type ProposalCardProps,
@@ -95,11 +98,45 @@ const MCP_CARDS: ReadonlyArray<{
 }> = [
   { id: "sentry-proposed", proposal: SENTRY, status: { kind: "proposed" } },
   {
+    id: "sse-proposed",
+    proposal: {
+      ...LINEAR,
+      id: "mcp-sse",
+      params: {
+        ...LINEAR.params,
+        server: {
+          ...LINEAR.params.server,
+          transport: { type: "sse", url: "https://mcp.linear.app/sse" },
+        },
+      },
+    },
+    status: { kind: "proposed" },
+  },
+  {
+    id: "own-app-proposed",
+    proposal: {
+      ...LINEAR,
+      id: "mcp-own-app",
+      params: {
+        ...LINEAR.params,
+        server: { ...LINEAR.params.server, auth: { kind: "oauth-app", scopes: ["read"] } },
+      },
+    },
+    status: { kind: "proposed" },
+  },
+  { id: "linear-adding", proposal: LINEAR, status: { kind: "adding" } },
+  {
     id: "linear-project",
     proposal: { ...LINEAR, params: { ...LINEAR.params, scope: "project" } },
     status: { kind: "proposed" },
   },
   { id: "linear-sign-in", proposal: LINEAR, status: { kind: "needs-sign-in", agent: "Claude" } },
+  {
+    id: "linear-signing",
+    proposal: LINEAR,
+    status: { kind: "needs-sign-in", agent: "Claude" },
+    signing: { phase: "mate", url: "https://linear.app/oauth/authorize" },
+  },
   {
     id: "linear-paste",
     proposal: LINEAR,
@@ -116,7 +153,70 @@ const MCP_CARDS: ReadonlyArray<{
     proposal: SENTRY,
     status: { kind: "failed", words: "HTTP 401: Invalid token", agent: "Codex" },
   },
+  { id: "linear-declined", proposal: LINEAR, status: { kind: "declined" } },
 ];
+
+/** The Mate's installed agents in the harness: who an added server is written for. */
+const MCP_AGENTS = [
+  ProviderDriverKind.make("claudeAgent"),
+  ProviderDriverKind.make("codex"),
+  ProviderDriverKind.make("opencode"),
+];
+const MCP_DENSITY = params.get("density") === "compact" ? "compact" : "full";
+
+function McpCard(card: (typeof MCP_CARDS)[number]) {
+  const signing = card.signing ?? { phase: "idle" as const };
+  const view = mcpProposalView({
+    proposal: card.proposal,
+    mateName: "Juno",
+    status: card.status,
+    signing,
+    approveBlocked: undefined,
+    agents: MCP_AGENTS,
+  });
+  const auth = card.proposal.params.server.auth.kind;
+  const drawn = (
+    <McpProposalCard
+      askId={card.proposal.id}
+      density={MCP_DENSITY}
+      face={mcpAskFace({
+        view,
+        status: card.status,
+        signing,
+        busy: false,
+        title: card.proposal.params.server.title,
+        signsIn: auth === "oauth" || auth === "oauth-app",
+        keyed: card.proposal.params.credentials.length > 0,
+        by: "Aleš",
+        at: "15:20",
+      })}
+      mateFace={<MateFace size={24} state="needs" tint="sky" />}
+      onAdd={() => undefined}
+      onChangeKey={async () => true}
+      onTryAgain={() => undefined}
+      onDecline={() => undefined}
+      onFinishSignIn={() => undefined}
+      onOpenAgain={() => undefined}
+      onSignIn={() => undefined}
+      onShowInConversation={MCP_DENSITY === "compact" ? () => undefined : undefined}
+      progress={mcpProgress(
+        card.proposal,
+        card.status,
+        card.status.kind === "needs-sign-in" ? card.status.agent : null,
+      )}
+      signing={signing}
+      view={view}
+    />
+  );
+  return MCP_DENSITY === "compact" ? (
+    <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
+      {drawn}
+      <div className="px-4 pt-3 pb-8 text-placeholder text-sm">Ask anything...</div>
+    </div>
+  ) : (
+    drawn
+  );
+}
 
 const RESTART: ZeropsProposal = {
   id: "restart",
@@ -384,15 +484,7 @@ function Harness() {
           <div className="mx-auto grid w-full max-w-3xl gap-3">
             {MCP_CARDS.map((card) => (
               <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
-                <McpProposalCard
-                  view={mcpProposalView({
-                    proposal: card.proposal,
-                    mateName: "Juno",
-                    status: card.status,
-                    signing: card.signing ?? { phase: "idle" },
-                    approveBlocked: undefined,
-                  })}
-                />
+                <McpCard {...card} />
               </div>
             ))}
             {(ONLY_MCP ? [] : CARDS).map((card) => (

@@ -126,6 +126,25 @@ export function mcpAgentCannot(driver: string, needs: McpServerNeeds): string | 
 }
 
 /**
+ * What each agent's config can take, as Mate writes it: an SSE server, a sign-in through the
+ * person's own OAuth app, and that app's client secret. The server's writers refuse exactly what
+ * this says (held equal by `mcpAgents.test.ts`); a card names who can't before it is added.
+ */
+export const MCP_AGENT_LIMITS: Readonly<
+  Record<
+    string,
+    { readonly sse: boolean; readonly ownApp: boolean; readonly ownAppSecret: boolean }
+  >
+> = {
+  claudeAgent: { sse: true, ownApp: true, ownAppSecret: false },
+  codex: { sse: false, ownApp: false, ownAppSecret: false },
+  cursor: { sse: true, ownApp: true, ownAppSecret: true },
+  grok: { sse: false, ownApp: false, ownAppSecret: false },
+  antigravity: { sse: false, ownApp: false, ownAppSecret: false },
+  opencode: { sse: false, ownApp: true, ownAppSecret: true },
+};
+
+/**
  * A URL server's sign-in as the agents' configs hold it, without its secret:
  * the app's client id and scopes, and whether a client secret is stored.
  */

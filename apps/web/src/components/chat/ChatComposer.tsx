@@ -168,7 +168,7 @@ import { ComposerPendingApprovalPanel } from "./ComposerPendingApprovalPanel";
 import { ComposerPendingUserInputPanel } from "./ComposerPendingUserInputPanel";
 import { ComposerVaultAskContainer, useOpenVaultAskId } from "../zerops/vault/VaultAskContainer";
 import { docksAboveComposer } from "../ask/ask.logic";
-import { useAskCardOnScreen } from "../ask/askReveal";
+import { useAskCardOnScreen, useDockedAsk } from "../ask/askReveal";
 import {
   ComposerAccessControl,
   ComposerInteractionModeToggle,
@@ -1665,10 +1665,23 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     docksAboveComposer("waiting", { turnRunning: phase === "running", cardOnScreen }) &&
     !isComposerApprovalState &&
     pendingUserInputs.length === 0;
+  // Any other ask a card offered to dock (an MCP server's setup) stands there by the same rule.
+  const dockedAsk = useDockedAsk(routeKind === "server" ? scopedThreadKey(routeThreadRef) : null);
+  const dockedOnScreen = useAskCardOnScreen(dockedAsk?.askId ?? null);
+  const dockedAskWaits =
+    dockedAsk !== null &&
+    !vaultAskWaits &&
+    docksAboveComposer("waiting", {
+      turnRunning: phase === "running",
+      cardOnScreen: dockedOnScreen,
+    }) &&
+    !isComposerApprovalState &&
+    pendingUserInputs.length === 0;
   // What the agent asks stands at the composer's top in the look of the change waiting for review
   // (the owner's pick, S6 on the "Composer Strips" board, 2026-10-12); a phone's folded composer
   // keeps it in the drawer over its one line.
-  const composerAsks = isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits;
+  const composerAsks =
+    isComposerApprovalState || pendingUserInputs.length > 0 || vaultAskWaits || dockedAskWaits;
   const showComposerTopDrawer = isComposerCollapsedMobile && composerAsks;
   const askFace = <ComposerAskFace environmentId={environmentId} />;
   const askName = useComposerAskName(environmentId);
@@ -3534,6 +3547,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     </>
   ) : vaultAskWaits ? (
     <ComposerVaultAskContainer environmentId={environmentId} threadRef={routeThreadRef} />
+  ) : dockedAskWaits ? (
+    dockedAsk.render()
   ) : null;
 
   // Render
@@ -3654,6 +3669,8 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
                   threadRef={routeThreadRef}
                 />
               </div>
+            ) : dockedAskWaits ? (
+              <div data-chat-composer-collapsed-controls="true">{dockedAsk.render()}</div>
             ) : null}
           </div>
         ) : null}

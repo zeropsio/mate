@@ -1168,7 +1168,21 @@ describe("a proposal on the ask card", () => {
     ["a service on production", restart, "production", null, "Production · medusa"],
     ["a service on stage", restart, "stage", null, "Stage · medusa"],
     ["a service in the Mate's own project", restart, null, "p-contoso", "This Mate · medusa"],
-    ["a service in another project", restart, null, "p-home", "Project · medusa · Contoso"],
+    ["a service in another project", restart, null, "p-home", "Project · medusa"],
+    [
+      "an app's own value, by the app alone",
+      { ...envProposal("service", "LOG_LEVEL"), projectName: "Shop", serviceName: "api" },
+      null,
+      "p-home",
+      "Project · api",
+    ],
+    [
+      "an app's own value on stage",
+      { ...envProposal("service", "LOG_LEVEL"), serviceName: "api" },
+      "stage",
+      null,
+      "Stage · api",
+    ],
     [
       "a production value for every app",
       envProposal("project", "STRIPE_KEY"),
@@ -1176,7 +1190,7 @@ describe("a proposal on the ask card", () => {
       null,
       "Production · every app",
     ],
-    ["a message acts nowhere: its Mate is drawn", message, null, null, null],
+    ["a message names the Mate it goes to", message, null, null, "Rossy"],
   ])("the chip names where it acts: %s", (_name, proposal, tier, home, want) => {
     const where = proposalAskWhere(proposal, tier, home);
     expect(where === null ? null : askWhereWords(where)).toBe(want);

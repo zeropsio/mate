@@ -111,7 +111,7 @@ describe("ProposalCard", () => {
     expect(container.textContent).toContain("Restart medusa in Contoso");
     expect(container.querySelector("q")?.textContent).toBe("It stopped answering an hour ago.");
     expect(container.textContent).toContain("Fen: It stopped");
-    expect(container.textContent).toContain("medusa · Contoso");
+    expect(container.textContent).toContain("Project · medusa");
   });
 
   it.each<[ProposalStage, ReadonlyArray<string>]>([

@@ -40,11 +40,12 @@ export const KEEP_HIDDEN = "Keep hidden";
  * organization, and the service or name inside it (`detail`).
  */
 export interface AskWhere {
-  readonly scope: "mate" | "stage" | "production" | "project" | "organization";
+  /** `otherMate`: another Mate, named by `detail` alone ("Rossy", "Your Chief"). */
+  readonly scope: "mate" | "otherMate" | "stage" | "production" | "project" | "organization";
   readonly detail: string | null;
 }
 
-const SCOPE_WORDS: Readonly<Record<AskWhere["scope"], string>> = {
+const SCOPE_WORDS: Readonly<Record<Exclude<AskWhere["scope"], "otherMate">, string>> = {
   mate: "This Mate",
   stage: "Stage",
   production: "Production",
@@ -52,8 +53,9 @@ const SCOPE_WORDS: Readonly<Record<AskWhere["scope"], string>> = {
   organization: "Organization",
 };
 
-/** The chip's words: "Production · api", "This Mate · every app", "Stage". */
+/** The chip's words: "Production · api", "This Mate · every app", "Stage", "Rossy". */
 export function askWhereWords(where: AskWhere): string {
+  if (where.scope === "otherMate") return where.detail ?? "Another Mate";
   const scope = SCOPE_WORDS[where.scope];
   return where.detail === null ? scope : `${scope} · ${where.detail}`;
 }
