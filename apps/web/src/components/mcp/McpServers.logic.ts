@@ -772,6 +772,20 @@ export function readMcpSignInEdit(start: McpSignInFields, fields: McpSignInField
   return read;
 }
 
+/** The edited headers: a sign-in other than the API key it had drops the key's header. */
+export function mcpEditSecrets(
+  read: { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> },
+  start: McpSignInFields,
+  auth: McpServerAuth | undefined,
+): { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> } {
+  if (start.choice !== "header" || auth === undefined || auth.kind === "header") return read;
+  const key = (name: string) => name.toLowerCase() === start.headerName.toLowerCase();
+  return {
+    values: Object.fromEntries(Object.entries(read.values).filter(([name]) => !key(name))),
+    keep: read.keep.filter((name) => !key(name)),
+  };
+}
+
 /** The redirect each installed agent's own-app sign-in needs registered in the app. */
 export function mcpAppRedirects(
   agents: ReadonlyArray<ProviderDriverKind>,

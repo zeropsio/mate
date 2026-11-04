@@ -47,6 +47,7 @@ import {
   MCP_SECRET_MASK,
   mcpAppRedirects,
   mcpRunKey,
+  mcpEditSecrets,
   mcpSecretsFormText,
   openSignInPage,
   mcpSignInStart,
@@ -603,11 +604,12 @@ function ToolRow(props: {
     }
     setPending("save");
     setEditError(null);
+    const { values, keep } = mcpEditSecrets(read, signInStart, signIn.auth);
     const result = await act({
       kind: "update",
       name: row.name,
-      values: read.values,
-      keep: read.keep,
+      values,
+      keep,
       ...(signIn.auth !== undefined ? { auth: signIn.auth } : {}),
     });
     setPending(null);
