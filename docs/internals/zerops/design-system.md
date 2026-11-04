@@ -125,13 +125,42 @@ Nested rounded edges run parallel: the outer radius is the inner radius plus the
   durations (`--duration-quick`, `--duration-base`, `--duration-slow`) with `ease-out-strong` for
   what arrives and `ease-in-out-strong` for a paired enter and leave.
 - An action is a `Button`: `primary` for the one next step, `secondary` beside it, `ghost` for
-  quiet tools, `destructive` only for what deletes or stops, `link` inside text. Buttons are
-  rectangles; a word that acts inside a sentence is `InlineButton`.
+  quiet tools, `destructive` only for what deletes, stops or acts on Production, `link` inside
+  text. Buttons are rectangles; a word that acts inside a sentence is `InlineButton`.
 - A label is a `Badge` pill in one of five tones (`neutral`, `info`, `success`, `warning`,
-  `danger`), so it never reads as a press; a status dot is its `dot` form, with its words or an
-  accessible name.
+  `danger`), so it never reads as a press; `danger` also names Production. A status dot is its
+  `dot` form, with its words or an accessible name.
 
-## 4. Rules — machine-checked
+## 4. Asks
+
+An ask is one thing a Mate needs from a person: approve a prepared change, provide a value only
+they have, connect a sign-in, reveal what the agent cannot see, or choose. A composite ask is
+numbered steps of these. Every ask is the same card, in two densities.
+
+- **Anatomy**, top to bottom: where it acts (This Mate, Stage, Production, Project or
+  Organization, then the service), a title that is a verb and its subject and says what the main
+  press does, the Mate's why in its own words, the body, then the footer. Production is the only
+  red: its chip and its main press.
+- **States**: waiting (the main press and Not now), working (the press as a present participle),
+  done (the real result and who), Not now (who and when), failed (the source's own sentence and
+  the press that retries), someone else's (who can answer, by name, and a press to ask them),
+  replaced (what took its place). Each kind maps its source onto these; no other state words.
+- **Truth lives at the source**: every state is read from where the setting lives (the vault,
+  the engine's request record, HQ's decision record, the MCP list). A card remembers only a press
+  under way and its refusal, never an answer.
+- **Words**: the second press is always "Not now", never Decline or Dismiss. A hidden value is
+  "hidden" and "Keep hidden", never "secret". A title never says what the Mate needs or wants.
+- **Placement**: the full card stands in the conversation where it was asked. While the Mate's
+  turn has stopped on it, the same ask also stands above the composer, compact, with "Show in
+  conversation".
+- **Secrets go card to store**: a value travels from the card to where it is stored, as the
+  person. It never enters the agent's context, the conversation, logs, telemetry or a tool
+  result; cards show names, masks and facts. The Mate hears only outcomes that change what it
+  can do, never a value.
+- **Authority**: anyone in the conversation sees the ask; only someone with the authority acts,
+  and the card names who can.
+
+## 5. Rules — machine-checked
 
 - **R1** — `client-runtime/src/zerops/**` is UI-free and platform-free
   - _Enforced by:_ zone rule 5 (import prefixes) + `t3code/no-platform-globals` (resolved globals) +
@@ -198,7 +227,7 @@ no-arbitrary-values`
     lengths between the scale's steps are held to a budget that only shrinks
     (`scripts/check-css-tokens.ts`)
 
-## 5. Exceptions
+## 6. Exceptions
 
 A guard exception names one finding, its owner, reason and expiry. Review a changed finding again;
 remove a dead or expired exception. A permanent exception needs a reason why the finding is correct.
