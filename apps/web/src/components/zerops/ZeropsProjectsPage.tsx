@@ -51,11 +51,8 @@ import {
   normalizeOrigin,
   type ZeropsCandidate,
 } from "@t3tools/client-runtime/zerops/candidates";
-import {
-  resolveMateVisibility,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import { hqMateListedOnly } from "@t3tools/client-runtime/zerops/hq";
 import {
   deployBuilding,
   deployRuns,
@@ -1021,19 +1018,6 @@ export function ZeropsProjectsContent({
   // Whether a Mate is still coming up, or never came, as its menu row says it: its card says the same.
   const comingOf = useMateComingOf(observedCandidates);
   const updates = useMateUpdateStates();
-  // What this person may do with each Mate, from the one role function the
-  // door runs too (D5). A `listed` row is shown and never opened.
-  const viewer =
-    activeOrganization === null
-      ? null
-      : {
-          id: activeOrganization.id,
-          membershipId: activeOrganization.membershipId,
-          roleCode: activeOrganization.roleCode,
-          canCreateProjects: activeOrganization.canCreateProjects,
-        };
-  const visibilityOf = (candidate: ZeropsCandidate): RoleMateVisibility | undefined =>
-    viewer === null ? undefined : resolveMateVisibility({ project: candidate.project, viewer });
   // What HQ offers of each row's project (`mateRowCan`), and of the organization.
   const mateOffersOf = useMateOffers();
   const orgOffer = useOrgOffers();
@@ -1093,9 +1077,10 @@ export function ZeropsProjectsContent({
     candidate: ZeropsCandidatePresentation,
     role?: ZeropsEnvironmentRole | undefined,
   ): ZeropsRowInput => {
-    const visibility = visibilityOf(candidate);
-    const ownerName =
-      visibility === "listed" ? projectPeople[candidate.project.id]?.owner?.name : undefined;
+    const offers = mateOffersOf(candidate.project.id);
+    // HQ lists it without letting this person open it (D5): shown, never opened.
+    const listed = hqMateListedOnly(offers);
+    const ownerName = listed ? projectPeople[candidate.project.id]?.owner?.name : undefined;
     const waiting = candidate.group !== "connected" && waitedOn(candidate);
     const mateFlag = candidateMateFlags.get(candidate.key);
     return {
@@ -1113,10 +1098,10 @@ export function ZeropsProjectsContent({
       firstBuildOverdue: firstBuildOverdue(candidate, nowMs),
       ...(mateFlag === undefined ? {} : { mateFlag }),
       waiting,
-      can: mateRowCan(mateOffersOf(candidate.project.id)),
+      can: mateRowCan(offers),
       plainEvidence,
       ...(role === undefined ? {} : { role }),
-      ...(visibility === undefined ? {} : { visibility }),
+      listed,
       ...(ownerName === undefined ? {} : { ownerName }),
     };
   };
@@ -2211,7 +2196,7 @@ export function ZeropsProjectsContent({
   const mateOpenerOf = (candidate: ZeropsCandidatePresentation): (() => void) | undefined => {
     const input = rowInput(candidate, roleOf.get(candidate.project.id));
     return busyKeys.has(candidate.key) ||
-      input.visibility === "listed" ||
+      input.listed === true ||
       input.outsideHq ||
       !input.can.open
       ? undefined

@@ -18,7 +18,7 @@ import {
   setupFailureReason,
 } from "@t3tools/client-runtime/data";
 import type { ActivityProcess } from "@t3tools/client-runtime/zerops/activity/dto";
-import { birthFaceOf } from "@t3tools/client-runtime/zerops/hq";
+import { birthFaceOf, hqMateListedOnly } from "@t3tools/client-runtime/zerops/hq";
 import { useAccountDataOptional, useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useBuildLog } from "~/zerops/activity/useBuildLog";
 import { environmentShell } from "~/state/shell";
@@ -226,7 +226,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const press = useMatePress(projectId);
   const registration = useMateRegistration(projectId);
   const offers = useMateOffers()(projectId);
-  const listedOnly = offers?.held === true && offers.observe.kind === "refused";
+  const listedOnly = hqMateListedOnly(offers);
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const creations = useCreations();

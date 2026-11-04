@@ -5,7 +5,6 @@ import {
   mateOnlyOwnerOpensIt,
   mateOwnerRecords,
   resolveMateVerbs,
-  resolveMateVisibility,
   withMateProjectRole,
 } from "./mateAccess.ts";
 import type { HqPlacement } from "./hq/placement.ts";
@@ -27,60 +26,6 @@ const project = (override?: string) => ({
   id: PROJECT,
   clientId: ORG,
   ...(override === undefined ? {} : { userRoles: [{ clientUserId: ME, roleCode: override }] }),
-});
-
-describe("resolveMateVisibility", () => {
-  // The same table the door decides by. A row that says `listed` is a row the
-  // person sees and the door refuses.
-  it.each(
-    Array.from(
-      [
-        ["OWNER", undefined, "open"],
-        ["ADMIN", undefined, "open"],
-        ["BASIC_USER", undefined, "open"],
-        ["READ_ONLY", undefined, "listed"],
-        ["NO_ACCESS", undefined, "hidden"],
-        // The creator of a Mate is its OWNER whatever the org says about them.
-        ["READ_ONLY", "OWNER", "open"],
-        ["NO_ACCESS", "BASIC_USER", "open"],
-        // An override lowers an org owner as readily as it raises a member.
-        ["OWNER", "READ_ONLY", "listed"],
-        ["OWNER", "NO_ACCESS", "hidden"],
-        // A role this build has never heard of shuts the door rather than opening it.
-        ["OWNER", "SUPERVISOR", "hidden"],
-        ["SUPERVISOR", undefined, "hidden"],
-        [undefined, undefined, "hidden"],
-      ] as const,
-      ([orgRole, override, expected]) => ({
-        title: `${String(orgRole)} with project override ${String(override)} → ${expected}`,
-        orgRole,
-        override,
-        expected,
-      }),
-    ),
-  )("$title", ({ orgRole, override, expected }) => {
-    expect(resolveMateVisibility({ project: project(override), viewer: viewer(orgRole) })).toBe(
-      expected,
-    );
-  });
-
-  it("hides a project in another organization", () => {
-    expect(
-      resolveMateVisibility({
-        project: { id: PROJECT, clientId: "another-org" },
-        viewer: viewer("OWNER"),
-      }),
-    ).toBe("hidden");
-  });
-
-  it("hides a project whose overrides cannot be matched to this membership", () => {
-    expect(
-      resolveMateVisibility({
-        project: project("OWNER"),
-        viewer: viewer("OWNER", { membershipId: "" }),
-      }),
-    ).toBe("hidden");
-  });
 });
 
 describe("mateOnlyOwnerOpensIt", () => {
@@ -245,19 +190,17 @@ describe("a member's own project grant decides their Mate as a named override do
       title: "a basic user who owns the project deletes and renames its Mate",
       orgRole: "BASIC_USER",
       grant: "OWNER",
-      visibility: "open",
       verbs: { delete: true, rename: true, assign: false },
     },
     {
-      title: "an admin held read-only on the project sees its Mate listed, never opened",
+      title:
+        "an admin held read-only on the project neither deletes nor renames its Mate, and may hand it over",
       orgRole: "ADMIN",
       grant: "READ_ONLY",
-      visibility: "listed",
       verbs: { delete: false, rename: false, assign: true },
     },
-  ] as const)("$title", ({ orgRole, grant, visibility, verbs }) => {
+  ] as const)("$title", ({ orgRole, grant, verbs }) => {
     const input = { project: own(grant), viewer: viewer(orgRole, { membershipId: "" }) };
-    expect(resolveMateVisibility(input)).toBe(visibility);
     expect(resolveMateVerbs(input)).toEqual(verbs);
   });
 });

@@ -1,17 +1,12 @@
-/** Native project role decides whether a Mate is hidden, listed or open.
- * The same Zerops role resolver is used by the door and HQ; provider ownership is separate. */
+/**
+ * A person's native role on a Mate's project, for the platform writes the client makes itself
+ * (delete, rename, hand-over); whether the Mate is listed or opens is HQ's answer
+ * (`hqMateListedOnly`). Provider ownership is separate.
+ */
 
-import {
-  asOrgRole,
-  roleAtLeast,
-  zeropsRoleAnswer,
-  type RoleMateVisibility,
-  type ZeropsOrgRole,
-} from "@t3tools/shared/zeropsRoles";
+import { asOrgRole, roleAtLeast, type ZeropsOrgRole } from "@t3tools/shared/zeropsRoles";
 
 import type { HqPlacement } from "./hq/placement.ts";
-
-export type { RoleMateVisibility };
 
 /** As much of a project as this decision needs. */
 export interface MateAccessProject {
@@ -36,49 +31,6 @@ export interface MateAccessViewer {
   /** The `clientUser` id — what a project's `userRoles` names. */
   readonly membershipId: string;
   readonly roleCode?: string | undefined;
-  readonly canCreateProjects?: boolean | undefined;
-}
-
-/**
- * What this viewer may do with this Mate: `open`, `listed` (seen, never
- * opened) or `hidden` (not theirs to know about).
- *
- * A project in another org is `hidden`: a membership says nothing about a
- * project it does not cover.
- */
-export function resolveMateVisibility(input: {
-  readonly project: MateAccessProject;
-  readonly viewer: MateAccessViewer;
-}): RoleMateVisibility {
-  if (input.project.clientId !== input.viewer.id) return "hidden";
-  const override = viewerOverride(input);
-  // An override this membership cannot be matched against is no override: the
-  // project named per-person roles and we cannot tell which one is ours.
-  if (
-    override === undefined &&
-    input.project.userRoles?.length &&
-    input.viewer.membershipId.length === 0
-  )
-    return "hidden";
-
-  const answer = zeropsRoleAnswer({
-    person: {
-      id: input.viewer.membershipId,
-      orgRole: asOrgRole(input.viewer.roleCode),
-      status: "ACTIVE",
-      canCreateProjects: input.viewer.canCreateProjects === true,
-    },
-    overrides: override === undefined ? {} : { [input.project.id]: asOrgRole(override) },
-    registry: {
-      groups: [
-        {
-          id: input.project.id,
-          projects: [{ id: input.project.id, kind: "mate" }],
-        },
-      ],
-    },
-  });
-  return answer.mates[input.project.id] ?? "hidden";
 }
 
 /** The viewer's grant on this project: the one its roles name for them, else their own one. */

@@ -329,3 +329,12 @@ export function hqMateOffers(
     detach: hqOffer(mate.can, "detach", hq),
   };
 }
+
+/**
+ * Whether HQ lists this Mate to the person without letting them open it: it holds the Mate and
+ * refuses them following it (`observe_mate`), as their reach on its project answers (`READ_ONLY`).
+ * The one place a Mate is "listed, not openable"; nothing here reads a Zerops role for it.
+ */
+export function hqMateListedOnly(offers: HqMateOfferStates | undefined): boolean {
+  return offers?.held === true && offers.observe.kind === "refused";
+}

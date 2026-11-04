@@ -1,6 +1,6 @@
 import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import { newMateTint } from "@t3tools/client-runtime/zerops";
-import type { HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
+import { hqMateListedOnly, type HqMateOfferStates } from "@t3tools/client-runtime/zerops/hq";
 import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
@@ -881,14 +881,28 @@ describe("deriveZeropsRestartAction", () => {
   });
 });
 
+// HQ answers whether the person may follow a Mate (`observe_mate`), from their reach on its
+// project; the row draws that answer and reads no Zerops role of its own.
 describe("a Mate the person may see and not open (D5)", () => {
-  const listed = (candidate: ZeropsRowCandidate, ownerName?: string): ZeropsRowInput => ({
+  const offered = (observe: HqOfferState): HqMateOfferStates => ({
+    held: true,
+    observe,
+    edit: observe,
+    detach: observe,
+  });
+  const row = (
+    candidate: ZeropsRowCandidate,
+    offers: HqMateOfferStates,
+    ownerName?: string,
+  ): ZeropsRowInput => ({
     candidate,
     health: "ready",
-    can: ALL,
-    visibility: "listed",
+    can: mateRowCan(offers),
+    listed: hqMateListedOnly(offers),
     ...(ownerName === undefined ? {} : { ownerName }),
   });
+  const listed = (candidate: ZeropsRowCandidate, ownerName?: string): ZeropsRowInput =>
+    row(candidate, offered({ kind: "refused", reason: "not_mate_operator" }), ownerName);
 
   it("says whose it is in place of the verb", () => {
     expect(deriveZeropsRowPresentation(listed(READY, "Jan"))).toEqual({
@@ -921,12 +935,7 @@ describe("a Mate the person may see and not open (D5)", () => {
   });
 
   it("leaves a Mate the person can open exactly as it was", () => {
-    const open: ZeropsRowInput = {
-      candidate: READY,
-      health: "ready",
-      can: ALL,
-      visibility: "open",
-    };
+    const open = row(READY, offered({ kind: "allowed" }));
     expect(deriveZeropsRowPresentation(open)).toEqual({ status: { label: "Ready", tone: "ok" } });
     expect(deriveZeropsRowAction(open)).toEqual({ kind: "open", label: "Open" });
   });

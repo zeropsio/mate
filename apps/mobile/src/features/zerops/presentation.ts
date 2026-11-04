@@ -3,10 +3,7 @@ import {
   type ContainerReachability,
   type Reachability,
 } from "@t3tools/client-runtime/zerops/environments";
-import {
-  mateOnlyOwnerOpensIt,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateOnlyOwnerOpensIt } from "@t3tools/client-runtime/zerops/mateAccess";
 
 import type { MobileCandidate } from "./candidate-listing";
 
@@ -193,20 +190,20 @@ function stateOf(candidate: MobileCandidate, nowMs: number): ZeropsCandidatePres
  *
  * Whose Mate it is outranks whatever its container is doing (D5): a person who
  * cannot open it is not waiting for it to start, and "Ready · Connect" would
- * be an invitation the door refuses. So a `listed` Mate keeps its place in the
- * list and says whose it is instead.
+ * be an invitation the door refuses. So a Mate HQ lists without letting them open
+ * it (`hqMateListedOnly`) keeps its place in the list and says whose it is instead.
  */
 export function zeropsCandidatePresentation(
   candidate: MobileCandidate,
   /** The moment a retry's countdown is worded at. */
   nowMs: number,
   options: {
-    readonly visibility?: RoleMateVisibility | undefined;
+    readonly listed?: boolean | undefined;
     readonly ownerName?: string | undefined;
   } = {},
 ): ZeropsCandidatePresentation {
   const state = stateOf(candidate, nowMs);
-  if (options.visibility === "listed") {
+  if (options.listed === true) {
     return {
       label: "Read-only",
       tone: "off",
