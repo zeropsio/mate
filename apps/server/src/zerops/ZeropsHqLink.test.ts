@@ -11,12 +11,7 @@ import {
   type MateAttention,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import {
-  type AccessReport,
-  KeyLinkUp,
-  type LinkedMate,
-  type MateOverview,
-} from "@t3tools/shared/mateLink";
+import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -32,6 +27,8 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
+import type { AccessRead } from "./ZeropsAccessRead.ts";
+import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
@@ -200,7 +197,7 @@ const rig = (
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
     readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
     /** The Mate's own access reports; none unless a test says. */
-    readonly accessReports?: Stream.Stream<AccessReport>;
+    readonly accessReports?: Stream.Stream<Access.AccessNamed>;
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -856,13 +853,14 @@ describe("ZeropsHqLink", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const report = (at: string, missing: ReadonlyArray<string>): AccessReport => ({
+          const named = (at: string, openers: ReadonlyArray<string>): Access.AccessNamed => ({
             at,
-            openers: ["jan"],
+            openers,
             listed: ["eva"],
-            missing,
           });
-          const reports = yield* SubscriptionRef.make(report("2026-11-03T10:00:00.000Z", []));
+          const reports = yield* SubscriptionRef.make(
+            named("2026-11-03T10:00:00.000Z", ["jan", "bob"]),
+          );
           const { sockets } = yield* rig({ accessReports: SubscriptionRef.changes(reports) });
           const reported = (socket: FakeSocket) =>
             socket.sent.filter((message) => message.type === "access_report");
@@ -871,19 +869,86 @@ describe("ZeropsHqLink", () => {
           admit(first);
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(reported(first), [
-            { type: "access_report", ...report("2026-11-03T10:00:00.000Z", []) },
+            {
+              type: "access_report",
+              ...named("2026-11-03T10:00:00.000Z", ["jan", "bob"]),
+              missing: [],
+            },
           ]);
-          yield* SubscriptionRef.set(reports, report("2026-11-03T10:05:00.000Z", ["bob"]));
+          yield* SubscriptionRef.set(reports, named("2026-11-03T10:05:00.000Z", ["jan"]));
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(reported(first).at(-1), {
             type: "access_report",
-            ...report("2026-11-03T10:05:00.000Z", ["bob"]),
+            ...named("2026-11-03T10:05:00.000Z", ["jan"]),
+            missing: ["bob"],
           });
           first.emit("close");
           yield* TestClock.adjust(Duration.millis(30));
           const second = yield* linked(sockets, 1);
           assert.deepStrictEqual(reported(second), [
-            { type: "access_report", ...report("2026-11-03T10:05:00.000Z", ["bob"]) },
+            { type: "access_report", ...named("2026-11-03T10:05:00.000Z", ["jan"]), missing: [] },
+          ]);
+        }),
+      ),
+  );
+
+  it.effect(
+    "access_report.missing is never lost: missing is computed at send time against the last report HQ received",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const member = (userId: string, orgRole: string) => ({
+            clientUserId: `cu-${userId}`,
+            userId,
+            orgRole,
+            status: "ACTIVE",
+            canCreateProjects: false,
+          });
+          const answer = yield* Ref.make<AccessRead>({
+            kind: "read",
+            project: { clientId: "org", overrides: {} },
+            members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
+          });
+          const live = yield* Queue.unbounded<AccessLiveEvent>();
+          const list = yield* Access.make({
+            projectId: "P_MATE",
+            read: Ref.get(answer),
+            live: () => Stream.fromQueue(live),
+          });
+          const { sockets } = yield* rig({
+            accessReports: list.reports,
+            reconnectDelaysMs: [1_000],
+          });
+          const reported = (socket: FakeSocket) =>
+            socket.sent.flatMap((message) =>
+              message.type === "access_report"
+                ? [{ openers: message.openers, listed: message.listed, missing: message.missing }]
+                : [],
+            );
+          const first = yield* linked(sockets, 0);
+          assert.deepStrictEqual(reported(first), [
+            { openers: ["jan", "eva"], listed: [], missing: [] },
+          ]);
+          first.emit("close");
+          yield* TestClock.adjust(Duration.zero);
+          // While the link is down a frame takes Eva away, then a read finds the same.
+          yield* Queue.offer(live, {
+            _tag: "frame",
+            frame: { kind: "members", upsert: [], remove: ["cu-eva"] },
+          });
+          yield* TestClock.adjust(Duration.zero);
+          yield* Ref.set(answer, {
+            kind: "read",
+            project: { clientId: "org", overrides: {} },
+            members: [member("jan", "OWNER")],
+          });
+          yield* Queue.offer(live, { _tag: "connected" });
+          yield* TestClock.adjust(Duration.zero);
+          // The link's wait and its spread of up to a quarter more.
+          yield* TestClock.adjust(Duration.millis(1_251));
+          const second = yield* linked(sockets, 1);
+          assert.deepStrictEqual(reported(second), [
+            { openers: ["jan"], listed: [], missing: ["eva"] },
           ]);
         }),
       ),

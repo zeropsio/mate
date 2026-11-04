@@ -301,6 +301,23 @@ export const shownMateVisibilityAtom = Atom.family((projectId: string) =>
   }).pipe(Atom.withLabel(`data:mate-visibility:${projectId}`)),
 );
 
+/**
+ * Several Mates' visibility for the person at once, by project id, as the mounted account reads it
+ * (`mateVisibility`); a Mate not judged yet (`unknown`) is absent: nothing is hidden on a guess.
+ * Keyed by the ids joined with `,`.
+ */
+export const shownMateVisibilitiesAtom = Atom.family((projectIds: string) =>
+  Atom.make((get): Readonly<Record<string, RoleMateVisibility>> => {
+    const judged: Record<string, RoleMateVisibility> = {};
+    if (projectIds === "") return judged;
+    for (const projectId of projectIds.split(",")) {
+      const visibility = get(shownMateVisibilityAtom(projectId));
+      if (visibility !== "unknown") judged[projectId] = visibility;
+    }
+    return judged;
+  }).pipe(Atom.withLabel(`data:mate-visibilities:${projectIds}`)),
+);
+
 /** Whether the mounted account's owner proved a project deleted; `false` without an account. */
 export const projectGoneAtom = Atom.family((projectId: string) =>
   Atom.make((get): boolean => {

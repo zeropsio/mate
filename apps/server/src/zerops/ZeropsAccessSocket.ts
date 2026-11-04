@@ -227,7 +227,8 @@ export const accessEvents = (input: {
           Effect.sync(() => {
             socket.onmessage = null;
             socket.onclose = null;
-            socket.onerror = null;
+            // `onerror` stays: `ws` emits 'error' when closed while still connecting, and an
+            // 'error' without a listener is thrown uncaught.
             try {
               socket.close();
             } catch {

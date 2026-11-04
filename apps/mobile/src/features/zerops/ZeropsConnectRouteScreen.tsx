@@ -1,12 +1,9 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
-import {
-  resolveMateVisibility,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
-import { hqMateSetupAtom } from "@t3tools/client-runtime/data";
+import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
+import { hqMateSetupAtom, shownMateVisibilitiesAtom } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityIndicator, Platform, ScrollView, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 
@@ -277,6 +274,9 @@ function ListingNotice(props: { readonly notice: CandidatesNotice; readonly onRe
   );
 }
 
+/** No Mate judged: no account, or none of its Mates read yet. */
+const NOT_JUDGED: Readonly<Record<string, RoleMateVisibility>> = {};
+
 function ProjectPickerSurface(props: { readonly onDone: (environmentId: EnvironmentId) => void }) {
   const {
     user,
@@ -296,26 +296,27 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   const isConnecting = connectingKey !== null;
   const visibleError = actionError ?? error;
   const body = useMemo(() => candidatePickerBody(listing, readAtMs), [listing, readAtMs]);
-  // What this person may do with each Mate, from the one role function the
-  // door runs too (D5). Undefined when nobody is signed in to judge by.
-  const viewerOrganization = user?.clientUserList?.find(
-    ({ clientId }) => clientId === activeOrganization?.id,
+  // What this person may do with each Mate, as the account reads it from live Zerops data
+  // (`mateVisibility`); one not judged yet, or with no account, is absent.
+  const accountData = useAccountData();
+  const registry = accountData?.registry ?? null;
+  const visibilitiesAtom = shownMateVisibilitiesAtom(
+    body.kind === "rows" ? body.rows.map((candidate) => candidate.project.id).join(",") : "",
   );
+  const subscribeVisibilities = useCallback(
+    (listener: () => void) =>
+      registry === null ? () => undefined : registry.subscribe(visibilitiesAtom, listener),
+    [registry, visibilitiesAtom],
+  );
+  const readVisibilities = useCallback(
+    () => (registry === null ? NOT_JUDGED : registry.get(visibilitiesAtom)),
+    [registry, visibilitiesAtom],
+  );
+  const visibilities = useSyncExternalStore(subscribeVisibilities, readVisibilities);
   const visibilityOf = useCallback(
-    (candidate: MobileCandidate): RoleMateVisibility | undefined => {
-      const organizationId = viewerOrganization?.clientId;
-      if (viewerOrganization === undefined || organizationId === undefined) return undefined;
-      return resolveMateVisibility({
-        project: candidate.project,
-        viewer: {
-          id: organizationId,
-          membershipId: viewerOrganization.id,
-          roleCode: viewerOrganization.roleCode,
-          canCreateProjects: viewerOrganization.canCreateProjects,
-        },
-      });
-    },
-    [viewerOrganization],
+    (candidate: MobileCandidate): RoleMateVisibility | undefined =>
+      visibilities[candidate.project.id],
+    [visibilities],
   );
   const sections = useMemo(() => {
     if (body.kind !== "rows") return [];
@@ -338,7 +339,6 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
   }, [body, readAtMs, visibilityOf]);
 
   // Opening reads the organization's already observed navigation, without detail demand.
-  const accountData = useAccountData();
   const closeOffOf = useCallback(
     (candidate: MobileCandidate): (() => Promise<"held" | "clear">) | undefined => {
       if (candidate.service === undefined || accountData === null) return undefined;

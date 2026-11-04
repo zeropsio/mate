@@ -141,7 +141,7 @@ export interface ZeropsRowInput {
 /**
  * A row's verbs for this person, none of them HQ's to enforce: opening is its Mate's door's, the
  * rest Zerops' — each refusal shown as they word it. A Mate the person may only see is the row's
- * `visibility` (`resolveMateVisibility`), never an HQ offer. *Set up Mate* on a plain project only
+ * `visibility` (`mateVisibility`), never an HQ offer. *Set up Mate* on a plain project only
  * where HQ offers writing its Mate's record (`create_mate_record`), which the press registers and
  * HQ enforces.
  */

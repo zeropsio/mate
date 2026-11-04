@@ -17,6 +17,7 @@ import {
   ACCESS_LIST_HOLDS,
   ACCESS_READ_BUDGET,
   type AccessList,
+  accessNamed,
   accessReport,
   administersProject,
   make as makeAccessList,
@@ -212,8 +213,10 @@ describe("accessReport", () => {
   it("After every recompute the report names openers and listed; missing are whom the previous report named and the list does not", () => {
     const first = accessReport(
       undefined,
-      ownAccessList(PROJECT, read([person("jan", "OWNER"), person("eva", "READ_ONLY")]), 0),
-      "2026-11-03T10:00:00.000Z",
+      accessNamed(
+        ownAccessList(PROJECT, read([person("jan", "OWNER"), person("eva", "READ_ONLY")]), 0),
+        "2026-11-03T10:00:00.000Z",
+      ),
     );
     assert.deepStrictEqual(first, {
       at: "2026-11-03T10:00:00.000Z",
@@ -223,8 +226,10 @@ describe("accessReport", () => {
     });
     const second = accessReport(
       first,
-      ownAccessList(PROJECT, read([person("eva", "BASIC_USER"), person("ben", "ADMIN")]), 0),
-      "2026-11-03T10:05:00.000Z",
+      accessNamed(
+        ownAccessList(PROJECT, read([person("eva", "BASIC_USER"), person("ben", "ADMIN")]), 0),
+        "2026-11-03T10:05:00.000Z",
+      ),
     );
     assert.deepStrictEqual(second, {
       at: "2026-11-03T10:05:00.000Z",
@@ -233,10 +238,10 @@ describe("accessReport", () => {
       missing: ["jan"],
     });
     // Missing is against the previous report only: Jan, gone already, is not reported again.
-    assert.deepStrictEqual(accessReport(second, ownAccessList(PROJECT, read([]), 0), "t").missing, [
-      "eva",
-      "ben",
-    ]);
+    assert.deepStrictEqual(
+      accessReport(second, accessNamed(ownAccessList(PROJECT, read([]), 0), "t")).missing,
+      ["eva", "ben"],
+    );
   });
 });
 
@@ -350,8 +355,8 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
       yield* Ref.set(answer, read([person("eva", "READ_ONLY")]));
       yield* TestClock.adjust(Duration.minutes(5));
       assert.deepStrictEqual(yield* Fiber.join(reports), [
-        { at: "2026-11-03T10:00:00.000Z", openers: ["jan"], listed: [], missing: [] },
-        { at: "2026-11-03T10:10:00.000Z", openers: [], listed: ["eva"], missing: ["jan"] },
+        { at: "2026-11-03T10:00:00.000Z", openers: ["jan"], listed: [] },
+        { at: "2026-11-03T10:10:00.000Z", openers: [], listed: ["eva"] },
       ]);
     }).pipe(Effect.scoped),
   );
@@ -450,6 +455,42 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
       yield* Fiber.join(reports);
       assert.strictEqual(yield* Ref.get(reads), 3);
     }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "Reads and frames update the list through one sequential handler so an in-flight REST pair cannot overwrite a newer frame",
+    () =>
+      Effect.gen(function* () {
+        const { answer, frame, own } = yield* liveRead;
+        yield* Ref.set(
+          answer,
+          read([person("jan", "OWNER"), person("eva", "NO_ACCESS")], { "cu-eva": "BASIC_USER" }),
+        );
+        // A read answers what Zerops said when it asked, and lands only once `lands` is done.
+        const slow = yield* Ref.make(false);
+        const lands = yield* Deferred.make<void>();
+        const list = yield* makeAccessList({
+          ...own,
+          read: Effect.gen(function* () {
+            const said = yield* own.read;
+            if (yield* Ref.get(slow)) yield* Deferred.await(lands);
+            return said;
+          }),
+        });
+        yield* TestClock.adjust(Duration.zero);
+        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open,eva:open");
+        yield* Ref.set(slow, true);
+        // A ticket for a stranger starts a search; Eva's override goes while it is in flight.
+        const ticket = yield* list.admits("ben").pipe(Effect.forkChild);
+        yield* TestClock.adjust(Duration.zero);
+        yield* Ref.set(answer, read([person("jan", "OWNER"), person("eva", "NO_ACCESS")]));
+        yield* frame({ kind: "project", overrides: {} });
+        yield* TestClock.adjust(Duration.zero);
+        yield* Deferred.succeed(lands, undefined);
+        assert.strictEqual(yield* Fiber.join(ticket), "not_in_list");
+        yield* TestClock.adjust(Duration.zero);
+        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
+      }).pipe(Effect.scoped),
   );
 
   it.effect("The 5-minute fallback read still runs while the websocket is live", () =>

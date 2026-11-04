@@ -10,10 +10,9 @@
 import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
 
-import type { ScopeKey } from "../model.ts";
 import type { Row } from "../reducer.ts";
 import type { ProjectionReads } from "../store.ts";
-import { scopeOf, type FamilySpec } from "./spec.ts";
+import type { FamilySpec } from "./spec.ts";
 
 export interface ClientUserValue {
   readonly clientId: string;
@@ -55,8 +54,6 @@ export const clientUserFamily: FamilySpec<"clientUser"> = {
     refusedAlone: true,
   },
 };
-
-export const clientUsersScope = (orgId: string): ScopeKey => scopeOf(clientUserFamily, orgId);
 
 /**
  * Whether a pushed row is a membership change of the signed-in person in `orgId`: the person their

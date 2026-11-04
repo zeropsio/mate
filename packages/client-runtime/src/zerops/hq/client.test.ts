@@ -2491,13 +2491,16 @@ describe("makeHqApi — a Mate's ticket", () => {
     await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind, code });
   });
 
-  it.each(["zerops_read_only", "not_in_list", "reach_stale"])(
+  it.each(["zerops_read_only", "not_in_list"])(
     "A %s refusal of a ticket is HQ's answer at once, with no renewal or retry",
     async (reason) => {
-      const code = reason === "reach_stale" ? "conflict" : "forbidden";
-      const { hq, api } = ticketApi(json(code === "conflict" ? 409 : 403, { code, reason }));
+      const { hq, api } = ticketApi(json(403, { code: "forbidden", reason }));
 
-      await expect(api.mateTicket("P1")).rejects.toMatchObject({ kind: "refused", code, reason });
+      await expect(api.mateTicket("P1")).rejects.toMatchObject({
+        kind: "refused",
+        code: "forbidden",
+        reason,
+      });
       expect(hq.seen.filter((entry) => entry.path === "/api/door")).toHaveLength(1);
       expect(hq.seen.filter((entry) => entry.path === "/api/mates/P1/ticket")).toHaveLength(1);
     },

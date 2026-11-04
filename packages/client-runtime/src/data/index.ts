@@ -251,6 +251,7 @@ export {
   NOT_READ_PROCESSES,
   listedProjectAtom,
   shownMateVisibilityAtom,
+  shownMateVisibilitiesAtom,
   hqMateSetupAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,

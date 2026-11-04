@@ -24,8 +24,11 @@ export const mateVisibility: Projection<
     if (viewer === undefined) return "unknown";
     const roster = read.members(projectsScope(orgId));
     const fact = read.fact("project", projectId);
-    if (roster.ids.includes(projectId) && fact.kind === "known")
-      return resolveMateVisibility({ project: fact.value, viewer });
+    if (roster.ids.includes(projectId))
+      // Listed to the person, its row not read yet: nothing to judge by.
+      return fact.kind === "known"
+        ? resolveMateVisibility({ project: fact.value, viewer })
+        : "unknown";
     // The person's whole roster lacks it: Zerops lists them no such project.
     return roster.coverage === "complete" && !roster.unverified.includes(projectId)
       ? "hidden"

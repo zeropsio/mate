@@ -12,8 +12,8 @@
  * it as it is. Between reads the Zerops websocket keeps it live (`ZeropsAccessSocket`): each frame
  * applies over the rows the last read and frames left, and the list is recomputed from them; a
  * frame that changes no row changes nothing. Every (re)connect reads again, for what the socket
- * missed. After every read, and every frame that changed a row, the list is reported to HQ
- * (`access_report`), `missing` against the previous report.
+ * missed. After every read, and every frame that changed a row, whom the list names goes up to
+ * HQ (`access_report`); the link computes `missing` as it sends ({@link accessReport}).
  *
  * The list HQ relays down the link (`access`, `@t3tools/shared/mateLink`) is advisory: it decides
  * only while the Mate has no own list or its own is stale. A full frame always replaces the
@@ -46,6 +46,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
+import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpClient } from "effect/http";
@@ -218,17 +219,27 @@ export const ticketVerdict = (
   return member.visibility === "open" ? "open" : "read_only";
 };
 
-/** The report of `list` made at `at`: `missing` is whom `previous` named and `list` does not. */
+/** Whom a list names, as of `at`: an `access_report` but its `missing`. */
+export type AccessNamed = Omit<AccessReport, "missing">;
+
+/** Whom `list` opens for and lists, as of `at`. */
+export const accessNamed = (list: AccessList, at: string): AccessNamed => ({
+  at,
+  openers: list.members.filter((m) => m.visibility === "open").map((m) => m.userId),
+  listed: list.members.filter((m) => m.visibility === "listed").map((m) => m.userId),
+});
+
+/**
+ * The report of `named` as sent after `previous`, the last one HQ received: `missing` is whom
+ * `previous` named and `named` does not, so nobody a report HQ never received took away is lost.
+ */
 export const accessReport = (
   previous: AccessReport | undefined,
-  list: AccessList,
-  at: string,
+  named: AccessNamed,
 ): AccessReport => {
-  const openers = list.members.filter((m) => m.visibility === "open").map((m) => m.userId);
-  const listed = list.members.filter((m) => m.visibility === "listed").map((m) => m.userId);
-  const now = new Set([...openers, ...listed]);
+  const now = new Set([...named.openers, ...named.listed]);
   const before = previous === undefined ? [] : [...previous.openers, ...previous.listed];
-  return { at, openers, listed, missing: before.filter((userId) => !now.has(userId)) };
+  return { ...named, missing: before.filter((userId) => !now.has(userId)) };
 };
 
 /** Who a list opens for and lists, and whether it is refused: what its readers act on. */
@@ -270,8 +281,8 @@ export class ZeropsMateAccessList extends Context.Service<
      * flight) if the list does not open for them.
      */
     readonly admits: (userId: string) => Effect.Effect<"open" | TicketRefusal>;
-    /** The latest report, then each one after a recompute. */
-    readonly reports: Stream.Stream<AccessReport>;
+    /** Whom the own list names, latest first, then after each change (`access_report`). */
+    readonly reports: Stream.Stream<AccessNamed>;
     /** Fires when the deciding list changes whom it opens for or lists, never when it only aged. */
     readonly changes: Stream.Stream<void>;
   }
@@ -306,7 +317,7 @@ export const make = (own?: {
       relayed: undefined,
     });
     const moved = yield* PubSub.unbounded<void>();
-    const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
+    const reports = yield* SubscriptionRef.make(Option.none<AccessNamed>());
     const scope = yield* Effect.scope;
     /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
     const inFlight = yield* Ref.make<Deferred.Deferred<void> | undefined>(undefined);
@@ -330,16 +341,17 @@ export const make = (own?: {
       const list = after.own;
       return list === undefined
         ? Effect.void
-        : SubscriptionRef.update(reports, (previous) =>
-            Option.some(
-              accessReport(
-                Option.getOrUndefined(previous),
-                list,
-                DateTime.formatIso(DateTime.makeUnsafe(nowMs)),
-              ),
-            ),
+        : SubscriptionRef.set(
+            reports,
+            Option.some(accessNamed(list, DateTime.formatIso(DateTime.makeUnsafe(nowMs)))),
           );
     };
+
+    /**
+     * Reads and frames apply one at a time, each over what the last left: a frame waits for the
+     * read in flight, so an answer Zerops gave before the frame never lands after it.
+     */
+    const serial = yield* Semaphore.make(1);
 
     const readOnce = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
@@ -363,7 +375,7 @@ export const make = (own?: {
         if (read.kind !== "read" || after.own === undefined) return;
         yield* report(after, after.own.heardAtMs);
         yield* Deferred.succeed(organisation, read.project.clientId);
-      });
+      }).pipe(serial.withPermits(1));
 
     /**
      * A frame over the last known rows. The list it recomputes holds from the read it builds on:
@@ -380,7 +392,7 @@ export const make = (own?: {
             : { ...current, rows, own: ownAccessList(from.projectId, rows, current.own.heardAtMs) };
         });
         if (after !== before) yield* report(after, now);
-      });
+      }).pipe(serial.withPermits(1));
 
     /**
      * One read at a time, and whoever asks while it runs waits on it. The read runs in the list's

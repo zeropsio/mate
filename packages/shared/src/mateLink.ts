@@ -527,7 +527,8 @@ export const KeyLinkUp = Schema.Union([
   }),
   /**
    * The Mate's own access list after every recompute (`at`, ISO 8601): whom its project opens for,
-   * whom it only lists, and `missing` — opened for or listed in the previous report, neither now.
+   * whom it only lists, and `missing` — opened for or listed in the last report HQ received,
+   * neither now.
    */
   Schema.Struct({
     type: Schema.Literal("access_report"),
