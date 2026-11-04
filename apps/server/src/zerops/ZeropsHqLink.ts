@@ -1,5 +1,5 @@
 import { ZeropsConnections } from "./ZeropsConnections.ts";
-import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { type AccessNamed, accessReport, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import type { TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
@@ -16,7 +16,8 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
  *   each new revision; the Mate's own access list (`access_report`), its latest on every link and
- *   again after each recompute; `pong` to each of HQ's pings.
+ *   again after each recompute, `missing` against the last report a link took; `pong` to each of
+ *   HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`); who HQ says its project opens for and lists (`access`, advisory), handed on to
@@ -205,8 +206,8 @@ export interface ZeropsHqLinkOptions {
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
   /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`), advisory. */
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
-  /** The Mate's own access list, latest first, then after each recompute (`access_report`). */
-  readonly accessReports?: Stream.Stream<AccessReport>;
+  /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
+  readonly accessReports?: Stream.Stream<AccessNamed>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
@@ -338,6 +339,8 @@ export const makeZeropsHqLink = (
     // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
     const refusal = yield* Ref.make<string | undefined>(undefined);
     let reportedKey: string | undefined;
+    /** The last access report a link took: the next one's `missing` is against it, on any link. */
+    const accessReceived = yield* Ref.make<AccessReport | undefined>(undefined);
     // Links are numbered as they open; the current one is the newest HQ answered on. A credential
     // is written only from the current link, one write at a time, so a superseded link's frame
     // neither lands after nor races the current link's.
@@ -535,8 +538,19 @@ export const makeZeropsHqLink = (
       const accessReports =
         options.accessReports === undefined
           ? Effect.never
-          : Stream.runForEach(options.accessReports, (report) =>
-              send({ type: "access_report", ...report }),
+          : Stream.runForEach(options.accessReports, (named) =>
+              Effect.gen(function* () {
+                const report = accessReport(yield* Ref.get(accessReceived), named);
+                const sent = yield* Effect.sync(() => {
+                  try {
+                    socket.send(encodeUp({ type: "access_report", ...report }));
+                    return true;
+                  } catch {
+                    return false;
+                  }
+                });
+                if (sent) yield* Ref.set(accessReceived, report);
+              }),
             );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,

@@ -17,6 +17,7 @@ import {
   ACCESS_LIST_HOLDS,
   ACCESS_READ_BUDGET,
   type AccessList,
+  accessNamed,
   accessReport,
   administersProject,
   make as makeAccessList,
@@ -212,8 +213,10 @@ describe("accessReport", () => {
   it("After every recompute the report names openers and listed; missing are whom the previous report named and the list does not", () => {
     const first = accessReport(
       undefined,
-      ownAccessList(PROJECT, read([person("jan", "OWNER"), person("eva", "READ_ONLY")]), 0),
-      "2026-11-03T10:00:00.000Z",
+      accessNamed(
+        ownAccessList(PROJECT, read([person("jan", "OWNER"), person("eva", "READ_ONLY")]), 0),
+        "2026-11-03T10:00:00.000Z",
+      ),
     );
     assert.deepStrictEqual(first, {
       at: "2026-11-03T10:00:00.000Z",
@@ -223,8 +226,10 @@ describe("accessReport", () => {
     });
     const second = accessReport(
       first,
-      ownAccessList(PROJECT, read([person("eva", "BASIC_USER"), person("ben", "ADMIN")]), 0),
-      "2026-11-03T10:05:00.000Z",
+      accessNamed(
+        ownAccessList(PROJECT, read([person("eva", "BASIC_USER"), person("ben", "ADMIN")]), 0),
+        "2026-11-03T10:05:00.000Z",
+      ),
     );
     assert.deepStrictEqual(second, {
       at: "2026-11-03T10:05:00.000Z",
@@ -233,10 +238,10 @@ describe("accessReport", () => {
       missing: ["jan"],
     });
     // Missing is against the previous report only: Jan, gone already, is not reported again.
-    assert.deepStrictEqual(accessReport(second, ownAccessList(PROJECT, read([]), 0), "t").missing, [
-      "eva",
-      "ben",
-    ]);
+    assert.deepStrictEqual(
+      accessReport(second, accessNamed(ownAccessList(PROJECT, read([]), 0), "t")).missing,
+      ["eva", "ben"],
+    );
   });
 });
 
@@ -350,8 +355,8 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
       yield* Ref.set(answer, read([person("eva", "READ_ONLY")]));
       yield* TestClock.adjust(Duration.minutes(5));
       assert.deepStrictEqual(yield* Fiber.join(reports), [
-        { at: "2026-11-03T10:00:00.000Z", openers: ["jan"], listed: [], missing: [] },
-        { at: "2026-11-03T10:10:00.000Z", openers: [], listed: ["eva"], missing: ["jan"] },
+        { at: "2026-11-03T10:00:00.000Z", openers: ["jan"], listed: [] },
+        { at: "2026-11-03T10:10:00.000Z", openers: [], listed: ["eva"] },
       ]);
     }).pipe(Effect.scoped),
   );
