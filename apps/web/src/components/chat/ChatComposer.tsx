@@ -120,7 +120,7 @@ import {
 import { attachmentUploadBlockReason } from "../../lib/attachmentUploadState";
 import { picturesBlockReason } from "../../lib/composerPictures";
 import type { ComposerPictureView } from "./ComposerPicture";
-import { useComposerPictures } from "./useComposerPictures";
+import { type ComposerPictureOptions, useComposerPictures } from "./useComposerPictures";
 import type { ComposerFileView } from "./ComposerFile";
 import { useComposerFiles } from "./useComposerFiles";
 import { isCommandPaletteOpen } from "../../commandPaletteBus";
@@ -471,7 +471,8 @@ const ComposerFooterPrimaryActions = memo(function ComposerFooterPrimaryActions(
 export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
-  addDroppedFiles: (files: File[]) => void;
+  /** `keepOriginal`: each picture sends its untouched file beside the copy fitted for the agent. */
+  addDroppedFiles: (files: File[], options?: ComposerPictureOptions) => void;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
@@ -3172,7 +3173,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   // ------------------------------------------------------------------
   // Callbacks: images
   // ------------------------------------------------------------------
-  const addComposerImages = async (files: File[]) => {
+  const addComposerImages = async (files: File[], options?: ComposerPictureOptions) => {
     if (!activeThreadId || files.length === 0) return;
     // Captured before the awaits below: the user may switch threads while a
     // picture is read. It still lands in this thread's draft (the pictures
@@ -3181,7 +3182,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     const pendingCount = pendingImageCompressionsRef.current.get(threadId) ?? 0;
     pendingImageCompressionsRef.current.set(threadId, pendingCount + files.length);
     try {
-      await composerPictures.add(files);
+      await composerPictures.add(files, options);
     } finally {
       const remaining = (pendingImageCompressionsRef.current.get(threadId) ?? 0) - files.length;
       if (remaining > 0) {
@@ -3199,7 +3200,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * Pasted or dropped files: a picture Claude can look at goes to the
    * pictures, anything else to the files, and what cannot go says why.
    */
-  const addComposerAttachments = (files: ReadonlyArray<File>) => {
+  const addComposerAttachments = (files: ReadonlyArray<File>, options?: ComposerPictureOptions) => {
     if (!activeThreadId || files.length === 0) return;
     const pictures: File[] = [];
     const others: File[] = [];
@@ -3211,7 +3212,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     // Files land at once; pictures are read first, and land after them.
     composerFileList.add(others);
-    void addComposerImages(pictures);
+    void addComposerImages(pictures, options);
   };
 
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
