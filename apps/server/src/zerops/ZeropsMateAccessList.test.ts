@@ -5,12 +5,14 @@ import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import type { AccessRead } from "./ZeropsAccessRead.ts";
+import type { AccessFrame, AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import {
   ACCESS_LIST_HOLDS,
   ACCESS_READ_BUDGET,
@@ -382,5 +384,82 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
         assert.strictEqual(yield* Fiber.join(answered), "open");
         assert.strictEqual(yield* Ref.get(reads), 1);
       }).pipe(Effect.scoped),
+  );
+});
+
+/** The own read, and a live socket whose events the test pushes; `orgs` are what it was opened for. */
+const liveRead = Effect.gen(function* () {
+  const rig = yield* ownRead;
+  const events = yield* Queue.unbounded<AccessLiveEvent>();
+  const orgs: Array<string> = [];
+  const live = (clientId: string) => {
+    orgs.push(clientId);
+    return Stream.fromQueue(events);
+  };
+  const frame = (frame: AccessFrame) => Queue.offer(events, { _tag: "frame", frame });
+  return {
+    ...rig,
+    orgs,
+    frame,
+    connected: Queue.offer(events, { _tag: "connected" }),
+    own: { ...rig.own, live },
+  };
+});
+const evaRole = (orgRole: string): AccessFrame => ({
+  kind: "members",
+  upsert: [{ clientUserId: "cu-eva", userId: "eva", orgRole, status: "ACTIVE" }],
+  remove: [],
+});
+
+describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
+  it.effect(
+    "Every frame recomputes the list from its content and the last known rows; a frame seen twice changes nothing",
+    () =>
+      Effect.gen(function* () {
+        const { answer, frame, own, orgs } = yield* liveRead;
+        yield* Ref.set(answer, read([person("jan", "OWNER"), person("eva", "BASIC_USER")]));
+        const list = yield* makeAccessList(own);
+        const reports = yield* Stream.runCollect(Stream.take(list.reports, 3)).pipe(
+          Effect.forkChild,
+        );
+        yield* TestClock.adjust(Duration.zero);
+        yield* frame(evaRole("READ_ONLY"));
+        yield* frame(evaRole("READ_ONLY"));
+        yield* frame({ kind: "project", overrides: { "cu-eva": "BASIC_USER" } });
+        const [first, second, third] = yield* Fiber.join(reports);
+        assert.deepStrictEqual(orgs, ["org"]);
+        assert.deepStrictEqual(
+          [first, second, third].map((report) => [report?.openers, report?.listed]),
+          [
+            [["jan", "eva"], []],
+            [["jan"], ["eva"]],
+            [["jan", "eva"], []],
+          ],
+        );
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect("A websocket (re)connect runs the Zerops read once", () =>
+    Effect.gen(function* () {
+      const { connected, own, reads } = yield* liveRead;
+      const list = yield* makeAccessList(own);
+      const reports = yield* Stream.runCollect(Stream.take(list.reports, 3)).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
+      yield* connected;
+      yield* connected;
+      yield* Fiber.join(reports);
+      assert.strictEqual(yield* Ref.get(reads), 3);
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("The 5-minute fallback read still runs while the websocket is live", () =>
+    Effect.gen(function* () {
+      const { own, reads } = yield* liveRead;
+      yield* makeAccessList(own).pipe(Effect.provideService(Random.Random, drawing(0.5)));
+      yield* TestClock.adjust(Duration.zero);
+      assert.strictEqual(yield* Ref.get(reads), 1);
+      yield* TestClock.adjust(Duration.minutes(5));
+      assert.strictEqual(yield* Ref.get(reads), 2);
+    }).pipe(Effect.scoped),
   );
 });

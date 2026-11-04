@@ -6,12 +6,15 @@ import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Option from "effect/Option";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import * as Connections from "./ZeropsConnections.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import type { AccessRead } from "./ZeropsAccessRead.ts";
+import { type AccessLiveEvent, decodeAccessFrame } from "./ZeropsAccessSocket.ts";
 
 const JAN = { userId: "jan", role: "OWNER", visibility: "open" } as const;
 const EVA = { userId: "eva", role: "READ_ONLY", visibility: "open" } as const;
@@ -47,7 +50,7 @@ const setupWith = (own?: Parameters<typeof Access.make>[0]) =>
           }).pipe(Effect.andThen(Deferred.succeed(closeReceipt, undefined))),
         );
       });
-    return { connections, tickets, closed, closeReceipt, open };
+    return { access, connections, tickets, closed, closeReceipt, open };
   });
 const setup = setupWith();
 
@@ -70,7 +73,93 @@ const setupOwn = Effect.gen(function* () {
   return { ...rig, answer };
 });
 
+/**
+ * The Mate's own list over a counted read (Jan owner, Eva basic user) and a live Zerops websocket
+ * whose frames the test pushes, as the wire carries them.
+ */
+const setupLive = Effect.gen(function* () {
+  const reads = yield* Ref.make(0);
+  const events = yield* Queue.unbounded<AccessLiveEvent>();
+  const rig = yield* setupWith({
+    projectId: "P_MATE",
+    read: Ref.update(reads, (count) => count + 1).pipe(
+      Effect.as(ownRead({ jan: "OWNER", eva: "BASIC_USER" })),
+    ),
+    live: () => Stream.fromQueue(events),
+  });
+  yield* TestClock.adjust(0);
+  const push = (wire: unknown) =>
+    Queue.offer(events, {
+      _tag: "frame",
+      frame: decodeAccessFrame(wire, { projectId: "P_MATE", clientId: "org" })!,
+    });
+  return { ...rig, reads, push };
+});
+/** A `client-user` update for Eva, as ZEROPS-070 recorded one. */
+const evaOrgRole = (roleCode: string) => ({
+  type: "search",
+  subscriptionName: "mate-access-members",
+  data: {
+    update: [{ id: "cu-eva", roleCode, status: "ACTIVE", userId: "eva", clientId: "org" }],
+  },
+});
+/** The own project's update with Eva overridden, as ZEROPS-069 recorded one. */
+const evaOverride = (roleCode: string) => ({
+  type: "search",
+  subscriptionName: "mate-access-project",
+  data: {
+    update: [
+      {
+        id: "P_MATE",
+        status: "ACTIVE",
+        clientId: "org",
+        name: "mate",
+        userRoles: [{ clientUserId: "cu-eva", roleCode }],
+      },
+    ],
+  },
+});
+
 describe("ZeropsConnections", () => {
+  it.effect.each([
+    { name: "a project override", wire: evaOverride("READ_ONLY") },
+    { name: "an org role for a person with no override", wire: evaOrgRole("READ_ONLY") },
+  ])(
+    "A Zerops websocket frame that turns an opener into a listed person closes their connection without a Zerops read: $name",
+    ({ wire }) =>
+      Effect.gen(function* () {
+        const { closed, closeReceipt, open, push, reads } = yield* setupLive;
+        yield* open("jan", "jan");
+        assert.isTrue(Option.isSome(yield* open("eva", "eva")));
+        yield* push(wire);
+        yield* Deferred.await(closeReceipt);
+        assert.deepEqual(closed, ["eva"]);
+        assert.strictEqual(yield* Ref.get(reads), 1);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "A client-user frame that demotes an opener to No access closes their connection and reports them missing from that frame, with no Zerops read in between",
+    () =>
+      Effect.gen(function* () {
+        const { access, closed, closeReceipt, open, push, reads } = yield* setupLive;
+        yield* open("eva", "eva");
+        const reports = yield* Stream.runCollect(Stream.take(access.reports, 2)).pipe(
+          Effect.forkChild,
+        );
+        yield* push(evaOrgRole("NO_ACCESS"));
+        yield* Deferred.await(closeReceipt);
+        const [first, second] = yield* Fiber.join(reports);
+        assert.deepEqual(closed, ["eva"]);
+        assert.deepEqual([first?.openers, first?.missing], [["jan", "eva"], []]);
+        assert.deepEqual(
+          [second?.openers, second?.listed, second?.missing],
+          [["jan"], [], ["eva"]],
+        );
+        assert.strictEqual(yield* Ref.get(reads), 1);
+      }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "TC-7 every connection reads the narrowed role and a removed person is disconnected",
     () =>

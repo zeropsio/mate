@@ -81,7 +81,7 @@ export const ZeropsMateAccessListLive = Layer.unwrap(
     const zerops = config.zeropsFixtures === undefined ? config.zerops : undefined;
     return zerops === undefined
       ? ZeropsMateAccessListModule.relayLayer
-      : ZeropsMateAccessListModule.layer(zerops.projectId).pipe(
+      : ZeropsMateAccessListModule.layer(zerops).pipe(
           Layer.provide(ZeropsAccessReadModule.layer(zerops)),
         );
   }),

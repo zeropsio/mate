@@ -9,8 +9,11 @@
  * {@link ACCESS_RECOMPUTE_EVERY} give or take {@link ACCESS_RECOMPUTE_JITTER}, and at once when a
  * ticket names a person the list does not open for. A read Zerops refuses for good (`401`, or
  * `400 userNotFound|projectNotFound`) keeps the last list, marked stale; any other failure keeps
- * it as it is. After every recompute the list is reported to HQ (`access_report`), `missing`
- * against the previous report.
+ * it as it is. Between reads the Zerops websocket keeps it live (`ZeropsAccessSocket`): each frame
+ * applies over the rows the last read and frames left, and the list is recomputed from them; a
+ * frame that changes no row changes nothing. Every (re)connect reads again, for what the socket
+ * missed. After every read, and every frame that changed a row, the list is reported to HQ
+ * (`access_report`), `missing` against the previous report.
  *
  * The list HQ relays down the link (`access`, `@t3tools/shared/mateLink`) is advisory: it decides
  * only while the Mate has no own list or its own is stale. A full frame always replaces the
@@ -24,7 +27,7 @@
  *
  * @module ZeropsMateAccessList
  */
-import { projectAccess } from "@t3tools/shared/mateAccess";
+import { type ProjectRoles, projectAccess, type ZeropsOrgMember } from "@t3tools/shared/mateAccess";
 import type {
   AccessReport,
   KeyLinkAccess,
@@ -45,8 +48,18 @@ import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
+import { HttpClient } from "effect/http";
 
 import { type AccessRead, ZeropsAccessRead } from "./ZeropsAccessRead.ts";
+import {
+  type AccessFrame,
+  type AccessLiveEvent,
+  accessEvents,
+  connectAccessSocket,
+  type MemberPatch,
+} from "./ZeropsAccessSocket.ts";
+import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
 
 /**
@@ -118,18 +131,80 @@ export function nextAccessList(
   };
 }
 
-/** The Mate's own list from a read of its project `projectId`, made at `nowMs`. */
-export const ownAccessList = (
-  projectId: string,
-  read: Extract<AccessRead, { readonly kind: "read" }>,
-  nowMs: number,
-): AccessList => ({
+/** The rows the Mate's own list is computed from: its project's roles and its org's members. */
+export interface OwnRows {
+  readonly project: ProjectRoles;
+  readonly members: ReadonlyArray<ZeropsOrgMember>;
+}
+
+/** The Mate's own list from the rows of its project `projectId`, read at `nowMs`. */
+export const ownAccessList = (projectId: string, rows: OwnRows, nowMs: number): AccessList => ({
   version: 0,
-  members: projectAccess({ projectId, members: read.members, overrides: read.project.overrides }),
+  members: projectAccess({ projectId, members: rows.members, overrides: rows.project.overrides }),
   refused: false,
   heardAtMs: nowMs,
   expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
 });
+
+const patched = (member: ZeropsOrgMember, patch: MemberPatch): ZeropsOrgMember => ({
+  clientUserId: member.clientUserId,
+  userId: patch.userId ?? member.userId,
+  orgRole: patch.orgRole ?? member.orgRole,
+  status: patch.status ?? member.status,
+  canCreateProjects: patch.canCreateProjects ?? member.canCreateProjects,
+});
+
+const sameMember = (a: ZeropsOrgMember, b: ZeropsOrgMember): boolean =>
+  a.userId === b.userId &&
+  a.orgRole === b.orgRole &&
+  a.status === b.status &&
+  a.canCreateProjects === b.canCreateProjects;
+
+/**
+ * The rows after `frame`: its content over the last known rows. The same reference when it
+ * changes none of them, so a frame seen twice changes nothing.
+ */
+export function applyAccessFrame(rows: OwnRows, frame: AccessFrame): OwnRows {
+  if (frame.kind === "project") {
+    const before = Object.entries(rows.project.overrides);
+    const same =
+      before.length === Object.keys(frame.overrides).length &&
+      before.every(([clientUserId, role]) => frame.overrides[clientUserId] === role);
+    return same ? rows : { ...rows, project: { ...rows.project, overrides: frame.overrides } };
+  }
+  let changed = false;
+  const members = rows.members.filter((member) => {
+    const leaves = frame.remove.includes(member.clientUserId);
+    changed ||= leaves;
+    return !leaves;
+  });
+  for (const patch of frame.upsert) {
+    const at = members.findIndex((member) => member.clientUserId === patch.clientUserId);
+    if (at === -1) {
+      // Someone the last read did not name: only a row that says who they are joins.
+      if (patch.userId === undefined) continue;
+      members.push(
+        patched(
+          {
+            clientUserId: patch.clientUserId,
+            userId: "",
+            orgRole: "",
+            status: "",
+            canCreateProjects: false,
+          },
+          patch,
+        ),
+      );
+      changed = true;
+      continue;
+    }
+    const next = patched(members[at]!, patch);
+    if (sameMember(members[at]!, next)) continue;
+    members[at] = next;
+    changed = true;
+  }
+  return changed ? { ...rows, members } : rows;
+}
 
 /** What a new ticket for `userId` gets from `list` at `nowMs`: admitted, or why not. */
 export const ticketVerdict = (
@@ -203,6 +278,8 @@ export class ZeropsMateAccessList extends Context.Service<
 >()("t3/zerops/ZeropsMateAccessList") {}
 
 interface Held {
+  /** What the own list was last computed from. */
+  readonly rows: OwnRows | undefined;
   readonly own: AccessList | undefined;
   /** Zerops refused the last own read for good: the own list is kept but no longer decides. */
   readonly stale: boolean;
@@ -212,18 +289,29 @@ interface Held {
 const deciding = (held: Held): AccessList | undefined =>
   held.own !== undefined && !held.stale ? held.own : (held.relayed ?? held.own);
 
-/** The list over the relay alone, and, with `own`, the Mate's own read of its project. */
+/**
+ * The list over the relay alone, and, with `own`, the Mate's own read of its project, kept live
+ * between reads by `live` (the Zerops websocket over its organisation, once a read named it).
+ */
 export const make = (own?: {
   readonly projectId: string;
   readonly read: ZeropsAccessRead["Service"]["read"];
+  readonly live?: (clientId: string) => Stream.Stream<AccessLiveEvent>;
 }) =>
   Effect.gen(function* () {
-    const held = yield* Ref.make<Held>({ own: undefined, stale: false, relayed: undefined });
+    const held = yield* Ref.make<Held>({
+      rows: undefined,
+      own: undefined,
+      stale: false,
+      relayed: undefined,
+    });
     const moved = yield* PubSub.unbounded<void>();
     const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
     const scope = yield* Effect.scope;
     /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
     const inFlight = yield* Ref.make<Deferred.Deferred<void> | undefined>(undefined);
+    /** The organisation the first read named: what the websocket subscribes to. */
+    const organisation = yield* Deferred.make<string>();
 
     const update = (next: (held: Held, nowMs: number) => Held) =>
       Effect.gen(function* () {
@@ -234,8 +322,24 @@ export const make = (own?: {
         });
         if (reachOf(deciding(before)) !== reachOf(deciding(after)))
           yield* PubSub.publish(moved, undefined);
-        return after;
+        return [before, after] as const;
       });
+
+    /** Reports the own list `after` holds, as of `nowMs`. */
+    const report = (after: Held, nowMs: number) => {
+      const list = after.own;
+      return list === undefined
+        ? Effect.void
+        : SubscriptionRef.update(reports, (previous) =>
+            Option.some(
+              accessReport(
+                Option.getOrUndefined(previous),
+                list,
+                DateTime.formatIso(DateTime.makeUnsafe(nowMs)),
+              ),
+            ),
+          );
+    };
 
     const readOnce = (from: NonNullable<typeof own>) =>
       Effect.gen(function* () {
@@ -246,22 +350,36 @@ export const make = (own?: {
           }),
         );
         if (read.kind === "failed") return;
-        const after = yield* update((current, nowMs) =>
+        const [, after] = yield* update((current, nowMs) =>
           read.kind === "refused"
             ? { ...current, stale: true }
-            : { ...current, own: ownAccessList(from.projectId, read, nowMs), stale: false },
+            : {
+                ...current,
+                rows: read,
+                own: ownAccessList(from.projectId, read, nowMs),
+                stale: false,
+              },
         );
         if (read.kind !== "read" || after.own === undefined) return;
-        const list = after.own;
-        yield* SubscriptionRef.update(reports, (previous) =>
-          Option.some(
-            accessReport(
-              Option.getOrUndefined(previous),
-              list,
-              DateTime.formatIso(DateTime.makeUnsafe(list.heardAtMs)),
-            ),
-          ),
-        );
+        yield* report(after, after.own.heardAtMs);
+        yield* Deferred.succeed(organisation, read.project.clientId);
+      });
+
+    /**
+     * A frame over the last known rows. The list it recomputes holds from the read it builds on:
+     * a frame is no read, and the stale rule counts reads.
+     */
+    const heardFrame = (from: NonNullable<typeof own>, frame: AccessFrame) =>
+      Effect.gen(function* () {
+        const now = yield* Clock.currentTimeMillis;
+        const [before, after] = yield* update((current) => {
+          if (current.rows === undefined || current.own === undefined) return current;
+          const rows = applyAccessFrame(current.rows, frame);
+          return rows === current.rows
+            ? current
+            : { ...current, rows, own: ownAccessList(from.projectId, rows, current.own.heardAtMs) };
+        });
+        if (after !== before) yield* report(after, now);
       });
 
     /**
@@ -292,6 +410,19 @@ export const make = (own?: {
         const now = yield* Clock.currentTimeMillis;
         return ticketVerdict(deciding(yield* Ref.get(held)), userId, now);
       });
+
+    if (own?.live !== undefined) {
+      const { live } = own;
+      // The socket is scoped to the organisation the first read names.
+      yield* Effect.forkScoped(
+        Effect.gen(function* () {
+          const clientId = yield* Deferred.await(organisation);
+          yield* Stream.runForEach(live(clientId), (event) =>
+            event._tag === "connected" ? recompute : heardFrame(own, event.frame),
+          );
+        }),
+      );
+    }
 
     if (own !== undefined) {
       const everyMs = Duration.toMillis(ACCESS_RECOMPUTE_EVERY);
@@ -336,11 +467,23 @@ export const make = (own?: {
 /** The relay alone: where there is no platform to read (fixtures, tests of the relay). */
 export const relayLayer = Layer.effect(ZeropsMateAccessList, make());
 
-/** The Mate's own list of its project `projectId`, read through {@link ZeropsAccessRead}. */
-export const layer = (projectId: string) =>
+/**
+ * The Mate's own list of its project, read through {@link ZeropsAccessRead} and kept live over
+ * the Zerops websocket with its project key.
+ */
+export const layer = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "projectId">) =>
   Layer.effect(
     ZeropsMateAccessList,
     Effect.gen(function* () {
-      return yield* make({ projectId, read: (yield* ZeropsAccessRead).read });
+      const httpClient = yield* HttpClient.HttpClient;
+      const mateKey = yield* ZeropsMateKey;
+      return yield* make({
+        projectId: environment.projectId,
+        read: (yield* ZeropsAccessRead).read,
+        live: (clientId) =>
+          accessEvents({ ...environment, clientId, mateKey, connect: connectAccessSocket }).pipe(
+            Stream.provideService(HttpClient.HttpClient, httpClient),
+          ),
+      });
     }),
   );
