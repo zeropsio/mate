@@ -290,6 +290,7 @@ export const HQ_CLIENT_VERBS = [
   "setChief",
   "proposalDecisions",
   "decideProposal",
+  "recordReveal",
 ] as const;
 
 const CLIENT_VERBS: ReadonlySet<string> = new Set([...ZEROPS_CLIENT_VERBS, ...HQ_CLIENT_VERBS]);

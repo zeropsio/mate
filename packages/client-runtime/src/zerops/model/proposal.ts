@@ -28,7 +28,8 @@ export type ZeropsProposalKind =
   | "chief.message"
   | "domain.add"
   | "access.set"
-  | "mcp.add";
+  | "mcp.add"
+  | "env.reveal";
 
 interface ProposalHead {
   readonly id: string;
@@ -129,6 +130,15 @@ export interface ZeropsMcpProposalParams {
   readonly credentials: ReadonlyArray<ZeropsMcpCredentialField>;
 }
 
+/**
+ * A hidden value the agent cannot read, shown to the person on the card: its name and whether it is
+ * the project's or a service's own. Never the value: a document carrying one is no proposal.
+ */
+export interface ZeropsRevealProposalParams {
+  readonly scope: "project" | "service";
+  readonly key: string;
+}
+
 export type ZeropsProposal =
   | (ProposalHead & {
       readonly kind: "service.restart" | "service.start" | "service.stop";
@@ -165,6 +175,11 @@ export type ZeropsProposal =
       /** The proposing Mate's own project, whose agents get it. */
       readonly projectId: string;
       readonly params: ZeropsMcpProposalParams;
+    })
+  | (ProposalHead & {
+      readonly kind: "env.reveal";
+      readonly projectId: string;
+      readonly params: ZeropsRevealProposalParams;
     });
 
 const Words = Schema.NonEmptyString;
@@ -280,6 +295,21 @@ const McpProposal = Schema.Struct({
   }),
 });
 
+const RevealParams = Schema.Struct({
+  scope: Schema.Literals(["project", "service"]),
+  key: Words,
+});
+
+const RevealProposal = Schema.Struct({
+  ...Head,
+  kind: Schema.Literal("env.reveal"),
+  projectId: Words,
+  params: RevealParams,
+});
+
+/** A reveal's params hold its name and scope and nothing else: never a value. */
+const decodeRevealParams = Schema.decodeUnknownOption(RevealParams, { onExcessProperty: "error" });
+
 const ProposalDocument = Schema.Struct({
   proposal: Schema.Union([
     ServiceProposal,
@@ -289,6 +319,7 @@ const ProposalDocument = Schema.Struct({
     DomainProposal,
     AccessProposal,
     McpProposal,
+    RevealProposal,
   ]),
 });
 
@@ -351,8 +382,11 @@ function mcpParams(params: DecodedMcp): ZeropsMcpProposalParams | undefined {
   };
 }
 
-/** The fields its kind carries, or undefined where what it says is blank or names nowhere. */
-function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
+/**
+ * The fields its kind carries, or undefined where what it says is blank or names nowhere. `params`
+ * is the document's own, as it was sent.
+ */
+function shaped(proposal: DecodedProposal, params: unknown): ZeropsProposal | undefined {
   if (blank(proposal.id) || blank(proposal.summary)) return undefined;
   const head: ProposalHead = {
     id: proposal.id,
@@ -417,6 +451,17 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
         params: { domains: [...domains], port },
       };
     }
+    case "env.reveal": {
+      const { scope, key } = proposal.params;
+      // A service's value names its service, by id or by hostname in the Mate's own vault.
+      if (
+        blank(key) ||
+        Option.isNone(decodeRevealParams(params)) ||
+        (scope === "service" && proposal.serviceId === undefined && !proposal.serviceName?.trim())
+      )
+        return undefined;
+      return { ...head, kind: "env.reveal", projectId: proposal.projectId, params: { scope, key } };
+    }
     case "access.set": {
       const { projects, people } = proposal.params;
       if (people.some(({ person }) => blank(person)) || projects.some(({ id }) => blank(id)))
@@ -431,9 +476,9 @@ function shaped(proposal: DecodedProposal): ZeropsProposal | undefined {
       };
     }
     case "mcp.add": {
-      const params = mcpParams(proposal.params);
-      if (params === undefined) return undefined;
-      return { ...head, kind: "mcp.add", projectId: proposal.projectId, params };
+      const mcp = mcpParams(proposal.params);
+      if (mcp === undefined) return undefined;
+      return { ...head, kind: "mcp.add", projectId: proposal.projectId, params: mcp };
     }
   }
 }
@@ -455,6 +500,10 @@ export function readZeropsProposal(
   }
   return Option.match(decodeDocument(parsed), {
     onNone: () => undefined,
-    onSome: (document) => shaped(document.proposal),
+    onSome: (document) =>
+      shaped(
+        document.proposal,
+        (parsed as { readonly proposal: { readonly params?: unknown } }).proposal.params,
+      ),
   });
 }

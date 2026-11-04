@@ -91,6 +91,7 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
+  Partial<Pick<HqApi, "recordReveal">> &
   Partial<
     Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream" | "deleteRepo">
   > &
@@ -468,6 +469,19 @@ export function makeHqExecutor(ports: {
           }),
           (decision) => answered(requestId, intent.proposalId, { decision }),
         );
+      case "record-reveal": {
+        const record = api.recordReveal;
+        // No HQ that records reveals: nothing was recorded, so nothing is shown.
+        if (record === undefined)
+          return Effect.fail<StreamFault>({
+            outcome: "definitive-refusal",
+            message: "Update HQ to record reveals.",
+          });
+        return Effect.map(
+          Effect.tryPromise({ try: () => record(intent.reveal), catch: faultOf }),
+          () => answered(requestId, intent.reveal.projectId, {}),
+        );
+      }
     }
   };
 
@@ -873,7 +887,11 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
+        if (
+          intent.kind === "set-chief" ||
+          intent.kind === "decide-proposal" ||
+          intent.kind === "record-reveal"
+        )
           return yield* chiefWrite(requestId, api, intent);
         if (intent.kind === "authorize-observe") {
           const establish = api.establishZcpAuthorization;

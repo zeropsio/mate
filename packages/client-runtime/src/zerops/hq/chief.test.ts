@@ -115,3 +115,12 @@ describe("decisions on proposals at HQ", () => {
     ).rejects.toMatchObject({ kind: "refused", status: 409 });
   });
 });
+
+describe("a reveal recorded at HQ", () => {
+  it("posts where the value lives and its name, never the value", async () => {
+    const { api, seen } = hqAnswering(() => new Response(null, { status: 204 }));
+    const reveal = { projectId: "p-prod", service: "db", key: "DATABASE_PASSWORD" };
+    await expect(api.recordReveal(reveal)).resolves.toBeUndefined();
+    expect(seen).toEqual([{ method: "POST", path: "/api/reveals", ids: null, body: reveal }]);
+  });
+});

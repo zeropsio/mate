@@ -340,6 +340,8 @@ export interface HqApi {
   readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
   /** One proposal's decision, then once how an approval ended (`chief.ts`). */
   readonly decideProposal: HqChiefCalls["decideProposal"];
+  /** Records that the person was shown a hidden value (`chief.ts`). */
+  readonly recordReveal: HqChiefCalls["recordReveal"];
   readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
   readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
   /**

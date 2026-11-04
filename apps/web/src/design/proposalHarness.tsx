@@ -9,9 +9,11 @@
  * application: undecided, held for a name nobody in the organization has, and done. Every face is
  * the mark there; the receiving Mate keeps its own. The secret and the domain act on production.
  * The main press answers after 900 ms; `?fail=1` refuses it. `?theme=dark` for dark. At the top,
- * a Mate proposing an MCP server for its agents: with a key to type, proposed for the whole
- * project, waiting for a sign-in and its paste fallback, connected, and failed; `?only=mcp` shows
- * those alone.
+ * a Mate proposing to show the person a production secret, in each of its states — the first one
+ * live: Reveal shows an example value for half a minute; `?only=reveal` draws those alone. Then a
+ * Mate proposing an MCP server for its agents: with a key to type, proposed for the whole project,
+ * waiting for a sign-in and its paste fallback, connected, and failed; `?only=mcp` shows those
+ * alone.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
@@ -32,12 +34,19 @@ import { createRoot } from "react-dom/client";
 
 import { recordsOf } from "~/components/zerops/addresses/addresses.logic";
 import { MateFace, MateFaceAsMark } from "~/components/zerops/primitives";
+import { Button } from "~/components/ui/button";
 import {
   ProposalCard,
   type ProposalCardProps,
   type ProposalRecipient,
 } from "~/components/zerops/proposal/ProposalCard";
 import type { ProposalStage } from "~/components/zerops/proposal/proposal.logic";
+import { RevealAskCard } from "~/components/zerops/proposal/RevealAskCard";
+import {
+  revealAskState,
+  type RevealAuthority,
+  type RevealPhase,
+} from "~/components/zerops/proposal/reveal.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -217,6 +226,8 @@ function McpCard(card: (typeof MCP_CARDS)[number]) {
     drawn
   );
 }
+
+const ONLY_REVEAL = params.get("only") === "reveal";
 
 const RESTART: ZeropsProposal = {
   id: "restart",
@@ -475,6 +486,94 @@ function Card(card: (typeof CARDS)[number]) {
   );
 }
 
+// ── reveal ───────────────────────────────────────────────────────────────────────────────────
+
+const REVEAL: Extract<ZeropsProposal, { kind: "env.reveal" }> = {
+  id: "reveal",
+  kind: "env.reveal",
+  summary: "Show DATABASE_PASSWORD from Production",
+  reason: "You asked for it to connect from your laptop. I can't see it; only you can.",
+  projectId: "p-prod",
+  projectName: "Production",
+  serviceId: "s-db",
+  serviceName: "db",
+  params: { scope: "service", key: "DATABASE_PASSWORD" },
+};
+/** An example value, never a real one. */
+const EXAMPLE = ["Hk7q", "2mVz", "example", "only"].join("-");
+const MAY: RevealAuthority = { kind: "may" };
+const REVEALED = { state: "running", at: "2026-11-04T15:32:00.000Z" } as const;
+
+const REVEALS: ReadonlyArray<{
+  readonly name: string;
+  readonly phase: RevealPhase;
+  readonly decided?: "revealed" | "notNow";
+  readonly authority?: RevealAuthority;
+}> = [
+  { name: "waiting", phase: { kind: "idle" } },
+  { name: "revealing", phase: { kind: "revealing" } },
+  { name: "confirm", phase: { kind: "confirming" } },
+  { name: "hidden", phase: { kind: "idle" }, decided: "revealed" },
+  { name: "failed", phase: { kind: "failed", words: "Couldn't show it. Try again." } },
+  {
+    name: "refused",
+    phase: { kind: "refused", words: "Your role in this organization can't show secrets." },
+  },
+  { name: "notNow", phase: { kind: "idle" }, decided: "notNow" },
+  {
+    name: "others",
+    phase: { kind: "idle" },
+    authority: {
+      kind: "others",
+      rule: "Only people with production access can reveal this.",
+      names: ["Petr"],
+    },
+  },
+];
+
+function Reveal(fixture: (typeof REVEALS)[number]) {
+  const [phase, setPhase] = useState(fixture.phase);
+  const [decided, setDecided] = useState(fixture.decided);
+  const decision =
+    decided === "revealed"
+      ? REVEALED
+      : decided === "notNow"
+        ? ({ state: "declined", at: REVEALED.at } as const)
+        : undefined;
+  const state = revealAskState({
+    phase,
+    decision,
+    by: decision === undefined ? null : "Aleš",
+    at: decision === undefined ? null : "15:32",
+    authority: fixture.authority ?? MAY,
+  });
+  return (
+    <RevealAskCard
+      confirm={
+        <Button onClick={() => setPhase({ kind: "shown" })} size="sm" variant="secondary">
+          Confirm in Zerops
+        </Button>
+      }
+      homeProjectId="p-mate"
+      mateName="Juno"
+      mayReveal={(fixture.authority ?? MAY).kind === "may"}
+      onHide={() => setPhase({ kind: "idle" })}
+      onNotNow={() => setDecided("notNow")}
+      onReveal={() => {
+        setPhase({ kind: "revealing" });
+        setTimeout(() => {
+          setDecided("revealed");
+          setPhase({ kind: "shown" });
+        }, 900);
+      }}
+      proposal={{ ...REVEAL, id: `reveal-${fixture.name}` }}
+      state={state}
+      tier="production"
+      value={phase.kind === "shown" ? EXAMPLE : null}
+    />
+  );
+}
+
 function Harness() {
   return (
     <div className="flex h-screen bg-background text-foreground">
@@ -482,12 +581,21 @@ function Harness() {
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8">
         <MateFaceAsMark value>
           <div className="mx-auto grid w-full max-w-3xl gap-3">
-            {MCP_CARDS.map((card) => (
+            {(ONLY_MCP ? [] : REVEALS).map((fixture) => (
+              <div
+                className="min-w-0 px-1 py-0.5"
+                data-harness-state={`reveal:${fixture.name}`}
+                key={fixture.name}
+              >
+                <Reveal {...fixture} />
+              </div>
+            ))}
+            {(ONLY_REVEAL ? [] : MCP_CARDS).map((card) => (
               <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
                 <McpCard {...card} />
               </div>
             ))}
-            {(ONLY_MCP ? [] : CARDS).map((card) => (
+            {(ONLY_MCP || ONLY_REVEAL ? [] : CARDS).map((card) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`${card.proposal.id}:${card.stage}`}

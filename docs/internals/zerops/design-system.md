@@ -159,6 +159,9 @@ numbered steps of these. Every ask is the same card, in two densities.
   person. It never enters the agent's context, the conversation, logs, telemetry or a tool
   result; cards show names, masks and facts. The Mate hears outcomes, including Not now, never
   values.
+- **A revealed value** stands only on the person's screen, read with their access, and hides
+  after 30 seconds or when they leave; it is recorded at HQ (who, which key, when) before it shows,
+  and the Mate hears nothing of it.
 - **Authority**: anyone in the conversation sees the ask; only someone with the authority acts,
   and the card names who can.
 

@@ -1009,6 +1009,8 @@
         "apps/web/src/components/zerops/proposal/ProposalCardContainer.tsx",
         "apps/web/src/components/zerops/proposal/McpProposalCard.tsx",
         "apps/web/src/components/zerops/proposal/McpProposalCardContainer.tsx",
+        "apps/web/src/components/zerops/proposal/RevealAskCard.tsx",
+        "apps/web/src/components/zerops/proposal/RevealAskContainer.tsx",
         "apps/web/src/components/zerops/MateTaskCard.tsx"
       ],
       "entryPoints": [

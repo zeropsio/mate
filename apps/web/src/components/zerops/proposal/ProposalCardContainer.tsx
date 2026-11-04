@@ -7,7 +7,8 @@
  * account's own `set-project-access`, each person found among the organization's members, as an
  * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
- * Approve twice; an approval is carried out only once HQ kept it.
+ * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
+ * (`RevealAskContainer`).
  */
 import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
@@ -55,6 +56,7 @@ import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
 import { McpProposalCardContainer } from "./McpProposalCardContainer";
 import { ProposalCard } from "./ProposalCard";
+import { RevealAsk } from "./RevealAskContainer";
 import {
   chiefAsk,
   chiefMessageTarget,
@@ -139,6 +141,9 @@ export function ProposalCardContainer({
       />
     );
   }
+  // A reveal approves nothing to run: the person sees a value, on their screen only.
+  if (proposal.kind === "env.reveal")
+    return <RevealAsk environmentId={environmentId} proposal={proposal} />;
   return <Proposal environmentId={environmentId} proposal={proposal} />;
 }
 
