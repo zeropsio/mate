@@ -5,7 +5,8 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   orgTemplateDraft,
   personaFromEditor,
-  personaLinkedToSavedTemplate,
+  samePersona,
+  savedTemplateLink,
   personaFromTemplate,
   personaPage,
   type PersonaPageInput,
@@ -59,25 +60,29 @@ describe("the Persona page", () => {
     {
       title: "a Mate whose server lacks persona support offers an update instead",
       input: { capability: false },
-      kind: "update",
+      expected: {
+        kind: "update",
+        line: "Update Nova to give it a persona.",
+        action: "update-mate",
+      },
     },
     {
       title: "the page waits while the Mate's capabilities are unknown",
       input: { capability: null },
-      kind: "loading",
+      expected: { kind: "loading" },
     },
     {
       title: "the page waits for the Mate's settings before saying it has no persona",
       input: { settingsLoaded: false },
-      kind: "loading",
+      expected: { kind: "loading" },
     },
     {
       title: "a Mate with persona support shows its persona and templates",
       input: {},
-      kind: "ready",
+      expected: { kind: "ready" },
     },
-  ] as const)("$title", ({ input, kind }) => {
-    expect(personaPage({ ...BASE, ...input }).kind).toBe(kind);
+  ] as const)("$title", ({ input, expected }) => {
+    expect(personaPage({ ...BASE, ...input })).toMatchObject(expected);
   });
 
   it("a Mate without a persona says it works its own way and offers every template", () => {
@@ -345,7 +350,6 @@ describe("writing a Mate's persona", () => {
 
 describe("saving a persona as the organization's template", () => {
   const terse: MatePersona = { name: "Terse", instructions: "Answer in one line." };
-  const saved = { id: "t-1", persona: terse };
   const record: PersonaTemplate = {
     id: "t-1",
     name: "Terse",
@@ -364,32 +368,99 @@ describe("saving a persona as the organization's template", () => {
     });
   });
 
+  // The save began after the page's third write; the Mate's settings echo writes late.
+  const saving = { id: "t-1", persona: terse, revision: 1, writesAtStart: 3 };
+  const linked = { ...terse, template: { source: "org", id: "t-1", revision: 1 } } as const;
+
   it.each([
     {
       title: "once the saved template is in the organization's list, the Mate is tied to it",
       templates: [HOUSE_STYLE, record],
       current: terse,
-      linked: { ...terse, template: { source: "org", id: "t-1", revision: 1 } },
+      writes: 3,
+      link: { kind: "link", persona: linked },
     },
     {
       title: "the Mate is not tied before the saved template is in the list",
       templates: [HOUSE_STYLE],
       current: terse,
-      linked: null,
+      writes: 3,
+      link: { kind: "wait" },
     },
     {
       title: "a persona changed while its template was saved is never tied to it",
       templates: [record],
       current: { name: "Terse", instructions: "Answer in two lines." },
-      linked: null,
+      writes: 3,
+      link: { kind: "abandon" },
     },
     {
       title: "a persona removed while its template was saved stays removed",
       templates: [record],
       current: null,
-      linked: null,
+      writes: 3,
+      link: { kind: "abandon" },
     },
-  ] as const)("$title", ({ templates, current, linked }) => {
-    expect(personaLinkedToSavedTemplate(saved, templates, current)).toEqual(linked);
+    {
+      title:
+        "a choice made on the page while its template was saved is never undone, even before the Mate shows it",
+      templates: [record],
+      current: terse,
+      writes: 4,
+      link: { kind: "abandon" },
+    },
+    {
+      title: "the Mate is tied to the revision it saved, never a newer one somebody else made",
+      templates: [{ ...record, instructions: "Answer in one word.", revision: 2 }],
+      current: terse,
+      writes: 3,
+      link: { kind: "link", persona: linked },
+    },
+  ] as const)("$title", ({ templates, current, writes, link }) => {
+    expect(savedTemplateLink(saving, templates, current, writes)).toEqual(link);
+  });
+});
+
+describe("a write to the Mate's persona", () => {
+  const reviewer = personaFromTemplate("premade", REVIEWER);
+  it.each([
+    {
+      title: "a removal counts once the Mate shows no persona",
+      written: null,
+      shown: null,
+      done: true,
+    },
+    {
+      title: "a removal waits while the Mate still shows one",
+      written: null,
+      shown: reviewer,
+      done: false,
+    },
+    {
+      title: "a persona counts once the Mate shows the same one",
+      written: reviewer,
+      shown: { ...reviewer },
+      done: true,
+    },
+    {
+      title: "a persona waits while the Mate shows the old text",
+      written: reviewer,
+      shown: { name: "Reviewer", instructions: "Old text." },
+      done: false,
+    },
+    {
+      title: "a persona waits while the Mate shows the text without its template",
+      written: reviewer,
+      shown: { name: reviewer.name, instructions: reviewer.instructions },
+      done: false,
+    },
+    {
+      title: "a persona waits while the Mate shows another revision of its template",
+      written: reviewer,
+      shown: { ...reviewer, template: { source: "premade", id: "reviewer", revision: 1 } },
+      done: false,
+    },
+  ] as const)("$title", ({ written, shown, done }) => {
+    expect(samePersona(written, shown)).toBe(done);
   });
 });

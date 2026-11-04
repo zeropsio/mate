@@ -29,8 +29,15 @@ export interface OrgPersonaTemplatesInput {
   readonly mayWrite: boolean;
 }
 
+/** The Mate's name; `null` while the directory has not named it, said as "this Mate". */
+export type MateName = string | null;
+/** The Mate inside a sentence. */
+export const mateIn = (mate: MateName) => mate ?? "this Mate";
+/** The Mate starting one. */
+export const mateLeads = (mate: MateName) => mate ?? "This Mate";
+
 export interface PersonaPageInput {
-  readonly mate: string;
+  readonly mate: MateName;
   /** The server's `matePersona` capability; `null` while its config is unread. */
   readonly capability: boolean | null;
   readonly settingsLoaded: boolean;
@@ -77,7 +84,8 @@ export interface PersonaSummary {
 
 export type PersonaPageModel =
   | { readonly kind: "loading" }
-  | { readonly kind: "update" }
+  /** Its server takes no persona: the line says so and the page offers the Mate's update. */
+  | { readonly kind: "update"; readonly line: string; readonly action: "update-mate" }
   | {
       readonly kind: "ready";
       readonly persona: PersonaSummary | null;
@@ -85,15 +93,15 @@ export type PersonaPageModel =
     };
 
 export const PERSONA_WORDS = {
-  ownWay: (mate: string) => `${mate} works and talks its own way.`,
-  update: (mate: string) => `Update ${mate} to give it a persona.`,
+  ownWay: (mate: MateName) => `${mateLeads(mate)} works and talks its own way.`,
+  update: (mate: MateName) => `Update ${mateIn(mate)} to give it a persona.`,
   fromZerops: "From Zerops",
   fromZeropsTemplate: (name: string) => `From Zerops: ${name}`,
   orgTemplates: (org: string | null) =>
     org === null ? "Your organization's templates" : `${org}'s templates`,
   fromOrg: (org: string | null) =>
     org === null ? "From your organization's templates" : `From ${org}'s templates`,
-  writtenFor: (mate: string) => `Written for ${mate}`,
+  writtenFor: (mate: MateName) => `Written for ${mateIn(mate)}`,
   noTemplates: "No templates yet.",
   orgUnavailable: "Not available here.",
   orgStale: (failure: string) => `This list may be out of date: ${failure}`,
@@ -130,7 +138,8 @@ function orgNote(org: OrgPersonaTemplatesInput): PersonaGroupNote | null {
 
 export function personaPage(input: PersonaPageInput): PersonaPageModel {
   if (input.capability === null) return { kind: "loading" };
-  if (!input.capability) return { kind: "update" };
+  if (!input.capability)
+    return { kind: "update", line: PERSONA_WORDS.update(input.mate), action: "update-mate" };
   if (!input.settingsLoaded) return { kind: "loading" };
 
   const { persona, org } = input;
@@ -264,19 +273,63 @@ export function orgTemplateDraft(persona: MatePersona, templateId: string): Pers
   };
 }
 
+/** A save of the persona as the organization's template, from the moment it was sent. */
+export interface SavingTemplate {
+  /** The template's id, made by the page. */
+  readonly id: string;
+  /** The persona as it was saved. */
+  readonly persona: MatePersona;
+  /** The revision HQ gives what this save created. */
+  readonly revision: number;
+  /** How many writes the page had sent to the Mate's persona when the save began. */
+  readonly writesAtStart: number;
+}
+
+export type SavedTemplateLink =
+  | { readonly kind: "wait" }
+  | { readonly kind: "link"; readonly persona: MatePersona }
+  | { readonly kind: "abandon" };
+
 /**
- * The Mate's persona tied to the template it was just saved as, once the organization's list
- * shows that template: copied from it at its revision, so the Mate later offers its newer ones.
- * `null` before the list shows it, and for a persona changed or removed meanwhile.
+ * Whether the Mate takes the template its persona was just saved as. It waits until the
+ * organization's list shows that template, then takes it at the revision it saved, so it later
+ * offers the newer ones; it never does once the person chose anything else on the page since the
+ * save began (even before the Mate shows that choice), or once the persona shown differs.
  */
-export function personaLinkedToSavedTemplate(
-  saved: { readonly id: string; readonly persona: MatePersona },
+export function savedTemplateLink(
+  saving: SavingTemplate,
   templates: readonly PersonaTemplate[],
   current: MatePersona | null,
-): MatePersona | null {
-  const template = templates.find((candidate) => candidate.id === saved.id);
-  if (template === undefined || current === null) return null;
-  if (current.name !== saved.persona.name || current.instructions !== saved.persona.instructions)
-    return null;
-  return personaFromTemplate("org", template);
+  writes: number,
+): SavedTemplateLink {
+  if (writes !== saving.writesAtStart) return { kind: "abandon" };
+  if (
+    current === null ||
+    current.name !== saving.persona.name ||
+    current.instructions !== saving.persona.instructions
+  )
+    return { kind: "abandon" };
+  if (!templates.some((candidate) => candidate.id === saving.id)) return { kind: "wait" };
+  return {
+    kind: "link",
+    persona: {
+      name: saving.persona.name,
+      instructions: saving.persona.instructions,
+      template: { source: "org", id: saving.id, revision: saving.revision },
+    },
+  };
+}
+
+/** Whether the Mate shows the persona a write sent: the write is done only once it does. */
+export function samePersona(written: MatePersona | null, shown: MatePersona | null): boolean {
+  if (written === null || shown === null) return written === shown;
+  const a = written.template;
+  const b = shown.template;
+  return (
+    written.name === shown.name &&
+    written.instructions === shown.instructions &&
+    (a === undefined || b === undefined
+      ? a === b
+      : a.source === b.source && a.id === b.id && a.revision === b.revision)
+  );
 }

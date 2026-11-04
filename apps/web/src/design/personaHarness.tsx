@@ -145,7 +145,7 @@ function Page() {
               FAIL
                 ? {
                     stage: "failed",
-                    message: "HQ refused it: you need to be an Admin.",
+                    message: "Couldn't save the template: you need to be an Admin.",
                     retry: noop,
                   }
                 : { stage: "saved" },
@@ -155,7 +155,7 @@ function Page() {
         orgSave={orgSave}
         write={async (next) => {
           await settle();
-          if (FAIL) return "Nova did not answer.";
+          if (FAIL) return "Couldn't save the persona: Nova did not answer.";
           setPersona(next);
           return null;
         }}
