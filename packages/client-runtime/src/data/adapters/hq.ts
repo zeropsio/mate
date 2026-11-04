@@ -90,6 +90,10 @@ export interface HqWire {
     request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
+  /** A frame HQ decides on the person's role, with their current Zerops access token (`HqApi.withAccess`). */
+  readonly withAccess?: <T extends object>(
+    frame: T,
+  ) => Effect.Effect<T & { readonly accessToken: string }, StreamFault>;
 }
 
 /** How an HQ socket's ending classifies, its planned segment end aside. */
@@ -810,7 +814,7 @@ export function hqNavigationLink(options: {
   /** One question to HQ on the open socket, answered by its request id; none without a socket. */
   const ask = <A>(
     type: "move-offers" | "compare",
-    request: (requestId: string) => HqStreamRequest,
+    request: (requestId: string) => Effect.Effect<HqStreamRequest, StreamFault>,
   ): Effect.Effect<A, StreamFault> =>
     Effect.suspend(() => {
       const segment = open;
@@ -820,12 +824,14 @@ export function hqNavigationLink(options: {
           message: "HQ's stream is not open.",
         });
       const requestId = `${type}-${(requests += 1)}`;
-      const answer = Deferred.makeUnsafe<unknown, StreamFault>();
-      pendingOffers.set(requestId, answer);
-      return Effect.andThen(
-        segment.send(request(requestId)),
-        Deferred.await(answer) as Effect.Effect<A, StreamFault>,
-      );
+      return Effect.flatMap(request(requestId), (asked) => {
+        const answer = Deferred.makeUnsafe<unknown, StreamFault>();
+        pendingOffers.set(requestId, answer);
+        return Effect.andThen(
+          segment.send(asked),
+          Deferred.await(answer) as Effect.Effect<A, StreamFault>,
+        );
+      });
     });
 
   return {
@@ -854,13 +860,19 @@ export function hqNavigationLink(options: {
     },
     demandDetail: (demand) => (stopped ? () => {} : demands.hold(detailScopeOf(orgId, demand))),
     moveOffers: (projectId) =>
-      ask<HqMoveOffers>("move-offers", (requestId) => ({
-        type: "move-offers",
-        requestId,
-        projectId,
-      })),
+      ask<HqMoveOffers>(
+        "move-offers",
+        (requestId) =>
+          wire.withAccess?.({ type: "move-offers" as const, requestId, projectId }) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot say where a Mate may move.",
+          }),
+      ),
     compare: (asked) =>
-      ask<CompareResponse>("compare", (requestId) => ({ type: "compare", requestId, ...asked })),
+      ask<CompareResponse>("compare", (requestId) =>
+        Effect.succeed({ type: "compare", requestId, ...asked }),
+      ),
     seen: (projectId, resultIds) =>
       Effect.suspend(() => {
         if (open !== null) return open.send({ type: "seen", projectId, resultIds });

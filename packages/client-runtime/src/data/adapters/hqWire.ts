@@ -52,11 +52,23 @@ export function makeHqWire(
     Partial<
       Pick<
         HqApi,
-        "changeAttachment" | "changeMetadata" | "changeCommits" | "changeVerdict" | "reviewRelease"
+        | "changeAttachment"
+        | "changeMetadata"
+        | "changeCommits"
+        | "changeVerdict"
+        | "reviewRelease"
+        | "withAccess"
       >
     >,
 ): HqWire {
+  const { withAccess } = api;
   return {
+    ...(withAccess === undefined
+      ? {}
+      : {
+          withAccess: <T extends object>(frame: T) =>
+            Effect.tryPromise({ try: () => withAccess(frame), catch: classifyHqCall }),
+        }),
     ...(api.reviewRelease === undefined
       ? {}
       : {

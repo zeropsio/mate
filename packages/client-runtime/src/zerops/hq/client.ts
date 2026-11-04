@@ -326,6 +326,12 @@ export interface HqMateTicket {
 }
 
 export interface HqApi {
+  /**
+   * `body` with the person's current Zerops access token as `accessToken`, for a verb HQ decides
+   * on a fresh read of their role (`withAccess`): an HTTP body, or a socket frame such as the move
+   * picker's.
+   */
+  readonly withAccess: <T extends object>(body: T) => Promise<T & { readonly accessToken: string }>;
   readonly gitTargetWrite: (
     requestId: string,
     intent: HqGitTargetIntent,
@@ -1259,12 +1265,14 @@ export function makeHqApi(input: {
   };
 
   /**
-   * The body of a verb HQ decides on a fresh read of the person's Zerops role (merge, release, roll
-   * back, delete, structure): it carries the person's current access token, which HQ uses for that
-   * one read and keeps nothing of.
+   * The body of a verb HQ decides on a fresh read of the person's Zerops role (spec/protocol.md,
+   * "Verbs that depend on a role"): it carries the person's current access token, which HQ uses for
+   * that one read and keeps nothing of. A verb without it is `401 token_required`.
    */
-  const withAccess = async (body: object) =>
-    JSON.stringify({ ...body, accessToken: (await input.accessToken()).token });
+  const withAccess = async <T extends object>(body: T) => ({
+    ...body,
+    accessToken: (await input.accessToken()).token,
+  });
 
   const structureOf = async (signal?: AbortSignal) =>
     Option.getOrThrowWith(
@@ -1286,7 +1294,8 @@ export function makeHqApi(input: {
   };
 
   return {
-    ...makeChiefCalls({ authorized, decoded }),
+    ...makeChiefCalls({ authorized, decoded, withAccess }),
+    withAccess,
     structure: structureOf,
     mateTicket: async (projectId, signal) =>
       json<HqMateTicket>(
@@ -1317,12 +1326,16 @@ export function makeHqApi(input: {
     // taken for it.
     recordBirth: async (birth) =>
       json<HqBirth>(
-        await authorized("/api/births", { method: "POST", body: JSON.stringify(birth) }, true),
+        await authorized(
+          "/api/births",
+          { method: "POST", body: JSON.stringify(await withAccess(birth)) },
+          true,
+        ),
       ),
     holdPress: async (projectId, press) => {
       await authorized(
         `/api/presses/${encodeURIComponent(projectId)}`,
-        { method: "PUT", body: JSON.stringify(press) },
+        { method: "PUT", body: JSON.stringify(await withAccess(press)) },
         true,
       );
     },
@@ -1330,14 +1343,14 @@ export function makeHqApi(input: {
       const path = `/api/presses/${encodeURIComponent(projectId)}/${encodeURIComponent(owner)}`;
       await authorized(
         finished ? path : `${path}/stopped`,
-        { method: finished ? "DELETE" : "POST" },
+        { method: finished ? "DELETE" : "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
     bindBirth: async (birthId, projectId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}/project`,
-        { method: "PUT", body: JSON.stringify({ projectId }) },
+        { method: "PUT", body: JSON.stringify(await withAccess({ projectId })) },
         true,
       );
     },
@@ -1345,7 +1358,11 @@ export function makeHqApi(input: {
       confirmed(
         async () =>
           json<{ readonly id: string; readonly name: string }>(
-            await authorized("/api/apps", { method: "POST", body: JSON.stringify({ name }) }, true),
+            await authorized(
+              "/api/apps",
+              { method: "POST", body: JSON.stringify(await withAccess({ name })) },
+              true,
+            ),
           ),
         async () => {
           const made = (await structureOf()).apps.find((app) => app.name === name);
@@ -1357,7 +1374,7 @@ export function makeHqApi(input: {
         async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}/projects`,
-            { method: "POST", body: await withAccess(attach) },
+            { method: "POST", body: JSON.stringify(await withAccess(attach)) },
             true,
           ),
         async () =>
@@ -1368,14 +1385,14 @@ export function makeHqApi(input: {
     handOver: async (projectId, ownerUserId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/hand-over`,
-        { method: "POST", body: await withAccess({ ownerUserId }) },
+        { method: "POST", body: JSON.stringify(await withAccess({ ownerUserId })) },
         true,
       );
     },
     keepDeployToken: async (appId, environment, token) => {
       await authorized(
         `${environmentPath(appId, environment)}/deploy-token`,
-        { method: "PUT", body: JSON.stringify({ token }) },
+        { method: "PUT", body: JSON.stringify(await withAccess({ token })) },
         true,
       );
     },
@@ -1384,7 +1401,7 @@ export function makeHqApi(input: {
         await readDeploys(
           await authorized(
             `${environmentPath(appId, environment)}/redeploy`,
-            { method: "POST", body: JSON.stringify(deploy) },
+            { method: "POST", body: JSON.stringify(await withAccess(deploy)) },
             true,
           ),
         )
@@ -1394,7 +1411,7 @@ export function makeHqApi(input: {
         await readDeploys(
           await authorized(
             `${environmentPath(appId, environment)}/services`,
-            { method: "POST", body: JSON.stringify({ service }) },
+            { method: "POST", body: JSON.stringify(await withAccess({ service })) },
             true,
           ),
         )
@@ -1409,7 +1426,7 @@ export function makeHqApi(input: {
         return await decoded(HqAutoUpdatePolicy)(
           await authorized(
             "/api/auto-update",
-            { method: "PUT", body: JSON.stringify({ enabled }) },
+            { method: "PUT", body: JSON.stringify(await withAccess({ enabled })) },
             true,
           ),
         );
@@ -1424,7 +1441,9 @@ export function makeHqApi(input: {
           `/api/git-targets/${encodeURIComponent(requestId)}`,
           {
             method: "POST",
-            body: JSON.stringify({ intent, ...(candidate === undefined ? {} : { candidate }) }),
+            body: JSON.stringify(
+              await withAccess({ intent, ...(candidate === undefined ? {} : { candidate }) }),
+            ),
           },
           true,
         ),
@@ -1434,7 +1453,7 @@ export function makeHqApi(input: {
         await decoded(Schema.Struct({ receipt: Schema.NullOr(HqGitOperationReceipt) }))(
           await authorized(`/api/git-targets/${encodeURIComponent(requestId)}/receipt`, {
             method: "POST",
-            body: JSON.stringify({ intent }),
+            body: JSON.stringify(await withAccess({ intent })),
           }),
         )
       ).receipt,
@@ -1442,7 +1461,7 @@ export function makeHqApi(input: {
       decoded(HqLifecycleRecord)(
         await authorized(
           `/api/lifecycle/${encodeURIComponent(requestId)}`,
-          { method: "POST", body: await withAccess(intent) },
+          { method: "POST", body: JSON.stringify(await withAccess(intent)) },
           true,
         ),
       ),
@@ -1455,16 +1474,16 @@ export function makeHqApi(input: {
     updateMate: async (projectId, change) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}`,
-        { method: "PATCH", body: JSON.stringify(change) },
+        { method: "PATCH", body: JSON.stringify(await withAccess(change)) },
         true,
       );
     },
     renameApp: (appId, name) =>
       confirmedDone(
-        () =>
+        async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}`,
-            { method: "PATCH", body: JSON.stringify({ name }) },
+            { method: "PATCH", body: JSON.stringify(await withAccess({ name })) },
             true,
           ),
         async () => (await appOf(appId))?.name === name,
@@ -1474,7 +1493,7 @@ export function makeHqApi(input: {
         async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
-            { method: "DELETE", body: await withAccess({}) },
+            { method: "DELETE", body: JSON.stringify(await withAccess({})) },
             true,
           ),
         async () => (await appOf(appId)) === undefined,
@@ -1482,13 +1501,18 @@ export function makeHqApi(input: {
     answerKeptGit: async (appId, answer) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/kept-git`,
-        { method: "POST", body: JSON.stringify({ answer }) },
+        { method: "POST", body: JSON.stringify(await withAccess({ answer })) },
         true,
       );
     },
     createMate: (mate) =>
       confirmedDone(
-        () => authorized("/api/mates", { method: "POST", body: JSON.stringify(mate) }, true),
+        async () =>
+          authorized(
+            "/api/mates",
+            { method: "POST", body: JSON.stringify(await withAccess(mate)) },
+            true,
+          ),
         async () => {
           const { ungrouped, apps } = await structureOf();
           return (
@@ -1529,7 +1553,7 @@ export function makeHqApi(input: {
       readComment(
         await authorized(
           `${changePath(link)}/comments`,
-          { method: "POST", body: JSON.stringify({ body }) },
+          { method: "POST", body: JSON.stringify(await withAccess({ body })) },
           true,
         ),
       ),
@@ -1539,7 +1563,7 @@ export function makeHqApi(input: {
           readMerged(
             await authorized(
               `${changePath(link)}/merge`,
-              { method: "POST", body: await withAccess({ expectedHead }) },
+              { method: "POST", body: JSON.stringify(await withAccess({ expectedHead })) },
               true,
             ),
           ),
@@ -1552,7 +1576,7 @@ export function makeHqApi(input: {
           readChange(
             await authorized(
               `${changePath(link)}/close`,
-              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              { method: "POST", body: JSON.stringify(await withAccess({ expectedHead })) },
               true,
             ),
           ),
@@ -1565,7 +1589,7 @@ export function makeHqApi(input: {
           readChange(
             await authorized(
               `${changePath(link)}/hand`,
-              { method: "POST", body: JSON.stringify({ mateProjectId }) },
+              { method: "POST", body: JSON.stringify(await withAccess({ mateProjectId })) },
               true,
             ),
           ),
@@ -1585,26 +1609,33 @@ export function makeHqApi(input: {
       readIntakeView(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/intake`,
-          { method: "PUT", body: JSON.stringify(request) },
+          { method: "PUT", body: JSON.stringify(await withAccess(request)) },
           true,
         ),
       ),
     stopIntake: async (appId) => {
-      await authorized(`/api/apps/${encodeURIComponent(appId)}/intake`, { method: "DELETE" }, true);
+      await authorized(
+        `/api/apps/${encodeURIComponent(appId)}/intake`,
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
     },
     aiKeys: async () => readAiKeys(await authorized("/api/org/ai-keys")),
     setAiKey: async (provider, value) =>
       readAiKey(
         await authorized(
           `/api/org/ai-keys/${encodeURIComponent(provider)}`,
-          { method: "PUT", body: JSON.stringify({ value } satisfies HqAiKeyRequest) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess({ value } satisfies HqAiKeyRequest)),
+          },
           true,
         ),
       ),
     removeAiKey: async (provider) => {
       await authorized(
         `/api/org/ai-keys/${encodeURIComponent(provider)}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1614,12 +1645,19 @@ export function makeHqApi(input: {
       readSlack(
         await authorized(
           "/api/org/slack",
-          { method: "PUT", body: JSON.stringify(request satisfies HqSlackConnectRequest) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess(request satisfies HqSlackConnectRequest)),
+          },
           true,
         ),
       ),
     disconnectSlack: async () => {
-      await authorized("/api/org/slack", { method: "DELETE" }, true);
+      await authorized(
+        "/api/org/slack",
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
     },
     slackChannels: async () => readSlackChannels(await authorized("/api/org/slack/channels")),
     discord: async () => readDiscord(await authorized("/api/org/discord")),
@@ -1627,18 +1665,28 @@ export function makeHqApi(input: {
       readDiscord(
         await authorized(
           "/api/org/discord",
-          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordConnectRequest) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess(request satisfies HqDiscordConnectRequest)),
+          },
           true,
         ),
       ),
     disconnectDiscord: async () => {
-      await authorized("/api/org/discord", { method: "DELETE" }, true);
+      await authorized(
+        "/api/org/discord",
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
     },
     allowDiscord: async (request) =>
       readDiscord(
         await authorized(
           "/api/org/discord/allow",
-          { method: "PUT", body: JSON.stringify(request satisfies HqDiscordAllowRequest) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess(request satisfies HqDiscordAllowRequest)),
+          },
           true,
         ),
       ),
@@ -1648,14 +1696,17 @@ export function makeHqApi(input: {
       readChannel(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/${source}`,
-          { method: "PUT", body: JSON.stringify(request satisfies HqChannelRequest) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess(request satisfies HqChannelRequest)),
+          },
           true,
         ),
       ),
     stopAppChannel: async (appId, source) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/${source}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1666,14 +1717,17 @@ export function makeHqApi(input: {
       readWebhook(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/webhooks`,
-          { method: "POST", body: JSON.stringify(request satisfies HqWebhookRequest) },
+          {
+            method: "POST",
+            body: JSON.stringify(await withAccess(request satisfies HqWebhookRequest)),
+          },
           true,
         ),
       ),
     deleteWebhook: async (appId, webhookId) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/webhooks/${encodeURIComponent(webhookId)}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1684,14 +1738,17 @@ export function makeHqApi(input: {
       readSchedule(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/schedules`,
-          { method: "POST", body: JSON.stringify(request satisfies HqScheduleRequest) },
+          {
+            method: "POST",
+            body: JSON.stringify(await withAccess(request satisfies HqScheduleRequest)),
+          },
           true,
         ),
       ),
     deleteSchedule: async (appId, scheduleId) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/schedules/${encodeURIComponent(scheduleId)}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1700,7 +1757,7 @@ export function makeHqApi(input: {
     stopAppTask: async (appId, taskId) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/tasks/${encodeURIComponent(taskId)}/stop`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1709,7 +1766,10 @@ export function makeHqApi(input: {
       readTaskLimits(
         await authorized(
           "/api/org/task-limits",
-          { method: "PUT", body: JSON.stringify(limits satisfies HqTaskLimitsView) },
+          {
+            method: "PUT",
+            body: JSON.stringify(await withAccess(limits satisfies HqTaskLimitsView)),
+          },
           true,
         ),
       ),
@@ -1718,67 +1778,83 @@ export function makeHqApi(input: {
       readGithubManifest(
         await authorized(
           "/api/org/github/manifest",
-          { method: "POST", body: JSON.stringify(request satisfies HqGithubManifestRequest) },
+          {
+            method: "POST",
+            body: JSON.stringify(await withAccess(request satisfies HqGithubManifestRequest)),
+          },
           true,
         ),
       ),
     githubDisconnect: async () => {
-      await authorized("/api/org/github", { method: "DELETE" }, true);
+      await authorized(
+        "/api/org/github",
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
     },
     githubInstall: async (request) =>
       readGithubInstall(
         await authorized(
           "/api/org/github/install",
-          { method: "POST", body: JSON.stringify(request satisfies HqGithubInstallRequest) },
+          {
+            method: "POST",
+            body: JSON.stringify(await withAccess(request satisfies HqGithubInstallRequest)),
+          },
           true,
         ),
       ),
     githubAcceptInstallation: async (installationId) => {
       await authorized(
         `/api/org/github/installations/${String(installationId)}/accept`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
     githubSuspendInstallation: async (installationId) => {
       await authorized(
         `/api/org/github/installations/${String(installationId)}/suspend`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
     githubResumeInstallation: async (installationId) => {
       await authorized(
         `/api/org/github/installations/${String(installationId)}/resume`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
     repoRemoteViaApp: async (appId, repo, request) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/remote/app`,
-        { method: "PUT", body: JSON.stringify(request satisfies HqRepoRemoteViaAppRequest) },
+        {
+          method: "PUT",
+          body: JSON.stringify(await withAccess(request satisfies HqRepoRemoteViaAppRequest)),
+        },
         true,
       );
     },
     followRepoUpstream: async (appId, repo, request) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
-        { method: "PUT", body: JSON.stringify(request satisfies FollowRepoUpstreamRequest) },
+        {
+          method: "PUT",
+          body: JSON.stringify(await withAccess(request satisfies FollowRepoUpstreamRequest)),
+        },
         true,
       );
     },
     unfollowRepoUpstream: async (appId, repo) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}/upstream`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
     deleteRepo: async (appId, repo) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/repos/${encodeURIComponent(repo)}`,
-        { method: "DELETE" },
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },
@@ -1791,7 +1867,9 @@ export function makeHqApi(input: {
         `/api/mates/${encodeURIComponent(projectId)}/zcp-authorization`,
         {
           method: "POST",
-          body: JSON.stringify(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
+          body: JSON.stringify(
+            await withAccess(context.keyHash === undefined ? {} : { keyHash: context.keyHash }),
+          ),
         },
         true,
       );
@@ -1806,7 +1884,7 @@ export function makeHqApi(input: {
       readGitCredential(
         await authorized(
           `/api/apps/${encodeURIComponent(appId)}/git-credentials`,
-          { method: "POST" },
+          { method: "POST", body: JSON.stringify(await withAccess({})) },
           true,
         ),
       ),
@@ -1885,7 +1963,7 @@ export function makeHqApi(input: {
         await authorized(`${releasesPath(appId)}/review`, {
           ...(signal === undefined ? {} : { signal }),
           method: "POST",
-          body: JSON.stringify(request),
+          body: JSON.stringify(await withAccess(request)),
         }),
       ),
     release: (appId, request) =>
@@ -1894,7 +1972,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               releasesPath(appId),
-              { method: "POST", body: await withAccess(request) },
+              { method: "POST", body: JSON.stringify(await withAccess(request)) },
               true,
             ),
           ),
@@ -1917,7 +1995,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
-              { method: "POST", body: await withAccess(request) },
+              { method: "POST", body: JSON.stringify(await withAccess(request)) },
               true,
             ),
           ),
@@ -1938,7 +2016,7 @@ export function makeHqApi(input: {
     recordClosedOff: async (projectId) => {
       await authorized(
         `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
-        { method: "POST" },
+        { method: "POST", body: JSON.stringify(await withAccess({})) },
         true,
       );
     },

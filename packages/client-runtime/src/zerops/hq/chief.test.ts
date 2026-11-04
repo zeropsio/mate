@@ -61,7 +61,12 @@ describe("the Chief at HQ", () => {
     const { api, seen } = hqAnswering(() => json(200, answer));
     await expect(api.setChief("p-chief")).resolves.toEqual(answer);
     expect(seen).toEqual([
-      { method: "PUT", path: "/api/chief", ids: null, body: { projectId: "p-chief" } },
+      {
+        method: "PUT",
+        path: "/api/chief",
+        ids: null,
+        body: { projectId: "p-chief", accessToken: "access" },
+      },
     ]);
   });
 
@@ -105,7 +110,14 @@ describe("decisions on proposals at HQ", () => {
       words: "Zerops said no.",
     } as const;
     await expect(api.decideProposal("p/1", write)).resolves.toEqual(stored);
-    expect(seen).toEqual([{ method: "PUT", path: "/api/proposals/p%2F1", ids: null, body: write }]);
+    expect(seen).toEqual([
+      {
+        method: "PUT",
+        path: "/api/proposals/p%2F1",
+        ids: null,
+        body: { ...write, accessToken: "access" },
+      },
+    ]);
   });
 
   it("says a decision HQ already holds otherwise is refused", async () => {

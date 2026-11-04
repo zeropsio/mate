@@ -42,7 +42,10 @@ describe("ZCP authorization client", () => {
           path: "/api/mates/project%2Fone/zcp-authorization",
           method: "POST",
           authorization: "Bearer person-session",
-          body: keyHash === undefined ? {} : { keyHash },
+          body: {
+            ...(keyHash === undefined ? {} : { keyHash }),
+            accessToken: "person-access",
+          },
         },
       ]);
     },
