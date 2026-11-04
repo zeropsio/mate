@@ -8,16 +8,26 @@
  * next message tells its agent which agents have it (`mcpTurnNotes.ts`).
  */
 import { isProviderDriverKind, type EnvironmentId, type ThreadId } from "@t3tools/contracts";
+import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import { useCallback, useEffect, useRef, useState } from "react";
 
+import { useClientSettings } from "~/hooks/useSettings";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
 import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { noteMcp } from "~/zerops/mcpTurnNotes";
 import { useMcpServers } from "../../mcp/useMcpServers";
+import { dockAsk, showAskInConversation, undockAsk } from "../../ask/askReveal";
+import type { AskDensity } from "../../ask/AskCard";
+import { ComposerAskFace } from "../../chat/ComposerAsk";
 import { McpProposalCard } from "./McpProposalCard";
 import {
   mcpAddInput,
+  mcpAskFace,
+  mcpProgress,
   mcpProposalStatus,
   mcpProposalView,
   mcpTurnNote,
@@ -28,29 +38,59 @@ import { proposalStage, type ProposalDecision } from "./proposal.logic";
 
 const IDLE: McpSigning = { phase: "idle" };
 
-export function McpProposalCardContainer(props: {
+export interface McpProposalHomeProps {
   readonly proposal: McpProposal;
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | null;
   /** The conversation's agent: whose state the card carries, and who signs in. */
   readonly driver: string | null;
-}) {
+  /** `full` where the Mate proposed it; `compact` above the composer while it waits on it. */
+  readonly density?: AskDensity;
+}
+
+/** The conversation's key the card docks its ask under; `null` outside a conversation. */
+const threadKeyOf = (environmentId: EnvironmentId, threadId: ThreadId | null): string | null =>
+  threadId === null ? null : scopedThreadKey(scopeThreadRef(environmentId, threadId));
+
+export function McpProposalCardContainer(props: McpProposalHomeProps) {
   const { proposal, environmentId } = props;
   const home = useZeropsEnvironmentProject(environmentId);
   const handle = useProposalDecision(proposal.id, home?.projectId, proposal.kind);
   const stage = proposalStage(handle.decision, handle.runningHere);
   const mateName = useKnownMate(environmentId)?.name ?? "Your Mate";
+  const nameOf = usePersonNames(home?.orgId);
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
+  const threadKey = threadKeyOf(environmentId, props.threadId);
+  const declined = stage === "declined";
+  useEffect(() => {
+    if (declined && threadKey !== null) undockAsk(threadKey, proposal.id);
+  }, [declined, proposal.id, threadKey]);
   // A declined card asks the Mate for nothing.
-  if (stage === "declined") {
+  if (declined) {
+    if (props.density === "compact") return null;
+    const view = mcpProposalView({
+      proposal,
+      mateName,
+      status: { kind: "declined" },
+      signing: IDLE,
+      approveBlocked: undefined,
+      agents: [],
+    });
+    const decision = handle.decision;
     return (
       <McpProposalCard
-        view={mcpProposalView({
-          proposal,
-          mateName,
+        askId={proposal.id}
+        face={mcpAskFace({
+          view,
           status: { kind: "declined" },
           signing: IDLE,
-          approveBlocked: undefined,
+          busy: false,
+          title: proposal.params.server.title,
+          signsIn: false,
+          by: decision?.by === undefined ? null : (nameOf(decision.by) ?? null),
+          at: decision === undefined ? null : formatDayAwareTimestamp(decision.at, timestampFormat),
         })}
+        view={view}
       />
     );
   }
@@ -61,20 +101,20 @@ export function McpProposalCardContainer(props: {
       homeKnown={home !== undefined}
       mateName={mateName}
       stage={stage}
+      threadKey={threadKey}
     />
   );
 }
 
-function LiveMcpProposal(props: {
-  readonly proposal: McpProposal;
-  readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId | null;
-  readonly driver: string | null;
-  readonly handle: ReturnType<typeof useProposalDecision>;
-  readonly homeKnown: boolean;
-  readonly mateName: string;
-  readonly stage: ReturnType<typeof proposalStage>;
-}) {
+function LiveMcpProposal(
+  props: McpProposalHomeProps & {
+    readonly threadKey: string | null;
+    readonly handle: ReturnType<typeof useProposalDecision>;
+    readonly homeKnown: boolean;
+    readonly mateName: string;
+    readonly stage: ReturnType<typeof proposalStage>;
+  },
+) {
   const { proposal, environmentId, handle, stage, mateName } = props;
   const name = proposal.params.server.name;
   const mcp = useMcpServers({ environmentId, threadId: props.threadId ?? undefined });
@@ -108,6 +148,11 @@ function LiveMcpProposal(props: {
           ? (error ?? `Reading ${mateName}'s MCP servers…`)
           : undefined;
 
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  /** A decision made here, recorded as the person's. */
+  const mine = (next: ProposalDecision): ProposalDecision =>
+    viewer === undefined ? next : { ...next, by: viewer };
+
   const decide = useCallback(
     async (next: ProposalDecision): Promise<boolean> => {
       const refused = await handle.record(next);
@@ -119,7 +164,7 @@ function LiveMcpProposal(props: {
 
   const add = async (values: Readonly<Record<string, string>>) => {
     if (busy || stage !== "open" || approveBlocked !== undefined) return;
-    const mapped = mcpAddInput(proposal, values);
+    const mapped = mcpAddInput(proposal, values, list?.agents ?? []);
     if ("refused" in mapped) {
       setRefusal(mapped.refused);
       return;
@@ -128,13 +173,15 @@ function LiveMcpProposal(props: {
     setBusy(true);
     try {
       // Nothing is written before HQ kept the approval: no card anywhere offers Add twice.
-      if (!(await decide({ state: "running", at: new Date().toISOString() }))) return;
+      if (!(await decide(mine({ state: "running", at: new Date().toISOString() })))) return;
       noteMcp(environmentId, { kind: "added", name });
       const result = await mcp.act({ kind: "add", input: mapped.input });
       await decide(
-        result.ok
-          ? { state: "done", at: new Date().toISOString() }
-          : { state: "failed", at: new Date().toISOString(), message: result.message },
+        mine(
+          result.ok
+            ? { state: "done", at: new Date().toISOString() }
+            : { state: "failed", at: new Date().toISOString(), message: result.message },
+        ),
       );
     } finally {
       setBusy(false);
@@ -179,16 +226,83 @@ function LiveMcpProposal(props: {
     }
   };
 
+  const view = mcpProposalView({
+    proposal,
+    mateName,
+    status,
+    signing,
+    approveBlocked,
+    agents: list?.agents ?? [],
+  });
+  const face = mcpAskFace({
+    view,
+    status,
+    signing,
+    busy,
+    title: proposal.params.server.title,
+    signsIn:
+      proposal.params.server.auth.kind === "oauth" ||
+      proposal.params.server.auth.kind === "oauth-app",
+    by: null,
+    at: null,
+  });
+  // It waits on the person while undecided, or while its agent waits for a sign-in: then it
+  // stands above the composer too, once its card is out of view.
+  const waits = status.kind === "proposed" || status.kind === "needs-sign-in";
+  const compact = props.density === "compact";
+  const { threadKey } = props;
+  useEffect(() => {
+    if (threadKey === null) return;
+    if (!waits) {
+      undockAsk(threadKey, proposal.id);
+      return;
+    }
+    if (compact) return;
+    dockAsk(threadKey, {
+      askId: proposal.id,
+      render: () => (
+        <McpProposalCardContainer
+          density="compact"
+          driver={props.driver}
+          environmentId={environmentId}
+          proposal={proposal}
+          threadId={props.threadId}
+        />
+      ),
+    });
+  }, [compact, environmentId, props.driver, props.threadId, proposal, threadKey, waits]);
+  if (compact && !waits) return null;
+
   return (
     <McpProposalCard
-      busy={busy}
+      askId={proposal.id}
+      density={compact ? "compact" : "full"}
+      face={face}
+      mateFace={compact ? <ComposerAskFace environmentId={environmentId} /> : undefined}
       onAdd={(values) => void add(values)}
-      onDecline={() => void decide({ state: "declined", at: new Date().toISOString() })}
+      onDecline={() => void decide(mine({ state: "declined", at: new Date().toISOString() }))}
       onFinishSignIn={(landed) => void finish(landed)}
       onOpenAgain={(url) => void window.open(url, "_blank", "noopener,noreferrer")}
+      onShowInConversation={
+        compact
+          ? () =>
+              showAskInConversation({
+                askId: proposal.id,
+                holds: (row) =>
+                  (row as { readonly operation?: { readonly proposal?: { readonly id?: string } } })
+                    .operation?.proposal?.id === proposal.id,
+              })
+          : undefined
+      }
       onSignIn={() => void signIn()}
+      progress={mcpProgress(
+        proposal,
+        status,
+        status.kind === "needs-sign-in" ? status.agent : null,
+      )}
       refusal={refusal}
-      view={mcpProposalView({ proposal, mateName, status, signing, approveBlocked })}
+      signing={signing}
+      view={view}
     />
   );
 }

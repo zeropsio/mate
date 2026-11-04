@@ -4,7 +4,10 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
 import {
+  dockAsk,
   showAskInConversation,
+  undockAsk,
+  useDockedAsk,
   useAskCardOnScreen,
   useAskReveal,
   useReportAskOnScreen,
@@ -104,5 +107,28 @@ describe("the dock stands only while the card is out of view", () => {
     expect(seen.at(-1)).toBe(true);
     await act(async () => root!.render(<Dock />));
     expect(seen.at(-1)).toBe(false);
+  });
+});
+
+describe("an ask a card offers to dock", () => {
+  it("stands above the composer, newest first, until its card takes it back", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const seen: Array<string | null> = [];
+    function Composer() {
+      seen.push(useDockedAsk("thread-1")?.askId ?? null);
+      return null;
+    }
+    const host = document.createElement("div");
+    document.body.append(host);
+    root = createRoot(host);
+    await act(async () => root!.render(<Composer />));
+    expect(seen.at(-1)).toBeNull();
+    await act(async () => dockAsk("thread-1", { askId: "mcp-1", render: () => null }));
+    await act(async () => dockAsk("thread-1", { askId: "mcp-2", render: () => null }));
+    expect(seen.at(-1)).toBe("mcp-2");
+    await act(async () => undockAsk("thread-1", "mcp-2"));
+    expect(seen.at(-1)).toBe("mcp-1");
+    await act(async () => undockAsk("thread-1", "mcp-1"));
+    expect(seen.at(-1)).toBeNull();
   });
 });

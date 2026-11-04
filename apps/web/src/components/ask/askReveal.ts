@@ -5,7 +5,7 @@
  * card, the conversation scrolls that row into view and puts focus in the card. A row the
  * conversation has not loaded is not there to show, and nothing moves.
  */
-import { useCallback, useEffect } from "react";
+import { type ReactNode, useCallback, useEffect } from "react";
 import { create } from "zustand";
 
 export interface AskRevealTarget {
@@ -94,5 +94,44 @@ export function useReportAskOnScreen(askId: string) {
       };
     },
     [askId],
+  );
+}
+
+/** An open ask a conversation's card offers to stand above the composer: its compact form. */
+export interface DockedAsk {
+  readonly askId: string;
+  readonly render: () => ReactNode;
+}
+
+/**
+ * The asks each conversation's cards offered to dock, newest last. A card offers its ask while it
+ * waits on the person and takes it back once settled; a card scrolled out of the list keeps its
+ * offer, since out of view is when the dock is wanted. The docked form settles it too.
+ */
+const useDocked = create<{
+  readonly byThread: Readonly<Record<string, ReadonlyArray<DockedAsk>>>;
+}>()(() => ({ byThread: {} }));
+
+export function dockAsk(threadKey: string, ask: DockedAsk): void {
+  useDocked.setState(({ byThread }) => ({
+    byThread: {
+      ...byThread,
+      [threadKey]: [...(byThread[threadKey] ?? []).filter((each) => each.askId !== ask.askId), ask],
+    },
+  }));
+}
+
+export function undockAsk(threadKey: string, askId: string): void {
+  useDocked.setState(({ byThread }) => {
+    const held = byThread[threadKey];
+    if (held === undefined || !held.some((each) => each.askId === askId)) return { byThread };
+    return { byThread: { ...byThread, [threadKey]: held.filter((each) => each.askId !== askId) } };
+  });
+}
+
+/** The newest ask a conversation's cards offered to dock; `null` with none. */
+export function useDockedAsk(threadKey: string | null): DockedAsk | null {
+  return useDocked((state) =>
+    threadKey === null ? null : (state.byThread[threadKey]?.at(-1) ?? null),
   );
 }

@@ -1,4 +1,4 @@
-import type { McpServerAddInput } from "@t3tools/contracts";
+import { MCP_AGENT_LIMITS, type McpServerAddInput } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -656,6 +656,28 @@ describe("transports and sign-ins each agent can take", () => {
         scopes: [],
         secret: true,
       });
+    },
+  );
+});
+
+describe("what each agent can't take, as the client reads it", () => {
+  it.each([...stores.keys()])(
+    "%s refuses an SSE server, an own app or its secret exactly where MCP_AGENT_LIMITS says",
+    (driver) => {
+      const limits = MCP_AGENT_LIMITS[driver];
+      expect(limits, `MCP_AGENT_LIMITS names ${driver}`).toBeDefined();
+      const store = stores.get(driver)!;
+      const url = { type: "http" as const, url: "https://mcp.example.com/mcp" };
+      expect(store.cannot({ transport: { type: "sse", url: url.url } }) === null).toBe(limits!.sse);
+      expect(
+        store.cannot({ transport: url, auth: { kind: "oauth-app", clientId: "app" } }) === null,
+      ).toBe(limits!.ownApp);
+      expect(
+        store.cannot({
+          transport: url,
+          auth: { kind: "oauth-app", clientId: "app", clientSecret: "s" },
+        }) === null,
+      ).toBe(limits!.ownApp && limits!.ownAppSecret);
     },
   );
 });

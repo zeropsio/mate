@@ -32,10 +32,15 @@ export interface AskSecretFieldProps {
   /** Enter presses the main action. */
   readonly onEnter: () => void;
   readonly disabled: boolean;
-  readonly keepHidden: boolean;
-  readonly onKeepHidden: (keepHidden: boolean) => void;
-  /** Kept hidden already where it is stored: not the person's to make plain here. */
-  readonly hiddenAlready: boolean;
+  /** "Keep hidden", where the person chooses how it is stored; absent where it is always hidden. */
+  readonly keepHidden?: {
+    readonly value: boolean;
+    readonly onChange: (keepHidden: boolean) => void;
+    /** Kept hidden already where it is stored: not the person's to make plain here. */
+    readonly already: boolean;
+  };
+  /** Where it goes, under the field ("Sent as Authorization"). */
+  readonly hint?: string | undefined;
 }
 
 /**
@@ -77,17 +82,23 @@ export function AskSecretField(props: AskSecretFieldProps) {
       </Button>
     </div>
   );
-  const keepHidden = (
-    <span className="flex shrink-0 items-center gap-2 text-caption text-muted-foreground">
-      <Checkbox
-        aria-labelledby={hiddenId}
-        checked={props.hiddenAlready || props.keepHidden}
-        disabled={props.hiddenAlready || props.disabled}
-        onCheckedChange={(checked) => props.onKeepHidden(checked === true)}
-      />
-      <span id={hiddenId}>{KEEP_HIDDEN}</span>
-    </span>
-  );
+  const { keepHidden: hidden } = props;
+  const keepHidden =
+    hidden === undefined ? null : (
+      <span className="flex shrink-0 items-center gap-2 text-caption text-muted-foreground">
+        <Checkbox
+          aria-labelledby={hiddenId}
+          checked={hidden.already || hidden.value}
+          disabled={hidden.already || props.disabled}
+          onCheckedChange={(checked) => hidden.onChange(checked === true)}
+        />
+        <span id={hiddenId}>{KEEP_HIDDEN}</span>
+      </span>
+    );
+  const hint =
+    props.hint === undefined ? null : (
+      <span className="text-caption text-muted-foreground">{props.hint}</span>
+    );
   if (compact) {
     return (
       // The field keeps a width to type in; Keep hidden goes under it where both do not fit.
@@ -103,6 +114,7 @@ export function AskSecretField(props: AskSecretFieldProps) {
         {props.label}
       </label>
       {field}
+      {hint}
       {keepHidden}
     </div>
   );

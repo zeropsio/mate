@@ -1,14 +1,23 @@
-import type { McpServerEntry, McpServersList } from "@t3tools/contracts";
+import { ProviderDriverKind, type McpServerEntry, type McpServersList } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { CLAUDE, CODEX, CURSOR } from "../../mcp/mcpServersFixture";
+
+const OPENCODE = ProviderDriverKind.make("opencode");
 import {
+  MCP_APP_CLIENT_ID,
+  MCP_APP_CLIENT_SECRET,
   mcpAddInput,
+  mcpAskFace,
+  mcpCannot,
+  mcpProgress,
   mcpProposalStatus,
   mcpProposalView,
   mcpTurnNote,
   type McpProposal,
   type McpProposalStatus,
+  type McpSigning,
+  MCP_SIGN_IN_ELSEWHERE,
 } from "./mcpProposal.logic";
 
 const linear: McpProposal = {
@@ -71,6 +80,26 @@ const sentry: McpProposal = {
   },
 };
 
+const sse: McpProposal = {
+  ...linear,
+  params: {
+    ...linear.params,
+    server: {
+      ...linear.params.server,
+      transport: { type: "sse", url: "https://x.example/sse" },
+      auth: { kind: "none" },
+    },
+  },
+};
+
+const app: McpProposal = {
+  ...linear,
+  params: {
+    ...linear.params,
+    server: { ...linear.params.server, auth: { kind: "oauth-app", scopes: ["read"] } },
+  },
+};
+
 const entry = (agents: McpServerEntry["agents"]): McpServerEntry => ({
   name: "linear",
   managed: false,
@@ -86,13 +115,21 @@ const listWith = (...servers: McpServerEntry[]): McpServersList => ({
 const tools = (count: number) =>
   Array.from({ length: count }, (_, index) => ({ name: `tool_${String(index)}` }));
 
-const view = (proposal: McpProposal, status: McpProposalStatus, approveBlocked?: string) =>
+const AGENTS = [CLAUDE, CODEX];
+
+const view = (
+  proposal: McpProposal,
+  status: McpProposalStatus,
+  approveBlocked?: string,
+  agents: ReadonlyArray<ProviderDriverKind> = AGENTS,
+) =>
   mcpProposalView({
     proposal,
     mateName: "Juno",
     status,
     signing: { phase: "idle" },
     approveBlocked,
+    agents,
   });
 
 describe("an MCP server's proposal card", () => {
@@ -114,20 +151,34 @@ describe("an MCP server's proposal card", () => {
       {
         kind: "provide",
         fields: [
-          { key: "SENTRY_TOKEN", label: "Sentry auth token", where: "Sent as Authorization" },
+          {
+            key: "SENTRY_TOKEN",
+            label: "Sentry auth token",
+            where: "Sent as Authorization",
+            hidden: true,
+            optional: false,
+          },
         ],
       },
-      { kind: "approve", label: "Add", blocked: null },
+      { kind: "approve", label: "Add Sentry", blocked: null },
     ]);
     expect(view(github, { kind: "proposed" }).steps[0]).toEqual({
       kind: "provide",
-      fields: [{ key: "GITHUB_TOKEN", label: "GitHub token", where: "Kept as GITHUB_TOKEN" }],
+      fields: [
+        {
+          key: "GITHUB_TOKEN",
+          label: "GitHub token",
+          where: "Kept as GITHUB_TOKEN",
+          hidden: true,
+          optional: false,
+        },
+      ],
     });
   });
 
   it("offers Add alone where nothing needs typing", () => {
     expect(view(linear, { kind: "proposed" }).steps).toEqual([
-      { kind: "approve", label: "Add", blocked: null },
+      { kind: "approve", label: "Add Linear", blocked: null },
     ]);
   });
 
@@ -145,39 +196,21 @@ describe("an MCP server's proposal card", () => {
 
   it("holds Add with why while it cannot run, and says so where this Mate cannot add the server yet", () => {
     expect(view(linear, { kind: "proposed" }, "Reading what was decided…").steps).toEqual([
-      { kind: "approve", label: "Add", blocked: "Reading what was decided…" },
+      { kind: "approve", label: "Add Linear", blocked: "Reading what was decided…" },
     ]);
-    const sse = {
-      ...linear,
-      params: {
-        ...linear.params,
-        server: {
-          ...linear.params.server,
-          transport: { type: "sse" as const, url: "https://x.example/sse" },
-        },
-      },
-    };
-    expect(view(sse, { kind: "proposed" }).steps).toEqual([
+    // None of its agents can use an SSE server, or sign in with the person's own app.
+    expect(view(sse, { kind: "proposed" }, undefined, [CODEX]).steps).toEqual([
       {
         kind: "approve",
-        label: "Add",
-        blocked: "Juno can't add a server that streams over SSE yet.",
+        label: "Add Linear",
+        blocked: "None of Juno's agents can use SSE servers.",
       },
     ]);
-    const app = {
-      ...linear,
-      params: {
-        ...linear.params,
-        server: { ...linear.params.server, auth: { kind: "oauth-app" as const } },
-      },
-    };
-    expect(view(app, { kind: "proposed" }).steps).toEqual([
-      {
-        kind: "approve",
-        label: "Add",
-        blocked: "Juno can't sign in with an OAuth app you registered yet.",
-      },
-    ]);
+    expect(view(app, { kind: "proposed" }, undefined, [CODEX]).steps.at(-1)).toEqual({
+      kind: "approve",
+      label: "Add Linear",
+      blocked: "None of Juno's agents can sign in with your own app.",
+    });
   });
 
   it.each<[string, McpProposalStatus, ReturnType<typeof view>["outcome"], string[]]>([
@@ -311,7 +344,7 @@ describe("an MCP server proposal's state comes from the server list", () => {
 
 describe("Add writes the server for every agent with the keys the person typed", () => {
   it("puts a command's key in its environment", () => {
-    expect(mcpAddInput(github, { GITHUB_TOKEN: "typed-value" })).toEqual({
+    expect(mcpAddInput(github, { GITHUB_TOKEN: "typed-value" }, AGENTS)).toEqual({
       input: {
         name: "github",
         transport: {
@@ -325,7 +358,7 @@ describe("Add writes the server for every agent with the keys the person typed",
   });
 
   it("puts a remote server's key in its header, after its prefix", () => {
-    expect(mcpAddInput(sentry, { SENTRY_TOKEN: "typed-value" })).toEqual({
+    expect(mcpAddInput(sentry, { SENTRY_TOKEN: "typed-value" }, AGENTS)).toEqual({
       input: {
         name: "sentry",
         transport: { type: "http", url: "https://mcp.sentry.dev/mcp" },
@@ -335,14 +368,106 @@ describe("Add writes the server for every agent with the keys the person typed",
   });
 
   it("adds a server that signs in itself with no keys", () => {
-    expect(mcpAddInput(linear, {})).toEqual({
+    expect(mcpAddInput(linear, {}, AGENTS)).toEqual({
       input: { name: "linear", transport: { type: "http", url: "https://mcp.linear.app/mcp" } },
     });
   });
 
   it("refuses until every key is typed", () => {
-    expect(mcpAddInput(sentry, { SENTRY_TOKEN: "  " })).toEqual({
+    expect(mcpAddInput(sentry, { SENTRY_TOKEN: "  " }, AGENTS)).toEqual({
       refused: "Type the Sentry auth token first.",
+    });
+  });
+});
+
+describe("an SSE server, or one signing in with the person's own app", () => {
+  it("is written as SSE, its keys in its headers", () => {
+    const keyed: McpProposal = {
+      ...sse,
+      params: { ...sse.params, credentials: sentry.params.credentials },
+    };
+    expect(mcpAddInput(keyed, { SENTRY_TOKEN: "typed-value" }, AGENTS)).toEqual({
+      input: {
+        name: "linear",
+        transport: { type: "sse", url: "https://x.example/sse" },
+        headers: { Authorization: "Bearer typed-value" },
+      },
+    });
+  });
+
+  it("signs in with the app's client ID the person typed, its secret only where given", () => {
+    expect(
+      mcpAddInput(
+        app,
+        { [MCP_APP_CLIENT_ID]: " juno-app ", [MCP_APP_CLIENT_SECRET]: "s3cret" },
+        AGENTS,
+      ),
+    ).toEqual({
+      input: {
+        name: "linear",
+        transport: { type: "http", url: "https://mcp.linear.app/mcp" },
+        auth: { kind: "oauth-app", clientId: "juno-app", clientSecret: "s3cret", scopes: ["read"] },
+      },
+    });
+    expect(mcpAddInput(app, { [MCP_APP_CLIENT_ID]: "juno-app" }, AGENTS)).toEqual({
+      input: {
+        name: "linear",
+        transport: { type: "http", url: "https://mcp.linear.app/mcp" },
+        auth: { kind: "oauth-app", clientId: "juno-app", scopes: ["read"] },
+      },
+    });
+    expect(mcpAddInput(app, {}, AGENTS)).toEqual({ refused: "Give your app's client ID." });
+  });
+
+  it("asks for the app's client ID shown and its secret hidden, and where to send each agent back", () => {
+    const shown = view(app, { kind: "proposed" }, undefined, [CLAUDE, CODEX, OPENCODE]);
+    expect(shown.steps[0]).toEqual({
+      kind: "provide",
+      fields: [
+        {
+          key: MCP_APP_CLIENT_ID,
+          label: "Your app's client ID",
+          where: "Kept in each agent's config",
+          hidden: false,
+          optional: false,
+        },
+        {
+          key: MCP_APP_CLIENT_SECRET,
+          label: "Your app's client secret, if it has one",
+          where: "Kept in each agent's config",
+          hidden: true,
+          optional: true,
+        },
+      ],
+    });
+    expect(shown.redirects).toEqual([
+      { agent: "Claude", url: "http://localhost:33418/callback" },
+      { agent: "OpenCode", url: "http://127.0.0.1:33419/mcp/oauth/callback" },
+    ]);
+  });
+
+  it.each([
+    {
+      name: "SSE",
+      proposal: sse,
+      agents: [CLAUDE, CODEX, OPENCODE],
+      want: "Codex and OpenCode can't use SSE servers.",
+    },
+    {
+      name: "an own app",
+      proposal: app,
+      agents: [CLAUDE, CODEX, CURSOR],
+      want: "Codex can't sign in with your own app.",
+    },
+    { name: "streamable HTTP", proposal: linear, agents: [CODEX], want: null },
+  ])("names the agents that can't use it: $name", ({ proposal, agents, want }) => {
+    expect(mcpCannot(proposal, agents)).toBe(want);
+    expect(view(proposal, { kind: "proposed" }, undefined, agents).cannot).toBe(want);
+  });
+
+  it("refuses what none of the Mate's agents can use", () => {
+    expect(mcpAddInput(sse, {}, [CODEX])).toEqual({
+      refused: "None of this Mate's agents can use SSE servers.",
     });
   });
 });
@@ -381,5 +506,121 @@ describe("the agent hears which of its agents have the server with the next mess
 
   it("says nothing of a server that is not listed", () => {
     expect(mcpTurnNote(linear, listWith())).toBeNull();
+  });
+});
+
+describe("the MCP setup on the ask card", () => {
+  const face = (status: McpProposalStatus, signing: McpSigning = { phase: "idle" }, busy = false) =>
+    mcpAskFace({
+      view: view(linear, status),
+      status,
+      signing,
+      busy,
+      title: "Linear",
+      signsIn: true,
+      by: "Aleš",
+      at: "15:20",
+    });
+  it.each<[string, McpProposalStatus, McpSigning, boolean, unknown]>([
+    [
+      "undecided: Add and Not now",
+      { kind: "proposed" },
+      { phase: "idle" },
+      false,
+      { main: "Add Linear", notNow: true, state: { kind: "waiting" } },
+    ],
+    [
+      "an Add on its way",
+      { kind: "proposed" },
+      { phase: "idle" },
+      true,
+      {
+        main: "Add Linear",
+        notNow: false,
+        state: { kind: "working", words: "Adding Linear…", pressed: "main" },
+      },
+    ],
+    [
+      "added, its agent waiting for a sign-in",
+      { kind: "needs-sign-in", agent: "Claude" },
+      { phase: "idle" },
+      false,
+      { main: "Sign in to Linear", notNow: false, state: { kind: "waiting" } },
+    ],
+    [
+      "signing in on the provider's page",
+      { kind: "needs-sign-in", agent: "Claude" },
+      { phase: "mate", url: "https://linear.app/oauth" },
+      false,
+      {
+        main: null,
+        notNow: false,
+        state: { kind: "working", words: MCP_SIGN_IN_ELSEWHERE, pressed: null },
+      },
+    ],
+    [
+      "the paste fallback: Finish",
+      { kind: "needs-sign-in", agent: "Claude" },
+      { phase: "paste", url: "https://linear.app/oauth", finishing: false },
+      false,
+      { main: "Finish", notNow: false, state: { kind: "waiting" } },
+    ],
+    [
+      "connected, with its tools and agents",
+      { kind: "connected", tools: 23, agents: ["Claude", "Codex"] },
+      { phase: "idle" },
+      false,
+      {
+        main: null,
+        notNow: false,
+        state: {
+          kind: "done",
+          words: "Linear is connected for Claude and Codex · 23 tools",
+          told: null,
+        },
+      },
+    ],
+    [
+      "failed, in the server's words",
+      { kind: "failed", words: "401 Unauthorized", agent: "Codex" },
+      { phase: "idle" },
+      false,
+      { main: null, notNow: false, state: { kind: "failed", words: "Codex: 401 Unauthorized" } },
+    ],
+    [
+      "Not now: who and when",
+      { kind: "declined" },
+      { phase: "idle" },
+      false,
+      { main: null, notNow: false, state: { kind: "notNow", words: "Not now · Aleš, 15:20" } },
+    ],
+  ])(
+    "the card's state comes from the decision and the server list: %s",
+    (_name, status, signing, busy, want) => {
+      const drawn = face(status, signing, busy);
+      expect({ main: drawn.main?.label ?? null, notNow: drawn.notNow, state: drawn.state }).toEqual(
+        want,
+      );
+    },
+  );
+
+  it("a failed server that signs in offers to sign in again", () => {
+    expect(face({ kind: "failed", words: "401 Unauthorized", agent: "Codex" }).action).toBe(
+      "signInAgain",
+    );
+  });
+
+  it("numbers adding and signing in, each as far as it got", () => {
+    expect(mcpProgress(linear, { kind: "needs-sign-in", agent: "Claude" }, "Claude")).toEqual([
+      { id: "add", label: "Add Linear", detail: "mcp.linear.app/mcp", state: "done", end: "Added" },
+      {
+        id: "sign-in",
+        label: "Sign in to Linear",
+        detail: "as you; Claude uses your access",
+        state: "now",
+        end: undefined,
+      },
+    ]);
+    expect(mcpProgress(github, { kind: "proposed" }, null)).toBeNull();
   });
 });
