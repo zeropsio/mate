@@ -8355,6 +8355,11 @@ function ConversationView(props: ChatViewProps) {
                   environmentId={activeThreadRef.environmentId}
                   key={`${activeThreadRef.environmentId}|${activeThreadRef.threadId}`}
                   proposals={mcpProposals}
+                  run={{
+                    phase,
+                    turnId: activeLatestTurn?.turnId ?? null,
+                    completedAt: activeLatestTurn?.completedAt ?? null,
+                  }}
                   threadId={isServerThread ? activeThreadRef.threadId : undefined}
                 />
               );

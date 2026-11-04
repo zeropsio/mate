@@ -46,6 +46,7 @@ import {
   groupMcpRows,
   MCP_SECRET_MASK,
   mcpAppRedirects,
+  mcpRunKey,
   mcpSecretsFormText,
   mcpSignInStart,
   mcpTileInitials,
@@ -165,10 +166,13 @@ export function McpPanel(props: {
   readonly driver: ProviderDriverKind | null;
   /** The conversation's MCP proposals; the tab lists the ones HQ knows are still open. */
   readonly proposals?: ReadonlyArray<McpProposal>;
+  /** The conversation's session phase and latest turn: the list is read again as they change. */
+  readonly run?: Parameters<typeof mcpRunKey>[0];
 }) {
   const { state, refresh, act, signIn } = useMcpServers({
     environmentId: props.environmentId,
     threadId: props.threadId,
+    ...(props.run === undefined ? {} : { runKey: mcpRunKey(props.run) }),
   });
   const mateName = useKnownMate(props.environmentId)?.name;
   const all = props.proposals ?? [];

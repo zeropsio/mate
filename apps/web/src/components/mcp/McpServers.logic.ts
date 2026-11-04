@@ -885,6 +885,21 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
   return { ok: true, values, keep };
 }
 
+// ── When to read again ────────────────────────────────────────────────
+
+/**
+ * What the conversation's agent did that may change what it reports of its tools: its session
+ * starting, coming ready or stopping, a turn starting, a turn ending. The tab reads again each
+ * time this changes, so a turn's first session is read as it comes up, not only on focus.
+ */
+export function mcpRunKey(input: {
+  readonly phase: string;
+  readonly turnId: string | null;
+  readonly completedAt: string | null;
+}): string {
+  return [input.phase, input.turnId ?? "", input.completedAt ?? ""].join("|");
+}
+
 // ── Failures ──────────────────────────────────────────────────────────
 
 /** A failed call's own words: the server's `detail`, an error's message, or a plain fallback. */
