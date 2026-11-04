@@ -27,7 +27,7 @@
  */
 
 import type { ZeropsAgentType } from "./newProject.ts";
-import type { ProjectGrant } from "./projectAccess.ts";
+import { type ProjectGrant, withProjectGrant } from "./projectAccess.ts";
 import { withZeropsMateTag, type ZeropsEnvironmentRole } from "./groups.ts";
 import {
   deployTargetTier,
@@ -96,6 +96,12 @@ export interface EnvironmentCreationInput {
   readonly birth?: string;
   /** Who reaches it beyond their organization role, as its creator chose (`projectAccess.ts`). */
   readonly userRoles?: ReadonlyArray<ProjectGrant>;
+  /**
+   * The membership a Mate's project marks its owner (`OWNER`), where `ownerAtAdd` names its
+   * creator: sent with a project created, given right after one imported. No environment without
+   * an agent is marked.
+   */
+  readonly owner?: string;
 }
 
 export type EnvironmentCreationStep =
@@ -184,6 +190,8 @@ export type EnvironmentCreationStep =
       readonly yaml: string;
       /** Who reaches it, given once Zerops made it: an import document has no room for them. */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;
+      /** Its Mate's owner, marked on their own list once the people are given (ZEROPS-075). */
+      readonly owner?: string;
     }
   /** Poll until the services are up. Measured at ~2 minutes for a two-service recipe. */
   | { readonly kind: "await-ready"; readonly withAgent: boolean };
@@ -270,6 +278,8 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
 
   // The Zerops GUI's marker on a project with an agent; where it belongs is HQ's.
   const tagList = withAgent ? withZeropsMateTag([]) : [];
+  // A Mate's owner, where its creator is to be marked it.
+  const owner = withAgent ? input.owner : undefined;
 
   // A recipe that describes a whole project creates one in a single call. Not
   // taken when the caller placed the environment in a region: the project
@@ -287,6 +297,7 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           ...(input.birth === undefined ? {} : { birth: input.birth }),
           yaml: recipeProjectImportYaml(tier.withProject, { name, tagList }),
           ...access,
+          ...(owner === undefined ? {} : { owner }),
         },
       ]
     : [
@@ -296,7 +307,9 @@ export function planEnvironmentCreation(input: EnvironmentCreationInput): Enviro
           tagList,
           location: input.location,
           ...(input.birth === undefined ? {} : { birth: input.birth }),
-          ...access,
+          ...(owner === undefined
+            ? access
+            : { userRoles: withProjectGrant(input.userRoles ?? [], owner, "OWNER") }),
         },
       ];
   // Into a project that exists: the platform refuses a project block there,

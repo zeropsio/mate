@@ -273,6 +273,20 @@ export async function runEnvironmentCreation(
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
           }
+          // Its Mate's owner marked on their own list, before its record (ZEROPS-075).
+          if (step.owner !== undefined) {
+            assertCurrent();
+            await run(
+              {
+                kind: "set-project-access",
+                orgId,
+                changes: [
+                  { clientUserId: step.owner, projectId: imported.projectId, roleCode: "OWNER" },
+                ],
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            );
+          }
           break;
         }
         case "import-container": {
