@@ -2326,8 +2326,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const currentInstructions = (profiled: boolean) =>
     profiled
       ? Effect.succeed(CLAUDE_INSTRUCTIONS)
-      : readPersonaInstructions.pipe(
-          Effect.provideService(ServerSettingsService, serverSettings),
+      : readPersonaInstructions(serverSettings).pipe(
           Effect.map((persona) =>
             persona === undefined ? undefined : claudeInstructions(persona),
           ),

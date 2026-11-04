@@ -41,9 +41,9 @@ describe("readPersonaInstructions", () => {
   it.effect("coding agents hear the persona the Mate holds now", () =>
     Effect.gen(function* () {
       const settings = yield* ServerSettingsService;
-      expect(yield* readPersonaInstructions).toBe(personaInstructions(null));
+      expect(yield* readPersonaInstructions(settings)).toBe(personaInstructions(null));
       yield* settings.updateSettings({ persona: { name: "Calm", instructions: "Stay calm." } });
-      expect(yield* readPersonaInstructions).toBe(
+      expect(yield* readPersonaInstructions(settings)).toBe(
         personaInstructions({ name: "Calm", instructions: "Stay calm." }),
       );
     }).pipe(Effect.provide(ServerSettingsService.layerTest())),

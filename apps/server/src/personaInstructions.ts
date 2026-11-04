@@ -1,6 +1,6 @@
 import type { MatePersona } from "@t3tools/contracts";
 import * as Effect from "effect/Effect";
-import { ServerSettingsService } from "./serverSettings.ts";
+import type { ServerSettingsService } from "./serverSettings.ts";
 
 /**
  * The Mate's persona as its coding agents hear it in every chat outside a crew. Removing it is
@@ -24,16 +24,13 @@ ${instructions}
  * The persona text for a turn, read fresh from the settings each time. When the settings cannot
  * be read it is undefined, and a coding agent keeps the persona it last heard.
  */
-export const readPersonaInstructions: Effect.Effect<
-  string | undefined,
-  never,
-  ServerSettingsService
-> = Effect.gen(function* () {
-  const settings = yield* (yield* ServerSettingsService).getSettings;
-  return personaInstructions(settings.persona);
-}).pipe(
-  Effect.catchTags({
-    ServerSettingsError: (cause) =>
-      Effect.logWarning("persona.read-failed", { cause }).pipe(Effect.as(undefined)),
-  }),
-);
+export const readPersonaInstructions = (
+  settings: ServerSettingsService["Service"],
+): Effect.Effect<string | undefined> =>
+  settings.getSettings.pipe(
+    Effect.map((current) => personaInstructions(current.persona)),
+    Effect.catchTags({
+      ServerSettingsError: (cause) =>
+        Effect.logWarning("persona.read-failed", { cause }).pipe(Effect.as(undefined)),
+    }),
+  );
