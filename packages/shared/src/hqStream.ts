@@ -126,6 +126,8 @@ export const HqStreamRequest = Schema.Union([
     type: Schema.Literal("move-offers"),
     requestId: Schema.String,
     projectId: Schema.String,
+    /** The person's current Zerops access token: HQ decides the offers on a fresh read of their role. */
+    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("compare"),

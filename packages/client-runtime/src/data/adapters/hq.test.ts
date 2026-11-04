@@ -19,6 +19,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { graceOver } from "../__fixtures__/account.ts";
 import {
   hqFixtureWire,
+  HQ_FIXTURE_ACCESS_TOKEN,
   gitEnvironment,
   gitRemote,
   gitPreflight,
@@ -945,6 +946,25 @@ describe("hqNavigationLink", () => {
         moveTo: { shop: ["allowed"] },
       });
       expect(yield* Fiber.join(asked)).toEqual({ moveTo: { shop: ["allowed"] }, refused: {} });
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
+
+describe("The move picker asks HQ with the person's token", () => {
+  it.effect("The move picker's frame carries the person's current Zerops access token", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const { fiber, link } = yield* live(store, fixture);
+      yield* Effect.forkChild(link.moveOffers("ada"));
+      yield* settle;
+      expect(fixture.sent.at(-1)?.request).toEqual({
+        type: "move-offers",
+        requestId: expect.any(String),
+        projectId: "ada",
+        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
+      });
       yield* Fiber.interrupt(fiber);
     }),
   );
