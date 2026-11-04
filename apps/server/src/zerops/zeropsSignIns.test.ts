@@ -1,9 +1,11 @@
 import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Path from "effect/Path";
 import * as Schema from "effect/Schema";
+import * as Stream from "effect/Stream";
 
 const encodeJson = Schema.encodeSync(Schema.fromJsonString(Schema.Unknown));
 
@@ -94,6 +96,22 @@ it.layer(NodeServices.layer)("zeropsSignIns", (it) => {
       yield* fs.writeFileString(file, encodeJson({ "claude-code": { by: "u-jan", at: 2 } }));
 
       assert.deepStrictEqual(yield* store.load, { "claude-code": { by: "u-eva", at: 1 } });
+    }).pipe(Effect.scoped),
+  );
+
+  // Offboarding and the stand-up act on a recorded sign-in at once, not at a later look.
+  it.effect("tells its listeners of each sign-in it keeps and each it clears", () =>
+    Effect.gen(function* () {
+      const fs = yield* FileSystem.FileSystem;
+      const path = yield* Path.Path;
+      const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-sign-ins-" });
+      const store = yield* fileSignInStore(signInsPath(path, home));
+      const heard = yield* Stream.runCollect(Stream.take(store.changes, 2)).pipe(
+        Effect.forkScoped({ startImmediately: true }),
+      );
+      yield* store.save("claude-code", { by: "u-eva", at: 1 });
+      yield* store.clear("claude-code");
+      assert.strictEqual((yield* Fiber.join(heard)).length, 2);
     }).pipe(Effect.scoped),
   );
 });
