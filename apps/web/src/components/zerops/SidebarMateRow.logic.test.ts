@@ -31,7 +31,7 @@ import {
   mateRowReading,
   mateRowView,
   ownerMark,
-  mateRowOffersMenu,
+  mateRowMenu,
 } from "./SidebarMateRow.logic";
 
 describe("ownerMark — whose Mate it is, as a 16 px mark before its name", () => {
@@ -1834,16 +1834,35 @@ describe("mateAsker — who a row says asked its Mate", () => {
 });
 
 // A row whose setup stopped offers its menu — *Finish setup* is on it — while one still coming
-// offers none (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with no ⋯).
-describe("mateRowOffersMenu", () => {
+// offers its Delete alone (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with
+// no ⋯; Brief W7, Karel 2026-11-04: a Mate that never came up could not be deleted from the web).
+describe("mateRowMenu", () => {
+  const ACTIONS = {
+    muted: false,
+    entries: [
+      { id: "redeploy", label: "Redeploy", onSelect: () => {} },
+      { id: "delete-apart", separator: true },
+      { id: "delete", label: "Delete crm…", onSelect: () => {}, variant: "destructive" },
+    ],
+  } as const;
+  const offered = (menu: ReturnType<typeof mateRowMenu<typeof ACTIONS>>) =>
+    menu === undefined
+      ? null
+      : menu.entries.flatMap((entry) => ("separator" in entry ? [] : [entry.id]));
+
   it.each([
-    { case: "a Mate that is up", deleting: false, coming: undefined, want: true },
-    { case: "a Mate going", deleting: true, coming: undefined, want: false },
+    {
+      case: "a Mate that is up",
+      deleting: false,
+      coming: undefined,
+      offers: ["redeploy", "delete"],
+    },
+    { case: "a Mate going", deleting: true, coming: undefined, offers: null },
     {
       case: "a Mate still coming",
       deleting: false,
       coming: { kind: "coming", line: "Coming up" } satisfies MateComing,
-      want: false,
+      offers: ["delete"],
     },
     {
       case: "a Mate whose setup stopped",
@@ -1853,10 +1872,20 @@ describe("mateRowOffersMenu", () => {
         line: "Its setup stopped.",
         verb: "finish-setup",
       } satisfies MateComing,
-      want: true,
+      offers: ["redeploy", "delete"],
     },
-  ])("$case: $want", ({ deleting, coming, want }) => {
-    expect(mateRowOffersMenu({ deleting, coming })).toBe(want);
+  ])("$case offers $offers on its row's menu", ({ deleting, coming, offers }) => {
+    expect(offered(mateRowMenu({ deleting, coming, actions: ACTIONS }))).toEqual(offers);
+  });
+
+  it("a Mate still coming that the person may not delete offers no menu", () => {
+    expect(
+      mateRowMenu({
+        deleting: false,
+        coming: { kind: "coming", line: "Coming up" },
+        actions: { muted: false, entries: [ACTIONS.entries[0]] },
+      }),
+    ).toBeUndefined();
   });
 });
 
@@ -1931,7 +1960,8 @@ it("a connected machine keeps the row menu available while its listing still pro
       errorsSinceConnect: 0,
     },
   };
-  expect(mateRowOffersMenu({ deleting: false, coming: mateComing(input) })).toBe(true);
+  const actions = { muted: false, entries: [] };
+  expect(mateRowMenu({ deleting: false, coming: mateComing(input), actions })).toBe(actions);
 });
 
 describe("mateRowSecond — the one line under a Mate's name", () => {

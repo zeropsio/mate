@@ -283,7 +283,7 @@ import {
   mateBornLineText,
   mateComingRowView,
   mateLifeOf,
-  mateRowOffersMenu,
+  mateRowMenu,
   mateCrewItem,
   mateDeletingView,
   mateFinishingView,
@@ -3886,11 +3886,14 @@ function MateRowView<T extends RosterCandidate>({
     reviewWaits,
     inReview,
   });
-  // Nothing on its menu is about a Mate still being made, or one going: it
-  // offers none — until its setup stopped, when *Finish setup* is on it.
-  const actions = !outsideHq && mateRowOffersMenu({ deleting, coming }) ? offered : undefined;
-  // Its project access detail is held while the row is drawn with its menu (`useDrawnProjectAccess`).
-  const drawn = actions?.drawn;
+  // Nothing on its menu is about a Mate still being made, or one going: one on its way offers its
+  // Delete alone — until its setup stopped, when *Finish setup* is on it.
+  const actions: MateRowActions | undefined = outsideHq
+    ? undefined
+    : mateRowMenu({ deleting, coming, actions: offered });
+  // Its project access detail is held while the row is drawn with a menu, or one on its way, whose
+  // Delete stands on it (`useDrawnProjectAccess`).
+  const drawn = outsideHq || deleting ? undefined : offered?.drawn;
   useEffect(() => drawn?.(), [drawn]);
   const warmIntent = useWarmIntent(activity?.threadKey);
   // Its menu's door to its crew (`mateCrewItem`): crew mode off, on with no crew yet, or a crew

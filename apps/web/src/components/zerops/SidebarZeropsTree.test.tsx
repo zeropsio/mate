@@ -1436,10 +1436,35 @@ describe("a listed Mate still coming up", () => {
     expect(rowOf(html)).toMatch(/>Coming up · 0:4[1-3]</u);
   });
 
-  it("offers no menu while it comes up: nothing on it is about a Mate still being made", () => {
+  // Brief W7 (Karel, 2026-11-04): a Mate that never came up could not be deleted from the web.
+  it("A Mate that has not come up offers Delete in its row's menu, and nothing else of a Mate on its way", () => {
+    const remove = { id: "delete", label: "Delete crm-dev…", onSelect: () => {} };
+    const mounted = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        getComing={() => COMING}
+        getMateActions={() => ({
+          muted: false,
+          entries: [
+            { id: "redeploy", label: "Redeploy", onSelect: () => {} },
+            { id: "delete-apart", separator: true },
+            { ...remove, variant: "destructive" },
+          ],
+        })}
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+      />,
+    );
+    expect(mounted.root.findByType(MateMenu).props.actions.entries).toEqual([
+      { ...remove, variant: "destructive" },
+    ]);
+  });
+
+  it("offers no Mate menu while it comes up where the person may not delete it", () => {
     const html = render([CRM_DEV], {
       getComing: () => COMING,
-      getMateActions: () => ({ entries: [] }),
+      getMateActions: () => ({ muted: false, entries: [] }),
     });
     // Its project's own verbs stay on its row's ···; none of the Mate's join them.
     expect(html).not.toContain('data-zerops-surface="sidebar-mate-more"');
