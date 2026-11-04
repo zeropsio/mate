@@ -34,6 +34,7 @@ describe("C: the built-in MCP server", () => {
       <McpPanelBody
         driver={driver}
         act={async () => ({ ok: true })}
+        signIn={async () => ({ ok: false, message: "" })}
         onRetry={() => {}}
         state={{
           ...MCP_TAB_START,

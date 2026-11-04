@@ -32,8 +32,71 @@ export const McpServerTransport = Schema.Union([
     type: Schema.Literal("http"),
     url: TrimmedNonEmptyString,
   }),
+  /** The older server-sent-events transport, which some agents still speak and others don't. */
+  Schema.Struct({
+    type: Schema.Literal("sse"),
+    url: TrimmedNonEmptyString,
+  }),
 ]);
 export type McpServerTransport = typeof McpServerTransport.Type;
+
+/**
+ * How a URL server signs in. `header`: an API key sent as one request header;
+ * `oauth`: the agent signs in when the server asks (dynamic registration),
+ * with optional scopes; `oauth-app`: sign in through the person's own
+ * registered app. Secret values are written, never read back.
+ */
+export const McpServerAuth = Schema.Union([
+  Schema.Struct({ kind: Schema.Literal("none") }),
+  Schema.Struct({
+    kind: Schema.Literal("header"),
+    name: TrimmedNonEmptyString,
+    value: TrimmedNonEmptyString,
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth"),
+    scopes: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth-app"),
+    clientId: TrimmedNonEmptyString,
+    clientSecret: Schema.optionalKey(TrimmedNonEmptyString),
+    scopes: Schema.optionalKey(Schema.Array(TrimmedNonEmptyString)),
+  }),
+]);
+export type McpServerAuth = typeof McpServerAuth.Type;
+
+/**
+ * The redirect address a person registers in their own OAuth app, per agent
+ * that signs in through one from Mate: Claude Code listens on a fixed port;
+ * OpenCode is told this address and finishes from the code it carries.
+ */
+export const MCP_APP_REDIRECTS: Readonly<
+  Record<string, { readonly port: number; readonly url: string }>
+> = {
+  claudeAgent: { port: 33418, url: "http://localhost:33418/callback" },
+  opencode: { port: 33419, url: "http://127.0.0.1:33419/mcp/oauth/callback" },
+};
+
+/**
+ * A URL server's sign-in as the agents' configs hold it, without its secret:
+ * the app's client id and scopes, and whether a client secret is stored.
+ */
+export const McpServerAuthView = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("oauth"),
+    scopes: Schema.Array(Schema.String),
+  }),
+  Schema.Struct({
+    kind: Schema.Literal("oauth-app"),
+    clientId: Schema.String,
+    scopes: Schema.Array(Schema.String),
+    secret: Schema.Boolean,
+  }),
+  /** Told not to sign in (OpenCode's `oauth: false`). */
+  Schema.Struct({ kind: Schema.Literal("none") }),
+]);
+export type McpServerAuthView = typeof McpServerAuthView.Type;
 
 /**
  * How a server stands for one agent. `configured`: the agent has it but
@@ -60,6 +123,11 @@ export type McpServerTool = typeof McpServerTool.Type;
 export const McpServerAgent = Schema.Struct({
   driver: ProviderDriverKind,
   state: McpServerState,
+  /**
+   * Whether the agent holds an OAuth sign-in for the server, where it says
+   * (Codex); absent where it can't tell.
+   */
+  signedIn: Schema.optionalKey(Schema.Boolean),
   error: Schema.optionalKey(Schema.String),
   tools: Schema.optionalKey(Schema.Array(McpServerTool)),
 });
@@ -76,6 +144,17 @@ export const McpServerEntry = Schema.Struct({
    * edited there. Absent means `user`.
    */
   scope: Schema.optionalKey(Schema.Literals(["user", "project"])),
+  /**
+   * The names of its environment variables (a command) or request headers
+   * (a URL), across the agents: never their values.
+   */
+  secretNames: Schema.optionalKey(Schema.Array(Schema.String)),
+  /** How it signs in, as the agents' configs say: never a secret. */
+  auth: Schema.optionalKey(McpServerAuthView),
+  /** The installed agents that can't use it as it is set up, each with why. */
+  cannot: Schema.optionalKey(
+    Schema.Array(Schema.Struct({ driver: ProviderDriverKind, reason: Schema.String })),
+  ),
   agents: Schema.Array(McpServerAgent),
 });
 export type McpServerEntry = typeof McpServerEntry.Type;
@@ -100,6 +179,8 @@ export const McpServerAddInput = Schema.Struct({
   env: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /** A URL's request headers (bearer tokens); http only. */
   headers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
+  /** How a URL server signs in; absent is the agents' own default. */
+  auth: Schema.optionalKey(McpServerAuth),
   /** The conversation whose running agent the answering list asks for live state. */
   threadId: Schema.optionalKey(ThreadId),
 });
@@ -111,12 +192,71 @@ export const McpServerTargetInput = Schema.Struct({
 });
 export type McpServerTargetInput = typeof McpServerTargetInput.Type;
 
+/**
+ * A server's environment (a command) or request headers (a URL), replaced
+ * for every agent. A name in `keep` keeps the value already stored, which the
+ * tab never sees; a name in neither is dropped.
+ */
+export const McpServerUpdateInput = Schema.Struct({
+  name: McpServerName,
+  values: Schema.Record(Schema.String, Schema.String),
+  keep: Schema.Array(Schema.String),
+  /**
+   * A URL server's sign-in, changed: `none`, `oauth` or `oauth-app`; an
+   * `oauth-app` without a client secret keeps the one stored. An API key is a
+   * header, changed through `values`. Absent leaves the sign-in as it is.
+   */
+  auth: Schema.optionalKey(McpServerAuth),
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpServerUpdateInput = typeof McpServerUpdateInput.Type;
+
 export const McpServerSetEnabledInput = Schema.Struct({
   name: McpServerName,
   enabled: Schema.Boolean,
   threadId: Schema.optionalKey(ThreadId),
 });
 export type McpServerSetEnabledInput = typeof McpServerSetEnabledInput.Type;
+
+/**
+ * Sign in to a remote server that answers "needs sign-in" for the
+ * conversation's agent: the agent starts its own OAuth flow, and the person
+ * completes it in their own browser.
+ */
+export const McpServerSignInInput = McpServerTargetInput;
+export type McpServerSignInInput = typeof McpServerSignInInput.Type;
+
+/**
+ * Where the browser comes back after the provider's page: `mate`, this Mate's
+ * own sign-in page, which hands the agent the result by itself; `paste`, the
+ * agent's listener inside the container, which the person's browser cannot
+ * reach — they paste the address it landed on into the tab instead.
+ */
+export const McpSignInLanding = Schema.Literals(["mate", "paste"]);
+export type McpSignInLanding = typeof McpSignInLanding.Type;
+
+export const McpServerSignIn = Schema.Union([
+  Schema.Struct({
+    kind: Schema.Literal("open"),
+    /** The provider's page the person signs in on. */
+    url: TrimmedNonEmptyString,
+    landing: McpSignInLanding,
+    /** Names this sign-in when the person pastes where it landed. */
+    flow: TrimmedNonEmptyString,
+  }),
+  /** The agent already holds a valid sign-in: nothing to open. */
+  Schema.Struct({ kind: Schema.Literal("signed-in") }),
+]);
+export type McpServerSignIn = typeof McpServerSignIn.Type;
+
+export const McpServerFinishSignInInput = Schema.Struct({
+  name: McpServerName,
+  flow: TrimmedNonEmptyString,
+  /** The address the browser landed on after the provider's page. */
+  landed: TrimmedNonEmptyString,
+  threadId: Schema.optionalKey(ThreadId),
+});
+export type McpServerFinishSignInInput = typeof McpServerFinishSignInInput.Type;
 
 export class McpServersError extends Schema.TaggedError<McpServersError>()("McpServersError", {
   operation: Schema.String,

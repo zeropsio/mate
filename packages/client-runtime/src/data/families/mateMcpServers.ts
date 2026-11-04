@@ -10,11 +10,13 @@ declare module "../model.ts" {
 export const mateMcpServersFamily: FamilySpec<"mateMcpServers"> = {
   family: "mateMcpServers",
   authority: "mate",
+  // The tab reads again on every window focus: the last list stays painted meanwhile.
   scope: {
     source: "mate",
     suffix: "workspace-mcp",
     leaving: "removed",
     demand: "detail",
     mode: "once",
+    released: "kept",
   },
 };

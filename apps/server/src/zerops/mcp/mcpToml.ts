@@ -745,6 +745,64 @@ export function setTomlServerBoolean(
   });
 }
 
+/**
+ * `text` with the server `name`'s `key` set to `value` (a table of strings for
+ * its env or headers, a list for its scopes), or removed for `undefined`; its
+ * other keys keep their values as written. The server is rewritten as one
+ * table at the end. Unchanged when the server is not there.
+ */
+export function setTomlServerValue(
+  text: string,
+  root: string,
+  name: string,
+  key: string,
+  value: TomlPlain | undefined,
+): string {
+  const before = serversBefore(text, root);
+  const current = before[name];
+  if (current === undefined) return text;
+  const expanded = expandInlineRoot(text, root);
+  const items = scan(expanded);
+  const server = serverValues(items, root).get(name);
+  if (server?.kind !== "table") return text;
+  if (
+    items.some(
+      (item) => item.kind === "header" && item.array && startsWithPath(item.path, [root, name]),
+    )
+  ) {
+    throw new TomlEditError("the server has arrays of tables Mate can't rewrite");
+  }
+  const entries = new Map(server.entries);
+  const { [key]: _old, ...rest } = current;
+  if (value === undefined) entries.delete(key);
+  else entries.set(key, fromPlain(value));
+  return checked(
+    appendBlock(
+      cut(expanded, serverSpans(items, root, name)),
+      encodeServer(root, name, { kind: "table", entries }),
+    ),
+    root,
+    { ...before, [name]: value === undefined ? rest : { ...rest, [key]: value } },
+  );
+}
+
+/** {@link setTomlServerValue} for a table of strings: none left removes the key. */
+export function setTomlServerStrings(
+  text: string,
+  root: string,
+  name: string,
+  key: string,
+  value: Readonly<Record<string, string>>,
+): string {
+  return setTomlServerValue(
+    text,
+    root,
+    name,
+    key,
+    Object.keys(value).length === 0 ? undefined : { ...value },
+  );
+}
+
 function setBoolean(text: string, root: string, name: string, key: string, value: boolean): string {
   const items = scan(text);
   const server = serverValues(items, root).get(name);

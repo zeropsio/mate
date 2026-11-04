@@ -110,6 +110,7 @@ import * as ZeropsGitSpawner from "./zerops/ZeropsGitSpawner.ts";
 import * as ChildHome from "./process/childHome.ts";
 import * as ZeropsRepositorySource from "./zerops/ZeropsRepositorySource.ts";
 import { zeropsSetupRouteLayer } from "./zerops/http.ts";
+import { mcpSignInRouteLayer } from "./zerops/mcp/mcpSignInHttp.ts";
 import * as ReplayMarkers from "./auth/replayMarkers.ts";
 import * as ServerSecretStore from "./auth/ServerSecretStore.ts";
 import * as AssetSigningKey from "./assets/AssetSigningKey.ts";
@@ -608,6 +609,7 @@ export const makeRoutesLayer = Layer.mergeAll(
   assetRouteLayer,
   attachmentUploadRouteLayer,
   zeropsSetupRouteLayer,
+  mcpSignInRouteLayer,
   mateUpdateRouteLayer,
   staticAndDevRouteLayer,
   websocketRpcRouteLayer,

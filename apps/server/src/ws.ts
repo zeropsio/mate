@@ -1152,6 +1152,26 @@ const makeWsRpcLayer = (currentSession: EnvironmentAuth.AuthenticatedSession) =>
             WS_METHODS.mcpServersReconnect,
             withMcpServers(WS_METHODS.mcpServersReconnect, (mcp) => mcp.reconnect(input)),
           ),
+        [WS_METHODS.mcpServersSignIn]: (input) =>
+          admit(
+            WS_METHODS.mcpServersSignIn,
+            withMcpServers(WS_METHODS.mcpServersSignIn, (mcp) => mcp.signIn(input)),
+          ),
+        [WS_METHODS.mcpServersUpdate]: (input) =>
+          admit(
+            WS_METHODS.mcpServersUpdate,
+            withMcpServers(WS_METHODS.mcpServersUpdate, (mcp) => mcp.update(input)),
+          ),
+        [WS_METHODS.mcpServersSignOut]: (input) =>
+          admit(
+            WS_METHODS.mcpServersSignOut,
+            withMcpServers(WS_METHODS.mcpServersSignOut, (mcp) => mcp.signOut(input)),
+          ),
+        [WS_METHODS.mcpServersFinishSignIn]: (input) =>
+          admit(
+            WS_METHODS.mcpServersFinishSignIn,
+            withMcpServers(WS_METHODS.mcpServersFinishSignIn, (mcp) => mcp.finishSignIn(input)),
+          ),
         [WS_METHODS.providerUploadFeedback]: (input) =>
           admit(
             WS_METHODS.providerUploadFeedback,
