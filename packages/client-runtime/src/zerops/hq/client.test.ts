@@ -2622,6 +2622,13 @@ describe("Every HQ verb that decides on the person's role carries their current 
         }),
     },
     {
+      // A project HQ still places, proven gone by the person's own read, finished by their role.
+      call: "completeProjectDeletion",
+      method: "POST",
+      path: "/api/projects/p1/deleted",
+      ask: (api) => api.completeProjectDeletion("p1"),
+    },
+    {
       call: "deleteApp",
       method: "DELETE",
       path: "/api/apps/app-1",
