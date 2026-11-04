@@ -11,6 +11,8 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
+import { HttpClient, HttpClientResponse } from "effect/http";
 
 import { MateEngine } from "../../engine/MateEngine.ts";
 import {
@@ -23,7 +25,7 @@ import { antigravityProfileDirectory } from "../../spi/driverHomes.ts";
 import { mcpAgentPaths, resolveMcpAgentPaths } from "./mcpAgentPaths.ts";
 import { type McpAgentPaths } from "./mcpAgents.ts";
 import { McpFileConflict } from "./mcpFileStore.ts";
-import { make, nodeFileStore, type McpLiveAccess } from "./McpServers.ts";
+import { make, nodeFileStore, relayToListener, type McpLiveAccess } from "./McpServers.ts";
 import { inertMateEngine } from "../../engine/testing/inertEngine.ts";
 
 const HOME = "/home/zerops";
@@ -74,6 +76,8 @@ interface Rig {
   readonly writes: string[];
   readonly calls: string[];
   readonly locks: string[];
+  /** What each agent's running sessions were told, entries included. */
+  readonly changes: Array<{ readonly driver: string; readonly change: McpConfigChange }>;
 }
 
 const setup = (input: {
@@ -92,7 +96,13 @@ const setup = (input: {
   readonly agentWritesOnce?: { readonly path: string; readonly text: string };
 }) =>
   Effect.gen(function* () {
-    const rig: Rig = { files: input.files ?? zcpFiles(), writes: [], calls: [], locks: [] };
+    const rig: Rig = {
+      files: input.files ?? zcpFiles(),
+      writes: [],
+      calls: [],
+      locks: [],
+      changes: [],
+    };
     let agentWrite = input.agentWritesOnce;
     // A running agent runs in the conversation's current session (`<conversation>/s/<n>`).
     const generation = input.generation ?? (input.running === undefined ? undefined : 1);
@@ -141,6 +151,7 @@ const setup = (input: {
       configChanged: (driver, change: McpConfigChange) =>
         Effect.sync(() => {
           rig.calls.push(`${driver} ${change.kind} ${change.name}`);
+          rig.changes.push({ driver, change });
         }),
     };
     let ids = 0;
@@ -327,6 +338,29 @@ describe("McpServers.update", () => {
       expect(rig.files.get(`${HOME}/.grok/config.toml`)).toMatch(/enabled = true/);
       expect(rig.files.get(`${HOME}/.grok/config.toml`)).not.toContain("X-Dropped");
     }),
+  );
+
+  it.effect(
+    "editing a turned-off server's headers leaves it off in running OpenCode sessions, keeping its own app",
+    () =>
+      Effect.gen(function* () {
+        const { service, rig } = yield* setup({ installed: ["opencode"] });
+        yield* service.add({
+          ...ADOBE,
+          auth: { kind: "oauth-app", clientId: "mate-app", clientSecret: NEW, scopes: [] },
+        });
+        yield* service.setEnabled({ name: ADOBE.name, enabled: false });
+        rig.changes.length = 0;
+        yield* service.update({ name: ADOBE.name, values: { "X-Team": NEW }, keep: [] });
+        const told = rig.changes.find(({ change }) => change.kind === "changed")?.change;
+        expect(told).toMatchObject({
+          entry: {
+            enabled: false,
+            headers: { "X-Team": NEW },
+            oauth: { clientId: "mate-app", clientSecret: NEW },
+          },
+        });
+      }),
   );
 
   it.effect.each([
@@ -852,6 +886,36 @@ describe("McpServers sign-in", () => {
     }),
   );
 
+  it.effect.each([
+    "javascript:alert(document.cookie)",
+    "data:text/html,<script>alert(1)</script>",
+    "http://auth.example.com/authorize?state=s-1",
+  ])("a sign-in page that isn't an https address is refused, and no sign-in starts: %s", (url) =>
+    Effect.gen(function* () {
+      const { service } = yield* setup({
+        installed: ["claudeAgent"],
+        running: {
+          driver: "claudeAgent",
+          servers: [],
+          signIn: { url, finish: () => Effect.void },
+        },
+      });
+      const refused = yield* Effect.flip(service.signIn({ name: NAME, threadId: THREAD }));
+      expect(refused.detail).toBe(
+        "adobe can't sign in: its sign-in page isn't an https address, so Mate won't open it.",
+      );
+      const ended = yield* Effect.flip(
+        service.finishSignIn({
+          name: NAME,
+          flow: "flow-1",
+          landed: `${url}&code=c`,
+          threadId: THREAD,
+        }),
+      );
+      expect(ended.detail).toBe("This sign-in to adobe has ended. Press Sign in to start again.");
+    }),
+  );
+
   it.effect("an agent that already holds the sign-in opens nothing", () =>
     Effect.gen(function* () {
       const { service } = yield* setup({
@@ -871,6 +935,27 @@ describe("McpServers sign-in", () => {
       expect(refused.detail).toBe(
         "Open a conversation with this Mate first: its agent is the one that signs in.",
       );
+    }),
+  );
+});
+
+describe("McpServers — a pasted sign-in's landing", () => {
+  it.effect("is carried to the agent's listener without its code reaching a trace", () =>
+    Effect.gen(function* () {
+      const code = ["one", "time", "c0de"].join("-");
+      const traced: string[] = [];
+      const listener = HttpClient.make((request) =>
+        Effect.gen(function* () {
+          const span = yield* Effect.option(Effect.currentSpan);
+          if (Option.isSome(span)) traced.push(JSON.stringify([...span.value.attributes]));
+          traced.push(`reached ${request.url}`);
+          return HttpClientResponse.fromWeb(request, new Response("signed in"));
+        }),
+      );
+      yield* relayToListener(listener)(
+        new URL(`http://localhost:33418/callback?code=${code}&state=s`),
+      );
+      expect(traced).toEqual([`reached http://localhost:33418/callback`]);
     }),
   );
 });

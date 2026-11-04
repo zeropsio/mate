@@ -19,6 +19,7 @@ import { useKnownMate } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { useProposalDecision } from "~/zerops/proposalRecord";
 import { noteMcp } from "~/zerops/mcpTurnNotes";
+import { openSignInPage } from "../../mcp/McpServers.logic";
 import { useMcpServers } from "../../mcp/useMcpServers";
 import { dockAsk, showAskInConversation, undockAsk } from "../../ask/askReveal";
 import type { AskDensity } from "../../ask/AskCard";
@@ -206,9 +207,13 @@ function LiveMcpProposal(
       return;
     }
     const { url, landing } = result.signIn;
+    const refused = openSignInPage(tab, url);
+    if (refused !== null) {
+      setSigning(IDLE);
+      setRefusal(refused);
+      return;
+    }
     flow.current = result.signIn.flow;
-    if (tab !== null) tab.location.href = url;
-    else window.open(url, "_blank", "noopener,noreferrer");
     setSigning(
       landing === "mate" ? { phase: "mate", url } : { phase: "paste", url, finishing: false },
     );
@@ -302,7 +307,7 @@ function LiveMcpProposal(
       }}
       onDecline={() => void decide(mine({ state: "declined", at: new Date().toISOString() }))}
       onFinishSignIn={(landed) => void finish(landed)}
-      onOpenAgain={(url) => void window.open(url, "_blank", "noopener,noreferrer")}
+      onOpenAgain={(url) => void openSignInPage(null, url)}
       onShowInConversation={
         compact
           ? () =>

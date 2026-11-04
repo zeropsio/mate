@@ -14,6 +14,7 @@
  */
 
 import {
+  mcpSignInPageRefusal,
   McpServerName,
   McpServersError,
   type McpServerAddInput,
@@ -146,6 +147,31 @@ function redirectOf(url: string): string | undefined {
 }
 
 /** The landing's query carried to the listener: only the listener's own address is ever asked. */
+/**
+ * Carries a pasted landing to the agent's own loopback listener (`loopbackRedirect`); its answer
+ * is a page. Untraced: the landing's query is a one-time code and its state, which a client span's
+ * `url.full` and `url.query` would export.
+ */
+export const relayToListener =
+  (http: HttpClient.HttpClient) =>
+  (target: URL): Effect.Effect<void, string> =>
+    http.get(target).pipe(
+      Effect.flatMap((response) =>
+        response.status >= 400
+          ? Effect.fail(`the agent's sign-in listener answered ${String(response.status)}`)
+          : Effect.void,
+      ),
+      Effect.timeoutOrElse({
+        duration: "10 seconds",
+        orElse: () => Effect.fail("the agent's sign-in listener didn't answer in 10 seconds"),
+      }),
+      Effect.catchTags({
+        HttpClientError: () => Effect.fail("the agent's sign-in listener didn't answer"),
+      }),
+      Effect.scoped,
+      Effect.provideService(HttpClient.TracerDisabledWhen, () => true),
+    );
+
 export function relayedLanding(listener: URL, landed: URL): URL {
   const target = new URL(listener.href);
   target.search = landed.search;
@@ -591,6 +617,11 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           ),
         );
       if (started === "signed-in") return { kind: "signed-in" } as const;
+      // The server names its own sign-in page: only a web address is handed to a browser.
+      const refused = mcpSignInPageRefusal(started.url);
+      if (refused !== null) {
+        return yield* fail(operation, `${input.name} can't sign in: ${refused}.`);
+      }
       const page = options.signInPage === undefined ? undefined : new URL(options.signInPage).href;
       const landing: McpSignInLanding =
         page !== undefined && redirectOf(started.url) === page ? "mate" : "paste";
@@ -706,15 +737,11 @@ export const make = Effect.fn("McpServers.make")(function* (options: McpServersO
           ...secrets.filter((edit) => !authEdits.some((later) => later.path === edit.path)),
           ...authEdits,
         ];
-        changed.set(
-          store.driver,
-          store.entry({
-            name: input.name,
-            transport: server.transport,
-            ...(server.transport.type === "stdio" ? { env: values } : { headers: values }),
-            ...(auth !== undefined ? { auth } : {}),
-          }),
-        );
+        // Running sessions get the server as written, its on/off mark and own app included.
+        const after = new Map(afterSecrets);
+        for (const edit of authEdits) after.set(edit.path, edit.text);
+        const written = store.stored(after, input.name);
+        if (written !== undefined) changed.set(store.driver, written);
         return edits;
       },
       nudge: (store) => ({
@@ -777,23 +804,7 @@ export const layer = Layer.effect(
       live,
       signInPage: mcpSignInPage(config.zerops?.publicOrigin, config.basePath),
       newId: crypto.randomUUIDv4.pipe(Effect.orDie),
-      // Only an agent's own loopback listener is asked (`loopbackRedirect`); its answer is a page.
-      relay: (target) =>
-        http.get(target).pipe(
-          Effect.flatMap((response) =>
-            response.status >= 400
-              ? Effect.fail(`the agent's sign-in listener answered ${String(response.status)}`)
-              : Effect.void,
-          ),
-          Effect.timeoutOrElse({
-            duration: "10 seconds",
-            orElse: () => Effect.fail("the agent's sign-in listener didn't answer in 10 seconds"),
-          }),
-          Effect.catchTags({
-            HttpClientError: () => Effect.fail("the agent's sign-in listener didn't answer"),
-          }),
-          Effect.scoped,
-        ),
+      relay: relayToListener(http),
       paths: settings.getSettings.pipe(
         Effect.mapError(
           (cause) =>

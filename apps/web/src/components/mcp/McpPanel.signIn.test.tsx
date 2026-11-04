@@ -152,3 +152,89 @@ it("editing a server's headers sends the new values and keeps the masked ones, n
     container.remove();
   }
 });
+
+it.each([
+  { choice: MCP_WORDS.signInWhenAsked, auth: { kind: "oauth" } },
+  { choice: MCP_WORDS.signInNone, auth: { kind: "none" } },
+])("switching an API-key server to $choice drops its key", async ({ choice, auth }) => {
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const actions: McpAction[] = [];
+  try {
+    await act(() =>
+      root.render(
+        <McpPanelBody
+          act={async (next) => {
+            actions.push(next);
+            return { ok: true };
+          }}
+          driver={CLAUDE}
+          onRetry={() => {}}
+          signIn={async () => ({ ok: false, message: "" })}
+          state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+        />,
+      ),
+    );
+    const button = (name: string) =>
+      Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === name,
+      );
+    await act(async () =>
+      container.querySelector<HTMLElement>('[data-mcp-server="linear"] button')!.click(),
+    );
+    await act(async () => button(MCP_WORDS.edit)!.click());
+    const editing = container.querySelector<HTMLElement>("[data-mcp-editing]")!;
+    await act(async () =>
+      Array.from(editing.querySelectorAll("button"))
+        .find((candidate) => candidate.textContent?.trim() === choice)!
+        .click(),
+    );
+    await act(async () => button(MCP_WORDS.save)!.click());
+    expect(actions).toEqual([{ kind: "update", name: "linear", values: {}, keep: [], auth }]);
+  } finally {
+    await act(() => root.unmount());
+    container.remove();
+  }
+});
+
+it.each(["javascript:alert(document.cookie)", "data:text/html,x", "http://auth.example.com/a"])(
+  "a sign-in page that isn't an https address never opens: %s",
+  async (url) => {
+    const container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    const tab = { opener: {} as unknown, location: { href: "" }, close: vi.fn() };
+    const open = vi.spyOn(window, "open").mockReturnValue(tab as unknown as Window);
+    try {
+      await act(() =>
+        root.render(
+          <McpPanelBody
+            act={async () => ({ ok: true })}
+            driver={CLAUDE}
+            onRetry={() => {}}
+            signIn={async () => ({
+              ok: true,
+              signIn: { kind: "open", url, landing: "paste", flow: "f-1" },
+            })}
+            state={{ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }}
+          />,
+        ),
+      );
+      const signIn = Array.from(container.querySelectorAll("button")).find(
+        (candidate) => candidate.textContent?.trim() === MCP_WORDS.signIn,
+      );
+      await act(async () => signIn!.click());
+      expect(tab.location.href).toBe("");
+      expect(tab.close).toHaveBeenCalled();
+      expect(open.mock.calls.filter(([href]) => href !== "")).toEqual([]);
+      expect(container.querySelector("[role=alert]")?.textContent).toBe(
+        "Its sign-in page isn't an https address, so Mate won't open it.",
+      );
+    } finally {
+      open.mockRestore();
+      await act(() => root.unmount());
+      container.remove();
+    }
+  },
+);

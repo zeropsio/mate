@@ -745,11 +745,131 @@ export function setTomlServerBoolean(
   });
 }
 
+const samePath = (a: ReadonlyArray<string>, b: ReadonlyArray<string>): boolean =>
+  a.length === b.length && startsWithPath(a, b);
+
+interface Splice {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+}
+
+function splice(text: string, edits: ReadonlyArray<Splice>): string {
+  let out = text;
+  for (const edit of [...edits].toSorted((a, b) => b.start - a.start || b.end - a.end)) {
+    out = out.slice(0, edit.start) + edit.text + out.slice(edit.end);
+  }
+  return out;
+}
+
+/** `line` inserted at `at`, on a line of its own. */
+const lineAt = (text: string, at: number, line: string): Splice => ({
+  start: at,
+  end: at,
+  text: `${at > 0 && text[at - 1] !== "\n" ? "\n" : ""}${line}\n`,
+});
+
+/**
+ * {@link setTomlServerValue} where the server is a table of its own and `key` is one line of it
+ * or one sub-table of plain values: only the lines that change are written, so the table keeps
+ * its place and every other line its comments. `undefined` where the key is written any other
+ * way (dotted, deeper tables), for a rewrite.
+ */
+function setValueInPlace(
+  text: string,
+  items: ReadonlyArray<Item>,
+  root: string,
+  name: string,
+  key: string,
+  value: TomlValue | undefined,
+): string | undefined {
+  const own = [root, name];
+  const sub = [root, name, key];
+  const headerIndex = items.findIndex(
+    (item) => item.kind === "header" && !item.array && samePath(item.path, own),
+  );
+  if (headerIndex === -1) return undefined;
+  const lines = items.filter(
+    (item): item is KeyValueItem =>
+      item.kind === "kv" && !item.inArrayTable && startsWithPath(fullPath(item), sub),
+  );
+  const headers = items.filter(
+    (item): item is HeaderItem => item.kind === "header" && startsWithPath(item.path, sub),
+  );
+  const direct = lines.filter((item) => samePath(item.table, own) && samePath(item.key, [key]));
+  const inSub = lines.filter((item) => samePath(item.table, sub) && item.key.length === 1);
+  const subHeader = headers.length === 1 && !headers[0]!.array && headers[0]!.path.length === 3;
+  if (direct.length + inSub.length !== lines.length || (headers.length > 0 && !subHeader)) {
+    return undefined;
+  }
+  const plainTable = (candidate: TomlValue | undefined) =>
+    candidate?.kind === "table" &&
+    [...candidate.entries.values()].every((inner) => inner.kind !== "table");
+
+  if (direct.length === 1 && !subHeader) {
+    const line = direct[0]!;
+    if (value === undefined) return cut(text, [line]);
+    return splice(text, [{ start: line.valueStart, end: line.valueEnd, text: encodeValue(value) }]);
+  }
+  if (subHeader) {
+    const header = headers[0]!;
+    if (value === undefined) {
+      return cut(text, [{ start: header.start, end: inSub.at(-1)?.end ?? header.end }]);
+    }
+    if (value.kind !== "table" || !plainTable(value)) return undefined;
+    const edits: Splice[] = [];
+    let after = header.end;
+    for (const line of inSub) {
+      const next = value.entries.get(line.key[0]!);
+      if (next === undefined) {
+        edits.push({ start: line.start, end: line.end, text: "" });
+        continue;
+      }
+      after = line.end;
+      if (!sameValue(toPlain(line.value), toPlain(next))) {
+        edits.push({ start: line.valueStart, end: line.valueEnd, text: encodeValue(next) });
+      }
+    }
+    const written = new Set(inSub.map((line) => line.key[0]!));
+    for (const [entry, inner] of value.entries) {
+      if (!written.has(entry)) {
+        edits.push(lineAt(text, after, `${encodeKey(entry)} = ${encodeValue(inner)}`));
+      }
+    }
+    return splice(text, edits);
+  }
+  if (lines.length > 0) return undefined;
+  if (value === undefined) return text;
+  // Not written yet: a table of plain values after the server's last table, else a line under it.
+  let end = items[headerIndex]!.end;
+  let ownEnd = end;
+  for (const item of items.slice(headerIndex + 1)) {
+    if (item.kind === "header") {
+      if (!startsWithPath(item.path, own)) break;
+    } else if (samePath(item.table, own)) {
+      ownEnd = item.end;
+    }
+    end = item.end;
+  }
+  if (plainTable(value) && value.kind === "table") {
+    const block = [...value.entries]
+      .map(([entry, inner]) => `${encodeKey(entry)} = ${encodeValue(inner)}\n`)
+      .join("");
+    const lead = end > 0 && text[end - 1] !== "\n" ? "\n\n" : "\n";
+    return splice(text, [
+      { start: end, end, text: `${lead}[${sub.map(encodeKey).join(".")}]\n${block}` },
+    ]);
+  }
+  return splice(text, [lineAt(text, ownEnd, `${encodeKey(key)} = ${encodeValue(value)}`)]);
+}
+
 /**
  * `text` with the server `name`'s `key` set to `value` (a table of strings for
  * its env or headers, a list for its scopes), or removed for `undefined`; its
- * other keys keep their values as written. The server is rewritten as one
- * table at the end. Unchanged when the server is not there.
+ * other keys keep their values as written. Only the lines that change are
+ * written where the server is a table of its own; any other server is
+ * rewritten as one table at the end. Unchanged when the server is not there
+ * or already holds `value`.
  */
 export function setTomlServerValue(
   text: string,
@@ -760,11 +880,22 @@ export function setTomlServerValue(
 ): string {
   const before = serversBefore(text, root);
   const current = before[name];
-  if (current === undefined) return text;
+  if (current === undefined || sameValue(current[key], value)) return text;
   const expanded = expandInlineRoot(text, root);
   const items = scan(expanded);
   const server = serverValues(items, root).get(name);
   if (server?.kind !== "table") return text;
+  const { [key]: _old, ...rest } = current;
+  const expected = { ...before, [name]: value === undefined ? rest : { ...rest, [key]: value } };
+  const inPlace = setValueInPlace(
+    expanded,
+    items,
+    root,
+    name,
+    key,
+    value === undefined ? undefined : fromPlain(value),
+  );
+  if (inPlace !== undefined) return checked(inPlace, root, expected);
   if (
     items.some(
       (item) => item.kind === "header" && item.array && startsWithPath(item.path, [root, name]),
@@ -773,7 +904,6 @@ export function setTomlServerValue(
     throw new TomlEditError("the server has arrays of tables Mate can't rewrite");
   }
   const entries = new Map(server.entries);
-  const { [key]: _old, ...rest } = current;
   if (value === undefined) entries.delete(key);
   else entries.set(key, fromPlain(value));
   return checked(
@@ -782,7 +912,7 @@ export function setTomlServerValue(
       encodeServer(root, name, { kind: "table", entries }),
     ),
     root,
-    { ...before, [name]: value === undefined ? rest : { ...rest, [key]: value } },
+    expected,
   );
 }
 

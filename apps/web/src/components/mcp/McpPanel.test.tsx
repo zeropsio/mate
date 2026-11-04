@@ -65,6 +65,14 @@ describe("McpPanelBody — what the Tools tab shows", () => {
     );
   });
 
+  it("a Mate too old to sign in from the tab says it needs an update, offering no Sign in or Edit", () => {
+    const html = render({ ...MCP_TAB_START, list: MCP_SERVERS_FIXTURE }, { mateCanSignIn: false });
+    const github = html.split('data-mcp-server="github"')[1]!.split("</li>")[0]!;
+    expect(github).toContain(MCP_WORDS.needsUpdate);
+    expect(github).toContain(MCP_WORDS.updateToSignIn);
+    expect(github).not.toContain(`>${MCP_WORDS.signIn}<`);
+  });
+
   it("paints nothing but its heading while the first read is out", () => {
     const html = render({ ...MCP_TAB_START, busy: true, inFlight: [1] });
     expect(html).toContain('data-mcp-busy="true"');

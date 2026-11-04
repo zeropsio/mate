@@ -314,6 +314,24 @@ export const McpServerFinishSignInInput = Schema.Struct({
 });
 export type McpServerFinishSignInInput = typeof McpServerFinishSignInInput.Type;
 
+const LOOPBACK_SIGN_IN_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * Why a sign-in page is not one Mate opens, or `null` when it is: an https address, or plain
+ * http on this computer's loopback. An MCP server names its own authorization endpoint, so a
+ * `javascript:` or `data:` one would run in Mate's page; both the Mate and the tab check.
+ */
+export function mcpSignInPageRefusal(url: string): string | null {
+  try {
+    const page = new URL(url);
+    if (page.protocol === "https:") return null;
+    if (page.protocol === "http:" && LOOPBACK_SIGN_IN_HOSTS.has(page.hostname)) return null;
+  } catch {
+    // Not an address at all: refused below.
+  }
+  return "its sign-in page isn't an https address, so Mate won't open it";
+}
+
 export class McpServersError extends Schema.TaggedError<McpServersError>()("McpServersError", {
   operation: Schema.String,
   detail: Schema.String,

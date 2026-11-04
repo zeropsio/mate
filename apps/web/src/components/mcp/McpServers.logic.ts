@@ -10,6 +10,7 @@
  * neither a warning nor a disagreement with an agent that can tell.
  */
 import {
+  mcpSignInPageRefusal,
   MCP_APP_REDIRECTS,
   PROVIDER_DISPLAY_NAMES,
   type McpServerAddInput,
@@ -771,6 +772,20 @@ export function readMcpSignInEdit(start: McpSignInFields, fields: McpSignInField
   return read;
 }
 
+/** The edited headers: a sign-in other than the API key it had drops the key's header. */
+export function mcpEditSecrets(
+  read: { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> },
+  start: McpSignInFields,
+  auth: McpServerAuth | undefined,
+): { readonly values: Record<string, string>; readonly keep: ReadonlyArray<string> } {
+  if (start.choice !== "header" || auth === undefined || auth.kind === "header") return read;
+  const key = (name: string) => name.toLowerCase() === start.headerName.toLowerCase();
+  return {
+    values: Object.fromEntries(Object.entries(read.values).filter(([name]) => !key(name))),
+    keep: read.keep.filter((name) => !key(name)),
+  };
+}
+
 /** The redirect each installed agent's own-app sign-in needs registered in the app. */
 export function mcpAppRedirects(
   agents: ReadonlyArray<ProviderDriverKind>,
@@ -826,18 +841,25 @@ export function readMcpAddForm(form: McpAddForm, existing: ReadonlyArray<string>
   if (Object.keys(errors).length > 0 || transport === null || !extra.ok) {
     return { ok: false, errors };
   }
-  const hasExtra = Object.keys(extra.value).length > 0;
   const auth = signIn?.ok ? signIn.auth : undefined;
+  // An API key is also sent as a plain header: a Mate too old to know `auth` drops it, and
+  // would otherwise write the server without its key and say it was added.
+  const headers =
+    form.kind === "command"
+      ? {}
+      : { ...extra.value, ...(auth?.kind === "header" ? { [auth.name]: auth.value } : {}) };
   return {
     ok: true,
     input: {
       name,
       transport,
-      ...(hasExtra
-        ? form.kind === "command"
+      ...(form.kind === "command"
+        ? Object.keys(extra.value).length > 0
           ? { env: extra.value }
-          : { headers: extra.value }
-        : {}),
+          : {}
+        : Object.keys(headers).length > 0
+          ? { headers }
+          : {}),
       ...(auth !== undefined ? { auth } : {}),
     },
   };
@@ -883,6 +905,23 @@ export function readMcpSecretsForm(kind: "env" | "headers", text: string): ReadM
     else values[name] = value;
   }
   return { ok: true, values, keep };
+}
+
+// ── Opening a sign-in page ────────────────────────────────────────────
+
+/**
+ * Points the tab opened in the press at a sign-in page, only once it is a web address (the Mate
+ * checks too); else closes the tab and answers why, in a sentence for the row.
+ */
+export function openSignInPage(tab: Window | null, url: string): string | null {
+  const refused = mcpSignInPageRefusal(url);
+  if (refused !== null) {
+    tab?.close();
+    return `${refused[0]!.toUpperCase()}${refused.slice(1)}.`;
+  }
+  if (tab !== null) tab.location.href = url;
+  else window.open(url, "_blank", "noopener,noreferrer");
+  return null;
 }
 
 // ── When to read again ────────────────────────────────────────────────
