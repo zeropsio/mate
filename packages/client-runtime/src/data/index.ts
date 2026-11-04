@@ -780,7 +780,7 @@ export {
   shownHqListedMatesAtom,
   shownMateListProjectsAtom,
 } from "./reads.ts";
-export { zeropsAccessToken, zeropsOrgStart, type OrgStartClient } from "./adapters/hqOrgStart.ts";
+export { zeropsAccessToken } from "./adapters/hqAccessToken.ts";
 export { mateTicketIssuer } from "./adapters/hqMateTicket.ts";
 
 export {

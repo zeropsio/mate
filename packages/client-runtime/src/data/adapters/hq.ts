@@ -91,6 +91,11 @@ export interface HqWire {
     request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
+  /**
+   * HQ's structure came to hold a project after the session's reach was read: the session is
+   * renewed so HQ reads the reach again. Answers at once; the renewal runs on its own.
+   */
+  readonly structureGrew?: () => void;
 }
 
 /** How an HQ socket's ending classifies, its planned segment end aside. */
@@ -451,6 +456,16 @@ export function hqNavigationLink(options: {
               return id === null ? [] : [{ family: spec.family, id, reason }];
             }),
           );
+          // A delta naming a project HQ held nowhere before: HQ came to hold it after the session's
+          // reach was read. The first structure, and a reset that asks for it whole, are the
+          // baseline the reach was read against.
+          const reads = readsOfState(store.state());
+          const grew =
+            message.type === "scope-values" &&
+            rows.some(
+              (row) =>
+                row.family === "placement" && reads.fact("placement", row.id).kind !== "known",
+            );
           store.dispatch({
             kind: "delivery",
             via: "hq-stream",
@@ -459,6 +474,7 @@ export function hqNavigationLink(options: {
             rows,
             removals,
           });
+          if (grew) wire.structureGrew?.();
           // Only committed, recipient-filtered HQ values can restore a lifecycle request.
           for (const row of rows) {
             if (row.family !== "hqLifecycle") continue;

@@ -89,7 +89,7 @@ function doors() {
     accessToken: async () => {
       const token = `access-${minted.length + 1}`;
       minted.push(token);
-      return token;
+      return { token };
     },
   };
 }
@@ -241,146 +241,43 @@ describe("makeHqApi", () => {
     });
   });
 
-  it("starts an organisation HQ has not started with the key an Owner mints", async () => {
-    let started = false;
-    const hq = fakeHq((seen) => {
-      if (seen.path !== "/api/door") return undefined;
-      const body = seen.body as { orgKey?: string };
-      if (body.orgKey === undefined && !started) return json(409, { code: "org_not_started" });
-      started = true;
-      return undefined;
-    });
-    const deleted: string[] = [];
+  it("The door is handed the person's Zerops access token with its expiry, once per sign-in and renewal, and never an organisation key", async () => {
+    let clock = Date.parse("2026-11-04T08:00:00.000Z");
+    const hq = fakeHq(
+      () => undefined,
+      () => isoAt(clock + 6 * 3_600_000),
+    );
+    let issued = 0;
     const api = makeHqApi({
       address: ADDRESS,
       fetch: hq.fetch,
-      accessToken: doors().accessToken,
-      orgId: ORG,
-      openSocket: NO_SOCKET,
-      startOrganisation: {
-        mayStart: async () => true,
-        withLock: (_name, run) => run(),
-        mintKey: async () => ({ id: "key-1", token: "org-key-token" }),
-        deleteKey: async (id) => void deleted.push(id),
+      accessToken: async () => {
+        issued += 1;
+        return { token: `access-${issued}`, expiresAt: isoAt(clock + 6 * 3_600_000) };
       },
+      orgId: ORG,
+      now: () => clock,
+      openSocket: NO_SOCKET,
     });
     await api.structure();
-    expect(hq.seen.filter((e) => e.path === "/api/door").map((e) => e.body)).toMatchObject([
-      { orgId: ORG },
-      { orgId: ORG },
-      { orgId: ORG, orgKey: "org-key-token" },
+    await api.structure();
+    clock += 5 * 3_600_000 + 50 * 60_000;
+    await api.structure();
+    expect(
+      hq.seen.filter((entry) => entry.path === "/api/door").map((entry) => entry.body),
+    ).toEqual([
+      {
+        accessToken: "access-1",
+        expiresAt: "2026-11-04T14:00:00.000Z",
+        orgId: ORG,
+      },
+      {
+        accessToken: "access-2",
+        expiresAt: "2026-11-04T19:50:00.000Z",
+        orgId: ORG,
+      },
     ]);
-    expect(deleted).toEqual([]);
   });
-
-  it.each([
-    { status: 403, code: "org_key_refused", mayStart: true, mints: 1 },
-    { status: 403, code: "org_key_refused", mayStart: false, mints: 0 },
-    { status: 503, code: "zerops_unavailable", mayStart: true, mints: 0 },
-  ])(
-    "An Owner replaces a refused organisation key, but a Zerops outage mints nothing: $code / $mayStart",
-    async ({ status, code, mayStart, mints }) => {
-      const minted: string[] = [];
-      const locks: string[] = [];
-      const hq = fakeHq((seen) => {
-        if (seen.path !== "/api/door") return undefined;
-        return (seen.body as { orgKey?: string }).orgKey === "new-org-key"
-          ? undefined
-          : json(status, { code });
-      });
-      const api = makeHqApi({
-        address: ADDRESS,
-        fetch: hq.fetch,
-        accessToken: doors().accessToken,
-        orgId: ORG,
-        openSocket: NO_SOCKET,
-        startOrganisation: {
-          mayStart: async () => mayStart,
-          withLock: (name, run) => {
-            locks.push(name);
-            return run();
-          },
-          mintKey: async () => {
-            minted.push("new-org-key");
-            return { id: "key-2", token: "new-org-key" };
-          },
-          deleteKey: async () => undefined,
-        },
-      });
-      const result = await api.structure().catch((cause: unknown) => cause);
-      expect(minted).toHaveLength(mints);
-      if (mints === 1) {
-        expect(result).toEqual({ ungrouped: [], apps: [] });
-        expect(locks).toEqual(["mate.org-key.org-1"]);
-        expect(
-          hq.seen.filter((entry) => entry.path === "/api/door").map((entry) => entry.body),
-        ).toEqual([
-          { accessToken: "access-1", orgId: ORG },
-          { accessToken: "access-2", orgId: ORG },
-          { accessToken: "access-3", orgId: ORG, orgKey: "new-org-key" },
-        ]);
-      } else {
-        expect(result).toMatchObject({ code });
-        expect(locks).toEqual([]);
-      }
-    },
-  );
-
-  it.each([
-    { status: 403, code: "org_key_refused", minted: ["new-org-key"] },
-    { status: 503, code: "zerops_unavailable", minted: [] },
-  ])(
-    "An Owner renewing HQ replaces a refused key and keeps the session, but never mints on $code unavailability",
-    async ({ status, code, minted }) => {
-      const now = Date.parse("2026-10-24T12:00:00Z");
-      const keys: string[] = [];
-      const kept: string[] = [];
-      const requests: Array<{ authorization: string | null; body: unknown }> = [];
-      const api = makeHqApi({
-        address: ADDRESS,
-        orgId: ORG,
-        now: () => now,
-        accessToken: async () => "access",
-        openSocket: NO_SOCKET,
-        kept: {
-          read: () => ({ token: "kept-session", expiresAtMs: now + 10 * 60_000 }),
-          keep: ({ token }) => {
-            kept.push(token);
-          },
-          forget: () => undefined,
-        },
-        startOrganisation: {
-          mayStart: async () => true,
-          withLock: (_name, run) => run(),
-          mintKey: async () => {
-            keys.push("new-org-key");
-            return { id: "key-2", token: "new-org-key" };
-          },
-          deleteKey: async () => undefined,
-        },
-        fetch: async (url, init) => {
-          if (!url.endsWith("/api/door")) return json(200, { apps: [] });
-          const body = JSON.parse(String(init?.body)) as { orgKey?: string };
-          requests.push({ authorization: new Headers(init?.headers).get("authorization"), body });
-          return body.orgKey === "new-org-key"
-            ? json(200, {
-                session: "kept-session",
-                expiresAt: isoAt(now + 24 * 3_600_000),
-                userId: "u1",
-              })
-            : json(status, { code });
-        },
-      });
-      await api.structure();
-      expect(keys).toEqual(minted);
-      expect(requests.map((request) => request.authorization)).toEqual(
-        minted.length === 1
-          ? ["Bearer kept-session", "Bearer kept-session", "Bearer kept-session"]
-          : ["Bearer kept-session"],
-      );
-      expect(kept).toEqual(minted.length === 1 ? ["kept-session"] : []);
-    },
-  );
 
   it("asks Zerops for a new access token once when HQ refuses the one it sent as not a person's", async () => {
     const asked: Array<string | undefined> = [];
@@ -395,7 +292,7 @@ describe("makeHqApi", () => {
       fetch: hq.fetch,
       accessToken: async (refused) => {
         asked.push(refused);
-        return refused === undefined ? "stale" : "fresh";
+        return { token: refused === undefined ? "stale" : "fresh" };
       },
       orgId: ORG,
       openSocket: NO_SOCKET,
@@ -1593,6 +1490,62 @@ describe("makeHqApi — a Mate's changes, as the person reads them", () => {
     ]);
   });
 
+  it("A merge, a release, a roll back, a deletion, a lifecycle step and an attach carry the person's current Zerops access token in their body; a comment does not", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/door"
+        ? undefined
+        : seen.path.endsWith("/merge")
+          ? json(200, { ...CHANGE, state: "merged", mergedSha: SHA, landedHead: SHA })
+          : seen.path.includes("/releases")
+            ? json(201, RELEASE)
+            : seen.path.startsWith("/api/lifecycle/")
+              ? json(409, { code: "conflict", reason: "project_still_exists" })
+              : seen.path.endsWith("/comments")
+                ? json(201, COMMENT)
+                : seen.method === "DELETE" || seen.path.endsWith("/projects")
+                  ? new Response(null, { status: 204 })
+                  : undefined,
+    );
+    const hqApi = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: async () => ({ token: "person-token", expiresAt: "2099-01-01T00:00:00.000Z" }),
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    const request = { tag: "v0.1.1", groupHead: SHA, entries: RELEASE.entries };
+    await hqApi.mergeChange(LINK, SHA);
+    await hqApi.release("app-1", request);
+    await hqApi.rollback("app-1", "v0.1.0", { groupHead: SHA });
+    await hqApi.deleteApp("app-1");
+    await expect(
+      hqApi.lifecycleWrite("r1", {
+        kind: "prepare-mate-deletion",
+        orgId: ORG,
+        hqProjectId: "hq",
+        projectId: "p1",
+      }),
+    ).rejects.toMatchObject({ reason: "project_still_exists" });
+    await hqApi.attachProject("app-1", { projectId: "p9", kind: "stage" });
+    await hqApi.commentOnChange(LINK, "Ship it");
+    const bodies = hq.seen
+      .filter((seen) => seen.path !== "/api/door")
+      .map((seen) => [
+        seen.method,
+        seen.path,
+        (seen.body as { accessToken?: unknown })?.accessToken,
+      ]);
+    expect(bodies).toEqual([
+      ["POST", "/api/apps/app-1/changes/app/3/merge", "person-token"],
+      ["POST", "/api/apps/app-1/releases", "person-token"],
+      ["POST", "/api/apps/app-1/releases/v0.1.0/rollback", "person-token"],
+      ["DELETE", "/api/apps/app-1", "person-token"],
+      ["POST", "/api/lifecycle/r1", "person-token"],
+      ["POST", "/api/apps/app-1/projects", "person-token"],
+      ["POST", "/api/apps/app-1/changes/app/3/comments", undefined],
+    ]);
+  });
+
   // A write whose answer was lost (F22): what HQ holds now decides, read back once.
   const ROLLED = { ...RELEASE, tag: "v0.1.2", rollbackOf: "v0.1.0" } as const;
   const HARBOR = { id: "app-1", name: "Harbor", projects: [] };
@@ -2173,7 +2126,7 @@ describe("makeHqApi — original lifecycle receipts", () => {
     await expect(api.lifecycleWrite("original:complete", complete)).rejects.toMatchObject({
       reason: "project_still_exists",
     });
-    expect(hq.seen.at(-1)?.body).toEqual(complete);
+    expect(hq.seen.at(-1)?.body).toEqual({ ...complete, accessToken: "access-1" });
   });
 });
 
@@ -2206,7 +2159,7 @@ describe("HQ's final account fence", () => {
         orgId: ORG,
         accessToken: async () => {
           active = false;
-          return "access";
+          return { token: "access" };
         },
         isCurrent: () => active,
       });
@@ -2569,6 +2522,18 @@ describe("makeHqApi — a Mate's ticket", () => {
       expect(calls("/api/mates/P1/ticket")).toHaveLength(1);
     },
   );
+  it("A reach renewed for a grown structure asks the door once with the held session as its bearer; before any session it asks nothing", async () => {
+    const { api, calls } = staleApi([json(200, TICKET)]);
+
+    await expect(api.renewReach()).resolves.toBe(false);
+    expect(calls("/api/door")).toHaveLength(0);
+    await api.mateTicket("P1");
+    await expect(api.renewReach()).resolves.toBe(true);
+    expect(calls("/api/door")).toMatchObject([
+      { authorization: null, body: { accessToken: "access-1", orgId: ORG } },
+      { authorization: "Bearer session-1", body: { accessToken: "access-2", orgId: ORG } },
+    ]);
+  });
 });
 
 describe("makeHqApi — kept Git answers", () => {

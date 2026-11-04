@@ -52,11 +52,17 @@ export function makeHqWire(
     Partial<
       Pick<
         HqApi,
-        "changeAttachment" | "changeMetadata" | "changeCommits" | "changeVerdict" | "reviewRelease"
+        | "changeAttachment"
+        | "changeMetadata"
+        | "changeCommits"
+        | "changeVerdict"
+        | "reviewRelease"
+        | "renewReach"
       >
     >,
 ): HqWire {
   return {
+    ...(api.renewReach === undefined ? {} : { structureGrew: () => void api.renewReach!() }),
     ...(api.reviewRelease === undefined
       ? {}
       : {

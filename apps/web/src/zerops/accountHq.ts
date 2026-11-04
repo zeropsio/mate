@@ -18,7 +18,7 @@ import {
   type HqEndpoint,
   type HqParts,
 } from "@t3tools/client-runtime/zerops/hq";
-import { makeBrowserHqApi, zeropsAccessToken, zeropsOrgStart } from "@t3tools/client-runtime/data";
+import { makeBrowserHqApi, zeropsAccessToken } from "@t3tools/client-runtime/data";
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
@@ -43,8 +43,7 @@ const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projec
 
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else signed in
- * with the person's Zerops access token on the first call. An organization HQ has not started is
- * started by its Owner's or Admin's sign-in.
+ * with the person's Zerops access token on the first call.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
   const accessToken = zeropsAccessToken(client);
@@ -76,7 +75,6 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     isCurrent: () => active() && client.accountEpoch === nativeEpoch,
     accessToken,
     orgId: clientId,
-    startOrganisation: zeropsOrgStart(client, clientId, navigator.locks),
   });
 }
 

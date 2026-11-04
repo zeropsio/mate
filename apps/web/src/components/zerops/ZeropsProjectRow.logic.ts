@@ -41,16 +41,14 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
+  hqMateListedOnly,
   type HqMateOfferStates,
   type HqPresses,
   type CanonicalHqStructure,
 } from "@t3tools/client-runtime/zerops/hq";
 import { RESTARTING_PHRASE } from "@t3tools/client-runtime/zerops/environments";
 import type { CandidatePresence } from "@t3tools/client-runtime/zerops/projections";
-import {
-  mateOnlyOwnerOpensIt,
-  type RoleMateVisibility,
-} from "@t3tools/client-runtime/zerops/mateAccess";
+import { mateOnlyOwnerOpensIt } from "@t3tools/client-runtime/zerops/mateAccess";
 import type { ZeropsContainerHealth } from "@t3tools/client-runtime/zerops/containerHealth";
 import { MATE_SHAPE_OF_TINT, type ServiceStatusToneId } from "@t3tools/shared/brand";
 
@@ -87,11 +85,10 @@ export interface ZeropsRowInput {
   /** The environment's role in its project, when it has one. */
   readonly role?: ZeropsEnvironmentRole | undefined;
   /**
-   * What this viewer may do with this Mate (D5). `listed` is shown and never
-   * opened; absent means the caller is not making that distinction (an
-   * environment that is not a Mate, a list with no membership to judge by).
+   * HQ lists this Mate to the viewer without letting them open it (`hqMateListedOnly`, D5): it is
+   * shown and never opened.
    */
-  readonly visibility?: RoleMateVisibility | undefined;
+  readonly listed?: boolean | undefined;
   /** Who owns it, when the account can be read for a name. */
   readonly ownerName?: string | undefined;
   /**
@@ -157,7 +154,7 @@ const ROW_VERBS = (offered: boolean): ZeropsRowInput["can"] => ({
  */
 export function mateRowCan(offers: HqMateOfferStates | undefined): ZeropsRowInput["can"] {
   return {
-    ...ROW_VERBS(offers?.held !== true || offers.observe.kind !== "refused"),
+    ...ROW_VERBS(!hqMateListedOnly(offers)),
     setUpPlainProject: offers?.held === false && offers.createRecord.kind === "allowed",
   };
 }
@@ -440,10 +437,10 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
     return { status: { label: NOT_IN_HQ_LINE, tone: "off" }, detail: NOT_IN_HQ_LINE };
   }
 
-  // A Zerops role that only reads the Mate outranks whatever its container is
+  // HQ listing the Mate without letting the person open it outranks whatever its container is
   // doing. A person who cannot open it is not waiting for it to start, and
   // telling them it is "Ready" would be an invitation the door refuses.
-  if (input.visibility === "listed") {
+  if (input.listed === true) {
     return {
       status: { label: "Read-only", tone: "off" },
       detail: mateOnlyOwnerOpensIt(input.ownerName),
@@ -628,7 +625,7 @@ export function deriveZeropsRowPresentation(input: ZeropsRowInput): ZeropsRowPre
 export function deriveZeropsRestartAction(input: ZeropsRowInput): ZeropsRowAction {
   const { candidate, can } = input;
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
-  if (input.visibility === "listed") return { kind: "none" };
+  if (input.listed === true) return { kind: "none" };
   return can.restart &&
     candidate.project.status === "ACTIVE" &&
     candidate.service?.status === "ACTIVE"
@@ -643,7 +640,7 @@ export function deriveZeropsRowAction(input: ZeropsRowInput): ZeropsRowAction {
   if (isZeropsToolCandidate(candidate)) return { kind: "none" };
   // A verb the door would refuse is not offered (D5). The row says why in
   // place of it.
-  if (input.visibility === "listed") return { kind: "none" };
+  if (input.listed === true) return { kind: "none" };
 
   if (input.coming?.kind === "failed" && input.coming.verb === "redeploy") {
     return can.restart ? { kind: "redeploy", label: "Redeploy" } : { kind: "none" };

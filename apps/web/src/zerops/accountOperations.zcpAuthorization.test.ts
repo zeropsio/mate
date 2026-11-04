@@ -39,7 +39,7 @@ function automaticStatusRig(options: {
   const api = makeHqApi({
     address: "https://hq.example.test",
     orgId: "org",
-    accessToken: async () => "person-native-access",
+    accessToken: async () => ({ token: "person-native-access" }),
     openSocket: () => {
       throw new Error("No stream needed");
     },
@@ -266,7 +266,7 @@ it.each(["mint", "regenerate"] as const)(
       makeHqApi({
         address: "https://hq.example.test",
         orgId: "org",
-        accessToken: async () => "person-native-access",
+        accessToken: async () => ({ token: "person-native-access" }),
         openSocket: () => {
           throw new Error("No stream needed");
         },

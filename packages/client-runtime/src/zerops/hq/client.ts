@@ -18,8 +18,9 @@ import { RASTER_CONTENT_TYPES } from "@t3tools/shared/hqAttachments";
 /**
  * HQ's API as the client calls it (`mate-hq apps/hq/src/api.ts`), through HQ's door.
  *
- * A person signs in with their Zerops access token (`POST /api/door {accessToken, orgId}`, in the
- * body only) and HQ answers a session of its own, which this client sends as `Authorization:
+ * A person signs in with their Zerops access token and its expiry (`POST /api/door {accessToken,
+ * expiresAt, orgId}`, in the body only) and HQ answers a session of its own, which ends no later
+ * than that token, which this client sends as `Authorization:
  * Bearer` and renews before it ends with the same request and a current token, keeping its id.
  * Where the account keeps it (`kept`), a load presents the kept session before any sign-in.
  *
@@ -42,7 +43,6 @@ import {
   type ChangeLink,
 } from "@t3tools/shared/hqChanges";
 import { GitCredential, GitCredentialList, type GitCredentialRecord } from "@t3tools/shared/hqGit";
-import { signInStartingOrganisation, type OrgStartPorts } from "./orgKeyMint.logic.ts";
 import { RecipeTierResponse } from "@t3tools/shared/hqRecipe";
 import { type HqDeployAnswer, WithDeploys } from "@t3tools/shared/hqDeploys";
 import {
@@ -90,7 +90,7 @@ import {
 import { fileSize } from "../gitBrowse/blob.ts";
 import { heldType } from "../gitBrowse/raw.ts";
 
-import { type FetchImplementation } from "../api.ts";
+import { type FetchImplementation, type ZeropsAccess } from "../api.ts";
 import type { HqEnvironment, CanonicalHqEnvironment } from "./environments.ts";
 import { hqRefusalWords, ZEROPS_UNANSWERED } from "./refusals.ts";
 import { hqStructureOf } from "./structure.ts";
@@ -348,6 +348,11 @@ export interface HqApi {
    * tab, and every reconnect asks again.
    */
   readonly mateTicket: (projectId: string, signal?: AbortSignal) => Promise<HqMateTicket>;
+  /**
+   * Renews the held session so HQ reads the person's reach again, as its structure came to hold a
+   * project the reach was read without; whether HQ renewed it. Nothing is asked before a session.
+   */
+  readonly renewReach: () => Promise<boolean>;
   /**
    * One segment of HQ's scope stream (`@t3tools/shared/hqStream`): a socket opened with a fresh
    * ticket for the session, telling `on` once it is open, of every text message and of its close
@@ -673,7 +678,6 @@ export const REACH_STALE = "reach_stale";
 interface DoorAnswer {
   readonly session: string;
   readonly expiresAt: string;
-  readonly orgKeyKept?: boolean;
 }
 
 /**
@@ -1046,11 +1050,12 @@ export function makeHqApi(input: {
   readonly address: string;
   readonly fetch: FetchImplementation;
   /**
-   * The person's Zerops access token; `refused`, the one HQ answered `401 zerops_person_required`
-   * to, asks Zerops for a new one first unless a renewal has already replaced it, which a sign-in
-   * does once. HQ reads it once at sign-in and at each renewal and keeps nothing of it.
+   * The person's Zerops access token and its expiry; `refused`, the token HQ answered `401
+   * zerops_person_required` to, asks Zerops for a new one first unless a renewal has already
+   * replaced it, which a sign-in does once. HQ reads it once at sign-in and at each renewal and
+   * keeps nothing of it.
    */
-  readonly accessToken: (refused?: string) => Promise<string>;
+  readonly accessToken: (refused?: string) => Promise<ZeropsAccess>;
   /** The organisation this client signs in to. */
   readonly orgId: string;
   /** The instant, for the renewal of a session; the wall clock where absent. */
@@ -1058,16 +1063,6 @@ export function makeHqApi(input: {
   readonly openSocket: OpenHqSocket;
   /** Captured account and HQ; checked immediately before each protected fetch. */
   readonly isCurrent?: () => boolean;
-  /**
-   * The organization's key, for a sign-in HQ answers `409 org_not_started` or
-   * `403 org_key_refused`: HQ serves an
-   * organization once its Owner's or Admin's client hands it one as `orgKey`. Absent: that refusal
-   * stands.
-   */
-  readonly startOrganisation?: Pick<
-    OrgStartPorts<DoorAnswer>,
-    "mayStart" | "mintKey" | "deleteKey" | "withLock"
-  >;
   /** HQ's session as the account keeps it for this organization and HQ across loads. */
   readonly kept?: {
     /** The kept session; null when none is kept, or it ends too soon to present. */
@@ -1109,26 +1104,26 @@ export function makeHqApi(input: {
    * `POST /api/door` with the person's access token; with a session as its bearer it renews that
    * session, which keeps its id.
    */
-  const signIn = async (orgKey?: string, renewing?: string): Promise<DoorAnswer> => {
-    const attempt = async (accessToken: string) =>
+  const enterDoor = async (renewing?: string): Promise<DoorAnswer> => {
+    const attempt = async (access: ZeropsAccess) =>
       json<DoorAnswer>(
         await send(input.fetch, `${origin}/api/door`, {
           method: "POST",
           ...(renewing === undefined ? {} : { headers: { Authorization: `Bearer ${renewing}` } }),
           body: JSON.stringify({
-            accessToken,
+            accessToken: access.token,
+            ...(access.expiresAt === undefined ? {} : { expiresAt: access.expiresAt }),
             orgId: input.orgId,
-            ...(orgKey === undefined ? {} : { orgKey }),
           }),
           signal: AbortSignal.timeout(WRITE_TIMEOUT_MS),
         }),
       );
-    const accessToken = await input.accessToken();
+    const access = await input.accessToken();
     try {
-      return await attempt(accessToken);
+      return await attempt(access);
     } catch (cause) {
       if (!(cause instanceof HqError && cause.code === "zerops_person_required")) throw cause;
-      return attempt(await input.accessToken(accessToken));
+      return attempt(await input.accessToken(access.token));
     }
   };
 
@@ -1136,21 +1131,6 @@ export function makeHqApi(input: {
     const ends = Date.parse(answer.expiresAt);
     expiresAtMs = Number.isFinite(ends) ? ends : null;
     input.kept?.keep({ token: answer.session, expiresAt: answer.expiresAt });
-  };
-
-  const enterDoor = (renewing?: string) => {
-    const start = input.startOrganisation;
-    return start === undefined
-      ? signIn(undefined, renewing)
-      : signInStartingOrganisation<DoorAnswer>({
-          ...start,
-          orgId: input.orgId,
-          signIn: (orgKey) => signIn(orgKey, renewing),
-          needsOrgKey: (cause) =>
-            cause instanceof HqError &&
-            ((cause.status === 409 && cause.code === "org_not_started") ||
-              (cause.status === 403 && cause.code === "org_key_refused")),
-        });
   };
 
   const enter = () => {
@@ -1284,6 +1264,14 @@ export function makeHqApi(input: {
     );
   };
 
+  /**
+   * The body of a verb HQ decides on a fresh read of the person's Zerops role (merge, release, roll
+   * back, delete, structure): it carries the person's current access token, which HQ uses for that
+   * one read and keeps nothing of.
+   */
+  const withAccess = async (body: object) =>
+    JSON.stringify({ ...body, accessToken: (await input.accessToken()).token });
+
   const structureOf = async (signal?: AbortSignal) =>
     Option.getOrThrowWith(
       Option.fromUndefinedOr(
@@ -1325,6 +1313,16 @@ export function makeHqApi(input: {
         if (!(await renew(await held))) throw cause;
         signal?.throwIfAborted();
         return ask();
+      }
+    },
+    renewReach: async () => {
+      const held = session;
+      if (held === null) return false;
+      try {
+        return await renew(await held);
+      } catch {
+        // A sign-in that refused is no session to renew: the next call enters the door again.
+        return false;
       }
     },
     openScopeSocket: async (on, signal) => {
@@ -1386,10 +1384,10 @@ export function makeHqApi(input: {
       ),
     attachProject: (appId, attach) =>
       confirmedDone(
-        () =>
+        async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}/projects`,
-            { method: "POST", body: JSON.stringify(attach) },
+            { method: "POST", body: await withAccess(attach) },
             true,
           ),
         async () =>
@@ -1467,7 +1465,7 @@ export function makeHqApi(input: {
       decoded(HqLifecycleRecord)(
         await authorized(
           `/api/lifecycle/${encodeURIComponent(requestId)}`,
-          { method: "POST", body: JSON.stringify(intent) },
+          { method: "POST", body: await withAccess(intent) },
           true,
         ),
       ),
@@ -1496,10 +1494,10 @@ export function makeHqApi(input: {
       ),
     deleteApp: (appId, options) =>
       confirmedDone(
-        () =>
+        async () =>
           authorized(
             `/api/apps/${encodeURIComponent(appId)}${options?.withCode === true ? "?with=code" : ""}`,
-            { method: "DELETE" },
+            { method: "DELETE", body: await withAccess({}) },
             true,
           ),
         async () => (await appOf(appId)) === undefined,
@@ -1564,7 +1562,7 @@ export function makeHqApi(input: {
           readMerged(
             await authorized(
               `${changePath(link)}/merge`,
-              { method: "POST", body: JSON.stringify({ expectedHead }) },
+              { method: "POST", body: await withAccess({ expectedHead }) },
               true,
             ),
           ),
@@ -1919,7 +1917,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               releasesPath(appId),
-              { method: "POST", body: JSON.stringify(request) },
+              { method: "POST", body: await withAccess(request) },
               true,
             ),
           ),
@@ -1942,7 +1940,7 @@ export function makeHqApi(input: {
           readRelease(
             await authorized(
               `${releasesPath(appId)}/${encodeURIComponent(tag)}/rollback`,
-              { method: "POST", body: JSON.stringify(request) },
+              { method: "POST", body: await withAccess(request) },
               true,
             ),
           ),
