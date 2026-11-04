@@ -6,7 +6,12 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
-import { type AccessLiveEvent, type AccessSocket, accessEvents } from "./ZeropsAccessSocket.ts";
+import {
+  ACCESS_SOCKET_GREETING_BUDGET,
+  type AccessLiveEvent,
+  type AccessSocket,
+  accessEvents,
+} from "./ZeropsAccessSocket.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
 interface FakeSocket extends AccessSocket {
@@ -179,6 +184,28 @@ describe("ZeropsAccessSocket", () => {
         for (const seconds of [1, 5, 30, 60, 60]) yield* reconnectsAfter(Duration.seconds(seconds));
         yield* subscribed;
         yield* reconnectsAfter(Duration.seconds(1));
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "Tearing down the Zerops access socket while it is still connecting never throws: the error listener stays installed through close()",
+    () =>
+      Effect.gen(function* () {
+        const { sockets, nextSocket, logins } = yield* platform;
+        // `ws` emits 'error' when closed while connecting; with no listener, Node throws it
+        // uncaught. The fake records each close that would have thrown so.
+        const unhandled: Array<string> = [];
+        const connecting = sockets[0]!;
+        connecting.close = () => {
+          if (connecting.onerror === null) unhandled.push(connecting.url);
+          else connecting.onerror();
+        };
+        // It never greets: past its budget the connection is torn down while still connecting.
+        yield* TestClock.adjust(ACCESS_SOCKET_GREETING_BUDGET);
+        assert.deepStrictEqual(unhandled, []);
+        yield* TestClock.adjust(Duration.seconds(1));
+        assert.strictEqual(logins(), 2);
+        yield* nextSocket;
       }).pipe(Effect.scoped),
   );
 });
