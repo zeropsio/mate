@@ -231,6 +231,8 @@ export class ZeropsHqLink extends Context.Service<
   {
     /** Where the Mate stands with its HQ now. */
     readonly standing: Effect.Effect<HqStanding>;
+    /** Fires with each state HQ sends: `standing` may have moved. */
+    readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsHqLink") {}
 
@@ -791,6 +793,7 @@ export const makeZeropsHqLink = (
           ? ({ kind: "linked", mate: held.value } as const)
           : ({ kind: "not-linked" } as const);
       }),
+      changes: Stream.map(SubscriptionRef.changes(state), () => undefined),
     });
   });
 
@@ -916,7 +919,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
       const zerops = config.zerops;
       if (zerops === undefined) {
-        return ZeropsHqLink.of({ standing: Effect.succeed({ kind: "not-linked" }) });
+        return ZeropsHqLink.of({
+          standing: Effect.succeed({ kind: "not-linked" }),
+          changes: Stream.empty,
+        });
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
