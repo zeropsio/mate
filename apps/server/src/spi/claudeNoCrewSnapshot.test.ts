@@ -25,6 +25,7 @@ import * as Layer from "effect/Layer";
 import type * as Scope from "effect/Scope";
 
 import { buildRuntimeInstructions } from "../provider/RuntimeInstructions.ts";
+import { personaInstructions } from "../personaInstructions.ts";
 import {
   claudeAdapterHarnessLayer,
   makeClaudeAdapterHarness,
@@ -50,9 +51,10 @@ const INSTANCE_ID = ProviderInstanceId.make("claudeAgent");
 
 // The appended prompt is pinned by identity, not by its prose: the golden
 // holds this marker wherever the adapter appended exactly today's runtime
-// instructions, so editing the Mate's content contract moves no golden.
-const RUNTIME_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
-const RUNTIME_INSTRUCTIONS_MARKER = '[buildRuntimeInstructions({ harness: "Claude Code" })]';
+// instructions and the Mate's persona (none), so editing either moves no golden.
+const RUNTIME_INSTRUCTIONS = `${buildRuntimeInstructions({ harness: "Claude Code" })}\n${personaInstructions(null)}`;
+const RUNTIME_INSTRUCTIONS_MARKER =
+  '[buildRuntimeInstructions({ harness: "Claude Code" })]\n[personaInstructions(null)]';
 
 interface Scenario {
   readonly name: string;

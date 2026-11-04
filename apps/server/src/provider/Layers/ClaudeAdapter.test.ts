@@ -17,6 +17,7 @@ import {
   ProviderDriverKind,
   ProviderItemId,
   ProviderRuntimeEvent,
+  type MatePersona,
   type RuntimeMode,
   ThreadId,
   ProviderInstanceId,
@@ -42,6 +43,7 @@ import { CONTENT_CONTRACT } from "../../contentContract.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../../macHostInstructions.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../../matePlacesInstructions.ts";
 import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
+import { personaInstructions } from "../../personaInstructions.ts";
 import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   SYNTHETIC_CLAUDE_CAPABLE_MODEL,
@@ -744,7 +746,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.systemPrompt, {
         type: "preset",
         preset: "claude_code",
-        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}`,
+        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}\n${personaInstructions(null)}`,
       });
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);
@@ -9478,7 +9480,7 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  const CURRENT_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
+  const CURRENT_INSTRUCTIONS = `${buildRuntimeInstructions({ harness: "Claude Code" })}\n${personaInstructions(null)}`;
   it.effect.each([
     {
       label: "began before Mate marked them",
@@ -9537,6 +9539,166 @@ describe("ClaudeAdapterLive", () => {
         assert.equal(
           (sent.resumeCursor as { readonly instructions?: string }).instructions,
           instructionsMark(CURRENT_INSTRUCTIONS),
+        );
+      }).pipe(
+        Effect.provideService(Random.Random, makeDeterministicRandomService()),
+        Effect.provide(harness.layer),
+      );
+    },
+  );
+
+  const PIRATE = { name: "Pirate", instructions: "Talk like a pirate." };
+  const BUTLER = { name: "Butler", instructions: "Answer like a butler." };
+  const instructionsWith = (persona: MatePersona | null) =>
+    `${buildRuntimeInstructions({ harness: "Claude Code" })}\n${personaInstructions(persona)}`;
+  const messageTexts = (message: SDKUserMessage | undefined) =>
+    ((message?.message.content ?? []) as Array<{ type: string; text?: string }>).flatMap((block) =>
+      block.type === "text" && block.text !== undefined ? [block.text] : [],
+    );
+
+  it.effect.each([
+    { label: "a persona", persona: PIRATE },
+    { label: "no persona", persona: null },
+  ])("a Mate's persona reaches Claude in its system prompt: $label", ({ persona }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      yield* (yield* ServerSettingsService).updateSettings({ persona });
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "First", attachments: [] });
+      const createInput = harness.getLastCreateQueryInput();
+      assert.deepEqual(createInput?.options.systemPrompt, {
+        type: "preset",
+        preset: "claude_code",
+        append: instructionsWith(persona),
+      });
+      const [first] = yield* Effect.promise(() => readPromptMessages(createInput, 1));
+      assert.deepEqual(messageTexts(first), ["First"]);
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect.each([
+    { label: "changed", from: PIRATE, to: BUTLER },
+    { label: "removed", from: PIRATE, to: null },
+    { label: "chosen", from: null, to: PIRATE },
+  ])("a persona $label mid-chat reaches Claude on its next message, once", ({ from, to }) => {
+    const harness = makeHarness();
+    return Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({ persona: from });
+      const adapter = yield* ClaudeAdapter;
+      const session = yield* adapter.startSession({
+        threadId: THREAD_ID,
+        provider: ProviderDriverKind.make("claudeAgent"),
+        runtimeMode: "full-access",
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "First", attachments: [] });
+      yield* settings.updateSettings({ persona: to });
+      const sent = yield* adapter.sendTurn({
+        threadId: session.threadId,
+        input: "Second",
+        attachments: [],
+      });
+      yield* adapter.sendTurn({ threadId: session.threadId, input: "Third", attachments: [] });
+      const messages = yield* Effect.promise(() =>
+        readPromptMessages(harness.getLastCreateQueryInput(), 3),
+      );
+      assert.deepEqual(messages.map(messageTexts), [
+        ["First"],
+        [instructionsRefresh(instructionsWith(to)), "Second"],
+        ["Third"],
+      ]);
+      assert.equal(
+        (sent.resumeCursor as { readonly instructions?: string }).instructions,
+        instructionsMark(instructionsWith(to)),
+      );
+    }).pipe(
+      Effect.provideService(Random.Random, makeDeterministicRandomService()),
+      Effect.provide(harness.layer),
+    );
+  });
+
+  it.effect.each([
+    {
+      label: "a chat whose persona changed since it began",
+      resumeCursor: undefined,
+      change: true,
+      hearsAfterCompaction: true,
+    },
+    {
+      label: "a chat whose persona never changed",
+      resumeCursor: undefined,
+      change: false,
+      hearsAfterCompaction: false,
+    },
+    {
+      label: "a resumed chat that began under older instructions",
+      resumeCursor: {
+        threadId: "resume-thread-1",
+        resume: "550e8400-e29b-41d4-a716-446655440000",
+        instructions: instructionsMark(instructionsWith(PIRATE)),
+        startInstructions: instructionsMark("Mate's instructions as an older release wrote them"),
+      },
+      change: false,
+      hearsAfterCompaction: true,
+    },
+    {
+      label: "a resumed chat from before Mate marked where it began",
+      resumeCursor: {
+        threadId: "resume-thread-1",
+        resume: "550e8400-e29b-41d4-a716-446655440000",
+        instructions: instructionsMark(instructionsWith(PIRATE)),
+      },
+      change: false,
+      hearsAfterCompaction: true,
+    },
+  ])(
+    "after Claude compacts $label, it hears the current persona again: $hearsAfterCompaction",
+    ({ resumeCursor, change, hearsAfterCompaction }) => {
+      const harness = makeHarness();
+      return Effect.gen(function* () {
+        const settings = yield* ServerSettingsService;
+        yield* settings.updateSettings({ persona: change ? BUTLER : PIRATE });
+        const adapter = yield* ClaudeAdapter;
+        const session = yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          ...(resumeCursor ? { resumeCursor } : {}),
+        });
+        if (change) yield* settings.updateSettings({ persona: PIRATE });
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "First", attachments: [] });
+        const compacted = yield* adapter.streamEvents.pipe(
+          Stream.filter(
+            (event) => event.type === "thread.state.changed" && event.payload.state === "compacted",
+          ),
+          Stream.runHead,
+          Effect.forkChild,
+        );
+        harness.query.emit({
+          type: "system",
+          subtype: "compact_boundary",
+          compact_metadata: { trigger: "auto", pre_tokens: 200, post_tokens: 40 },
+          session_id: "sdk-session-persona-compacted",
+          uuid: "compact-boundary-persona",
+        } as unknown as SDKMessage);
+        yield* Fiber.join(compacted);
+        yield* adapter.sendTurn({ threadId: session.threadId, input: "Second", attachments: [] });
+        const [, second] = yield* Effect.promise(() =>
+          readPromptMessages(harness.getLastCreateQueryInput(), 2),
+        );
+        assert.deepEqual(
+          messageTexts(second),
+          hearsAfterCompaction
+            ? [instructionsRefresh(instructionsWith(PIRATE)), "Second"]
+            : ["Second"],
         );
       }).pipe(
         Effect.provideService(Random.Random, makeDeterministicRandomService()),

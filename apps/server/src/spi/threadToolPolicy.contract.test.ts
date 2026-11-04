@@ -17,6 +17,7 @@ import * as Layer from "effect/Layer";
 import * as TestClock from "effect/testing/TestClock";
 
 import { buildRuntimeInstructions } from "../provider/RuntimeInstructions.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   claudeAdapterHarnessLayer,
   makeClaudeAdapterHarness,
@@ -158,6 +159,26 @@ describe("a thread with a tool profile, on the Claude adapter", () => {
         autoCompactWindow: PROFILE.contextWindow,
       });
       assert.strictEqual(crew!.maxBudgetUsd, PROFILE.maxBudgetUsd);
+    }).pipe(Effect.scoped, Effect.provide(contractLayer)),
+  );
+
+  it.effect("a crewmate takes no persona, at start or on any turn", () =>
+    Effect.gen(function* () {
+      const settings = yield* ServerSettingsService;
+      yield* settings.updateSettings({ persona: { name: "Pirate", instructions: "Arr." } });
+      const { adapter, sessions } = yield* withProfile(PROFILE);
+      yield* adapter.startSession(startInput());
+      yield* adapter.sendTurn(turnInput({ input: "first" }));
+      yield* settings.updateSettings({ persona: null });
+      yield* adapter.sendTurn(turnInput({ input: "second" }));
+      const { options, prompt } = sessions[0]!;
+      const iterator = prompt[Symbol.asyncIterator]();
+      const messages = [
+        (yield* Effect.promise(() => iterator.next())).value,
+        (yield* Effect.promise(() => iterator.next())).value,
+      ];
+      assert.notInclude(JSON.stringify(options.systemPrompt), "<persona");
+      assert.notInclude(JSON.stringify(messages), "<persona");
     }).pipe(Effect.scoped, Effect.provide(contractLayer)),
   );
 

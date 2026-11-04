@@ -118,6 +118,8 @@ import {
 import { discoverClaudeSkills } from "../Drivers/ClaudeSkills.ts";
 import { buildRuntimeInstructions } from "../RuntimeInstructions.ts";
 import { instructionsMark, instructionsRefresh } from "../../resumedInstructions.ts";
+import { readPersonaInstructions } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import {
   BUNDLED_CLAUDE_MODEL_CATALOG,
   type ClaudeModelCatalog,
@@ -286,6 +288,8 @@ interface ClaudeResumeState {
   readonly turnStartMessageIds?: ReadonlyArray<string | null>;
   /** The mark of the instructions its Claude session holds: a resume keeps its first prompt. */
   readonly instructions?: string;
+  /** The mark of the system prompt its Claude session began with: compaction returns to it. */
+  readonly startInstructions?: string;
 }
 
 interface ClaudeTurnState {
@@ -503,6 +507,8 @@ interface ClaudeSessionContext {
   resumeSessionId: string | undefined;
   /** The mark of the instructions its Claude session holds; another one hears the current ones. */
   instructions: string | undefined;
+  /** The mark of the system prompt it began with, which it holds again after compacting. */
+  readonly startInstructions: string | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   /** Completed turn ids, reported by readThread and trimmed on rollback.
@@ -1110,6 +1116,7 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     turnCount?: unknown;
     turnStartMessageIds?: unknown;
     instructions?: unknown;
+    startInstructions?: unknown;
   };
 
   const threadIdCandidate = typeof cursor.threadId === "string" ? cursor.threadId : undefined;
@@ -1139,6 +1146,9 @@ function readClaudeResumeState(resumeCursor: unknown): ClaudeResumeState | undef
     ...(resumeSessionAt ? { resumeSessionAt } : {}),
     ...(turnStartMessageIds ? { turnStartMessageIds } : {}),
     ...(typeof cursor.instructions === "string" ? { instructions: cursor.instructions } : {}),
+    ...(typeof cursor.startInstructions === "string"
+      ? { startInstructions: cursor.startInstructions }
+      : {}),
     ...(turnCountValue !== undefined && Number.isInteger(turnCountValue) && turnCountValue >= 0
       ? { turnCount: turnCountValue }
       : {}),
@@ -1717,7 +1727,9 @@ const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
 ]);
 // Model and effort can change after this session-level prompt is set.
 const CLAUDE_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
-const CLAUDE_INSTRUCTIONS_MARK = instructionsMark(CLAUDE_INSTRUCTIONS);
+/** Mate's instructions for a session, with the persona unless it runs in a crew. */
+const claudeInstructions = (persona: string | undefined) =>
+  persona === undefined ? CLAUDE_INSTRUCTIONS : `${CLAUDE_INSTRUCTIONS}\n${persona}`;
 const CLAUDE_SETTING_SOURCES = [
   "user",
   "project",
@@ -2303,9 +2315,23 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const fileSystem = yield* FileSystem.FileSystem;
   const path = yield* Path.Path;
   const serverConfig = yield* ServerConfig;
+  const serverSettings = yield* ServerSettingsService;
   const crypto = yield* Crypto.Crypto;
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const threadRegistries = yield* readClaudeThreadRegistries;
+  /**
+   * The instructions a session should hold now: a crewmate's carry no persona. Undefined when the
+   * persona cannot be read, and the session keeps what it heard.
+   */
+  const currentInstructions = (profiled: boolean) =>
+    profiled
+      ? Effect.succeed(CLAUDE_INSTRUCTIONS)
+      : readPersonaInstructions.pipe(
+          Effect.provideService(ServerSettingsService, serverSettings),
+          Effect.map((persona) =>
+            persona === undefined ? undefined : claudeInstructions(persona),
+          ),
+        );
   const claudeEnvironment = yield* makeClaudeEnvironment(claudeSettings, options?.environment).pipe(
     Effect.provideService(Path.Path, path),
   );
@@ -2422,6 +2448,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       turnCount: context.turnStartMessageIds.length,
       turnStartMessageIds: [...context.turnStartMessageIds],
       ...(context.instructions ? { instructions: context.instructions } : {}),
+      ...(context.startInstructions ? { startInstructions: context.startInstructions } : {}),
     };
 
     context.session = {
@@ -4194,6 +4221,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         });
         return;
       case "compact_boundary": {
+        // Compaction drops every reminder that led a message; the session holds its first prompt.
+        context.instructions = context.startInstructions;
+        yield* updateResumeCursor(context);
         if (context.turnState) {
           context.turnState.latestAssistantUsage = undefined;
           context.turnState.compactedSinceLatestAssistantUsage = true;
@@ -5644,6 +5674,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         serverConfig.attachmentsDir,
       ];
       const stderrTail = makeStderrTail();
+      const startInstructions =
+        (yield* currentInstructions(threadSetup !== undefined)) ?? CLAUDE_INSTRUCTIONS;
       const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         // Kept for the log: why the stream died, when it dies.
@@ -5653,7 +5685,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
         systemPrompt: {
           type: "preset",
           preset: "claude_code",
-          append: CLAUDE_INSTRUCTIONS,
+          append: startInstructions,
         },
         settingSources: [...CLAUDE_SETTING_SOURCES],
         // `ultracode` is a Claude Code setting, not an API effort level. It is
@@ -5823,8 +5855,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           resumeSessionId: sessionId,
           instructions:
             existingResumeSessionId === undefined
-              ? CLAUDE_INSTRUCTIONS_MARK
+              ? instructionsMark(startInstructions)
               : resumeState?.instructions,
+          startInstructions:
+            existingResumeSessionId === undefined
+              ? instructionsMark(startInstructions)
+              : resumeState?.startInstructions,
           pendingApprovals,
           pendingUserInputs,
           turns: [],
@@ -6058,10 +6094,14 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       Effect.provideService(FileSystem.FileSystem, fileSystem),
       Effect.provideService(Path.Path, path),
     );
+    // Instructions changed since the session last heard them (a persona switched, a resume or a
+    // compaction): its next message leads with the current ones.
+    const instructions = yield* currentInstructions(context.profiled);
+    const heard = instructions === undefined ? undefined : instructionsMark(instructions);
     const preface =
-      context.instructions === CLAUDE_INSTRUCTIONS_MARK
+      instructions === undefined || context.instructions === heard
         ? undefined
-        : instructionsRefresh(CLAUDE_INSTRUCTIONS);
+        : instructionsRefresh(instructions);
     const message = yield* buildUserMessageEffect(input, {
       preface,
       fileSystem,
@@ -6143,7 +6183,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       });
     }
     if (preface !== undefined) {
-      context.instructions = CLAUDE_INSTRUCTIONS_MARK;
+      context.instructions = heard;
       yield* updateResumeCursor(context);
     }
 
