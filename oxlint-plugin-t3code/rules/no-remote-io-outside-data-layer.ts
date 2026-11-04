@@ -206,6 +206,8 @@ export const ZEROPS_CLIENT_VERBS = [
 export const HQ_CLIENT_VERBS = [
   "autoUpdatePolicy",
   "setAutoUpdatePolicy",
+  "savePersonaTemplate",
+  "deletePersonaTemplate",
   "structure",
   "mateTicket",
   "openScopeSocket",
