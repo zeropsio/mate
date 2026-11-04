@@ -225,6 +225,19 @@ describe("revealing a hidden value on the card", () => {
     expect(source.recorded).not.toHaveBeenCalled();
   });
 
+  it("turns a refusal for the person's role into who can reveal it, with no Try again", async () => {
+    source.reveal.mockResolvedValue({ ok: false, code: "notAuthorized" });
+    source.members = {
+      members: [{ id: "cu-petr", roleCode: "BASIC_USER", user: { id: "petr", fullName: "Petr" } }],
+    };
+    source.grants = { "p-prod": { status: "ready", grants: [] } };
+    await draw();
+    await press("Reveal production value");
+    expect(card()).toContain("Only people with production access can reveal this. Petr can.");
+    expect(button("Try again")).toBeUndefined();
+    expect(source.recorded).not.toHaveBeenCalled();
+  });
+
   it("names who can reveal it to someone without production access, and offers no press", async () => {
     source.person = { mayWrite: false } as HqProjectPeople;
     source.members = {

@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import type { AskState } from "../../ask/ask.logic";
 import type { ProposalDecision } from "./proposal.logic";
 import {
+  isRoleRefusal,
   revealAskState,
   revealersOf,
   revealPress,
@@ -138,6 +139,18 @@ describe("where a reveal finds its value", () => {
   });
 });
 
+describe("a refusal no retry fixes", () => {
+  it.each([
+    ["notAuthorized", true],
+    ["forbidden", true],
+    ["insufficientPermissions", true],
+    ["notInSudoMode", false],
+    [null, false],
+  ] as const)("%s is the person's role: %s", (code, role) => {
+    expect(isRoleRefusal(code)).toBe(role);
+  });
+});
+
 describe("the reveal's press", () => {
   it.each([
     ["production", "Reveal production value"],
@@ -245,15 +258,48 @@ describe("the reveal's card, from HQ's record and what happens on this screen", 
       { kind: "notNow", words: "Not now · Aleš, 15:34" },
     ],
     [
-      "refused, it says the source's words",
+      "failed for a reason a retry may fix, it says the source's words",
       {
-        phase: { kind: "failed", words: "Your role in this organization can't show secrets." },
+        phase: { kind: "failed", words: "Couldn't show it. Try again." },
         decision: undefined,
         by: null,
         at: null,
         authority: may,
       },
-      { kind: "failed", words: "Your role in this organization can't show secrets." },
+      { kind: "failed", words: "Couldn't show it. Try again." },
+    ],
+    [
+      "refused for the person's role, it is someone else's to reveal, naming who can",
+      {
+        phase: { kind: "refused", words: "Your role in this organization can't show secrets." },
+        decision: undefined,
+        by: null,
+        at: null,
+        authority: {
+          kind: "others",
+          rule: "Only people with production access can reveal this.",
+          names: ["Petr"],
+        },
+      },
+      {
+        kind: "othersToAnswer",
+        words: "Only people with production access can reveal this. Petr can.",
+      },
+    ],
+    [
+      "refused for the person's role with nobody known who can, it says the role's words",
+      {
+        phase: { kind: "refused", words: "Your role in this organization can't show secrets." },
+        decision: undefined,
+        by: null,
+        at: null,
+        authority: {
+          kind: "others",
+          rule: "Only people with production access can reveal this.",
+          names: [],
+        },
+      },
+      { kind: "othersToAnswer", words: "Your role in this organization can't show secrets." },
     ],
     [
       "someone else's to reveal, it names who can",

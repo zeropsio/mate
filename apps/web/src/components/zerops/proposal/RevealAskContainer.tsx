@@ -39,6 +39,7 @@ import { SUDO_REFUSAL, revealRefusalWords } from "../vault/vaultGroups.logic";
 import { VaultStepUp } from "../vault/VaultStepUp";
 import { RevealAskCard } from "./RevealAskCard";
 import {
+  isRoleRefusal,
   revealAskState,
   revealersOf,
   revealRecordOf,
@@ -102,7 +103,11 @@ export function RevealAsk({
     [home, proposal.projectId],
   );
   const targetPerson = useProjection(hqProjectPerson, target, UNKNOWN_PERSON);
-  const others = target !== null && targetPerson?.mayWrite === false ? target : null;
+  // Someone else's to reveal: HQ says the viewer may not work there, or Zerops refused their role.
+  const others =
+    target !== null && (targetPerson?.mayWrite === false || phase.kind === "refused")
+      ? target
+      : null;
   useDetailDemand("organizationMembers", undefined, others?.orgId ?? null);
   const members = useProjection(
     organizationMembers,
@@ -161,7 +166,9 @@ export function RevealAsk({
           setPhase(
             answer.code === SUDO_REFUSAL
               ? { kind: "confirming" }
-              : { kind: "failed", words: revealRefusalWords(answer.code) },
+              : isRoleRefusal(answer.code)
+                ? { kind: "refused", words: revealRefusalWords(answer.code) }
+                : { kind: "failed", words: revealRefusalWords(answer.code) },
           );
           return;
         }

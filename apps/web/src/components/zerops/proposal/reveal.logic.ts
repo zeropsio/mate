@@ -108,7 +108,22 @@ export type RevealPhase =
   | { readonly kind: "revealing" }
   | { readonly kind: "confirming" }
   | { readonly kind: "shown" }
-  | { readonly kind: "failed"; readonly words: string };
+  /** Refused for a reason a retry may fix: the source's words, and Try again. */
+  | { readonly kind: "failed"; readonly words: string }
+  /** Refused for the person's role, which no retry fixes: the source's words. */
+  | { readonly kind: "refused"; readonly words: string };
+
+/** The codes Zerops refuses a reveal with for the person's role: a retry changes nothing. */
+const ROLE_REFUSALS: ReadonlySet<string> = new Set([
+  "notAuthorized",
+  "forbidden",
+  "insufficientPermissions",
+]);
+
+/** Whether a refusal is the person's role, someone else's to reveal, rather than a failure. */
+export function isRoleRefusal(code: string | null): boolean {
+  return code !== null && ROLE_REFUSALS.has(code);
+}
 
 /** Whether the viewer may reveal it, or the rule and who may. */
 export type RevealAuthority =
@@ -141,6 +156,17 @@ export function revealAskState(input: {
       return { kind: "done", words: "Only on your screen · recorded at HQ", told: null };
     case "failed":
       return { kind: "failed", words: phase.words };
+    case "refused": {
+      // Who can, by name, where known; else the role's own words.
+      const { authority } = input;
+      return {
+        kind: "othersToAnswer",
+        words:
+          authority.kind === "others" && authority.names.length > 0
+            ? authorityWords(authority.rule, authority.names)
+            : phase.words,
+      };
+    }
     case "idle":
       break;
   }

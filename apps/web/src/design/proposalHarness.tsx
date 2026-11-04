@@ -328,9 +328,10 @@ const REVEALS: ReadonlyArray<{
   { name: "revealing", phase: { kind: "revealing" } },
   { name: "confirm", phase: { kind: "confirming" } },
   { name: "hidden", phase: { kind: "idle" }, decided: "revealed" },
+  { name: "failed", phase: { kind: "failed", words: "Couldn't show it. Try again." } },
   {
-    name: "failed",
-    phase: { kind: "failed", words: "Your role in this organization can't show secrets." },
+    name: "refused",
+    phase: { kind: "refused", words: "Your role in this organization can't show secrets." },
   },
   { name: "notNow", phase: { kind: "idle" }, decided: "notNow" },
   {
