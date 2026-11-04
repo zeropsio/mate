@@ -368,6 +368,15 @@ async function readPromptMessages(
   return messages;
 }
 
+/** A rollback fork has heard only the prompt its chat began with (no persona set). */
+const FORK_HOLDS_ITS_FIRST_PROMPT = {
+  instructions: instructionsMark(
+    `${buildRuntimeInstructions({ harness: "Claude Code" })}\n${personaInstructions(null)}`,
+  ),
+  startInstructions: instructionsMark(
+    `${buildRuntimeInstructions({ harness: "Claude Code" })}\n${personaInstructions(null)}`,
+  ),
+};
 const THREAD_ID = ThreadId.make("thread-claude-1");
 const RESUME_THREAD_ID = ThreadId.make("thread-claude-resume");
 const SYNTHETIC_SUBAGENT_MODEL = "claude-synthetic-subagent[expanded]";
@@ -9625,6 +9634,35 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
+  it.effect("a Claude chat restarted before its first message hears no needless reminder", () =>
+    Effect.gen(function* () {
+      const first = makeHarness();
+      const cursor = yield* Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        return (yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+        })).resumeCursor;
+      }).pipe(Effect.provide(first.layer));
+      const second = makeHarness();
+      yield* Effect.gen(function* () {
+        const adapter = yield* ClaudeAdapter;
+        yield* adapter.startSession({
+          threadId: THREAD_ID,
+          provider: ProviderDriverKind.make("claudeAgent"),
+          runtimeMode: "full-access",
+          resumeCursor: cursor,
+        });
+        yield* adapter.sendTurn({ threadId: THREAD_ID, input: "First", attachments: [] });
+        const [message] = yield* Effect.promise(() =>
+          readPromptMessages(second.getLastCreateQueryInput(), 1),
+        );
+        assert.deepEqual(messageTexts(message), ["First"]);
+      }).pipe(Effect.provide(second.layer));
+    }).pipe(Effect.provideService(Random.Random, makeDeterministicRandomService())),
+  );
+
   it.effect.each([
     {
       label: "a chat whose persona changed since it began",
@@ -9944,6 +9982,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: "550e8400-e29b-41d4-a716-446655440020",
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10069,6 +10108,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10128,6 +10168,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10193,6 +10234,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10334,6 +10376,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10395,6 +10438,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 1,
         turnStartMessageIds: [`fork-${firstTurnId}`],
       });
@@ -10472,6 +10516,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual((yield* adapter.listSessions())[0]?.resumeCursor, {
         threadId: session.threadId,
         resume: CLAUDE_FORK_SESSION_ID,
+        ...FORK_HOLDS_ITS_FIRST_PROMPT,
         turnCount: 2,
         turnStartMessageIds: [`fork-${firstTurnId}`, `fork-${secondTurnId}`],
       });

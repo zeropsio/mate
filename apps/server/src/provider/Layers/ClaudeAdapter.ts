@@ -509,6 +509,8 @@ interface ClaudeSessionContext {
   instructions: string | undefined;
   /** The mark of the system prompt it began with, which it holds again after compacting. */
   readonly startInstructions: string | undefined;
+  /** A crewmate's whole appended prompt, fixed at start: Mate's instructions and its crew context. */
+  readonly crewInstructions: string | undefined;
   readonly pendingApprovals: Map<ApprovalRequestId, PendingApproval>;
   readonly pendingUserInputs: Map<ApprovalRequestId, PendingUserInput>;
   /** Completed turn ids, reported by readThread and trimmed on rollback.
@@ -1727,6 +1729,11 @@ const SUPPORTED_CLAUDE_IMAGE_MIME_TYPES = new Set([
 ]);
 // Model and effort can change after this session-level prompt is set.
 const CLAUDE_INSTRUCTIONS = buildRuntimeInstructions({ harness: "Claude Code" });
+/** The text a preset system prompt appends, when it is one. */
+const presetAppend = (systemPrompt: ClaudeQueryOptions["systemPrompt"]) =>
+  typeof systemPrompt === "object" && !Array.isArray(systemPrompt) && "append" in systemPrompt
+    ? systemPrompt.append
+    : undefined;
 /** Mate's instructions for a session, with the persona unless it runs in a crew. */
 const claudeInstructions = (persona: string | undefined) =>
   persona === undefined ? CLAUDE_INSTRUCTIONS : `${CLAUDE_INSTRUCTIONS}\n${persona}`;
@@ -2320,12 +2327,12 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
   const spawner = yield* ChildProcessSpawner.ChildProcessSpawner;
   const threadRegistries = yield* readClaudeThreadRegistries;
   /**
-   * The instructions a session should hold now: a crewmate's carry no persona. Undefined when no
-   * persona was ever read, and the session keeps what it heard.
+   * The instructions a session should hold now: a crewmate's are its whole prompt from start,
+   * with no persona. Undefined when no persona was ever read, and the session keeps what it heard.
    */
-  const currentInstructions = (profiled: boolean) =>
-    profiled
-      ? Effect.succeed(CLAUDE_INSTRUCTIONS)
+  const currentInstructions = (crewInstructions: string | undefined) =>
+    crewInstructions !== undefined
+      ? Effect.succeed(crewInstructions)
       : readPersona.pipe(
           Effect.map((persona) =>
             persona === undefined ? undefined : claudeInstructions(persona),
@@ -5674,7 +5681,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
       ];
       const stderrTail = makeStderrTail();
       const startInstructions =
-        (yield* currentInstructions(threadSetup !== undefined)) ?? CLAUDE_INSTRUCTIONS;
+        threadSetup === undefined
+          ? ((yield* currentInstructions(undefined)) ?? CLAUDE_INSTRUCTIONS)
+          : CLAUDE_INSTRUCTIONS;
       const baseQueryOptions: ClaudeQueryOptions = {
         ...(input.cwd ? { cwd: input.cwd } : {}),
         // Kept for the log: why the stream died, when it dies.
@@ -5737,6 +5746,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ),
           )
         : baseQueryOptions;
+      // What the session holds: a crewmate's profile appends its crew context.
+      const appended = presetAppend(queryOptions.systemPrompt) ?? startInstructions;
+      const freshMark = instructionsMark(appended);
+      const heardMark =
+        existingResumeSessionId === undefined ? freshMark : resumeState?.instructions;
+      const startMark =
+        existingResumeSessionId === undefined ? freshMark : resumeState?.startInstructions;
 
       yield* Effect.annotateCurrentSpan({
         "provider.kind": PROVIDER,
@@ -5830,6 +5846,8 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
             ...(resumeState?.turnStartMessageIds
               ? { turnStartMessageIds: resumeState.turnStartMessageIds }
               : {}),
+            ...(heardMark ? { instructions: heardMark } : {}),
+            ...(startMark ? { startInstructions: startMark } : {}),
           },
           createdAt: startedAt,
           updatedAt: startedAt,
@@ -5852,14 +5870,9 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
           currentApiModelId: apiModelId,
           currentEffort: effectiveEffort ?? undefined,
           resumeSessionId: sessionId,
-          instructions:
-            existingResumeSessionId === undefined
-              ? instructionsMark(startInstructions)
-              : resumeState?.instructions,
-          startInstructions:
-            existingResumeSessionId === undefined
-              ? instructionsMark(startInstructions)
-              : resumeState?.startInstructions,
+          instructions: heardMark,
+          startInstructions: startMark,
+          crewInstructions: threadSetup === undefined ? undefined : appended,
           pendingApprovals,
           pendingUserInputs,
           turns: [],
@@ -6095,7 +6108,7 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
     );
     // Instructions changed since the session last heard them (a persona switched, a resume or a
     // compaction): its next message leads with the current ones.
-    const instructions = yield* currentInstructions(context.profiled);
+    const instructions = yield* currentInstructions(context.crewInstructions);
     const heard = instructions === undefined ? undefined : instructionsMark(instructions);
     const preface =
       instructions === undefined || context.instructions === heard
@@ -6400,6 +6413,13 @@ export const makeClaudeAdapter = Effect.fn("makeClaudeAdapter")(function* (
               resume: fork.sessionId,
               turnCount: retainedCount,
               turnStartMessageIds: retainedBoundaries,
+              // A reminder may sit in a trimmed turn: the fork has heard only its first prompt.
+              ...(context.startInstructions
+                ? {
+                    instructions: context.startInstructions,
+                    startInstructions: context.startInstructions,
+                  }
+                : {}),
             }
           : undefined,
       });
