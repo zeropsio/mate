@@ -248,6 +248,7 @@ describe("a New project's first Mate, before its project exists", () => {
     };
     shared.births = [birth];
     openView();
+    expect(kind()).toBe("failed");
     expect(said()).toContain("Creating project · Quota reached.");
     expect(said()).not.toContain("unreachable");
     act(() => button("Continue")!.props.onClick());

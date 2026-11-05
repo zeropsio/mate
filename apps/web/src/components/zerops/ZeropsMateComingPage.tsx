@@ -235,7 +235,7 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
     <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
       <MateEmptyStateView
         coming={{
-          kind: "coming",
+          kind: presentation.attention ? "failed" : "coming",
           headline: mate.name,
           sentence: presentation.line,
           severity: presentation.attention ? "attention" : "info",
