@@ -99,6 +99,7 @@ export const PERSONA_WORDS = {
   ownWay: (mate: MateName) => `${mateLeads(mate)} works and talks its own way.`,
   update: (mate: MateName) => `Update ${mateIn(mate)} to give it a persona.`,
   fromZerops: "From Zerops",
+  zeropsTemplates: "Zerops templates",
   fromZeropsTemplate: (name: string) => `From Zerops: ${name}`,
   orgTemplates: (org: string | null) =>
     org === null ? "Your organization's templates" : `${org}'s templates`,
@@ -107,7 +108,7 @@ export const PERSONA_WORDS = {
   writtenFor: (mate: MateName) => `Written for ${mateIn(mate)}`,
   useFor: (mate: MateName) => `Use for ${mateIn(mate)}`,
   save: "Save",
-  noTemplates: "No templates yet.",
+  noTemplates: "No templates yet",
   orgUnavailable: "Not available here.",
   orgStale: (failure: string) => `This list may be out of date: ${failure}`,
   orgFailed: (org: string | null, cause: string) =>
@@ -164,7 +165,7 @@ export function personaPage(input: PersonaPageInput): PersonaPageModel {
   const groups: PersonaTemplateGroup[] = [
     {
       source: "premade",
-      title: PERSONA_WORDS.fromZerops,
+      title: PERSONA_WORDS.zeropsTemplates,
       rows: rowsOf("premade", input.premade),
       note: null,
     },

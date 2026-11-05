@@ -265,7 +265,7 @@ export function McpPanelBody(props: {
   return (
     <ScrollArea className="h-full">
       <div
-        className="mx-auto flex min-h-full w-full max-w-3xl flex-col gap-6 px-4 pt-3 pb-8"
+        className="flex min-h-full w-full max-w-3xl flex-col gap-6 px-4 pt-3 pb-8"
         data-mcp-panel
       >
         {/* The spinner's place beside the head's action is kept: its coming and going moves nothing. */}

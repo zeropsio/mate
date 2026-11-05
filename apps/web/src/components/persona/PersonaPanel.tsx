@@ -21,6 +21,7 @@ import {
   ArrowLeftIcon,
   Building2Icon,
   DramaIcon,
+  EllipsisIcon,
   GraduationCapIcon,
   MessagesSquareIcon,
   PaletteIcon,
@@ -49,10 +50,15 @@ import { useOrgPersonaTemplates, usePersonaTemplateWriter } from "~/zerops/usePe
 import { RightPanelPageEdge } from "~/components/RightPanelPage";
 import { ZeropsMateUpdateControl } from "~/components/zerops/ZeropsMateUpdateControl";
 
+import { Badge } from "../ui/badge";
 import { Button, InlineButton } from "../ui/button";
+import { Card } from "../ui/card";
 import { Input } from "../ui/input";
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import { Row } from "../ui/row";
 import { ScrollArea } from "../ui/scroll-area";
-import { Section } from "../ui/section";
+import { SectionHeader } from "../ui/section";
+import { Skeleton } from "../ui/skeleton";
 import { Spinner } from "../ui/spinner";
 import { Textarea } from "../ui/textarea";
 import {
@@ -74,16 +80,19 @@ import {
   type PersonaEditorOpening,
   type PersonaEditorStart,
   type PersonaDraftErrors,
+  type PersonaGroupNote,
   type PersonaPageModel,
+  type PersonaSummary,
   type PersonaTemplateRow,
 } from "./PersonaPanel.logic";
 
 export const PERSONA_PAGE_WORDS = {
   none: "No persona",
-  noneLine: (mate: MateName) =>
-    `${mateLeads(mate)} works its own way. Start from a template, or write your own.`,
+  noneLine: (mate: MateName) => `${mateLeads(mate)} works its own way.`,
   edit: "Edit",
+  more: (name: string) => `More for ${name}`,
   remove: "Remove",
+  removePersona: "Remove persona",
   removeAsk: (name: string, mate: MateName) =>
     `Remove ${name}? ${mateLeads(mate)} goes back to its own way.`,
   keep: "Keep",
@@ -95,9 +104,15 @@ export const PERSONA_PAGE_WORDS = {
   newerLine: "The template's newer version. Change it if you like before you use it.",
   inUseMark: "In use",
   writeOwn: "Write your own",
-  writeOwnLine: "Start from an empty page, in your words.",
   back: "Back",
-  manage: "Manage",
+  manage: "Manage templates",
+  noOrgTemplatesLine: (org: string | null, mayWrite: boolean) => {
+    const whose = org ?? "your organization";
+    // The name stays mid-sentence: "Mate s.r.o." ends in its own full stop.
+    return mayWrite
+      ? `Every Mate in ${whose} can start from the templates you add.`
+      : `Owners and Admins of ${whose} add templates for every Mate.`;
+  },
   name: "Name",
   instructions: "Instructions",
   namePlaceholder: "e.g. Terse",
@@ -108,6 +123,8 @@ export const PERSONA_PAGE_WORDS = {
   cancel: "Cancel",
   saveAsOrg: (org: string | null) =>
     org === null ? "Save as your organization's template" : `Save as ${org}'s template`,
+  savingAsOrg: (org: string | null) =>
+    org === null ? "Saving to your organization's templates…" : `Saving to ${org}'s templates…`,
   savedAsOrg: (org: string | null) =>
     org === null ? "Saved to your organization's templates." : `Saved to ${org}'s templates.`,
   tryAgain: "Try again",
@@ -428,7 +445,7 @@ export function PersonaPanelBody(props: {
   if (model.kind !== "ready") {
     return (
       <ScrollArea className="h-full">
-        <div className="mx-auto flex w-full max-w-3xl flex-col px-4 pt-3 pb-8" data-persona-panel>
+        <div className="flex w-full max-w-3xl flex-col px-4 pt-3 pb-8" data-persona-panel>
           <RightPanelPageEdge>
             <span className="flex size-4 items-center justify-center">
               {model.kind === "loading" ? <Spinner size="sm" tone="muted" /> : null}
@@ -449,8 +466,9 @@ export function PersonaPanelBody(props: {
   const motion = moved ? "animate-rise-in motion-reduce:animate-run-fade" : undefined;
   return (
     <ScrollArea className="h-full">
+      {/* Starts where the page's head does, however wide the panel is. */}
       <div
-        className="@container mx-auto flex w-full max-w-3xl flex-col px-4 pt-3 pb-8"
+        className="flex w-full max-w-3xl flex-col px-4 pt-3 pb-8"
         data-persona-panel
         ref={rootRef}
       >
@@ -487,6 +505,7 @@ export function PersonaPanelBody(props: {
               onNewer={() => open({ kind: "newer" })}
               onRemove={() => void writing("remove", null)}
               onSaveAsOrg={props.onSaveAsOrg}
+              onWriteOwn={() => open({ kind: "blank" }, WRITE_OWN_KEY)}
               orgName={props.orgName}
               orgSave={props.orgSave}
               pending={pending}
@@ -494,73 +513,40 @@ export function PersonaPanelBody(props: {
               removeFailure={failureAt("remove")}
             />
             {model.groups.map((group) => (
-              <Section
-                action={
-                  group.source === "org" && props.onManageTemplates !== undefined ? (
-                    <Button onClick={props.onManageTemplates} size="sm" variant="ghost">
-                      {PERSONA_PAGE_WORDS.manage}
-                    </Button>
-                  ) : null
-                }
+              <section
+                className="flex flex-col gap-2"
                 data-persona-group={group.source}
                 key={group.source}
-                level={3}
-                title={group.title}
               >
-                {group.note === null ? null : group.note.kind === "loading" ? (
-                  <span className="flex h-5 items-center">
-                    <Spinner size="sm" tone="muted" />
-                  </span>
-                ) : (
+                <SectionHeader
+                  action={
+                    group.source === "org" && props.onManageTemplates !== undefined ? (
+                      <Button onClick={props.onManageTemplates} size="sm" variant="ghost">
+                        {PERSONA_PAGE_WORDS.manage}
+                      </Button>
+                    ) : null
+                  }
+                  level={3}
+                  title={group.title}
+                />
+                <TemplateList
+                  disabled={pending !== null}
+                  mayWrite={props.onManageTemplates !== undefined}
+                  note={group.note}
+                  onOpen={(row) => open({ kind: "template", row }, row.key)}
+                  onReadAgain={props.onReadOrgAgain}
+                  orgName={props.orgName}
+                  rows={group.rows}
+                />
+                {group.note?.kind === "stale" ? (
                   <p
-                    className={cn(
-                      "text-xs leading-4.5",
-                      group.note.kind === "failed"
-                        ? "text-destructive-foreground"
-                        : "text-muted-foreground",
-                    )}
-                    data-persona-group-note={group.note.kind}
-                    role={group.note.kind === "failed" ? "alert" : undefined}
+                    className="text-xs leading-4.5 text-muted-foreground"
+                    data-persona-group-note="stale"
                   >
                     {group.note.text}
-                    {group.note.kind === "failed" ? (
-                      <>
-                        {" "}
-                        <InlineButton onClick={props.onReadOrgAgain} tone="muted">
-                          {PERSONA_PAGE_WORDS.readAgain}
-                        </InlineButton>
-                      </>
-                    ) : null}
                   </p>
-                )}
-                {group.rows.length === 0 && group.source !== "premade" ? null : (
-                  <ul className="grid grid-cols-1 gap-2 @md:grid-cols-2">
-                    {group.rows.map((row) => (
-                      <li className="flex" key={row.key}>
-                        <TemplateTile
-                          disabled={pending !== null}
-                          onOpen={() => open({ kind: "template", row }, row.key)}
-                          row={row}
-                        />
-                      </li>
-                    ))}
-                    {/* Writing one's own closes the first grid, beside the templates it is the alternative to. */}
-                    {group.source === "premade" ? (
-                      <li className="flex">
-                        <Tile
-                          dashed
-                          disabled={pending !== null}
-                          icon={PenLineIcon}
-                          line={PERSONA_PAGE_WORDS.writeOwnLine}
-                          onOpen={() => open({ kind: "blank" }, WRITE_OWN_KEY)}
-                          tileKey={WRITE_OWN_KEY}
-                          title={PERSONA_PAGE_WORDS.writeOwn}
-                        />
-                      </li>
-                    ) : null}
-                  </ul>
-                )}
-              </Section>
+                ) : null}
+              </section>
             ))}
           </div>
         )}
@@ -580,20 +566,20 @@ function FailureLine(props: { readonly message: string; readonly onRetry: () => 
   );
 }
 
-/** A persona's or a template's mark, in the tile every persona on the page leads with. */
+/** A persona's or a template's mark: the lead of its row, quiet where nothing is chosen. */
 function PersonaMark(props: { readonly icon: LucideIcon; readonly quiet?: boolean | undefined }) {
   const Icon = props.icon;
   return (
-    <span
-      className={cn(
-        "flex size-9 shrink-0 items-center justify-center rounded-lg bg-muted",
-        props.quiet ? "text-muted-foreground" : "text-foreground",
-      )}
-    >
-      <Icon aria-hidden="true" className="size-4.5" />
-    </span>
+    <Icon
+      aria-hidden="true"
+      className={cn("size-4.5", props.quiet ? "text-muted-foreground" : "text-foreground")}
+    />
   );
 }
+
+/** A line under the persona's text, past a hairline, where the words start. */
+const STRIP_CLASS =
+  "flex min-h-11 flex-wrap items-center gap-x-3 gap-y-1 border-t border-border py-2 ps-11 pe-3 text-xs leading-4.5";
 
 function CurrentPersona(props: {
   readonly mate: MateName;
@@ -607,90 +593,151 @@ function CurrentPersona(props: {
   readonly onNewer: () => void;
   readonly onRemove: () => void;
   readonly onSaveAsOrg: () => void;
+  readonly onWriteOwn: () => void;
 }) {
-  const { mate, persona, pending, orgSave } = props;
+  const { mate, persona, pending } = props;
   const summary = props.model.persona;
   if (summary === null || persona === null)
     return (
-      <section
-        className="flex items-start gap-3 rounded-xl border border-dashed border-border p-3"
-        data-persona-none
-      >
-        <PersonaMark icon={DramaIcon} quiet />
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <span className="font-medium text-sm leading-5">{PERSONA_PAGE_WORDS.none}</span>
-          <span className="text-xs leading-4.5 text-muted-foreground">
-            {PERSONA_PAGE_WORDS.noneLine(mate)}
-          </span>
-        </span>
-      </section>
-    );
-  return (
-    <div className="flex flex-col gap-2">
-      <section
-        className="flex flex-col gap-3 rounded-xl border border-border bg-card p-3 shadow-xs/5"
-        data-persona-current
-      >
-        <div className="flex min-w-0 items-start gap-3">
-          <PersonaMark icon={personaIcon(persona.template)} />
-          <span className="flex min-w-0 flex-col gap-0.5">
-            <span className="truncate font-medium text-sm leading-5">{summary.name}</span>
-            <span
-              className="truncate text-xs leading-4.5 text-muted-foreground"
-              data-persona-origin
-            >
-              {summary.origin}
-            </span>
-          </span>
-        </div>
-        <FoldedText key={summary.instructions} text={summary.instructions} />
-        {summary.newer === null ? null : (
-          <div className="flex min-h-7 flex-wrap items-center gap-2" data-persona-newer>
-            <span className="text-xs">{PERSONA_PAGE_WORDS.newer(summary.newer.template.name)}</span>
+      <Card data-persona-none variant="flat">
+        <Row
+          control={
             <Button
+              data-persona-template={WRITE_OWN_KEY}
               disabled={pending !== null}
-              onClick={props.onNewer}
+              onClick={props.onWriteOwn}
               size="sm"
               variant="secondary"
             >
+              <PenLineIcon aria-hidden="true" />
+              {PERSONA_PAGE_WORDS.writeOwn}
+            </Button>
+          }
+          lead={<PersonaMark icon={DramaIcon} quiet />}
+          line={PERSONA_PAGE_WORDS.noneLine(mate)}
+          size="sm"
+          title={PERSONA_PAGE_WORDS.none}
+        />
+      </Card>
+    );
+  return <PersonaCard {...props} persona={persona} summary={summary} />;
+}
+
+/** The persona the Mate follows: its name and source, its text, and what can be done with it. */
+function PersonaCard(props: {
+  readonly mate: MateName;
+  readonly persona: MatePersona;
+  readonly summary: PersonaSummary;
+  readonly pending: PersonaAction | null;
+  readonly orgName: string | null;
+  readonly orgSave: OrgSaveView;
+  readonly removeFailure: ReactNode;
+  readonly onEdit: () => void;
+  readonly onNewer: () => void;
+  readonly onRemove: () => void;
+  readonly onSaveAsOrg: () => void;
+}) {
+  const { mate, persona, summary, pending, orgSave } = props;
+  // Removing is its own decision: the menu asks, the strip under the text removes.
+  const [armed, setArmed] = useState(false);
+  const busy = pending !== null;
+  return (
+    <div className="flex flex-col gap-2">
+      <Card data-persona-current variant="flat">
+        <Row
+          control={
+            <span className="flex items-center gap-1" data-persona-actions>
+              <Button disabled={busy} onClick={props.onEdit} size="sm" variant="secondary">
+                {PERSONA_PAGE_WORDS.edit}
+              </Button>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      aria-label={PERSONA_PAGE_WORDS.more(summary.name)}
+                      disabled={busy}
+                      size="icon-sm"
+                      variant="ghost"
+                    />
+                  }
+                >
+                  <EllipsisIcon aria-hidden="true" />
+                </MenuTrigger>
+                <MenuPopup align="end">
+                  {summary.saveAsOrg ? (
+                    <MenuItem
+                      disabled={orgSave.stage === "pending" || orgSave.stage === "saved"}
+                      onClick={props.onSaveAsOrg}
+                    >
+                      {PERSONA_PAGE_WORDS.saveAsOrg(props.orgName)}
+                    </MenuItem>
+                  ) : null}
+                  <MenuItem onClick={() => setArmed(true)} variant="destructive">
+                    {PERSONA_PAGE_WORDS.removePersona}
+                  </MenuItem>
+                </MenuPopup>
+              </Menu>
+            </span>
+          }
+          lead={<PersonaMark icon={personaIcon(persona.template)} />}
+          line={<span data-persona-origin>{summary.origin}</span>}
+          size="sm"
+          title={summary.name}
+        />
+        <div className="ps-11 pe-3 pb-3">
+          <FoldedText key={summary.instructions} text={summary.instructions} />
+        </div>
+        {summary.newer === null ? null : (
+          <div className={STRIP_CLASS} data-persona-newer>
+            <span className="min-w-0 flex-1">
+              {PERSONA_PAGE_WORDS.newer(summary.newer.template.name)}
+            </span>
+            <Button disabled={busy} onClick={props.onNewer} size="sm" variant="secondary">
               {PERSONA_PAGE_WORDS.seeNewer}
             </Button>
           </div>
         )}
-        <PersonaActions
-          mate={mate}
-          name={summary.name}
-          onEdit={props.onEdit}
-          onRemove={props.onRemove}
-          pending={pending}
-          saveAsOrg={
-            !summary.saveAsOrg ? null : orgSave.stage === "saved" ? (
-              <span className="text-xs text-muted-foreground" role="status">
+        {armed ? (
+          <div className={STRIP_CLASS} data-persona-remove>
+            <span className="min-w-0 flex-1">
+              {PERSONA_PAGE_WORDS.removeAsk(summary.name, mate)}
+            </span>
+            <span className="flex items-center gap-1">
+              <Button disabled={busy} onClick={props.onRemove} size="sm" variant="destructive">
+                {pending === "remove" ? <Spinner size="xs" /> : null}
+                {PERSONA_PAGE_WORDS.remove}
+              </Button>
+              <Button disabled={busy} onClick={() => setArmed(false)} size="sm" variant="ghost">
+                {PERSONA_PAGE_WORDS.keep}
+              </Button>
+            </span>
+          </div>
+        ) : null}
+        {props.removeFailure === null ? null : (
+          <div className={STRIP_CLASS}>{props.removeFailure}</div>
+        )}
+        {orgSave.stage === "idle" ? null : (
+          <div className={STRIP_CLASS} data-persona-org-save={orgSave.stage}>
+            {orgSave.stage === "pending" ? (
+              <span className="flex items-center gap-2 text-muted-foreground" role="status">
+                <Spinner size="xs" tone="muted" />
+                {PERSONA_PAGE_WORDS.savingAsOrg(props.orgName)}
+              </span>
+            ) : orgSave.stage === "saved" ? (
+              <span className="text-muted-foreground" role="status">
                 {PERSONA_PAGE_WORDS.savedAsOrg(props.orgName)}
               </span>
-            ) : (
-              <Button
-                disabled={pending !== null || orgSave.stage === "pending"}
-                onClick={props.onSaveAsOrg}
-                size="sm"
-                variant="ghost"
-              >
-                {orgSave.stage === "pending" ? <Spinner size="xs" /> : null}
-                {PERSONA_PAGE_WORDS.saveAsOrg(props.orgName)}
-              </Button>
-            )
-          }
-        />
-        {props.removeFailure}
-        {orgSave.stage === "failed" ? (
-          <FailureLine message={orgSave.message} onRetry={orgSave.retry} />
-        ) : orgSave.stage === "unconfirmed" ? (
-          // It may have been saved: nothing offers to send it again.
-          <p className="text-xs leading-4.5 text-muted-foreground" role="status">
-            {orgSave.message}
-          </p>
-        ) : null}
-      </section>
+            ) : orgSave.stage === "failed" ? (
+              <FailureLine message={orgSave.message} onRetry={orgSave.retry} />
+            ) : orgSave.stage === "unconfirmed" ? (
+              // It may have been saved: nothing offers to send it again.
+              <span className="text-muted-foreground" role="status">
+                {orgSave.message}
+              </span>
+            ) : null}
+          </div>
+        )}
+      </Card>
       <p className="text-xs leading-4.5 text-muted-foreground">
         {PERSONA_PAGE_WORDS.appliesNext(mate)}
       </p>
@@ -734,131 +781,108 @@ function FoldedText(props: { readonly text: string }) {
   );
 }
 
-function PersonaActions(props: {
-  readonly mate: MateName;
-  readonly name: string;
-  readonly pending: PersonaAction | null;
-  readonly onEdit: () => void;
-  readonly onRemove: () => void;
-  /** Owners' and Admins' Save as the organization's template, last in the row. */
-  readonly saveAsOrg: ReactNode;
+/** The press that opens the editor on nothing: written by hand. */
+const WRITE_OWN_KEY = "write-own";
+
+/**
+ * A group's templates as rows in one card, or what stands in their place: a placeholder row while
+ * they load, a row saying there are none, or why they couldn't be read.
+ */
+function TemplateList(props: {
+  readonly rows: readonly PersonaTemplateRow[];
+  readonly note: PersonaGroupNote | null;
+  readonly orgName: string | null;
+  /** Owners and Admins add the organization's templates; members are told who does. */
+  readonly mayWrite: boolean;
+  readonly disabled: boolean;
+  readonly onOpen: (row: PersonaTemplateRow) => void;
+  readonly onReadAgain: () => void;
 }) {
-  // Removing is its own decision: the first press asks, the second removes.
-  const [armed, setArmed] = useState(false);
-  if (armed)
-    return (
-      <div className="flex min-h-7 flex-wrap items-center gap-2" data-persona-actions>
-        <span className="text-xs">{PERSONA_PAGE_WORDS.removeAsk(props.name, props.mate)}</span>
-        <Button
-          disabled={props.pending !== null}
-          onClick={props.onRemove}
-          size="sm"
-          variant="destructive"
-        >
-          {props.pending === "remove" ? <Spinner size="xs" /> : null}
-          {PERSONA_PAGE_WORDS.remove}
-        </Button>
-        <Button
-          disabled={props.pending !== null}
-          onClick={() => setArmed(false)}
-          size="sm"
-          variant="ghost"
-        >
-          {PERSONA_PAGE_WORDS.keep}
-        </Button>
-      </div>
-    );
+  const { note } = props;
   return (
-    <div className="flex min-h-7 flex-wrap items-center gap-2" data-persona-actions>
-      <Button
-        disabled={props.pending !== null}
-        onClick={props.onEdit}
-        size="sm"
-        variant="secondary"
-      >
-        {PERSONA_PAGE_WORDS.edit}
-      </Button>
-      <Button
-        disabled={props.pending !== null}
-        onClick={() => setArmed(true)}
-        size="sm"
-        variant="ghost"
-      >
-        {PERSONA_PAGE_WORDS.remove}
-      </Button>
-      {props.saveAsOrg}
-    </div>
+    <Card variant="flat">
+      {note?.kind === "loading" ? (
+        <div
+          aria-busy="true"
+          className="flex min-h-14 gap-3 px-3 py-2.5"
+          data-persona-group-note="loading"
+        >
+          <Skeleton className="size-5" />
+          <span className="flex flex-1 flex-col gap-1.5 py-0.5">
+            <Skeleton className="h-4 w-28" />
+            <Skeleton className="h-3 w-56 max-w-full" />
+          </span>
+        </div>
+      ) : note?.kind === "empty" ? (
+        <Row
+          data-persona-group-note="empty"
+          lead={<PersonaMark icon={Building2Icon} quiet />}
+          line={PERSONA_PAGE_WORDS.noOrgTemplatesLine(props.orgName, props.mayWrite)}
+          lineWraps
+          size="sm"
+          title={note.text}
+        />
+      ) : note?.kind === "unavailable" || note?.kind === "failed" ? (
+        <div className="flex gap-3 px-3 py-3" data-persona-group-note={note.kind}>
+          <span className="flex size-5 shrink-0 items-center justify-center">
+            <PersonaMark icon={Building2Icon} quiet />
+          </span>
+          <p
+            className={cn(
+              "min-w-0 text-xs leading-5",
+              note.kind === "failed" ? "text-destructive-foreground" : "text-muted-foreground",
+            )}
+            role={note.kind === "failed" ? "alert" : undefined}
+          >
+            {note.text}
+            {note.kind === "failed" ? (
+              <>
+                {" "}
+                <InlineButton onClick={props.onReadAgain} tone="muted">
+                  {PERSONA_PAGE_WORDS.readAgain}
+                </InlineButton>
+              </>
+            ) : null}
+          </p>
+        </div>
+      ) : (
+        <ul className="flex flex-col">
+          {props.rows.map((row) => (
+            <li key={row.key}>
+              <TemplateRow disabled={props.disabled} onOpen={() => props.onOpen(row)} row={row} />
+            </li>
+          ))}
+        </ul>
+      )}
+    </Card>
   );
 }
 
-/** The tile that opens the editor on nothing: written by hand. */
-const WRITE_OWN_KEY = "write-own";
-
 /** A template to start from: pressing it opens the editor on its text. */
-function TemplateTile(props: {
+function TemplateRow(props: {
   readonly row: PersonaTemplateRow;
   readonly disabled: boolean;
   readonly onOpen: () => void;
 }) {
   const { row } = props;
   return (
-    <Tile
-      current={row.current}
-      disabled={props.disabled}
-      icon={personaIcon({ source: row.source, id: row.template.id, revision: 0 })}
-      line={row.template.description}
-      onOpen={props.onOpen}
-      tileKey={row.key}
+    <Row
+      aria-current={row.current === null ? undefined : "true"}
+      aria-disabled={props.disabled || undefined}
+      badges={row.current === null ? null : <Badge>{PERSONA_PAGE_WORDS.inUseMark}</Badge>}
+      data-persona-current={row.current ?? undefined}
+      data-persona-template={row.key}
+      lead={
+        <PersonaMark icon={personaIcon({ source: row.source, id: row.template.id, revision: 0 })} />
+      }
+      line={row.template.description === "" ? null : row.template.description}
+      lineWraps
+      onClick={props.onOpen}
+      pressable
+      render={<button disabled={props.disabled} type="button" />}
+      size="sm"
       title={row.template.name}
     />
-  );
-}
-
-function Tile(props: {
-  readonly tileKey: string;
-  readonly icon: LucideIcon;
-  readonly title: string;
-  readonly line: string;
-  /** The persona came from this template (`PersonaTemplateRow.current`). */
-  readonly current?: PersonaTemplateRow["current"];
-  /** An action rather than a template: drawn as a place to start. */
-  readonly dashed?: boolean;
-  readonly disabled: boolean;
-  readonly onOpen: () => void;
-}) {
-  const current = props.current ?? null;
-  return (
-    <button
-      aria-current={current === null ? undefined : "true"}
-      className={cn(
-        "flex w-full min-w-0 items-start gap-3 rounded-xl border p-3 text-left outline-none transition-colors hover:bg-accent/60 focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-64",
-        props.dashed
-          ? "border-dashed border-border"
-          : current === null
-            ? "border-border bg-card shadow-xs/5"
-            : "border-primary/48 bg-card shadow-xs/5",
-      )}
-      data-persona-current={current ?? undefined}
-      data-persona-template={props.tileKey}
-      disabled={props.disabled}
-      onClick={props.onOpen}
-      type="button"
-    >
-      <PersonaMark icon={props.icon} quiet={props.dashed} />
-      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-        <span className="flex h-5 min-w-0 items-center gap-2">
-          <span className="min-w-0 shrink truncate font-medium text-sm">{props.title}</span>
-          {current === null ? null : (
-            <span className="shrink-0 text-xs text-primary">{PERSONA_PAGE_WORDS.inUseMark}</span>
-          )}
-        </span>
-        {props.line === "" ? null : (
-          <span className="line-clamp-3 text-xs leading-4.5 text-muted-foreground">
-            {props.line}
-          </span>
-        )}
-      </span>
-    </button>
   );
 }
 
@@ -899,7 +923,9 @@ function EditorHead(props: {
             };
   return (
     <div className="flex min-w-0 items-start gap-3" data-persona-editor-head>
-      <PersonaMark icon={head.icon} />
+      <span className="flex size-5 shrink-0 items-center justify-center">
+        <PersonaMark icon={head.icon} />
+      </span>
       <span className="flex min-w-0 flex-col gap-0.5">
         <span className="truncate font-medium text-sm leading-5">{head.title}</span>
         <span className="text-xs leading-4.5 text-muted-foreground">{head.line}</span>
