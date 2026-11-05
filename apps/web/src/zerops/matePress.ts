@@ -1003,12 +1003,13 @@ async function pressRun(
       // Followed by its import's own process from now on, in any browser.
       onContainerImported: async ({ processId }) => {
         if (processId !== undefined) {
-          const recorded = await input.hold?.imported(processId).catch((cause: unknown) => {
-            if (input.birth !== undefined) throw cause;
+          if (input.birth !== undefined) {
+            const recorded = await input.hold?.imported(processId);
+            if (recorded !== "recorded") throw new Error("HQ did not confirm the import receipt.");
+          } else {
             // Ordinary presses continue when HQ does not answer their hold.
-          });
-          if (input.birth !== undefined && recorded !== "recorded")
-            throw new Error("HQ did not confirm the import receipt.");
+            await input.hold?.imported(processId).catch(() => undefined);
+          }
         }
       },
       onProgress: (progress) => {
