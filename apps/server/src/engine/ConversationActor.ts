@@ -144,7 +144,7 @@ export const makeOwnerActor = Effect.fn("makeOwnerActor")(function* <
       }
       if (afterCommit !== undefined) yield* afterCommit(committed.events, committed.state);
     }
-    if (committed.enqueued) yield* signals.effects.ring;
+    if (committed.outboxChanged) yield* signals.effects.ring;
     if (committed.wakesChanged) yield* signals.wakes.ring;
     return committed.result;
   });
