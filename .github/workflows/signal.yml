@@ -126,7 +126,8 @@ jobs:
     name: Test Web Scenarios (${{ matrix.name }})
     needs: chat_bundle
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    # Derived from the execution budget at the top of ci.yml.
+    timeout-minutes: 14
     strategy:
       fail-fast: false
       matrix:
@@ -254,9 +255,10 @@ jobs:
         run: vp run test:browser
 
       - name: Record this shard's test evidence
+        timeout-minutes: 11
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
-        run: ${{ matrix.command }}
+        run: timeout --signal=TERM --kill-after=10s 10m ${{ matrix.command }}
 
       - name: Upload shard evidence
         if: always()
@@ -266,6 +268,8 @@ jobs:
           path: |
             signal-reports/${{ matrix.report }}.json
             signal-reports/${{ matrix.report }}.json.progress.jsonl
+            signal-reports/${{ matrix.report }}.json.vitest.json
+            signal-reports/${{ matrix.report }}.json.errors.json
           if-no-files-found: error
           retention-days: 7
 
@@ -274,7 +278,8 @@ jobs:
     needs: [chat_bundle, chat_scenarios]
     if: ${{ !cancelled() && needs.chat_bundle.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Derived from ci.yml: 3 min setup/artifacts + 11 min bounded step.
+    timeout-minutes: 14
     steps:
       - *require_hq_key
 
@@ -355,10 +360,13 @@ jobs:
           fi
 
       - name: Rerun only failed tests once on this commit and classify
+        timeout-minutes: 11
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
           MATE_SIGNAL_PREVIOUS: signal-previous/signal-failures.json
-        run: node scripts/signal.ts classify
+        # GNU timeout owns the foreground command group, including vp and its workers.
+        # TERM is followed by KILL after 10 s even if a child ignores cancellation.
+        run: timeout --signal=TERM --kill-after=10s 10m node scripts/signal.ts classify
 
       - name: Require the workflow infrastructure to succeed
         # After classification, so a shard the job guard killed still has its running case named.
