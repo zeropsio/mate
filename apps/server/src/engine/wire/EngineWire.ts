@@ -72,7 +72,15 @@ import { LiveBus, type LiveFrame } from "../LiveBus.ts";
 import { conversationRowOf } from "../read/conversationRow.ts";
 import { runStatusOf } from "../read/runState.ts";
 import { readConversationView, type ConversationView } from "../read/conversationView.ts";
-import { bytesOf, changesFrames, fitRecords, frameSizer, liveFrames, sliceUtf8 } from "./budget.ts";
+import {
+  bytesOf,
+  changesFrames,
+  fitItem,
+  fitRecords,
+  frameSizer,
+  liveFrames,
+  sliceUtf8,
+} from "./budget.ts";
 import { makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
 
@@ -346,7 +354,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             window: window.window,
           };
           let bytes = sizer.bytesOf(frame);
-          if (bytes <= snapshotBytes) return frame;
+          if (bytes <= snapshotBytes) return { frame, bytes, wholes: window.wholes };
           if (count > 1) {
             count -= 1;
             continue;
@@ -361,18 +369,36 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             bytes -= sizer.listed(items[index]!, items.length);
             items.splice(index, 1);
           }
-          return { ...frame, items };
+          return { frame: { ...frame, items }, bytes, wholes: window.wholes };
         }
       });
 
     type Snapshot = Effect.Success<ReturnType<typeof readSnapshot>>;
+
+    /** Whether each long message a snapshot shows still reads as it shows it. */
+    const wholesStand = (kept: Snapshot) =>
+      Effect.map(records.wholeNotes(kept.wholes), (now) =>
+        kept.frame.items.every((shown) => {
+          const whole = now.get(shown.id);
+          if (whole === undefined || shown.kind !== "note") return true;
+          const { cut: _cut, ...bare } = shown;
+          const again = fitItem({ ...bare, text: whole });
+          return (
+            again.kind === "note" &&
+            again.text === shown.text &&
+            again.cut?.total === shown.cut?.total
+          );
+        }),
+      );
     /**
      * The snapshot each of the conversations opened last was sent, by what it was read at: a
      * reload, a second tab or a reconnect of a conversation nothing changed in since is sent it
      * again, never read again. A commit moves the head past it; a page's height, kept beside its
-     * call and never committed, moves `measured` past every one.
+     * call and never committed, moves `measured` past every one, before it is written and after;
+     * a long message's whole, which a step may write with no event, is read again on each hit. A
+     * snapshot over its budget (a window of messages that cannot be cut) is never kept.
      */
-    const snapshots = new Map<ConversationId, { readonly key: string; readonly frame: Snapshot }>();
+    const snapshots = new Map<ConversationId, { readonly key: string; readonly read: Snapshot }>();
     let measured = 0;
     const snapshot = (
       conversation: ConversationId,
@@ -385,19 +411,23 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         const key = `${origin}:${epoch}:${head}:${groupsAsked}:${measured}`;
         const kept = snapshots.get(conversation);
         const top = headerJson(yield* header(conversation));
-        if (kept?.key === key && headerJson(kept.frame.header) === top) {
+        if (
+          kept?.key === key &&
+          headerJson(kept.read.frame.header) === top &&
+          (yield* wholesStand(kept.read))
+        ) {
           snapshots.delete(conversation);
           snapshots.set(conversation, kept);
-          return kept.frame;
+          return kept.read.frame;
         }
-        const frame = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
+        const read = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
         snapshots.delete(conversation);
-        snapshots.set(conversation, { key, frame });
+        if (read.bytes <= snapshotBytes) snapshots.set(conversation, { key, read });
         for (const oldest of snapshots.keys()) {
           if (snapshots.size <= SNAPSHOTS_KEPT) break;
           snapshots.delete(oldest);
         }
-        return frame;
+        return read.frame;
       });
 
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {
@@ -902,14 +932,22 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const recordPageHeight: EngineWireShape["recordPageHeight"] = (input) => {
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
-      return records
-        .recordPageHeight(input.conversationId, input.itemId, input.width, input.height)
+      const remeasured = Effect.sync(() => {
+        measured += 1;
+      });
+      // Before the write and after it, whether it was kept or not: no snapshot read across it
+      // is sent again.
+      return remeasured
         .pipe(
-          Effect.map((kept) => {
-            if (!kept) return { _tag: "Missing" as const };
-            measured += 1;
-            return { _tag: "Recorded" as const };
-          }),
+          Effect.andThen(
+            records.recordPageHeight(input.conversationId, input.itemId, input.width, input.height),
+          ),
+          Effect.ensuring(remeasured),
+        )
+        .pipe(
+          Effect.map((kept) =>
+            kept ? { _tag: "Recorded" as const } : { _tag: "Missing" as const },
+          ),
           Effect.catch(wireError(UNREADABLE)),
         );
     };

@@ -7,6 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -420,6 +421,67 @@ describe("a client subscribed to an engine conversation", () => {
           .flatMap((frame) => (frame.type === "changes" ? frame.items : []))
           .find((item) => item.id === note!.id);
         assert.strictEqual(closed?.kind === "note" ? closed.text : null, "Hello");
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a long answer's whole, kept beside its record, reopens at its new length", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const answerOf = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.find((item) => item.kind === "note")
+            : undefined,
+        );
+        yield* w.tell({ _tag: "Send", text: "Write the report" });
+        yield* w.agent((agent, thread) => agent.say(thread, "line of the report\n".repeat(1_200)));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const before = yield* answerOf;
+        assert.strictEqual(before?.cut?.total, "line of the report\n".length * 1_200);
+        // A step that closes the answer again with a longer end writes its whole and no event.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item_detail SET body = body || 'and its last line'
+              WHERE item_id = ${before!.id}
+            `,
+          ),
+        );
+        assert.strictEqual(
+          (yield* answerOf)?.cut?.total,
+          "line of the report\n".length * 1_200 + "and its last line".length,
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
+  it.effect("a window over its budget is read again on every reload, never kept", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w, { snapshotBytes: 512 });
+        const asked = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.flatMap((item) => (item.kind === "person" ? [item.text] : []))
+            : [],
+        );
+        yield* w.tell({ _tag: "Send", text: "Ship it" });
+        assert.deepStrictEqual(yield* asked, ["Ship it"]);
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item SET body_json = json_set(body_json, '$.text', 'Ship it now')
+              WHERE kind = 'person'
+            `,
+          ),
+        );
+        assert.deepStrictEqual(yield* asked, ["Ship it now"]);
         yield* w.shutdown;
       }),
     ),
@@ -1055,6 +1117,44 @@ const publishedWorld = Effect.gen(function* () {
 });
 
 describe("a page the Mate publishes", () => {
+  it.effect("a height that could not be kept leaves every view as the record holds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { w, wire, reload, call } = yield* publishedWorld;
+        const record = (width: number) =>
+          wire.recordPageHeight({
+            protocol,
+            conversationId: mate,
+            itemId: call.id,
+            width,
+            height: 900,
+          });
+        for (let width = 400; width < 400 + 12 * 10; width += 10) yield* record(width);
+        const heightsOf = (snapshot: Effect.Success<typeof reload>) => {
+          const held = snapshot.items.find((item) => item.kind === "call");
+          return held?.kind === "call" ? held.result?.page?.heights : undefined;
+        };
+        assert.strictEqual(heightsOf(yield* reload)?.length, 12);
+        // The thirteenth width is written, then trimming the oldest one fails.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              CREATE TRIGGER keep_widths BEFORE DELETE ON engine_page_height
+              BEGIN SELECT RAISE(ABORT, 'disk full'); END
+            `,
+          ),
+        );
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(record(900))));
+        const fresh = yield* wireOf(w);
+        const [held] = yield* Effect.scoped(watch(w, fresh));
+        if (held?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(heightsOf(yield* reload), heightsOf(held));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a page measured once paints at its height on every later view", () =>
     Effect.scoped(
       Effect.gen(function* () {

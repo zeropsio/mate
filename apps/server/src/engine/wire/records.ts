@@ -531,18 +531,23 @@ export const makeRecords = Effect.gen(function* () {
         const holds = new Set(held);
         const kept = runs.filter((run) => holds.has(run.id));
         const from = kept[0]?.seq;
+        const shownItems = allItems.filter(
+          (item) =>
+            (item.runId !== null && ofRun.has(item.id) && holds.has(item.runId)) ||
+            ofRequest.has(item.id) ||
+            (item.runId === null && from !== undefined && item.seq >= from),
+        );
         return {
           runs: kept,
-          items: allItems.filter(
-            (item) =>
-              (item.runId !== null && ofRun.has(item.id) && holds.has(item.runId)) ||
-              ofRequest.has(item.id) ||
-              (item.runId === null && from !== undefined && item.seq >= from),
-          ),
+          items: shownItems,
           requests: allRequests.filter(
             (request) => openIds.has(request.id) || holds.has(request.runId),
           ),
           window,
+          /** The long messages whose whole was read beside their record (`withWholeNotes`). */
+          wholes: shownItems.flatMap((item) =>
+            item.kind === "note" && item.text.length >= ITEM_TEXT_LIMIT ? [item.id as string] : [],
+          ),
         };
       };
     });
@@ -553,8 +558,8 @@ export const makeRecords = Effect.gen(function* () {
     groups,
     /**
      * A height a client laid a page out at, kept for the page's call in this conversation: the
-     * page's own claim, clamped, the same width again replacing it, the newest widths kept. False
-     * when no page's call is there by that id.
+     * page's own claim, clamped, the same width again replacing it, the newest widths kept, all
+     * or none of it. False when no page's call is there by that id.
      */
     recordPageHeight: (
       conversation: ConversationId,
@@ -589,9 +594,19 @@ export const makeRecords = Effect.gen(function* () {
           )
         `;
         return true;
-      }),
+      }).pipe(sql.withTransaction),
     pickGroups,
     windowsOf,
+    /**
+     * The wholes kept beside these messages' records now: a step can write one with no event of
+     * its own (a message closed again, its body the same, its end longer).
+     */
+    wholeNotes: (ids: ReadonlyArray<string>) =>
+      ids.length === 0
+        ? Effect.succeed(new Map<string, string>())
+        : sql<{ readonly item_id: string; readonly body: string }>`
+            SELECT item_id, body FROM engine_item_detail WHERE ${sql.in("item_id", ids)}
+          `.pipe(Effect.map((rows) => new Map(rows.map((row) => [row.item_id, row.body])))),
     runsById,
     /** How many records changed past a cursor: a resume carries no more than its budget. */
     changedCount: (conversation: ConversationId, after: number) =>
