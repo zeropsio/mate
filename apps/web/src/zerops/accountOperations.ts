@@ -33,6 +33,7 @@ import * as Effect from "effect/Effect";
 import type { AtomRegistry } from "effect/reactivity";
 import { createContext, useContext } from "react";
 
+import { toastManager } from "~/components/ui/toast";
 import { randomUUID } from "~/lib/utils";
 
 import { hqProjectIdOf, hqWritesOf } from "./hqWrites";
@@ -114,6 +115,8 @@ export function accountOperations(
     hqProjectIdOf,
     gitStore: store,
     store,
+    tokenLeft: (description) =>
+      toastManager.add({ type: "warning", title: "Old deploy token still valid", description }),
   });
   const operations = makeOperations({
     store,

@@ -368,6 +368,12 @@ export interface HqApi {
     intent: HqLifecycleIntent,
   ) => Promise<HqLifecycleRecord>;
   readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
+  /**
+   * Tells HQ a project it still places is gone on Zerops (`POST /api/projects/{projectId}/deleted`),
+   * for a deletion this person did not prepare: HQ reads the project with their token, drops its
+   * records once Zerops answers not found, and decides who may by their organization role.
+   */
+  readonly completeProjectDeletion: (projectId: string) => Promise<void>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
@@ -1494,6 +1500,14 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId)) === undefined,
       ),
+    completeProjectDeletion: async (projectId) => {
+      // No preparer's handle: HQ decides by the person's role on the gone project.
+      await authorized(
+        `/api/projects/${encodeURIComponent(projectId)}/deleted`,
+        { method: "POST", body: JSON.stringify(await withAccess({ completion: "" })) },
+        true,
+      );
+    },
     answerKeptGit: async (appId, answer) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/kept-git`,
