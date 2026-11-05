@@ -336,6 +336,45 @@ const linked = (sockets: ReadonlyArray<FakeSocket>, index: number) =>
   });
 
 describe("ZeropsHqLink", () => {
+  it.effect(
+    "A link whose HQ sends no state within the handshake budget closes and reconnects",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { sockets } = yield* rig({
+            everyMs: 10_000_000,
+            reconnectDelaysMs: [100, 1_000],
+          });
+          const first = yield* opened(sockets, 0);
+          assert.deepStrictEqual(first.sent, [hello("zk-1")]);
+
+          yield* TestClock.adjust(Duration.seconds(29));
+          first.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.millis(999));
+          assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
+          assert.isFalse(first.closed);
+          assert.lengthOf(sockets, 1);
+
+          yield* TestClock.adjust(Duration.millis(1));
+          assert.isTrue(first.closed);
+          yield* TestClock.adjust(Duration.millis(130));
+          const next = yield* opened(sockets, 1);
+          assert.deepStrictEqual(next.sent, [hello("zk-1")]);
+          yield* TestClock.adjust(Duration.seconds(30));
+          assert.isTrue(next.closed);
+          yield* TestClock.adjust(Duration.millis(130));
+          assert.lengthOf(sockets, 2);
+          yield* TestClock.adjust(Duration.millis(1_120));
+          const admitted = yield* opened(sockets, 2);
+          assert.deepStrictEqual(admitted.sent, [hello("zk-1")]);
+          admit(admitted);
+          yield* TestClock.adjust(Duration.minutes(31));
+          assert.isFalse(admitted.closed);
+          assert.lengthOf(sockets, 3);
+        }),
+      ),
+  );
+
   it.effect("keeps a healthy link until it closes", () =>
     Effect.scoped(
       Effect.gen(function* () {
@@ -495,24 +534,6 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(socket.sent.at(-1), { type: "pong" });
           yield* TestClock.adjust(Duration.millis(1));
           assert.isTrue(socket.closed);
-        }),
-      ),
-  );
-
-  it.effect(
-    "an HQ that announces no period leaves the link unguarded before and after its state",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sockets } = yield* rig({ everyMs: 10_000_000 });
-          yield* TestClock.adjust(Duration.zero);
-          const socket = yield* opened(sockets, 0);
-          yield* TestClock.adjust(Duration.minutes(31));
-          assert.isFalse(socket.closed);
-          admit(socket);
-          yield* TestClock.adjust(Duration.minutes(31));
-          assert.isFalse(socket.closed);
-          assert.lengthOf(sockets, 1);
         }),
       ),
   );

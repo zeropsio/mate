@@ -300,6 +300,11 @@ type SocketEvent =
     }
   | { readonly _tag: "close"; readonly close: LinkClose | undefined };
 
+type HandshakeSignals = {
+  readonly opened: Deferred.Deferred<void>;
+  readonly firstState: Deferred.Deferred<void>;
+};
+
 /** How one link closed, once it does. */
 type Link = Effect.Effect<LinkClose | undefined>;
 
@@ -344,7 +349,7 @@ export const makeZeropsHqLink = (
      * lifetime until it closes: the overview up once HQ answered, pongs and HQ's frames down.
      * None when there is no key or the socket never opened.
      */
-    const openLink = Effect.gen(function* () {
+    const openLink = Effect.fnUntraced(function* (handshake: HandshakeSignals) {
       const key = yield* options.readKey;
       if (key === undefined || key === "" || options.publicOrigin === undefined) {
         return Option.none<Link>();
@@ -354,20 +359,32 @@ export const makeZeropsHqLink = (
       const clock = yield* Clock.Clock;
       const pingInterval = yield* Deferred.make<number>();
       let lastInboundAt = clock.monotonicTimeNanosUnsafe();
-      const socket = options.connect(url);
-      socket.addEventListener("open", () => Queue.offerUnsafe(events, { _tag: "open" }));
+      const socket = yield* Effect.acquireRelease(
+        Effect.sync(() => options.connect(url)),
+        (socket) =>
+          Effect.sync(() => {
+            try {
+              socket.close();
+            } catch {
+              // Gone already.
+            }
+          }),
+      );
+      socket.addEventListener("open", () => {
+        Deferred.doneUnsafe(handshake.opened, Effect.void);
+        Queue.offerUnsafe(events, { _tag: "open" });
+      });
       socket.addEventListener("message", (event) => {
         // Ingress is liveness even while a consumer waits, or this build cannot read the frame.
         lastInboundAt = clock.monotonicTimeNanosUnsafe();
         const raw = String(event.data);
         const frame = decodeDown(raw);
-        if (
-          Result.isSuccess(frame) &&
-          frame.success.type === "state" &&
-          frame.success.pingIntervalMs !== undefined
-        ) {
-          // The first announcement owns this generation's cadence; older HQs never arm it.
-          Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
+        if (Result.isSuccess(frame) && frame.success.type === "state") {
+          Deferred.doneUnsafe(handshake.firstState, Effect.void);
+          if (frame.success.pingIntervalMs !== undefined) {
+            // The first announcement owns this generation's cadence; older HQs never arm it.
+            Deferred.doneUnsafe(pingInterval, Effect.succeed(frame.success.pingIntervalMs));
+          }
         }
         Queue.offerUnsafe(events, { _tag: "message", raw, frame });
       });
@@ -388,20 +405,12 @@ export const makeZeropsHqLink = (
             // A socket going away: its close is on its way.
           }
         });
-      const quit = Effect.sync(() => {
-        try {
-          socket.close();
-        } catch {
-          // Gone already.
-        }
-      });
       const silence = Effect.gen(function* () {
         const period = yield* Deferred.await(pingInterval);
         for (;;) {
           const elapsed = Number(clock.monotonicTimeNanosUnsafe() - lastInboundAt) / 1_000_000;
           const remaining = 3 * period - elapsed;
           if (remaining <= 0) {
-            yield* quit;
             return undefined;
           }
           yield* Effect.sleep(Duration.millis(remaining));
@@ -409,7 +418,6 @@ export const makeZeropsHqLink = (
       });
       const first = yield* Queue.take(events);
       if (first._tag !== "open") {
-        yield* quit;
         return Option.none<Link>();
       }
       const gitFingerprint = yield* options.gitFingerprint;
@@ -653,7 +661,7 @@ export const makeZeropsHqLink = (
             ],
             { concurrency: "unbounded" },
           ).pipe(Effect.as(undefined)),
-        ).pipe(Effect.ensuring(quit), Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
+        ).pipe(Effect.ensuring(autoUpdatePolicy?.close ?? Effect.void)),
       );
       return Option.some<Link>(Fiber.join(relayed));
     });
@@ -661,9 +669,25 @@ export const makeZeropsHqLink = (
     /** Whether a link opened, and how it closed. */
     const runOnce = Effect.scoped(
       Effect.gen(function* () {
-        const opened = yield* openLink;
-        if (Option.isNone(opened)) return { opened: false } as const;
-        return { opened: true, close: yield* opened.value } as const;
+        const opened = yield* Deferred.make<void>();
+        const firstState = yield* Deferred.make<void>();
+        const run = Effect.gen(function* () {
+          const link = yield* openLink({ opened, firstState });
+          if (Option.isNone(link)) return { opened: false } as const;
+          const close = yield* link.value;
+          return { opened: true, close, stated: yield* Deferred.isDone(firstState) } as const;
+        });
+        const handshake = Deferred.await(opened).pipe(
+          Effect.andThen(
+            Deferred.await(firstState).pipe(Effect.timeoutOption(HQ_HANDSHAKE_BUDGET)),
+          ),
+          Effect.flatMap((received) =>
+            Option.isSome(received)
+              ? Effect.never
+              : Effect.succeed({ opened: true, close: undefined, stated: false } as const),
+          ),
+        );
+        return yield* Effect.raceFirst(run, handshake);
       }),
     );
 
@@ -684,13 +708,14 @@ export const makeZeropsHqLink = (
           }
           const refused = refusalOf(close);
           if (refused !== undefined) yield* Ref.set(refusal, refused);
-          // Only a link that stayed up, one the Mate's own newer link superseded, or one HQ handed
-          // over on purpose resets the wait; one HQ closes at once is a failure too.
+          // Only an admitted link that stayed up, one the Mate's own newer link superseded, or one
+          // HQ handed over on purpose resets the wait; a link that never gets state is a failure.
           const lived = (yield* Clock.currentTimeMillis) - began;
           const planned =
             close?.code === SUPERSEDED ||
             (close?.code !== undefined && PLANNED_HANDOVER.includes(close.code));
-          attempt = planned || (ran.opened && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
+          attempt =
+            planned || (ran.opened && ran.stated && lived >= LINK_STABLE_MS) ? 0 : attempt + 1;
           const delay = delays[Math.min(Math.max(attempt - 1, 0), delays.length - 1)] ?? 1_000;
           // Up to a quarter more, so Mates that lost one HQ do not all knock on the next at once.
           const spread = yield* Random.nextIntBetween(0, Math.floor(delay / 4) + 1);
@@ -715,7 +740,9 @@ export const makeZeropsHqLink = (
     });
   });
 
-/** How long a link must stay up before the next reconnect starts from the shortest wait. */
+/** Time after the socket opens for HQ to admit the key and send its first state. */
+const HQ_HANDSHAKE_BUDGET = Duration.seconds(30);
+/** How long an admitted link must stay up before the next reconnect starts from the shortest wait. */
 const LINK_STABLE_MS = 30_000;
 /**
  * How long a task told before HQ's first state on a link waits for it; HQ tells a task again
