@@ -32,12 +32,7 @@ import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsol
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
 import { personDoor } from "./mateAccess.ts";
-import {
-  openScenarioNavigation,
-  startScenarioCore,
-  type HqTimings,
-  type ScenarioCore,
-} from "./hqCore.ts";
+import { openScenarioNavigation, startScenarioCore, type ScenarioCore } from "./hqCore.ts";
 import {
   openBrowser,
   menuMateRow,
@@ -87,7 +82,6 @@ export interface ScenarioDrivers {
 }
 
 export interface ScenarioOptions {
-  hq?: HqTimings;
   /**
    * Restore an account by default; UI sign-in cases explicitly retain the OAuth journey, and
    * `device-login` signs in through the Zerops window, on the build in `dist`.
@@ -146,10 +140,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const github = yield* Effect.acquireRelease(Effect.promise(startGithubFake), (github) =>
     Effect.promise(github.close),
   );
-  const core = yield* startScenarioCore(
-    { baseUrl: `${api.origin}/api/rest/public`, world, github },
-    options.hq,
-  );
+  const core = yield* startScenarioCore({
+    baseUrl: `${api.origin}/api/rest/public`,
+    world,
+    github,
+  });
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,

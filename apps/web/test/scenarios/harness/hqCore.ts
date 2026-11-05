@@ -74,17 +74,11 @@ export const openScenarioNavigation = (
     return socket;
   });
 
-/** Milliseconds; overrides are local to one scenario. */
-export interface HqTimings {
-  pingEvery?: number;
-  reconcileEvery?: number;
-  streamRecheck?: number;
-}
-
-export function startScenarioCore(
-  zeropsHttp: { baseUrl: string; world: FakeWorld; github?: GithubAddress },
-  timings: HqTimings = {},
-) {
+export function startScenarioCore(zeropsHttp: {
+  baseUrl: string;
+  world: FakeWorld;
+  github?: GithubAddress;
+}) {
   return Effect.suspend(() => {
     const command = process.env.MATE_HQ_TEST_COMMAND;
     if (!command)
@@ -93,7 +87,7 @@ export function startScenarioCore(
           "Scenarios run against mate-hq's test HQ: set MATE_HQ_TEST_COMMAND to `node <mate-hq>/conformance/scripts/test-hq.ts`",
         ),
       );
-    return startExternalCore(command, zeropsHttp, timings);
+    return startExternalCore(command, zeropsHttp);
   });
 }
 
