@@ -1,5 +1,5 @@
 /**
- * Settings › Zerops › Persona templates: the organization's own starting points for a Mate's
+ * Settings › Personas › Persona templates: the organization's own starting points for a Mate's
  * persona, from HQ. Every member reads them; an Owner or Admin adds, edits and deletes them. A
  * Mate copies a template's text, so changing one here changes no Mate.
  */
@@ -133,7 +133,7 @@ export function PersonaTemplatesView({
 
   return (
     <SettingsSection
-      {...searchableSetting("zerops-persona-templates")}
+      {...searchableSetting("persona-templates")}
       title="Persona templates"
       headerAction={
         mayWrite && editor === null ? (

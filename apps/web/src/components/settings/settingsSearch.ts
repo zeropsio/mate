@@ -10,6 +10,7 @@ export type SettingsPath =
   | "/settings/zerops"
   | "/settings/automation"
   | "/settings/team"
+  | "/settings/personas"
   | "/settings/archived";
 
 export interface SettingsSearchItem {
@@ -38,6 +39,7 @@ export const SETTINGS_SECTION_LABELS: Readonly<Record<SettingsPath, string>> = {
   "/settings/zerops": "Zerops",
   "/settings/automation": "Automation",
   "/settings/team": "Team",
+  "/settings/personas": "Personas",
   "/settings/archived": "Archive",
 };
 
@@ -269,11 +271,6 @@ export const SETTINGS_SEARCH_ITEMS = [
     to: "/settings/zerops",
   },
   {
-    id: "zerops-persona-templates",
-    title: "Persona templates",
-    to: "/settings/zerops",
-  },
-  {
     id: "zerops-hq",
     title: "HQ",
     to: "/settings/zerops",
@@ -313,6 +310,12 @@ export const SETTINGS_SEARCH_ITEMS = [
     title: "Limits per task",
     to: "/settings/automation",
     searchTerms: ["automated mates minutes cost budget"],
+  },
+  {
+    id: "persona-templates",
+    title: "Persona templates",
+    to: "/settings/personas",
+    searchTerms: ["personas organization"],
   },
   {
     id: "archive",
