@@ -36,7 +36,9 @@ import {
 import type { Instant } from "../../zerops/environments/exchange.ts";
 import type { IdentityExchangeReason } from "../../zerops/diagnostics.ts";
 import {
+  comingUp,
   containerVerdict,
+  hqReadsWayUp,
   initialContainer,
   platformSaysDown,
   probeCadence,
@@ -181,6 +183,8 @@ export interface MateAdapter {
   readonly updateUnderway: (environmentId: EnvironmentId, from: string | null) => void;
   /** Whether a platform process runs against the target (the activity feed). */
   readonly process: (key: TargetKey, running: boolean) => void;
+  /** HQ's presence for the target's Mate while HQ's relay is current: online or not; else null. */
+  readonly presence: (key: TargetKey, online: boolean | null) => void;
   /**
    * Our verb was accepted for this target: its container shows it until a read fact settles it.
    * False when no container took it — no such target, or the platform's facts overrule it.
@@ -188,7 +192,10 @@ export interface MateAdapter {
   readonly intend: (key: TargetKey, intent: IntentRequest) => boolean;
   /** The target's `/healthz` `initAt`, read now; null when it cannot say in time. */
   readonly initAt: (key: TargetKey) => Promise<string | null>;
-  /** The target's container is read again, if something waits on it. */
+  /**
+   * The target's container is read again, if something waits on it: a person's re-read or verb,
+   * so even while HQ's presence reads its way up.
+   */
   readonly request: (key: TargetKey, ask?: ProbeAsk) => void;
   /** The person's role on the project changed (`followMateRoles`): a refusal of it is asked again. */
   readonly roleChanged: (projectId: string) => void;
@@ -335,12 +342,6 @@ const inFlightAttempt = (machine: EnvironmentMachine): number | null => {
 
 const polls = (cadence: ProbeCadence): cadence is Extract<ProbeCadence, { kind: "poll" }> =>
   cadence.kind === "poll";
-
-/** The platform or our verb says the container is on its way up: it is polled until it is. */
-const comingUp = (machine: ContainerMachine): boolean =>
-  (machine.state.level === "booting" && !machine.state.guessed) ||
-  machine.state.level === "restarting" ||
-  machine.state.level === "updating";
 
 /** The platform's status as last read: a service the listing could not say keeps its last. */
 interface KnownStatus {
@@ -763,7 +764,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         entry.containerTimer = null;
         return;
       case "probe":
-        requestFor(entry, { fresh: true });
+        requestFor(entry, { fresh: true }, { health: true, overHq: true });
         return;
       case "read-mate-flag":
         if (entry.readingFlag) return;
@@ -800,11 +801,18 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
 
   /**
    * Reads the container once this batch ends — only one something waits on, with an address, no
-   * socket proving it up, and no platform status saying it is down.
+   * socket proving it up, and no platform status saying it is down. One whose way up HQ's presence
+   * reads (`hqReadsWayUp`) is read only `overHq`: on HQ's word that its Mate is back, or a person's
+   * ask.
    */
-  const requestFor = (entry: Entry, ask: ProbeAsk, options: { readonly health?: boolean } = {}) => {
+  const requestFor = (
+    entry: Entry,
+    ask: ProbeAsk,
+    options: { readonly health?: boolean; readonly overHq?: boolean } = {},
+  ) => {
     if (entry.origin === null || entry.container.connectedSince !== null) return;
     if (platformSaysDown(entry.container) || !watched(entry)) return;
+    if (hqReadsWayUp(entry.container) && options.overHq !== true) return;
     const origin = originFor(entry.origin);
     origin.requested = true;
     origin.requestedFresh ||= ask.fresh;
@@ -1359,7 +1367,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
           connects.set(key, [...(connects.get(key) ?? []), resolve]);
           // The person's Try now reads the container too: a level past its cap, or a server that
           // stopped answering, is read again at once.
-          requestFor(entry, { fresh: true });
+          requestFor(entry, { fresh: true }, { overHq: true });
           if (!suppressed(projectOf(key))) step(entry, { type: "USER_RETRY" });
         });
       }),
@@ -1419,6 +1427,11 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
         // poll's next rung.
         if (ended) requestFor(entry, { fresh: true });
       }),
+    presence: (key, online) =>
+      enqueue(() => {
+        const entry = entries.get(key);
+        if (entry !== undefined) transition(entry, { type: "HQ", online });
+      }),
     intend: (key, intent) => {
       const entry = entries.get(key);
       if (entry === undefined || disposed) return false;
@@ -1453,7 +1466,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     request: (key, ask = { fresh: true }) =>
       enqueue(() => {
         const entry = entries.get(key);
-        if (entry !== undefined) requestFor(entry, ask);
+        if (entry !== undefined) requestFor(entry, ask, { overHq: true });
       }),
     next: (at) =>
       new Promise((resolve) => {

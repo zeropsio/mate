@@ -7,7 +7,8 @@
  *   could not check, never a refusal.
  * - A Mate is read once per connection attempt — its door's descriptor read — and polled only
  *   while it comes up or the person waits on it: from 2 s backing off to 60 s
- *   (`POLL_INTERVALS_MS`), from 10 s once that is overdue (`OVERDUE_POLL_INTERVALS_MS`). A push of
+ *   (`POLL_INTERVALS_MS`), from 10 s once that is overdue (`OVERDUE_POLL_INTERVALS_MS`). One coming
+ *   up whose Mate HQ speaks for is not polled: HQ newly saying it is online reads it once. A push of
  *   its status, a connect failure or a wake reads it once more. Never at a fixed interval. Each
  *   probe ends by `PROBE_DEADLINE_MS` as `unreachable`.
  * - A tab hidden for `HIDDEN_PROBE_PAUSE_MS` probes nothing until it is shown again.
