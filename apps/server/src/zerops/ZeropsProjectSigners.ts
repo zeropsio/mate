@@ -55,6 +55,7 @@ import * as Stream from "effect/Stream";
 
 import * as ServerConfig from "../config.ts";
 import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { subscribeChanges } from "./zeropsChanges.ts";
 import { ZeropsSignIns, type SignInRecords } from "./zeropsSignIns.ts";
 
 /**
@@ -102,7 +103,12 @@ export function isTurnStartingCommand(
  * 2026-09-30 and 2026-10-01).
  */
 export const SIGN_IN_CHECK_WAIT = Duration.seconds(30);
-const SIGN_IN_CHECK_POLL = Duration.seconds(1);
+
+/** A login as it stands now, and when it may have changed (`ZeropsAgentLogin`'s pair). */
+export interface CurrentLogin {
+  readonly latest: Effect.Effect<ZeropsAgentLoginState | undefined>;
+  readonly changes: Stream.Stream<unknown>;
+}
 
 export class ZeropsProjectSigners extends Context.Service<
   ZeropsProjectSigners,
@@ -122,8 +128,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** The agent's server-driven login as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
-      /** That login as it stands now, read again while the turn waits on it. */
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      /** That login as it stands now, read again at each change while the turn waits on it. */
+      readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /** {@link loginTurnRefusal} for this session on the login keyed `key`, as `turnRefusal`. */
     readonly loginRefusal: (input: {
@@ -133,8 +139,8 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly subject: string | undefined;
       /** That login's server-driven sign-in as this server holds it (`ZeropsAgentLogin`). */
       readonly login?: ZeropsAgentLoginState | undefined;
-      /** That login as it stands now, read again while the turn waits on it. */
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      /** That login as it stands now, read again at each change while the turn waits on it. */
+      readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
      * Whether `userId` is an opener of this project, as the deciding access list says — the
@@ -176,8 +182,8 @@ export const make = Effect.gen(function* () {
    * `base` against the signer of `key`, with the sign-in this server walks for that login. A
    * code being checked decides the turn when its person's success would change the answer — it
    * is this person's own sign-in over somebody else's, or somebody else's over this person's:
-   * the turn waits for the check to settle, re-reading the login and the signer about a second
-   * at a time, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
+   * the turn waits for the check to settle, re-reading the login and the signer at each change of
+   * either, up to {@link SIGN_IN_CHECK_WAIT}. A check still deciding then refuses. A login at
    * its menu, its page or its code prompt has written nothing, and holds no turn.
    */
   const gateSignedIn = (
@@ -187,7 +193,7 @@ export const make = Effect.gen(function* () {
       readonly token: boolean;
       readonly subject: string | undefined;
       readonly login: ZeropsAgentLoginState | undefined;
-      readonly currentLogin?: Effect.Effect<ZeropsAgentLoginState | undefined> | undefined;
+      readonly currentLogin?: CurrentLogin | undefined;
     },
   ) =>
     Effect.gen(function* () {
@@ -202,12 +208,21 @@ export const make = Effect.gen(function* () {
       let signer = (yield* signers)[key];
       const refusal = base(signer);
       if (refusal?.kind === "not-signed-in" || !decides(login, signer)) return refusal;
-      const deadline = (yield* Clock.currentTimeMillis) + Duration.toMillis(SIGN_IN_CHECK_WAIT);
-      while (decides(login, signer) && (yield* Clock.currentTimeMillis) < deadline) {
-        yield* Effect.sleep(SIGN_IN_CHECK_POLL);
-        login = input.currentLogin === undefined ? input.login : yield* input.currentLogin;
+      const look = Effect.gen(function* () {
+        if (input.currentLogin !== undefined) login = yield* input.currentLogin.latest;
         signer = (yield* signers)[key];
-      }
+      });
+      yield* Effect.scoped(
+        Effect.gen(function* () {
+          // Subscribed before the look, so no change after it goes unheard.
+          const moved = yield* subscribeChanges([
+            signIns.changes,
+            ...(input.currentLogin === undefined ? [] : [input.currentLogin.changes]),
+          ]);
+          yield* look;
+          while (decides(login, signer)) yield* moved.pipe(Effect.andThen(look));
+        }),
+      ).pipe(Effect.timeoutOrElse({ duration: SIGN_IN_CHECK_WAIT, orElse: () => Effect.void }));
       return decides(login, signer)
         ? (base(signer) ?? { kind: "someone-else" as const })
         : base(signer);

@@ -195,7 +195,7 @@ export interface ZeropsHqLinkOptions {
   readonly readKey: Effect.Effect<string | undefined>;
   readonly keyRefusal?: ZeropsKeyRefusal;
   readonly connect: ConnectLinkSocket;
-  /** The Mate's overview as it stands now; none when it cannot be read, tried again next round. */
+  /** The Mate's overview as it stands now; none when it cannot be read, tried again at the next change. */
   readonly overview: Effect.Effect<Option.Option<MateOverview>>;
   /** Fires whenever the overview may have changed. */
   readonly changes: Stream.Stream<unknown>;
@@ -511,28 +511,32 @@ export const makeZeropsHqLink = (
           : onceAnswered(Ref.get(automatedHere)).pipe(
               Effect.flatMap((automated) => (automated ? tasks.run : Effect.never)),
             );
-      const dirty = yield* Ref.make(true);
+      // A wake per change, the ones heard while the overview is read or held back folded into one;
+      // the first is the whole overview every link opens with.
+      const woken = yield* Queue.dropping<void>(1);
+      yield* Queue.offer(woken, undefined);
       // What this link sent of each section, as JSON: a new link starts with nothing sent.
       const sent = new Map<string, string>();
       const overviews = Effect.forever(
         Effect.gen(function* () {
-          if (yield* Ref.getAndSet(dirty, false)) {
-            const overview = yield* options.overview;
-            if (Option.isNone(overview)) yield* Ref.set(dirty, true);
-            else if (sent.size === 0) {
-              changedSections(overview.value, sent);
-              yield* send({ type: "overview", full: true, overview: overview.value });
-            } else {
-              const sections = changedSections(overview.value, sent);
-              if (sections !== undefined) {
-                yield* send({ type: "overview", full: false, sections });
-              }
+          yield* Queue.take(woken);
+          const overview = yield* options.overview;
+          // Unread, it is read again at the next change.
+          if (Option.isNone(overview)) return;
+          if (sent.size === 0) {
+            changedSections(overview.value, sent);
+            yield* send({ type: "overview", full: true, overview: overview.value });
+          } else {
+            const sections = changedSections(overview.value, sent);
+            if (sections !== undefined) {
+              yield* send({ type: "overview", full: false, sections });
             }
           }
+          // At most one frame per window: a change inside it waits for its end.
           yield* Effect.sleep(overviewEvery);
         }),
       );
-      const heard = Stream.runForEach(options.changes, () => Ref.set(dirty, true));
+      const heard = Stream.runForEach(options.changes, () => Queue.offer(woken, undefined));
       const health =
         options.health === undefined
           ? Effect.never

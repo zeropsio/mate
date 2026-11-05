@@ -441,7 +441,7 @@ const engineView = (id: string): ConversationView => ({
 
 /** A server on `database`; a second one on the same file is the same Mate after a restart. */
 const serverOn = (world: World, database: string) =>
-  Layer.effect(ZeropsSetup, makeZeropsSetup(Duration.millis(10))).pipe(
+  Layer.effect(ZeropsSetup, makeZeropsSetup).pipe(
     Layer.provide(fakes(world)),
     Layer.provide(ZeropsStandUpReceiptModule.layer),
     Layer.provide(
@@ -1965,6 +1965,31 @@ describe("ZeropsSetup: the stand-up on the Mate engine", () => {
         assert.deepStrictEqual(
           (yield* Ref.get(world.wakes)).map((wake) => wake.conversationId),
           ["thread-main"],
+        );
+      }),
+  );
+
+  it.effect(
+    "Decision: An adopt left unread retries when the engine says readable again; no 10 s retry.",
+    () =>
+      Effect.gen(function* () {
+        const world = yield* makeWorld;
+        yield* change(world, world.engineComplete, false);
+        yield* onEngine(world, freshDatabase(), () =>
+          Effect.gen(function* () {
+            yield* Deferred.await(world.engineListed);
+            // Readable again, but the engine has not said so: time alone retries nothing.
+            yield* Ref.set(world.engineComplete, true);
+            yield* TestClock.adjust(Duration.minutes(1));
+            assert.deepStrictEqual(yield* Ref.get(world.assigned), []);
+            // The engine says so: the main conversation moves.
+            yield* change(world, world.engineComplete, true);
+            yield* Deferred.await(world.agentAssigned);
+            assert.deepStrictEqual(
+              (yield* Ref.get(world.assigned)).map(([id]) => id),
+              [ConversationId.make("thread-main")],
+            );
+          }),
         );
       }),
   );

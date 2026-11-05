@@ -8,6 +8,8 @@ import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
 import type {
@@ -292,13 +294,23 @@ describe("the turn gate", () => {
   const checking = (startedBy: string) =>
     Effect.gen(function* () {
       const now = yield* DateTime.now;
-      return yield* Ref.make<ZeropsAgentLoginState>({
+      return yield* SubscriptionRef.make<ZeropsAgentLoginState>({
         phase: "verifying-code",
         terminalId: "t",
         startedAt: now,
         startedBy,
       });
     });
+  /** The login as the walker holds it, told at each of its changes. */
+  const watching = (login: SubscriptionRef.SubscriptionRef<ZeropsAgentLoginState>) => ({
+    latest: SubscriptionRef.get(login),
+    changes: SubscriptionRef.changes(login),
+  });
+  /** A login that stays as it is. */
+  const still = (login: ZeropsAgentLoginState) => ({
+    latest: Effect.succeed(login),
+    changes: Stream.never,
+  });
 
   it.effect("goes by who this server saw sign the login in, and nobody else", () =>
     Effect.gen(function* () {
@@ -353,15 +365,15 @@ describe("the turn gate", () => {
           agentId: "claude-code",
           agent: signedIn,
           subject: EVA,
-          login: yield* Ref.get(login),
-          currentLogin: Ref.get(login),
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
       // As the walker settles it: a success is kept before anything else hears of it.
       if (succeeds) yield* signIns.save("claude-code", by(JAN));
-      yield* Ref.update(login, (current) => ({
+      yield* SubscriptionRef.update(login, (current) => ({
         ...current,
         phase: succeeds ? ("succeeded" as const) : ("failed" as const),
       }));
@@ -383,17 +395,58 @@ describe("the turn gate", () => {
           agentId: "claude-code",
           agent: { ...signedIn, state: "local-only", providerAuth: "unknown" },
           subject: JAN,
-          login: yield* Ref.get(login),
-          currentLogin: Ref.get(login),
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.seconds(2));
       assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
       yield* signIns.save("claude-code", by(JAN));
-      yield* Ref.update(login, (current) => ({ ...current, phase: "succeeded" as const }));
+      yield* SubscriptionRef.update(login, (current) => ({
+        ...current,
+        phase: "succeeded" as const,
+      }));
       yield* TestClock.adjust(Duration.seconds(2));
 
       assert.isUndefined(yield* Fiber.join(fiber));
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect.each(
+    Array.from(
+      [
+        ["his sign-in fails: hers again", "login", undefined],
+        ["his sign-in is kept: refused", "signer", { kind: "someone-else" }],
+      ] as const,
+      ([name, moves, expected]) => ({
+        title: `Decision: A sign-in check settles at the signer or login change; no 1 s look. — ${name}`,
+        moves,
+        expected,
+      }),
+    ),
+  )("$title", ({ moves, expected }) =>
+    Effect.gen(function* () {
+      const { signers, signIns } = yield* gate({ "claude-code": by(EVA) });
+      const login = yield* checking(JAN);
+      const fiber = yield* signers
+        .turnRefusal({
+          agentId: "claude-code",
+          agent: signedIn,
+          subject: EVA,
+          login: yield* SubscriptionRef.get(login),
+          currentLogin: watching(login),
+        })
+        .pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.seconds(5));
+      assert.isUndefined(fiber.pollUnsafe(), "held while the code is checked");
+      if (moves === "signer") yield* signIns.save("claude-code", by(JAN));
+      else
+        yield* SubscriptionRef.update(login, (current) => ({
+          ...current,
+          phase: "failed" as const,
+        }));
+      // The clock stands still from here: only the change itself can settle it.
+      assert.deepStrictEqual(yield* Fiber.join(fiber), expected);
     }).pipe(Effect.scoped),
   );
 
@@ -436,14 +489,14 @@ describe("the turn gate", () => {
   )("$title", ({ kept, subject, agent, expected }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate(kept === undefined ? {} : { "claude-code": by(kept) });
-      const login = yield* Ref.get(yield* checking(JAN));
+      const login = yield* SubscriptionRef.get(yield* checking(JAN));
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent,
           subject,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.zero);
@@ -463,14 +516,14 @@ describe("the turn gate", () => {
   )("$title", ({ phase }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(EVA) });
-      const login = { ...(yield* Ref.get(yield* checking(JAN))), phase };
+      const login = { ...(yield* SubscriptionRef.get(yield* checking(JAN))), phase };
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
           subject: JAN,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(Duration.zero);
@@ -496,14 +549,14 @@ describe("the turn gate", () => {
   )("$title", ({ subject }) =>
     Effect.gen(function* () {
       const { signers } = yield* gate({ "claude-code": by(EVA) });
-      const login = yield* Ref.get(yield* checking(JAN));
+      const login = yield* SubscriptionRef.get(yield* checking(JAN));
       const fiber = yield* signers
         .turnRefusal({
           agentId: "claude-code",
           agent: signedIn,
           subject,
           login,
-          currentLogin: Effect.succeed(login),
+          currentLogin: still(login),
         })
         .pipe(Effect.forkChild);
       yield* TestClock.adjust(SIGN_IN_CHECK_WAIT);
