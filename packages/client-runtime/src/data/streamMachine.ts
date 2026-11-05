@@ -143,9 +143,14 @@ export type StreamEvent =
   /**
    * `ages`: a source read once answered with a value that still changes without any write of
    * ours (an invitation waiting on its invitee), so it is read again on the cadence until it
-   * answers settled.
+   * answers settled. `freshUntil`: when the value read stops being fresh by its family's own age;
+   * a sampled source is read again then, on the cadence where it names none.
    */
-  | { readonly kind: "baseline-committed"; readonly ages?: boolean }
+  | {
+      readonly kind: "baseline-committed";
+      readonly ages?: boolean;
+      readonly freshUntil?: number | undefined;
+    }
   /** `jitter` is a uniform draw in [0, 1] the caller supplies, so the function stays pure. */
   | { readonly kind: "fault"; readonly fault: StreamFault; readonly jitter: number }
   /** The retry the stream named came due. */
@@ -201,7 +206,10 @@ export const STREAM_POLICY = {
   baselineTimeoutMs: 20_000,
   backoffBaseMs: 1_000,
   backoffCapMs: 60_000,
-  /** Where realtime is unverified, a demanded sampled source revalidates this often. */
+  /**
+   * A demanded sampled source whose value names no age of its own revalidates this often, as does
+   * a value read once while it still changes.
+   */
   sampledIntervalMs: 30_000,
   /**
    * How long a stream that was live and is reconnecting still reads live: HQ's planned segment
@@ -444,7 +452,10 @@ function step(state: StreamState, event: StreamEvent, now: number): StreamTransi
             fault: null,
             next:
               state.mode === "sampled" || (state.mode === "once" && event.ages === true)
-                ? { kind: "revalidate", at: now + STREAM_POLICY.sampledIntervalMs }
+                ? {
+                    kind: "revalidate",
+                    at: event.freshUntil ?? now + STREAM_POLICY.sampledIntervalMs,
+                  }
                 : state.mode === "once"
                   ? { kind: "await-input-change" }
                   : { kind: "await-changes" },

@@ -17,8 +17,6 @@ import {
   ACCESS_LIST_HOLDS,
   ACCESS_READ_BUDGET,
   type AccessList,
-  accessNamed,
-  accessReport,
   administersProject,
   make as makeAccessList,
   nextAccessList,
@@ -207,42 +205,6 @@ describe("ownAccessList", () => {
       assert.strictEqual(named(ownAccessList(PROJECT, input, 0)), expected);
     },
   );
-});
-
-describe("accessReport", () => {
-  it("After every recompute the report names openers and listed; missing are whom the previous report named and the list does not", () => {
-    const first = accessReport(
-      undefined,
-      accessNamed(
-        ownAccessList(PROJECT, read([person("jan", "OWNER"), person("eva", "READ_ONLY")]), 0),
-        "2026-11-03T10:00:00.000Z",
-      ),
-    );
-    assert.deepStrictEqual(first, {
-      at: "2026-11-03T10:00:00.000Z",
-      openers: ["jan"],
-      listed: ["eva"],
-      missing: [],
-    });
-    const second = accessReport(
-      first,
-      accessNamed(
-        ownAccessList(PROJECT, read([person("eva", "BASIC_USER"), person("ben", "ADMIN")]), 0),
-        "2026-11-03T10:05:00.000Z",
-      ),
-    );
-    assert.deepStrictEqual(second, {
-      at: "2026-11-03T10:05:00.000Z",
-      openers: ["eva", "ben"],
-      listed: [],
-      missing: ["jan"],
-    });
-    // Missing is against the previous report only: Jan, gone already, is not reported again.
-    assert.deepStrictEqual(
-      accessReport(second, accessNamed(ownAccessList(PROJECT, read([]), 0), "t")).missing,
-      ["eva", "ben"],
-    );
-  });
 });
 
 /** The Mate's own read, answering what the test sets; `reads` counts the reads made. */

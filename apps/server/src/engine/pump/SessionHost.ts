@@ -119,6 +119,7 @@ export interface SessionHostDeps {
   readonly quiet: Effect.Effect<void>;
   /** Where a call's pictures are stored before its record names them; none drops them. */
   readonly pictures?: CallPictures;
+  /** Told after every change of the host's state, so its readers (and its idleness) look again. */
   readonly changed?: Effect.Effect<void>;
 }
 
@@ -488,16 +489,18 @@ export const makeSessionHost = Effect.fnUntraced(function* (
         }),
       ),
     discard: (session) =>
-      lock.withPermits(1)(
-        Effect.sync(() => {
-          const gate = gates.get(session);
-          if (gate !== undefined) {
-            gate.state = "dropped";
-            gate.held.length = 0;
-          }
-          if (current === session) current = null;
-        }),
-      ),
+      lock
+        .withPermits(1)(
+          Effect.sync(() => {
+            const gate = gates.get(session);
+            if (gate !== undefined) {
+              gate.state = "dropped";
+              gate.held.length = 0;
+            }
+            if (current === session) current = null;
+          }),
+        )
+        .pipe(Effect.andThen(changed)),
     nativeTurn: (turn) => Effect.sync(() => translator.nativeTurn(turn)),
     interruptOrDefer: (turn) =>
       lock.withPermits(1)(

@@ -1,5 +1,5 @@
 import { ZeropsConnections } from "./ZeropsConnections.ts";
-import { type AccessNamed, accessReport, ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import type { TicketFrame } from "./ZeropsTicketDoor.ts";
 // @effect-diagnostics nodeBuiltinImport:off -- the link's socket resolves HQ through `node:dns`.
 /**
@@ -16,11 +16,12 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  *   of moves — a domain event, the crew's snapshot, a login, the update line — and never on a
  *   timer; beside it the Mate's attention (`ZeropsMateAttention`), whole on every link and again at
  *   each new revision; the Mate's own access list (`access_report`), its latest on every link and
- *   again after each recompute, `missing` against the last report a link took; `pong` to each of
+ *   again after each recompute, whole every time; `pong` to each of
  *   HQ's pings.
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
- *   every session on a moved Chief mark (`chief`); who HQ says its project opens for and lists (`access`, advisory), handed on to
+ *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
+ *   Mate's changes from every state where zcp reads them; who HQ says its project opens for and lists (`access`, advisory), handed on to
  *   `ZeropsMateAccessList`; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
  *   when the Mate's own list does not open for its person; the Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
@@ -98,11 +99,13 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
 import { ZeropsLogins } from "./ZeropsLogins.ts";
 import { ZeropsMateAttention } from "./ZeropsMateAttention.ts";
 import { ZeropsMateUpdate } from "./ZeropsMateUpdate.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { makeChiefRestart } from "./ZeropsChiefRestart.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsObserveCredentialFile } from "./ZeropsObserveCredentialFile.ts";
@@ -207,13 +210,15 @@ export interface ZeropsHqLinkOptions {
   /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`), advisory. */
   readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
   /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
-  readonly accessReports?: Stream.Stream<AccessNamed>;
+  readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
+  /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
+  readonly mateChanges?: (changes: MateChanges) => Effect.Effect<void>;
   /** Hands on the project HQ's Chief mark names, or none, with every state HQ sends. */
   readonly chief?: (projectId: string | null) => Effect.Effect<void>;
   /** Hands on HQ's word on the Mate and the organization's keys (`ZeropsAutomation`). */
@@ -231,6 +236,8 @@ export class ZeropsHqLink extends Context.Service<
   {
     /** Where the Mate stands with its HQ now. */
     readonly standing: Effect.Effect<HqStanding>;
+    /** Fires with each state HQ sends: `standing` may have moved. */
+    readonly changes: Stream.Stream<void>;
   }
 >()("t3/zerops/ZeropsHqLink") {}
 
@@ -339,8 +346,6 @@ export const makeZeropsHqLink = (
     // HQ's refusal of the key on the latest link that closed, until HQ next sends its state.
     const refusal = yield* Ref.make<string | undefined>(undefined);
     let reportedKey: string | undefined;
-    /** The last access report a link took: the next one's `missing` is against it, on any link. */
-    const accessReceived = yield* Ref.make<AccessReport | undefined>(undefined);
     // Links are numbered as they open; the current one is the newest HQ answered on. A credential
     // is written only from the current link, one write at a time, so a superseded link's frame
     // neither lands after nor races the current link's.
@@ -538,19 +543,8 @@ export const makeZeropsHqLink = (
       const accessReports =
         options.accessReports === undefined
           ? Effect.never
-          : Stream.runForEach(options.accessReports, (named) =>
-              Effect.gen(function* () {
-                const report = accessReport(yield* Ref.get(accessReceived), named);
-                const sent = yield* Effect.sync(() => {
-                  try {
-                    socket.send(encodeUp({ type: "access_report", ...report }));
-                    return true;
-                  } catch {
-                    return false;
-                  }
-                });
-                if (sent) yield* Ref.set(accessReceived, report);
-              }),
+          : Stream.runForEach(options.accessReports, (report) =>
+              send({ type: "access_report", ...report }),
             );
       /**
        * A task's frame (`task`, `task-message`, `task-stop`), held beside the frames that follow,
@@ -582,6 +576,7 @@ export const makeZeropsHqLink = (
             return SubscriptionRef.set(state, Option.some(frame.mate)).pipe(
               Effect.andThen(Ref.set(refusal, undefined)),
               Effect.andThen(Ref.set(automatedHere, frame.mate.automated === true)),
+              Effect.andThen(options.mateChanges?.(frame.mate) ?? Effect.void),
               Effect.andThen(options.automation?.heard(frame.mate) ?? Effect.void),
               Effect.andThen(options.chief?.(frame.mate.chief?.projectId ?? null) ?? Effect.void),
               Effect.andThen(
@@ -804,6 +799,7 @@ export const makeZeropsHqLink = (
           ? ({ kind: "linked", mate: held.value } as const)
           : ({ kind: "not-linked" } as const);
       }),
+      changes: Stream.map(SubscriptionRef.changes(state), () => undefined),
     });
   });
 
@@ -929,7 +925,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const usage = yield* makeUsageCapture(paths.join(config.stateDir, "usage.sqlite"));
       const zerops = config.zerops;
       if (zerops === undefined) {
-        return ZeropsHqLink.of({ standing: Effect.succeed({ kind: "not-linked" }) });
+        return ZeropsHqLink.of({
+          standing: Effect.succeed({ kind: "not-linked" }),
+          changes: Stream.empty,
+        });
       }
       const key = yield* ZeropsMateKey;
       const connections = yield* ZeropsConnections;
@@ -975,6 +974,9 @@ export const layer = (crew: OverviewSources["crew"]) =>
         closeSession: connections.closeSession,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
+        mateChanges: yield* makeChangesFile(
+          paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
+        ),
         gitFingerprint: credential.fingerprint,
         // A moved Chief mark rotates every session on this engine, so each runs a fresh zcp.
         chief: (yield* makeChiefRestart({

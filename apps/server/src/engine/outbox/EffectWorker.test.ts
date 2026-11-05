@@ -592,6 +592,129 @@ describe("EffectWorker: the worker", () => {
     }),
   );
 
+  it.effect("every outbox writer rings the worker's bell", () =>
+    Effect.gen(function* () {
+      let failing = 0;
+      const fault = () =>
+        failing > 0
+          ? Effect.suspend(
+              () => (
+                failing--,
+                Effect.fail(
+                  new EngineStoreError({ operation: "commit", cause: new Error("SQLITE_BUSY") }),
+                )
+              ),
+            )
+          : Effect.void;
+      const rang = yield* Effect.gen(function* () {
+        const sql = yield* SqlClient.SqlClient;
+        const conversations = yield* Conversations;
+        const worker = yield* makeEffectWorker(newBoot());
+        const bell = yield* (yield* EngineSignals.EngineSignals).effects.consumer;
+        const rings = <A, E>(write: Effect.Effect<A, E>) =>
+          Effect.gen(function* () {
+            yield* bell.arm;
+            yield* Effect.exit(write);
+            const heard = yield* Effect.forkChild(bell.wait);
+            yield* Effect.yieldNow;
+            return heard.pollUnsafe() !== undefined;
+          });
+        // Each write below is the only one its step makes: an outcome, a backoff, a settle put
+        // off, a row closed, rows queued.
+        yield* enqueue(ConversationId.make("settles"), [{ id: "settles/e/test.echo/1" }]);
+        const settled = yield* rings(worker.runOnce);
+        yield* enqueue(ConversationId.make("retries"), [
+          { id: "retries/e/test.flaky/1", kind: "test.flaky" },
+        ]);
+        const retried = yield* rings(worker.runOnce);
+        yield* enqueue(ConversationId.make("later"), [{ id: "later/e/test.echo/1" }]);
+        failing = 4; // the tell and its three immediate retries
+        const settledLater = yield* rings(worker.runOnce);
+        // A row its owner never queued: the settle is rejected and the worker closes the row.
+        yield* sql`
+          INSERT INTO engine_effect (
+            effect_id, conversation_id, owner_kind, lane, kind, class, run_id, payload_json,
+            state, attempt, available_at, cause_id, created_seq
+          ) VALUES (
+            'stray/e/test.echo/1', 'stray', 'conversation', 'turn', 'test.echo', 'replay-safe',
+            NULL, 'null', 'pending', 0, 0, 'stray', 1
+          )
+        `;
+        const closed = yield* rings(worker.runOnce);
+        const queued = yield* rings(conversations.ask(env({ _tag: "Send", text: "go" })));
+        const rows = {
+          settles: yield* rowState("settles/e/test.echo/1"),
+          retries: yield* rowState("retries/e/test.flaky/1"),
+          later: yield* rowState("later/e/test.echo/1"),
+          stray: yield* rowState("stray/e/test.echo/1"),
+        };
+        return { settled, retried, settledLater, closed, queued, rows };
+      }).pipe(
+        Effect.provide(
+          engineLayer(tempDb("rings"), handlersOf(echo, flaky), { fault: () => fault() }),
+        ),
+      );
+      expect(rang).toEqual({
+        settled: true,
+        retried: true,
+        settledLater: true,
+        closed: true,
+        queued: true,
+        rows: { settles: "done", retries: "pending", later: "settling", stray: "done" },
+      });
+    }),
+  );
+
+  it.effect("the effect worker sleeps to the next due row or the bell; no 30 s wake", () =>
+    Effect.gen(function* () {
+      const later: EffectHandler = {
+        kind: "test.later",
+        run: () => Effect.succeed({ _tag: "Retry", reason: "not yet", patient: true }),
+      };
+      const seen = yield* Effect.gen(function* () {
+        const outbox = yield* EffectOutbox;
+        const sql = yield* SqlClient.SqlClient;
+        let looks = 0;
+        const counting = {
+          ...outbox,
+          claim: (b: BootId, now: number, pool?: EffectPool) =>
+            Effect.andThen(
+              Effect.sync(() => looks++),
+              outbox.claim(b, now, pool),
+            ),
+        };
+        const worker = yield* makeEffectWorker(newBoot(), {
+          ownerRetry: { maxAttempts: 3, delayMs: () => 45_000 },
+        }).pipe(Effect.provideService(EffectOutbox, counting));
+        yield* worker.start;
+        yield* yieldMany;
+        const idleFrom = looks;
+        yield* TestClock.adjust(10 * 60_000);
+        yield* yieldMany;
+        const whileIdle = looks - idleFrom;
+
+        yield* enqueue(mate, [{ id: "mate/e/test.later/1", kind: "test.later", lane: "side" }]);
+        yield* (yield* EngineSignals.EngineSignals).effects.ring;
+        yield* yieldMany;
+        const attempt = Effect.map(
+          sql<{ readonly attempt: number }>`
+            SELECT attempt FROM engine_effect WHERE effect_id = 'mate/e/test.later/1'
+          `,
+          (rows) => rows[0]?.attempt,
+        );
+        const triedOnce = yield* attempt;
+        const waitFrom = looks;
+        yield* TestClock.adjust(45_000 - 1);
+        yield* yieldMany;
+        const beforeDue = looks - waitFrom;
+        yield* TestClock.adjust(1);
+        yield* yieldMany;
+        return { whileIdle, triedOnce, beforeDue, atDue: yield* attempt };
+      }).pipe(Effect.scoped, Effect.provide(engineLayer(tempDb("sleeps"), handlersOf(later))));
+      expect(seen).toEqual({ whileIdle: 0, triedOnce: 1, beforeDue: 0, atDue: 2 });
+    }),
+  );
+
   it.effect("an outcome decided before a restart is recorded at boot, before anything is cut", () =>
     Effect.gen(function* () {
       const file = tempDb("settling");

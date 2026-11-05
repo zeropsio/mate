@@ -40,7 +40,7 @@ import type { OperationIntent, OperationReceipt, OperationResult } from "../../m
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
 import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
-import type { HqWriteIntent } from "../hqWrites.ts";
+import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
 
 import {
   changeHandle,
@@ -48,6 +48,9 @@ import {
   FLOW_WRITE_KINDS,
   type FlowWriteIntent,
 } from "../flowWrites.ts";
+
+/** The project kinds HQ deploys with an environment's deploy token. */
+const ENVIRONMENT_KINDS: ReadonlySet<string> = new Set(["stage", "production"]);
 
 /** Only this reviewed removal may authorize deletion of its particular target. */
 function matchingProductionRemoval(intent: OperationIntent, record: HqLifecycleRecord): boolean {
@@ -80,6 +83,7 @@ export type HqWrites = Pick<
   | "renameApp"
   | "deleteApp"
   | "answerKeptGit"
+  | "completeProjectDeletion"
   | "createApp"
   | "recordBirth"
   | "bindBirth"
@@ -290,8 +294,13 @@ function containsCandidate(value: unknown, token: string): boolean {
 export function makeHqExecutor(ports: {
   /** The organization's official HQ, once known; `null` while none is. */
   readonly apiOf: (orgId: string) => HqWrites | null;
-  /** The person's Zerops client, which mints an environment's deploy key. */
+  /**
+   * The person's Zerops client, which mints an environment's deploy key and deletes the one HQ no
+   * longer keeps.
+   */
   readonly zerops: Pick<ZeropsApiClient, "mintIntegrationToken" | "deleteIntegrationToken">;
+  /** Says once that a deploy token HQ no longer keeps is still alive on Zerops, and why. */
+  readonly tokenLeft?: (message: string) => void;
   /** Captured account lifetime; lifecycle writes require it. */
   readonly active?: () => boolean;
   /** Required for Git: offers and candidate cleanup share the account store lifetime. */
@@ -404,12 +413,47 @@ export function makeHqExecutor(ports: {
       );
     });
 
-  /** The environment's own token minted, then kept by HQ; a refused one taken back. */
+  /** The deploy token HQ's navigation says it keeps for the environment on `projectId`. */
+  const keptToken = (appId: string | null, projectId: string) =>
+    appId === null || ports.store === undefined
+      ? undefined
+      : keptDeployToken(readsOfState(ports.store.state()), appId, projectId);
+  /**
+   * A token HQ no longer keeps, deleted on Zerops once: a failure, or an id HQ never recorded, is
+   * said, never retried and never the failure of the HQ write that let it go.
+   */
+  const retireToken = (orgId: string, token: { readonly id: string | undefined } | undefined) => {
+    if (token === undefined) return Effect.void;
+    const tokenId = token.id;
+    if (tokenId === undefined)
+      return Effect.sync(() =>
+        ports.tokenLeft?.(
+          "HQ did not record which deploy token it used, so Mate could not delete it. Delete it among the organization's access tokens in Zerops.",
+        ),
+      );
+    return Effect.promise(() =>
+      ports.zerops.deleteIntegrationToken({ clientId: orgId, tokenId }).then(
+        () => undefined,
+        (cause: unknown) =>
+          ports.tokenLeft?.(
+            `Zerops did not delete the deploy token HQ no longer uses (${
+              cause instanceof Error ? cause.message : String(cause)
+            }). Delete it among the organization's access tokens in Zerops.`,
+          ),
+      ),
+    );
+  };
+
+  /**
+   * The environment's own token minted, then kept by HQ; a refused one taken back, and the one HQ
+   * kept before deleted.
+   */
   const keepKey = (
     api: HqWrites,
     intent: Extract<HqWriteIntent, { readonly kind: "keep-deploy-key" }>,
   ) =>
     Effect.gen(function* () {
+      const previous = keptToken(intent.appId, intent.projectId);
       const minted = yield* write(() =>
         ports.zerops.mintIntegrationToken({
           clientId: intent.orgId,
@@ -419,7 +463,7 @@ export function makeHqExecutor(ports: {
           }),
         }),
       );
-      return yield* write(() =>
+      yield* write(() =>
         api
           .keepDeployToken(intent.appId, intent.environmentName, minted.token)
           .catch(async (cause: unknown) => {
@@ -431,6 +475,7 @@ export function makeHqExecutor(ports: {
             throw cause;
           }),
       );
+      if (previous?.id !== minted.id) yield* retireToken(intent.orgId, previous);
     });
 
   /** A Chief's registration and a proposal's decision: HQ's answer is their end. */
@@ -687,6 +732,15 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: "Update HQ to use lifecycle receipts.",
             });
+          // Read before the write: once HQ confirms, its navigation no longer names the token.
+          const leaving =
+            intent.kind === "remove-production"
+              ? keptToken(intent.appId, intent.projectId)
+              : intent.kind === "move-project" &&
+                  ENVIRONMENT_KINDS.has(intent.from.kind) &&
+                  !ENVIRONMENT_KINDS.has(intent.to.kind)
+                ? keptToken(intent.from.appId, intent.projectId)
+                : undefined;
           const record = yield* Effect.tryPromise({
             try: () => api.lifecycleWrite!(requestId, intent),
             catch: (cause) => faultOf(cause, true),
@@ -696,7 +750,25 @@ export function makeHqExecutor(ports: {
               outcome: "definitive-refusal",
               message: "HQ did not confirm the reviewed production target and its fate.",
             });
+          yield* retireToken(intent.orgId, leaving);
           return lifecycleReceipt(record);
+        }
+        if (intent.kind === "complete-project-deletion") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null || ports.hqProjectIdOf?.(intent.orgId) !== intent.hqProjectId)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          // HQ's 409 `project_present` or 401 `token_required` ends it, refused: never sent again.
+          yield* Effect.tryPromise({
+            try: () => api.completeProjectDeletion(intent.projectId),
+            catch: (cause) => faultOf(cause, true),
+          });
+          return {
+            ...answered(requestId, intent.projectId),
+            affected: [{ family: "placement", id: intent.projectId }],
+          };
         }
         if (FLOW_KINDS.has(intent.kind)) {
           const flow = intent as FlowWriteIntent;

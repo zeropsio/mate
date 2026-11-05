@@ -149,16 +149,10 @@ describe("ZeropsConnections", () => {
         );
         yield* push(evaOrgRole("NO_ACCESS"));
         yield* Deferred.await(closeReceipt);
-        const [firstNamed, secondNamed] = yield* Fiber.join(reports);
-        // As the link sends them, one after the other.
-        const first = firstNamed && Access.accessReport(undefined, firstNamed);
-        const second = secondNamed && Access.accessReport(first, secondNamed);
+        const [first, second] = yield* Fiber.join(reports);
         assert.deepEqual(closed, ["eva"]);
-        assert.deepEqual([first?.openers, first?.missing], [["jan", "eva"], []]);
-        assert.deepEqual(
-          [second?.openers, second?.listed, second?.missing],
-          [["jan"], [], ["eva"]],
-        );
+        assert.deepEqual([first?.openers, first?.listed], [["jan", "eva"], []]);
+        assert.deepEqual([second?.openers, second?.listed], [["jan"], []]);
         assert.strictEqual(yield* Ref.get(reads), 1);
       }).pipe(Effect.scoped),
   );

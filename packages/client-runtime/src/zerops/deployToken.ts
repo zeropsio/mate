@@ -5,8 +5,9 @@
  * environment — `NO_ACCESS` in the org, `BASIC_USER` on its project and nothing else — because a
  * token cannot mint a token (ledger 2026-09-15): only a person can, so the client of whoever adds
  * the environment, or may keep its key, mints it and hands it to HQ, which never answers it back.
- * HQ says only whether it holds one, and whether the one it holds still works (`keyHeld`,
- * `keyInvalid`).
+ * HQ says only whether it holds one, whether the one it holds still works (`keyHeld`,
+ * `keyInvalid`), and its Zerops id (`keyId`): a token cannot delete a token either, so the person's
+ * client deletes the one HQ no longer keeps.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *

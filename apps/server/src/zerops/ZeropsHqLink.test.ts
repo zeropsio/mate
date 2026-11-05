@@ -1,4 +1,5 @@
 import * as NodeCrypto from "@effect/platform-node/NodeCrypto";
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ConversationRow,
@@ -11,13 +12,20 @@ import {
   type MateAttention,
   type ZeropsAgentAuthSnapshot,
 } from "@t3tools/contracts";
-import { KeyLinkUp, type LinkedMate, type MateOverview } from "@t3tools/shared/mateLink";
+import {
+  type AccessReport,
+  KeyLinkUp,
+  type LinkedMate,
+  type MateOverview,
+} from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Logger from "effect/Logger";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -32,6 +40,7 @@ import type { AccessLiveEvent } from "./ZeropsAccessSocket.ts";
 import * as Access from "./ZeropsMateAccessList.ts";
 import * as Tickets from "./ZeropsTicketDoor.ts";
 import * as Connections from "./ZeropsConnections.ts";
+import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import {
@@ -197,7 +206,8 @@ const rig = (
     readonly ticket?: ZeropsHqLinkOptions["ticket"];
     readonly closeSession?: ZeropsHqLinkOptions["closeSession"];
     /** The Mate's own access reports; none unless a test says. */
-    readonly accessReports?: Stream.Stream<Access.AccessNamed>;
+    readonly accessReports?: Stream.Stream<AccessReport>;
+    readonly mateChanges?: ZeropsHqLinkOptions["mateChanges"];
   } = {},
 ) =>
   Effect.gen(function* () {
@@ -246,6 +256,7 @@ const rig = (
       ...(options.ticket === undefined ? {} : { ticket: options.ticket }),
       ...(options.closeSession === undefined ? {} : { closeSession: options.closeSession }),
       ...(options.accessReports === undefined ? {} : { accessReports: options.accessReports }),
+      ...(options.mateChanges === undefined ? {} : { mateChanges: options.mateChanges }),
       gitCredential: (credential) =>
         Effect.uninterruptible(
           (options.credentialLands?.(credential) ?? Effect.void).pipe(
@@ -853,7 +864,7 @@ describe("ZeropsHqLink", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const named = (at: string, openers: ReadonlyArray<string>): Access.AccessNamed => ({
+          const named = (at: string, openers: ReadonlyArray<string>): AccessReport => ({
             at,
             openers,
             listed: ["eva"],
@@ -869,46 +880,42 @@ describe("ZeropsHqLink", () => {
           admit(first);
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(reported(first), [
-            {
-              type: "access_report",
-              ...named("2026-11-03T10:00:00.000Z", ["jan", "bob"]),
-              missing: [],
-            },
+            { type: "access_report", ...named("2026-11-03T10:00:00.000Z", ["jan", "bob"]) },
           ]);
           yield* SubscriptionRef.set(reports, named("2026-11-03T10:05:00.000Z", ["jan"]));
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(reported(first).at(-1), {
             type: "access_report",
             ...named("2026-11-03T10:05:00.000Z", ["jan"]),
-            missing: ["bob"],
           });
           first.emit("close");
           yield* TestClock.adjust(Duration.millis(30));
           const second = yield* linked(sockets, 1);
           assert.deepStrictEqual(reported(second), [
-            { type: "access_report", ...named("2026-11-03T10:05:00.000Z", ["jan"]), missing: [] },
+            { type: "access_report", ...named("2026-11-03T10:05:00.000Z", ["jan"]) },
           ]);
         }),
       ),
   );
 
   it.effect(
-    "access_report.missing is never lost: missing is computed at send time against the last report HQ received",
+    "Decision: The Mate's access report carries `at`, `openers` and `listed` (full lists every time) and no `missing`; the in-memory baseline and everything that only served it are deleted; the report is still sent on every change of the live list, at start, on reconnect and with the 5 min ± 60 s re-read, unchanged.",
     () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const member = (userId: string, orgRole: string) => ({
-            clientUserId: `cu-${userId}`,
-            userId,
-            orgRole,
-            status: "ACTIVE",
-            canCreateProjects: false,
-          });
-          const answer = yield* Ref.make<AccessRead>({
-            kind: "read",
-            project: { clientId: "org", overrides: {} },
-            members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
-          });
+      Effect.gen(function* () {
+        const member = (userId: string, orgRole: string) => ({
+          clientUserId: `cu-${userId}`,
+          userId,
+          orgRole,
+          status: "ACTIVE",
+          canCreateProjects: false,
+        });
+        const answer = yield* Ref.make<AccessRead>({
+          kind: "read",
+          project: { clientId: "org", overrides: {} },
+          members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
+        });
+        /** One run of the Mate's server: its own list and its link, nothing kept in between. */
+        const process = Effect.gen(function* () {
           const live = yield* Queue.unbounded<AccessLiveEvent>();
           const list = yield* Access.make({
             projectId: "P_MATE",
@@ -919,39 +926,57 @@ describe("ZeropsHqLink", () => {
             accessReports: list.reports,
             reconnectDelaysMs: [1_000],
           });
-          const reported = (socket: FakeSocket) =>
-            socket.sent.flatMap((message) =>
-              message.type === "access_report"
-                ? [{ openers: message.openers, listed: message.listed, missing: message.missing }]
-                : [],
-            );
-          const first = yield* linked(sockets, 0);
-          assert.deepStrictEqual(reported(first), [
-            { openers: ["jan", "eva"], listed: [], missing: [] },
-          ]);
-          first.emit("close");
-          yield* TestClock.adjust(Duration.zero);
-          // While the link is down a frame takes Eva away, then a read finds the same.
-          yield* Queue.offer(live, {
-            _tag: "frame",
-            frame: { kind: "members", upsert: [], remove: ["cu-eva"] },
-          });
-          yield* TestClock.adjust(Duration.zero);
-          yield* Ref.set(answer, {
-            kind: "read",
-            project: { clientId: "org", overrides: {} },
-            members: [member("jan", "OWNER")],
-          });
-          yield* Queue.offer(live, { _tag: "connected" });
-          yield* TestClock.adjust(Duration.zero);
-          // The link's wait and its spread of up to a quarter more.
-          yield* TestClock.adjust(Duration.millis(1_251));
-          const second = yield* linked(sockets, 1);
-          assert.deepStrictEqual(reported(second), [
-            { openers: ["jan"], listed: [], missing: ["eva"] },
-          ]);
-        }),
-      ),
+          return { live, sockets };
+        });
+        // When a report was made is the list's own concern; here, what it names.
+        const reported = (socket: FakeSocket): ReadonlyArray<unknown> =>
+          socket.sent.flatMap((message) =>
+            message.type === "access_report" ? [{ ...message, at: "t" }] : [],
+          );
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const { sockets } = yield* process;
+            const first = yield* linked(sockets, 0);
+            assert.deepStrictEqual(reported(first), [
+              { type: "access_report", at: "t", openers: ["jan", "eva"], listed: [] },
+            ]);
+          }),
+        );
+        // Eva is taken away while the Mate restarts: HQ, not the Mate, finds her gone.
+        yield* Ref.set(answer, {
+          kind: "read",
+          project: { clientId: "org", overrides: {} },
+          members: [member("jan", "OWNER")],
+        });
+        yield* Effect.scoped(
+          Effect.gen(function* () {
+            const { live, sockets } = yield* process;
+            const first = yield* linked(sockets, 0);
+            assert.deepStrictEqual(reported(first), [
+              { type: "access_report", at: "t", openers: ["jan"], listed: [] },
+            ]);
+            // A frame that lists Ben read-only: the whole list again, HQ never answering a report.
+            yield* Queue.offer(live, {
+              _tag: "frame",
+              frame: { kind: "members", upsert: [member("ben", "READ_ONLY")], remove: [] },
+            });
+            yield* TestClock.adjust(Duration.zero);
+            assert.deepStrictEqual(reported(first).at(-1), {
+              type: "access_report",
+              at: "t",
+              openers: ["jan"],
+              listed: ["ben"],
+            });
+            first.emit("close");
+            // The link's wait and its spread of up to a quarter more.
+            yield* TestClock.adjust(Duration.millis(1_251));
+            const second = yield* linked(sockets, 1);
+            assert.deepStrictEqual(reported(second), [
+              { type: "access_report", at: "t", openers: ["jan"], listed: ["ben"] },
+            ]);
+          }),
+        );
+      }),
   );
 
   it.effect("acknowledges Observe writes and revocation only after their truthful receipt", () =>
@@ -1077,6 +1102,56 @@ describe("ZeropsHqLink", () => {
           assert.deepStrictEqual(chiefs, [null, "P_MATE", "P_OTHER"]);
         }),
       ),
+  );
+
+  it.effect(
+    "Decision: every state HQ sends lands as the Mate's changes, and only them, in the file zcp reads",
+    () =>
+      Effect.gen(function* () {
+        const fs = yield* FileSystem.FileSystem;
+        const path = yield* Path.Path;
+        const root = yield* fs.makeTempDirectoryScoped({ prefix: "mate-changes-file-" });
+        const directory = path.join(root, ".zcp", "hq");
+        const at = path.join(directory, "changes.json");
+        const { sockets } = yield* rig({ mateChanges: yield* makeChangesFile(at) });
+        const socket = yield* linked(sockets, 0);
+        const change = {
+          repo: "shop",
+          number: 3,
+          title: "Mate: shop",
+          head: "a".repeat(40),
+          mergedSha: null,
+          landedHead: null,
+          branch: "mate/ada",
+        } as const;
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "open", updatedAt: "2026-11-05T10:00:00.000Z" }],
+          ownerUserId: "owner",
+        });
+        admit(socket, {
+          ...STATE,
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+          ownerUserId: "owner",
+        });
+        // Frames are taken in order: the pong is the receipt that both states were handled.
+        const ponged = yield* Deferred.make<void>();
+        socket.onSent = (message) => {
+          if (message.type === "pong") Deferred.doneUnsafe(ponged, Effect.void);
+        };
+        socket.hear({ type: "ping" });
+        yield* Deferred.await(ponged);
+        assert.deepStrictEqual(JSON.parse(yield* fs.readFileString(at)), {
+          appId: "app-1",
+          appName: "Shop",
+          changes: [{ ...change, state: "merged", mergedSha: "b".repeat(40) }],
+        });
+        assert.deepStrictEqual(yield* fs.readDirectory(directory), ["changes.json"]);
+      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
   );
 
   // HQ's state carries the application the Mate is in and its changes there: kept whole, as sent.

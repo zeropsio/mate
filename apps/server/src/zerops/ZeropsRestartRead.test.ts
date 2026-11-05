@@ -2,12 +2,15 @@ import * as NodeServices from "@effect/platform-node/NodeServices";
 import { assert, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
+import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as ServerConfig from "../config.ts";
+import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
-import { ZeropsMateKey } from "./ZeropsMateKey.ts";
-import { ZeropsOrgRead } from "./ZeropsOrgRead.ts";
+import * as ZeropsMateAccessList from "./ZeropsMateAccessList.ts";
+import { snapshotOnlyReader, ZeropsMateKey } from "./ZeropsMateKey.ts";
 import { make, containerStartedAt } from "./ZeropsRestartRead.ts";
 
 const environment = resolveZeropsEnvironment({
@@ -70,12 +73,64 @@ it.effect.each(
     Effect.provideService(ServerConfig.ServerConfig, {
       zerops: environment,
     } as ServerConfig.ServerConfig["Service"]),
-    Effect.provideService(ZeropsOrgRead, {
-      project: () =>
-        Effect.succeed({ kind: "answered", status: 200, body: { name: "Fen", clientId: "org" } }),
-    }),
+    Effect.provideService(
+      ZeropsMateAccessList.ZeropsMateAccessList,
+      ZeropsMateAccessList.ZeropsMateAccessList.of({
+        ownProject: Effect.succeed(Option.some({ name: "Fen", clientId: "org", overrides: {} })),
+      } as unknown as ZeropsMateAccessList.ZeropsMateAccessList["Service"]),
+    ),
     Effect.provide(NodeServices.layer),
   ),
+);
+
+it.effect(
+  "The Mate's project name and clientId come from the access list's live project document; no second read is cached 30 s.",
+  () => {
+    const requests: string[] = [];
+    const http = HttpClient.make((request) => {
+      requests.push(`${request.method} ${request.url}`);
+      const body = request.url.endsWith("/project/own-project")
+        ? { id: "own-project", name: "Fen", clientId: "org", userRoles: [] }
+        : request.url.endsWith("/client-user/search")
+          ? { items: [], totalHits: 0 }
+          : { list: [process] };
+      return Effect.succeed(
+        HttpClientResponse.fromWeb(request, new Response(JSON.stringify(body), { status: 200 })),
+      );
+    });
+    const projectRead = `GET ${environment.apiBaseUrl}/project/own-project`;
+    return Effect.gen(function* () {
+      const read = yield* ZeropsAccessReadModule.ZeropsAccessRead;
+      const access = yield* ZeropsMateAccessList.make({
+        projectId: "own-project",
+        read: read.read,
+      });
+      // The list's own read has landed: its report is the receipt.
+      yield* access.reports.pipe(Stream.take(1), Stream.runDrain);
+      const restart = yield* make({ serviceId: "own-zcp" }).pipe(
+        Effect.provideService(ZeropsMateAccessList.ZeropsMateAccessList, access),
+      );
+      assert.equal((yield* restart.read).name, "Fen");
+      assert.deepStrictEqual(
+        Option.map(yield* access.ownProject, (own) => own.clientId),
+        Option.some("org"),
+      );
+      // The access list's read is the only read of the project document.
+      assert.deepStrictEqual(
+        requests.filter((request) => request === projectRead),
+        [projectRead],
+      );
+    }).pipe(
+      Effect.provide(ZeropsAccessReadModule.layer(environment)),
+      Effect.provideService(ZeropsMateKey, snapshotOnlyReader("test-mate-key")),
+      Effect.provideService(HttpClient.HttpClient, http),
+      Effect.provideService(FileSystem.FileSystem, FileSystem.makeNoop({})),
+      Effect.provideService(ServerConfig.ServerConfig, {
+        zerops: environment,
+      } as ServerConfig.ServerConfig["Service"]),
+      Effect.scoped,
+    );
+  },
 );
 
 it("uses PID 1's start time to distinguish container replacement from a Mate-only restart", () => {

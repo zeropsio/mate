@@ -3,13 +3,14 @@ import { AGENT_USAGE_CAPTURE_PROTOCOL, UsageProviderKind } from "@t3tools/contra
 import { type MateLinkDown, type MateLinkUp } from "@t3tools/shared/mateLink";
 import { type UsageLinkUp, type UsageLinkDown } from "@t3tools/shared/agentUsage";
 import * as Effect from "effect/Effect";
+import * as Option from "effect/Option";
 import * as Queue from "effect/Queue";
 import * as Schema from "effect/Schema";
 import type * as Scope from "effect/Scope";
 import * as Stream from "effect/Stream";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
 import { makeUsageOutbox } from "./UsageOutbox.ts";
 
 export interface UsageLane {
@@ -23,15 +24,13 @@ export interface UsageLink {
     send: (frame: MateLinkUp) => Effect.Effect<void>,
   ) => Effect.Effect<UsageLane, never, Scope.Scope>;
 }
-const orgBody = Schema.Struct({ clientId: Schema.NonEmptyString });
-const decodeOrg = Schema.decodeUnknownEffect(orgBody);
 const decodeProvider = Schema.decodeUnknownEffect(UsageProviderKind);
 
 export const makeUsageLink = Effect.gen(function* () {
   const outbox = yield* makeUsageOutbox;
   const bus = yield* ProviderRuntimeEventBus;
   const config = yield* ServerConfig;
-  const orgRead = yield* ZeropsOrgRead;
+  const access = yield* ZeropsMateAccessList;
   let wake: (() => void) | undefined;
   // Acquire the SPI subscription before this layer returns and command admission can open.
   yield* Effect.forkScoped(
@@ -96,11 +95,10 @@ export const makeUsageLink = Effect.gen(function* () {
           )
             return;
           if (message.mate.projectId !== config.zerops.projectId) return;
-          const read = yield* orgRead.project(config.zerops);
-          if (read.kind !== "answered" || read.status !== 200) return;
-          const body = yield* decodeOrg(read.body);
+          const project = yield* access.ownProject;
+          if (Option.isNone(project)) return;
           yield* outbox.bind({
-            orgId: body.clientId,
+            orgId: project.value.clientId,
             projectId: config.zerops.projectId,
             mateId: message.usage.mateId,
           });

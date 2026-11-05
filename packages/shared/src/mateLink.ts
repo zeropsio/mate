@@ -526,16 +526,15 @@ export const KeyLinkUp = Schema.Union([
     reason: Schema.Literals(["not_in_list", "read_only"]),
   }),
   /**
-   * The Mate's own access list after every recompute (`at`, ISO 8601): whom its project opens for,
-   * whom it only lists, and `missing` — opened for or listed in the last report HQ received,
-   * neither now.
+   * The Mate's own access list after every recompute (`at`, ISO 8601): whom its project opens for
+   * and whom it only lists, whole every time. HQ derives who went missing against the reports it
+   * applied before.
    */
   Schema.Struct({
     type: Schema.Literal("access_report"),
     at: Schema.String,
     openers: Schema.Array(Schema.String),
     listed: Schema.Array(Schema.String),
-    missing: Schema.Array(Schema.String),
   }),
 ]);
 export type KeyLinkUp = typeof KeyLinkUp.Type;

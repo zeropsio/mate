@@ -19,6 +19,9 @@
  *   RESTARTING. A ready container no socket holds stays ready through `READY_SILENCE_MS` of
  *   unanswered probes, long enough for the platform to say why; silent past it, it is a boot
  *   that only failed probes suggest — `guessed`, read at the backing-off intervals, and capped.
+ * - A container coming up whose Mate HQ speaks for (`hq`) is read off HQ's presence, never on a
+ *   timer: HQ newly saying its Mate is online reads it once (`probe`). One HQ cannot speak for is
+ *   polled. HQ's word only asks for a read: the reading alone says the container is up.
  */
 import type { ExecutionEnvironmentUpdate } from "@t3tools/contracts";
 import type { Instant } from "./exchange.ts";
@@ -108,11 +111,10 @@ export interface ContainerMachine {
   readonly processEndedAt: Instant | null;
   /** The newest probe reading and when its probe was sent; null before one. */
   readonly reading: { readonly reading: ProbeReading; readonly sentAt: Instant } | null;
-  /**
-   * When something began proving the container up: its socket, or HQ holding its Mate online
-   * (`containerStore`). Null while nothing does.
-   */
+  /** When its socket began proving the container up; null while none does. */
   readonly connectedSince: Instant | null;
+  /** HQ's presence for its Mate while HQ's relay of it is current: online or not; null otherwise. */
+  readonly hq: boolean | null;
   /**
    * When the container was last known up outside a socket: the latest probe it answered ready
    * left, or its socket dropped. Null before either.
@@ -138,6 +140,8 @@ export type ContainerEvent =
   | { readonly type: "PROCESS"; readonly running: boolean }
   | { readonly type: "PROBED"; readonly reading: ProbeReading; readonly sentAt: Instant }
   | { readonly type: "LINK"; readonly connected: boolean }
+  /** HQ's presence for its Mate, as its relay holds it now; null while HQ cannot say. */
+  | { readonly type: "HQ"; readonly online: boolean | null }
   | { readonly type: "MATE_FLAG"; readonly flag: MateFlag }
   | { readonly type: "INTENT"; readonly intent: ContainerIntent }
   /** Its connected server's word on an automatic update: under way from `from`, or none (null). */
@@ -176,7 +180,10 @@ export type ContainerEffect =
   | { readonly kind: "cancel"; readonly key: typeof CONTAINER_TIMER_KEY }
   /** Read `ZCP_MATE_ENABLED`: a container predating Mate is Enable only when the flag is off. */
   | { readonly kind: "read-mate-flag" }
-  /** Read the container now: its cap ran out, and only a reading since says whether it is late. */
+  /**
+   * Read the container now, `/healthz` beside it: its cap ran out and only a reading since says
+   * whether it is late, or HQ newly says its Mate is online while it comes up.
+   */
   | { readonly kind: "probe" };
 
 export interface ContainerContext {
@@ -213,6 +220,7 @@ export const initialContainer = (): ContainerMachine => ({
   processEndedAt: null,
   reading: null,
   connectedSince: null,
+  hq: null,
   upAt: null,
   mateFlag: null,
   intent: null,
@@ -251,12 +259,14 @@ export const containerVerdict = (machine: ContainerMachine): ContainerVerdict =>
 /**
  * How often the probe store reads this container (§4.5 probes): every 2 s while it comes up,
  * backing off past its cap or while a ready one leaves them unanswered, never while a socket
- * proves it up, and otherwise only when a push, a failure or a wake asks. A boot nothing vouches
- * for — only failed probes say it, as of a dead Mate or a zcp serving none — is polled only while
- * someone waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
+ * proves it up, and otherwise only when a push, a failure or a wake asks. One coming up whose Mate
+ * HQ speaks for is read on HQ's word instead (`hqReadsWayUp`). A boot nothing vouches for — only
+ * failed probes say it, as of a dead Mate or a zcp serving none — is polled only while someone
+ * waits on it (`watched`: the route's, the screen's, a lease's), on the backing-off ladder.
  */
 export const probeCadence = (machine: ContainerMachine, watched = false): ProbeCadence => {
   if (platformSaysDown(machine)) return { kind: "none" };
+  if (hqReadsWayUp(machine)) return ON_DEMAND;
   switch (machine.state.level) {
     case "booting":
       if (machine.state.guessed) return watched ? { kind: "poll", overdue: true } : ON_DEMAND;
@@ -280,6 +290,19 @@ export const probeCadence = (machine: ContainerMachine, watched = false): ProbeC
 };
 
 const ON_DEMAND: ProbeCadence = { kind: "on-demand" };
+
+/** The platform or our verb says the container is on its way up. */
+export const comingUp = (machine: ContainerMachine): boolean =>
+  (machine.state.level === "booting" && !machine.state.guessed) ||
+  machine.state.level === "restarting" ||
+  machine.state.level === "updating";
+
+/**
+ * HQ speaks for the Mate of a container coming up: its presence, not a poll, says when to read it
+ * — once as HQ newly says it is online, and at the person's Try now.
+ */
+export const hqReadsWayUp = (machine: ContainerMachine): boolean =>
+  machine.hq !== null && comingUp(machine);
 
 /**
  * The platform's own status says the Mate's server is not up: its project or its zcp service is
@@ -707,6 +730,8 @@ const apply = (
       );
       return updating.intent === null ? { ...linked, updateUnderway: null } : updating;
     }
+    case "HQ":
+      return event.online === machine.hq ? machine : { ...machine, hq: event.online };
     case "UPDATE_UNDERWAY":
       return event.from === machine.updateUnderway
         ? machine
@@ -751,6 +776,18 @@ export function transitionContainer(
     } else {
       effects.push({ kind: "probe" });
     }
+  }
+  // HQ newly saying its Mate is online reads a container on its way up once: the reading, never
+  // HQ's word, says it is back.
+  if (
+    event.type === "HQ" &&
+    event.online === true &&
+    machine.hq !== true &&
+    hqReadsWayUp(next) &&
+    !platformSaysDown(next) &&
+    !effects.some((effect) => effect.kind === "probe")
+  ) {
+    effects.push({ kind: "probe" });
   }
   if (!sameJson(next.timer, machine.timer)) {
     effects.push(

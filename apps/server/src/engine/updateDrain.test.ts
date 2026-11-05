@@ -246,7 +246,10 @@ const drains = (w: EngineWorld) =>
       )
       .pipe(Effect.forkChild);
     yield* w.settle;
-    yield* w.advance(MATE_UPDATE_DRAIN_MS);
+    // The clock moves a second at a time and settles, so every instant the drain waits on (a quiet
+    // minute, finished work's due) is reacted to before its deadline comes.
+    for (let at = 0; at < MATE_UPDATE_DRAIN_MS && drained.pollUnsafe() === undefined; at += 1_000)
+      yield* w.advance(1_000);
     const result = yield* Fiber.join(drained);
     yield* w.within(drain.cancel);
     return result;

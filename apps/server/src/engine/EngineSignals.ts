@@ -49,7 +49,10 @@ export const makeDoorbells = Effect.sync((): Doorbells => {
 });
 
 export interface EngineSignalsShape {
-  /** Outbox rows were queued or requeued: each worker pool hears it on its own doorbell. */
+  /**
+   * The outbox changed (rows queued, closed, put off or retried later): each worker pool hears it
+   * on its own doorbell and looks again, sleeping only to the next row's due instant.
+   */
   readonly effects: Doorbells;
   /** A wake was armed, fired or cancelled. */
   readonly wakes: Doorbell;

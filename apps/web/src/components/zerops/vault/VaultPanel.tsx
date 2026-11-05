@@ -129,22 +129,33 @@ export function VaultPanelBody(props: VaultPanelBodyProps) {
   const q = query.trim();
   const writable = view.scopes.filter((scope) => scope.editable);
 
-  // A settled row's check and impact line go on their own.
-  const settledCount = local.settled.size;
+  // A settled row's check and impact line go on their own, each at its instant: one timer, armed
+  // at the earliest still ahead, then at the next.
   useEffect(() => {
-    if (settledCount === 0) return;
-    const timer = setInterval(() => {
-      const at = Date.now();
-      setClock(at);
-      setLocal((current) => {
-        const settled = new Map(
-          [...current.settled].filter(([, entry]) => at - entry.at < IMPACT_MS),
-        );
-        return settled.size === current.settled.size ? current : { ...current, settled };
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [settledCount]);
+    const instants = [...local.settled.values()].flatMap((entry) => [
+      entry.at + SETTLE_MS,
+      entry.at + IMPACT_MS,
+    ]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const arm = () => {
+      const now = Date.now();
+      const next = Math.min(...instants.filter((instant) => instant > now));
+      if (!Number.isFinite(next)) return;
+      timer = setTimeout(() => {
+        const at = Date.now();
+        setClock(at);
+        setLocal((current) => {
+          const settled = new Map(
+            [...current.settled].filter(([, entry]) => at - entry.at < IMPACT_MS),
+          );
+          return settled.size === current.settled.size ? current : { ...current, settled };
+        });
+        arm();
+      }, next - now);
+    };
+    arm();
+    return () => clearTimeout(timer);
+  }, [local.settled]);
 
   useEffect(() => {
     if (flash === null) return;

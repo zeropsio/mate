@@ -189,10 +189,11 @@ export interface HqStructure {
   /** What the person may do with the organization's applications (`organizationOffers`). */
   readonly can?: HqOffers;
   /**
-   * Each project of the organization HQ holds nowhere, by id, with whether the person may write its
-   * Mate's record (`create_mate_record`), where their roles are read.
+   * Each placeable project, by id: one in the person's own live Zerops list that HQ holds no row
+   * for, with whether they may write its Mate's record (`create_mate_record`), where their roles
+   * are read. The client derives it; HQ sends none. Absent until both are read.
    */
-  readonly unheld?: Readonly<Record<string, HqOffers>>;
+  readonly placeable?: Readonly<Record<string, HqOffers>>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<
@@ -247,7 +248,7 @@ export interface HqAttach {
   readonly kind: RoleProjectKind;
   /**
    * The Mate's face and stand-up ask, and its zcp service where its project holds it; with
-   * kind `mate`, and only with it. An attach that closes a birth intent takes the intent's ask
+   * kind `mate` or `devstage`, and only with them. An attach that closes a birth intent takes the intent's ask
    * instead.
    */
   readonly mate?: HqMateSetUp;
@@ -368,6 +369,12 @@ export interface HqApi {
     intent: HqLifecycleIntent,
   ) => Promise<HqLifecycleRecord>;
   readonly lifecycleReceipt: (requestId: string) => Promise<HqLifecycleRecord | null>;
+  /**
+   * Tells HQ a project it still places is gone on Zerops (`POST /api/projects/{projectId}/deleted`),
+   * for a deletion this person did not prepare: HQ reads the project with their token, drops its
+   * records once Zerops answers not found, and decides who may by their organization role.
+   */
+  readonly completeProjectDeletion: (projectId: string) => Promise<void>;
   /** A Mate's face, as HQ records it (`PATCH /api/mates/{projectId}`). */
   readonly updateMate: (projectId: string, change: { readonly face: string }) => Promise<void>;
   /** An application's name (`PATCH /api/apps/{id}`). */
@@ -1494,6 +1501,14 @@ export function makeHqApi(input: {
           ),
         async () => (await appOf(appId)) === undefined,
       ),
+    completeProjectDeletion: async (projectId) => {
+      // No preparer's handle: HQ decides by the person's role on the gone project.
+      await authorized(
+        `/api/projects/${encodeURIComponent(projectId)}/deleted`,
+        { method: "POST", body: JSON.stringify(await withAccess({ completion: "" })) },
+        true,
+      );
+    },
     answerKeptGit: async (appId, answer) => {
       await authorized(
         `/api/apps/${encodeURIComponent(appId)}/kept-git`,
