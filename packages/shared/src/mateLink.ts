@@ -563,6 +563,14 @@ export const KeyLinkDown = Schema.Union([
     id: Schema.String,
     credential: Schema.NullOr(Schema.String),
   }),
+  /**
+   * Who HQ holds as each login's last signer (login → Zerops user id), sent after `hello` and
+   * again when an HQ write moves it; no credential.
+   */
+  Schema.Struct({
+    type: Schema.Literal("signers"),
+    signers: Schema.Record(Schema.String, Schema.String),
+  }),
   TaskDown,
   TaskMessageDown,
   TaskStopDown,

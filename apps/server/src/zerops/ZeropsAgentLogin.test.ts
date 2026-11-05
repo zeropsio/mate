@@ -26,7 +26,7 @@ import * as TestClock from "effect/testing/TestClock";
 
 import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
-import { makeSignInStore, memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
+import { memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent, ZeropsAgentLoginOptions } from "./ZeropsAgentLogin.ts";
 import { manualFileWatch } from "./testing/manualFileWatch.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomesOptions } from "./zeropsLoginHomes.ts";
@@ -630,13 +630,13 @@ it.effect("a start that fails leaves the latest success standing", () =>
   ),
 );
 
-// Who signed a login in last is kept across restarts (`zeropsSignIns`): written with every
-// success, a fresh one replacing it, and gone with the credential.
+// Who signed a login in last is recorded (`zeropsSignIns`): written with every success, a fresh
+// one replacing it, and gone with the credential.
 it.effect("keeps who signed in last, and lets it go with the credential", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fakeTerminal = yield* makeFakeTerminalManager();
-      const store = yield* memorySignInStore({ codex: { by: "user-gone", at: 1 } });
+      const store = yield* memorySignInStore({ codex: { by: "user-gone" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       const feed = yield* makeFeed({
         terminalManager: fakeTerminal.service,
@@ -704,7 +704,7 @@ it.effect.each(
 )("$title", ({ readings, kept }) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva", at: 1 } });
+      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       yield* makeFeed({
         terminalManager: (yield* makeFakeTerminalManager()).service,
@@ -758,22 +758,24 @@ it.effect("a sign-in made while its credential reads absent outlives that absenc
   ),
 );
 
-it.effect("starts over a kept sign-in no instant can hold, and keeps nobody for it", () =>
+it.effect("an HQ signer does not create a completed login on the Mate", () =>
   Effect.scoped(
     Effect.gen(function* () {
-      const fakeTerminal = yield* makeFakeTerminalManager();
+      const signIns = yield* memorySignInStore();
+      yield* signIns.heard({ "claude-code": "user-eva", codex: "user-ada" });
       const feed = yield* makeFeed({
-        terminalManager: fakeTerminal.service,
+        terminalManager: (yield* makeFakeTerminalManager()).service,
         zeropsAgentAuth: yield* makeFakeAuth(),
         isZeropsEnvironment: true,
-        signIns: yield* memorySignInStore({
-          "claude-code": { by: "user-eva", at: 1e20 },
-          codex: { by: "user-ada", at: Number.NaN },
-        }),
+        signIns,
       });
       const latest = yield* feed.latest;
       assert.isUndefined(loginOf(latest, "claude-code"));
       assert.isUndefined(loginOf(latest, "codex"));
+      assert.deepEqual(yield* signIns.lastSigners, {
+        "claude-code": "user-eva",
+        codex: "user-ada",
+      });
     }),
   ),
 );
@@ -809,6 +811,35 @@ it.effect("a login whose process ends before it finished is failed with how it e
       yield* feed.start("codex", "thread-1", "user-test");
       assert.equal((yield* Ref.get(fakeTerminal.opened)).length, 2);
       assert.equal(loginOf(yield* feed.latest, "codex")?.phase, "menu");
+    }),
+  ),
+);
+
+it.effect.each(
+  Array.from(["claude-code", "codex"] as const, (agentId) => ({
+    title: `${agentId}: a successful manual sign-in replaces the signer received from HQ`,
+    agentId,
+  })),
+)("$title", ({ agentId }) =>
+  Effect.scoped(
+    Effect.gen(function* () {
+      const terminal = yield* makeFakeTerminalManager();
+      const signIns = yield* memorySignInStore();
+      yield* signIns.heard({ [agentId]: "user-jan" });
+      const feed = yield* makeFeed({
+        terminalManager: terminal.service,
+        zeropsAgentAuth: yield* makeFakeAuth(),
+        isZeropsEnvironment: true,
+        signIns,
+      });
+      yield* feed.start(agentId, "thread-1", "user-eva");
+      yield* terminal.emit(
+        "thread-1",
+        ZeropsAgentLoginModule.loginTerminalId(agentId),
+        agentId === "claude-code" ? "Login successful. Press Enter to continue…\n" : CODEX_SUCCESS,
+      );
+      assert.equal((yield* feed.latest)[agentId]?.phase, "succeeded");
+      assert.equal((yield* signIns.load)[agentId]?.by, "user-eva");
     }),
   ),
 );
@@ -1546,7 +1577,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
           const key = row.login?.(home).id ?? row.agentId;
-          const eva = { by: "user-eva", at: 1 };
+          const eva = { by: "user-eva" };
           const { fakeTerminal, feed, login, signIns, scratch } = yield* startReal(row, home, {
             signedIn: { [key]: eva },
           });
@@ -1751,48 +1782,4 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
       ),
     );
   },
-);
-
-it.effect.each(
-  Array.from(["claude-code", "codex"] as const, (agentId) => ({
-    title: `${agentId}: a signer write failure is visible and a fresh manual sign-in recovers`,
-    agentId,
-  })),
-)("$title", ({ agentId }) =>
-  Effect.scoped(
-    Effect.gen(function* () {
-      const terminal = yield* makeFakeTerminalManager();
-      const auth = yield* makeFakeAuth();
-      let writable = false;
-      const store = yield* makeSignInStore({
-        read: Effect.succeed(undefined),
-        write: () => Effect.sync(() => writable),
-        remove: Effect.succeed(true),
-      });
-      const feed = yield* makeFeed({
-        terminalManager: terminal.service,
-        zeropsAgentAuth: auth,
-        isZeropsEnvironment: true,
-        signIns: store,
-      });
-      const succeed = Effect.gen(function* () {
-        yield* feed.start(agentId, "thread-1", "user-eva");
-        yield* terminal.emit(
-          "thread-1",
-          ZeropsAgentLoginModule.loginTerminalId(agentId),
-          agentId === "claude-code"
-            ? "Login successful. Press Enter to continue…\n"
-            : CODEX_SUCCESS,
-        );
-      });
-      yield* succeed;
-      assert.equal((yield* feed.latest)[agentId]?.phase, "failed");
-      assert.match((yield* feed.latest)[agentId]?.message ?? "", /could not be recorded/);
-      assert.deepEqual(yield* store.load, {});
-      writable = true;
-      yield* succeed;
-      assert.equal((yield* feed.latest)[agentId]?.phase, "succeeded");
-      assert.equal((yield* store.load)[agentId]?.by, "user-eva");
-    }),
-  ),
 );

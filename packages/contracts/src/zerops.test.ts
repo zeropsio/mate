@@ -27,7 +27,6 @@ import {
   ZeropsStateEnvelope,
 } from "./zerops.ts";
 
-const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
 const decodeAgentAuthState = Schema.decodeUnknownSync(ZeropsAgentAuthState);
 const decodeAgentAuth = Schema.decodeUnknownSync(ZeropsAgentAuth);
@@ -37,11 +36,22 @@ const decodeLoginState = Schema.decodeUnknownSync(ZeropsAgentLoginState);
 const decodeLoginStartInput = Schema.decodeUnknownSync(ZeropsAgentLoginStartInput);
 const decodeLoginStartResult = Schema.decodeUnknownSync(ZeropsAgentLoginStartResult);
 const decodeLoginCancelInput = Schema.decodeUnknownSync(ZeropsAgentLoginCancelInput);
+const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeLogin = Schema.decodeUnknownSync(ZeropsLogin);
 const decodeSubmitCodeInput = Schema.decodeUnknownSync(ZeropsAgentLoginSubmitCodeInput);
 const decodeSignOutInput = Schema.decodeUnknownSync(ZeropsAgentSignOutInput);
 const decodeLoginAddInput = Schema.decodeUnknownSync(ZeropsLoginAddInput);
 const decodeLoginRemoveInput = Schema.decodeUnknownSync(ZeropsLoginRemoveInput);
+
+it("rejects the retired signer persistence failure from the login error contract", () => {
+  expect(() =>
+    decodeLoginError({
+      _tag: "ZeropsAgentLoginError",
+      reason: "signer-write-failed",
+      detail: "could not record signer",
+    }),
+  ).toThrow();
+});
 
 describe("ZeropsAgentId", () => {
   it("accepts the two agents with a live-verified credential probe", () => {
@@ -460,15 +470,6 @@ describe("ZeropsLoginAddInput / ZeropsLoginRemoveInput", () => {
   it("decodes a removal", () => {
     expect(decodeLoginRemoveInput({ id: "codex-work" })).toEqual({ id: "codex-work" });
   });
-});
-
-it("decodes a signer persistence failure from adding a login", () => {
-  const decoded = decodeLoginError({
-    _tag: "ZeropsAgentLoginError",
-    reason: "signer-write-failed",
-    detail: "Sign-in could not be recorded.",
-  });
-  expect(decoded.reason).toBe("signer-write-failed");
 });
 
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);
