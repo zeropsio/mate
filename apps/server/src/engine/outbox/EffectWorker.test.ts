@@ -665,6 +665,56 @@ describe("EffectWorker: the worker", () => {
     }),
   );
 
+  it.effect("the effect worker sleeps to the next due row or the bell; no 30 s wake", () =>
+    Effect.gen(function* () {
+      const later: EffectHandler = {
+        kind: "test.later",
+        run: () => Effect.succeed({ _tag: "Retry", reason: "not yet", patient: true }),
+      };
+      const seen = yield* Effect.gen(function* () {
+        const outbox = yield* EffectOutbox;
+        const sql = yield* SqlClient.SqlClient;
+        let looks = 0;
+        const counting = {
+          ...outbox,
+          claim: (b: BootId, now: number, pool?: EffectPool) =>
+            Effect.andThen(
+              Effect.sync(() => looks++),
+              outbox.claim(b, now, pool),
+            ),
+        };
+        const worker = yield* makeEffectWorker(newBoot(), {
+          ownerRetry: { maxAttempts: 3, delayMs: () => 45_000 },
+        }).pipe(Effect.provideService(EffectOutbox, counting));
+        yield* worker.start;
+        yield* yieldMany;
+        const idleFrom = looks;
+        yield* TestClock.adjust(10 * 60_000);
+        yield* yieldMany;
+        const whileIdle = looks - idleFrom;
+
+        yield* enqueue(mate, [{ id: "mate/e/test.later/1", kind: "test.later", lane: "side" }]);
+        yield* (yield* EngineSignals.EngineSignals).effects.ring;
+        yield* yieldMany;
+        const attempt = Effect.map(
+          sql<{ readonly attempt: number }>`
+            SELECT attempt FROM engine_effect WHERE effect_id = 'mate/e/test.later/1'
+          `,
+          (rows) => rows[0]?.attempt,
+        );
+        const triedOnce = yield* attempt;
+        const waitFrom = looks;
+        yield* TestClock.adjust(45_000 - 1);
+        yield* yieldMany;
+        const beforeDue = looks - waitFrom;
+        yield* TestClock.adjust(1);
+        yield* yieldMany;
+        return { whileIdle, triedOnce, beforeDue, atDue: yield* attempt };
+      }).pipe(Effect.scoped, Effect.provide(engineLayer(tempDb("sleeps"), handlersOf(later))));
+      expect(seen).toEqual({ whileIdle: 0, triedOnce: 1, beforeDue: 0, atDue: 2 });
+    }),
+  );
+
   it.effect("an outcome decided before a restart is recorded at boot, before anything is cut", () =>
     Effect.gen(function* () {
       const file = tempDb("settling");

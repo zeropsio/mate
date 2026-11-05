@@ -85,8 +85,6 @@ export interface EffectWorkerOptions {
   readonly maxAttempts?: number;
   /** Every other owner's replay-safe effect: how many tries, how far apart. */
   readonly ownerRetry?: RetryPolicy;
-  /** The longest a fiber sleeps without a ring. */
-  readonly pollMillis?: number;
 }
 
 const ENGINE = { kind: "engine" } as const;
@@ -106,7 +104,6 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     },
     owner: options.ownerRetry ?? OWNER_RETRY,
   };
-  const pollMillis = options.pollMillis ?? 30_000;
   /** A write that changes what the pools may claim or when: the pools look again. */
   const rung = <A, E>(write: Effect.Effect<A, E>) => Effect.tap(write, () => signals.effects.ring);
 
@@ -231,15 +228,16 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
   };
   const bellOf = (pool: EffectPool) => bells[pool];
 
+  /** Sleeps to the pool's next due row, or until a writer rings; with nothing due, the ring. */
   const idle = (pool: EffectPool) =>
     Effect.gen(function* () {
       const now = yield* Clock.currentTimeMillis;
       const next = yield* outbox.nextAvailableAt(pool);
-      const sleep = Option.match(next, {
-        onNone: () => pollMillis,
-        onSome: (at) => Math.max(0, Math.min(pollMillis, at - now)),
+      const due = Option.match(next, {
+        onNone: () => Effect.never,
+        onSome: (at) => Effect.sleep(Math.max(0, at - now)),
       });
-      yield* Effect.raceFirst(Effect.sleep(sleep), bellOf(pool).wait);
+      yield* Effect.raceFirst(due, bellOf(pool).wait);
     });
 
   const loop = (pool: EffectPool) =>
