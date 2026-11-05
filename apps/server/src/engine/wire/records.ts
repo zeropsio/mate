@@ -383,12 +383,30 @@ export const makeRecords = Effect.gen(function* () {
         startedAt: row.started_at,
         endedAt: row.ended_at,
       }));
+      // `queuedBehind` read from the newest back, and no further than any earlier run worked:
+      // `reach[i]` is the latest a run up to `i` worked until (one not ended works on), so where
+      // it is past, no earlier run was working when the message was queued. A run queued after
+      // its predecessor ended stops at once, not after every run the conversation ever held.
+      const reach: Array<number> = [];
+      let latest = Number.NEGATIVE_INFINITY;
+      for (const run of timed) {
+        if (run.startedAt !== null) latest = Math.max(latest, run.endedAt ?? Infinity);
+        reach.push(latest);
+      }
+      const behind = (index: number) => {
+        const queuedAt = timed[index]!.queuedAt;
+        for (let earlier = index - 1; earlier >= 0 && reach[earlier]! > queuedAt; earlier--) {
+          const run = timed[earlier]!;
+          if (queuedBehind([run], timed[index]!) !== undefined) return run;
+        }
+        return undefined;
+      };
       const parent = new Map<string, string>();
       rows.forEach((row, index) => {
         if (row.joins !== null) parent.set(row.run_id, row.joins);
         else if ((parse(row.trigger_json) as { readonly kind?: string }).kind === "person") {
-          const behind = queuedBehind(timed, timed[index]!);
-          if (behind !== undefined) parent.set(row.run_id, behind.id);
+          const run = behind(index);
+          if (run !== undefined) parent.set(row.run_id, run.id);
         }
       });
       const byId = new Map(rows.map((row) => [row.run_id, row]));
