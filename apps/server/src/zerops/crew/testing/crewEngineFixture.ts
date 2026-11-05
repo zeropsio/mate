@@ -99,6 +99,8 @@ export interface CrewWorld {
   readonly processes: Ref.Ref<ReadonlyArray<unknown> | "unreadable">;
   /** How many times the engine read the project's processes. */
   readonly processReads: Ref.Ref<number>;
+  /** Each process the platform pushes over the Mate's socket (`CrewPlatformProcesses.moved`). */
+  readonly processPushes: PubSub.PubSub<void>;
   /**
    * Holds the next ssh session whose remote script `matches` before it runs:
    * `reached` once the engine is waiting on it, `release` lets it run.
@@ -219,6 +221,7 @@ export const platformFakes = (
         Effect.andThen(Ref.get(world.processes)),
         Effect.map((processes) => (processes === "unreadable" ? undefined : processes)),
       ),
+      moved: Effect.map(PubSub.subscribe(world.processPushes), Stream.fromSubscription),
     }),
     Layer.mock(ZeropsLogins)({
       resolve: (id) => Effect.map(Ref.get(world.logins), (logins) => logins.get(id)),
@@ -403,6 +406,7 @@ export const makeFixtureWorld = Effect.gen(function* () {
     providerChanges: yield* PubSub.unbounded<ReadonlyArray<ServerProvider>>(),
     processes: yield* Ref.make<ReadonlyArray<unknown> | "unreadable">([]),
     processReads: yield* Ref.make(0),
+    processPushes: yield* PubSub.unbounded<void>(),
     holdSsh: (matches) =>
       Effect.gen(function* () {
         const hold: PendingHold = {

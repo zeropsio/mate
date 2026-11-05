@@ -316,25 +316,19 @@ export interface HostRecord {
   readonly crewPorts: ReadonlyArray<{ readonly port: number; readonly routed: boolean | null }>;
   readonly served: CrewServed;
   readonly integration: { readonly branch: string | null; readonly head: string } | null;
-  /** The redeploy's reads so far, for the backoff. */
-  readonly polls: number;
   /** Since when its redeploy could not be read, as the reads after a restart found it. */
   readonly unknownSince?: number | null;
 }
 
 /**
- * How a host frozen by a redeploy a restart cut off is read again: the first wait, doubling to
- * the longest; after `thawOfferMs` of answers that cannot be read the person is offered a thaw.
+ * How long a host frozen by a redeploy a restart cut off stays unreadable before the person is
+ * offered a thaw.
  */
 export interface CrewTiming {
-  readonly deployPollFirstMs: number;
-  readonly deployPollMaxMs: number;
   readonly thawOfferMs: number;
 }
 
 export const DEFAULT_CREW_TIMING: CrewTiming = {
-  deployPollFirstMs: 15_000,
-  deployPollMaxMs: 5 * 60_000,
   thawOfferMs: 30 * 60_000,
 };
 
@@ -580,6 +574,10 @@ export const isFree = (state: CrewState, handle: string): boolean =>
 
 export const hostFrozen = (state: CrewState, host: string | null): boolean =>
   host !== null && (state.hosts[host]?.frozenSince ?? null) !== null;
+
+/** The hosts a redeploy holds frozen. */
+export const frozenHosts = (state: CrewState): ReadonlyArray<string> =>
+  Object.keys(state.hosts).filter((host) => hostFrozen(state, host));
 
 /** The crewmate's copy shows on its dev service: a landing would pull the floor from under it. */
 export const laneShown = (state: CrewState, handle: string): boolean =>

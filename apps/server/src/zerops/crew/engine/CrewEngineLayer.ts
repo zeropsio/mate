@@ -95,6 +95,7 @@ import { CrewStoreError, type CrewMemoryRow } from "../CrewStore.ts";
 import { closedSeamWords, landedSeamWords, sweptSeamWords } from "../crewCards.ts";
 import type { CrewInput, HostRead } from "./command.ts";
 import { CrewDeliveryContext, type CrewDeliveryContextShape } from "./CrewDeliveryContext.ts";
+import { CrewPlatformProcesses } from "../crewDeployState.ts";
 import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
 import { crewDomain, crewRefusalOf, type CrewAccepted } from "./CrewOwner.ts";
 import { makeEngineCrewDirectory } from "./crewEngineDirectory.ts";
@@ -330,6 +331,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
     const logins = yield* ZeropsLogins;
     const agentAuth = yield* ZeropsAgentAuth;
     const policies = yield* ThreadToolPolicyRegistry;
+    const platform = yield* CrewPlatformProcesses;
     const extensions = yield* ClaudeThreadExtensionRegistry;
     const toldUsage = new Map<string, number | null>();
     const scope = yield* Effect.scope;
@@ -1208,6 +1210,7 @@ export const makeEngineCrew = (installer: EngineCrewPolicyInstaller) =>
         logins.changes,
         Stream.map(agentAuth.changes, (snapshot) => withLogins(snapshot, []).logins ?? []),
       ).pipe(Stream.map(moved)),
+      processes: platform.moved,
     }).pipe(Scope.provide(scope));
 
     return Context.make(CrewEngine, service).pipe(

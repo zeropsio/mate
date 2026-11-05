@@ -5,17 +5,24 @@
  * frozen until the platform says its deploy ended.
  *
  * The platform's process list reaches crew through its own port,
- * {@link CrewPlatformProcesses}, which the wiring provides (`zeropsFeedsLayer`).
+ * {@link CrewPlatformProcesses}, which the wiring provides (`zeropsFeedsLayer`): a read, and
+ * the moments worth one (a process Zerops pushed, a socket that (re)connected).
  *
  * @module crewDeployState
  */
 import * as Context from "effect/Context";
 import type * as Effect from "effect/Effect";
+import type * as Scope from "effect/Scope";
+import type * as Stream from "effect/Stream";
 
 /** The project's processes as the platform lists them; `undefined` when it cannot say. */
 export class CrewPlatformProcesses extends Context.Service<
   CrewPlatformProcesses,
-  { readonly read: Effect.Effect<ReadonlyArray<unknown> | undefined> }
+  {
+    readonly read: Effect.Effect<ReadonlyArray<unknown> | undefined>;
+    /** Each process of the project Zerops pushes, and each (re)connect, from when this runs. */
+    readonly moved: Effect.Effect<Stream.Stream<void>, never, Scope.Scope>;
+  }
 >()("t3/zerops/crew/crewDeployState/CrewPlatformProcesses") {}
 
 /** `running`: a process on the service has not ended; `unknown`: the platform could not say. */
