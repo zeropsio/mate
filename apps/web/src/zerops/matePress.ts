@@ -766,6 +766,8 @@ export type PressRegistration = {
       readonly standUp: boolean;
       /** The birth intent its project was created under: the attach closes it. */
       readonly intent?: string;
+      /** Register the maker's Chief before its container can say hello. */
+      readonly chief?: true;
     }
   | {
       /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
@@ -836,6 +838,8 @@ export function pressRegistration(
           ...(registration.intent === undefined ? {} : { birth: registration.intent }),
         },
       });
+      if (registration.chief === true && registration.intent !== undefined)
+        await run({ kind: "register-birth-chief", orgId, birthId: registration.intent });
       return;
     }
     const added = await addGroupEnvironment({

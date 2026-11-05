@@ -32,9 +32,30 @@ const portsFor = (read: () => SharedBirth | undefined) =>
     waitForPlacement: vi.fn(async (_projectId: string, _placement: "bound" | "attached") => read()),
     run: vi.fn(async (_birth: SharedBirth, _from: "create" | "import") => {}),
     recordImport: vi.fn(async (_birth: SharedBirth, _receipt: string) => {}),
+    registerChief: vi.fn(async (_birth: SharedBirth) => {}),
   }) satisfies ContinueBirthPorts;
 
 describe("continuing a shared birth", () => {
+  it("another device resumes the maker's Chief without replacing an existing registration", async () => {
+    const chief = {
+      ...birth,
+      projectId: "p1",
+      placement: "attached" as const,
+      chief: true,
+      chiefRegistered: false,
+      progress: {
+        phase: "container-starting" as const,
+        next: { kind: "register-chief" as const },
+        reason: null,
+      },
+    };
+    const ports = { ...portsFor(() => chief), registerChief: vi.fn(async () => {}) };
+    expect(await continueBirth(ports)).toBe("started");
+    expect(ports.registerChief).toHaveBeenCalledExactlyOnceWith(chief);
+    expect(ports.run).not.toHaveBeenCalled();
+    expect(ports.attach).not.toHaveBeenCalled();
+  });
+
   it("Decision: Continue is one operation, the same on every device: it performs only the steps the record proves undone, with the single-import discipline and the lost-answer reconciliation of birth-seam.md; an unknown outcome is shown as unknown with Delete only; an accepted import that failed blocks at that step with the reason (no re-import, no override, no deadline).", async () => {
     const create = portsFor(() => birth);
     expect(await continueBirth(create)).toBe("started");

@@ -88,23 +88,25 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     ? null
     : next.kind === "create"
       ? "Continue will create the project, attach the Mate, and submit the import."
-      : next.kind === "bind"
-        ? "Continue will bind the project and check the next step."
-        : next.kind === "import" && birth.projectId !== null
-          ? birth.placement === "unplaced"
-            ? "Continue will attach the Mate and submit the import."
-            : birth.placement === "attached"
-              ? "Continue will submit the import."
-              : null
-          : next.kind === "record-import"
+      : next.kind === "register-chief"
+        ? "Continue will register the Chief."
+        : next.kind === "bind"
+          ? "Continue will bind the project and check the next step."
+          : next.kind === "import" && birth.projectId !== null
             ? birth.placement === "unplaced"
-              ? "Continue will attach the Mate and record the accepted import."
+              ? "Continue will attach the Mate and submit the import."
               : birth.placement === "attached"
-                ? "Continue will record the accepted import."
+                ? "Continue will submit the import."
                 : null
-            : next.kind === "wait" && next.attach
-              ? "Continue will attach the Mate."
-              : null;
+            : next.kind === "record-import"
+              ? birth.placement === "unplaced"
+                ? "Continue will attach the Mate and record the accepted import."
+                : birth.placement === "attached"
+                  ? "Continue will record the accepted import."
+                  : null
+              : next.kind === "wait" && next.attach
+                ? "Continue will attach the Mate."
+                : null;
   return {
     line: [
       phaseLine,
@@ -138,6 +140,15 @@ export function useSharedBirthState(): SharedBirthState {
 
 export function useSharedBirths(): ReadonlyArray<SharedBirth> {
   return useSharedBirthState().open;
+}
+
+/** A person's Chief remains visible during its shared birth, including after a reload. */
+export function useOwnChiefBirth(): SharedBirth | undefined {
+  const { user } = useZeropsSession();
+  const { open } = useSharedBirthState();
+  return user == null
+    ? undefined
+    : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
 }
 
 /** Place shared births ahead of locally pending creations. */

@@ -272,6 +272,8 @@ export interface HqBirth {
   readonly face: string;
   /** The person who opened the birth, and the plan HQ retained for it. */
   readonly madeBy?: string;
+  readonly chief?: boolean;
+  readonly chiefRegistered?: boolean;
   readonly intent?: Readonly<Record<string, unknown>>;
   /** Durable claims on the non-idempotent Zerops writes. */
   readonly attempts?: {
@@ -422,6 +424,7 @@ export interface HqApi {
       readonly appId: string;
       readonly id?: string;
       readonly intent?: Readonly<Record<string, unknown>>;
+      readonly chief?: true;
     } & HqNewMate,
   ) => Promise<HqBirth>;
   /**
@@ -446,6 +449,8 @@ export interface HqApi {
    */
   readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
+  /** Registers or verifies the maker's Chief without replacing another registration. */
+  readonly registerBirthChief: (birthId: string) => Promise<{ readonly projectId: string }>;
   /** Deletes an unbound birth; HQ rechecks the person's current role. */
   readonly deleteBirth: (birthId: string) => Promise<void>;
   /** Claims one non-idempotent birth write; only an answered claim permits the write. */
@@ -1403,6 +1408,14 @@ export function makeHqApi(input: {
         true,
       );
     },
+    registerBirthChief: async (birthId) =>
+      decoded(Schema.Struct({ projectId: Schema.String }))(
+        await authorized(
+          `/api/births/${encodeURIComponent(birthId)}/chief`,
+          { method: "PUT", body: JSON.stringify(await withAccess({})) },
+          true,
+        ),
+      ),
     deleteBirth: async (birthId) => {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}`,

@@ -61,6 +61,10 @@ vi.mock("./useZeropsMates", () => ({
 vi.mock("./useAskMate", () => ({ useAskMate: () => vi.fn() }));
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
 vi.mock("./ownChief", () => ({ useOwnChief: () => null, useKeepOwnChief: () => vi.fn() }));
+vi.mock("./sharedBirths", async (original) => ({
+  ...(await original<typeof import("./sharedBirths")>()),
+  useOwnChiefBirth: () => undefined,
+}));
 vi.mock("./useHqOffers", () => ({ useOrgOffers: () => () => ({ kind: "allowed" }) }));
 vi.mock("./creations", async (original) => ({
   ...(await original<typeof import("./creations")>()),

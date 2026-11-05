@@ -87,6 +87,7 @@ export type HqWrites = Pick<
   | "createApp"
   | "recordBirth"
   | "bindBirth"
+  | "registerBirthChief"
   | "deleteBirth"
   | "claimBirthAttempt"
   | "endBirthAttempt"
@@ -498,6 +499,11 @@ export function makeHqExecutor(ports: {
           Effect.tryPromise({ try: () => api.setChief(intent.projectId), catch: faultOf }),
           ({ chief }) => answered(requestId, intent.projectId, { chief }),
         );
+      case "register-birth-chief":
+        return Effect.map(
+          Effect.tryPromise({ try: () => api.registerBirthChief(intent.birthId), catch: faultOf }),
+          ({ projectId }) => answered(requestId, projectId, { projectId }),
+        );
       case "decide-proposal":
         return Effect.map(
           Effect.tryPromise({
@@ -588,6 +594,7 @@ export function makeHqExecutor(ports: {
               id: intent.id,
               face: intent.face,
               ...(intent.intent === undefined ? {} : { intent: intent.intent }),
+              ...(intent.chief === true ? { chief: true as const } : {}),
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
               ...(intent.automated === true ? { automated: true as const } : {}),
             }),
@@ -1010,6 +1017,7 @@ export function makeHqExecutor(ports: {
           });
         if (
           intent.kind === "set-chief" ||
+          intent.kind === "register-birth-chief" ||
           intent.kind === "decide-proposal" ||
           intent.kind === "record-reveal"
         )

@@ -9,6 +9,7 @@
 import { startChiefSetup, tryChiefSetupAgain, useChiefSetup } from "~/zerops/chiefSetup";
 import { CHIEF_NAME } from "~/zerops/chief";
 import { useOwnChief } from "~/zerops/ownChief";
+import { useOwnChiefBirth } from "~/zerops/sharedBirths";
 import { useOrgOffers } from "~/zerops/useHqOffers";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 
@@ -16,7 +17,12 @@ import { Button } from "../../ui/button";
 import { ArrivalSwap } from "../ArrivalSwap";
 import { Progress } from "../../ui/progress";
 import { MateFaceAsMark } from "../primitives";
-import { MateComingFrame, MateComingHeader, ZeropsMateComingPage } from "../ZeropsMateComingPage";
+import {
+  MateComingFrame,
+  MateComingHeader,
+  SharedBirthStage,
+  ZeropsMateComingPage,
+} from "../ZeropsMateComingPage";
 import { MateEmptyStateView, type MateEmptyComing } from "../ZeropsMateEmptyState";
 import { CHIEF_SETUP_DOING, CHIEF_SETUP_ESTIMATE_MS, chiefSetupSteps } from "./chiefSetup.logic";
 import { chiefPageView, type ChiefPageView } from "./chiefTop.logic";
@@ -33,9 +39,11 @@ const CHIEF_DRAWN = {
 
 export function ChiefPage() {
   const own = useOwnChief();
+  const birth = useOwnChiefBirth();
   const { setup, startedAtMs } = useChiefSetup();
   const create = useOrgOffers()("create_app");
   const view = chiefPageView({ own, setup, mayCreate: create.kind !== "refused" });
+  if (birth !== undefined) return <SharedBirthStage birth={birth} />;
   if (view.kind === "coming")
     return <ZeropsMateComingPage key={view.projectId} projectId={view.projectId} />;
   return (

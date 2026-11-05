@@ -220,6 +220,7 @@ export const HQ_CLIENT_VERBS = [
   "createMate",
   "createApp",
   "recordBirth",
+  "registerBirthChief",
   "claimBirthAttempt",
   "endBirthAttempt",
   "deleteBirth",

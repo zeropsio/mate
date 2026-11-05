@@ -67,6 +67,72 @@ function creationFinished(store: ReturnType<typeof makeAccountStore>) {
 }
 
 describe("shared birth progress", () => {
+  it("hello cannot end a Chief birth before its registration is recorded", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1", name: "Shop - Ada" }],
+      services: [
+        {
+          id: "s1",
+          projectId: "p1",
+          name: "zcp",
+          status: "ACTIVE",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        },
+      ],
+    }).forEach(store.dispatch);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const chief = {
+      ...initial.birth,
+      projectId: "p1",
+      importProcessId: "s1",
+      chief: true,
+      chiefRegistered: false,
+      state: "awaiting registration",
+    };
+    const project = {
+      projectId: "p1",
+      name: "Shop - Ada",
+      kind: "mate",
+      mate: { face: "rose:seal", birthId: "birth" },
+    };
+    const publish = (births: Array<typeof chief>) =>
+      seedHqNavigation(store, ORG, {
+        structure: {
+          apps: [{ id: "app", name: "Shop", projects: [project], births }],
+          ungrouped: [],
+        },
+      });
+    publish([chief]);
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read)).toMatchObject({
+      open: [
+        {
+          chief: true,
+          chiefRegistered: false,
+          canContinue: true,
+          progress: { next: { kind: "register-chief" } },
+        },
+      ],
+      readyProjectIds: [],
+    });
+    publish([{ ...chief, chiefRegistered: true }]);
+    expect(registry.get(read)).toMatchObject({
+      open: [
+        { chief: true, chiefRegistered: true, progress: { next: { kind: "wait", for: "hello" } } },
+      ],
+      readyProjectIds: [],
+    });
+    publish([]);
+    expect(registry.get(read)).toMatchObject({ open: [], readyProjectIds: ["p1"] });
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("an attached birth becomes ready only when HQ removes the open birth after hello", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

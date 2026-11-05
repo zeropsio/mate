@@ -34,7 +34,7 @@ export interface BirthEvidence {
 export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
-    | { readonly kind: "create" | "import" | "unknown" | "blocked" }
+    | { readonly kind: "create" | "import" | "unknown" | "blocked" | "register-chief" }
     | {
         readonly kind: "wait";
         readonly attach: boolean;
@@ -60,6 +60,9 @@ export interface SharedBirth {
   readonly appId: string;
   readonly appName: string;
   readonly face: string;
+  readonly madeBy?: string;
+  readonly chief?: boolean;
+  readonly chiefRegistered?: boolean;
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   /** A registration may be skipped only after HQ proves this birth is attached. */
@@ -154,7 +157,7 @@ export const sharedBirths: Projection<
           press?.kind === "mate" &&
           press.appId === app.id &&
           !press.held;
-        const progress = {
+        const evidence = {
           ...birthProgressOf({
             birth,
             projects: roster.projects,
@@ -170,6 +173,14 @@ export const sharedBirths: Projection<
           }),
           ...(sessionEnded ? { sessionEnded: true as const } : {}),
         };
+        const progress: BirthProgress =
+          birth.chief === true &&
+          birth.chiefRegistered === false &&
+          placement === "attached" &&
+          evidence.next.kind !== "unknown" &&
+          evidence.next.kind !== "blocked"
+            ? { ...evidence, next: { kind: "register-chief" } }
+            : evidence;
         const roleCurrent = personId !== "" && navigation.live && current && roleLive;
         const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const attachProject =
@@ -197,6 +208,11 @@ export const sharedBirths: Projection<
           appId: app.id,
           appName: app.name,
           face: birth.face,
+          ...(birth.madeBy === undefined ? {} : { madeBy: birth.madeBy }),
+          ...(birth.chief === undefined ? {} : { chief: birth.chief }),
+          ...(birth.chiefRegistered === undefined
+            ? {}
+            : { chiefRegistered: birth.chiefRegistered }),
           projectId,
           importProcessId: birth.importProcessId ?? null,
           placement,

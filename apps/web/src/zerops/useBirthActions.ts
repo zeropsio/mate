@@ -82,6 +82,7 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
           },
           standUp: birth.intent.standUp,
           intent: birth.id,
+          ...(birth.chief === true ? { chief: true as const } : {}),
         };
       };
       const holdOf = (birth: SharedBirth) =>
@@ -112,6 +113,20 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
           );
         },
         attach,
+        registerChief: async (birth) => {
+          const latest = read();
+          if (
+            latest === undefined ||
+            !latest.canContinue ||
+            latest.id !== birth.id ||
+            latest.progress.next.kind !== "register-chief"
+          )
+            throw new Error("The birth changed before its Chief registration.");
+          await operations.run(
+            { kind: "register-birth-chief", orgId, birthId: latest.id },
+            { orgId, unobserved: HQ_UNFOLLOWED },
+          );
+        },
         waitForPlacement: (projectId, placement) =>
           waitForBirthPlacement(registry, sharedBirthsAtom(user.id), {
             birthId,

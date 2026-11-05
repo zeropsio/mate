@@ -260,6 +260,7 @@ export interface NewProjectPorts {
       readonly id: string;
       readonly face: string;
       readonly intent: BirthIntent;
+      readonly chief?: true;
     },
   ) => Promise<{ readonly birthId: string }>;
   /** Holds the birth's create attempt around its one project write. */
@@ -519,6 +520,7 @@ export async function runNewProjectBirth(
           id,
           face: formatMateFace(ask.face),
           intent: creationIntent,
+          ...(ask.chief === true ? { chief: true as const } : {}),
         })
       ).birthId,
   );

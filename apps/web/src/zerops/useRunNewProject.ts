@@ -34,9 +34,17 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               { kind: "create-app", orgId: organizationId, name: groupName },
               { ...hqStep, requestId },
             ),
-          recordBirth: (requestId, { appId, id, face: birthFace, intent }) =>
+          recordBirth: (requestId, { appId, id, face: birthFace, intent, chief }) =>
             operations.run(
-              { kind: "record-birth", orgId: organizationId, appId, id, face: birthFace, intent },
+              {
+                kind: "record-birth",
+                orgId: organizationId,
+                appId,
+                id,
+                face: birthFace,
+                intent,
+                ...(chief === true ? { chief } : {}),
+              },
               { ...hqStep, requestId },
             ),
           attemptProject: (birthId, send) =>
@@ -123,6 +131,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                 mate: { face },
                 standUp: false,
                 intent,
+                ...(ask.chief === true ? { chief: true as const } : {}),
               },
               hq,
               isCurrent,
