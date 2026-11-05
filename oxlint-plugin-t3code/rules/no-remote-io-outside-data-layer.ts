@@ -52,6 +52,8 @@ const FILE_TRANSFER_PATHS: ReadonlySet<string> = new Set([
   "apps/web/src/threadNotifications.ts",
   // A chat attachment uploaded with progress.
   "apps/web/src/lib/attachmentUploadQueue.ts",
+  // The hosted client's service worker: its own page and bundle files, kept for the next load.
+  "apps/web/src/appShell/sw.ts",
 ]);
 const TEST_FILE_PATTERN =
   /(?:^|\/)(?:__tests__\/|__fixtures__\/|testing\/|[^/]+\.(?:test|spec|bench)\.[cm]?[jt]sx?$)/u;
