@@ -93,8 +93,8 @@ export interface HqWire {
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
   /**
    * A frame HQ decides on the person's role, with their current Zerops access token
-   * (`HqApi.withAccess`): the move picker's ask, seen acknowledgements, and each subscribe naming
-   * a protected scope.
+   * (`HqApi.withAccess`): comparisons, the move picker's ask, seen acknowledgements, and each
+   * subscribe naming a protected scope.
    */
   readonly withAccess?: <T extends object>(
     frame: T,
@@ -941,8 +941,14 @@ export function hqNavigationLink(options: {
           }),
       ),
     compare: (asked) =>
-      ask<CompareResponse>("compare", (requestId) =>
-        Effect.succeed({ type: "compare", requestId, ...asked }),
+      ask<CompareResponse>(
+        "compare",
+        (requestId) =>
+          wire.withAccess?.({ type: "compare" as const, requestId, ...asked }) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot compare the repository's commits.",
+          }),
       ),
     seen: (projectId, resultIds) =>
       Effect.suspend(() => {

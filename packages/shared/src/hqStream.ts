@@ -151,6 +151,7 @@ export const HqStreamRequest = Schema.Union([
     appId: Schema.String,
     repo: RepoName,
     ...CompareQuery.fields,
+    accessToken: Schema.String,
   }),
   Schema.Struct({ type: Schema.Literal("pong") }),
 ]);

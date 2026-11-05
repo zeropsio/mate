@@ -202,7 +202,8 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
           try {
             if ((await hold.take(latest.projectId)) === "elsewhere")
               throw new Error("Its setup is already running in another browser.");
-            await hold.imported(receipt);
+            if ((await hold.imported(receipt)) !== "recorded")
+              throw new Error("HQ did not confirm the import receipt.");
           } finally {
             await hold.end(false);
           }

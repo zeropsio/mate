@@ -39,6 +39,7 @@ import {
   visibleText,
   visibleInMenu,
   sendConversationMessage,
+  waitForConversation,
 } from "./browser.ts";
 import { trackSteps } from "./lastStep.ts";
 
@@ -215,7 +216,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const person = (name: string, options: PersonOptions = {}) => {
     persons.set(name, definePerson(zerops.world, name, options));
   };
-  person("owner", { role: "OWNER" });
+  person("owner", { role: "OWNER", grants: { Chief: "OWNER" } });
   person("dev", { role: "Developer" });
   person("reader", { role: "READ_ONLY" });
   const app = Effect.fn("scenarios.given.app")(function* (name: string) {
@@ -662,10 +663,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         appears: Effect.promise(async () => {
           const stop = new AbortController();
           try {
-            const wait = page.waitForSelector('[role="textbox"]', {
-              visible: true,
-              signal: stop.signal,
-            });
+            const wait = waitForConversation(page, stop.signal);
             if (opening) await untilMateOpens(wait, opening.link, opening.name, opening.cursor);
             else await wait;
           } catch (error) {

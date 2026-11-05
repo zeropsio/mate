@@ -197,6 +197,35 @@ describe("continuing a shared birth", () => {
     expect(ports.recordImport).toHaveBeenCalledExactlyOnceWith(current, "service-1");
     expect(ports.run).not.toHaveBeenCalled();
   });
+
+  it("an accepted import continues only by attaching the unplaced Mate", async () => {
+    const accepted: SharedBirth = {
+      ...birth,
+      projectId: "p1",
+      importProcessId: "i1",
+      placement: "unplaced",
+      progress: {
+        phase: "import-accepted",
+        next: { kind: "wait", for: "service", attach: true },
+        reason: null,
+      },
+    };
+    const ports = portsFor(() => accepted);
+    expect(await continueBirth(ports)).toBe("started");
+    expect(ports.attach).toHaveBeenCalledExactlyOnceWith(accepted);
+    expect(ports.run).not.toHaveBeenCalled();
+    expect(ports.recordImport).not.toHaveBeenCalled();
+
+    const attached = portsFor(() => ({
+      ...accepted,
+      placement: "attached",
+      canContinue: false,
+      progress: { ...accepted.progress, next: { kind: "wait", for: "hello", attach: false } },
+    }));
+    expect(await continueBirth(attached)).toBe("unavailable");
+    expect(attached.attach).not.toHaveBeenCalled();
+    expect(attached.run).not.toHaveBeenCalled();
+  });
 });
 
 function birthWithBind(): SharedBirth {

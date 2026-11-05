@@ -595,6 +595,65 @@ describe("a press's hold at HQ", () => {
     }
   });
 
+  it("a birth requires a recorded import receipt while other presses continue without one", async () => {
+    const outcomes: Array<boolean> = [];
+    for (const problem of ["refused", "skipped", "unanswered", "missing"] as const) {
+      for (const birth of [true, false]) {
+        const denied = new HqError({
+          kind: "refused",
+          code: "forbidden",
+          reason: "not_mate_operator",
+          status: 403,
+          message: "HQ refused the press write",
+        });
+        const holdPress = vi.fn();
+        if (problem === "skipped") holdPress.mockRejectedValue(denied);
+        else
+          holdPress
+            .mockResolvedValueOnce(undefined)
+            .mockRejectedValueOnce(
+              problem === "unanswered" ? new Error("HQ did not answer") : denied,
+            );
+        const importing = vi.fn(async () => ({
+          serviceName: "zcp",
+          imported: true,
+          processId: "imp-9",
+        }));
+        const outcome = await runPress({
+          organizationId: "org-acme",
+          steps: [{ kind: "import-container", agents: [] }],
+          platform: platformOf({ importDevelopmentContainer: importing }),
+          ...(birth
+            ? {
+                birth: {
+                  id: "birth-1",
+                  attempt: async <T>(_step: "create" | "import", send: () => Promise<T>) => send(),
+                },
+              }
+            : {}),
+          isCurrent: () => true,
+          resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
+          locks: undefined,
+          heldLock: true,
+          ...(problem === "missing"
+            ? {}
+            : {
+                hold: pressHold(
+                  { holdPress, endPress: async () => {} },
+                  null,
+                  { kind: "mate" },
+                  "press-a",
+                ),
+              }),
+        });
+        outcomes.push(outcome.ok);
+        expect(importing).toHaveBeenCalledTimes(1);
+        forgetPress("p-1");
+      }
+    }
+    expect(outcomes).toEqual([false, true, false, true, false, true, false, true]);
+  });
+
   it("names the container import's process to its hold once Zerops answered it", async () => {
     const hq = api();
     const hold = pressHold(hq.api, null, { kind: "mate" }, "press-a");

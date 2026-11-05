@@ -320,8 +320,11 @@ describe("HQ source client", () => {
               status: 200,
             },
           );
-        if (new Headers(init?.headers).get("authorization") === "Bearer expired")
+        const headers = new Headers(init?.headers);
+        expect(headers.get("authorization")).toBe("Bearer access");
+        if (headers.get("x-hq-session") === "expired")
           return new Response(JSON.stringify({ code: "session_required" }), { status: 401 });
+        expect(headers.get("x-hq-session")).toBe("fresh");
         return new Response(JSON.stringify({ entries: [], truncated: false }), { status: 200 });
       },
     });
