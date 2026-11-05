@@ -1002,7 +1002,14 @@ async function pressRun(
       },
       // Followed by its import's own process from now on, in any browser.
       onContainerImported: async ({ processId }) => {
-        if (processId !== undefined) await input.hold?.imported(processId);
+        if (processId !== undefined) {
+          const recorded = await input.hold?.imported(processId).catch((cause: unknown) => {
+            if (input.birth !== undefined) throw cause;
+            // Ordinary presses continue when HQ does not answer their hold.
+          });
+          if (input.birth !== undefined && recorded !== "recorded")
+            throw new Error("HQ did not confirm the import receipt.");
+        }
       },
       onProgress: (progress) => {
         // Registered, a stage's or a production's press is over at HQ, which ended its hold.
