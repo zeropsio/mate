@@ -210,9 +210,13 @@ type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
   readonly badgeCount: number;
 };
 
-/** Adobe's mark at a launcher card's glyph size, its tile rounded like the glyphs' strokes. */
+/**
+ * Adobe's mark at a launcher card's glyph size, its tile rounded like the glyphs' strokes. A
+ * picture, so a menu's glyph sizing (which reaches only svgs) never sizes it: it carries the
+ * menu glyph's size itself, and a card's own class replaces it.
+ */
 function ExpressLauncherMark({ className }: { readonly className?: string }) {
-  return <ExpressMark className={cn(className, "rounded-sm")} />;
+  return <ExpressMark className={cn("size-4.5 shrink-0 sm:size-4", className, "rounded-sm")} />;
 }
 
 /** A launcher card's mark: a lucide glyph, or a product's own mark (Adobe Express's). */
