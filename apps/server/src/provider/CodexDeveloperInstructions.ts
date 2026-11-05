@@ -1,6 +1,7 @@
 import type { ProviderInteractionMode } from "@t3tools/contracts";
 import type { V2TurnStartParams__AdditionalContextEntry } from "effect-codex-app-server/schema";
 import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
+import { PICTURE_ASK_INSTRUCTIONS } from "../pictureAskInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
 const CODEX_PLAN_MODE_DEVELOPER_INSTRUCTIONS = `<collaboration_mode># Plan Mode (Conversational)
@@ -179,6 +180,7 @@ export function buildCodexAdditionalContext(
     },
     // An entry of its own: the runtime entry alone sits near Codex's per-entry cap.
     mate_places: { kind: "application", value: MATE_PLACES_INSTRUCTIONS },
+    mate_picture_ask: { kind: "application", value: PICTURE_ASK_INSTRUCTIONS },
     ...(persona === undefined ? {} : codexPersonaEntries(persona)),
   };
 }

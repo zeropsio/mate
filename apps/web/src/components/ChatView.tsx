@@ -224,6 +224,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
 import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
+import { PictureAskContext, usePictureAnswers } from "./ask/PictureAsk";
 import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
@@ -4267,6 +4268,30 @@ function ConversationView(props: ChatViewProps) {
     [resolveChangeLink, resolveExpressDesign],
   );
   const editPictureInExpress = useEditPictureInExpress(activeThreadRef, expressOn);
+  // A picture ask's answer: its pictures into the composer, sent with the words that say what
+  // they are, after whatever the person had typed.
+  const answerPictureAsk = useCallback(
+    (files: File[], words: string) => {
+      if (!activeThreadRef) return;
+      const threadRef = activeThreadRef;
+      void (async () => {
+        await composerRef.current?.addDroppedFiles(files, { keepOriginal: true });
+        const drafts = useComposerDraftStore.getState();
+        const typed = drafts.getComposerDraft(threadRef)?.prompt.trim() ?? "";
+        drafts.requestSend(threadRef, typed === "" ? words : `${typed}\n\n${words}`);
+      })();
+    },
+    [activeThreadRef],
+  );
+  const pictureAnswers = usePictureAnswers(activeThreadMessages);
+  const pictureAskScope = useMemo(
+    () => ({
+      answers: pictureAnswers,
+      answer: activeThreadRef ? answerPictureAsk : null,
+      mate: pageMateName,
+    }),
+    [activeThreadRef, answerPictureAsk, pageMateName, pictureAnswers],
+  );
   const addOverviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
     useRightPanelStore.getState().open(activeThreadRef, "overview");
@@ -8382,9 +8407,11 @@ function ConversationView(props: ChatViewProps) {
                   environmentId={expressHistory.environmentId}
                   history={expressHistory.history}
                   mate={pageMateName}
+                  onAnswer={answerPictureAsk}
                   onAttach={(files) =>
                     composerRef.current?.addDroppedFiles(files, { keepOriginal: true })
                   }
+                  threadId={activeThreadRef.threadId}
                   onEditingChange={onExpressEditingChange}
                 />
               ) : null;
@@ -9175,7 +9202,11 @@ function ConversationView(props: ChatViewProps) {
       )}
     </ServiceBrowserScope>
   );
-  return <ExpressHistoryContext value={expressHistory}>{page}</ExpressHistoryContext>;
+  return (
+    <ExpressHistoryContext value={expressHistory}>
+      <PictureAskContext value={pictureAskScope}>{page}</PictureAskContext>
+    </ExpressHistoryContext>
+  );
 }
 
 /** Whether the person asked for less motion: a scroll's way then is a cut. */
