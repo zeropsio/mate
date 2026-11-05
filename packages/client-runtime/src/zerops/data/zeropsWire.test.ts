@@ -66,6 +66,28 @@ function harness(overrides: Partial<ZeropsWireClient> = {}) {
 }
 
 describe("the Zerops wire", () => {
+  it.each([
+    { name: "the session's verified user/info", path: "/user/info", verified: true, held: true },
+    {
+      name: "nothing before the session is verified",
+      path: "/user/info",
+      verified: false,
+      held: false,
+    },
+    {
+      name: "nothing for any other read",
+      path: "/client/org/user/list",
+      verified: true,
+      held: false,
+    },
+  ])("holds $name", ({ path, verified, held }) => {
+    const user = { id: "u1", email: "person@example.test", clientUserList: [] };
+    const { wire } = harness({
+      verifiedUser: () => (verified ? { user: user as never, atMs: 1_234 } : null),
+    });
+    expect(wire.held?.(path)).toEqual(held ? { body: user, atMs: 1_234 } : undefined);
+  });
+
   it.effect(
     "opens a receiver with a fresh socket login and hands on every frame after the greeting",
     () =>

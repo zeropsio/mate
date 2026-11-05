@@ -4,8 +4,9 @@
  * and requests; streamed text into the live registry, never the store. A cursor per conversation
  * (`{epoch, origin, seq}`) resumes it after a drop or a release; a gap resubscribes from it; a
  * reset, another sequence space or an epoch from the past forget what was held first. The last
- * release keeps the conversation for {@link ENGINE_FORGET_AFTER_MS}; then it is forgotten. An
- * authoritative denial forgets it at once.
+ * release keeps the conversation for {@link ENGINE_FORGET_AFTER_MS}, the most recent
+ * {@link ENGINE_KEPT_RELEASED} of them; then it is forgotten. An authoritative denial forgets it at
+ * once.
  *
  * @module data/adapters/mateEngine
  */
@@ -61,8 +62,19 @@ import { readsOfState, type AccountStore } from "../store.ts";
 import type { StreamEvent, StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 
-/** How long a released conversation is kept, so a return resumes instead of reading it again. */
-export const ENGINE_FORGET_AFTER_MS = 5 * 60 * 1_000;
+/**
+ * How long a released conversation is kept, so a return resubscribes from its cursor and takes
+ * only the changes since, painting what it held meanwhile, instead of reading it again whole (a
+ * Mate's conversation read whole measured 1.88 MB). Bounded by {@link ENGINE_KEPT_RELEASED}.
+ */
+export const ENGINE_FORGET_AFTER_MS = 30 * 60 * 1_000;
+
+/**
+ * How many released conversations are kept at once; leaving one more forgets the one left longest
+ * ago. A kept conversation is its window and the run pages its cards read, a few hundred KB to
+ * ~1.5 MB of JSON, so the bound keeps an all-day tab within ~10 MB of conversations nobody shows.
+ */
+export const ENGINE_KEPT_RELEASED = 6;
 
 /**
  * How many pages of what a finished run's result draws from it reads before its card is drawn. A
@@ -354,11 +366,13 @@ interface Held {
  */
 function makeLinks(options: {
   readonly store: AccountStore;
+  readonly keptReleased: number;
   readonly setTimer: (callback: () => void, delayMs: number) => unknown;
   readonly clearTimer: (handle: unknown) => void;
 }) {
   const held = new Map<LinkKey, Held>();
-  const expiring = new Map<LinkKey, unknown>();
+  /** Released links still kept, the one left longest ago first. */
+  const expiring = new Map<LinkKey, { readonly timer: unknown; readonly expire: () => void }>();
   let closed = false;
   const hold = (
     link: LinkKey,
@@ -367,9 +381,9 @@ function makeLinks(options: {
     release: { readonly graceMs: number; readonly expire: () => void } | null,
   ) => {
     if (closed) return () => {};
-    const timer = expiring.get(link);
-    if (timer !== undefined) {
-      options.clearTimer(timer);
+    const kept = expiring.get(link);
+    if (kept !== undefined) {
+      options.clearTimer(kept.timer);
       expiring.delete(link);
     }
     let entry = held.get(link);
@@ -426,13 +440,19 @@ function makeLinks(options: {
       active.stop();
       held.delete(link);
       if (release === null || closed) return;
-      expiring.set(
-        link,
-        options.setTimer(() => {
+      expiring.set(link, {
+        timer: options.setTimer(() => {
           expiring.delete(link);
           if (!closed && !held.has(link)) release.expire();
         }, release.graceMs),
-      );
+        expire: release.expire,
+      });
+      for (const [oldest, entry] of expiring) {
+        if (expiring.size <= options.keptReleased) break;
+        options.clearTimer(entry.timer);
+        expiring.delete(oldest);
+        entry.expire();
+      }
     };
   };
   return {
@@ -442,7 +462,7 @@ function makeLinks(options: {
       closed = true;
       for (const entry of held.values()) entry.stop();
       held.clear();
-      for (const timer of expiring.values()) options.clearTimer(timer);
+      for (const { timer } of expiring.values()) options.clearTimer(timer);
       expiring.clear();
     },
   };
@@ -457,7 +477,7 @@ export function makeMateEngineConversations(options: {
   readonly clearTimer: (handle: unknown) => void;
 }) {
   const { store, wire, live } = options;
-  const links = makeLinks(options);
+  const links = makeLinks({ ...options, keptReleased: ENGINE_KEPT_RELEASED });
   const cursors = new Map<string, EngineCursor>();
   /** Every conversation held or kept, by environment: whom a denial forgets. */
   const known = new Map<string, Map<string, EngineConversationKey>>();

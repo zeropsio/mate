@@ -40,6 +40,7 @@ import {
 import { engineCardPaging, engineRows, engineThread } from "../projections/mateEngine.ts";
 import {
   ENGINE_FORGET_AFTER_MS,
+  ENGINE_KEPT_RELEASED,
   engineProtocol,
   makeMateEngineConversations,
 } from "./mateEngine.ts";
@@ -393,7 +394,7 @@ describe("an engine conversation's subscription", () => {
     }),
   );
 
-  it.live("forgets a conversation five minutes after its last release", () =>
+  it.live("forgets a conversation thirty minutes after its last release", () =>
     Effect.gen(function* () {
       const r = rig();
       const release = r.conversations.hold(ada);
@@ -411,6 +412,66 @@ describe("an engine conversation's subscription", () => {
       r.conversations.hold(ada);
       yield* settle;
       expect(r.opens.at(-1)!.after).toBeNull();
+      r.close();
+    }),
+  );
+
+  it.live(
+    "keeps the six conversations left most recently; leaving a seventh forgets the one left longest ago",
+    () =>
+      Effect.gen(function* () {
+        const r = rig();
+        const keys = Array.from(
+          { length: ENGINE_KEPT_RELEASED + 1 },
+          (_, index): EngineConversationKey => ({
+            environmentId: ENV,
+            conversationId: `thread-${index}`,
+          }),
+        );
+        for (const key of keys) {
+          const release = r.conversations.hold(key);
+          yield* settle;
+          yield* r.send(snapshot({ header: engineHeader(key.conversationId) }), synchronized(12));
+          release();
+          yield* settle;
+        }
+        expect(r.conversations.cursor(keys[0]!)).toBeNull();
+        for (const key of keys.slice(1))
+          expect(r.conversations.cursor(key)).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
+        // Held again, a kept one is no longer among those left: it never counts against the rest.
+        r.conversations.hold(keys[1]!);
+        yield* settle;
+        expect(r.opens.at(-1)!.after).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
+        expect(r.conversations.cursor(keys[2]!)).not.toBeNull();
+        r.close();
+      }),
+  );
+
+  it.live("a conversation held again after it was left takes a reset whole", () =>
+    Effect.gen(function* () {
+      const r = rig();
+      const release = r.conversations.hold(ada);
+      yield* settle;
+      yield* r.send(snapshot(), synchronized(12));
+      release();
+      yield* settle;
+      r.conversations.hold(ada);
+      yield* settle;
+      expect(r.opens.at(-1)!.after).toEqual({ epoch: 4, origin: "origin-a", seq: 12 });
+      // Painted from what it held while the Mate answers.
+      expect(r.item(`${run1}/i/2`).kind).toBe("known");
+      yield* r.send(
+        { type: "reset", reason: "gap" },
+        snapshot({
+          head: 4_000,
+          runs: [engineRun("thread-ada", 2, { rev: 4_000 })],
+          items: [personItem(run2, 1, "Much later", { rev: 4_000 })],
+        }),
+        synchronized(4_000),
+      );
+      expect(r.item(`${run1}/i/2`).kind).toBe("unknown");
+      expect(r.item(`${run2}/i/1`)).toMatchObject({ value: { text: "Much later" } });
+      expect(r.conversations.cursor(ada)).toEqual({ epoch: 4, origin: "origin-a", seq: 4_000 });
       r.close();
     }),
   );

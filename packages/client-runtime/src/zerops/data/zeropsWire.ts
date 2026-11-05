@@ -28,7 +28,8 @@ const PONG_DEADLINE_MS = 8_000;
 export type ZeropsWireClient = Pick<
   ZeropsApiClient,
   "baseUrl" | "exchangeWebSocketToken" | "requestData" | "renewHeldSession"
->;
+> &
+  Partial<Pick<ZeropsApiClient, "verifiedUser">>;
 
 const transient = (message: string): StreamFault => ({ outcome: "transient", message });
 
@@ -141,6 +142,16 @@ export function makeZeropsWire(options: {
     });
 
   return {
+    // Verifying the session read `/user/info`; that answer is the account's, for this session only.
+    held: (path) => {
+      if (path !== "/user/info") return undefined;
+      const verified = client.verifiedUser?.();
+      return verified == null ? undefined : { body: verified.user, atMs: verified.atMs };
+    },
+    rest: {
+      post: (path, body) =>
+        request(path, { method: "POST", body }).pipe(Effect.mapError(({ fault }) => fault)),
+    },
     open: Effect.gen(function* () {
       const id = yield* receiverId;
       const { webSocketToken } = yield* Effect.tryPromise({
