@@ -346,7 +346,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             window: window.window,
           };
           let bytes = sizer.bytesOf(frame);
-          if (bytes <= snapshotBytes) return frame;
+          if (bytes <= snapshotBytes) return { frame, bytes };
           if (count > 1) {
             count -= 1;
             continue;
@@ -361,18 +361,20 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             bytes -= sizer.listed(items[index]!, items.length);
             items.splice(index, 1);
           }
-          return { ...frame, items };
+          return { frame: { ...frame, items }, bytes };
         }
       });
 
     type Snapshot = Effect.Success<ReturnType<typeof readSnapshot>>;
+
     /**
      * The snapshot each of the conversations opened last was sent, by what it was read at: a
      * reload, a second tab or a reconnect of a conversation nothing changed in since is sent it
      * again, never read again. A commit moves the head past it; a page's height, kept beside its
      * call and never committed, moves `measured` past every one, before it is written and after.
+     * A snapshot over its budget (a window of messages that cannot be cut) is never kept.
      */
-    const snapshots = new Map<ConversationId, { readonly key: string; readonly frame: Snapshot }>();
+    const snapshots = new Map<ConversationId, { readonly key: string; readonly read: Snapshot }>();
     let measured = 0;
     const snapshot = (
       conversation: ConversationId,
@@ -385,19 +387,19 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         const key = `${origin}:${epoch}:${head}:${groupsAsked}:${measured}`;
         const kept = snapshots.get(conversation);
         const top = headerJson(yield* header(conversation));
-        if (kept?.key === key && headerJson(kept.frame.header) === top) {
+        if (kept?.key === key && headerJson(kept.read.frame.header) === top) {
           snapshots.delete(conversation);
           snapshots.set(conversation, kept);
-          return kept.frame;
+          return kept.read.frame;
         }
-        const frame = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
+        const read = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
         snapshots.delete(conversation);
-        snapshots.set(conversation, { key, frame });
+        if (read.bytes <= snapshotBytes) snapshots.set(conversation, { key, read });
         for (const oldest of snapshots.keys()) {
           if (snapshots.size <= SNAPSHOTS_KEPT) break;
           snapshots.delete(oldest);
         }
-        return frame;
+        return read.frame;
       });
 
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {

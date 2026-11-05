@@ -402,6 +402,33 @@ describe("a client subscribed to an engine conversation", () => {
     ),
   );
 
+  it.effect("a window over its budget is read again on every reload, never kept", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w, { snapshotBytes: 512 });
+        const asked = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.flatMap((item) => (item.kind === "person" ? [item.text] : []))
+            : [],
+        );
+        yield* w.tell({ _tag: "Send", text: "Ship it" });
+        assert.deepStrictEqual(yield* asked, ["Ship it"]);
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item SET body_json = json_set(body_json, '$.text', 'Ship it now')
+              WHERE kind = 'person'
+            `,
+          ),
+        );
+        assert.deepStrictEqual(yield* asked, ["Ship it now"]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a reload after the conversation changed opens on the change", () =>
     Effect.scoped(
       Effect.gen(function* () {
