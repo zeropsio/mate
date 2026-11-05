@@ -54,9 +54,10 @@ const Opening = createContext<{
  * Whether a stage that registers after another begins an opening of its own, or carries on the
  * one under way — one stage, one face and one set of words from a reload's first frame to the
  * conversation, whichever surface draws it as the route's gate moves between its waits:
- * another conversation, or another Mate, opens anew; so does a stage after the opening completed,
- * or a cold stage after a ready one on another surface. The Mate named where nobody was yet — a
- * name and face arriving — is the same opening.
+ * another conversation, or another Mate — or a Mate not known yet after a known one, outside the
+ * conversation they share — opens anew; so does a stage after the opening completed, or a cold
+ * stage after a ready one on another surface. The Mate named where nobody was yet — a name and
+ * face arriving — is the same opening.
  */
 export function opensAnew(
   previous: Pick<OpeningProps, "threadKey" | "ready" | "mate"> & { readonly node: unknown },
@@ -71,6 +72,11 @@ export function opensAnew(
     return true;
   if (previous.mate != null && next.mate != null && previous.mate.projectId !== next.mate.projectId)
     return true;
+  // A known Mate followed by one not known yet, outside the one conversation they share: its
+  // words and face are not the next one's.
+  const sameConversation =
+    previous.threadKey !== undefined && previous.threadKey === next.threadKey;
+  if (previous.mate != null && next.mate == null && !sameConversation) return true;
   return previous.node !== next.node && (completed || (previous.ready && !next.ready));
 }
 
@@ -153,22 +159,29 @@ export function ConversationOpeningProvider({ children }: { readonly children: R
  * which holds its place with its controls; from the hand-off on, the header says it again.
  */
 export function stageSaysMate(
-  stage: Pick<OpeningProps, "name" | "mate"> | null,
+  stage: Pick<OpeningProps, "name" | "mate" | "children"> | null,
   phase: OpeningPhase,
 ): boolean {
   if (stage === null || (phase !== "waiting" && phase !== "wake")) return false;
+  // The link's own words (a restart, a Mate down, unavailable) are no opening: no hand-off is on
+  // its way, and the header keeps saying the Mate.
+  if (stage.children !== undefined) return false;
   return Boolean(stage.name) || stage.mate !== null;
 }
 
 /**
- * What the header says of the Mate — its name, what it is on — held in its place, unsaid, while the
- * opening stage says the Mate (`stageSaysMate`), and arriving with the conversation
- * (`data-opening-waits`, `index.css`).
+ * What the header says of the Mate — its name, what it is on — held in its place, unseen and
+ * unsaid, exactly while the opening stage says the Mate (`stageSaysMate`), and arriving with the
+ * conversation at the hand-off (`data-opening-header`, `index.css`).
  */
 export function ConversationOpeningYields({ children }: { readonly children: ReactNode }) {
   const says = use(Opening)?.saysMate === true;
   return (
-    <span aria-hidden={says || undefined} className="contents" data-opening-waits="">
+    <span
+      aria-hidden={says || undefined}
+      className="contents"
+      data-opening-header={says ? "yields" : "says"}
+    >
       {children}
     </span>
   );

@@ -685,6 +685,20 @@ it.each([
     anew: true,
   },
   {
+    title: "a Mate not known yet after a known one, on another surface",
+    previous: { ...SOURCE, threadKey: undefined, ready: false, mate },
+    next: { node: "conversation", threadKey: undefined, ready: false, mate: null },
+    completed: false,
+    anew: true,
+  },
+  {
+    title: "the same conversation's surface before it knows its Mate",
+    previous: { ...SOURCE, threadKey: "main", ready: false, mate },
+    next: { node: "conversation", threadKey: "main", ready: false, mate: null },
+    completed: false,
+    anew: false,
+  },
+  {
     title: "another surface after the opening completed",
     previous: { ...SOURCE, threadKey: "main", ready: true, mate },
     next: { node: "conversation", threadKey: "main", ready: true, mate },
@@ -724,6 +738,12 @@ it.each<{
     phase: "waiting",
     says: false,
   },
+  {
+    title: "a stage saying the link's own words, with no hand-off on its way",
+    stage: { name: "Sage", mate, children: <span /> },
+    phase: "waiting",
+    says: false,
+  },
   { title: "the hand-off", stage: { name: "Sage", mate }, phase: "hand-off", says: false },
   { title: "a completed opening", stage: { name: "Sage", mate }, phase: "complete", says: false },
 ])(
@@ -750,18 +770,23 @@ it("while the opening stage names the Mate, the header holds its name unsaid, an
         </ConversationOpeningProvider>,
       ),
     );
-  const header = () =>
-    host.querySelector("[data-opening-waits]")?.getAttribute("aria-hidden") ?? null;
+  const header = () => {
+    const held = host.querySelector("[data-opening-header]");
+    return {
+      unseen: held?.getAttribute("data-opening-header"),
+      unsaid: held?.getAttribute("aria-hidden") ?? null,
+    };
+  };
   try {
     await show(false);
     expect(phase(host)).toBe("waiting");
-    expect(header()).toBe("true");
+    expect(header()).toEqual({ unseen: "yields", unsaid: "true" });
     await show(true);
     expect(phase(host)).toBe("wake");
-    expect(header()).toBe("true");
+    expect(header()).toEqual({ unseen: "yields", unsaid: "true" });
     await end(host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
     expect(phase(host)).toBe("hand-off");
-    expect(header()).toBeNull();
+    expect(header()).toEqual({ unseen: "says", unsaid: null });
   } finally {
     await act(() => root.unmount());
   }
