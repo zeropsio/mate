@@ -209,7 +209,7 @@ describe("arrivalSteps — Git access that failed", () => {
         signin: "waiting",
         standup: "none",
       },
-      why: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+      why: "HQ has no record of this Mate yet.",
     },
     {
       case: "failed, why not said",
