@@ -1,8 +1,8 @@
 /**
  * What a Mate's own menu in the left menu does, wired to the session.
  *
- * The verbs the projects screen offers too — *Restart* or *Start*, *Finish
- * setup*, *Hand over…*, *Move to project…*, *Delete {name}…* — are
+ * The verbs the projects screen offers too — *Restart* or *Start*, *Hand over…*,
+ * *Move to project…*, *Delete {name}…* — are
  * `useMateActions`', one definition with its dialogs; *Check for updates* and
  * *Update to x.y.z* are its update control's, read off its environment once
  * the menu opens (a hook cannot run in a menu-building function); *Rename* is its write
@@ -16,9 +16,6 @@
  * A Mate this page holds no socket to is acted on by HQ's word of it (`mateMenuTarget`): its
  * environment and its main chat's last finished turn. Stopping a run holds the Mate connected
  * until it answers (`useMateCommand`).
- *
- * The group registry is read only once somebody opens a Mate's menu: it is
- * what *Finish setup* needs to know a Mate unregistered, and the menu is on every screen.
  */
 import { useAtomValue } from "@effect/atom-react";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
@@ -45,7 +42,6 @@ import { useMateActions } from "./useMateActions";
 import { useDrawnProjectAccess } from "./useVisibleProjectAccess";
 import { useMutedMates } from "./mutedMates";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
-import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsContainers } from "./zeropsContainers";
 import { sharedBirthPresentation } from "./sharedBirths";
 
@@ -54,7 +50,6 @@ const SHARED_VERBS: Readonly<Record<string, string | null>> = {
   continue: null,
   start: null,
   restart: null,
-  "finish-setup": null,
   assign: "Hand over…",
   access: null,
   move: "Move to project…",
@@ -210,8 +205,7 @@ export function useSidebarMateMenus(input: {
   readonly getBirth: (birthId: string) => SharedBirthRow | undefined;
 } {
   const { serverVersions } = useZeropsContainers();
-  const registry = useZeropsRegistry();
-  const mateActions = useMateActions({ registry, serverVersions });
+  const mateActions = useMateActions({ serverVersions });
   // Each drawn row holds the project detail needed to decide the viewer’s access.
   const drawnOf = useDrawnProjectAccess();
   const { muted, toggle } = useMutedMates();

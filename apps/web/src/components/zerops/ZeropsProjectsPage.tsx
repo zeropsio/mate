@@ -212,7 +212,6 @@ import { useHqOffers, useMateOffers, useOrgOffers } from "~/zerops/useHqOffers";
 import { useZeropsGroupRecipe } from "~/zerops/useZeropsGroupRecipe";
 import { configuredHq } from "~/zerops/accountHq";
 import { useEnvironmentSetup } from "~/zerops/useEnvironmentSetup";
-import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import { useFlowVerbs } from "~/zerops/flowVerbs";
 import {
   useCompactProjectFlows,
@@ -1145,7 +1144,7 @@ export function ZeropsProjectsContent({
               );
         if (!isCurrent()) return;
         const hq = configuredHq();
-        // What it registers, by the rule Finish setup registers by, before its container: in the
+        // Register before the container: in the
         // application HQ or the press this tab holds places it in, under that face (F6b);
         // a new Mate in no application only where neither does.
         const held = readMatePress(projectId);
@@ -1695,12 +1694,9 @@ export function ZeropsProjectsContent({
         : groupTree.groups.find((entry) => entry.group.groupId === creationRequest.groupId),
     [creationRequest, groupTree.groups],
   );
-  // The registry — which groups exist and which projects are in them (ADR 0002), read from HQ.
-  const registryState = useZeropsRegistry();
-
   // Every verb a Mate has, from the one place that defines them — shared with
   // a project's own page, which listed its Mates and could do nothing to them.
-  const mateActions = useMateActions({ registry: registryState, serverVersions });
+  const mateActions = useMateActions({ serverVersions });
 
   // The recipe is the application's, read as the person through its HQ (guide
   // 4.3) — never a sibling's export, which carried service shapes without their
@@ -2019,6 +2015,7 @@ export function ZeropsProjectsContent({
       isCurrent: captureAccountLifetime(),
       // A container the pool made: its key at ADMIN, lowered.
       harden: true,
+      onKeyNotLowered: setConnectError,
     });
   }, [clearLastRegistration, client, inventory.projects, lastRegistration, operations]);
 

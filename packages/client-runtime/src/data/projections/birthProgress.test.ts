@@ -215,7 +215,9 @@ describe("shared birth progress", () => {
     });
     const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
     const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-    expect(registry.get(read).open).toMatchObject([{ id: "birth", canDelete: false }]);
+    expect(registry.get(read).open).toMatchObject([
+      { id: "birth", adopted: true, canDelete: true },
+    ]);
     stop();
     store.close();
     registry.dispose();

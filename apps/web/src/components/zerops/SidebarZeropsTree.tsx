@@ -286,7 +286,6 @@ import {
   mateRowMenu,
   mateCrewItem,
   mateDeletingView,
-  mateFinishingView,
   mateDotLabel,
   mateNotYours,
   mateOwnerView,
@@ -314,7 +313,7 @@ import {
   type BadgeSeat,
 } from "./SidebarMateRow.logic";
 import { MATE_DELETING_WORD } from "./ZeropsDeleteMateDialog.logic";
-import { finishSetupRowLine, useMatePress } from "~/zerops/matePress";
+import { useMatePress } from "~/zerops/matePress";
 import { mateDeleting, useDeletingMates } from "~/zerops/deletingMates";
 import { useSidebarJump } from "~/zerops/sidebarJump";
 import { useSidebarReveal, type SidebarRevealTarget } from "~/zerops/sidebarReveal";
@@ -2794,10 +2793,8 @@ function GroupRowWords<T extends RosterCandidate>({
                 <MateSecondLine
                   askChanged={state.askChanged}
                   askLine={state.askLine}
-                  finishing={state.finishing}
                   known={state.known}
                   second={state.second}
-                  timestampFormat={timestampFormat}
                   view={state.view}
                 />
               ) : (
@@ -3390,7 +3387,7 @@ export function MenuMateLine<T extends RosterCandidate>({
   const viewer = useZeropsSessionOptional()?.user?.id;
   const linked = useMateLinkedInHq(candidate.project.id);
   const hqMates = useMatesLinkedInHq();
-  const { view, second, askLine, askChanged, known, finishing } = useMateRowState({
+  const { view, second, askLine, askChanged, known } = useMateRowState({
     candidate,
     activity,
     up: mateAwake(candidate, hqMates) || linked,
@@ -3409,10 +3406,8 @@ export function MenuMateLine<T extends RosterCandidate>({
       <MateSecondLine
         askChanged={askChanged}
         askLine={askLine}
-        finishing={finishing}
         known={known}
         second={second}
-        timestampFormat={timestampFormat}
         view={view}
       />
     ),
@@ -3452,22 +3447,14 @@ function useMateRowState<T extends RosterCandidate>({
   // offers no menu and does not open, until the listing lets it go.
   const deletingIds = useDeletingMates();
   const deleting = mateDeleting(candidate.project, deletingIds);
-  // *Finish setup* running on it, from whichever screen it was pressed (`finishSetupRowLine`):
-  // its own view draws the steps only while its container is missing, so its row says so. A stop
-  // is said for a moment, and never over a Mate that is connected: this tab's socket to it, or its
-  // link to HQ — not a container that only runs, whose stop is what the row says.
   const press = useMatePress(candidate.project.id);
-  const linkedInHq = useMateLinkedInHq(candidate.project.id);
   const overviewInHq = useMateOverviewInHq(candidate.project.id);
-  const linkedNow = candidate.group === "connected" || linkedInHq;
   const placedKnown = useAtomValue(menuPlacementKnownAtom);
   const outsideHq = mateOutsideHq(
     candidate.project,
     placedKnown,
     coming !== undefined || press !== undefined,
   );
-  const finishing =
-    deleting || coming !== undefined ? undefined : finishSetupRowLine(press, { up: linkedNow });
   // What the row says in its state (`mateRowView`, M7): the face, the right of
   // the name, what was asked and the third line — the face and the words from
   // the one reading of it (`mateRowReading`): what it is on, or was last on,
@@ -3507,9 +3494,7 @@ function useMateRowState<T extends RosterCandidate>({
     ? mateDeletingView(read)
     : coming !== undefined
       ? mateComingRowView(read, coming)
-      : finishing !== undefined
-        ? mateFinishingView(read)
-        : read;
+      : read;
   const retainedReply =
     view.reply?.kind === "words" && view.reply.lastKnown === true ? view.reply : undefined;
   // Whose seat it is, and whether anybody has signed its agent in — read off
@@ -3535,7 +3520,7 @@ function useMateRowState<T extends RosterCandidate>({
   // The sign-in line stands where nothing else is said of a Mate that is up: to the person who
   // added it, that it waits on them — with the amber dot of what needs them.
   const signIn =
-    outsideHq || deleting || finishing !== undefined || view.coming !== undefined || containerless
+    outsideHq || deleting || view.coming !== undefined || containerless
       ? undefined
       : seated.signInLine;
   const admissionOrgId = useAccountOrgId();
@@ -3604,7 +3589,6 @@ function useMateRowState<T extends RosterCandidate>({
         ? sentAsk.text
         : undefined,
     deleting,
-    finishing: finishing !== undefined,
     read: conversationsRead,
     asker: mateAsker(owner),
   });
@@ -3632,7 +3616,6 @@ function useMateRowState<T extends RosterCandidate>({
     view,
     askLine,
     deleting,
-    finishing: finishing !== undefined,
     outsideHq,
     mine: hqPeople?.waitsOnViewer,
     waitsOn,
@@ -3651,7 +3634,6 @@ function useMateRowState<T extends RosterCandidate>({
     name,
     deleting,
     outsideHq,
-    finishing,
     view,
     retainedReply,
     status,
@@ -3879,7 +3861,6 @@ function MateRowView<T extends RosterCandidate>({
     name,
     deleting,
     outsideHq,
-    finishing,
     view,
     retainedReply,
     status,
@@ -3905,8 +3886,7 @@ function MateRowView<T extends RosterCandidate>({
     reviewWaits,
     inReview,
   });
-  // Nothing on its menu is about a Mate still being made, or one going: one on its way offers its
-  // Delete alone — until its setup stopped, when *Finish setup* is on it.
+  // A birth's menu offers its shared actions, and a Mate on its way out offers none.
   const actions: MateRowActions | undefined = outsideHq
     ? undefined
     : mateRowMenu({ deleting, coming, actions: offered });
@@ -4257,9 +4237,7 @@ function MateRowView<T extends RosterCandidate>({
                 askLine={askLine}
                 known={known}
                 second={second}
-                timestampFormat={timestampFormat}
                 view={view}
-                finishing={finishing}
               />
             ) : (
               <span
@@ -4475,7 +4453,7 @@ function MateNameMarks({ mateProjectId }: { readonly mateProjectId: string }) {
 /**
  * Whether a crew's need may take its Mate's line: where the Mate's own line is its words or its
  * step, the person's ask, or nothing — never over an error, a sign-in, a Mate coming up, going,
- * finishing its setup or outside HQ.
+ * or outside HQ.
  */
 function crewMayTakeLine(second: MateRowSecond, view: MateRowReading): boolean {
   if (second.kind === "ask" || second.kind === "none") return true;
@@ -4489,24 +4467,18 @@ function MateSecondLine({
   askLine,
   askChanged,
   known,
-  finishing,
-  timestampFormat,
 }: {
   readonly second: MateRowSecond;
   readonly view: MateRowReading;
   readonly askLine: MateRowAskLine;
   readonly askChanged: boolean;
   readonly known: boolean;
-  readonly finishing: string | undefined;
-  readonly timestampFormat: TimestampFormat;
 }) {
   switch (second.kind) {
     case "coming":
       return view.coming === undefined ? null : <MateComingLine line={mateBornLine(view.coming)} />;
     case "deleting":
       return <MateDeletingLine />;
-    case "finishing":
-      return finishing === undefined ? null : <MateFinishingLine words={finishing} />;
     case "outside":
       return <span className="menu-line2 truncate text-muted-foreground">{NOT_IN_HQ_LINE}</span>;
     case "sign-in":
@@ -4887,21 +4859,6 @@ function MateDeletingLine() {
       data-zerops-surface="sidebar-mate-deleting"
     >
       {MATE_DELETING_WORD}
-    </span>
-  );
-}
-
-/**
- * The row's last line while *Finish setup* runs on its Mate (`mateFinishingView`): what is being
- * done, in the muted ink, where its words stood.
- */
-function MateFinishingLine({ words }: { readonly words: string }) {
-  return (
-    <span
-      className="truncate menu-line2 text-muted-foreground"
-      data-zerops-surface="sidebar-mate-finishing"
-    >
-      {words}
     </span>
   );
 }

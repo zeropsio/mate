@@ -1550,80 +1550,9 @@ describe("a new Mate's arrival, from the press to the sign-in", () => {
 describe("ComingBelow — a Mate half made", () => {
   const HALF_MADE = {
     kind: "failed",
-    line: "Its setup stopped before its workspace. Finish setup completes it.",
-    verb: "finish-setup",
+    line: "The setup stopped.",
+    verb: "try-again",
   } as const;
-  const render = (onFinishSetup: (() => void) | undefined) => {
-    let rendered: ReactTestRenderer | undefined;
-    act(() => {
-      rendered = create(
-        h(ComingBelow, {
-          coming: HALF_MADE,
-          progress: undefined,
-          nowMs: undefined,
-          mate: { name: "Quinn", project: "Acme" },
-          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
-        }),
-      );
-    });
-    return rendered!;
-  };
-
-  it("offers Finish setup to whoever may finish it, and runs it on a press", () => {
-    let finished = 0;
-    const rendered = render(() => {
-      finished += 1;
-    });
-    const button = rendered.root
-      .findAllByType("button")
-      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
-    expect(button.children).toEqual(["Finish setup"]);
-    act(() => button.props.onClick());
-    expect(finished).toBe(1);
-  });
-
-  it("offers nothing to anyone else", () => {
-    expect(
-      render(undefined)
-        .root.findAllByType("button")
-        .filter((node) => node.props["data-slot"] !== "collapsible-trigger"),
-    ).toHaveLength(0);
-  });
-
-  it.each([
-    { permitted: true, finishing: false },
-    { permitted: true, finishing: true },
-    { permitted: false, finishing: false },
-  ])("recovers a Mate waiting for isolation: %o", ({ permitted, finishing }) => {
-    const finish = vi.fn();
-    let rendered: ReactTestRenderer;
-    act(() => {
-      rendered = create(
-        h(ComingBelow, {
-          coming: { kind: "coming", line: "Closing off its project…" },
-          progress: undefined,
-          nowMs: undefined,
-          mate: { name: "Quinn", project: "Acme" },
-          finishing,
-          ...(permitted ? { onFinishSetup: finish } : {}),
-        }),
-      );
-    });
-    const buttons = rendered!.root
-      .findAllByType("button")
-      .filter((node) => node.props["data-slot"] !== "collapsible-trigger");
-    expect(buttons).toHaveLength(permitted ? 1 : 0);
-    if (permitted) {
-      expect(buttons[0]!.children).toEqual(["Finish setup"]);
-      expect(buttons[0]!.props.disabled).toBe(finishing);
-      if (!finishing) {
-        act(() => buttons[0]!.props.onClick());
-        expect(finish).toHaveBeenCalledOnce();
-      }
-    }
-    act(() => rendered!.unmount());
-  });
-
   // F6b (e2e, 2026-10-03): Dan's view said he could not be added while his workspace's clock ran
   // on, "139:30 of about 2 min", its spinner turning — the press this tab held never settled.
   it("says its workspace stopped, its clock not running on, where its press never settled", () => {
@@ -1680,7 +1609,7 @@ it("A setup needing attention does not mark its workspace failed without the wor
   act(() => {
     rendered = create(
       h(ComingBelow, {
-        coming: { kind: "failed", line: "The import was refused.", verb: "finish-setup" },
+        coming: { kind: "failed", line: "The import was refused.", verb: "try-again" },
         progress: {
           steps: [container],
           active: container,
@@ -1722,7 +1651,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
       },
     ],
   } as const;
-  const render = (onFinishSetup: (() => void) | undefined) => {
+  const render = () => {
     let rendered: ReactTestRenderer | undefined;
     act(() => {
       rendered = create(
@@ -1731,7 +1660,6 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
           progress,
           nowMs: 0,
           mate: { name: "Ida", project: "Acme" },
-          ...(onFinishSetup === undefined ? {} : { onFinishSetup }),
         }),
       );
     });
@@ -1742,25 +1670,8 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
       .findAll((node) => node.props["data-press-note"] !== undefined)
       .map((node) => node.children.join(""));
 
-  it("says what is not done and why, under the steps, with Finish setup at once", () => {
-    let finished = 0;
-    const rendered = render(() => {
-      finished += 1;
-    });
-    expect(text(rendered)).toEqual(["Not registered."]);
-    expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
-      "Its grant timed out.",
-    );
-    const button = rendered.root
-      .findAllByType("button")
-      .find((node) => node.props["data-slot"] !== "collapsible-trigger")!;
-    expect(button.children).toEqual(["Finish setup"]);
-    act(() => button.props.onClick());
-    expect(finished).toBe(1);
-  });
-
   it("still says why to someone who cannot finish it", () => {
-    const rendered = render(undefined);
+    const rendered = render();
     expect(text(rendered)).toEqual(["Not registered."]);
     expect(openDetails(rendered).findByType("pre").children.join("")).toContain(
       "Its grant timed out.",
@@ -2221,30 +2132,6 @@ it.each([
   act(() => tree!.update(comingView(PROJECT)));
   expect(said()).not.toContain(text);
   expect(said()).not.toContain("Original setup diagnostic");
-});
-
-it("keeps a Finish setup refusal out of stage copy without a setup process", () => {
-  app.listing = listingOf([
-    {
-      key: KEY,
-      project: QUINN.project,
-      group: "unavailable",
-      missingContainer: true,
-    },
-  ]);
-  beginPress({
-    projectId: PROJECT,
-    organizationId: "org-beviro",
-    startedAt: 0,
-    placement: null,
-    container: true,
-  });
-  app.actionTrouble = "500: Internal Server Error";
-  openView();
-  const section = tree!.root.findByType("section");
-  expect(section.children).toContain("Zerops couldn't finish setting up the Mate.");
-  expect(section.children).not.toContain(app.actionTrouble);
-  expect(openDetails(tree!).findByType("pre").children.join("")).toBe(app.actionTrouble);
 });
 
 it("keeps a Remove refusal available in Details without a setup process or action slot", () => {

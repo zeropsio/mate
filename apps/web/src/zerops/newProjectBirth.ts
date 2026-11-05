@@ -741,8 +741,8 @@ export function registrationSubstep(name: string, registration: MateRegistration
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
  * project registered and created, then its Mate registered and its one import accepted; an added
  * Mate follows the same HQ order after its copy is created. Each step carries its
- * state and the full reason when it stops. A refused registration offers Finish setup. Its Mate's
- * steps are its press's (`progress`, null before the press begins).
+ * state and the full reason when it stops. Its Mate's steps are its press's (`progress`, null
+ * before the press begins).
  */
 export function creationSubsteps(
   birth: NewProjectBirth,

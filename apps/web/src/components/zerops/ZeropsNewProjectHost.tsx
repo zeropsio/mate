@@ -35,9 +35,8 @@
  * person's session — the application and its birth intent in HQ, the
  * Mate's project, its registration and its import (`newProjectBirth.ts`, `matePress.ts`) — run
  * on in the account's creations, whatever the person opens next, and the view draws them under
- * the project's row, saying to keep the tab open only while they run. A step that stops says why
- * there, with *Try again*; a tab closed before its import is the person's choice, and the Mate's
- * ⋯ menu finishes it (*Finish setup*).
+ * the project's row, saying to keep the tab open only while they run. A birth that stops says why
+ * and offers continuation where the viewer may continue it.
  */
 import { useNavigate } from "@tanstack/react-router";
 import {

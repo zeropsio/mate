@@ -63,7 +63,6 @@ import { MateFaceAsMark } from "./primitives";
 import { scopeThreadRef } from "@t3tools/client-runtime/environment";
 import {
   assignCandidateMateTints,
-  FINISH_MATE_SETUP_VERB,
   nameUnderApp,
   readZeropsMembership,
   resolvePrimaryConversation,
@@ -94,7 +93,6 @@ import { buildThreadRouteParams } from "~/threadRoutes";
 import { useAccountEnvironments, useConnectMate } from "~/zerops/accountEnvironments";
 import {
   firstBuildState,
-  halfMadeFor,
   LISTING_CATCH_UP_MS,
   listingLacksCreation,
   mateConnectKey,
@@ -115,7 +113,6 @@ import {
   arrivalRow,
   arrivalSteps,
   onSetupClock,
-  pressNote,
   SETUP_FAILURE_WORDS,
   type ArrivalSubstep,
 } from "~/zerops/mateArrival";
@@ -149,19 +146,12 @@ import { useZeropsBirthProgress } from "~/zerops/useZeropsBirthProgress";
 import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
-import {
-  finishSetupView,
-  forgetPress,
-  pressFailure,
-  pressComing,
-  useMatePress,
-} from "~/zerops/matePress";
+import { forgetPress, pressFailure, pressComing, useMatePress } from "~/zerops/matePress";
 import { useDeleteProject } from "~/zerops/deleteProject";
 import { MateRestartError } from "~/zerops/mateRestartRefusal";
 import { useRestartMate, useReviveFailedMate } from "~/zerops/mateRestart";
 import { refreshMateSetup, useMateSetup } from "~/zerops/useMateSetup";
 import { useMateActions } from "~/zerops/useMateActions";
-import { useZeropsRegistry } from "~/zerops/useZeropsRegistry";
 import type { MateSetup, MateSetupFailure } from "@t3tools/client-runtime/zerops/mateSetup";
 import { useZeropsContainers } from "~/zerops/zeropsContainers";
 import { useZeropsData } from "~/zerops/zeropsDataContext";
@@ -182,7 +172,6 @@ import { useZeropsThreadActivity } from "~/zerops/useZeropsAgentActivity";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import type { BirthLineProgress } from "./ZeropsBirthProgress.logic";
 import { Progress } from "../ui/progress";
-import { PressSteps } from "./ZeropsEnvironmentCreationDialog";
 import {
   MateEmptyStateView,
   useMateEmptyState,
@@ -194,7 +183,7 @@ import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBir
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
 
-/** The coming page reads no server version: its *Finish setup* is all it takes of the menu. */
+/** The coming page does not read a server version for its actions. */
 const NO_VERSIONS: ReadonlyMap<string, string> = new Map();
 
 /** The slate face a Mate wears where nobody picked one. */
@@ -220,8 +209,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
 
 /** A birth's own detail reads the same progress and actions as its row on every device. */
 export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
-  const registry = useZeropsRegistry();
-  const actions = useMateActions({ registry, serverVersions: NO_VERSIONS });
+  const actions = useMateActions({ serverVersions: NO_VERSIONS });
   const face = readMateFace(birth.face);
   const mate = {
     name: birth.intent?.placement.name ?? "Mate",
@@ -241,6 +229,11 @@ export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
           severity: presentation.attention ? "attention" : "info",
           below: (
             <div className="flex flex-wrap justify-center gap-2">
+              {birth.adopted === true && presentation.attention && birth.canDelete ? (
+                <p className="w-full">
+                  Delete stops setting up the Mate and leaves the project untouched.
+                </p>
+              ) : null}
               {actions.birthActionsFor(birth.id).map((action) =>
                 "separator" in action ? null : (
                   <Button
@@ -731,21 +724,7 @@ function ExistingMateComingPage({
           ...(empty.agentReady ? { agentReady: true } : {}),
         };
 
-  // *Finish setup*, where its press stopped before its container: the same verb as its menu's,
-  // offered to an owner or an admin in any browser — and at once, where this tab's press saw its
-  // registration refused.
-  const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
-  const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
-  const registryState = useZeropsRegistry();
-  const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
-  const finishEntry =
-    !halfMade || candidate === undefined
-      ? undefined
-      : mateActions
-          .actionsFor(candidate, readZeropsMembership(candidate.project))
-          .find((entry) => entry.id === "finish-setup");
-  const finishSetup =
-    finishEntry === undefined || "separator" in finishEntry ? undefined : finishEntry.onSelect;
+  const mateActions = useMateActions({ serverVersions: NO_VERSIONS });
 
   const redeployEntry =
     coming?.kind !== "failed" || coming.verb !== "redeploy" || candidate === undefined
@@ -757,11 +736,6 @@ function ExistingMateComingPage({
     redeployEntry === undefined || "separator" in redeployEntry
       ? undefined
       : redeployEntry.onSelect;
-
-  // *Finish setup* running, or through: its steps as the Add dialog draws them, and their end — on
-  // a Mate this tab made, its own step under the project's row follows that press instead
-  // (`creationSubsteps`), and nothing above it moves.
-  const finish = made === undefined ? finishSetupView(press, registration) : undefined;
 
   const restartSetup = useRestartMate();
   const [retryingSetup, setRetryingSetup] = useState(false);
@@ -829,16 +803,11 @@ function ExistingMateComingPage({
     (mateActions.trouble === null
       ? null
       : {
-          kind: "finish" as const,
+          kind: "redeploy" as const,
           details: mateActions.trouble,
         });
 
-  // On its way to its conversation and not handed over yet — its link being made, its conversation
-  // and its sign-in still being read — a new Mate stays coming, its progress whole, until the words
-  // can turn into the conversation's own. A half-made Mate names Finish setup only where this
-  // viewer has it, and who can where not.
-  const shown: MateComing | undefined =
-    arrival === undefined ? undefined : halfMadeFor(arrival, finishSetup !== undefined);
+  const shown: MateComing | undefined = arrival;
   // The hand-over: the words turn into the conversation's own, and the header with them — its way
   // into Zerops and its actions arrive here, in place, so the route changes under an unchanged frame.
   const handingArrival = handing && cameUp;
@@ -879,7 +848,6 @@ function ExistingMateComingPage({
     details: failedReason?.details,
     attemptId: failedProcess?.id,
     refusal: operationTrouble,
-    finish: finish?.line,
   });
   const view: MateEmptyComing | null =
     page === undefined
@@ -892,44 +860,37 @@ function ExistingMateComingPage({
               over: handing,
               pressed: made !== undefined,
               sentence: arrivalWords.secondary,
-              below:
-                finish !== undefined &&
-                shown.kind === "coming" &&
-                arrivalWords.details === undefined ? (
-                  <PressSteps name={mate.name} steps={finish.steps} />
-                ) : (
-                  <ComingBelow
-                    operationTrouble={operationTrouble}
-                    attemptId={failedProcess?.id}
-                    coming={shown}
-                    mate={mate}
-                    nowMs={progress?.nowMs}
-                    onRemove={remove}
-                    onRedeploy={redeploy}
-                    {...(finishSetup === undefined ? {} : { onFinishSetup: finishSetup })}
-                    finishing={mateActions.busyKey === candidate?.key}
-                    {...(pressRetry === null
-                      ? {}
-                      : { onTryAgain: trySetupAgain ?? (() => void pressRetry()) })}
-                    {...(setupOrigin === undefined
-                      ? {}
-                      : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}
-                    {...(failedReason === undefined
-                      ? {}
-                      : {
-                          setupFailureDetails: {
-                            details: failedReason.details,
-                            status: failureLog.status,
-                            process: failedProcess!,
-                            projectUrl: mate.projectUrl,
-                            retrying: retryingSetup,
-                          },
-                          onTryAgain: trySetupAgain,
-                        })}
-                    progress={lineProgress}
-                    removing={removing}
-                  />
-                ),
+              below: (
+                <ComingBelow
+                  operationTrouble={operationTrouble}
+                  attemptId={failedProcess?.id}
+                  coming={shown}
+                  mate={mate}
+                  nowMs={progress?.nowMs}
+                  onRemove={remove}
+                  onRedeploy={redeploy}
+                  {...(pressRetry === null
+                    ? {}
+                    : { onTryAgain: trySetupAgain ?? (() => void pressRetry()) })}
+                  {...(setupOrigin === undefined
+                    ? {}
+                    : { onSetupAgain: () => refreshMateSetup(setupOrigin) })}
+                  {...(failedReason === undefined
+                    ? {}
+                    : {
+                        setupFailureDetails: {
+                          details: failedReason.details,
+                          status: failureLog.status,
+                          process: failedProcess!,
+                          projectUrl: mate.projectUrl,
+                          retrying: retryingSetup,
+                        },
+                        onTryAgain: trySetupAgain,
+                      })}
+                  progress={lineProgress}
+                  removing={removing}
+                />
+              ),
             }
         : page.kind === "coming"
           ? null
@@ -1303,9 +1264,7 @@ export function ComingBelow({
   nowMs,
   mate,
   removing = false,
-  finishing = false,
   onRemove,
-  onFinishSetup,
   onRedeploy,
   onTryAgain,
   onSetupAgain,
@@ -1332,11 +1291,7 @@ export function ComingBelow({
   readonly nowMs: number | undefined;
   readonly mate: Pick<ZeropsMateIdentity, "name" | "project">;
   readonly removing?: boolean;
-  /** *Finish setup* runs. */
-  readonly finishing?: boolean;
   readonly onRemove?: () => void;
-  /** *Finish setup*, for a Mate whose press stopped before its container. */
-  readonly onFinishSetup?: () => void;
   readonly onTryAgain?: (() => void) | undefined;
   readonly onRedeploy?: (() => void) | undefined;
   /** Reads its setup again, where the last read could not be it (`refreshMateSetup`). */
@@ -1415,10 +1370,6 @@ export function ComingBelow({
         <Button variant="primary" size="md" disabled={removing} onClick={onRemove}>
           Remove
         </Button>
-      ) : coming.verb === "finish-setup" && onFinishSetup !== undefined ? (
-        <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
-          {FINISH_MATE_SETUP_VERB}
-        </Button>
       ) : coming.verb === "try-again" && onTryAgain !== undefined ? (
         <>
           <Button variant="primary" size="md" onClick={onTryAgain}>
@@ -1477,7 +1428,7 @@ export function ComingBelow({
     ) : null;
   // What the steps leave to read whole, under them and over the way on — each step keeps one line:
   // a stop's reason (one Zerops may have made says it in the sentence), or a registration not
-  // finished, with this person's own *Finish setup*, at once.
+  // finished.
   const copy = mateArrivalNotice({
     coming,
     progress,
@@ -1486,12 +1437,6 @@ export function ComingBelow({
     details: setupFailureDetails?.details,
   });
   const pressRead = copy.note === null ? null : { text: copy.note };
-  const finishVerb =
-    coming?.kind === "coming" && onFinishSetup !== undefined ? (
-      <Button variant="primary" size="md" disabled={finishing} onClick={onFinishSetup}>
-        {FINISH_MATE_SETUP_VERB}
-      </Button>
-    ) : null;
   // Its setup that could not be read, while it comes up: why, and *Try again*, which reads it again.
   const setupFailure = coming?.kind === "coming" ? progress?.setupFailure : undefined;
   const read =
@@ -1502,7 +1447,7 @@ export function ComingBelow({
         Try again
       </Button>
     ) : null;
-  const acts = verb ?? finishVerb ?? setupVerb;
+  const acts = verb ?? setupVerb;
   if (
     acts === null &&
     read === null &&

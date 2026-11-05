@@ -273,8 +273,7 @@ const isAutomationRefusal = (reason: string): reason is keyof typeof AUTOMATION_
  * again on its own, which it does for every refusal but `not_this_projects_mate`.
  */
 const ENROLLMENT_WORDS: Readonly<Record<string, string>> = {
-  // Its record comes with its press: one that stopped before it wrote it, Finish setup writes it.
-  not_a_mate: "HQ has no record of this Mate yet. Finish its setup from its menu.",
+  not_a_mate: "HQ has no record of this Mate yet.",
   project_not_in_org: "Its Zerops project is not in this HQ's organization.",
   project_gone: "Its Zerops project is gone.",
   // HQ reads zcp's proof off the project a moment later than zcp writes it.

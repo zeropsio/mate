@@ -13,7 +13,6 @@ beforeEach(() => {
 });
 import { acquireHqPressLease as pressHold } from "@t3tools/client-runtime/data";
 import {
-  finishMateSetupVerb,
   type EnvironmentCreationPlatform,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -27,16 +26,9 @@ import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
 import {
   beginPress,
   pressRegistration,
-  finishSetupView,
-  FINISHED_SETUP_LINE,
   forgetPress,
-  progressPress,
-  FINISHED_SHOWN_MS,
   PRESSED_ELSEWHERE,
   connectedPresses,
-  finishSetupRowLine,
-  finishSetupRunning,
-  birthPresses,
   finishMateSetup,
   pressComingInput,
   pressDoneAt,
@@ -44,14 +36,12 @@ import {
   readMatePress,
   runPress,
   recordPressOutcome,
-  STOPPED_SHOWN_MS,
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
   PRESSED_IN_ANOTHER_BROWSER,
   PRESS_LAPSED,
   whilePressing,
   type MatePress,
-  type MatePressState,
   type PressInputs,
 } from "./matePress";
 import { accountHqApi } from "./accountHq";
@@ -201,105 +191,6 @@ vi.mock("./accountHq", () => ({
 
 // Finish setup drawn as the Add dialog draws a press, then a clear end (live, 2026-10-01: Hugo's
 // view went "could not be added", "isn't running", "coming up", and never said it was done).
-describe("finishSetupView — Finish setup on a Mate's own view", () => {
-  // As Finish setup runs (F6b): its record in its application before its container.
-  const STEPS: ReadonlyArray<EnvironmentCreationStep> = [
-    { kind: "register" },
-    { kind: "import-container", agents: [] },
-  ];
-  const progress = (
-    states: ReadonlyArray<EnvironmentCreationStepProgress["state"]>,
-  ): ReadonlyArray<EnvironmentCreationStepProgress> =>
-    STEPS.map((step, index) => ({ step, state: states[index]! }));
-  const press = (state: MatePressState, made: Partial<MatePress> = {}): MatePress => ({
-    projectId: "p-hugo",
-    organizationId: "org-acme",
-    startedAt: 0,
-    placement: null,
-    container: true,
-    finishing: true,
-    state,
-    ...made,
-  });
-  const drawn = (view: ReturnType<typeof finishSetupView>) =>
-    view === undefined
-      ? undefined
-      : { done: view.done, line: view.line, steps: view.steps.map((s) => `${s.label}:${s.state}`) };
-
-  it.each([
-    {
-      case: "an Add's press",
-      made: press({ kind: "pressing" }, { finishing: false }),
-      want: undefined,
-    },
-    {
-      case: "before its first step",
-      made: press({ kind: "pressing" }),
-      want: { done: false, line: "Finishing its setup…", steps: [] },
-    },
-    {
-      case: "registered, its container being imported",
-      made: press({ kind: "pressing" }, { progress: progress(["done", "running"]) }),
-      want: {
-        done: false,
-        line: "Finishing its setup…",
-        steps: ["Registered:done", "Its computer:active"],
-      },
-    },
-    {
-      case: "through",
-      made: press({ kind: "pressed" }, { progress: progress(["done", "done"]) }),
-      want: {
-        done: true,
-        line: "Its setup is finished. It comes up on its own now, with no browser needed.",
-        steps: ["Registered:done", "Its computer:done"],
-      },
-    },
-    {
-      case: "through, its registration refused",
-      made: press({ kind: "pressed" }, { progress: progress(["failed", "done"]) }),
-      want: {
-        done: true,
-        line: "Its setup is finished. It comes up on its own now, with no browser needed. It still needs an owner to register it.",
-        steps: ["Registered:failed", "Its computer:done"],
-      },
-    },
-  ])("$case", ({ made, want }) => {
-    const refused = made.progress?.find(
-      (entry) => entry.step.kind === "register" && entry.state === "failed",
-    );
-    expect(
-      drawn(
-        finishSetupView(
-          made,
-          refused === undefined
-            ? { attempt: 1, state: "done" }
-            : { attempt: 1, state: "unfinished", reason: refused.error ?? "It was refused." },
-        ),
-      ),
-    ).toEqual(want);
-  });
-
-  it("is kept on the press as it moves", () => {
-    beginPress({
-      projectId: "p-hugo",
-      organizationId: "org-acme",
-      startedAt: 0,
-      placement: null,
-      container: true,
-      finishing: true,
-    });
-    progressPress("p-hugo", progress(["done", "running"]));
-    expect(drawn(finishSetupView(readMatePress("p-hugo")!))?.steps).toEqual([
-      "Registered:done",
-      "Its computer:active",
-    ]);
-    forgetPress("p-hugo");
-    // A press nobody holds keeps nothing.
-    progressPress("p-hugo", progress(["done", "done"]));
-    expect(readMatePress("p-hugo")).toBeUndefined();
-  });
-});
 
 describe("runPress — a press settled, tried again, and one at a time", () => {
   const STEPS: ReadonlyArray<EnvironmentCreationStep> = [{ kind: "import-container", agents: [] }];
@@ -310,14 +201,13 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
         return { serviceName: "zcp", imported: true };
       },
     });
-  const begin = (finishing = false) =>
+  const begin = () =>
     beginPress({
       projectId: "p-1",
       organizationId: "org-acme",
       startedAt: 0,
       placement: null,
       container: true,
-      finishing,
     });
   const press = (imports: Array<"ok" | "refused">, locks?: LockManagerLike) =>
     runPress({
@@ -329,27 +219,8 @@ describe("runPress — a press settled, tried again, and one at a time", () => {
       locks,
     });
 
-  it("settles a Finish setup that ran through, for its view to say so", async () => {
-    begin(true);
-    expect(await press(["ok"])).toMatchObject({ ok: true });
-    expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
-    forgetPress("p-1");
-  });
-
   // Finish setup's record ends too: its view says done for a moment, then the row is the Mate's
   // again, ⋯ menu and all — it never waits for a connect that may not come (pass 28 review).
-  it("clears a Finish setup a moment after its view said it is done", async () => {
-    vi.useFakeTimers();
-    try {
-      begin(true);
-      await press(["ok"]);
-      expect(readMatePress("p-1")?.state).toEqual({ kind: "pressed" });
-      vi.advanceTimersByTime(FINISHED_SHOWN_MS);
-      expect(readMatePress("p-1")).toBeUndefined();
-    } finally {
-      vi.useRealTimers();
-    }
-  });
 
   it("ends an Add's press at its import", async () => {
     begin();
@@ -753,7 +624,6 @@ describe("a press's hold at HQ", () => {
       startedAt: 0,
       placement: null,
       container: true,
-      finishing: true,
     });
     try {
       const outcome = await runPress({
@@ -946,203 +816,12 @@ describe("a press's end", () => {
 
   // Live, 2026-10-02: Finish setup on a Mate whose container was up — its press was ended the
   // moment it began, so nothing anywhere said its setup was being finished.
-  it("leaves a Finish setup on a connected Mate to end on its own", () => {
-    const made = (projectId: string, finishing: boolean): MatePress => ({
-      projectId,
-      organizationId: "org-acme",
-      startedAt: 0,
-      placement: null,
-      container: true,
-      ...(finishing ? { finishing: true } : {}),
-      state: { kind: "pressing" },
-    });
-    expect(
-      connectedPresses(
-        [made("p-finishing", true), made("p-added", false)],
-        [
-          { project: { id: "p-finishing" }, group: "connected" },
-          { project: { id: "p-added" }, group: "connected" },
-        ],
-      ),
-    ).toEqual(["p-added"]);
-  });
 });
 
 // A stopped Finish setup keeps its reason and manual continuation, including after bringing
 // its container (76a0c48f8): nothing tries it again on its own. On a Mate with its container its
 // row says it stopped, then is the Mate's again (restores 6027014ee and 3d194e2e7); one bringing
 // its container stands, for its own view's Try again.
-describe("a Finish setup that stopped", () => {
-  const STOPPED: MatePressState = {
-    kind: "failed",
-    step: "await-ready",
-    reason: "Zerops refused the change",
-    retry: null,
-  };
-  const begin = (container: boolean) =>
-    beginPress({
-      projectId: "p-stop",
-      organizationId: "org-acme",
-      startedAt: 0,
-      placement: null,
-      container,
-      finishing: true,
-    });
-
-  const atImport: MatePressState = { ...STOPPED, step: "import-container" };
-  const IMPORT: EnvironmentCreationStep = { kind: "import-container", agents: [] };
-  const AWAIT: EnvironmentCreationStep = { kind: "await-ready", withAgent: true };
-  /** Its container came, and its wait stopped. */
-  const BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
-    { step: IMPORT, state: "done" },
-    { step: AWAIT, state: "failed" },
-  ];
-  /** Its import stopped. */
-  const NOT_BROUGHT: ReadonlyArray<EnvironmentCreationStepProgress> = [
-    { step: IMPORT, state: "failed" },
-    { step: AWAIT, state: "queued" },
-  ];
-
-  // Pass 32 reviews: whether a stop stands is read off what it brought, never off a step's name —
-  // its harden and the lock of another tab stop it before any step, naming its wait.
-  it.each([
-    {
-      case: "on a Mate with its container: said, then gone, its plan kept",
-      container: false,
-      progress: undefined,
-      stopped: STOPPED,
-      stands: false,
-    },
-    {
-      case: "after bringing its container: said, then gone, and no longer coming",
-      container: true,
-      progress: BROUGHT,
-      stopped: STOPPED,
-      stands: false,
-    },
-    {
-      case: "bringing its container, at its import: stands with its reason",
-      container: true,
-      progress: NOT_BROUGHT,
-      stopped: atImport,
-      stands: true,
-    },
-    {
-      case: "bringing its container, before any step (its harden, another tab's lock): stands",
-      container: true,
-      progress: undefined,
-      stopped: STOPPED,
-      stands: true,
-    },
-  ])("$case", ({ container, progress, stopped, stands }) => {
-    vi.useFakeTimers();
-    try {
-      begin(container);
-      if (progress !== undefined) progressPress("p-stop", progress);
-      const resume: MatePress["resumeSetup"] = async () => ({ ok: true }) as never;
-      recordPressOutcome("p-stop", stopped, resume);
-      const press = readMatePress("p-stop");
-      expect(finishSetupRowLine(press)).toBe("Setup stopped");
-      expect(pressComingInput([press!], "p-stop")).toEqual({
-        press: { startedAt: 0, container: stands, retryable: false, state: "failed" },
-        setUpFailed: stands ? "Zerops refused the change" : undefined,
-      });
-      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
-      const later = readMatePress("p-stop");
-      expect(later?.state).toEqual(stopped);
-      expect(later?.resumeSetup).toBe(resume);
-      expect(finishSetupRowLine(later)).toBe(stands ? "Setup stopped" : undefined);
-      expect(pressComingInput([later!], "p-stop").setUpFailed).toBe(
-        stands ? "Zerops refused the change" : undefined,
-      );
-    } finally {
-      forgetPress("p-stop");
-      vi.useRealTimers();
-    }
-  });
-
-  it("a Finish setup pressed again within its words is said anew, never cut short", () => {
-    vi.useFakeTimers();
-    try {
-      begin(false);
-      recordPressOutcome("p-stop", STOPPED);
-      vi.advanceTimersByTime(STOPPED_SHOWN_MS - 1_000);
-      begin(false);
-      recordPressOutcome("p-stop", STOPPED);
-      vi.advanceTimersByTime(1_000);
-      expect(finishSetupRowLine(readMatePress("p-stop"))).toBe("Setup stopped");
-      vi.advanceTimersByTime(STOPPED_SHOWN_MS);
-      expect(finishSetupRowLine(readMatePress("p-stop"))).toBeUndefined();
-    } finally {
-      forgetPress("p-stop");
-      vi.useRealTimers();
-    }
-  });
-
-  it("is running only between its press and its end", () => {
-    try {
-      begin(false);
-      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(true);
-      recordPressOutcome("p-stop", STOPPED);
-      expect(finishSetupRunning(readMatePress("p-stop"))).toBe(false);
-    } finally {
-      forgetPress("p-stop");
-    }
-    expect(finishSetupRunning(undefined)).toBe(false);
-  });
-});
-
-describe("finishSetupRowLine — Finish setup as its Mate's row says it, from any screen", () => {
-  const press = (state: MatePressState, finishing: boolean): MatePress => ({
-    projectId: "p-hugo",
-    organizationId: "org-acme",
-    startedAt: 0,
-    placement: null,
-    container: true,
-    ...(finishing ? { finishing: true } : {}),
-    state,
-  });
-  const failed: MatePressState = {
-    kind: "failed",
-    step: "await-ready",
-    reason: "Zerops refused the change",
-    retry: null,
-  };
-
-  it.each([
-    { case: "no press", press: undefined, line: undefined },
-    {
-      case: "an Add's press: its dialog and its view say it",
-      press: press({ kind: "pressing" }, false),
-      line: undefined,
-    },
-    { case: "finishing", press: press({ kind: "pressing" }, true), line: "Finishing setup…" },
-    {
-      case: "finished, for the moment its record stays",
-      press: press({ kind: "pressed" }, true),
-      line: "Setup finished",
-    },
-    {
-      case: "stopped: Finish setup is on its menu again",
-      press: press(failed, true),
-      line: "Setup stopped",
-    },
-    {
-      case: "stopped on a Mate that is up: its sign-in line, dot and last message are its own",
-      press: press(failed, true),
-      up: true,
-      line: undefined,
-    },
-    {
-      case: "finishing on a Mate that is up: still said",
-      press: press({ kind: "pressing" }, true),
-      up: true,
-      line: "Finishing setup…",
-    },
-  ])("$case", ({ press, up, line }) => {
-    expect(finishSetupRowLine(press, { up: up === true })).toBe(line);
-  });
-});
 
 // Finish setup on an older Mate, or a pool-claimed one: one harden first, then its steps.
 /** A zcp service of a project, as the platform lists it. */
@@ -1201,7 +880,6 @@ describe("finishMateSetup — the harden path", () => {
       startedAt: 0,
       placement: null,
       container: true,
-      finishing: true,
     });
 
   // F6b (2026-10-03): its record in its application before its container, so a Finish setup
@@ -1427,18 +1105,6 @@ describe("finishMateSetup — the harden path", () => {
     // no record of Gus, and still holds the birth intent no attach closed.
     hq.attachFailure = null;
     calls.length = 0;
-    expect(
-      finishMateSetupVerb({
-        registration: "registered",
-        containerMissing: false,
-        pressStopped: false,
-        pressedElsewhere: false,
-        containerKnown: true,
-        writer: false,
-        recordMissing: true,
-        mayCreateRecord: true,
-      }),
-    ).toBe("Finish setup");
     const registration = mateFinishRegistration({
       hq: HQ_ENDPOINT,
       hqKnown: true,
@@ -1472,7 +1138,6 @@ describe("finishMateSetup — the harden path", () => {
       startedAt: 0,
       placement: null,
       container: false,
-      finishing: true,
     });
     expect(
       await finishMateSetup({
@@ -1570,7 +1235,7 @@ describe("finishMateSetup — the harden path", () => {
     const calls: Array<string> = [];
     expect(await finish(() => true, calls)).toMatchObject({ ok: true });
     expect(calls).toEqual(["harden"]);
-    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    expect(readMatePress("p-old")).toBeUndefined();
     forgetPress("p-old");
   });
 
@@ -1620,6 +1285,7 @@ describe("finishMateSetup — the harden path", () => {
   // adoption finishes, and its view and its row say the key stayed as it was, and who can lower it.
   it("says a key it could not lower, and finishes", async () => {
     begin();
+    const warning = vi.fn();
     const calls: Array<string> = [];
     const base = inputs(() => true, calls);
     const refusedKey = withOperation(base, "harden-project", () =>
@@ -1642,17 +1308,13 @@ describe("finishMateSetup — the harden path", () => {
         hq: { projectId: "hq-project", address: "https://hq.test" },
         isCurrent: () => true,
         harden: true,
+        onKeyNotLowered: warning,
         locks: undefined,
       }),
     ).toMatchObject({ ok: true });
     const said =
       "The Mate's key couldn't be lowered: This Zerops account is not allowed to do that; an owner can do it.";
-    const press = readMatePress("p-old");
-    expect([press?.state.kind, finishSetupView(press)?.line, finishSetupRowLine(press)]).toEqual([
-      "pressed",
-      `${FINISHED_SETUP_LINE} ${said}`,
-      `Setup finished. ${said}`,
-    ]);
+    expect(warning).toHaveBeenCalledWith(said);
     forgetPress("p-old");
   });
 
@@ -1878,8 +1540,7 @@ describe("finishMateSetup — the harden path", () => {
     };
     expect(await finishMateSetup(finishing)).toMatchObject({
       ok: false,
-      error:
-        "The project's current services are unavailable. Try Finish setup after they are read.",
+      error: "The project's current services are unavailable. Try again after they are read.",
     });
     expect(calls).toEqual([]);
     const stopped = readMatePress("p-old")?.state;
@@ -1887,7 +1548,7 @@ describe("finishMateSetup — the harden path", () => {
       throw new Error("no manual continuation");
     servicesReading({ services: [], live: true, reconnecting: false });
     await stopped.retry();
-    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    expect(readMatePress("p-old")).toBeUndefined();
     forgetPress("p-old");
   });
 
@@ -1905,7 +1566,7 @@ describe("finishMateSetup — the harden path", () => {
     if (stopped?.kind !== "failed" || stopped.retry === null) throw new Error("no retry");
     refusing = false;
     await stopped.retry();
-    expect(readMatePress("p-old")?.state).toEqual({ kind: "pressed" });
+    expect(readMatePress("p-old")).toBeUndefined();
     expect(calls).toEqual(["harden", "harden"]);
     forgetPress("p-old");
   });
@@ -2104,23 +1765,6 @@ describe("pressesInFlight", () => {
 
 // Re-check of pass 32, live: Finish setup pressed on the projects page pulled the person into the
 // Mate's conversation once it connected, as an Add's press does — pressed anywhere else it did not.
-describe("birthPresses — the presses that make a Mate, whose conversation the press lands in", () => {
-  const press = (projectId: string, finishing: boolean): MatePress => ({
-    projectId,
-    organizationId: "org-acme",
-    startedAt: 0,
-    placement: null,
-    container: true,
-    ...(finishing ? { finishing: true } : {}),
-    state: { kind: "pressing" },
-  });
-
-  it("names an Add's or a New project's press, never a Finish setup", () => {
-    expect(birthPresses([press("p-added", false), press("p-finishing", true)])).toEqual([
-      "p-added",
-    ]);
-  });
-});
 
 describe("pressRegistration — an automated Mate's attach", () => {
   it("registers a Chief after its attach and before the import can start", async () => {

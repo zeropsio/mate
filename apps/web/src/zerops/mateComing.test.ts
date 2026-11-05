@@ -29,10 +29,7 @@ import {
   mateComingDeadlines,
   mateConnectKey,
   type MateComingInput,
-  HALF_MADE_LINE,
   COMING_UP_LINE,
-  HALF_MADE_OWNER_LINE,
-  halfMadeFor,
   firstBuildState,
   listingLacksCreation,
   mateArrivalShown,
@@ -133,14 +130,14 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
       },
     },
     {
-      case: "a Mate whose press elsewhere stopped before its container: half-made, with Finish setup",
+      case: "a Mate with no open birth and no container is ordinary",
       input: {
         press: undefined,
         candidate: { group: "unavailable", missingContainer: true },
         pressElsewhere: "stopped",
         nowMs: NOW,
       },
-      expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
+      expected: undefined,
     },
     // Run 2 (2026-10-16): a healthy start flashed "could not be added" once its press was through
     // and gone, before its container was listed.
@@ -208,17 +205,6 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         details: "The build failed.",
         verb: "remove",
       },
-    },
-    {
-      case: "a Mate this tab made whose container went before it came: half-made, with Finish setup",
-      input: {
-        press: undefined,
-        candidate: { group: "unavailable", missingContainer: true },
-        pressElsewhere: "stopped",
-        created: true,
-        nowMs: NOW,
-      },
-      expected: { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" },
     },
     {
       case: "a Mate this tab made, in its first build",
@@ -295,26 +281,6 @@ describe("mateComing — a Mate in its first minutes, in one set of words", () =
         nowMs: NOW,
       },
       expected: { kind: "coming", line: "Taking longer than usual." },
-    },
-    // B5: a slow press in another browser holds it at HQ, however old its project: never half made.
-    {
-      case: "a Mate with no container, its press elsewhere held at HQ an hour on: still coming up",
-      input: {
-        press: undefined,
-        candidate: { group: "unavailable", missingContainer: true },
-        pressElsewhere: "pressing",
-        nowMs: NOW + 60 * 60_000,
-      },
-      expected: { kind: "coming", line: "Coming up. A few minutes." },
-    },
-    {
-      case: "a Mate with no container and unread presses awaits setup evidence",
-      input: {
-        press: undefined,
-        candidate: { group: "unavailable", missingContainer: true },
-        pressElsewhere: "unknown",
-      },
-      expected: { kind: "coming", line: "Waiting for evidence of its workspace setup." },
     },
   ])("$case", ({ input, expected }) => {
     expect(mateComing(input)).toEqual(expected);
@@ -762,20 +728,6 @@ describe("mateConnectKey — what a Mate's own view connects", () => {
 
 // The view never says Finish setup completes it without a button the viewer can use (pass 28
 // review): a viewer who may not finish it reads who can.
-describe("halfMadeFor — a half-made Mate as its viewer may act on it", () => {
-  const HALF = { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" } as const;
-  it.each([
-    { case: "a viewer who may finish it", canFinish: true, want: HALF_MADE_LINE },
-    { case: "a viewer who may not", canFinish: false, want: HALF_MADE_OWNER_LINE },
-  ])("$case", ({ canFinish, want }) => {
-    expect(halfMadeFor(HALF, canFinish)).toMatchObject({ line: want });
-  });
-
-  it("leaves any other state alone", () => {
-    const coming = { kind: "coming", line: "Coming up" } as const;
-    expect(halfMadeFor(coming, false)).toBe(coming);
-  });
-});
 
 // The arrival is one surface from the press to the sign-in: once a Mate's own view has shown it
 // coming up, a wait on its way to its conversation keeps the board — never "Almost there." under

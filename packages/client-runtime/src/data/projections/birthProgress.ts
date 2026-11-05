@@ -63,6 +63,7 @@ export interface SharedBirth {
   readonly madeBy?: string;
   readonly chief?: boolean;
   readonly chiefRegistered?: boolean;
+  readonly adopted?: true;
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   /** A registration may be skipped only after HQ proves this birth is attached. */
@@ -233,6 +234,7 @@ export const sharedBirths: Projection<
             ? {}
             : { chiefRegistered: birth.chiefRegistered }),
           projectId,
+          ...(birth.adopted === true ? { adopted: true as const } : {}),
           importProcessId: birth.importProcessId ?? null,
           placement,
           intent: readBirthIntent(birth.intent),
@@ -241,7 +243,7 @@ export const sharedBirths: Projection<
           ...(continuePermission === undefined ? {} : { continuePermission }),
           canDelete:
             birth.adopted === true
-              ? false
+              ? authorized
               : projectId === null
                 ? authorized
                 : roleCurrent &&
