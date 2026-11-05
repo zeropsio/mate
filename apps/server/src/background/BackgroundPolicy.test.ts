@@ -13,6 +13,7 @@ import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 
 import { ServerSettingsService } from "../serverSettings.ts";
 import * as BackgroundPolicy from "./BackgroundPolicy.ts";
@@ -45,9 +46,8 @@ function makeReport(overrides: Partial<ClientActivityReportInput> = {}): ClientA
     clientKind: "web",
     visible: true,
     focused: true,
-    recentlyInteracted: true,
+    idleMs: 0,
     scopes: [{ type: "vcs-status", cwd: "/repo" }],
-    ttlMs: 45_000,
     observedAt: TEST_NOW,
     ...overrides,
   };
@@ -112,6 +112,60 @@ describe("BackgroundPolicy", () => {
       assert.equal(snapshot.activeForegroundLeaseCount, 0);
       assert.deepStrictEqual(snapshot.activeScopeKeys, []);
       assert.equal(snapshot.shouldRunOpportunisticWork, false);
+    }).pipe(Effect.provide(makeLayer(nominalHostPower))),
+  );
+
+  it.effect("a client's lease lasts exactly as long as its Mate socket", () =>
+    Effect.gen(function* () {
+      const policy = yield* BackgroundPolicy.BackgroundPolicy;
+      const sessionId = AuthSessionId.make("session-1");
+      const rpcClientId = RpcClientId.make(1);
+      yield* policy.reportClientActivity(sessionId, rpcClientId, makeReport());
+
+      // No report follows: an open socket keeps its lease however long it stays quiet.
+      yield* TestClock.adjust("1 hour");
+      assert.equal((yield* policy.snapshot).leases.length, 1);
+      assert.equal(yield* policy.shouldRunScopeWork({ type: "vcs-status", cwd: "/repo" }), true);
+
+      yield* policy.removeRpcClient(sessionId, rpcClientId);
+      const closed = yield* policy.snapshot;
+      assert.deepStrictEqual(closed.leases, []);
+      assert.deepStrictEqual(closed.activeScopeKeys, []);
+      assert.equal(yield* policy.shouldRunScopeWork({ type: "vcs-status", cwd: "/repo" }), false);
+    }).pipe(Effect.provide(makeLayer(nominalHostPower))),
+  );
+
+  it.effect("expires interaction independently of window focus", () =>
+    Effect.gen(function* () {
+      const policy = yield* BackgroundPolicy.BackgroundPolicy;
+      const sessionId = AuthSessionId.make("session-1");
+      const rpcClientId = RpcClientId.make(1);
+      const vcs = { type: "vcs-status", cwd: "/repo" } as const;
+      yield* policy.reportClientActivity(sessionId, rpcClientId, makeReport({ idleMs: 0 }));
+
+      // The window loses focus 30 s later with no interaction since: the blur does not renew it.
+      yield* TestClock.adjust("30 seconds");
+      yield* policy.reportClientActivity(
+        sessionId,
+        rpcClientId,
+        makeReport({ focused: false, idleMs: 30_000 }),
+      );
+      assert.equal(yield* policy.shouldRunScopeWork(vcs), true);
+
+      // The server's own clock ends it 45 s after the interaction, with no report in between.
+      yield* TestClock.adjust("15 seconds");
+      assert.equal(yield* policy.shouldRunScopeWork(vcs), true);
+      yield* TestClock.adjust("1 millis");
+      assert.equal(yield* policy.shouldRunScopeWork(vcs), false);
+      assert.equal((yield* policy.snapshot).activeForegroundLeaseCount, 0);
+
+      // A new interaction is the next report; the server stamps it on its own clock.
+      yield* policy.reportClientActivity(
+        sessionId,
+        rpcClientId,
+        makeReport({ focused: false, idleMs: 0 }),
+      );
+      assert.equal(yield* policy.shouldRunScopeWork(vcs), true);
     }).pipe(Effect.provide(makeLayer(nominalHostPower))),
   );
 
@@ -290,7 +344,7 @@ describe("BackgroundPolicy", () => {
       yield* policy.reportClientActivity(
         AuthSessionId.make("session-1"),
         RpcClientId.make(1),
-        makeReport({ focused: false, recentlyInteracted: true }),
+        makeReport({ focused: false, idleMs: 0 }),
       );
 
       const snapshot = yield* policy.snapshot;
@@ -306,7 +360,7 @@ describe("BackgroundPolicy", () => {
       yield* policy.reportClientActivity(
         AuthSessionId.make("session-1"),
         RpcClientId.make(1),
-        makeReport({ focused: false, recentlyInteracted: false }),
+        makeReport({ focused: false, idleMs: 45_001 }),
       );
 
       const snapshot = yield* policy.snapshot;
