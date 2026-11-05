@@ -12,6 +12,7 @@ import { accountReadsAtom } from "../../data/reads.ts";
 import type { Row } from "../../data/reducer.ts";
 import { makeAccountStore, type AccountStore } from "../../data/store.ts";
 import { account } from "../data/__fixtures__/index.ts";
+import type { CloseOffWord } from "../environments/closeOff.ts";
 import type { ExchangeAnswer } from "../identityExchange.ts";
 import {
   makeEnvironmentWiring,
@@ -72,7 +73,16 @@ const commitAhead = (
  * in — with HQ's index naming the route's project: every detail it demands, and every exchange it
  * starts at a Mate's door, in order.
  */
-function stage() {
+/** HQ's word that the route's project is closed off. */
+const CLOSED_OFF: CloseOffWord = {
+  organizationId: ORG,
+  current: true,
+  closed: new Set([PROJECT]),
+  open: new Set(),
+  markers: new Map(),
+};
+
+function stage(word: CloseOffWord | null = CLOSED_OFF) {
   const registry = AtomRegistry.make();
   const store = makeAccountStore(registry);
   const events: Array<string> = [];
@@ -89,6 +99,12 @@ function stage() {
   });
   const exchanges: Array<DoorRequest> = [];
   const quiet = { subscribe: () => () => undefined };
+  const hq = { word, listeners: new Set<() => void>() };
+  /** HQ speaks on the route's project's close-off. */
+  const hqSays = (next: CloseOffWord) => {
+    hq.word = next;
+    for (const listener of hq.listeners) listener();
+  };
   const ports: AccountEnvironmentPorts = {
     clock: {
       now: () => ({ wall: 0, mono: 0 }),
@@ -121,7 +137,13 @@ function stage() {
       projectOf: (environmentId) => (environmentId === ROUTE ? PROJECT : null),
       ...quiet,
     },
-    closeOff: { read: () => null, ...quiet },
+    closeOff: {
+      read: () => hq.word,
+      subscribe: (listener) => {
+        hq.listeners.add(listener);
+        return () => hq.listeners.delete(listener);
+      },
+    },
     closeOffPending: { read: () => new Set(), ...quiet },
   };
   const wiring = makeEnvironmentWiring({
@@ -136,7 +158,7 @@ function stage() {
   const started = wiring.start(makeMateAdapter(wiring.adapterPorts));
   started.environments.setActiveOrganization(ORG);
   started.environments.setRoute(ROUTE);
-  return { store, events, demanded, exchanges, started };
+  return { store, events, demanded, exchanges, started, hqSays };
 }
 
 describe("the route's Mate before the organization's listing", () => {
@@ -216,6 +238,32 @@ describe("the route's Mate before the organization's listing", () => {
       "release route-services",
     ]);
     expect(exchanges).toHaveLength(1);
+    started.dispose();
+  });
+
+  it("a Mate read ahead of the listing waits for HQ's first word on its close-off before its door", async () => {
+    const { store, exchanges, started, hqSays } = stage(null);
+    commitAhead(store, routeProjectScope(ORG, PROJECT), {
+      family: "project",
+      id: PROJECT,
+      value: PROJECT_ROW,
+      revision: { kind: "zerops", version: null },
+    } as Row);
+    commitAhead(store, routeServicesScope(ORG, PROJECT), {
+      family: "service",
+      id: ZCP.id,
+      value: ZCP,
+      revision: { kind: "zerops", version: null },
+    } as Row);
+    await Promise.resolve();
+    expect(started.environments.closeOffHolds()).toEqual(new Map([[PROJECT, "awaiting-hq"]]));
+    expect(exchanges).toEqual([]);
+
+    hqSays(CLOSED_OFF);
+    await Promise.resolve();
+
+    expect(started.environments.closeOffHolds()).toEqual(new Map());
+    expect(exchanges.map(({ origin }) => origin)).toEqual([ORIGIN]);
     started.dispose();
   });
 });
