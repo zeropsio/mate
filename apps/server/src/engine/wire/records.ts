@@ -551,8 +551,8 @@ export const makeRecords = Effect.gen(function* () {
     groups,
     /**
      * A height a client laid a page out at, kept for the page's call in this conversation: the
-     * page's own claim, clamped, the same width again replacing it, the newest widths kept. False
-     * when no page's call is there by that id.
+     * page's own claim, clamped, the same width again replacing it, the newest widths kept, all
+     * or none of it. False when no page's call is there by that id.
      */
     recordPageHeight: (
       conversation: ConversationId,
@@ -587,7 +587,7 @@ export const makeRecords = Effect.gen(function* () {
           )
         `;
         return true;
-      }),
+      }).pipe(sql.withTransaction),
     pickGroups,
     windowsOf,
     runsById,

@@ -370,7 +370,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
      * The snapshot each of the conversations opened last was sent, by what it was read at: a
      * reload, a second tab or a reconnect of a conversation nothing changed in since is sent it
      * again, never read again. A commit moves the head past it; a page's height, kept beside its
-     * call and never committed, moves `measured` past every one.
+     * call and never committed, moves `measured` past every one, before it is written and after.
      */
     const snapshots = new Map<ConversationId, { readonly key: string; readonly frame: Snapshot }>();
     let measured = 0;
@@ -901,14 +901,22 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const recordPageHeight: EngineWireShape["recordPageHeight"] = (input) => {
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
-      return records
-        .recordPageHeight(input.conversationId, input.itemId, input.width, input.height)
+      const remeasured = Effect.sync(() => {
+        measured += 1;
+      });
+      // Before the write and after it, whether it was kept or not: no snapshot read across it
+      // is sent again.
+      return remeasured
         .pipe(
-          Effect.map((kept) => {
-            if (!kept) return { _tag: "Missing" as const };
-            measured += 1;
-            return { _tag: "Recorded" as const };
-          }),
+          Effect.andThen(
+            records.recordPageHeight(input.conversationId, input.itemId, input.width, input.height),
+          ),
+          Effect.ensuring(remeasured),
+        )
+        .pipe(
+          Effect.map((kept) =>
+            kept ? { _tag: "Recorded" as const } : { _tag: "Missing" as const },
+          ),
           Effect.catch(wireError(UNREADABLE)),
         );
     };

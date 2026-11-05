@@ -7,6 +7,7 @@ import { assert, describe, it } from "@effect/vitest";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as DateTime from "effect/DateTime";
+import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Schema from "effect/Schema";
@@ -916,6 +917,44 @@ const publishedWorld = Effect.gen(function* () {
 });
 
 describe("a page the Mate publishes", () => {
+  it.effect("a height that could not be kept leaves every view as the record holds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { w, wire, reload, call } = yield* publishedWorld;
+        const record = (width: number) =>
+          wire.recordPageHeight({
+            protocol,
+            conversationId: mate,
+            itemId: call.id,
+            width,
+            height: 900,
+          });
+        for (let width = 400; width < 400 + 12 * 10; width += 10) yield* record(width);
+        const heightsOf = (snapshot: Effect.Success<typeof reload>) => {
+          const held = snapshot.items.find((item) => item.kind === "call");
+          return held?.kind === "call" ? held.result?.page?.heights : undefined;
+        };
+        assert.strictEqual(heightsOf(yield* reload)?.length, 12);
+        // The thirteenth width is written, then trimming the oldest one fails.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              CREATE TRIGGER keep_widths BEFORE DELETE ON engine_page_height
+              BEGIN SELECT RAISE(ABORT, 'disk full'); END
+            `,
+          ),
+        );
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(record(900))));
+        const fresh = yield* wireOf(w);
+        const [held] = yield* Effect.scoped(watch(w, fresh));
+        if (held?.type !== "snapshot") throw new Error("no snapshot");
+        assert.deepStrictEqual(heightsOf(yield* reload), heightsOf(held));
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a page measured once paints at its height on every later view", () =>
     Effect.scoped(
       Effect.gen(function* () {
