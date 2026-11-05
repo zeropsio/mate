@@ -1,8 +1,9 @@
 import { scenarioSuite } from "../../harness/suite.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { Page } from "puppeteer-core";
 import { createScenario } from "../../harness/scenario.ts";
+import { personDoor } from "../../harness/mateAccess.ts";
 
 // How many visible timeline rows' text nodes read exactly `text`.
 const shownTimes = (page: Page, text: string) =>
@@ -25,6 +26,39 @@ const shownTimes = (page: Page, text: string) =>
 
 describe("foundation: the real Mate", () => {
   scenarioSuite((it) => {
+    it.effect(
+      "a person with a role on the project opens the real Mate; a person without one is refused with ticket_refused",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([], { mate: "real" });
+          s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
+          s.given.person("outsider", { role: "NO_ACCESS" });
+          yield* s.given.project("Ada", { mate: true });
+          const mate = s.drivers.realMates.get("Ada")!;
+          s.given.asPerson("dev");
+          yield* s.given.signedIn;
+          yield* s.when.menu.opensMate("Ada");
+          yield* s.then.conversation.appears;
+
+          const outsider = yield* personDoor(s.drivers.core, "outsider");
+          const watch = mate.link.watchMateRefusal(mate.link.mateRefusalCursor());
+          try {
+            const answer = yield* s.drivers.core.call("POST", "/api/mates/Ada/ticket", {
+              session: outsider,
+            });
+            expect(answer.status).toBe(403);
+            expect(answer.body).toMatchObject({ code: "not_in_list" });
+            expect(yield* Effect.promise(() => watch.promise)).toEqual({
+              kind: "ticket",
+              reason: "not_in_list",
+            });
+          } finally {
+            watch.cancel();
+          }
+          yield* s.then.noExternalNetwork;
+        }),
+    );
+
     // Catches a send that never reaches the provider, or a reply duplicated by reload or restart.
     it.effect(
       "a sent message reaches the provider and its reply shows once across reload and restart",

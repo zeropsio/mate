@@ -1,7 +1,7 @@
 import { expect, it } from "vite-plus/test";
 import { WebSocket } from "ws";
 import { serve, deadline } from "../harness/http.ts";
-import { hqConnection } from "./hqConnection.ts";
+import { hqConnection, untilMateOpens } from "./hqConnection.ts";
 
 it("HTTP readiness does not claim a socket frame; transport counts bytes in both directions", async () => {
   const upstream = await serve(
@@ -75,6 +75,46 @@ it("HTTP readiness does not claim a socket frame; transport counts bytes in both
     );
     proxy.returns();
     expect((await fetch(`${proxy.origin}/future/http`)).status).toBe(200);
+  } finally {
+    socket.terminate();
+    await proxy.close();
+    await upstream.close();
+  }
+});
+
+it.each([
+  { title: "a refused Mate link ends the open with HQ's reason", kind: "link" as const },
+  { title: "a refused ticket ends the open with the Mate's reason", kind: "ticket" as const },
+])("$title", async ({ kind }) => {
+  const accepted = Promise.withResolvers<WebSocket>();
+  const upstream = await serve(
+    () => ({ body: {} }),
+    (socket) => accepted.resolve(socket),
+  );
+  const proxy = await hqConnection(upstream.origin, "::1");
+  const socket = new WebSocket(`${proxy.origin.replace("http:", "ws:")}/api/mate/link`);
+  try {
+    const waiting = untilMateOpens(
+      new Promise<never>(() => {}),
+      proxy,
+      "Ada",
+      proxy.mateRefusalCursor(),
+    );
+    const peer = await accepted.promise;
+    await new Promise<void>((resolve) => {
+      if (socket.readyState === WebSocket.OPEN) resolve();
+      else socket.once("open", resolve);
+    });
+    if (kind === "link") peer.close(4403, "key_too_wide");
+    else
+      socket.send(
+        JSON.stringify({ type: "ticket_refused", ticket: "fixture", reason: "not_in_list" }),
+      );
+    await expect(waiting).rejects.toThrow(
+      kind === "link"
+        ? "Mate Ada link refused: 4403 key_too_wide"
+        : "Mate Ada ticket refused: not_in_list",
+    );
   } finally {
     socket.terminate();
     await proxy.close();
