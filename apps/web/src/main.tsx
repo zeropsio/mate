@@ -21,6 +21,8 @@ import { captureZeropsHqSignIn } from "./zerops/hqSignIn";
 import { appBasePath } from "./basePath";
 import { preloadChatView } from "./components/ChatViewBoundary";
 import { addressOpensConversation } from "./routes/-environmentRoute";
+import { appShellWorkerMode, startAppShellWorker } from "./appShell/appShellClient";
+import { isHostedStaticApp } from "./hostedPairing";
 
 // Every Zerops link and the sign-in hand-over go to this build's Zerops app.
 configureZeropsGui(import.meta.env.VITE_ZEROPS_APP_URL);
@@ -73,6 +75,18 @@ if (!isElectron) {
     if (pressesInFlight.read()) event.preventDefault();
   });
 }
+
+// The hosted client's next reload paints from the page it keeps (`appShell/appShellClient.ts`).
+startAppShellWorker(
+  appShellWorkerMode({
+    mode: import.meta.env.VITE_APP_SHELL_WORKER,
+    production: import.meta.env.PROD,
+    hosted: isHostedStaticApp(),
+    basePath: appBasePath(),
+    electron: isElectron,
+    serviceWorkers: "serviceWorker" in navigator,
+  }),
+);
 
 const root = document.getElementById("root") as HTMLElement;
 // index.html's first frame stands until the app draws into #root.

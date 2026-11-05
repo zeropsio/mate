@@ -7,7 +7,7 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import compression from "compression";
 import { defineProject, type TestProjectInlineConfiguration } from "vite-plus/test/config";
 import "vite-plus/test/config";
-import { defineConfig, type Connect, type Plugin } from "vite-plus";
+import { build as viteBuild, defineConfig, type Connect, type Plugin } from "vite-plus";
 import pkg from "./package.json" with { type: "json" };
 
 import { normalizeBasePath } from "@t3tools/shared/basePath";
@@ -226,6 +226,52 @@ function bundleCompositionPlugin(): Plugin {
   };
 }
 
+/**
+ * The hosted client's app-shell worker (`src/appShell/sw.ts`), or its kill switch
+ * (`src/appShell/retire.ts`), as `/sw.js`: a stable, unhashed path the browser checks for updates,
+ * which nginx serves as the real file under zerops.yml's `no-cache` rule. Its own build makes it one
+ * classic script: an entry of the app's build would share chunks with the page and need a module
+ * worker. Emitted only for a bundle served at an origin root that asks for it
+ * (`VITE_APP_SHELL_WORKER`); a Mate's `/mate/` bundle and every other build ship none.
+ */
+function appShellWorkerPlugin(mode: string): Plugin {
+  const entry = mode === "retire" ? "retire.ts" : "sw.ts";
+  return {
+    name: "mate:app-shell-worker",
+    apply: "build",
+    async generateBundle() {
+      const built = await viteBuild({
+        configFile: false,
+        logLevel: "warn",
+        root: import.meta.dirname,
+        resolve: { tsconfigPaths: true },
+        build: {
+          write: false,
+          emptyOutDir: false,
+          minify: true,
+          sourcemap: false,
+          lib: {
+            entry: `src/appShell/${entry}`,
+            formats: ["iife"],
+            name: "mateAppShellWorker",
+            fileName: () => "sw.js",
+          },
+        },
+      });
+      const outputs = Array.isArray(built) ? built : [built];
+      const chunk = outputs
+        .flatMap((output) => ("output" in output ? output.output : []))
+        .find((file) => file.type === "chunk");
+      if (chunk === undefined || chunk.type !== "chunk") {
+        throw new Error("The app-shell worker build produced no script");
+      }
+      this.emitFile({ type: "asset", fileName: "sw.js", source: chunk.code });
+    },
+  };
+}
+
+const configuredAppShellWorker = process.env.VITE_APP_SHELL_WORKER?.trim().toLowerCase() || "";
+
 // Vite rejects requests whose Host header isn't localhost, which blocks sharing
 // a dev server over a LAN alias (ngrok, a LAN IP alias) — goes through the env var.
 const configuredAllowedHosts = (process.env.T3CODE_DEV_ALLOWED_HOSTS ?? "")
@@ -250,6 +296,9 @@ export default defineConfig(({ command }) => {
       documentTitlePlugin(),
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
+      ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
+        ? [appShellWorkerPlugin(configuredAppShellWorker)]
+        : []),
       tanstackRouter({ autoCodeSplitting: true }),
       react(),
       babel({
@@ -289,6 +338,7 @@ export default defineConfig(({ command }) => {
       "import.meta.env.VITE_HOSTED_APP_URL": JSON.stringify(configuredHostedAppUrl ?? ""),
       "import.meta.env.VITE_HOSTED_APP_CHANNEL": JSON.stringify(configuredHostedAppChannel),
       "import.meta.env.APP_VERSION": JSON.stringify(configuredAppVersion),
+      "import.meta.env.VITE_APP_SHELL_WORKER": JSON.stringify(configuredAppShellWorker),
     },
     resolve: {
       tsconfigPaths: true,
