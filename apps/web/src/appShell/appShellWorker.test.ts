@@ -8,7 +8,7 @@ import {
   STORED_AT_HEADER,
 } from "./appShell.logic";
 import { forgetCachedShell } from "./appShellClient";
-import { makeAppShellWorker } from "./appShellWorker";
+import { installStaticRoutes, makeAppShellWorker, type StaticRoutingHost } from "./appShellWorker";
 
 const ORIGIN = "https://mate.example.test";
 
@@ -405,5 +405,37 @@ describe("a reload of the hosted client", () => {
     await tab.storage.open(SHELL_CACHE);
     await tab.worker.activate();
     expect(await tab.storage.keys()).toEqual([SHELL_CACHE]);
+  });
+});
+
+describe("the routes the worker asks the browser to apply", () => {
+  it("registers them where the browser has the Static Routing API", async () => {
+    const registered: unknown[][] = [];
+    const outcome = await installStaticRoutes(
+      { addRoutes: async (rules) => void registered.push([...rules]), URLPattern },
+      `${ORIGIN}/`,
+    );
+    expect({ outcome, rules: registered[0]?.length }).toEqual({ outcome: "done", rules: 3 });
+  });
+
+  it.each([
+    {
+      title: "a pattern the browser cannot build never stops the install",
+      host: {
+        addRoutes: async () => {},
+        URLPattern: function InvalidPattern() {
+          throw new TypeError("Invalid pattern");
+        } as unknown as StaticRoutingHost["URLPattern"],
+      },
+    },
+    {
+      title: "routes the browser refuses never stop the install",
+      host: {
+        addRoutes: () => Promise.reject(new TypeError("Routes are already set")),
+        URLPattern,
+      },
+    },
+  ])("$title", async ({ host }) => {
+    expect(await installStaticRoutes(host, `${ORIGIN}/`)).toBe("failed");
   });
 });

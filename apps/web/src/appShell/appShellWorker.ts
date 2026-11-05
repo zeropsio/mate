@@ -22,7 +22,9 @@ import {
   SHELL_CACHE,
   SHELL_CACHE_KEY_PATH,
   stampResponse,
+  staticRoutes,
   type ResponseFacts,
+  type StepOutcome,
 } from "./appShell.logic";
 
 export interface AppShellWorkerHost {
@@ -237,4 +239,29 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
       await Promise.all(cachesToDelete(names).map((name) => host.caches.delete(name)));
     },
   };
+}
+
+/** The install event's Static Routing API, where the browser has it (Chrome 123+). */
+export interface StaticRoutingHost {
+  readonly addRoutes?: ((rules: readonly unknown[]) => Promise<void>) | undefined;
+  readonly URLPattern?: (new (init: Readonly<Record<string, string>>) => unknown) | undefined;
+}
+
+/**
+ * Registers `staticRoutes` with the browser, each URL pattern built as a `URLPattern`. Never
+ * rejects, whatever the browser throws: the install's own work never waits on it to fail.
+ */
+export function installStaticRoutes(host: StaticRoutingHost, scope: string): Promise<StepOutcome> {
+  return outcomeOf(
+    (async () => {
+      const { addRoutes, URLPattern: Pattern } = host;
+      if (addRoutes === undefined || Pattern === undefined) return;
+      const rules = staticRoutes(scope).map((route) =>
+        "urlPattern" in route.condition
+          ? { ...route, condition: { urlPattern: new Pattern(route.condition.urlPattern) } }
+          : route,
+      );
+      await addRoutes(rules);
+    })(),
+  );
 }
