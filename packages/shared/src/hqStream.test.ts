@@ -214,10 +214,13 @@ it.each(
     requestId: "r",
     appId: "app",
     repo: "appdev",
+    accessToken: "person-access",
     ...(base === undefined ? {} : { base }),
     head: "b".repeat(40),
   };
   expect(readRequest(request)).toEqual(request);
+  const { accessToken: _accessToken, ...withoutAccess } = request;
+  expect(() => readRequest(withoutAccess)).toThrow();
   const reply = {
     type: "compare",
     requestId: "r",
@@ -246,7 +249,14 @@ it.each([
   {},
 ])("rejects malformed compare refs %j", (query) => {
   expect(() =>
-    readRequest({ type: "compare", requestId: "r", appId: "app", repo: "appdev", ...query }),
+    readRequest({
+      type: "compare",
+      requestId: "r",
+      appId: "app",
+      repo: "appdev",
+      accessToken: "person-access",
+      ...query,
+    }),
   ).toThrow();
 });
 

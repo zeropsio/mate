@@ -1228,23 +1228,28 @@ export function makeHqApi(input: {
     path: string,
     init: RequestInit = {},
     write = false,
+    browse = false,
   ): Promise<Response> => {
     let renewed = false;
     for (;;) {
       const held = session ?? restore() ?? enter();
       const token = await held;
       if (!unproven.has(held)) await renewIfDue(token);
-      if (write && input.isCurrent?.() === false)
-        throw new HqError({
-          kind: "refused",
-          code: "account_changed",
-          message: "This Zerops sign-in or its HQ has changed.",
-        });
       try {
+        // Git browsing authenticates the person and the HQ session in separate headers.
+        const headers: Record<string, string> = browse
+          ? { "X-HQ-Session": token, Authorization: `Bearer ${(await input.accessToken()).token}` }
+          : { Authorization: `Bearer ${token}` };
+        if ((write || browse) && input.isCurrent?.() === false)
+          throw new HqError({
+            kind: "refused",
+            code: "account_changed",
+            message: "This Zerops sign-in or its HQ has changed.",
+          });
         const response = await send(
           input.fetch,
           `${origin}${path}`,
-          { ...init, headers: { ...init.headers, Authorization: `Bearer ${token}` } },
+          { ...init, headers: { ...init.headers, ...headers } },
           write,
         );
         unproven.delete(held);
@@ -2016,6 +2021,8 @@ export function makeHqApi(input: {
         await authorized(
           browsePathOrRefuse(read, appId, repo, params),
           signal === undefined ? {} : { signal },
+          false,
+          true,
         ),
       ),
     gitBrowseBytes: async (read, appId, repo, params, signal) => {
@@ -2024,6 +2031,8 @@ export function makeHqApi(input: {
       const response = await authorized(
         browsePathOrRefuse(read, appId, repo, params),
         signal === undefined ? {} : { signal },
+        false,
+        true,
       );
       const { limit, deadline }: { readonly limit: number; readonly deadline?: number } =
         GIT_BROWSE_READS[read].bytes;
