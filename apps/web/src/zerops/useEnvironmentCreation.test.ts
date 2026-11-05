@@ -1,7 +1,6 @@
 import { describe, expect, it, vi } from "vite-plus/test";
 
 import type { ProjectServices } from "@t3tools/client-runtime/data";
-import { isUncertainZeropsFailure } from "@t3tools/client-runtime/zerops/errors";
 import { Atom, AtomRegistry } from "effect/reactivity";
 
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
@@ -13,7 +12,6 @@ import {
   addedEnvironmentRegistration,
   addedMateBirth,
   environmentProjectName,
-  SERVICES_SETTLE_PATIENCE_MS,
   untilServicesSettled,
 } from "./useEnvironmentCreation";
 
@@ -157,11 +155,6 @@ describe("a stage added to a group, as its press writes it at HQ", () => {
             throw new Error("mate_not_in_app");
           calls.push("zcp-authorization", "import-container");
           return { serviceName: "zcp", imported: true };
-        case "harden-project":
-          calls.push("close-off");
-          return { keyNotLowered: null };
-        case "mark-closed-off":
-          return {};
         default:
           throw new Error(`No ${op.kind} in this press.`);
       }
@@ -209,7 +202,6 @@ describe("a stage added to a group, as its press writes it at HQ", () => {
       "attach devstage closing b-1",
       "zcp-authorization",
       "import-container",
-      "close-off",
     ]);
   });
 
@@ -299,25 +291,27 @@ describe("untilServicesSettled — an environment's services, waited on as the a
     );
   });
 
-  it("never waits on the services beyond its patience: it stops, unsure whether they came up", async () => {
+  it("waits on Zerops pushes alone: no timer runs while it waits, and the frame that brings every service ACTIVE ends it", async () => {
     vi.useFakeTimers();
     try {
       const registry = AtomRegistry.make();
-      const listed = Atom.make(listing({ services: [service("app", "CREATING")] }));
-      const waiting = untilServicesSettled(registry, listed).then(
-        () => undefined,
-        (cause: unknown) => cause,
+      const listed = Atom.make(listing({ services: [service("zcp", "CREATING")] }));
+      // The listing observed as the account's store observes it: the registry's own timers.
+      const observed = registry.subscribe(listed, () => undefined, { immediate: true });
+      const registryTimers = vi.getTimerCount();
+      let settled: unknown;
+      const waiting = untilServicesSettled(registry, listed).then((value) => (settled = value));
+      expect(vi.getTimerCount()).toBe(registryTimers);
+      registry.set(
+        listed,
+        listing({ services: [service("zcp", "ACTIVE"), service("db", "ACTIVE")] }),
       );
-      await vi.advanceTimersByTimeAsync(SERVICES_SETTLE_PATIENCE_MS - 1);
-      registry.set(listed, listing({ services: [] }));
-      await vi.advanceTimersByTimeAsync(1);
-      const stopped = await waiting;
-      expect(stopped).toBeInstanceOf(Error);
-      expect((stopped as Error).message).toBe(
-        "Zerops hasn't shown the new services ready after 10 minutes.",
-      );
-      // The services may well be up: nothing that made them is asked again.
-      expect(isUncertainZeropsFailure(stopped)).toBe(true);
+      await waiting;
+      expect(settled).toEqual([
+        { name: "zcp", status: "ACTIVE" },
+        { name: "db", status: "ACTIVE" },
+      ]);
+      observed();
     } finally {
       vi.useRealTimers();
     }

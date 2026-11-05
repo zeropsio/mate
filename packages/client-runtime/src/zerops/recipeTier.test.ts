@@ -2,12 +2,13 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   deployTargetTier,
+  mateBirthImportYaml,
+  mateTier,
   RECIPE_TIER_PATHS,
   recipeProjectImportYaml,
   recipeServicesWithout,
   recipeTierRepositories,
   recipeTierServices,
-  splitRecipeTier,
 } from "./recipeTier.ts";
 
 /** A Mate's tier as zcp proposes it, a dev/stage pair per codebase, plus a public utility. */
@@ -132,59 +133,26 @@ describe("recipeTierServices", () => {
   });
 });
 
-describe("splitRecipeTier — the managed part, imported with the project", () => {
-  const split = splitRecipeTier(MATE_TIER);
-
-  it("keeps the header, the project block and the managed services, byte for byte", () => {
-    expect(split?.managed).toBe(`#zeropsPreprocessor=on
-project:
-  name: Acme - Vera
-  envVariables:
-    APP_KEY: <@generateRandomString(<32>)>
-services:
-  # The API, built from its own repository.
-  - hostname: db
-    type: postgresql@17
-    mode: NON_HA
-    priority: 10
-  - hostname: files
-    type: shared-storage
-`);
-    expect(split?.managedServices).toEqual(["db", "files"]);
-  });
-
-  it("gives a tier with no managed service an empty list, which a project import takes", () => {
-    // `services: []` with the project block alone is what zcp's farm imports its shells with
-    // (zcp `docs/spec-eval-farm.md` FM-10, measured 2026-09-10).
-    const only = splitRecipeTier(`project:
-  name: Acme - Vera
-services:
-  - hostname: appdev
-    buildFromGit: https://hq.test/git/acme/app.git
-`);
-    expect(only?.managed).toBe("project:\n  name: Acme - Vera\nservices: []\n");
-    expect(only?.managedServices).toEqual([]);
-  });
-});
-
-describe("splitRecipeTier — the runtimes, imported once the project is closed off", () => {
-  const split = splitRecipeTier(MATE_TIER);
+describe("mateTier — the tier a Mate's birth imports beside its container", () => {
+  const tier = mateTier(MATE_TIER);
 
   it("names each runtime and what it is, in the tier's order", () => {
-    expect(split?.runtimes?.services).toEqual([
+    expect(tier?.runtimes).toEqual([
       { hostname: "apidev", role: "dev" },
       { hostname: "apistage", role: "stage" },
       { hostname: "mail", role: "utility" },
     ]);
+    expect(tier?.managed).toEqual(["db", "files"]);
   });
 
-  it("imports them services-only, in one wave, the preprocessor header still first", () => {
-    expect(split?.runtimes?.yaml).toBe(`#zeropsPreprocessor=on
+  it("imports every service services-only, each keeping its priority, the preprocessor header still first", () => {
+    expect(tier?.yaml).toBe(`#zeropsPreprocessor=on
 services:
   # The API, built from its own repository.
   - hostname: apidev
     type: nodejs@22
     startWithoutCode: true
+    priority: 5
     minContainers: 1
   - hostname: apistage
     type: nodejs@22
@@ -193,6 +161,13 @@ services:
     type: go@1
     buildFromGit: https://github.com/acme/mailpit
     zeropsSetup: mail
+    priority: 1
+  - hostname: db
+    type: postgresql@17
+    mode: NON_HA
+    priority: 10
+  - hostname: files
+    type: shared-storage
 `);
   });
 
@@ -218,22 +193,17 @@ services:
       expected: "  - hostname: apidev\n    startWithoutCode: true\n    type: nodejs@22\n",
     },
     {
-      case: "a utility keeps its build and loses only its priority",
+      case: "a utility keeps its build and its priority",
       item: "  - hostname: mail\n    priority: 3\n    buildFromGit: https://github.com/acme/mailpit\n",
-      expected: "  - hostname: mail\n    buildFromGit: https://github.com/acme/mailpit\n",
+      expected:
+        "  - hostname: mail\n    priority: 3\n    buildFromGit: https://github.com/acme/mailpit\n",
     },
   ])("converts: $case", ({ item, expected }) => {
-    expect(splitRecipeTier(`services:\n${item}`)?.runtimes?.yaml).toBe(`services:\n${expected}`);
-  });
-
-  it("has no runtimes to import for a tier of managed services", () => {
-    expect(
-      splitRecipeTier("services:\n  - hostname: db\n    type: postgresql@17\n")?.runtimes,
-    ).toBe(undefined);
+    expect(mateTier(`services:\n${item}`)?.yaml).toBe(`services:\n${expected}`);
   });
 });
 
-describe("splitRecipeTier on zcp's own tiers", () => {
+describe("mateTier on zcp's own tiers", () => {
   // Four-space items, keys sorted, so `buildFromGit` opens every runtime's item (Dara's tier,
   // 2026-09-17, and yaml.v3's order in zcp's `BuildGroupRecipe`).
   const ZCP_TIER = `#zeropsPreprocessor=on
@@ -255,31 +225,116 @@ services:
       priority: 10
       type: postgresql:single@18
 `;
-  const split = splitRecipeTier(ZCP_TIER);
+  const tier = mateTier(ZCP_TIER);
 
   it("starts a dev half empty in place of the build that opened its item", () => {
-    expect(split?.runtimes?.yaml).toContain(
+    expect(tier?.yaml).toContain(
       "    - startWithoutCode: true\n      envSecrets:\n          SESSION_KEY: <@generateRandomString(<32>)>\n      hostname: todoapp\n",
     );
   });
 
   it("opens a stage half's item on its next key once its build is gone", () => {
-    expect(split?.runtimes?.yaml).toContain(
+    expect(tier?.yaml).toContain(
       "    - enableSubdomainAccess: true\n      hostname: todoappstage\n      type: ubuntu/nodejs@22\n",
     );
   });
 
   it("keeps the preprocessor header, so a runtime's generated secret is generated", () => {
     // zcp writes a runtime's auto-secrets as its own `envSecrets` directives (`BuildGroupRecipe`).
-    expect(split?.runtimes?.yaml.split("\n")[0]).toBe("#zeropsPreprocessor=on");
-    expect(split?.runtimes?.yaml).not.toContain("project:");
-    expect(split?.runtimes?.yaml).not.toContain("buildFromGit");
-    expect(split?.runtimes?.yaml).not.toContain("zeropsSetup");
+    expect(tier?.yaml.split("\n")[0]).toBe("#zeropsPreprocessor=on");
+    expect(tier?.yaml).not.toContain("project:");
+    expect(tier?.yaml).not.toContain("buildFromGit");
+    expect(tier?.yaml).not.toContain("zeropsSetup");
+  });
+});
+
+describe("mateBirthImportYaml — a Mate's birth is one import", () => {
+  const CONTAINER = `services:
+  - hostname: zcp
+    type: zcp@1
+    envSecrets:
+      ZCP_API_KEY: "key"
+    zeropsYaml:
+      zerops:
+        - setup: zcp`;
+
+  it("creates the container first, above the tier's highest priority, every service isolated but to it", () => {
+    expect(mateBirthImportYaml(CONTAINER, mateTier(MATE_TIER)?.yaml)).toBe(`#zeropsPreprocessor=on
+services:
+  # The API, built from its own repository.
+  - hostname: zcp
+    type: zcp@1
+    envSecrets:
+      ZCP_API_KEY: "key"
+    zeropsYaml:
+      zerops:
+        - setup: zcp
+    envIsolation: service@zcp
+    priority: 11
+  - hostname: apidev
+    type: nodejs@22
+    startWithoutCode: true
+    priority: 5
+    minContainers: 1
+    envIsolation: service@zcp
+  - hostname: apistage
+    type: nodejs@22
+    enableSubdomainAccess: true
+    envIsolation: service@zcp
+  - hostname: mail
+    type: go@1
+    buildFromGit: https://github.com/acme/mailpit
+    zeropsSetup: mail
+    priority: 1
+    envIsolation: service@zcp
+  - hostname: db
+    type: postgresql@17
+    mode: NON_HA
+    priority: 10
+    envIsolation: service@zcp
+  - hostname: files
+    type: shared-storage
+    envIsolation: service@zcp
+`);
   });
 
-  it("leaves the managed service, its priority included, with the project", () => {
-    expect(split?.managed).toContain("    - hostname: tododb\n      priority: 10\n");
-    expect(split?.managedServices).toEqual(["tododb"]);
+  it("imports the container alone, isolated and first, for a Mate with no tier", () => {
+    expect(mateBirthImportYaml(CONTAINER, undefined)).toBe(`services:
+  - hostname: zcp
+    type: zcp@1
+    envSecrets:
+      ZCP_API_KEY: "key"
+    zeropsYaml:
+      zerops:
+        - setup: zcp
+    envIsolation: service@zcp
+    priority: 1
+`);
+  });
+
+  it("keeps an isolation a service states itself", () => {
+    const tier = "services:\n  - hostname: db\n    type: postgresql@17\n    envIsolation: none\n";
+    expect(mateBirthImportYaml(CONTAINER, tier)).toContain(
+      "  - hostname: db\n    type: postgresql@17\n    envIsolation: none\n",
+    );
+  });
+
+  it("indents the container as the tier indents its services, so the list stays one list", () => {
+    const tier = "services:\n    - hostname: db\n      type: postgresql@17\n";
+    expect(mateBirthImportYaml(CONTAINER, tier)).toBe(`services:
+    - hostname: zcp
+      type: zcp@1
+      envSecrets:
+        ZCP_API_KEY: "key"
+      zeropsYaml:
+        zerops:
+          - setup: zcp
+      envIsolation: service@zcp
+      priority: 1
+    - hostname: db
+      type: postgresql@17
+      envIsolation: service@zcp
+`);
   });
 });
 

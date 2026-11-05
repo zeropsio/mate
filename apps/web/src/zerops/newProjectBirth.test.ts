@@ -803,13 +803,7 @@ describe("runAdd — an Add's press, under its press's id", () => {
   });
 });
 
-type Kind =
-  | "create-project"
-  | "import-managed"
-  | "import-container"
-  | "close-off"
-  | "register"
-  | "await-ready";
+type Kind = "create-project" | "import-container" | "register" | "await-ready";
 type RunState = "queued" | "running" | "done" | "failed";
 
 /** A press's progress: each step's kind and state, in order, with what a stop said. */
@@ -818,11 +812,9 @@ const pressed = (...entries: ReadonlyArray<readonly [Kind, RunState]>) =>
     step:
       kind === "create-project"
         ? ({ kind, name: "Ida" } as never)
-        : kind === "import-managed"
-          ? ({ kind, yaml: "" } as never)
-          : kind === "import-container"
-            ? ({ kind, agents: [] } as never)
-            : ({ kind } as never),
+        : kind === "import-container"
+          ? ({ kind, agents: [] } as never)
+          : ({ kind } as never),
     state,
     ...(state === "failed" ? { error: `${kind} said no.` } : {}),
   }));
@@ -872,7 +864,6 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:waiting",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -883,7 +874,6 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:waiting",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -894,52 +884,38 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
         "Created:active",
         "Vera registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
       case: "taken, its Mate's press not yet heard",
       made: birth({ step: "created", projectId: "p-1" }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:waiting", "Its computer:waiting"],
     },
     {
-      case: "closing off",
+      case: "its one import coming",
       made: birth({
         step: "created",
         projectId: "p-1",
         progress: pressed(
-          ["close-off", "running"],
-          ["register", "queued"],
+          ["register", "done"],
+          ["import-container", "running"],
           ["await-ready", "queued"],
         ),
       }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:active",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:done", "Its computer:active"],
     },
     {
-      case: "a close-off that stopped",
+      case: "an import that stopped",
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "failed"], ["register", "queued"]),
+        progress: pressed(["register", "done"], ["import-container", "failed"]),
       }),
       want: [
         "Registered:done",
         "Created:done",
-        "Vera registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:failed (close-off said no.)",
+        "Vera registered:done",
+        "Its computer:failed (import-container said no.)",
       ],
     },
     {
@@ -947,14 +923,17 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "failed"], ["await-ready", "done"]),
+        progress: pressed(
+          ["register", "failed"],
+          ["import-container", "done"],
+          ["await-ready", "done"],
+        ),
       }),
       want: [
         "Registered:done",
         "Created:done",
         "Not registered:unfinished (Register said no.)",
-        "Its computer:waiting",
-        "Private network ready:done",
+        "Its computer:done",
       ],
     },
     {
@@ -962,15 +941,13 @@ describe("creationSubsteps — a New project's steps this tab runs, under its ro
       made: birth({
         step: "created",
         projectId: "p-1",
-        progress: pressed(["close-off", "done"], ["register", "done"], ["await-ready", "running"]),
+        progress: pressed(
+          ["register", "done"],
+          ["import-container", "done"],
+          ["await-ready", "running"],
+        ),
       }),
-      want: [
-        "Registered:done",
-        "Created:done",
-        "Vera registered:done",
-        "Its computer:waiting",
-        "Private network ready:done",
-      ],
+      want: ["Registered:done", "Created:done", "Vera registered:done", "Its computer:done"],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
@@ -982,35 +959,23 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
     {
       case: "pressed, its plan not yet made",
       made: added(),
-      want: [
-        "Created:active",
-        "Ida registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:active", "Ida registered:waiting", "Its computer:waiting"],
     },
     {
       case: "where its registration is nobody's here to write",
       made: added({ adds: { appId: "app-acme", registers: false } }),
-      want: ["Created:active", "Its computer:waiting", "Private network ready:waiting"],
+      want: ["Created:active", "Its computer:waiting"],
     },
     {
       case: "creating its project",
       made: added({
         progress: pressed(
           ["create-project", "running"],
-          ["import-managed", "queued"],
-          ["import-container", "queued"],
-          ["close-off", "queued"],
           ["register", "queued"],
+          ["import-container", "queued"],
         ),
       }),
-      want: [
-        "Created:active",
-        "Ida registered:waiting",
-        "Its computer:waiting",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:active", "Ida registered:waiting", "Its computer:waiting"],
     },
     {
       case: "refused before the platform took it",
@@ -1019,7 +984,6 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         "Created:failed (No room in this account.)",
         "Ida registered:waiting",
         "Its computer:waiting",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -1029,18 +993,11 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-managed", "done"],
+          ["register", "done"],
           ["import-container", "running"],
-          ["close-off", "queued"],
-          ["register", "queued"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Ida registered:waiting",
-        "Its computer:active",
-        "Private network ready:waiting",
-      ],
+      want: ["Created:done", "Ida registered:done", "Its computer:active"],
     },
     {
       case: "a container that stopped",
@@ -1049,16 +1006,14 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
+          ["register", "done"],
           ["import-container", "failed"],
-          ["close-off", "queued"],
-          ["register", "queued"],
         ),
       }),
       want: [
         "Created:done",
-        "Ida registered:waiting",
+        "Ida registered:done",
         "Its computer:failed (import-container said no.)",
-        "Private network ready:waiting",
       ],
     },
     {
@@ -1068,18 +1023,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-container", "done"],
-          ["close-off", "done"],
           ["register", "done"],
+          ["import-container", "done"],
           ["await-ready", "running"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Ida registered:done",
-        "Its computer:done",
-        "Private network ready:done",
-      ],
+      want: ["Created:done", "Ida registered:done", "Its computer:done"],
     },
     {
       case: "a registration refused: Ida runs on, not registered, and why",
@@ -1088,18 +1037,12 @@ describe("creationSubsteps — an added Mate's steps this tab runs, under its co
         projectId: "p-ida",
         progress: pressed(
           ["create-project", "done"],
-          ["import-container", "done"],
-          ["close-off", "done"],
           ["register", "failed"],
+          ["import-container", "done"],
           ["await-ready", "done"],
         ),
       }),
-      want: [
-        "Created:done",
-        "Not registered:unfinished (Register said no.)",
-        "Its computer:done",
-        "Private network ready:done",
-      ],
+      want: ["Created:done", "Not registered:unfinished (Register said no.)", "Its computer:done"],
     },
   ])("$case", ({ made, want }) => {
     expect(drawnSubsteps(made)).toEqual(want);
@@ -1358,27 +1301,25 @@ describe("a registration not finished, and Finish setup's own steps", () => {
       case: "refused by its press: not registered, and why",
       progress: pressed(
         ["create-project", "done"],
-        ["import-container", "done"],
-        ["close-off", "done"],
         ["register", "failed"],
+        ["import-container", "done"],
         ["await-ready", "done"],
       ),
       want: "Not registered:unfinished (Register said no.)",
     },
     {
       case: "Finish setup registering",
-      progress: pressed(["close-off", "done"], ["register", "running"]),
+      progress: pressed(["register", "running"]),
       want: "Ida registered:active",
     },
     {
       case: "Finish setup registered",
-      progress: pressed(["close-off", "done"], ["register", "done"]),
+      progress: pressed(["register", "done"]),
       want: "Ida registered:done",
     },
     {
       case: "Finish setup refused again: the new reason",
       progress: [
-        { step: { kind: "close-off" } as never, state: "done" as const },
         {
           step: { kind: "register" } as never,
           state: "failed" as const,

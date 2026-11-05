@@ -151,8 +151,6 @@ function mateOf(
     ...(mate.face === undefined ? {} : { face: mate.face }),
     madeBy: mate.madeBy,
     standupRequestedBy: mate.standupRequestedBy,
-    closedOff: mate.closedOff,
-    setupMarker: mate.setupMarker,
     ...(mate.birthId === undefined ? {} : { birthId: mate.birthId }),
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),

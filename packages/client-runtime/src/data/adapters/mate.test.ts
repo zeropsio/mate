@@ -409,18 +409,6 @@ describe("makeMateAdapter", () => {
     expect(mateLink.derive(read(store), "p2:zcp")?.shown).toBe(false);
   });
 
-  it("connects none of a Mate held for its close-off, until it is let go", async () => {
-    const { adapter, exchanges } = rig();
-    adapter.setTargets([target("p1")]);
-    adapter.setCloseOffHeld(["p1"]);
-    adapter.setDemand("route", ["p1:zcp"]);
-    await flush();
-    expect(exchanges).toEqual([]);
-    adapter.setCloseOffHeld([]);
-    await flush();
-    expect(exchanges.map((exchange) => exchange.key)).toEqual(["p1:zcp"]);
-  });
-
   // Reading every listed Mate's descriptor and health check repeats remote work,
   // the stopped and unready ones failing with CORS errors in the console.
   it("reads a Mate once per connection attempt: the door's descriptor read stands for its container", async () => {

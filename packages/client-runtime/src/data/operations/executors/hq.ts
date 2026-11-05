@@ -89,7 +89,6 @@ export type HqWrites = Pick<
   | "bindBirth"
   | "attachProject"
   | "createMate"
-  | "recordClosedOff"
   | "establishZcpAuthorization"
   | "keepDeployToken"
   | "handOver"
@@ -264,11 +263,7 @@ const write = <A>(call: () => Promise<A>) =>
         : faultOf(cause),
   });
 
-/**
- * A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`), a close-off
- * of a Mate it holds no record of, which has nothing to mark (`mate_not_found`) — Finish setup,
- * which writes the record first, marks it at its own close-off.
- */
+/** A write HQ refuses with `code` as done already: a Mate's record it holds (`conflict`). */
 const doneWhenRefused = (code: string, call: () => Promise<void>) =>
   write(() =>
     call().catch((cause: unknown) => {
@@ -608,11 +603,6 @@ export function makeHqExecutor(ports: {
         return Effect.as(
           doneWhenRefused("conflict", () => api.createMate(intent.mate)),
           answered(requestId, intent.mate.projectId),
-        );
-      case "mark-closed-off":
-        return Effect.as(
-          doneWhenRefused("mate_not_found", () => api.recordClosedOff(intent.projectId)),
-          answered(requestId, intent.projectId),
         );
       case "keep-deploy-key":
         return Effect.as(keepKey(api, intent), answered(requestId, intent.projectId));

@@ -92,8 +92,8 @@ export function useRunNewProject(): (held: CreationAsk) => void {
           accepted: (projectId, { hq, appId, intent }) => {
             // A step still running when the person signs out lands nowhere.
             if (!isCurrent()) return;
-            // The press goes on: the Mate attached to its application in HQ, its container
-            // imported and the project closed off. The listing is read again so the project's
+            // The press goes on: the Mate attached to its application in HQ, then its one import
+            // accepted. The listing is read again so the project's
             // group catches up with it. Its row stands where the creation's stood, with the same
             // face and name, on the creation's own clock — never from 0:00.
             beginPress({

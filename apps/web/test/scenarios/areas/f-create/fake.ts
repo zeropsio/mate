@@ -5,7 +5,6 @@ import { replyLossProxy } from "../../fakes/f-create/replyLoss.ts";
 import { serve } from "../../harness/http.ts";
 
 type CreationControl = CreationFake & {
-  blockIsolation: boolean;
   holdCreation: boolean;
   deleted: string[];
   mateKeys: string[];
@@ -19,7 +18,6 @@ export const creationOf = (drivers: ScenarioDrivers) => {
 
 export const installCreation: ScenarioExtension = async (drivers) => {
   const creation = Object.assign(new CreationFake(drivers.zerops), {
-    blockIsolation: false,
     holdCreation: false,
     deleted: [] as string[],
     mateKeys: [] as string[],
@@ -47,39 +45,6 @@ export const installCreation: ScenarioExtension = async (drivers) => {
         if (process) drivers.zerops.put("process", { ...process, status: "RUNNING" });
       }
       return response;
-    }
-    if (
-      path === "/project/created-1/first-class-recipe/development-container" &&
-      request.method === "PUT"
-    ) {
-      const response = await creation.handle(request);
-      const yaml = String(request.body.serviceImportYaml ?? "");
-      const marker = yaml.match(/MATE_SETUP_RUNTIMES: "([^"]+)"/u)?.[1];
-      if (marker !== undefined && response?.status === undefined) {
-        drivers.zerops.put("user-data", {
-          id: "container-created-1-setup",
-          projectId: "created-1",
-          serviceStackId: "container-created-1",
-          clientId: "ORG",
-          key: "MATE_SETUP_RUNTIMES",
-          content: marker,
-        });
-      }
-      return response;
-    }
-    const search = request.body.search as { name: string; value: string }[] | undefined;
-    if (
-      creation.blockIsolation &&
-      path === "/project/search" &&
-      request.method === "POST" &&
-      search?.some((filter) => filter.name === "id" && filter.value === "created-1") &&
-      drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1")
-    ) {
-      const project = drivers.zerops.rows("project").find((row) => row.id === "created-1");
-      if (project) {
-        const { envList: _unread, ...partial } = project;
-        return { body: { items: [partial] } };
-      }
     }
     const target = path.match(/^\/project\/([^/]+)$/u)?.[1];
     if (request.method !== "DELETE" || !target) return undefined;

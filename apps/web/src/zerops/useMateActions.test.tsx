@@ -42,7 +42,7 @@ import {
   closeAccountLifetime,
   openAccountLifetime,
 } from "./accountLifetime";
-import { mateAddedBy, useMateActions, type MateActions } from "./useMateActions";
+import { useMateActions, type MateActions } from "./useMateActions";
 import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
@@ -136,7 +136,6 @@ const mock = vi.hoisted(() => ({
   user: { id: "user-ada" } as { readonly id: string } | null,
   listing: { current: undefined as unknown },
   /** The press's marker on each container, by service id, as the store states it. */
-  markers: new Map<string, boolean | "unknown" | "unread">(),
   dialog: { current: null as FaceDialogProps | null },
   /** The account's hand-over operation, answered with where it stands: a promise the test answers. */
   handOverMate: vi.fn(),
@@ -418,28 +417,6 @@ vi.mock("./zeropsDataContext", () => ({
     projectRef: (organizationId: string, projectId: string) => ({ organizationId, projectId }),
     runtime: {},
   }),
-  // Navigation supplies setup evidence for each project's Mate.
-  useZeropsAtomSelections: (selections: ReadonlyArray<readonly [string, unknown]>) => {
-    const listing = mock.listing.current as {
-      readonly state: string;
-      readonly value?: ReadonlyArray<ZeropsCandidatePresentation>;
-    };
-    return new Map(
-      selections.map(([projectId]) => {
-        const candidate =
-          listing.state === "known"
-            ? listing.value?.find((candidate) => candidate.project.id === projectId)
-            : undefined;
-        return [
-          projectId,
-          {
-            closedOff: candidate?.project.hq?.mate?.closedOff ?? "unknown",
-            marker: mock.markers.get(candidate?.service?.id ?? "") ?? false,
-          },
-        ];
-      }),
-    );
-  },
 }));
 vi.mock("./useZeropsCandidates", () => ({
   useZeropsDetailCandidates: () => ({ listing: mock.listing.current, refresh: () => {} }),
@@ -564,7 +541,6 @@ beforeEach(() => {
   mock.moveTo = { acme: KINDS, new: KINDS };
   mock.moveAnswer = null;
   mock.user = { id: "user-ada" };
-  mock.markers.clear();
   mock.pressElsewhere = () => "stopped";
   mock.registry = { groups: [] };
   mock.dialog.current = null;
@@ -1083,81 +1059,8 @@ describe("useMateActions — Hand this Mate over", () => {
   });
 });
 
-// A Mate its press left open — marker present, not closed off, no press holding it — is finished by
-// whoever may: an owner or an admin, or, for its close-off, the member who added it. Read off the
-// store's markers, so a reload keeps it (pass 28 review).
-describe("useMateActions — Finish setup on a Mate its press left open", () => {
-  const LONG_AGO = "2026-09-01T10:00:00Z";
-  const left = (made: { readonly by?: string; readonly container?: boolean } = {}) => {
-    const base = mate("Ivo", "", made.by);
-    const { service, ...rest } = base;
-    return {
-      ...rest,
-      group: "ready",
-      project: { ...base.project, created: LONG_AGO },
-      ...(made.container === false ? {} : { service }),
-    } as ZeropsCandidatePresentation;
-  };
-  const offered = (candidate: ZeropsCandidatePresentation) =>
-    verbs(candidate).some((verb) => verb.id === "finish-setup");
-  const listing = (candidate: ZeropsCandidatePresentation) => {
-    mock.listing.current = {
-      state: "known",
-      value: [candidate],
-      asOf: { ordinal: 1, atMs: 1_000 },
-      coverage: "complete",
-      freshness: { kind: "live" },
-    };
-  };
-
-  it.each([
-    { who: "an owner", role: "OWNER", by: "user-eva", container: true, want: true },
-    {
-      who: "the member who added it",
-      role: "BASIC_USER",
-      by: "user-ada",
-      container: true,
-      want: true,
-    },
-    { who: "another member", role: "BASIC_USER", by: "user-eva", container: true, want: false },
-    // Nothing for a close-off to finish: an owner or an admin makes its container.
-    {
-      who: "the member who added it, with no container",
-      role: "BASIC_USER",
-      by: "user-ada",
-      container: false,
-      want: false,
-    },
-  ])("$who: offered $want", ({ role, by, container, want }) => {
-    mock.roleCode = role;
-    const candidate = left({ by, container });
-    if (candidate.service !== undefined) mock.markers.set(candidate.service.id, true);
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(want);
-  });
-
-  it("offers nothing where the marker reads absent: an older Mate, made before the press", () => {
-    mock.roleCode = "BASIC_USER";
-    const candidate = left({ by: "user-ada" });
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(false);
-  });
-
-  // Step A, A11: the organization's token list is not read on a load; a key still ADMIN is
-  // lowered when a person finishes setting the Mate up, never offered from that list.
-  it("offers no harden from a token read on load", () => {
-    mock.roleCode = "BASIC_USER";
-    const candidate = left({ by: "user-ada" });
-    listing(candidate);
-    mount();
-    expect(offered(candidate)).toBe(false);
-  });
-});
-
 // A Mate HQ holds no record of — claimed from the pool, or its record lost — is finished by whoever
-// HQ's rule lets create the record (`create_mate_record`): its record, then its birth, closed off.
+// HQ's rule lets create the record (`create_mate_record`): its record, its key lowered.
 // Only once HQ's structure is known does a Mate it places nowhere have no record.
 describe("useMateActions — Finish setup on a Mate HQ holds no record of", () => {
   const unrecorded = (() => {
@@ -1220,7 +1123,7 @@ describe("useMateActions — Finish setup on a Mate HQ holds no record of", () =
     expect(finishVerb() !== undefined).toBe(want);
   });
 
-  it("writes its record, then its birth closed off, with nobody's stand-up asked", async () => {
+  it("writes its record and lowers its key, with nobody's stand-up asked", async () => {
     mock.finishMateSetup.mockResolvedValue({ ok: true });
     mock.mateOffers = () => ({ held: false, createRecord: { kind: "allowed" } });
     listing();
@@ -1912,37 +1815,6 @@ describe("useMateActions — Move, for the person who made the Mate", () => {
     });
 
     expect(mock.moveDialog.current?.name).toBe("Fen");
-  });
-});
-
-// Whether the viewer added a Mate reads who HQ's record says made it, so a Mate made by New
-// project is its maker's to finish as one made by Add a Mate is.
-describe("mateAddedBy — whether the viewer added this Mate", () => {
-  const placed = (mate: Partial<NonNullable<HqPlacement["mate"]>>): HqPlacement => ({
-    appId: "app-1",
-    appName: "Acme",
-    kind: "mate",
-    mate: { face: "", ...mate },
-  });
-  it.each([
-    { case: "HQ names its maker (New project)", hq: placed({ madeBy: "user-ada" }), added: true },
-    {
-      case: "its stand-up asked by them (a Mate recorded before HQ kept its maker)",
-      hq: placed({ madeBy: null, standupRequestedBy: "user-ada" }),
-      added: true,
-    },
-    { case: "somebody else made it", hq: placed({ madeBy: "user-fen" }), added: false },
-    { case: "nothing names anybody", hq: placed({}), added: false },
-    {
-      case: "HQ says it waits on them (they signed it in)",
-      hq: placed({}),
-      waitsOnViewer: true,
-      added: true,
-    },
-  ])("$case: $added", ({ hq, added, ...rest }) => {
-    expect(mateAddedBy({ hq }, "user-ada", "waitsOnViewer" in rest && rest.waitsOnViewer)).toBe(
-      added,
-    );
   });
 });
 

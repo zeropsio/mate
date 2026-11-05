@@ -1,7 +1,7 @@
 /**
  * The writes a creation makes at HQ, which HQ executes and answers at once: an application, a
  * Mate's birth intent and its bind to a project, a project attached to an application, a Mate's
- * record in none and its close-off, an environment's deploy key, a Mate's hand-over. HQ keeps no
+ * record in none, an environment's deploy key, a Mate's hand-over. HQ keeps no
  * request id for them: after a lost answer, HQ's navigation showing the write's effect — absent at
  * the send — adopts it, and nothing is sent again blindly.
  *
@@ -48,10 +48,6 @@ declare module "../model.ts" {
     readonly "create-mate-record": {
       readonly orgId: string;
       readonly mate: { readonly projectId: string } & HqMateSetUp;
-    };
-    readonly "mark-closed-off": {
-      readonly orgId: string;
-      readonly projectId: string;
     };
     /** A Mate handed over to `ownerUserId` (a person's id), by HQ with the person's token. */
     readonly "hand-over-mate": {
@@ -173,12 +169,6 @@ export const createMateRecord = shown(
   (read, intent) => (placementOf(read, intent.mate.projectId)?.mate ?? null) !== null,
 );
 
-export const markClosedOff = shown(
-  "mark-closed-off",
-  (intent) => intent.projectId,
-  (read, intent) => placementOf(read, intent.projectId)?.mate?.closedOff === true,
-);
-
 /** The environment's key, as HQ's navigation says it: held, and not found broken. */
 export const deployKeyShown = (
   read: ProjectionReads,
@@ -275,7 +265,6 @@ export const HQ_WRITE_KINDS = [
   bindBirth,
   attachProject,
   createMateRecord,
-  markClosedOff,
   keepDeployKey,
   handOverMate,
 ] as const;

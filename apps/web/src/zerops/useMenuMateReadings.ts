@@ -36,10 +36,9 @@ import { useWakeAt } from "./useNowMs";
 import { useCreations } from "./creations";
 import { madeOf } from "./newProjectBirth";
 import { useProjectCreations } from "./useProjectCreations";
-import { useCloseOffHolds } from "./accountEnvironments";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
-import { closeOffOpenOf, pressComingInput, useMatePresses } from "./matePress";
+import { pressComingInput, useMatePresses } from "./matePress";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -205,7 +204,6 @@ export function useMateComingOf(
   const presses = useMatePresses();
   const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
-  const closeOffHolds = useCloseOffHolds();
   const verdicts = useProjectCreations(candidates);
   const firstBuilds = useZeropsFirstBuilds(candidates);
   const processFacts = useProjectsActivityRead(candidates.map((candidate) => candidate.project.id));
@@ -217,14 +215,6 @@ export function useMateComingOf(
       const made = madeOf(creations, candidate.project.id);
       return mateArrival({
         press,
-        // A row says only the hold it offers Finish setup for; the others, its own view.
-        closeOffHold: closeOffOpenOf(
-          closeOffHolds,
-          candidate.project.id,
-          presses.find((entry) => entry.projectId === candidate.project.id),
-        )
-          ? "open"
-          : undefined,
         candidate: applyProjectCreationVerdict(candidate, verdicts.get(candidate.project.id)),
         setUpFailed: setUpFailed ?? made?.failed?.reason,
         // A new getter at each deadline (`useComingClock`): the menu is memoised, and nothing
@@ -238,17 +228,7 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       }).coming;
     },
-    [
-      presses,
-      creations,
-      firstBuilds,
-      mateLink,
-      pressOf,
-      verdicts,
-      closeOffHolds,
-      wokeAt,
-      processFacts,
-    ],
+    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, wokeAt, processFacts],
   );
 }
 

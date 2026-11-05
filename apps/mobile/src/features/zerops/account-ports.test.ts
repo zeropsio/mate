@@ -19,9 +19,8 @@ describe("memoryIntents", () => {
 describe("hqAbsent", () => {
   // The device runs no HQ flow: HQ will not answer here, and its silence is never passed off as
   // a word from HQ.
-  it("names no environment's project and says nothing of a close-off", () => {
+  it("names no environment's project", () => {
     const hq = hqAbsent();
     expect(hq.hqIndex.projectOf(EnvironmentId.make("env-a"))).toBeNull();
-    expect(hq.closeOff.read()).toBeNull();
   });
 });

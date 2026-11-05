@@ -18,12 +18,8 @@ export function memoryIntents(): AccountEnvironmentPorts["intents"] {
 
 /**
  * HQ as the device sees it: absent. The device runs no HQ flow, so HQ will not answer here — no
- * environment's project named, no close-off said.
+ * environment's project named.
  */
-export function hqAbsent(): Pick<AccountEnvironmentPorts, "hqIndex" | "closeOff"> {
-  const quiet = () => () => undefined;
-  return {
-    hqIndex: { projectOf: () => null, subscribe: quiet },
-    closeOff: { read: () => null, subscribe: quiet },
-  };
+export function hqAbsent(): Pick<AccountEnvironmentPorts, "hqIndex"> {
+  return { hqIndex: { projectOf: () => null, subscribe: () => () => undefined } };
 }

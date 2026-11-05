@@ -158,8 +158,6 @@ export interface MateAdapter {
   readonly setTargets: (targets: ReadonlyArray<MateTarget>) => void;
   /** A project being deleted takes no demand; its leases stand for when it fails. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
-  /** The projects whose Mate is held for its close-off: none takes demand. Replaces the set. */
-  readonly setCloseOffHeld: (projectIds: Iterable<string>) => void;
   /** Replaces the whole set of targets one emitter wants. */
   readonly setDemand: (reason: DemandReason, keys: Iterable<TargetKey>) => void;
   /** The target is wanted until the answer is called; calling it again does nothing. */
@@ -414,7 +412,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
     ["user", new Map()],
   ]);
   const deleting = new Set<string>();
-  let closeOffHeld: ReadonlySet<string> = new Set();
   const connects = new Map<TargetKey, Array<(outcome: ConnectOutcome) => void>>();
   const listeners = new Set<() => void>();
   /** Intents restored from storage whose targets are not listed yet. */
@@ -440,8 +437,7 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
   let scheduled = false;
 
   const context = () => ({ now: clock.now(), random: clock.random });
-  const suppressed = (projectId: string): boolean =>
-    deleting.has(projectId) || closeOffHeld.has(projectId);
+  const suppressed = (projectId: string): boolean => deleting.has(projectId);
 
   const entryFor = (key: TargetKey, record: EnvironmentId | null): Entry => {
     const existing = entries.get(key);
@@ -1316,21 +1312,6 @@ export function makeMateAdapter<C>(ports: MateAdapterPorts<C>): MateAdapter {
               guards: guardsFor(entry.key, entry.environment.guards.budget),
             });
       }),
-    setCloseOffHeld: (projectIds) => {
-      const next = new Set(projectIds);
-      enqueue(() => {
-        const moved = new Set(
-          [...next, ...closeOffHeld].filter((id) => next.has(id) !== closeOffHeld.has(id)),
-        );
-        closeOffHeld = next;
-        for (const entry of entries.values())
-          if (moved.has(projectOf(entry.key)))
-            step(entry, {
-              type: "GUARDS",
-              guards: guardsFor(entry.key, entry.environment.guards.budget),
-            });
-      });
-    },
     setDemand: (reason, keys) => {
       const next = new Set(keys);
       enqueue(() => {

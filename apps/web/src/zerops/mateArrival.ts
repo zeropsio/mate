@@ -363,7 +363,7 @@ export function arrivalSteps(
     readonly steps: ReadonlyArray<ArrivalStepInput>;
     /** The copy's managed services (`birthCopyServices`). */
     readonly managed?: ReadonlyArray<BirthService> | undefined;
-    /** The tier's runtimes, imported once the project is closed off (`birthRuntimesFacts`). */
+    /** The tier's runtimes, imported with its container (`birthRuntimesFacts`). */
     readonly runtimes?: { readonly runtimes: ReadonlyArray<BirthService> };
     /** What the Mate's own setup says (`/mate/setup.json`); absent before it answers, or ever. */
     readonly setup?:

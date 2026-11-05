@@ -44,7 +44,6 @@ import {
   rankZeropsCandidateForListing,
   readZeropsMembership,
   renamedProjectName,
-  finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
   type ZeropsMembership,
@@ -154,7 +153,6 @@ import {
   matePressPlacement,
   mateFinishRegistration,
   readMatePress,
-  useInterruptedPresses,
   useMatePresses,
 } from "./matePress";
 import { useRestartMate } from "./mateRestart";
@@ -373,9 +371,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   );
   const hqKnown = hqPlacements !== null && hqStructure.live;
   const presses = useMatePresses();
-  // A press interrupted before its close-off, on a Mate made in any browser: the store's markers,
-  // at no cost of their own, for anyone who could finish it — its own adder too.
-  const interrupted = useInterruptedPresses(candidates);
   // Whether each Mate's press in another browser is still at it, as HQ holds it (B5).
   const pressOf = usePressesElsewhere(candidates);
   const pressedElsewhere = useCallback(
@@ -888,8 +883,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /**
    * *Finish setup* — the press's own steps on a half-made Mate (`finishMateSetupVerb`): what a
    * colleague's Mate waits on, what a press a closed tab cut short left, a container that never
-   * came. Every step is safe to ask again; for a Mate it adopts, which HQ holds no record of, its
-   * close-off also lowers a key still at `ADMIN` (`hardenMate`).
+   * came. Every step is safe to ask again; for a Mate it adopts, which HQ holds no record of, a
+   * harden first lowers a key still at `ADMIN` (`hardenMate`).
    */
   /** HQ holds no record of this Mate, as its structure says once it is known. */
   const recordMissing = useCallback(
@@ -930,16 +925,9 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             press !== undefined,
             pressedElsewhere(candidate.project.id),
           ),
-        closedOffMissing: candidate.service !== undefined && interrupted.has(candidate.service.id),
         // A press this tab saw stop: no press elsewhere is still at it.
         pressStopped: press?.state.kind === "failed",
         pressedElsewhere: pressedElsewhere(candidate.project.id),
-        viewerIsAdder: mateAddedBy(
-          candidate.project,
-          user?.id,
-          projectPeople[candidate.project.id]?.waitsOnViewer === true,
-        ),
-        hasContainer: candidate.service !== undefined,
         containerKnown: candidate.service !== undefined || candidate.missingContainer === true,
         writer: writes(orgOffer("create_app")),
         recordMissing: recordMissing(candidate),
@@ -948,15 +936,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     },
     [
       groupTree.groups,
-      interrupted,
       mayCreateRecord,
       orgOffer,
       pressedElsewhere,
       presses,
-      projectPeople,
       recordMissing,
       registry.registry,
-      user,
     ],
   );
 
@@ -969,12 +954,17 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const press = readMatePress(projectId);
       if (pressComing(press)?.uncertain === true) return;
       const pressStopped = press?.state.kind === "failed";
-      // An owner or an admin finishes all of it; the Mate's own adder, its close-off.
-      const whole = finishMateSetupScope(orgOffer("create_app").kind === "allowed") === "whole";
       // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
       // the harden itself, which finds its key by name as it runs; never from a token list read on
       // a load (step A, A11).
       const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
+      // A container only where its project has none and no press elsewhere may still be importing
+      // one (`finishSetupContainer`).
+      const container = finishSetupContainer({
+        containerMissing: candidate.missingContainer === true,
+        pressStopped,
+        pressedElsewhere: pressedElsewhere(candidate.project.id),
+      });
       // What it registers, by the rule Set up Mate registers by: in the application HQ or the
       // press this tab holds places it in, under that face; a new Mate in no application
       // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
@@ -984,24 +974,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
         structure: hqStructure?.structure ?? null,
         project: candidate.project,
         press,
-
         mayCreateRecord: mayCreateRecord(candidate),
-        standUp: candidate.service !== undefined && interrupted.has(candidate.service.id),
+        // Its server stands up only from a container a press imported (`MATE_SETUP`): this one's,
+        // where Finish setup imports it. A container standing without a record was never pressed.
+        standUp: container !== null,
         candidates,
       });
-      // A close-off alone has nothing to finish on a Mate with no container.
-      if (!whole && !adopting && registration === null && candidate.service === undefined) {
-        return;
-      }
-      // A container only where its project has none and no press elsewhere may still be importing
-      // one (`finishSetupContainer`).
-      const container = whole
-        ? finishSetupContainer({
-            containerMissing: candidate.missingContainer === true,
-            pressStopped,
-            pressedElsewhere: pressedElsewhere(candidate.project.id),
-          })
-        : null;
       // Its row says it runs and ends (`finishSetupRowLine`), on any screen; its view draws the
       // steps while a container comes up (`finishSetupView`). Only then is it coming.
       beginPress({
@@ -1037,10 +1015,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       client,
       hqKnown,
       hqStructure?.structure,
-      interrupted,
       mayCreateRecord,
       operations,
-      orgOffer,
       pressedElsewhere,
       recordMissing,
       refresh,
@@ -1753,19 +1729,4 @@ function definitiveRefusal(fault: unknown): boolean {
     fault !== null &&
     (fault as { readonly outcome?: unknown }).outcome === "definitive-refusal"
   );
-}
-
-/**
- * Whether the viewer added this Mate: HQ's record names them as its maker (New project or Add a
- * Mate), its stand-up was asked for by them, or HQ says it waits on them (`waitsOnViewer`).
- */
-export function mateAddedBy(
-  project: { readonly hq?: HqPlacement | undefined },
-  viewer: string | undefined,
-  waitsOnViewer: boolean,
-): boolean {
-  if (waitsOnViewer) return true;
-  if (viewer === undefined || viewer.length === 0) return false;
-  const membership = readZeropsMembership(project);
-  return membership.madeBy === viewer || membership.standUp?.by === viewer;
 }

@@ -143,7 +143,6 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
           steps: [{ kind: "import-container", agents: [] }],
           platform: {
             run: importRun,
-            markClosedOff: async () => undefined,
             register: async () => undefined,
             untilServicesSettled: async () => [],
           },

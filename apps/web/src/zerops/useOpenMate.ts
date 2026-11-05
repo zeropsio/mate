@@ -47,8 +47,7 @@ import { newMateView } from "./newMate";
 import { madeOf } from "./newProjectBirth";
 import { useHqMainChats } from "./useMenuMateReadings";
 import { useZeropsDetailCandidates } from "./useZeropsCandidates";
-import { useCloseOffHolds } from "./accountEnvironments";
-import { closeOffHoldOf, pressComingInput, useMatePresses } from "./matePress";
+import { pressComingInput, useMatePresses } from "./matePress";
 
 /** Opens a Mate — its row, or its project where the caller holds no row — as every door does. */
 export type OpenMate = (
@@ -63,7 +62,6 @@ export function useOpenMate(): OpenMate {
   const projects = useProjects();
   const handleNewThread = useNewThreadHandler();
   const presses = useMatePresses();
-  const closeOffHolds = useCloseOffHolds();
   const creations = useCreations();
   const { listing } = useZeropsDetailCandidates();
   const mainChatOf = useHqMainChats();
@@ -105,12 +103,6 @@ export function useOpenMate(): OpenMate {
       const created = madeOf(creations, projectId) !== undefined;
       const { coming } = mateArrival({
         press: pressed.press,
-        // Held by the close-off gate, it opens on its own view, which says why.
-        closeOffHold: closeOffHoldOf(
-          closeOffHolds,
-          projectId,
-          presses.find((press) => press.projectId === projectId),
-        ),
         candidate,
         setUpFailed: pressed.setUpFailed,
         nowMs: Date.now(),
@@ -159,7 +151,6 @@ export function useOpenMate(): OpenMate {
     },
     [
       presses,
-      closeOffHolds,
       creations,
       handleNewThread,
       linkTarget,

@@ -170,6 +170,10 @@ it.effect.each([
         baseUrl: "https://api.example.test",
         fetch: async (url, init) => {
           const path = new URL(String(url)).pathname;
+          if (path.endsWith("/service-stack/import")) {
+            order.push("import");
+            return Response.json({ serviceStacks: [] });
+          }
           if (path.includes("service-stack"))
             return Response.json({
               list:
@@ -195,10 +199,6 @@ it.effect.each([
               token: "actual-key",
               createdByUser: { id: "delegating-creator" },
             });
-          }
-          if (path.includes("first-class-recipe")) {
-            order.push("import");
-            return Response.json({});
           }
           throw new Error(`Unexpected native request: ${path}`);
         },

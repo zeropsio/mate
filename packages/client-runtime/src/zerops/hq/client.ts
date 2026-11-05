@@ -148,10 +148,6 @@ export interface HqMate extends Partial<HqMateRecord> {
   readonly madeBy?: string | null | undefined;
   /** Who asked for its stand-up, with its record: nobody is null; an older HQ says nothing. */
   readonly standupRequestedBy?: string | null | undefined;
-  /** Whether its project is closed off (`recordClosedOff`); an older HQ says nothing. */
-  readonly closedOff?: boolean | undefined;
-  /** HQ’s read of the setup press marker; null while unknown. */
-  readonly setupMarker?: boolean | null | undefined;
   /** Who signed each of its agents' logins in, as its overview says; absent where HQ holds none. */
   readonly logins?: OverviewLogins;
   /** A ready agent outside Mate's sign-in flow, relayed in its overview. */
@@ -401,12 +397,6 @@ export interface HqApi {
   readonly deleteApp: (appId: string, options?: { readonly withCode: boolean }) => Promise<void>;
   /** A Mate set up on a project of its own, in no application (`POST /api/mates`). */
   readonly createMate: (mate: { readonly projectId: string } & HqMateSetUp) => Promise<void>;
-  /**
-   * That a Mate's project is closed off, as its project's owner or admin records it (`POST
-   * /api/mates/{projectId}/closed-off`). HQ refuses it on a Mate it holds no record of
-   * (`mate_not_found`).
-   */
-  readonly recordClosedOff: (projectId: string) => Promise<void>;
   readonly createApp: (name: string) => Promise<{ readonly id: string; readonly name: string }>;
   /**
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
@@ -2057,12 +2047,5 @@ export function makeHqApi(input: {
           signal === undefined ? {} : { signal },
         ),
       ),
-    recordClosedOff: async (projectId) => {
-      await authorized(
-        `/api/mates/${encodeURIComponent(projectId)}/closed-off`,
-        { method: "POST", body: JSON.stringify(await withAccess({})) },
-        true,
-      );
-    },
   };
 }

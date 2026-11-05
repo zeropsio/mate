@@ -1161,7 +1161,7 @@ export function ZeropsProjectsContent({
           placement: matePressPlacement(held) ?? null,
         });
         // Its owner marked first where the project names none and the person may (`ownerAtAdd`),
-        // then its container with its own key, and its project closed off before anyone is let in.
+        // then its container with its own key, isolated in its own import.
         const owner = ownerAtAdd({
           userRoles: candidate.project.userRoles,
           adder: activeOrganization,
@@ -1956,8 +1956,8 @@ export function ZeropsProjectsContent({
   // for the new account, preferred over inferring it from a candidate's
   // status. A returning account never infers a new setup flow from an
   // unrelated provisioning project in the inventory. The claimed project is
-  // finished like any other once the inventory lists it — its key lowered and
-  // its project closed off: a claim hands over a brand-new project, so the
+  // finished like any other once the inventory lists it — its key lowered: a
+  // claim hands over a brand-new project, so the
   // newest one of its organization is it.
   const claimRef = useRef<string | null>(null);
   useEffect(() => {

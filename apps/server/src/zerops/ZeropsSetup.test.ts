@@ -244,7 +244,7 @@ const makeWorld = Effect.gen(function* () {
     signers: yield* Ref.make<ProjectSigners>({}),
     agents: yield* Ref.make<ReadonlyArray<ZeropsAgentAuth>>(CLAUDE_LOGGED_IN),
     // Made by the new press: it always sets the runtimes plan, even an empty one.
-    variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP_RUNTIMES"]),
+    variables: yield* Ref.make<ReadonlyArray<string>>(["PATH", "MATE_SETUP"]),
     hqReads: yield* Ref.make(0),
     hqRead: yield* Deferred.make<void>(),
     statusFile: yield* Ref.make<unknown>(undefined),

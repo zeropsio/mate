@@ -333,7 +333,6 @@ describe("the steps this tab runs, on the Mate's own view", () => {
     expect(kind()).toBe("coming");
     expect(said()).toContain("Ida on Acme CRM");
     expect(row()).toEqual(["running:Ida's copy of Acme CRM"]);
-    expect(said()).not.toContain("Private network ready");
     expect(said()).toContain(KEEP_TAB_OPEN_LINE);
   });
 

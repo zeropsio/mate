@@ -7,9 +7,9 @@ import { acquireHqPressLease } from "@t3tools/client-runtime/data";
  * own adds. The plan is `planEnvironmentCreation`, the press `matePress.ts`; this only gathers the
  * inputs — the group's agents and environments, who asked — and presses.
  *
- * The press does every step that needs this person's rights before it returns: the project, a
- * Mate's key and container, its project closed off, and its registration in the organization's
- * HQ, which decides who may write it. An organization with no HQ takes no environment (ADR 0001).
+ * The press does every step that needs this person's rights before it returns: the project, its
+ * registration in the organization's HQ, which decides who may write it, and a Mate's one import —
+ * its key and container with its tier's services. An organization with no HQ takes no environment (ADR 0001).
  * The container does the rest whether this tab stays or not.
  */
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
@@ -26,7 +26,6 @@ import {
   type RecipeRuntime,
   type ZeropsEnvironmentRole,
   type ZeropsGroup,
-  ZeropsApiError,
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
@@ -93,7 +92,7 @@ export type EnvironmentCreationRun =
 
 /**
  * What a press's plan brings, for the screen to name before the project lists it: the managed
- * services its first import makes, in the tier's order, and the runtimes zcp imports on boot.
+ * services and the runtimes its one import makes, in the tier's order.
  */
 export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
   readonly managed?: ReadonlyArray<string>;
@@ -102,13 +101,14 @@ export function pressPlanned(steps: ReadonlyArray<EnvironmentCreationStep>): {
   let managed: Array<string> = [];
   let runtimes: ReadonlyArray<RecipeRuntime> | undefined;
   for (const step of steps) {
-    if (step.kind === "import-managed" || step.kind === "import-project") {
+    if (step.kind === "import-project") {
       managed = (recipeTierServices(step.yaml) ?? []).flatMap((service) =>
         service.role === "managed" ? [service.hostname] : [],
       );
     }
-    if (step.kind === "import-container" && step.runtimes !== undefined) {
-      runtimes = step.runtimes.services;
+    if (step.kind === "import-container" && step.tier !== undefined) {
+      managed = [...step.tier.managed];
+      if (step.tier.runtimes.length > 0) runtimes = step.tier.runtimes;
     }
   }
   return {
@@ -207,8 +207,7 @@ export function addedEnvironmentRegistration(input: {
       ...(choice.automated === true ? { automated: true as const } : {}),
     },
     // The person adding a dev Mate with its agent asks for its stand-up — with its birth intent,
-    // which its attach closes; the press's close-off marks it closed off, after its record
-    // (`planEnvironmentCreation`).
+    // which its attach closes (`planEnvironmentCreation`).
     standUp: addedMateStandUp(role, choice),
     ...(intent === undefined ? {} : { intent }),
   };
@@ -236,44 +235,24 @@ const SERVICES_REFUSED = "Zerops refused to say how the environment's services s
 const ACCOUNT_CLOSED = "This account session has ended.";
 
 /**
- * How long a creation waits for its new services to settle: the sheet promises an environment
- * "ready in a few minutes", and an import of managed services takes a few; past this the listing
- * is not catching up, and the wait stops rather than spin.
- */
-export const SERVICES_SETTLE_PATIENCE_MS = 10 * 60_000;
-
-/**
  * Resolves with a project's services once every one has settled (`servicesSettled`), as the
- * account's services listing holds them — read as they change, never polled; rejects where that
- * listing is refused, where the account it waits in closes, and once `patienceMs` passed without
- * a settle. That last stop is uncertain: the services may have come up where the listing never
- * showed them, so nothing that made them is asked again.
+ * account's services listing holds them — its value now, then each Zerops push that moves it,
+ * never polled and never on a clock; rejects where that listing is refused, and where the account
+ * it waits in closes.
  */
 export function untilServicesSettled(
   registry: AtomRegistry.AtomRegistry,
   /** The project's services as the account's store holds them (`projectServicesAtom`). */
   listed: Atom.Atom<ProjectServices>,
-  patienceMs: number = SERVICES_SETTLE_PATIENCE_MS,
 ): Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>> {
   return new Promise((resolve, reject) => {
     let ended = false;
     let cancel: (() => void) | undefined;
     const finish = () => {
       ended = true;
-      clearTimeout(timer);
       cancel?.();
       leave();
     };
-    const timer = setTimeout(() => {
-      if (ended) return;
-      reject(
-        new ZeropsApiError(
-          `Zerops hasn't shown the new services ready after ${Math.round(patienceMs / 60_000)} minutes.`,
-          "uncertain",
-        ),
-      );
-      finish();
-    }, patienceMs);
     const leave = onAccountLifetimeClose(() => {
       if (ended) return;
       reject(new Error(ACCOUNT_CLOSED));

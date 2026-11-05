@@ -20,9 +20,6 @@
  *   HQ — never by reading other projects. A remembered Mate with no lease is parked: its
  *   registration and cached data stay, its socket closes.
  * - A registration no Mate holds — and that no install is writing — is released.
- * - Nobody is let into a Mate before its project is closed off (`closeOff.ts`): a Mate whose
- *   container carries the press's marker, and whose project HQ does not say is closed off, holds
- *   no lease's connection until it is; *Finish setup* closes it off.
  *
  * The adapter is constructed by the account runtime alone (§7.2 rule 6); this module only wires
  * it. Plain callbacks and promises, like the adapter: the bus runs with the account's services.
@@ -63,12 +60,6 @@ import {
   resolveEnvironment,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
-import {
-  closedOffOf,
-  closeOffGate,
-  type CloseOffHold,
-  type CloseOffWord,
-} from "../environments/closeOff.ts";
 import { mateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
 import type {
   DescriptorFacts,
@@ -169,25 +160,7 @@ export interface AccountEnvironmentPorts {
     readonly projectOf: (environmentId: EnvironmentId) => string | null;
     readonly subscribe: (listener: () => void) => () => void;
   };
-  /**
-   * HQ's word on which Mates' projects are closed off (`closeOff.ts`); null while none is known,
-   * and always on a surface no HQ answers: then only `closeOffPending` holds a Mate.
-   */
-  readonly closeOff: {
-    readonly read: () => CloseOffWord | null;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
-  /**
-   * The projects this browser knows are not closed off yet — a press here that runs, or stopped
-   * before its close-off: where HQ says nothing, only these are held (`closeOffGate`).
-   */
-  readonly closeOffPending: {
-    readonly read: () => ReadonlySet<string>;
-    readonly subscribe: (listener: () => void) => () => void;
-  };
 }
-
-export type { CloseOffHold };
 
 // ── What surfaces read and ask ───────────────────────────────────────────────────────────────
 
@@ -195,7 +168,7 @@ export interface AccountEnvironments {
   /** Projects whose detail is currently held by a route, screen, or action. */
   readonly detailProjects: () => ReadonlySet<string>;
   /**
-   * Told after the detail, the close-off holds or a Mate moved. Each Mate itself is read from the
+   * Told after the detail or a Mate moved. Each Mate itself is read from the
    * account's store (`mateLinks`).
    */
   readonly subscribe: (listener: () => void) => () => void;
@@ -225,11 +198,6 @@ export interface AccountEnvironments {
   readonly next: (origin: string) => Promise<ProbeReading>;
   /** Suppress all connection leases during project deletion; false restores them on failure. */
   readonly setDeleting: (projectId: string, deleting: boolean) => void;
-  /**
-   * The projects whose Mate is held for its close-off, and why: none of their leases connects it
-   * until HQ says its project is closed off. The same map until it changes.
-   */
-  readonly closeOffHolds: () => ReadonlyMap<string, CloseOffHold>;
   /** The route's environment, whose target is exchanged first (§4.4); null off a thread route. */
   readonly setRoute: (environmentId: EnvironmentId | null) => void;
   /** The organization the tab has open: a target nothing names has its inventory read (§6.2). */
@@ -355,7 +323,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
    */
   const addressWatch = new Map<string, () => void>();
   let detailProjects: ReadonlySet<string> = new Set();
-  let closeOffHolds: ReadonlyMap<string, CloseOffHold> = new Map();
 
   const rowOf = (key: TargetKey) => rows.find((row) => row.key === key);
   const organizationRef = (organizationId: string): OrganizationRef => ({
@@ -757,41 +724,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   };
 
   /**
-   * The close-off gate over every listed Mate (`closeOffGate`): the held ones take no lease's
-   * demand (`ExchangeDriver.setCloseOffHeld`).
-   */
-  const updateCloseOff = () => {
-    if (adapter === null || closed) return;
-    const word = ports.closeOff.read();
-    const pending = ports.closeOffPending.read();
-    const holds = new Map<string, CloseOffHold>();
-    for (const row of rows) {
-      if (row.service === undefined) continue;
-      const project = projectRefOf(row.project.id);
-      if (project === undefined) continue;
-      const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);
-      if (closedOff === true) continue;
-      const gate = closeOffGate({
-        marker:
-          word?.organizationId === project.organization.organizationId
-            ? (word.markers.get(row.project.id) ?? "unknown")
-            : "unknown",
-        closedOff,
-        pendingHere: pending.has(row.project.id),
-      });
-      if (gate === "connect") continue;
-      if (holds.get(row.project.id) !== "open") holds.set(row.project.id, gate);
-    }
-    const moved =
-      holds.size !== closeOffHolds.size ||
-      [...holds].some(([projectId, hold]) => closeOffHolds.get(projectId) !== hold);
-    if (!moved) return;
-    closeOffHolds = holds;
-    adapter.setCloseOffHeld(holds.keys());
-    notify();
-  };
-
-  /**
    * Reads the processes — running, and the newest history — of every project of the active
    * organization with a container ACTIVE without its address that a surface shows (the route's,
    * the drawn, the viewed, the detailed) or that is on its way to its address, shown or not
@@ -950,8 +882,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         updateActions();
         updateDrawn();
       }),
-      ports.closeOff.subscribe(updateCloseOff),
-      ports.closeOffPending.subscribe(updateCloseOff),
       ports.catalog.listen({
         environments: (next) => {
           registered = next;
@@ -980,12 +910,10 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
           updateDrawn();
           if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
             updateTargets();
-          if (moved) updateCloseOff();
         },
         { immediate: true },
       ),
     );
-    updateCloseOff();
     updateTargets();
     release();
     updateParking();
@@ -1025,7 +953,6 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       initAt: (key) => (closed ? Promise.resolve(null) : built.initAt(key)),
       next: built.next,
       setDeleting: built.setDeleting,
-      closeOffHolds: () => closeOffHolds,
       setRoute: (environmentId) => {
         route = environmentId;
         preferRoute();

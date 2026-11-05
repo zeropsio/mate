@@ -772,7 +772,7 @@ describe("pressNote — what the steps this tab runs leave to read whole under t
     {
       case: "a registration not finished: what is not, and why",
       press: [
-        step("done", "Private network ready"),
+        step("done", "Its computer"),
         step("unfinished", "Not registered", "Its grant timed out."),
       ],
       want: { kind: "unfinished", text: "Not registered: Its grant timed out." },

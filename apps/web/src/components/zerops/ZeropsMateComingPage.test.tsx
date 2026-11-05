@@ -224,8 +224,6 @@ vi.mock("~/zerops/accountEnvironments", () => ({
   useMateDetailRead: () => ({ failure: app.detailFailure, again: () => undefined }),
   useConnectMate: () => app.connect,
   useAccountEnvironments: () => environments,
-  // No Mate here is held for its close-off.
-  useCloseOffHolds: () => new Map(),
 }));
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
@@ -1705,7 +1703,7 @@ describe("ComingBelow — a registration not finished while it comes up", () => 
     total: 0,
     complete: false,
     press: [
-      { id: "closed-off", label: "Private network ready", state: "done" },
+      { id: "container", label: "Its computer", state: "done" },
       {
         id: "registered",
         label: "Not registered",

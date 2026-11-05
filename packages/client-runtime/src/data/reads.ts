@@ -24,7 +24,6 @@ import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
-import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
 import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
 import type { ProjectValue } from "./families/project.ts";
@@ -542,15 +541,6 @@ export function readMateFlag(
     if (settled) unsubscribe();
   });
 }
-
-/** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
-export const hqMateSetupAtom = Atom.family((projectId: string) =>
-  Atom.make((get): HqMateSetup => {
-    const account = get(accountReadsAtom);
-    if (account === null || account.orgId === null) return UNKNOWN_MATE_SETUP;
-    return get(account.data.project(hqMateSetup, { orgId: account.orgId, projectId }));
-  }),
-);
 
 /** Account/org switching replaces dependencies; every surface shares the same project reader. */
 function projectReader<Key, Value>(

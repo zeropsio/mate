@@ -1,7 +1,8 @@
 /**
- * Importing a Mate's container — its key and the tier's runtimes for zcp to import on boot — at
- * Zerops: done once Zerops answers, with the container's service and, where it named one, its
- * creation process. Safe to ask again: a project holding its container already makes no write.
+ * Importing a Mate at Zerops — its container holding its key, and its tier beside it, as one import
+ * (`ZeropsApiClient.importDevelopmentContainer`): done once Zerops answers, with the container's
+ * service and, where it named one, its creation process. Safe to ask again: a project holding its
+ * container already makes no write.
  *
  * @module data/operations/importContainer
  */
@@ -16,7 +17,8 @@ declare module "../model.ts" {
       /** What the project is called: its key is named after it. */
       readonly projectName: string;
       readonly agents: ReadonlyArray<ZeropsAgentType>;
-      readonly setupRuntimesYaml?: string;
+      /** The tier's services as the birth imports them (`mateTier`). */
+      readonly tierYaml?: string;
       readonly birthplace?: MateBirthplace;
     };
   }

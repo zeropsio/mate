@@ -144,7 +144,6 @@ function hqOf(answer: () => Promise<unknown>) {
     bindBirth: call("bindBirth"),
     attachProject: call("attachProject"),
     createMate: call("createMate"),
-    recordClosedOff: call("recordClosedOff"),
     keepDeployToken: call("keepDeployToken"),
     handOver: call("handOver"),
     renameApp: call("renameApp"),

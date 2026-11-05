@@ -148,7 +148,7 @@ export const OverviewIdentity = Schema.Struct({
   /** The engine its conversation runs on, by the protocol its rows speak; absent on a V1 Mate. */
   engine: Schema.optionalKey(Schema.Struct({ protocol: Schema.Int })),
   /**
-   * Whether its service holds the press's setup marker (`MATE_SETUP_RUNTIMES`), as the Mate reads it
+   * Whether its service holds the press's setup marker (`MATE_SETUP`), as the Mate reads it
    * locally: HQ keeps it on the Mate's record and asks Zerops nothing for it. Absent where the Mate
    * does not know (off Zerops, an older Mate).
    */

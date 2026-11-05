@@ -6,7 +6,6 @@ import {
 } from "@t3tools/client-runtime/connection";
 import { makeAccountStore, makeMateAdapter, type MateAdapter } from "@t3tools/client-runtime/data";
 import {
-  closedOffOf,
   initialEnvironment,
   selectReachability,
   mateVoice,
@@ -21,7 +20,7 @@ import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "@effect/vitest";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { closeOffPort, hqIndexPort, linkPhaseOf } from "./environmentPorts";
+import { hqIndexPort, linkPhaseOf } from "./environmentPorts";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -239,32 +238,6 @@ describe("repair is the Mate adapter's", () => {
     await clock.advance(0);
     expect(exchanges).toHaveLength(4);
     expect(driver.machines(KEY)?.environment.credential).toMatchObject({ kind: "held" });
-  });
-});
-
-describe("closeOffPort: HQ's word on which Mates' projects are closed off", () => {
-  const structure = {
-    ungrouped: [
-      { projectId: "p-closed", name: "Ada", mate: { closedOff: true } },
-      { projectId: "p-open", name: "Bo", mate: { closedOff: false } },
-    ],
-    apps: [],
-  } as never;
-  const word = (current: boolean | null) => {
-    const registry = AtomRegistry.make();
-    if (current !== null) {
-      mountHqNavigation(registry, "org-1", { structure: structure, live: current });
-    }
-    return closeOffPort(registry).read();
-  };
-  it.each([
-    { case: "HQ's answer now, closed off", current: true, projectId: "p-closed", want: true },
-    { case: "HQ's answer now, not closed off", current: true, projectId: "p-open", want: false },
-    { case: "a stale word, closed off", current: false, projectId: "p-closed", want: true },
-    { case: "a stale word, not closed off", current: false, projectId: "p-open", want: "unknown" },
-    { case: "no word", current: null, projectId: "p-closed", want: "unknown" },
-  ] as const)("$case: $want", ({ current, projectId, want }) => {
-    expect(closedOffOf(word(current), "org-1", projectId)).toBe(want);
   });
 });
 

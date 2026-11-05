@@ -144,7 +144,6 @@ const openMobileAccount = Effect.fnUntraced(function* (clock: DeadlineClock) {
       },
     },
     route: openMateRoute,
-    closeOffPending: { read: () => new Set(), subscribe: () => () => undefined },
     ...hqAbsent(),
   };
   // The organization's roster and services, as the account's store reads them.
