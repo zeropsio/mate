@@ -51,6 +51,9 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),
+        deleteBirth: asked("deleteBirth"),
+        claimBirthAttempt: asked("claimBirthAttempt"),
+        endBirthAttempt: asked("endBirthAttempt"),
         attachProject: asked("attachProject"),
         createMate: asked("createMate"),
         keepDeployToken: asked("keepDeployToken"),
@@ -95,6 +98,46 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect("a lost unbound birth deletion is confirmed only by a live complete birth list", () =>
+    Effect.gen(function* () {
+      const intent = { kind: "delete-birth", orgId: ORG, appId: "app-1", birthId: "b1" } as const;
+      const store = account([app({ births: [{ id: "b1", face: "" }] })]);
+      const { operations } = operationsOf(store, {
+        deleteBirth: async () => {
+          hqSays(store, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* operations.submit(intent);
+      expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+
+      const unread = account([]);
+      const unseen = operationsOf(unread, {
+        deleteBirth: async () => {
+          hqSays(unread, [app({ births: [] })]);
+          throw lost;
+        },
+      });
+      yield* unseen.operations.submit(intent);
+      expect(progress(unread)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+
+      const bound = account([app({ births: [{ id: "b1", face: "", projectId: "p1" }] })]);
+      const refusal = operationsOf(bound, {
+        deleteBirth: async () => {
+          throw new HqError({
+            kind: "refused",
+            code: "conflict",
+            reason: "birth_bound",
+            status: 409,
+            message: "The birth is already bound.",
+          });
+        },
+      });
+      yield* refusal.operations.submit(intent);
+      expect(progress(bound)).toMatchObject({ stage: "refused", code: "birth_bound" });
+    }),
+  );
+
   it.effect.each(["app", "birth"] as const)(
     "a lost $0 answer cannot adopt a preexisting record from an unread baseline",
     (kind) =>
@@ -119,7 +162,7 @@ describe("a creation's writes at HQ", () => {
         yield* operations.submit(
           kind === "app"
             ? { kind: "create-app", orgId: ORG, name: "Garden" }
-            : { kind: "record-birth", orgId: ORG, appId: "app-1", face: "face" },
+            : { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "face" },
         );
         expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
         expect(sends).toBe(1);
@@ -141,7 +184,7 @@ describe("a creation's writes at HQ", () => {
           { appId: "app-9" },
         ],
         [
-          { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+          { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
           {
             recordBirth: async (birth) => {
               said.push(`birth ${birth.appId} ${birth.face}`);
@@ -222,7 +265,7 @@ describe("a creation's writes at HQ", () => {
             { appId: "app-9" },
           ],
           [
-            { kind: "record-birth", orgId: ORG, appId: "app-1", face: "tint:shape" },
+            { kind: "record-birth", orgId: ORG, appId: "app-1", id: "birth-1", face: "tint:shape" },
             { recordBirth: () => Promise.reject(lost) },
             [app({ births: [{ id: "birth-1", face: "tint:shape" }] })],
             { birthId: "birth-1" },
@@ -283,6 +326,39 @@ describe("a creation's writes at HQ", () => {
       expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
       expect(record(store)?.uncertainBecause).toBe("HQ's answer was lost.");
     }),
+  );
+
+  it.effect(
+    "a lost birth answer adopts its own identity when another birth has the same face",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const sent: unknown[] = [];
+        const { operations } = operationsOf(store, {
+          recordBirth: async (birth) => {
+            sent.push(birth);
+            hqSays(store, [
+              app({
+                births: [
+                  { id: "birth-other", face: "tint:shape" },
+                  { id: "birth-1", face: "tint:shape" },
+                ],
+              }),
+            ]);
+            throw lost;
+          },
+        });
+        yield* operations.submit({
+          kind: "record-birth",
+          orgId: ORG,
+          appId: "app-1",
+          id: "birth-1",
+          face: "tint:shape",
+        });
+        expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape" }]);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(operationResult(record(store), "record-birth")).toEqual({ birthId: "birth-1" });
+      }),
   );
 
   it.effect.each(["conflict", "forbidden"] as const)(

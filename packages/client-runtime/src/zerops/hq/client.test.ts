@@ -1045,6 +1045,36 @@ describe("makeHqApi — the structure socket", () => {
 });
 
 describe("makeHqApi — a Mate's birth intent", () => {
+  it("records a refusal against the exact attempt HQ granted", async () => {
+    const hq = fakeHq((seen) =>
+      seen.path === "/api/births/b-1/attempt" &&
+      !(typeof seen.body === "object" && seen.body !== null && "outcome" in seen.body)
+        ? json(200, { step: "import", by: "person-1", at: "2026-11-05T12:00:00.000Z" })
+        : undefined,
+    );
+    const api = makeHqApi({
+      address: ADDRESS,
+      fetch: hq.fetch,
+      accessToken: doors().accessToken,
+      orgId: ORG,
+      openSocket: NO_SOCKET,
+    });
+    const claim = await api.claimBirthAttempt("b-1", "import");
+    await api.endBirthAttempt("b-1", "import", "refused", claim.at, "Quota reached.");
+    const attempts = hq.seen.filter((entry) => entry.path === "/api/births/b-1/attempt");
+    expect(attempts).toHaveLength(2);
+    expect(attempts[0]).toMatchObject({ method: "PUT", body: { step: "import" } });
+    expect(attempts[1]).toMatchObject({
+      method: "PUT",
+      body: {
+        step: "import",
+        outcome: "refused",
+        at: "2026-11-05T12:00:00.000Z",
+        reason: "Quota reached.",
+      },
+    });
+  });
+
   it("records where and with which face a Mate is born, before its project, and answers its id", async () => {
     const intent = { id: "b-1", face: "rose:seal" };
     const hq = fakeHq((seen) => (seen.path === "/api/births" ? json(201, intent) : undefined));
@@ -2766,6 +2796,24 @@ describe("Every HQ verb that decides on the person's role carries their current 
       method: "PUT",
       path: "/api/births/b1/project",
       ask: (api) => api.bindBirth("b1", "p1"),
+    },
+    {
+      call: "deleteBirth",
+      method: "DELETE",
+      path: "/api/births/b1",
+      ask: (api) => api.deleteBirth("b1"),
+    },
+    {
+      call: "claimBirthAttempt",
+      method: "PUT",
+      path: "/api/births/b1/attempt",
+      ask: (api) => api.claimBirthAttempt("b1", "create"),
+    },
+    {
+      call: "endBirthAttempt",
+      method: "PUT",
+      path: "/api/births/b1/attempt",
+      ask: (api) => api.endBirthAttempt("b1", "import", "unsent", "claim-at", "Key unavailable."),
     },
     {
       call: "createMate",

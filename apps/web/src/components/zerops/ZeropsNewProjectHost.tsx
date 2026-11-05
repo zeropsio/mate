@@ -53,13 +53,13 @@ import { useContext, useEffect, useMemo, useState } from "react";
 
 import {
   generateBotName,
-  generateZeropsGroupId,
   newMateTint,
   resolveAddProjectVerb,
   type ZeropsOrganization,
 } from "@t3tools/client-runtime/zerops";
 
 import { configuredHq } from "~/zerops/accountHq";
+import { randomUUID } from "~/lib/utils";
 import { beginCreation } from "~/zerops/creations";
 import { newProjectView, type NewProjectAsk } from "~/zerops/newProjectBirth";
 import { useRunNewProject } from "~/zerops/useRunNewProject";
@@ -231,7 +231,7 @@ function NewProjectDialog() {
     const ask: NewProjectAsk = {
       organizationId,
       creator: activeOrganization.membershipId,
-      birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      birthId: randomUUID(),
       name,
       botName,
       face,

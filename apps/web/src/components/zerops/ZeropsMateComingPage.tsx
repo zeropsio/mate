@@ -68,7 +68,9 @@ import {
   readZeropsMembership,
   resolvePrimaryConversation,
   type ZeropsMateFace,
+  readMateFace,
 } from "@t3tools/client-runtime/zerops";
+import type { SharedBirth } from "@t3tools/client-runtime/data";
 import { applyProjectCreationVerdict } from "@t3tools/client-runtime/zerops/candidates";
 import {
   reachabilityCountsDown,
@@ -187,6 +189,7 @@ import {
   type MateEmptyComing,
 } from "./ZeropsMateEmptyState";
 import { usePreferredConnection } from "~/zerops/mateConnectionPreference";
+import { sharedBirthPresentation, useSharedBirthState } from "~/zerops/sharedBirths";
 
 /** How long a Mate that is up waits here for the directory to name it before its conversation opens anyway. */
 export const HAND_OVER_NAME_WAIT_MS = 15_000;
@@ -203,6 +206,75 @@ const EMPTY_SHELL_STATUS =
   Atom.make<import("@t3tools/client-runtime/state/shell").EnvironmentShellStatus>("empty");
 
 export function ZeropsMateComingPage({ projectId }: { readonly projectId: string }) {
+  const { open, readyProjectIds } = useSharedBirthState();
+  const birth = open.find((entry) => entry.projectId === projectId);
+  return birth === undefined ? (
+    <ExistingMateComingPage
+      projectId={projectId}
+      birthReady={readyProjectIds.includes(projectId)}
+    />
+  ) : (
+    <SharedBirthStage birth={birth} />
+  );
+}
+
+/** A birth's own detail reads the same progress and actions as its row on every device. */
+export function SharedBirthStage({ birth }: { readonly birth: SharedBirth }) {
+  const registry = useZeropsRegistry();
+  const actions = useMateActions({ registry, serverVersions: NO_VERSIONS });
+  const face = readMateFace(birth.face);
+  const mate = {
+    name: birth.intent?.placement.name ?? "Mate",
+    tint: face?.tint ?? NO_FACE.tint,
+    shape: face?.shape ?? NO_FACE.shape,
+    project: birth.appName,
+    connected: false,
+  };
+  const presentation = sharedBirthPresentation(birth);
+  return (
+    <MateComingFrame header={<MateComingHeader mate={{ ...mate, projectUrl: undefined }} />}>
+      <MateEmptyStateView
+        coming={{
+          kind: "coming",
+          headline: mate.name,
+          sentence: presentation.line,
+          severity: presentation.attention ? "attention" : "info",
+          below: (
+            <div className="flex flex-wrap justify-center gap-2">
+              {actions.birthActionsFor(birth.id).map((action) =>
+                "separator" in action ? null : (
+                  <Button
+                    disabled={action.disabled}
+                    key={action.id}
+                    onClick={action.onSelect}
+                    variant={action.variant === "destructive" ? "destructive-ghost" : "primary"}
+                  >
+                    {action.label}
+                  </Button>
+                ),
+              )}
+            </div>
+          ),
+        }}
+        focusOnArrival
+        mate={mate}
+        phase={null}
+        signIn={null}
+        signInRequired={false}
+        unknown={null}
+      />
+      {actions.dialogs}
+    </MateComingFrame>
+  );
+}
+
+function ExistingMateComingPage({
+  projectId,
+  birthReady,
+}: {
+  readonly projectId: string;
+  readonly birthReady: boolean;
+}) {
   const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const navigate = useNavigate();
   const router = useRouter();
@@ -225,14 +297,18 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   const [registeringChief, setRegisteringChief] = useState(false);
   const [chiefError, setChiefError] = useState<string | null>(null);
   // What this tab pressed for it, while it holds it.
-  const press = useMatePress(projectId);
+  const localPress = useMatePress(projectId);
+  const press = birthReady ? undefined : localPress;
   const registration = useMateRegistration(projectId);
   // Seen and never opened: the person's verdict from live Zerops data (`mateVisibility`).
   const listedOnly = useAtomValue(shownMateVisibilityAtom(projectId)) === "listed";
   const { services } = useProjectServices(projectId);
   // The New project or the Add this tab made whose Mate this is, while the tab holds it.
   const creations = useCreations();
-  const made = useMemo(() => madeOf(creations, projectId), [creations, projectId]);
+  const made = useMemo(
+    () => (birthReady ? undefined : madeOf(creations, projectId)),
+    [birthReady, creations, projectId],
+  );
   // The platform's verdict on its creation, read while it may still be refused (H20).
   const verdicts = useProjectCreations(listed === undefined ? [] : [listed]);
   const candidate = useMemo(

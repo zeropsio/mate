@@ -111,6 +111,9 @@ const mock = vi.hoisted(() => ({
   runReceipts: new Map<string, unknown>(),
   createApp: vi.fn(),
   restartContainer: vi.fn(),
+  births: [] as Array<import("@t3tools/client-runtime/data").SharedBirth>,
+  proceedBirth: vi.fn(),
+  deleteUnboundBirth: vi.fn(),
   coming: undefined as import("@t3tools/client-runtime/data").MateComing | undefined,
   deployDialog: null as { candidate: ZeropsCandidatePresentation; onClose: () => void } | null,
   threads: [] as Array<{
@@ -241,6 +244,13 @@ vi.mock("./deleteProject", () => ({
   useDeleteProject: () => mock.deleteProject,
 }));
 vi.mock("./useMenuMateReadings", () => ({ useMateComingOf: () => () => mock.coming }));
+vi.mock("./sharedBirths", async (original) => ({
+  ...(await original<typeof import("./sharedBirths")>()),
+  useSharedBirths: () => mock.births,
+}));
+vi.mock("./useBirthActions", () => ({
+  useBirthActions: () => ({ proceed: mock.proceedBirth, deleteUnbound: mock.deleteUnboundBirth }),
+}));
 vi.mock("./MateDeployConfirmation", () => ({
   MateDeployConfirmation: (props: NonNullable<typeof mock.deployDialog>) => {
     mock.deployDialog = props;
@@ -530,6 +540,9 @@ beforeEach(() => {
   openAccountLifetime("user-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.coming = undefined;
+  mock.births = [];
+  mock.proceedBirth.mockReset().mockResolvedValue("started");
+  mock.deleteUnboundBirth.mockReset().mockResolvedValue(undefined);
   mock.deployDialog = null;
   mock.restartContainer.mockReset();
   mock.restartContainer.mockResolvedValue(undefined);
@@ -613,6 +626,9 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           createApp: unused,
           recordBirth: unused,
           bindBirth: unused,
+          deleteBirth: unused,
+          claimBirthAttempt: unused,
+          endBirthAttempt: unused,
           attachProject: unused,
           createMate: unused,
           recordClosedOff: unused,
@@ -652,6 +668,39 @@ const verbs = (candidate: ZeropsCandidatePresentation) =>
   actions()
     .actionsFor(candidate, { mate: true, groupId: "acme", role: "dev" } as never)
     .filter((entry): entry is ZeropsMenuAction => !("separator" in entry));
+
+it("a bound shared birth offers Continue and Delete through the same Mate actions", async () => {
+  mock.births = [
+    {
+      id: "birth",
+      appId: "acme",
+      appName: "Acme",
+      face: "",
+      projectId: FEN.project.id,
+      importProcessId: null,
+      placement: "attached",
+      intent: undefined,
+      progress: { phase: "project-created", next: { kind: "import" }, reason: null },
+      canContinue: true,
+      canDelete: true,
+    },
+  ];
+  mount();
+  expect(verbs(FEN).map((entry) => entry.id)).toEqual(["continue", "delete"]);
+  await act(async () => {
+    verbs(FEN)[0]!.onSelect();
+  });
+  expect(mock.proceedBirth).toHaveBeenCalledWith("birth");
+  mock.births = [{ ...mock.births[0]!, canContinue: false }];
+  act(() => {
+    mounted[0]!.update(
+      <RegistryContext.Provider value={mock.faceRegistry!}>
+        <Probe />
+      </RegistryContext.Provider>,
+    );
+  });
+  expect(verbs(FEN).map((entry) => entry.id)).toEqual(["delete"]);
+});
 
 function openFace(candidate: ZeropsCandidatePresentation): void {
   const entry = verbs(candidate).find((verb) => verb.id === "face");
@@ -1367,6 +1416,61 @@ describe("useMateActions — Finish setup on a Mate HQ holds in its application,
       harden: false,
     });
   });
+
+  it("an open birth cannot run the legacy Finish import, including an action opened before HQ reported it", async () => {
+    mock.finishMateSetup.mockResolvedValue({ ok: true });
+    mock.listing.current = {
+      state: "known",
+      value: [IVO],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    const registry = known();
+    mount(registry);
+    const oldFinish = verbs(IVO).find((verb) => verb.id === "finish-setup");
+    expect(oldFinish).toBeDefined();
+    await act(async () => {
+      mountHqNavigation(registry, "org-acme", {
+        structure: {
+          ungrouped: [],
+          apps: [
+            {
+              id: "acme",
+              name: "Acme Docs",
+              projects: [{ projectId: IVO.project.id, kind: "mate", mate: { face: "coral:gem" } }],
+              births: [{ id: "birth", face: "coral:gem", projectId: IVO.project.id }],
+            },
+          ],
+        } as never,
+      });
+      oldFinish!.onSelect();
+    });
+    expect(mock.finishMateSetup).not.toHaveBeenCalled();
+    expect(verbs(IVO).some((verb) => verb.id === "finish-setup")).toBe(false);
+  });
+
+  it("an old Finish action cannot import while HQ's birth evidence is stale", async () => {
+    mock.listing.current = {
+      state: "known",
+      value: [IVO],
+      asOf: { ordinal: 1, atMs: 1_000 },
+      coverage: "complete",
+      freshness: { kind: "live" },
+    };
+    const registry = known();
+    mount(registry);
+    const oldFinish = verbs(IVO).find((verb) => verb.id === "finish-setup");
+    expect(oldFinish).toBeDefined();
+    await act(async () => {
+      mountHqNavigation(registry, "org-acme", {
+        structure: { apps: [], ungrouped: [] },
+        live: false,
+      });
+      oldFinish!.onSelect();
+    });
+    expect(mock.finishMateSetup).not.toHaveBeenCalled();
+  });
 });
 
 // B5: two browsers. A slow press the other one still holds at HQ is no half-made Mate, however
@@ -1388,7 +1492,14 @@ describe("useMateActions — Finish setup on a Mate another browser still presse
     { held: "stopped", offered: true },
   ] as const)("its press elsewhere $held: Finish setup offered $offered", ({ held, offered }) => {
     mock.pressElsewhere = (projectId) => (projectId === SLOW.project.id ? held : "stopped");
-    mount();
+    const registry = AtomRegistry.make();
+    registry.set(zeropsSessionAtom, {
+      status: "signed-in",
+      organizationStatus: "selected",
+      activeOrganization: { organizationId: "org-acme" },
+    } as never);
+    mountHqNavigation(registry, "org-acme", { structure: { apps: [], ungrouped: [] } });
+    mount(registry);
     expect(verbs(SLOW).some((verb) => verb.id === "finish-setup")).toBe(offered);
   });
 

@@ -14,6 +14,7 @@ import { mateBirthImportYaml } from "./recipeTier.ts";
 /** A tier as the group repo's `main` holds it. */
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "production" as const,
   yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
 };
@@ -379,7 +380,7 @@ services:
       clientId: "c1",
       role: "dev",
       name: "Acme - Wren",
-      recipe: { kind: "tier", tier: "mate", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml },
       ...extra,
     });
     if (!result.ok) throw new Error(result.reason);
@@ -459,7 +460,12 @@ services:
       clientId: "c1",
       role: "dev",
       name: "Acme - Wren",
-      recipe: { kind: "tier", tier: "mate", yaml: "project:\n  name: x\n" },
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: "mate",
+        yaml: "project:\n  name: x\n",
+      },
     });
     expect(result).toEqual({ ok: false, reason: "This project has no recipe merged yet." });
   });
@@ -485,7 +491,7 @@ services:
         clientId: "c1",
         role: "dev",
         name: "Acme - Wren",
-        recipe: { kind: "tier", tier: "mate", yaml },
+        recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml },
         ...extra,
       });
       expect(result.ok ? undefined : result.reason).toBe(
@@ -513,7 +519,12 @@ services:
       clientId: "c1",
       role: "stage",
       name: "Aurora - production",
-      recipe: { kind: "tier" as const, tier: "production" as const, yaml: recipe },
+      recipe: {
+        kind: "tier" as const,
+        revision: "recipe-revision",
+        tier: "production" as const,
+        yaml: recipe,
+      },
       withAgent: false,
       ...extra,
     });

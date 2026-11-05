@@ -21,10 +21,10 @@ export const creationImports: Projection<string, Readonly<Record<string, string 
       if (placement.kind !== "known" || placement.value.mate == null) continue;
       imports[id] = placement.value.mate.importProcessId ?? imports[id] ?? null;
     }
-    // A surviving press still names its current attempt, including one not accepted yet.
+    // A press without a handle cannot erase an accepted handle retained by the birth or Mate.
     for (const id of read.members(hqPressesScope(orgId)).ids) {
       const press = read.fact("hqPress", id);
-      if (press.kind === "known") imports[id] = press.value.importProcessId ?? null;
+      if (press.kind === "known") imports[id] = press.value.importProcessId ?? imports[id] ?? null;
     }
     return imports;
   },

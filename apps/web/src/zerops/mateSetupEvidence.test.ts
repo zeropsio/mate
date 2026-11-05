@@ -120,6 +120,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
     {
       registerGroup: () => Promise.reject(new Error("Application already recorded")),
       recordBirth: () => Promise.reject(new Error("Birth already recorded")),
+      attemptProject: async (_birthId, send) => send(),
       createProject: (requestId, args) =>
         run(
           { kind: "create-project", orgId: ORG, name: args.name, tagList: [] },

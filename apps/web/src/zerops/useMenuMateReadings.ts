@@ -39,6 +39,7 @@ import { useProjectCreations } from "./useProjectCreations";
 import { useZeropsFirstBuilds } from "./useZeropsFirstBuilds";
 import { usePressesElsewhere } from "./usePressesElsewhere";
 import { pressComingInput, useMatePresses } from "./matePress";
+import { sharedBirthPresentation, useSharedBirthState } from "./sharedBirths";
 
 /**
  * What a Mate's row says (`useMatesActivity`), for a candidate the menu lists: by its project, else
@@ -201,6 +202,7 @@ const hqMatesWithMainAtom = Atom.make((get) => {
 export function useMateComingOf(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (candidate: ZeropsCandidate) => MateComing | undefined {
+  const { open: births, readyProjectIds } = useSharedBirthState();
   const presses = useMatePresses();
   const creations = useCreations();
   const { mateLink } = useEnvironmentLinks();
@@ -211,6 +213,12 @@ export function useMateComingOf(
   const wokeAt = useComingClock(candidates);
   return useCallback(
     (candidate: ZeropsCandidate) => {
+      const birth = births.find((entry) => entry.projectId === candidate.project.id);
+      if (birth !== undefined) {
+        const shown = sharedBirthPresentation(birth);
+        return { kind: "coming", line: shown.line, birth: { attention: shown.attention } };
+      }
+      if (readyProjectIds.includes(candidate.project.id)) return undefined;
       const { press, setUpFailed } = pressComingInput(presses, candidate.project.id);
       const made = madeOf(creations, candidate.project.id);
       return mateArrival({
@@ -228,7 +236,18 @@ export function useMateComingOf(
         pressElsewhere: pressOf(candidate.project.id),
       }).coming;
     },
-    [presses, creations, firstBuilds, mateLink, pressOf, verdicts, wokeAt, processFacts],
+    [
+      births,
+      readyProjectIds,
+      presses,
+      creations,
+      firstBuilds,
+      mateLink,
+      pressOf,
+      verdicts,
+      wokeAt,
+      processFacts,
+    ],
   );
 }
 

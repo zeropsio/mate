@@ -70,6 +70,11 @@ export const environmentSetup: Projection<
         placed.map((project) => [project.projectId, project.can] as const),
       ),
     );
+    const birthProjects = new Set(
+      structure.apps.flatMap(({ births }) =>
+        (births ?? []).flatMap(({ projectId }) => (projectId == null ? [] : [projectId])),
+      ),
+    );
     return halfMadeGroupEnvironments({
       projects,
       registry: registryFromHq(structure),
@@ -79,7 +84,8 @@ export const environmentSetup: Projection<
           current: true,
           unavailableSince: null,
         }).kind === "allowed",
-      pressing: (projectId) => Object.hasOwn(navigation.presses, projectId),
+      pressing: (projectId) =>
+        birthProjects.has(projectId) || Object.hasOwn(navigation.presses, projectId),
     }).map((entry) => ({
       ...entry,
       finish:

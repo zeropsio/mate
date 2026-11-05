@@ -20,12 +20,7 @@
  * changing under the person paints the view's last frame, never a loading pane.
  */
 import { scopedThreadKey } from "@t3tools/client-runtime/environment";
-import {
-  buildZeropsGroupTree,
-  generateBotName,
-  generateZeropsGroupId,
-  newMateTint,
-} from "@t3tools/client-runtime/zerops";
+import { buildZeropsGroupTree, generateBotName, newMateTint } from "@t3tools/client-runtime/zerops";
 import { heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import type { ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
@@ -35,6 +30,7 @@ import { useContext, useMemo, useState } from "react";
 import { AccountDataContext } from "../../zerops/accountData";
 
 import { useThreadDetail, useThreadStatus } from "~/state/entities";
+import { randomUUID } from "~/lib/utils";
 import { configuredHq } from "~/zerops/accountHq";
 import { hqNavigationAtom } from "~/state/zerops";
 import { useAccountOperations } from "~/zerops/accountOperations";
@@ -216,7 +212,7 @@ function NewMateDialog({
     const face = choice.face ?? { tint: "slate", shape: "squircle" };
     const tier = choice.recipe.kind === "tier" ? choice.recipe.yaml : undefined;
     // Its own id, its view's: a random one, as a New project's group's.
-    const id = generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes));
+    const id = randomUUID();
     const organizationId = activeOrganization.id;
     beginCreation({
       ask: {
@@ -253,6 +249,7 @@ function NewMateDialog({
                 role: "dev",
                 choice,
                 creationId,
+                birthId: held.ask.birthId,
                 pressedAt: held.startedAt,
               }),
             (reason) => refuseAddHere(id, reason),

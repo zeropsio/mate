@@ -22,6 +22,8 @@ declare module "../model.ts" {
       readonly orgId: string;
       readonly name: string;
       readonly tagList: ReadonlyArray<string>;
+      /** Its HQ birth owns reconciliation of a lost answer, including other births' projects. */
+      readonly birthId?: string;
       readonly location?: string;
       /** Who reaches it from birth beyond their organization role; its creator needs no entry. */
       readonly userRoles?: ReadonlyArray<ProjectGrant>;

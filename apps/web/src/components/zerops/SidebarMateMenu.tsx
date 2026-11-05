@@ -49,6 +49,7 @@ export interface MateRenameAction {
 
 /** What a Mate's menu can do beyond opening it, as the caller wires it. */
 export interface MateRowActions {
+  readonly birthOnly?: boolean;
   /** Whether this viewer muted it here. */
   readonly muted: boolean;
   /** Absent where there is nothing to mute — a Mate with no conversation yet. */
@@ -121,6 +122,23 @@ export function MateMenuItems({
     (entry): entry is Extract<ZeropsMenuEntry, { readonly label: string }> =>
       !("separator" in entry),
   );
+  if (actions.birthOnly === true) {
+    return (
+      <>
+        {entries.map((entry) => (
+          <MenuItem
+            data-zerops-mate-menu={entry.id}
+            disabled={entry.disabled === true}
+            key={entry.id}
+            onClick={entry.onSelect}
+            variant={entry.variant ?? "default"}
+          >
+            {entry.label}
+          </MenuItem>
+        ))}
+      </>
+    );
+  }
   // What takes the Mate away for good stands last, a line apart — after the stop too.
   const verbs = entries.filter((entry) => entry.variant !== "destructive");
   const final = entries.filter((entry) => entry.variant === "destructive");

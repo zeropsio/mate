@@ -30,7 +30,9 @@ declare module "../model.ts" {
     readonly "record-birth": {
       readonly orgId: string;
       readonly appId: string;
+      readonly id: string;
       readonly face: string;
+      readonly intent?: Readonly<Record<string, unknown>>;
       readonly standUp?: boolean;
       readonly automated?: true;
     };
@@ -39,6 +41,24 @@ declare module "../model.ts" {
       readonly appId: string;
       readonly birthId: string;
       readonly projectId: string;
+    };
+    readonly "delete-birth": {
+      readonly orgId: string;
+      readonly appId: string;
+      readonly birthId: string;
+    };
+    readonly "claim-birth-attempt": {
+      readonly orgId: string;
+      readonly birthId: string;
+      readonly step: "create" | "import";
+    };
+    readonly "end-birth-attempt": {
+      readonly orgId: string;
+      readonly birthId: string;
+      readonly step: "create" | "import";
+      readonly outcome: "refused" | "unsent";
+      readonly at: string;
+      readonly reason: string;
     };
     readonly "attach-project": {
       readonly orgId: string;
@@ -68,6 +88,9 @@ declare module "../model.ts" {
     readonly "set-auto-update-policy": { readonly policy: HqAutoUpdatePolicy };
     readonly "create-app": { readonly appId: string };
     readonly "record-birth": { readonly birthId: string };
+    readonly "claim-birth-attempt": {
+      readonly claim: { readonly by: string; readonly at: string };
+    };
   }
 }
 
@@ -138,9 +161,7 @@ export const recordBirth = made(
       read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
     )
       return null;
-    return app.value.births
-      .filter((birth) => birth.face === intent.face && birth.projectId == null)
-      .map((birth) => birth.id);
+    return app.value.births.filter((birth) => birth.id === intent.id).map((birth) => birth.id);
   },
   (birthId) => ({ birthId }),
 );
@@ -153,6 +174,49 @@ export const bindBirth = shown(
       (birth) => birth.id === intent.birthId && birth.projectId === intent.projectId,
     ) || placementOf(read, intent.projectId)?.mate?.birthId === intent.birthId,
 );
+
+/** Absence is evidence only in the live, complete birth list of the known application. */
+export const deleteBirth: OperationKind<"delete-birth"> = {
+  kind: "delete-birth",
+  executor: "hq",
+  ...shownInFacts(
+    (intent) => intent.birthId,
+    (read, intent) => {
+      const app = read.fact("hqApp", intent.appId);
+      return (
+        app.kind === "known" &&
+        app.value.births !== undefined &&
+        read.stream(app.scope).phase === "live" &&
+        read.stream(linkKeys.hq(intent.orgId)).phase === "live" &&
+        !app.value.births.some((birth) => birth.id === intent.birthId)
+      );
+    },
+  ),
+  effectHandles: (read, intent) => {
+    const app = read.fact("hqApp", intent.appId);
+    if (
+      app.kind !== "known" ||
+      app.value.births === undefined ||
+      read.stream(app.scope).phase !== "live" ||
+      read.stream(linkKeys.hq(intent.orgId)).phase !== "live"
+    )
+      return null;
+    return app.value.births.some((birth) => birth.id === intent.birthId) ? [] : [intent.birthId];
+  },
+};
+
+/** A lost claim answer cannot be adopted: even the same person may be in another tab. */
+export const claimBirthAttempt: OperationKind<"claim-birth-attempt"> = {
+  kind: "claim-birth-attempt",
+  executor: "hq",
+  reflected: () => false,
+};
+
+export const endBirthAttempt: OperationKind<"end-birth-attempt"> = {
+  kind: "end-birth-attempt",
+  executor: "hq",
+  reflected: () => false,
+};
 
 export const attachProject = shown(
   "attach-project",
@@ -263,6 +327,9 @@ export const HQ_WRITE_KINDS = [
   createApp,
   recordBirth,
   bindBirth,
+  deleteBirth,
+  claimBirthAttempt,
+  endBirthAttempt,
   attachProject,
   createMateRecord,
   keepDeployKey,

@@ -1216,6 +1216,26 @@ describe("a creation under way in the menu", () => {
     stored.opened = new Set(["aaa"]);
   });
 
+  it("a pending shared birth shows the phase and reason received from its shared record", () => {
+    const html = render([CRM_DEV], {
+      births: [{ ...birth(), intent: "b1" }],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? {
+              line: "Project created · Quota reached.",
+              attention: true,
+              entries: [
+                { id: "continue", label: "Continue", onSelect: () => {} },
+                { id: "delete", label: "Delete", variant: "destructive", onSelect: () => {} },
+              ],
+            }
+          : undefined,
+    });
+    expect(html).toContain("Project created · Quota reached.");
+    expect(html).toContain('aria-label="More for Vera"');
+    expect(html).not.toContain("Coming up ·");
+  });
+
   it("draws a Mate being created after the listed ones: waking, named, how far it has got", () => {
     const html = render([CRM_DEV], { births: [birth()] });
     expect(comingRows(html)).toHaveLength(1);

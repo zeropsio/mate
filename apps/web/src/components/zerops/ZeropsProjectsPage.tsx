@@ -107,6 +107,11 @@ import {
 import { useCreations } from "~/zerops/creations";
 import { placedNewProjects } from "~/zerops/newProjectBirth";
 import {
+  placedSharedBirths,
+  sharedBirthPresentation,
+  useSharedBirthState,
+} from "~/zerops/sharedBirths";
+import {
   useTakenBotNames,
   useZeropsCandidates,
   type ZeropsCandidatePresentation,
@@ -994,15 +999,19 @@ export function ZeropsProjectsContent({
   // An application HQ holds with no project is drawn too, empty, for a Mate to be added to it.
   const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const placementStatus = useAtomValue(hqPlacementStatusAtom);
+  const { open: sharedBirths, readyProjectIds } = useSharedBirthState();
   // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
   const hqKnown = useAtomValue(hqPlacementsAtom) !== null && hqStructure.live;
   const groupTree = useProjectsInventory(
     candidates,
     projectOrder,
-    placedPressesIn(
-      presses,
-      activeOrganization?.id,
-      placedNewProjects(made, activeOrganization?.id),
+    placedSharedBirths(
+      sharedBirths,
+      placedPressesIn(
+        presses,
+        activeOrganization?.id,
+        placedNewProjects(made, activeOrganization?.id),
+      ),
     ),
   );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);
@@ -1259,17 +1268,22 @@ export function ZeropsProjectsContent({
     updateMenuActions?: ReadonlyArray<ZeropsMenuAction>,
   ): React.ReactNode => {
     if (isZeropsToolCandidate(candidate)) return undefined;
+    const birth = mate ? mateActions.birthForProject(candidate.project.id) : undefined;
     return (
       <ZeropsProjectMenu
         actions={mate ? mateActions.actionsFor(candidate, tags, updateMenuActions ?? []) : []}
         enablingServiceId={route.enablingServiceId}
         label={`More for ${projectNameInApp(candidate.project)}`}
-        projectId={tags.role === "prod" || tags.role === "stage" ? candidate.project.id : undefined}
-        offers={candidate.routeOffers}
+        projectId={
+          birth === undefined && (tags.role === "prod" || tags.role === "stage")
+            ? candidate.project.id
+            : undefined
+        }
+        offers={birth === undefined ? candidate.routeOffers : undefined}
         onEnableRoute={(offer) => {
           void route.enable(candidate.project.id, offer.serviceId);
         }}
-        routes={candidate.routes}
+        routes={birth === undefined ? candidate.routes : undefined}
       />
     );
   };
@@ -1399,6 +1413,9 @@ export function ZeropsProjectsContent({
     live: ZeropsAgentActivity | undefined,
     busy: boolean,
   ): React.ReactNode => {
+    const birth = sharedBirths.find((entry) => entry.projectId === candidate.project.id);
+    if (birth !== undefined)
+      return <span data-zerops-surface="mate-subject">{sharedBirthPresentation(birth).line}</span>;
     if (action.kind === "not-in-hq") return presentation.detail;
     if (candidate.group === "connected" || live !== undefined) {
       return live?.subject === undefined ? null : (
@@ -1413,6 +1430,7 @@ export function ZeropsProjectsContent({
     // checklist (`birthProgress.ts`), read off the platform's processes and
     // statuses — whenever the wait has nothing more pressing to say.
     if (
+      !readyProjectIds.includes(candidate.project.id) &&
       showsZeropsBirthLine({
         projectId: candidate.project.id,
         birthProjectIds,
@@ -2668,6 +2686,22 @@ export function ZeropsProjectsContent({
         renderEnvironment={renderEnvironment}
         renderGroupMenu={renderGroupMenu}
         renderMate={renderMate}
+        renderComingBirth={(projectId) => {
+          const birth = sharedBirths.find(
+            (entry) => entry.projectId === projectId || entry.id === projectId,
+          );
+          return birth === undefined
+            ? undefined
+            : {
+                line: sharedBirthPresentation(birth).line,
+                menu: (
+                  <ZeropsProjectMenu
+                    actions={mateActions.birthActionsFor(birth.id)}
+                    label={`More for ${birth.intent?.placement.name ?? "Mate"}`}
+                  />
+                ),
+              };
+        }}
         renderMateFace={(candidate: ZeropsCandidatePresentation, size) => {
           const tint = tints.get(candidate.project.id) ?? "slate";
           return (

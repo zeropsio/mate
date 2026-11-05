@@ -10,6 +10,7 @@ import { zeropsStructure } from "../zerops/hq/structure.ts";
 import type { RoleMateVisibility } from "../zerops/mateAccess.ts";
 import { mateVisibility } from "./projections/mateVisibility.ts";
 import { mateHealth } from "./projections/mateHealth.ts";
+import { sharedBirths, type SharedBirthState } from "./projections/birthProgress.ts";
 /**
  * What a screen, and the account runtime's derivations outside React, may reach of the account's
  * data: the store's reads and the hold on a detail — never its writer. An app sets
@@ -86,6 +87,48 @@ export const accountReadsAtom = Atom.make<AccountReads | null>(null).pipe(
   Atom.keepAlive,
   Atom.withLabel("data:account-reads"),
 );
+
+/** The open births of the account's organization, as both sources prove them. */
+export const sharedBirthsAtom = Atom.family((personId: string) => {
+  const source = Atom.make((get): SharedBirthState => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return { open: [], readyProjectIds: [] };
+    return get(account.data.project(sharedBirths, { orgId: account.orgId, personId }));
+  });
+  // Status changes do not release and reacquire reads whose identities did not change.
+  const details = Atom.make((get) => {
+    const births = get(source).open;
+    return JSON.stringify([
+      [
+        ...new Set(births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId]))),
+      ].sort(),
+      [
+        ...new Set(
+          births.flatMap(({ importProcessId }) =>
+            importProcessId === null ? [] : [importProcessId],
+          ),
+        ),
+      ].sort(),
+    ]);
+  }).pipe(Atom.withEquality(Object.is));
+  const demand = Atom.make((get) => {
+    const account = get(accountReadsAtom);
+    if (account === null || account.orgId === null) return;
+    const [projects, imports] = JSON.parse(get(details)) as [string[], string[]];
+    for (const projectId of projects)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "history", ownerId: projectId }),
+      );
+    for (const importId of imports)
+      get.addFinalizer(
+        account.demandDetail({ family: "process", listing: "process", ownerId: importId }),
+      );
+  });
+  return Atom.make((get): SharedBirthState => {
+    get(demand);
+    return get(source);
+  }).pipe(Atom.withLabel(`data:shared-births:${personId}`));
+});
 
 export const NOT_READ_PROCESSES: ProjectProcesses = {
   retained: undefined,
