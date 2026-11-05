@@ -251,6 +251,34 @@ describe("who lives in each environment, derived", () => {
     ).toBe(false);
   });
 
+  it("a still-listed Mate keeps its remembered identity while HQ cannot name its project", () => {
+    openAccount("identity-unnamed");
+    const storage = new Map<string, string>();
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => storage.get(key) ?? null,
+        setItem: (key: string, value: string) => storage.set(key, value),
+        removeItem: (key: string) => storage.delete(key),
+      },
+    });
+    const store = publishAccount(appAtomRegistry);
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe(PROJECT.name);
+    seedMate(store, "");
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe(PROJECT.name);
+    seedMate(store, "renamed");
+    expect(appAtomRegistry.get(zeropsMatesAtom).get(FEN)?.name).toBe("renamed");
+    const scope = `hq:${organization.organizationId}:hq-placements` as const;
+    store.dispatch({
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: [{ scope, generation: store.state().streams.get(scope)?.generation ?? 0 }],
+      reset: false,
+      rows: [],
+      removals: [{ family: "placement", id: PROJECT.id, reason: "deleted" }],
+    });
+    expect(appAtomRegistry.get(zeropsMatesAtom).has(FEN)).toBe(false);
+  });
+
   it("an environment the list has not reached is unknown, never nobody", () => {
     openAccount("user-a");
     publishAccount(appAtomRegistry);
