@@ -194,7 +194,7 @@ export function pressWatch(
   const press = read.members(scope).ids.includes(projectId)
     ? read.fact("hqPress", projectId)
     : null;
-  if (press?.kind === "known" && press.value.heldForMs > 0) return "held";
+  if (press?.kind === "known" && press.value.held) return "held";
   return watch === "dropped" ? "lapsed" : watch;
 }
 
