@@ -1,5 +1,4 @@
 import { assert, describe, it } from "@effect/vitest";
-import type { KeyLinkAccess } from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
@@ -19,28 +18,10 @@ import {
   type AccessList,
   administersProject,
   make as makeAccessList,
-  nextAccessList,
   ownAccessList,
 } from "./ZeropsMateAccessList.ts";
 
-const AT = "2026-10-24T10:00:00.000Z";
 const JAN = { userId: "jan", role: "OWNER", visibility: "open" } as const;
-const EVA = { userId: "eva", role: "READ_ONLY", visibility: "listed" } as const;
-
-const full = (version: number, members: KeyLinkAccess["members"]): KeyLinkAccess => ({
-  type: "access",
-  version,
-  viewAt: AT,
-  full: true,
-  members,
-});
-const delta = (version: number, members: KeyLinkAccess["members"]): KeyLinkAccess => ({
-  type: "access",
-  version,
-  viewAt: AT,
-  full: false,
-  members,
-});
 
 /** Who a list names, by user and visibility; `none` before any list. */
 const named = (list: AccessList | undefined) =>
@@ -48,94 +29,9 @@ const named = (list: AccessList | undefined) =>
     ? "none"
     : list.members.map((member) => `${member.userId}:${member.visibility}`).join(",");
 
-describe("nextAccessList", () => {
-  it.each<[string, ReadonlyArray<KeyLinkAccess>, string]>([
-    ["a delta before any snapshot is discarded", [delta(5, [JAN])], "none"],
-    ["a snapshot is the baseline", [full(3, [JAN, EVA])], "jan:open,eva:listed"],
-    [
-      "a snapshot numbered below the last still replaces it",
-      [full(9, [JAN, EVA]), full(1, [EVA])],
-      "eva:listed",
-    ],
-    [
-      "a delta above the last applies its entries",
-      [full(3, [JAN]), delta(4, [EVA, { ...JAN, role: "READ_ONLY", visibility: "listed" }])],
-      "jan:listed,eva:listed",
-    ],
-    [
-      "a delta entry with visibility none removes its member",
-      [full(3, [JAN, EVA]), delta(4, [{ ...EVA, visibility: "none" }])],
-      "jan:open",
-    ],
-    [
-      "a delta at the last version is discarded",
-      [full(3, [JAN]), delta(3, [{ ...JAN, visibility: "none" }])],
-      "jan:open",
-    ],
-    [
-      "a delta below the last is discarded",
-      [full(3, [JAN]), delta(4, [EVA]), delta(2, [{ ...JAN, visibility: "none" }])],
-      "jan:open,eva:listed",
-    ],
-  ])(
-    "A full access frame resets the Mate's baseline whatever its version; only deltas are compared by version: %s",
-    (_name, frames, expected) => {
-      const list = frames.reduce<AccessList | undefined>(
-        (held, frame) => nextAccessList(held, frame, 0),
-        undefined,
-      );
-      assert.strictEqual(named(list), expected);
-    },
-  );
-});
-
-describe("ZeropsMateAccessList", () => {
-  it.effect("TC-13 a view within 60 seconds of the Mate clock caps the hold from receipt", () =>
-    Effect.gen(function* () {
-      yield* TestClock.setTime(Date.parse(AT));
-      const list = yield* makeAccessList();
-      yield* list.heard({ ...full(1, [JAN]), viewAt: "2026-10-24T09:59:00.000Z" });
-      yield* TestClock.adjust("14 minutes");
-      assert.strictEqual(yield* list.admits("jan"), "open");
-      yield* TestClock.adjust(1);
-      assert.strictEqual(yield* list.admits("jan"), "not_in_list");
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("answers from HQ's relay while it is fresh, reading nothing of Zerops", () =>
-    Effect.gen(function* () {
-      // The list is built from nothing but the frames: no Zerops reader, no key.
-      const list = yield* makeAccessList();
-      assert.isTrue(Option.isNone(yield* list.current));
-      yield* list.heard(full(1, [JAN, EVA]));
-      yield* TestClock.adjust(Duration.minutes(10));
-      assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open,eva:listed");
-    }).pipe(Effect.scoped),
-  );
-
-  it.effect("tells a relay that changed who it lets in, never one that only aged", () =>
-    Effect.gen(function* () {
-      const list = yield* makeAccessList();
-      const told = yield* Stream.runCollect(Stream.take(list.changes, 4)).pipe(Effect.forkChild);
-      yield* Effect.yieldNow;
-      yield* list.heard(full(1, [JAN]));
-      yield* list.heard(delta(2, []));
-      yield* list.heard(full(3, [JAN]));
-      yield* list.heard(delta(4, [EVA]));
-      yield* list.heard(delta(4, [{ ...EVA, visibility: "none" }]));
-      yield* list.heard({ type: "access", version: 5, full: true, refused: true, members: [] });
-      yield* Effect.repeat(Effect.yieldNow, { times: 10 });
-      // Three changes so far: the first list, Eva listed, the refusal.
-      assert.isUndefined(told.pollUnsafe());
-      yield* list.heard(full(6, [JAN]));
-      assert.lengthOf(yield* Fiber.join(told), 4);
-    }).pipe(Effect.scoped),
-  );
-});
-
 describe("administersProject", () => {
-  const list = (members: AccessList["members"], refused = false): Option.Option<AccessList> =>
-    Option.some({ version: 1, members, refused, heardAtMs: 0, expiresAtMs: 1 });
+  const list = (members: AccessList["members"]): Option.Option<AccessList> =>
+    Option.some({ members, owners: [], readAtMs: 0, expiresAtMs: 1 });
   const ADA = { userId: "ada", role: "ADMIN", visibility: "open" } as const;
   const BEN = { userId: "ben", role: "BASIC_USER", visibility: "open" } as const;
   const ADA_LISTED = { ...ADA, visibility: "listed" } as const;
@@ -145,7 +41,6 @@ describe("administersProject", () => {
     ["an admin it opens for", list([JAN, ADA]), "zerops-user:ada", true],
     ["a basic user", list([JAN, BEN]), "zerops-user:ben", false],
     ["an admin it only lists", list([ADA_LISTED]), "zerops-user:ada", false],
-    ["an admin while the key is refused", list([ADA], true), "zerops-user:ada", false],
     ["an admin without a list that holds", Option.none<AccessList>(), "zerops-user:ada", false],
     ["a session that is no Zerops person", list([ADA]), "ada", false],
   ] as const)(
@@ -261,29 +156,18 @@ describe("ZeropsMateAccessList, computed by the Mate", () => {
   );
 
   it.effect(
-    "A refused read (401, 400 userNotFound|projectNotFound) keeps the last list and marks it stale: HQ's relay decides while the Mate cannot read Zerops itself",
+    "A read Zerops refuses for good (401, 400 userNotFound|projectNotFound) keeps the last list as it was, and it still decides",
     () =>
       Effect.gen(function* () {
         const { answer, own } = yield* ownRead;
         const list = yield* makeAccessList(own);
         yield* TestClock.adjust(Duration.zero);
-        yield* list.heard(full(1, [EVA]));
-        // The Mate's own list is authoritative: HQ's relay is not what decides.
-        assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
         for (const status of [401, 400]) {
           yield* Ref.set(answer, { kind: "refused", status });
           yield* TestClock.adjust(Duration.minutes(6));
-          assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "eva:listed");
-          yield* Ref.set(answer, read([person("jan", "OWNER")]));
-          yield* TestClock.adjust(Duration.minutes(6));
           assert.strictEqual(named(Option.getOrUndefined(yield* list.current)), "jan:open");
+          assert.strictEqual(yield* list.admits("jan"), "open");
         }
-        // Without a relay the stale list is kept, not emptied.
-        const alone = yield* makeAccessList(own);
-        yield* TestClock.adjust(Duration.zero);
-        yield* Ref.set(answer, { kind: "refused", status: 401 });
-        yield* TestClock.adjust(Duration.minutes(6));
-        assert.strictEqual(named(Option.getOrUndefined(yield* alone.current)), "jan:open");
       }).pipe(Effect.scoped),
   );
 

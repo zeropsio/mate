@@ -448,7 +448,6 @@ describe("the keys model's link", () => {
     changes: [],
     chief: { projectId: "P_CHIEF" },
   };
-  const member = { userId: "U1", role: "ADMIN", visibility: "open" };
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
@@ -480,16 +479,6 @@ describe("the keys model's link", () => {
         mate: { ...self, chief: null, ownerUserId: "U1" },
         autoUpdate: { orgId: "O", enabled: true, revision: 1 },
       },
-      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
-      {
-        type: "access",
-        version: 4,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "none" }],
-      },
-      { type: "access", version: 5, viewAt: AT, full: false, members: [] },
-      { type: "access", version: 6, full: true, refused: true, members: [] },
       { type: "ticket", ticket: "tk-1", userId: "U1", sessionId: "hs-1", expiresIn: 60 },
       { type: "close-session", sessionId: "hs-1" },
       { type: "git-credential", credential: "gc-1" },
@@ -511,10 +500,6 @@ describe("the keys model's link", () => {
         frame.type,
         "Success",
       ]);
-    const refused = decodeKeyDown(JSON.stringify(down[6]));
-    expect(
-      refused._tag === "Success" && refused.value.type === "access" && "refused" in refused.value,
-    ).toBe(true);
   });
 
   it("Decision: The contract schema drops `missing`: an access report is its `at`, `openers` and `listed`, and HQ derives who is missing.", () => {
@@ -589,23 +574,19 @@ describe("the keys model's link", () => {
     expect(read({ ...self, openPerBranch: false })).toBeUndefined();
   });
 
-  it("a hello without its key, an access delta naming an unknown visibility, a refused access frame carrying members and a state without its Chief are no frames", () => {
+  it("a hello without its key, a state without its Chief and an older HQ's access frame are no frames", () => {
     const { chief: _chief, ...withoutChief } = self;
     for (const hello of [
       { key: "", serviceId: "S", origin: "https://mate.zerops.app" },
       { key: "zcp-key", serviceId: "S" },
     ])
       expect(decodeKeyUp(JSON.stringify({ type: "hello", ...hello }))._tag).toBe("Failure");
+    const member = { userId: "U1", role: "ADMIN", visibility: "open" };
     const down = [
-      {
-        type: "access",
-        version: 1,
-        viewAt: AT,
-        full: false,
-        members: [{ ...member, visibility: "hidden" }],
-      },
-      { type: "access", version: 1, full: true, refused: true, members: [member] },
       { type: "state", mate: withoutChief },
+      { type: "access", version: 3, viewAt: AT, full: true, members: [member] },
+      { type: "access", version: 4, viewAt: AT, full: false, members: [] },
+      { type: "access", version: 6, full: true, refused: true, members: [] },
     ];
     for (const frame of down) expect(decodeKeyDown(JSON.stringify(frame))._tag).toBe("Failure");
   });

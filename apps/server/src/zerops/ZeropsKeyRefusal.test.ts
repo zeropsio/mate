@@ -105,7 +105,6 @@ const rig = (open = true) =>
       overview: Effect.succeed(Option.none()),
       changes: Stream.never,
       attention: Stream.never,
-      access: () => Effect.void,
       gitCredential: () => Effect.void,
       gitFingerprint: Effect.succeed(Option.none()),
       reconnectDelaysMs: [20],

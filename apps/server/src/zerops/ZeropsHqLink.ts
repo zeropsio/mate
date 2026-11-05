@@ -21,15 +21,17 @@ import type { TicketFrame } from "./ZeropsTicketDoor.ts";
  * - **Down:** the Mate's state as HQ holds it, kept here for whoever asks and handed on to
  *   `ZeropsAutomation` (whether the Mate is automated) and to `ZeropsChiefRestart`, which rotates
  *   every session on a moved Chief mark (`chief`), and to `ZeropsChangesFile`, which keeps the
- *   Mate's changes from every state where zcp reads them; who HQ says its project opens for and lists (`access`, advisory), handed on to
- *   `ZeropsMateAccessList`; tickets (`ticket`), each answered `ticket-ack`, or `ticket_refused`
- *   when the Mate's own list does not open for its person; the Mate's Git credential (`git-credential`), handed on to
+ *   Mate's changes from every state where zcp reads them; tickets (`ticket`), each answered
+ *   `ticket-ack`, or `ticket_refused` when the Mate's own list does not open for its person; the
+ *   Mate's Git credential (`git-credential`), handed on to
  *   `ZeropsGitCredentialFile`, never logged; an automated Mate's keys (`provider-keys`), handed on
  *   to `ZeropsAutomation`, never logged; and the tasks HQ hands an automated Mate (`task`), the
  *   follow-ups people say on them (`task-message`) and their stops (`task-stop`), worked by
  *   `ZeropsTasks`, whose reports go up as `task-state` — the latest task's first on every link —
  *   and only on a link whose HQ said in its state that the Mate is automated. A task's frame told
- *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}).
+ *   before HQ's first state on a link is held until it comes ({@link HQ_TASK_HOLD}). An older
+ *   HQ's `access` frame is read past like any frame this build cannot decode: the Mate's own list
+ *   is the only one (`ZeropsMateAccessList`).
  * - **Closed:** HQ names why (`MateLinkClosed`). A refused key (`4401`) or one HQ does not admit
  *   (`4403`, its code the reason) is the Mate's standing until HQ next sends its state; a link
  *   superseded by the Mate's own newer one (`4409`) is expected.
@@ -63,7 +65,6 @@ import {
   KeyLinkDown,
   KeyLinkUp,
   type AccessReport,
-  type KeyLinkAccess,
   type LinkedMate,
   type TicketRefusal,
   MATE_OVERVIEW_EVERY_MS,
@@ -209,8 +210,6 @@ export interface ZeropsHqLinkOptions {
    */
   readonly ticket?: (frame: TicketFrame) => Effect.Effect<Effect.Effect<"open" | TicketRefusal>>;
   readonly closeSession?: (sessionId: string) => Effect.Effect<void>;
-  /** Hands on who HQ says the project opens for and lists (`ZeropsMateAccessList`), advisory. */
-  readonly access: (frame: KeyLinkAccess) => Effect.Effect<void>;
   /** Whom the Mate's own access list names, latest first, then after each change (`access_report`). */
   readonly accessReports?: Stream.Stream<AccessReport>;
   /** Hands on the Mate's Git credential, or HQ's revocation of it (`ZeropsGitCredentialFile`). */
@@ -591,8 +590,6 @@ export const makeZeropsHqLink = (
               Effect.andThen(Deferred.succeed(answered, undefined)),
               Effect.andThen(usage?.state(frame) ?? Effect.void),
             );
-          case "access":
-            return options.access(frame);
           case "git-credential":
             return credentialWrites.withPermits(1)(
               Effect.suspend(() =>
@@ -982,7 +979,6 @@ export const layer = (crew: OverviewSources["crew"]) =>
         readKey: Effect.andThen(key.invalidate, key.read),
         ...(key.refusal === undefined ? {} : { keyRefusal: key.refusal }),
         connect: connectLinkSocket,
-        access: connections.heard,
         accessReports: access.reports,
         ticket: connections.ticket,
         closeSession: connections.closeSession,

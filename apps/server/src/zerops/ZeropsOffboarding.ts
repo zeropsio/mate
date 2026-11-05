@@ -103,8 +103,8 @@ export const make = (options: {
 
 /**
  * While this is a Zerops project, one pass whenever the access list changes whom it opens for or
- * whose the project is (`ZeropsMateAccessList`: the Mate's own recompute, a Zerops websocket
- * frame, or HQ's relay), and whenever a sign-in is recorded (`ZeropsProjectSigners.changes`).
+ * whose the project is (`ZeropsMateAccessList`: the Mate's own recompute or a Zerops websocket
+ * frame), and whenever a sign-in is recorded (`ZeropsProjectSigners.changes`).
  */
 export const layer = Layer.effect(
   ZeropsOffboarding,
