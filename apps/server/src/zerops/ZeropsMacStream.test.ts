@@ -13,6 +13,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import type { MacHostRecord, MacViewRecord } from "./mac/MacHost.ts";
+import { manualFileWatch } from "./testing/manualFileWatch.ts";
 import { make, type MacStreamProcess } from "./ZeropsMacStream.ts";
 
 const record: MacHostRecord = {
@@ -76,11 +77,13 @@ const fakeMac = (options: {
       "view" in options ? options.view : { app: "com.example.Counter", at: 1 },
     );
     const paired = yield* Ref.make(options.paired !== false);
+    const files = yield* manualFileWatch;
     const service = yield* make({
       pairCommands: PAIR,
       removeCommands: REMOVE,
       readRecord: Ref.get(paired).pipe(Effect.map((is) => (is ? record : undefined))),
       readView: Ref.get(view),
+      watch: files.watch,
       forget: Effect.gen(function* () {
         yield* Ref.set(paired, false);
         yield* Ref.set(view, undefined);
@@ -108,7 +111,6 @@ const fakeMac = (options: {
           return 0;
         }),
       retryDelaysMs: [1000],
-      pollMs: 500,
       stallMs: 15_000,
     });
     const send = (index: number, bytes: Uint8Array) =>
@@ -118,7 +120,7 @@ const fakeMac = (options: {
         yield* Queue.end(connections[index]!.output);
         yield* Deferred.succeed(connections[index]!.exit, code);
       });
-    return { service, connections, pressed, view, paired, send, exitWith };
+    return { service, connections, pressed, view, paired, send, exitWith, written: files.change };
   });
 
 /** Subscribes, collecting events into a queue the test reads from. */
@@ -310,7 +312,7 @@ describe("ZeropsMacStream", () => {
       yield* viewer.until(stateIs("connecting"));
       yield* settle;
       yield* Ref.set(mac.view, { app: "com.example.Notes", at: 2 });
-      yield* TestClock.adjust(Duration.millis(500));
+      yield* mac.written;
       yield* settle;
       expect(mac.connections.map((c) => [c.app, c.closed])).toEqual([
         ["com.example.Counter", true],
@@ -321,6 +323,25 @@ describe("ZeropsMacStream", () => {
       ).toMatchObject({ status: "connecting" });
       yield* viewer.leave;
     }),
+  );
+
+  it.effect(
+    "a Mac paired and an app opened while someone watches are reached at their writes",
+    () =>
+      Effect.gen(function* () {
+        const mac = yield* fakeMac({ paired: false, view: undefined });
+        const viewer = yield* watch(mac.service);
+        yield* viewer.until(stateIs("not-paired"));
+        yield* Ref.set(mac.paired, true);
+        yield* mac.written;
+        expect(yield* viewer.until(stateIs("no-app"))).toMatchObject({ macName: "Test Mac" });
+        yield* Ref.set(mac.view, { app: "com.example.Counter", at: 1 });
+        yield* mac.written;
+        yield* viewer.until(stateIs("connecting"));
+        yield* settle;
+        expect(mac.connections.map((c) => c.app)).toEqual(["com.example.Counter"]);
+        yield* viewer.leave;
+      }),
   );
 
   it.effect("drops a stream that went silent and says the Mac does not answer", () =>

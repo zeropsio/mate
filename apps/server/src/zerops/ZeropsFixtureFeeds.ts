@@ -462,6 +462,7 @@ const macStreamLayer = () =>
     ZeropsMacStreamModule.make({
       readRecord: Effect.succeed(undefined),
       readView: Effect.succeed(undefined),
+      watch: Effect.succeed({ next: Effect.never }),
       forget: Effect.void,
       openStream: () => Effect.die("ZeropsMacStream fixture: no Mac is paired"),
       runDevice: () => Effect.succeed(69),
