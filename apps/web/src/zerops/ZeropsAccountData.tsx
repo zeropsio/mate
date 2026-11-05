@@ -26,6 +26,7 @@ import { useContext, useEffect, useMemo, type ReactNode } from "react";
 import { MateBrowserFrames } from "./browserStreamLinks";
 import { MateMacViews } from "./macViewLinks";
 import { useAccountWorkspace } from "./accountWorkspace";
+import { holdPressStreams } from "./pressStreams";
 import { useAccountDatabase } from "./accountDatabase";
 import { useAccountBuildLogs } from "./accountBuildLogs";
 import { onZeropsInvalidation } from "./accountInvalidations";
@@ -105,6 +106,8 @@ export function ZeropsAccountData({ children }: { readonly children: ReactNode }
   }, [observation, orgId]);
   // The person's role on a project moving in Zerops' own data asks what HQ refused of it again.
   useEffect(() => followMateRoles(registry, observation.roleChanged), [observation, registry]);
+  // A running press keeps its organization's HQ stream open through this account's observation.
+  useEffect(() => holdPressStreams(observation.keepPress), [observation]);
   useEffect(() => () => observation.stop(), [observation]);
   useEffect(() => {
     if (typeof window === "undefined" || typeof document === "undefined") return;

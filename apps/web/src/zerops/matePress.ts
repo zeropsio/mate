@@ -68,6 +68,7 @@ import {
   type LockManagerLike,
 } from "./mateLocks";
 import { accountHqApi } from "./accountHq";
+import { pressStreamOf } from "./pressStreams";
 import { HQ_UNFOLLOWED, type AccountOperations } from "./accountOperations";
 import { addGroupEnvironment } from "./addGroupEnvironment";
 import {
@@ -1024,12 +1025,9 @@ function pressedElsewhere(
   return { ok: false, projectId: resume.projectId, failedStep, error: reason };
 }
 
-/**
- * How often a running press renews its hold at HQ, besides each of its steps: once a minute. HQ
- * holds it five minutes from each renewal (`PRESS_HOLD_MS`); a browser wakes a hidden tab's timers
- * at most once a minute (Chrome's intensive throttling), so a press in a background tab keeps its
- * hold with four minutes to spare, and a closed tab's hold runs out within five.
- */
+/** What a press says once HQ let its hold go: this browser's HQ stream stayed away too long. */
+export const PRESS_LAPSED =
+  "Its setup lapsed: this browser lost HQ for too long, and another may go on with it.";
 
 async function pressRun(
   input: Parameters<typeof runPress>[0],
@@ -1058,6 +1056,8 @@ async function pressRun(
       steps: input.steps,
       platform: input.platform,
       isCurrent: input.isCurrent,
+      // A press whose hold lapsed writes nothing more: its setup is another browser's to finish now.
+      stopped: () => (input.hold?.lapsed() === true ? PRESS_LAPSED : undefined),
       describeError: zeropsErrorMessage,
       ...(input.resume === undefined ? {} : { resume: input.resume }),
       onProjectAccepted: async (projectId) => {
@@ -1077,8 +1077,6 @@ async function pressRun(
         // Registered, a stage's or a production's press is over at HQ, which ended its hold.
         if (progress.some(({ step, state }) => step.kind === "register" && state === "done"))
           input.hold?.registered();
-        // Each step that moves renews the press's hold, whatever its timers are let do.
-        input.hold?.renew();
         if (accepted !== undefined && input.isCurrent()) {
           const held = readMatePress(accepted);
           progressPress(accepted, progress);
@@ -1300,6 +1298,7 @@ async function finishLocked(
       ? undefined
       : acquireHqPressLease(
           accountHqApi(input.inputs.client, input.inputs.organizationId, input.hq),
+          pressStreamOf(input.inputs.organizationId),
           {
             kind: "mate",
             active: input.isCurrent,

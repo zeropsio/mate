@@ -57,6 +57,7 @@ function mountAccount() {
         demandDetail: () => () => {},
         renewHeld: () => {},
         showHq: unexpectedObservation,
+        keepPress: unexpectedObservation,
         moveOffers: unexpectedObservation,
         compare: unexpectedObservation,
         seen: unexpectedObservation,

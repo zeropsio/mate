@@ -1,34 +1,20 @@
-import * as Effect from "effect/Effect";
-import * as Clock from "effect/Clock";
-import * as Fiber from "effect/Fiber";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
-
-/** HQ lease protocol policy; renewal never decides operation settlement. */
-export const PRESS_RENEW_MS = 60_000;
-
-/** The least time between two renewals a press's steps ask for: its steps move far more often. */
-export const PRESS_STEP_RENEW_MS = 20_000;
 
 /**
  * A press's hold at its organization's HQ (`PUT /api/presses/{projectId}`, B5): what another
- * browser reads to tell a press still running — however slow — from one whose tab closed, and what
- * keeps two presses from writing one project twice. Taken once the press's project is known,
- * renewed every {@link PRESS_RENEW_MS} and at each of its steps while it runs, given its container
- * import's process once Zerops answered it, and ended at its end: a press that finished leaves no
- * record, one that stopped keeps it for its setup to be finished for its kind. A hold HQ does not
- * answer is not the press's to wait on: it goes on, renewing; only HQ's refusal for another
- * browser's press stops it. One HQ refuses this person outright leaves the press unheld, never
- * asked again. A hold HQ says it no longer holds (`press_not_held`: it ran out, or HQ ended it)
- * is let go here too — renewed no more, and ended nothing at HQ.
+ * browser reads to tell a running press from one whose tab closed, and what keeps two presses from
+ * writing one project twice. Taken once the press's project is known, taken again with its
+ * container import's process once Zerops answered it, and ended at its end: a press that finished
+ * leaves no record, one that stopped keeps it for its setup to be finished for its kind. The hold
+ * lives with its organization's HQ stream, which the press keeps open while it holds (`keep`): it
+ * sends HQ nothing else to keep it. A stream that stays away past HQ's grace loses it: the press
+ * lapsed, and writes nothing more. A hold HQ does not answer is not the press's to wait on: it goes
+ * on; only HQ's refusal for another browser's press stops it. One HQ refuses this person outright
+ * leaves the press unheld, never asked again.
  */
 export interface PressHold {
   /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
   readonly take: (projectId: string) => Promise<"held" | "elsewhere">;
-  /**
-   * Renews the hold now — a step of the press moved — unless it was renewed within
-   * {@link PRESS_STEP_RENEW_MS}.
-   */
-  readonly renew: () => void;
   /** Names the container import's Zerops process the press is followed by from now on. */
   readonly imported: (processId: string) => Promise<void>;
   /** Ends the hold at the press's end: whether it `finished`, or stopped. */
@@ -36,13 +22,23 @@ export interface PressHold {
   /**
    * The press's environment is registered in its application: HQ ends a stage's or a
    * production's hold with that registration — the press is over there — so it is let go here,
-   * renewed no more while the press waits on its services. A Mate's hold goes on to its end.
+   * its stream kept no more while the press waits on its services. A Mate's hold goes on to its end.
    */
   readonly registered: () => void;
+  /** HQ no longer holds this press's hold: its stream stayed away past HQ's grace, or another took it. */
+  readonly lapsed: () => boolean;
 }
+
+/**
+ * Keeps the press's organization's HQ stream open while it holds `projectId`, whichever
+ * organization is shown, and calls `lapsed` once HQ holds it no more (`keepPress`); the release
+ * lets the stream go.
+ */
+export type KeepPress = (projectId: string, lapsed: () => void) => () => void;
 
 export function acquireHqPressLease(
   api: Pick<HqApi, "holdPress" | "endPress"> | null,
+  keep: KeepPress | null,
   press: {
     readonly kind: "mate" | "stage" | "production";
     readonly appId?: string | undefined;
@@ -52,25 +48,25 @@ export function acquireHqPressLease(
 ): PressHold {
   let projectId: string | null = null;
   let importProcessId: string | undefined;
-  let renewal: Fiber.Fiber<void> | null = null;
-  let heldAt = Number.NEGATIVE_INFINITY;
-  // Whether HQ answered a hold of this press: from then on each hold only renews its own live
-  // hold, so one landing after the press's end changes nothing there.
-  let taken = false;
+  let release: (() => void) | null = null;
+  let lapsed = false;
   // Every hold sent, one after another: the end waits for the last to land.
   let sending: Promise<void> = Promise.resolve();
-  // HQ holds this press no more: nothing renews it, and its end has nothing to end there.
+  // HQ holds this press no more: its stream is kept no more, and its end has nothing to end there.
   const letGo = () => {
     projectId = null;
     importProcessId = undefined;
-    const running = renewal;
-    renewal = null;
-    if (running !== null) Effect.runFork(Fiber.interrupt(running));
+    const kept = release;
+    release = null;
+    kept?.();
+  };
+  const lapse = () => {
+    lapsed = true;
+    letGo();
   };
   const hold = (): Promise<void> => {
     const held = projectId;
     if (api === null || held === null || press.active?.() === false) return Promise.resolve();
-    heldAt = Effect.runSync(Clock.currentTimeMillis);
     const body = {
       owner,
       kind: press.kind,
@@ -80,73 +76,62 @@ export function acquireHqPressLease(
     const sent = sending.then(async () => {
       // The press ended while this waited its turn: nothing is held any more.
       if (projectId !== held || press.active?.() === false) return;
-      try {
-        await api.holdPress(held, taken ? { ...body, renew: true } : body);
-      } catch (cause) {
-        if (cause instanceof HqError && cause.reason === "press_not_held" && projectId === held)
-          letGo();
-        throw cause;
-      }
-      taken = true;
+      await api.holdPress(held, body);
     });
     // The next waits for this one to land, however it lands; its caller hears how.
     sending = Promise.allSettled([sent]).then(() => undefined);
     return sent;
   };
-  const renewNow = () => {
-    hold().catch(() => undefined);
-  };
-  const renew = () => {
-    if (Effect.runSync(Clock.currentTimeMillis) - heldAt >= PRESS_STEP_RENEW_MS) renewNow();
-  };
   return {
     take: async (pressed) => {
+      letGo();
+      lapsed = false;
       projectId = pressed;
+      // The stream the hold lives with is open before HQ is asked for it.
+      if (api !== null && keep !== null) release = keep(pressed, lapse);
       try {
         await hold();
       } catch (cause) {
-        if (cause instanceof HqError && cause.reason === "press_held") return "elsewhere";
+        if (cause instanceof HqError && cause.reason === "press_held") {
+          letGo();
+          return "elsewhere";
+        }
         // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
-        // never asked again. One HQ did not answer is renewed as the press runs.
+        // never asked again. One HQ did not answer is asked again with its import.
         if (cause instanceof HqError && cause.kind === "refused") {
-          projectId = null;
+          letGo();
           return "held";
         }
       }
-      if (api !== null && renewal === null)
-        renewal = Effect.runFork(
-          Effect.gen(function* () {
-            while (true) {
-              yield* Effect.sleep(PRESS_RENEW_MS);
-              yield* Effect.promise(() => hold().catch(() => undefined));
-            }
-          }),
-        );
       return "held";
     },
-    renew,
     imported: async (processId) => {
+      const held = projectId;
       importProcessId = processId;
-      await hold().catch(() => undefined);
+      try {
+        await hold();
+      } catch (cause) {
+        // Another browser's press holds it now: this one's hold lapsed.
+        if (cause instanceof HqError && cause.reason === "press_held" && projectId === held)
+          lapse();
+      }
     },
     end: async (finished) => {
-      if (renewal !== null) await Effect.runPromise(Fiber.interrupt(renewal));
-      renewal = null;
       const held = projectId;
-      projectId = null;
-      importProcessId = undefined;
+      letGo();
       if (api === null || held === null || press.active?.() === false) return;
-      // A renewal in flight lands first: the end is always the last word HQ hears of this press.
+      // A hold in flight lands first: the end is always the last word HQ hears of this press.
       await sending;
       if (press.active?.() === false) return;
       try {
         await api.endPress(held, owner, finished);
       } catch {
-        // A hold HQ did not end runs out on its own: it is the press's lease.
+        // A hold HQ did not end goes with its stream: it is the press's lease.
       }
     },
     registered: () => {
       if (press.kind !== "mate") letGo();
     },
+    lapsed: () => lapsed,
   };
 }

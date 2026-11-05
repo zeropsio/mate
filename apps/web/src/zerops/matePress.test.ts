@@ -11,11 +11,7 @@ import { appAtomRegistry } from "../rpc/atomRegistry";
 beforeEach(() => {
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
 });
-import {
-  acquireHqPressLease as pressHold,
-  PRESS_RENEW_MS,
-  PRESS_STEP_RENEW_MS,
-} from "@t3tools/client-runtime/data";
+import { acquireHqPressLease as pressHold } from "@t3tools/client-runtime/data";
 import {
   finishMateSetupVerb,
   type EnvironmentCreationPlatform,
@@ -56,6 +52,7 @@ import {
   mateFinishRegistration,
   PRESS_MAY_HAVE_LANDED,
   PRESSED_IN_ANOTHER_BROWSER,
+  PRESS_LAPSED,
   whilePressing,
   type MatePress,
   type MatePressState,
@@ -556,7 +553,6 @@ describe("a press's hold at HQ", () => {
             readonly kind: string;
             readonly appId?: string;
             readonly importProcessId?: string;
-            readonly renew?: boolean;
           },
         ) => {
           await gate();
@@ -571,7 +567,7 @@ describe("a press's hold at HQ", () => {
           }
           heldBy = press.owner;
           calls.push(
-            `${press.renew === true ? "renew" : "hold"} ${projectId} ${press.kind}${press.appId ? `@${press.appId}` : ""} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
+            `${"renew" in press ? "renew" : "hold"} ${projectId} ${press.kind}${press.appId ? `@${press.appId}` : ""} ${press.owner}${press.importProcessId ? ` ${press.importProcessId}` : ""}`,
           );
         },
         endPress: async (projectId: string, owner: string, finished: boolean) => {
@@ -581,131 +577,127 @@ describe("a press's hold at HQ", () => {
       },
     };
   };
+  /** The account's keeper of each press's HQ stream, as the press holds and lets it go. */
+  const streams = () => {
+    const kept: Array<string> = [];
+    let lapse: () => void = () => {};
+    return {
+      kept,
+      /** HQ, the press's stream back past its grace, holds it no more. */
+      lapse: () => lapse(),
+      keep: (projectId: string, lapsed: () => void) => {
+        kept.push(`keep ${projectId}`);
+        lapse = lapsed;
+        return () => {
+          kept.push(`release ${projectId}`);
+        };
+      },
+    };
+  };
 
-  it("is taken, renewed while its press runs, given its import, and let go at its end", async () => {
+  it("is taken with its HQ stream kept open, given its import, and let go at its end, sending no renewal over ten minutes", async () => {
     vi.useFakeTimers();
     try {
       const hq = api();
-      const hold = pressHold(hq.api, { kind: "mate", appId: "app-1" }, "press-a");
+      const stream = streams();
+      const hold = pressHold(hq.api, stream.keep, { kind: "mate", appId: "app-1" }, "press-a");
       expect(await hold.take("p-1")).toBe("held");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
       await hold.imported("imp-1");
-      // A step that moves renews it, whatever its timer is let do in a hidden tab — not twice
-      // within its least gap.
-      hold.renew();
-      await vi.advanceTimersByTimeAsync(PRESS_STEP_RENEW_MS);
-      hold.renew();
-      hold.renew();
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS - PRESS_STEP_RENEW_MS);
+      await vi.advanceTimersByTimeAsync(5 * 60_000);
+      expect(stream.kept).toEqual(["keep p-1"]);
       await hold.end(true);
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
       expect(hq.calls).toEqual([
         "hold p-1 mate@app-1 press-a",
-        "renew p-1 mate@app-1 press-a",
-        "renew p-1 mate@app-1 press-a imp-1",
-        "renew p-1 mate@app-1 press-a imp-1",
-        "renew p-1 mate@app-1 press-a imp-1",
+        "hold p-1 mate@app-1 press-a imp-1",
         "finished p-1 press-a",
       ]);
+      expect(stream.kept).toEqual(["keep p-1", "release p-1"]);
     } finally {
       vi.useRealTimers();
     }
   });
 
-  // A renewal in flight when its press ends must not land after the end: it would hold the
-  // project five more minutes, or bring back the record a finished press let go.
+  // A hold in flight (its import's) when its press ends must not land after the end: it would
+  // hold the project again, or bring back the record a finished press let go.
   it("ends only after a renewal in flight has landed, and renews nothing after its end", async () => {
-    vi.useFakeTimers();
-    try {
-      const hq = api();
-      const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
-      await hold.take("p-1");
-      await vi.advanceTimersByTimeAsync(PRESS_STEP_RENEW_MS);
-      const open = hq.slow();
-      hold.renew();
-      // On its way to HQ, unanswered, as the press ends.
-      await vi.advanceTimersByTimeAsync(0);
-      const ended = hold.end(false);
-      await vi.advanceTimersByTimeAsync(0);
-      expect(hq.calls).toEqual(["hold p-1 mate press-a"]);
-      open();
-      await ended;
-      hold.renew();
-      await hold.imported("imp-1");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
-      expect(hq.calls).toEqual([
-        "hold p-1 mate press-a",
-        "renew p-1 mate press-a",
-        "stopped p-1 press-a",
-      ]);
-    } finally {
-      vi.useRealTimers();
-    }
+    const hq = api();
+    const hold = pressHold(hq.api, null, { kind: "mate" }, "press-a");
+    await hold.take("p-1");
+    const open = hq.slow();
+    // On its way to HQ, unanswered, as the press ends.
+    const importing = hold.imported("imp-1");
+    await Promise.resolve();
+    const ended = hold.end(false);
+    await Promise.resolve();
+    expect(hq.calls).toEqual(["hold p-1 mate press-a"]);
+    open();
+    await Promise.all([importing, ended]);
+    await hold.imported("imp-2");
+    expect(hq.calls).toEqual([
+      "hold p-1 mate press-a",
+      "hold p-1 mate press-a imp-1",
+      "stopped p-1 press-a",
+    ]);
   });
 
   it("takes its hold again, not as a renewal, where HQ never answered the first", async () => {
-    vi.useFakeTimers();
-    try {
-      const sent: Array<boolean> = [];
-      let answered = false;
-      const hold = pressHold(
-        {
-          holdPress: async (_projectId, press) => {
-            sent.push(press.renew === true);
-            if (!answered) {
-              answered = true;
-              throw new Error("HQ did not answer");
-            }
-          },
-          endPress: async () => {},
+    const sent: Array<boolean> = [];
+    let answered = false;
+    const hold = pressHold(
+      {
+        holdPress: async (_projectId, press) => {
+          sent.push("renew" in press);
+          if (!answered) {
+            answered = true;
+            throw new Error("HQ did not answer");
+          }
         },
-        { kind: "mate" },
-        "press-a",
-      );
-      expect(await hold.take("p-1")).toBe("held");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 2);
-      expect(sent).toEqual([false, false, true]);
-      await hold.end(true);
-    } finally {
-      vi.useRealTimers();
-    }
+        endPress: async () => {},
+      },
+      null,
+      { kind: "mate" },
+      "press-a",
+    );
+    expect(await hold.take("p-1")).toBe("held");
+    await hold.imported("imp-1");
+    expect(sent).toEqual([false, false]);
+    await hold.end(true);
   });
 
   it("goes on unheld where HQ refuses this person's hold, never asking it again", async () => {
-    vi.useFakeTimers();
-    try {
-      const asked: Array<string> = [];
-      const hold = pressHold(
-        {
-          holdPress: async () => {
-            asked.push("hold");
-            throw new HqError({
-              kind: "refused",
-              code: "forbidden",
-              reason: "not_project_reader",
-              status: 403,
-              message: "refused",
-            });
-          },
-          endPress: async () => {
-            asked.push("end");
-          },
+    const asked: Array<string> = [];
+    const stream = streams();
+    const hold = pressHold(
+      {
+        holdPress: async () => {
+          asked.push("hold");
+          throw new HqError({
+            kind: "refused",
+            code: "forbidden",
+            reason: "not_project_reader",
+            status: 403,
+            message: "refused",
+          });
         },
-        { kind: "mate" },
-        "press-a",
-      );
-      expect(await hold.take("p-1")).toBe("held");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
-      await hold.end(false);
-      expect(asked).toEqual(["hold"]);
-    } finally {
-      vi.useRealTimers();
-    }
+        endPress: async () => {
+          asked.push("end");
+        },
+      },
+      stream.keep,
+      { kind: "mate" },
+      "press-a",
+    );
+    expect(await hold.take("p-1")).toBe("held");
+    await hold.imported("imp-1");
+    await hold.end(false);
+    expect(asked).toEqual(["hold"]);
+    expect(stream.kept).toEqual(["keep p-1", "release p-1"]);
   });
 
   it("stops a press of a Mate another browser's press holds, before it writes anything", async () => {
     const hq = api();
-    await pressHold(hq.api, { kind: "mate" }, "press-a").take("p-1");
+    await pressHold(hq.api, null, { kind: "mate" }, "press-a").take("p-1");
     const written: Array<string> = [];
     const platform = platformOf({
       importDevelopmentContainer: async () => {
@@ -721,7 +713,7 @@ describe("a press's hold at HQ", () => {
         isCurrent: () => true,
         resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
         locks: undefined,
-        hold: pressHold(hq.api, { kind: "mate" }, "press-b"),
+        hold: pressHold(hq.api, null, { kind: "mate" }, "press-b"),
       });
       expect(outcome).toMatchObject({ ok: false, error: PRESSED_IN_ANOTHER_BROWSER });
       expect(written).toEqual([]);
@@ -732,7 +724,7 @@ describe("a press's hold at HQ", () => {
 
   it("names the container import's process to its hold once Zerops answered it", async () => {
     const hq = api();
-    const hold = pressHold(hq.api, { kind: "mate" }, "press-a");
+    const hold = pressHold(hq.api, null, { kind: "mate" }, "press-a");
     await hold.take("p-1");
     await runPress({
       organizationId: "org-acme",
@@ -750,7 +742,7 @@ describe("a press's hold at HQ", () => {
       heldLock: true,
       hold,
     });
-    expect(hq.calls).toContain("renew p-1 mate press-a imp-9");
+    expect(hq.calls).toContain("hold p-1 mate press-a imp-9");
     forgetPress("p-1");
   });
 
@@ -771,7 +763,7 @@ describe("a press's hold at HQ", () => {
       isCurrent: () => true,
       resume: { from: 0, projectId: "p-stage", projectName: "Acme - stage" },
       locks: undefined,
-      hold: pressHold(hq.api, { kind: "stage", appId: "app-1" }, "press-s"),
+      hold: pressHold(hq.api, null, { kind: "stage", appId: "app-1" }, "press-s"),
     });
     await Promise.resolve();
     expect(stopped.ok).toBe(false);
@@ -780,74 +772,88 @@ describe("a press's hold at HQ", () => {
   });
 
   it("lets a production's hold go once it is registered, where HQ ended it: nothing renews it while its services are awaited", async () => {
-    vi.useFakeTimers();
-    try {
-      const hq = api();
-      let settle: () => void = () => {};
-      const platform = {
-        ...platformOf({ importServices: async () => undefined }),
-        untilServicesSettled: () =>
-          new Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>(
-            (resolve) => {
-              settle = () => resolve([{ name: "app", status: "ACTIVE" }]);
-            },
-          ),
-      };
-      const pressing = runPress({
-        organizationId: "org-acme",
-        steps: [
-          { kind: "import-recipe", role: "prod", yaml: "services: []" },
-          { kind: "register" },
-          { kind: "await-ready", withAgent: false },
-        ],
-        platform,
-        isCurrent: () => true,
-        resume: { from: 0, projectId: "p-prod", projectName: "Acme - production" },
-        locks: undefined,
-        hold: pressHold(hq.api, { kind: "production", appId: "app-1" }, "press-p"),
-      });
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
-      settle();
-      expect((await pressing).ok).toBe(true);
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 3);
-      expect(hq.calls).toEqual(["hold p-prod production@app-1 press-p"]);
-      forgetPress("p-prod");
-    } finally {
-      vi.useRealTimers();
-    }
+    const hq = api();
+    const stream = streams();
+    let settle: () => void = () => {};
+    let awaited: () => void = () => {};
+    const awaiting = new Promise<void>((resolve) => {
+      awaited = resolve;
+    });
+    const platform = {
+      ...platformOf({ importServices: async () => undefined }),
+      untilServicesSettled: () =>
+        new Promise<ReadonlyArray<{ readonly name: string; readonly status: string }>>(
+          (resolve) => {
+            settle = () => resolve([{ name: "app", status: "ACTIVE" }]);
+            awaited();
+          },
+        ),
+    };
+    const pressing = runPress({
+      organizationId: "org-acme",
+      steps: [
+        { kind: "import-recipe", role: "prod", yaml: "services: []" },
+        { kind: "register" },
+        { kind: "await-ready", withAgent: false },
+      ],
+      platform,
+      isCurrent: () => true,
+      resume: { from: 0, projectId: "p-prod", projectName: "Acme - production" },
+      locks: undefined,
+      hold: pressHold(hq.api, stream.keep, { kind: "production", appId: "app-1" }, "press-p"),
+    });
+    await awaiting;
+    // Its services awaited: its HQ stream is kept for it no more.
+    expect(stream.kept).toEqual(["keep p-prod", "release p-prod"]);
+    settle();
+    expect((await pressing).ok).toBe(true);
+    expect(hq.calls).toEqual(["hold p-prod production@app-1 press-p"]);
+    forgetPress("p-prod");
   });
 
-  it("stops renewing a hold HQ says it no longer holds, and ends nothing there", async () => {
-    vi.useFakeTimers();
+  it("lapses once HQ, its stream back past HQ's grace, holds it no more: it writes nothing more, says so, offers Finish setup, and ends nothing at HQ", async () => {
+    const hq = api();
+    const stream = streams();
+    const written: Array<string> = [];
+    beginPress({
+      projectId: "p-1",
+      organizationId: "org-acme",
+      startedAt: 0,
+      placement: null,
+      container: true,
+      finishing: true,
+    });
     try {
-      const calls: Array<string> = [];
-      const hold = pressHold(
-        {
-          holdPress: async (projectId, press) => {
-            calls.push(`${press.renew === true ? "renew" : "hold"} ${projectId}`);
-            if (press.renew === true)
-              throw new HqError({
-                kind: "refused",
-                code: "conflict",
-                reason: "press_not_held",
-                status: 409,
-                message: "not held",
-              });
+      const outcome = await runPress({
+        organizationId: "org-acme",
+        steps: [{ kind: "import-container", agents: [] }, { kind: "close-off" }],
+        platform: platformOf({
+          importDevelopmentContainer: async () => {
+            written.push("import");
+            // This browser lost HQ while the import ran, longer than HQ's grace.
+            stream.lapse();
+            return { serviceName: "zcp", imported: true };
           },
-          endPress: async (projectId) => {
-            calls.push(`end ${projectId}`);
+          markClosedOff: async () => {
+            written.push("close-off");
           },
-        },
-        { kind: "mate" },
-        "press-a",
-      );
-      await hold.take("p-1");
-      await vi.advanceTimersByTimeAsync(PRESS_RENEW_MS * 4);
-      hold.renew();
-      await hold.end(true);
-      expect(calls).toEqual(["hold p-1", "renew p-1"]);
+        }),
+        isCurrent: () => true,
+        resume: { from: 0, projectId: "p-1", projectName: "Acme - Una" },
+        locks: undefined,
+        heldLock: true,
+        hold: pressHold(hq.api, stream.keep, { kind: "mate" }, "press-a"),
+      });
+      expect(outcome).toMatchObject({ ok: false, error: PRESS_LAPSED });
+      expect(written).toEqual(["import"]);
+      const press = readMatePress("p-1");
+      expect(press?.state).toMatchObject({ kind: "failed", reason: PRESS_LAPSED });
+      expect(press?.resumeSetup).toBeTypeOf("function");
+      await Promise.resolve();
+      expect(hq.calls).toEqual(["hold p-1 mate press-a"]);
+      expect(stream.kept).toEqual(["keep p-1", "release p-1"]);
     } finally {
-      vi.useRealTimers();
+      forgetPress("p-1");
     }
   });
 });
