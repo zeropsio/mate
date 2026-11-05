@@ -121,7 +121,7 @@ function withoutScope(scope: UsageScope, dimension: UsageDimension): UsageScope 
 }
 
 export function UsagePage({
-  scope,
+  scope: requestedScope,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
@@ -158,12 +158,17 @@ export function UsagePage({
     () => new Set(identityRead.identities.keys()),
     [identityRead.identities],
   );
-  const { merged, overall, read, report, overallReport, sections, refresh } = useAgentUsage(
-    window,
+  const {
+    merged,
+    overall,
+    read,
+    report,
+    overallReport,
+    sections,
+    refresh,
     scope,
-    !showingLimits,
-    provenance,
-  );
+    canSeeOtherPeople,
+  } = useAgentUsage(window, requestedScope, !showingLimits, provenance);
   const { identities, labels } = useMemo(
     () =>
       createUsageIdentityIndex({
@@ -208,7 +213,10 @@ export function UsagePage({
     [dimensionMetric, overallIndex, overall.byEnvironment],
   );
   const breakdownOptions: readonly { value: UsageBreakdown; label: string }[] = [
-    ...DIMENSION_OPTIONS.filter((option) => dimensions.visible[option.value]),
+    ...DIMENSION_OPTIONS.filter(
+      (option) =>
+        dimensions.visible[option.value] && (option.value !== "person" || canSeeOtherPeople),
+    ),
     { value: "model", label: "Model" },
     { value: "time", label: isPast24Hours ? "Hour" : "Day" },
   ];
@@ -219,7 +227,7 @@ export function UsagePage({
       : (breakdownOptions[0]?.value ?? "model");
   const whoSummary = [
     dimensions.visible.mate ? ` · ${formatCount(dimensions.mates.length)} contributing Mates` : "",
-    dimensions.visible.person
+    canSeeOtherPeople && dimensions.visible.person
       ? ` · ${formatCount(dimensions.people.filter((person) => person.owner !== null && !isAutomatedMatesOwner(person.owner)).length)} owners`
       : "",
   ].join("");
@@ -377,6 +385,7 @@ export function UsagePage({
             identities={overallIndex.identities}
             projects={projects}
             dimensions={overallDimensions}
+            canSeeOtherPeople={canSeeOtherPeople}
             onScopeChange={onScopeChange}
           />
         )}
@@ -511,6 +520,7 @@ export function UsagePage({
                     identities={overallIndex.identities}
                     projects={projects}
                     dimensions={overallDimensions}
+                    canSeeOtherPeople={canSeeOtherPeople}
                     onScopeChange={onScopeChange}
                   />
                 </div>
@@ -617,7 +627,7 @@ export function UsagePage({
                             .join(" · ")}
                         </p>
                       ) : null}
-                      {dimensions.visible.person ? (
+                      {canSeeOtherPeople && dimensions.visible.person ? (
                         <UsagePeopleSplit people={dimensions.people} metric={dimensionMetric} />
                       ) : null}
 
@@ -1129,12 +1139,14 @@ function UsageScopeFilters({
   identities,
   projects,
   dimensions,
+  canSeeOtherPeople,
   onScopeChange,
 }: {
   readonly scope: UsageScope;
   readonly identities: UsageEnvironmentIdentities;
   readonly projects: ReadonlyMap<string, string>;
   readonly dimensions: UsageDimensions;
+  readonly canSeeOtherPeople: boolean;
   readonly onScopeChange: (scope: UsageScope) => void;
 }) {
   const people = dimensions.people.flatMap((person) =>
@@ -1148,7 +1160,7 @@ function UsageScopeFilters({
         : name,
   }));
   const filters = [
-    ...(dimensions.visible.person
+    ...(canSeeOtherPeople && dimensions.visible.person
       ? [{ dimension: "person" as const, all: "All owners", options: people }]
       : []),
     ...(projects.size > 1 || scope.project !== undefined || scope.legacyProject !== undefined
