@@ -46,6 +46,7 @@ import { usePrimaryEnvironment } from "../../state/environments";
 import { serverEnvironment } from "../../state/server";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { formatRelativeTime } from "../../timestampFormat";
+import { useSecondsNowMs } from "../../zerops/useNowMs";
 import { Button } from "../ui/button";
 import { ScrollArea } from "../ui/scroll-area";
 import { Toggle, ToggleGroup } from "../ui/toggle-group";
@@ -58,7 +59,7 @@ import {
   resourceTelemetryProcessPresentation,
   visibleResourceTelemetryProcesses,
 } from "./ResourceTelemetryDiagnostics.logic";
-import { SettingsSection, useRelativeTimeTick } from "./settingsLayout";
+import { SettingsSection } from "./settingsLayout";
 import { Badge } from "~/components/ui/badge";
 
 const HISTORY_WINDOWS = [
@@ -205,11 +206,11 @@ export function SourceStatusBadge({
 }
 
 function LastSampleLabel({ sampledAt }: { sampledAt: DateTime.Utc | null }) {
-  useRelativeTimeTick();
+  const nowMs = useSecondsNowMs(sampledAt !== null);
   if (!sampledAt) {
     return <span className="text-2xs text-muted-foreground/55">Waiting for sample</span>;
   }
-  const relative = formatRelativeTime(DateTime.formatIso(sampledAt));
+  const relative = formatRelativeTime(DateTime.formatIso(sampledAt), nowMs);
   if (!relative) {
     return <span className="text-2xs text-muted-foreground/55">Waiting for sample</span>;
   }
