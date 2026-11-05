@@ -3,16 +3,23 @@ import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
+import * as NodeServices from "@effect/platform-node/NodeServices";
 import { it } from "@effect/vitest";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
+import * as Stream from "effect/Stream";
+import * as TestClock from "effect/testing/TestClock";
 import { assert, describe, expect } from "vite-plus/test";
 
+import { ServerConfig } from "../config.ts";
+import { ServerSettingsService } from "../serverSettings.ts";
 import {
   type DesktopTelemetryReceiverHealth,
+  make,
   initialDesktopTelemetryContactAt,
   isDesktopTelemetryContactStale,
   recordDesktopTelemetrySampleHealth,
@@ -22,6 +29,63 @@ import {
 } from "./DesktopTelemetryReceiver.ts";
 
 describe("DesktopTelemetryReceiver", () => {
+  it.effect("a stale desktop ends at its own instant; no periodic scan finds it", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const baseDir = yield* fileSystem.makeTempDirectoryScoped({
+          prefix: "t3-desktop-telemetry-",
+        });
+        const sampledAtUnixMs = 1_000;
+        const sample = NodePath.join(baseDir, "telemetry.ndjson");
+        NodeFS.writeFileSync(
+          sample,
+          `${JSON.stringify({
+            version: 1,
+            type: "desktopTelemetry",
+            sequence: 1,
+            sampledAtUnixMs,
+            electronPid: 100,
+            power: {
+              source: "electron-main",
+              idle: "false",
+              idleSeconds: 0,
+              locked: "false",
+              suspended: false,
+              onBattery: "false",
+              lowPowerMode: "unknown",
+              thermalState: "nominal",
+              stale: false,
+              updatedAt: DateTime.formatIso(DateTime.makeUnsafe(sampledAtUnixMs)),
+            },
+            speedLimitPercent: null,
+            electronProcesses: [],
+          })}\n`,
+        );
+        const config = yield* ServerConfig.pipe(
+          Effect.provide(ServerConfig.layerTest(process.cwd(), baseDir)),
+        );
+        const receiver = yield* make().pipe(
+          Effect.provideService(ServerConfig, {
+            ...config,
+            desktopTelemetryFd: NodeFS.openSync(sample, "r"),
+          }),
+          Effect.provide(ServerSettingsService.layerTest()),
+        );
+        const subscribed = yield* receiver.subscribe;
+        if (Option.isNone(subscribed.latest)) yield* Stream.runHead(subscribed.changes);
+        // The default intervals (30 s active, 120 s idle) make a sample stale 150 s after it.
+        const staleAt =
+          sampledAtUnixMs + resolveDesktopTelemetrySnapshotStaleAfterMs(30_000, 120_000);
+
+        yield* TestClock.adjust(staleAt - 1);
+        expect(Option.getOrThrow(yield* receiver.latest).power.stale).toBe(false);
+        yield* TestClock.adjust(1);
+        expect(Option.getOrThrow(yield* receiver.latest).power.stale).toBe(true);
+      }).pipe(Effect.provide(NodeServices.layer)),
+    ),
+  );
+
   it("degrades a hello-only stream after the first-sample deadline", () => {
     expect(isDesktopTelemetryContactStale(Option.some(1_000), 90_999)).toBe(false);
     expect(isDesktopTelemetryContactStale(Option.some(1_000), 91_000)).toBe(true);
