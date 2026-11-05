@@ -15,7 +15,8 @@ import * as ServerConfig from "../config.ts";
 import { resolveZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { makeZeropsHqLink, type LinkSocket } from "./ZeropsHqLink.ts";
 import { make, requestWithMateKey, ZeropsMateKey } from "./ZeropsMateKey.ts";
-import * as ZeropsOrgRead from "./ZeropsOrgRead.ts";
+import * as ZeropsAccessRead from "./ZeropsAccessRead.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import * as ZeropsRestartRead from "./ZeropsRestartRead.ts";
 
 const decode = Schema.decodeSync(Schema.fromJsonString(Schema.Unknown));
@@ -81,7 +82,12 @@ const rig = (open = true) =>
           store = value;
         }),
     });
-    const reader = yield* make({ fs, storePath, snapshot: undefined });
+    const reader = yield* make({
+      fs,
+      storePath,
+      snapshot: undefined,
+      watch: () => ({ dispose: () => {} }),
+    });
     const sockets: Socket[] = [];
     const connected = yield* Queue.unbounded<Socket>();
     yield* makeZeropsHqLink({
@@ -113,7 +119,10 @@ const rig = (open = true) =>
 it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refused frame", () =>
   Effect.gen(function* () {
     const { reader, sockets } = yield* rig();
-    const own = yield* ZeropsOrgRead.make.pipe(
+    const own = yield* ZeropsAccessRead.ZeropsAccessRead.pipe(
+      Effect.provide(
+        ZeropsAccessRead.layer({ apiBaseUrl: "https://zerops.test", projectId: "own-project" }),
+      ),
       Effect.provideService(ZeropsMateKey, reader),
       Effect.provideService(
         HttpClient.HttpClient,
@@ -125,10 +134,7 @@ it.effect("An unchanged key refused by Zerops is reported to HQ in one key-refus
         }),
       ),
     );
-    assert.deepStrictEqual(
-      yield* own.project({ apiBaseUrl: "https://zerops.test", projectId: "own-project" }),
-      { kind: "answered", status: 401, body: undefined },
-    );
+    assert.deepStrictEqual(yield* own.read, { kind: "refused", status: 401 });
     yield* requestWithMateKey(reader, () => Effect.succeed({ status: 401 }));
     yield* TestClock.adjust(Duration.zero);
     assert.deepStrictEqual(sockets[0]!.sent, [
@@ -212,9 +218,13 @@ it.effect("A refused startup read notifies HQ without repeating the Zerops reque
       );
     });
     const result = yield* Effect.gen(function* () {
-      const own = yield* ZeropsOrgRead.make;
       const restart = yield* ZeropsRestartRead.make({ serviceId: "zcp" }).pipe(
-        Effect.provideService(ZeropsOrgRead.ZeropsOrgRead, own),
+        Effect.provideService(
+          ZeropsMateAccessList,
+          ZeropsMateAccessList.of({
+            ownProject: Effect.succeed(Option.none()),
+          } as unknown as ZeropsMateAccessList["Service"]),
+        ),
       );
       return yield* restart.read.pipe(Effect.result);
     }).pipe(

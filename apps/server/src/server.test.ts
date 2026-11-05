@@ -143,7 +143,6 @@ import sharp from "sharp";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
 import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
@@ -1064,13 +1063,9 @@ const buildAppUnderTest = (options?: {
           // sends who the project opens for, and the status starts `"unknown"`.
           ZeropsMateAccessListModule.relayLayer.pipe(
             Layer.provideMerge(
-              ZeropsOrgReadModule.layer.pipe(
-                Layer.provideMerge(
-                  Layer.succeed(
-                    ZeropsMateKeyModule.ZeropsMateKey,
-                    ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-                  ),
-                ),
+              Layer.succeed(
+                ZeropsMateKeyModule.ZeropsMateKey,
+                ZeropsMateKeyModule.snapshotOnlyReader(undefined),
               ),
             ),
           ),
