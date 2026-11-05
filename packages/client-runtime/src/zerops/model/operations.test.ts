@@ -10,7 +10,7 @@ import {
 } from "../operations/__fixtures__/index.ts";
 import type { OperationBuildContext } from "./builders/shared.ts";
 import { collectZeropsCalls } from "./calls.ts";
-import { reduceZeropsOperations } from "./operations.ts";
+import { closedCardReadsResultOf, reduceZeropsOperations } from "./operations.ts";
 import type { ZeropsOperation } from "./types.ts";
 
 /** No project known; every build a result names still runs. */
@@ -1350,5 +1350,37 @@ describe("reduceZeropsOperations — an organization tool's proposal", () => {
       ["proposal", summary],
     ]);
     expect(genericCalls).toEqual([]);
+  });
+});
+
+// A zcp Mate's reload read the result of every Zerops call its runs made before a closed card drew,
+// its looks around and its logs among them: two thirds of what it read was results it never drew.
+describe("the results a closed card reads", () => {
+  it.each([
+    ["a deploy", "zerops_deploy", true],
+    ["a batch deploy", "zerops_deploy_batch", true],
+    ["a service created", "zerops_import", true],
+    ["a check", "zerops_verify", true],
+    ["a page checked in the browser", "zerops_browser", true],
+    ["a dev server", "zerops_dev_server", true],
+    ["a process followed", "zerops_process", true],
+    ["a stand-up", "zerops_standup", true],
+    ["a subdomain", "zerops_subdomain", true],
+    ["a removal", "zerops_delete", true],
+    ["a scale", "zerops_scale", true],
+    ["a start or stop", "zerops_manage", true],
+    ["a value set or asked for", "zerops_env", true],
+    ["a bootstrap's workflow", "zerops_workflow", true],
+    ["a mount", "zerops_mount", true],
+    ["a page published", "zerops_publish_page", true],
+    ["the Chief's organization tools", "zerops_org_restart", true],
+    ["a proposal", "zerops_propose_mcp", true],
+    ["a log read", "zerops_logs", false],
+    ["the events read", "zerops_events", false],
+    ["a look at the project", "zerops_discover", false],
+    ["the docs read", "zerops_knowledge", false],
+    ["any other tool", "Bash", false],
+  ])("%s: %s, %s", (_what, tool, read) => {
+    expect(closedCardReadsResultOf(tool)).toBe(read);
   });
 });

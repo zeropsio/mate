@@ -94,6 +94,8 @@ type Pager = (request: {
   readonly before: number | null;
   readonly after?: number;
   readonly only?: "outcome";
+  /** The tools whose results it reads, where it names them. */
+  readonly tools?: ReadonlyArray<string>;
 }) => Effect.Effect<EnginePage, StreamFault>;
 
 const page = (patch: Partial<Extract<EnginePage, { _tag: "Page" }>> = {}): EnginePage =>
@@ -175,7 +177,7 @@ function rig(
           ...(at.only === undefined ? {} : { only: at.only }),
         };
         pages.push(request);
-        return pager(request);
+        return pager({ ...request, ...(at.tools === undefined ? {} : { tools: at.tools }) });
       },
       readDetail: (_key, itemId, part) => {
         details.push(`${itemId} ${part}`);
@@ -659,6 +661,69 @@ describe("an engine conversation's older pages", () => {
       ]);
       r.close();
     }),
+  );
+
+  // A zcp Mate's reload read every Zerops result before a closed card drew (434 KB a page); its
+  // looks around and its logs are drawn only as its card opens, and read then, whole.
+  it.live(
+    "reads a closed card's results of the tools it draws alone, the rest whole as its card opens",
+    () =>
+      Effect.gen(function* () {
+        const zerops = (ordinal: number, tool: string, resultText: string) =>
+          callItem(run1, ordinal, {
+            step: "mcp",
+            tool: { name: `mcp__zerops__${tool}`, server: "zerops" },
+            shows: { toolName: `mcp__zerops__${tool}`, input: {} },
+            result: { toolName: tool, resultText },
+          } as never);
+        const items = [
+          personItem(run1, 1, "Deploy the api"),
+          zerops(2, "zerops_discover", JSON.stringify({ services: ["api", "db"] })),
+          zerops(3, "zerops_deploy", JSON.stringify({ status: "DEPLOYED" })),
+          zerops(4, "zerops_logs", JSON.stringify({ lines: ["listening on 3000"] })),
+          noteItem(run1, 5, "Deployed."),
+        ];
+        // The server's answer: with `tools`, a call's result only of the tools they name.
+        const r = rig(({ after, only, tools }) =>
+          Effect.succeed(
+            page({
+              items: items.filter(
+                (item) =>
+                  item.seq > (after ?? 0) &&
+                  (only === undefined ||
+                    (item.kind === "call" &&
+                      item.result !== undefined &&
+                      (tools === undefined || tools.includes(item.result.toolName)))),
+              ),
+            }),
+          ),
+        );
+        r.conversations.hold(ada);
+        yield* settle;
+        yield* r.send(
+          snapshot({
+            runs: [run(1, 5, {}, { mcp: 3 })],
+            items: [items[0]!, items[4]!],
+          }),
+          synchronized(12),
+        );
+        const held = () =>
+          [...r.read().index("engineItemsOfRun", engineFactId(ENV, run1))].flatMap((id) => {
+            const fact = r.read().fact("mateEngineItem", id);
+            return fact.kind === "known" && fact.value.kind === "call"
+              ? [[fact.value.result?.toolName, fact.value.result?.resultText]]
+              : [];
+          });
+        expect(held()).toEqual([["zerops_deploy", '{"status":"DEPLOYED"}']]);
+        expect(r.conversations.readRunPage(ada, run1, "later")).toBe(true);
+        yield* settle;
+        expect(held().toSorted()).toEqual([
+          ["zerops_deploy", '{"status":"DEPLOYED"}'],
+          ["zerops_discover", '{"services":["api","db"]}'],
+          ["zerops_logs", '{"lines":["listening on 3000"]}'],
+        ]);
+        r.close();
+      }),
   );
 
   it.live("reads a run longer than a page back page by page", () =>

@@ -17,6 +17,8 @@ export {
   type ZeropsCallClass,
 } from "./classify.ts";
 export {
+  CLOSED_CARD_RESULT_TOOLS,
+  closedCardReadsResultOf,
   isReadOperationKind,
   reduceZeropsOperations,
   type ZeropsOperationsReduction,
