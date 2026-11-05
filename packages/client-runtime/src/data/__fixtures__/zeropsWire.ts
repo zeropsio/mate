@@ -13,7 +13,7 @@ export interface WireRequest {
   readonly method: "POST" | "GET";
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;
-  /** Read over the session's REST client, before any receiver opened. */
+  /** Sent over the session's REST client, with no receiver open (`ZeropsWire.rest`, `ZeropsWire.read`). */
   readonly rest?: true;
 }
 
@@ -39,7 +39,7 @@ export function fixtureWire(
   options: Pick<ZeropsWire, "held"> & {
     /** Offers the session's REST reads beside the receiver. */
     readonly rest?: boolean;
-    /** Holds each receiver's open until it is done: a slow web-socket login. */
+    /** The receiver's opening — its web-socket login, its greeting — before it is open. */
     readonly opening?: Effect.Effect<void>;
   } = {},
 ): FixtureWire {
@@ -82,6 +82,15 @@ export function fixtureWire(
             },
           }
         : {}),
+      read: (path) =>
+        Effect.suspend(() => {
+          const request: WireRequest = { method: "GET", path, rest: true };
+          requests.push(request);
+          return answer(request) as Effect.Effect<
+            { readonly status: number; readonly body: unknown },
+            StreamFault
+          >;
+        }),
       open: Effect.gen(function* () {
         if (options.opening !== undefined) yield* options.opening;
         opens += 1;

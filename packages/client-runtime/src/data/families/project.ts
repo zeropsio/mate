@@ -96,6 +96,9 @@ function valueOf(row: typeof Row.Type): ProjectValue {
 
 const organization = (orgId: string) => [{ name: "clientId", operator: "eq", value: orgId }];
 
+/** The route's project read ahead of the roster (`routeProjectScope`). */
+export const ROUTE_PROJECT = "route-project";
+
 export const projectFamily: FamilySpec<"project"> = {
   family: "project",
   labelOf: (project) => project.name,
@@ -157,6 +160,18 @@ export const projectFamily: FamilySpec<"project"> = {
           typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
       },
     },
+    {
+      // The route's project, read ahead of the roster (`DetailListing.ahead`): what its Mate's
+      // target needs — its status and organization — while the platform's socket logs in.
+      suffix: ROUTE_PROJECT,
+      leaving: "absent-unverified",
+      ahead: true,
+      zerops: {
+        path: ({ ownerId }) => `/project/${encodeURIComponent(ownerId ?? "")}`,
+        items: (answer) =>
+          typeof answer === "object" && answer !== null && "id" in answer ? [answer] : undefined,
+      },
+    },
   ],
   zerops: {
     entity: "project",
@@ -177,3 +192,7 @@ export const projectFamily: FamilySpec<"project"> = {
 };
 
 export const projectsScope = (orgId: string): ScopeKey => scopeOf(projectFamily, orgId);
+
+/** The route's project, read ahead of the organization's roster. */
+export const routeProjectScope = (orgId: string, projectId: string): ScopeKey =>
+  `zerops:${orgId}:${ROUTE_PROJECT}:${projectId}`;

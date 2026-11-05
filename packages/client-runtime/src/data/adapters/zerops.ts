@@ -88,6 +88,14 @@ export interface ZeropsWire {
    * receiver still opens ({@link SLOW_RECEIVER_MS}).
    */
   readonly rest?: Pick<ZeropsLink, "post">;
+  /**
+   * A plain REST `GET` on the session's own client, with no receiver opened: what a detail read
+   * ahead (`DetailListing.ahead`) is sent over, so the socket's login never holds it back. A 403 or
+   * 404 is a status, as `ZeropsLink.get` answers it. Absent, those details are read on the link.
+   */
+  readonly read?: (
+    path: string,
+  ) => Effect.Effect<{ readonly status: number; readonly body: unknown }, StreamFault>;
 }
 
 /**
@@ -226,8 +234,10 @@ export function zeropsNavigationLink(options: {
   readonly reread: () => void;
 } {
   const { orgId, store } = options;
+  /** Each detail read ahead over plain REST, by scope, while its read is under way. */
+  const readingAhead = new Map<ScopeKey, Fiber.Fiber<void>>();
   const demands = makeDetailDemands({
-    demanded: (scope, demanded) =>
+    demanded: (scope, demanded) => {
       Effect.runSync(
         Effect.map(Clock.currentTimeMillis, (now) =>
           store.dispatch(
@@ -236,8 +246,52 @@ export function zeropsNavigationLink(options: {
               : { kind: "release", scopes: [scope], now },
           ),
         ),
-      ),
+      );
+      if (demanded) {
+        const read = readAhead(scope);
+        if (read !== null) readingAhead.set(scope, Effect.runFork(read));
+      } else {
+        const reading = readingAhead.get(scope);
+        readingAhead.delete(scope);
+        if (reading !== undefined) Effect.runFork(Fiber.interrupt(reading));
+      }
+    },
   });
+  /**
+   * A detail read ahead (`DetailListing.ahead`), once per hold, over the wire's plain REST read:
+   * no receiver, no registration and no attempt waits before it, and none fences it. Only its
+   * answer commits; a failure or the owner's refusal leaves the scope unread, for the family's
+   * own scope to say. Its rows carry no revision: whatever that scope reads replaces them.
+   */
+  const readAhead = (scope: ScopeKey): Effect.Effect<void> | null => {
+    const read = options.wire.read;
+    const { spec, detail } = scopeListing(scope);
+    if (read === undefined || detail?.ahead !== true) return null;
+    const owner = { orgId, ownerId: scope.split(":").slice(3).join(":") };
+    return Effect.gen(function* () {
+      const generation = streamOf(store.state(), scope).generation;
+      store.dispatch({ kind: "baseline-begin", scope, generation });
+      const answer = yield* read(detail.zerops.path(owner));
+      if (answer.status !== 200) return;
+      const items = detail.zerops.items(answer.body, owner);
+      if (items === undefined) return;
+      const rows = rowsOf(spec.family, items).map(
+        (row): Row => ({ ...row, revision: { kind: "zerops", version: null } }) as Row,
+      );
+      store.dispatch({
+        kind: "baseline-commit",
+        scope,
+        generation,
+        via: "zerops-read",
+        members: membersOf(items),
+        rows,
+        partial: partialAnswer(items, rows, undefined),
+      });
+    }).pipe(
+      Effect.catch(() => Effect.void),
+      Effect.ensuring(Effect.sync(() => readingAhead.delete(scope))),
+    );
+  };
   const key: LinkKey = linkKeys.zerops(orgId);
   const registrations = zeropsNavigation(orgId);
   const scopes = [...new Set(registrations.map((registration) => registration.scope))];
@@ -872,7 +926,7 @@ export function zeropsNavigationLink(options: {
               ages: agesNow(sampled, value),
             });
           }
-          const items = detail?.zerops.items(answer.body);
+          const items = detail?.zerops.items(answer.body, owner);
           if (items === undefined) return yield* malformed;
           const rows = rowsOf(spec.family, items);
           yield* carryOut(
@@ -922,9 +976,13 @@ export function zeropsNavigationLink(options: {
         let wakeAt = Number.POSITIVE_INFINITY;
         for (const scope of demanded) {
           const renewed = demands.takeRenewal(scope);
+          const ahead = scopeListing(scope).detail?.ahead === true;
+          // A detail read ahead over plain REST is read outside every attempt (`readAhead`).
+          if (ahead && options.wire.read !== undefined) continue;
           const navigation = scopeOf(scopeListing(scope).spec, orgId);
           const navigationPhase = streamOf(store.state(), navigation).phase;
           if (
+            !ahead &&
             scopes.includes(navigation) &&
             navigationPhase !== "live" &&
             navigationPhase !== "refused"
