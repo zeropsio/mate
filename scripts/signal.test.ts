@@ -67,6 +67,40 @@ const test = (file: string, path: string[], status: string) => ({
   status,
 });
 
+it("Decision: Signal reruns assertion failures only and reports time-bound failures as timed out, not rerun", () => {
+  const initial: SignalReport = {
+    tests: [
+      test("assertion.scenario.ts", ["assertion"], "failed"),
+      {
+        ...test("hung.scenario.ts", ["hung"], "failed"),
+        reason: "hung: no end within 180000 ms; last step: when.menu.opensMate",
+      },
+      {
+        ...test("killed.scenario.ts", ["killed"], "failed"),
+        reason: "hung: the shard ended while this case was running",
+      },
+    ],
+    errors: [],
+  };
+  expect(failedSelection([initial])).toEqual({
+    files: ["assertion.scenario.ts"],
+    testNamePattern: "^(?:assertion)$",
+  });
+  expect(
+    classifyFailures(
+      [initial],
+      { tests: [test("assertion.scenario.ts", ["assertion"], "passed")], errors: [] },
+      42,
+    ),
+  ).toEqual([
+    { file: "assertion.scenario.ts", title: "assertion", class: "fail-pass", run: 42 },
+    ...initial.tests
+      .slice(1)
+      .map(({ file, title, reason }) => ({ file, title, reason, class: "timed-out", run: 42 })),
+  ]);
+  expect(failedSelection([{ ...initial, tests: initial.tests.slice(1) }]).files).toEqual([]);
+});
+
 it.each([
   { name: "Chat > send", reruns: true },
   { name: "Chat > send (plain)", reruns: true },
@@ -153,6 +187,7 @@ it.each([
 it.each([
   { evidence: "no report", reason: "no report or progress" },
   { evidence: "global setup", reason: "scenario bundle artifact mismatch" },
+  { evidence: "timeout stop", reason: "Scenario did not certify execution: remaining case" },
 ])(
   "Decision: A shard whose global setup failed is classified as infrastructure by the classifier, never a throw that hides the verdict. ($evidence)",
   ({ evidence, reason }) => {
@@ -173,6 +208,15 @@ it.each([
           JSON.stringify([reason]),
         );
       }
+      const hung = {
+        ...report("failed").tests[0]!,
+        reason: "hung: no end within 180000 ms; last step: given.project",
+      };
+      if (evidence === "timeout stop")
+        NodeFS.writeFileSync(
+          NodePath.join(directory, "c-3.json"),
+          JSON.stringify({ tests: [hung], errors: [reason] }),
+        );
       const result = NodeChildProcess.spawnSync(
         process.execPath,
         [NodePath.join(import.meta.dirname, "signal.ts"), "classify"],
@@ -201,7 +245,21 @@ it.each([
       ).toEqual([{ shard: "c-3", reason }]);
       expect(
         JSON.parse(NodeFS.readFileSync(NodePath.join(directory, "signal-failures.json"), "utf8")),
-      ).toEqual([]);
+      ).toEqual(
+        evidence === "timeout stop"
+          ? [
+              {
+                file: hung.file,
+                title: hung.title,
+                reason: hung.reason,
+                class: "timed-out",
+                run: 42,
+              },
+            ]
+          : [],
+      );
+      if (evidence === "timeout stop")
+        expect(result.stdout).toContain("Signal timed out, not rerun::Chat send");
     } finally {
       NodeFS.rmSync(directory, { recursive: true, force: true });
     }

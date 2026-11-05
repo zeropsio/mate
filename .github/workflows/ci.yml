@@ -1,3 +1,13 @@
+# kh-next execution budgets (minutes; queue/runner allocation is additional, not execution):
+# Blocking CI <= 33 min = verification 3 + prepare 15 + longest suite path <= 15.
+# Suite allocation: state_smoke 14; test_packages 12; other suites/cache 10;
+# changes/Test/Release Smoke 1. Independent shards run concurrently; their bounds do not add.
+# Signal <= 41 min = verification 3 + bundle 10 + shards 14 + classify 14 (signal.yml).
+# Every browser shard and the entire classify rerun: 10 min process group + 10 sec KILL grace,
+# inside an 11 min step and 14 min job (3 min setup/artifacts). Cases retain the 3 min ceiling;
+# three consecutive time-bound failures stop admission, naming them, within 9 min + cleanup.
+# State Smoke's measured selection budget is 9 min (scripts/state-smoke.ts); no cases are dropped.
+# scripts/ci-workflow.test.ts checks the dependency sums and process/step/job nesting.
 name: CI
 run-name: CI · ${{ github.ref_name }}
 
@@ -806,12 +816,13 @@ jobs:
           path: node_modules/.cache/mate-scenario-web
 
       - name: Certify sign-in, fixed smoke and affected scenarios
+        timeout-minutes: 11
         env:
           MATE_SCENARIO_REQUIRE_BUNDLE: "1"
           MATE_STATE_SMOKE_SELECTION: ${{ needs.prepare.outputs.state_smoke_selection }}
         run: |
           vp run test:browser
-          node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}
+          timeout --signal=TERM --kill-after=10s 10m node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}
 
   # Independent suites run concurrently; the existing Test context reports
   # their combined verdict without serializing package execution.
