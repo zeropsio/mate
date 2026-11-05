@@ -20,7 +20,7 @@ import type { MoveProjectIntent } from "./moveProject.ts";
 const environment = (
   projectId: string,
   tier: "stage" | "production",
-  keyId: string,
+  keyId: string | undefined,
   keyInvalid = false,
 ) => ({
   projectId,
@@ -30,7 +30,7 @@ const environment = (
   order: 1,
   keyHeld: true,
   keyInvalid,
-  keyId,
+  ...(keyId === undefined ? {} : { keyId }),
   can: {},
   jobs: [],
   release: null,
@@ -123,6 +123,24 @@ describe("an environment's replaced deploy token", () => {
       expect(left).toHaveLength(1);
       expect(left[0]).toContain("Zerops is down.");
     }),
+  );
+
+  it.effect(
+    "A re-mint over a token whose id HQ never recorded deletes nothing and says so once",
+    () =>
+      Effect.gen(function* () {
+        const store = account([environment("p-stage", "stage", undefined, true)]);
+        const log: string[] = [];
+        const { operations, left } = operationsOf(
+          store,
+          { keepDeployToken: async () => void log.push("keep") },
+          log,
+        );
+        yield* operations.submit(KEEP);
+        expect(log).toEqual(["mint", "keep"]);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+        expect(left).toHaveLength(1);
+      }),
   );
 
   it.effect("A keep HQ refused deletes no token HQ still keeps", () =>

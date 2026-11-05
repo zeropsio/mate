@@ -21,6 +21,7 @@ import { lifecycleReceipt } from "../families/hqLifecycle.ts";
  * @module data/adapters/hq
  */
 import {
+  HQ_PROTECTED_SCOPE_KINDS,
   hqScopeKey,
   hqStreamCloseFailure,
   HqStreamMessage,
@@ -90,7 +91,10 @@ export interface HqWire {
     request: import("../families/hqReleaseReview.ts").ReleaseReviewRequest,
   ) => Effect.Effect<import("@t3tools/shared/hqRelease").ReleaseServicePlan, StreamFault>;
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
-  /** A frame HQ decides on the person's role, with their current Zerops access token (`HqApi.withAccess`). */
+  /**
+   * A frame HQ decides on the person's role, with their current Zerops access token
+   * (`HqApi.withAccess`): the move picker's ask, and each subscribe naming a protected scope.
+   */
   readonly withAccess?: <T extends object>(
     frame: T,
   ) => Effect.Effect<T & { readonly accessToken: string }, StreamFault>;
@@ -386,6 +390,23 @@ export function hqNavigationLink(options: {
           knownKeys: knownKeys(registered),
         };
       };
+      /**
+       * Asks HQ for registrations on a segment. A frame naming a protected scope carries the
+       * person's current access token: HQ admits it on one read of their role with it.
+       */
+      const subscribe = (segment: HqSegment, registrations: ReadonlyArray<Registered>) =>
+        Effect.gen(function* () {
+          const frame = { type: "subscribe" as const, scopes: registrations.map(subscription) };
+          const guarded = registrations.some((registered) =>
+            HQ_PROTECTED_SCOPE_KINDS.has(registered.wire.kind),
+          );
+          yield* segment.send(
+            guarded && wire.withAccess !== undefined ? yield* wire.withAccess(frame) : frame,
+          );
+          for (const registered of registrations) asked.add(hqScopeKey(registered.wire));
+        });
+      /** The scopes asked once more after HQ answered `token_required`, until one is admitted. */
+      const tokenReasked = new Set<string>();
 
       /** Starts a registration of each store scope: a new generation, its handshake made. */
       const register = (registered: Registered) =>
@@ -484,7 +505,8 @@ export function hqNavigationLink(options: {
        */
       const again = (registrations: ReadonlyArray<Registered>) =>
         Effect.gen(function* () {
-          if (open === null || registrations.length === 0) return;
+          const segment = open;
+          if (segment === null || registrations.length === 0) return;
           // HQ knows only what this segment asked.
           const known = registrations.filter((registered) =>
             asked.has(hqScopeKey(registered.wire)),
@@ -494,15 +516,14 @@ export function hqNavigationLink(options: {
           // project changing (`roleChanged`), sent before asking.
           const retried = registrations.filter(({ wire }) => refused.delete(hqScopeKey(wire)));
           if (retried.length > 0)
-            yield* open.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
+            yield* segment.send({ type: "retry", scopes: retried.map(({ wire }) => wire) });
           if (known.length > 0)
-            yield* open.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
-          yield* open.send({ type: "subscribe", scopes: registrations.map(subscription) });
-          for (const { wire } of registrations) asked.add(hqScopeKey(wire));
+            yield* segment.send({ type: "unsubscribe", scopes: known.map(({ wire }) => wire) });
+          yield* subscribe(segment, registrations);
         });
       const resubscribe = (registered: Registered) => again([registered]);
 
-      const onMessage = (encoded: string): Effect.Effect<void> =>
+      const onMessage = (encoded: string): Effect.Effect<void, StreamFault> =>
         Effect.gen(function* () {
           if (stopped) return;
           heardAt = yield* Clock.currentTimeMillis;
@@ -524,6 +545,7 @@ export function hqNavigationLink(options: {
               const scopeKey = hqScopeKey(message.scope);
               const entry = subscribed.get(scopeKey);
               if (entry === undefined) return;
+              tokenReasked.delete(scopeKey);
               cursors.set(scopeKey, {
                 incarnation: message.incarnation,
                 revision: message.revision,
@@ -580,8 +602,16 @@ export function hqNavigationLink(options: {
               return;
             }
             case "scope-error": {
-              const entry = subscribed.get(hqScopeKey(message.scope));
+              const scopeKey = hqScopeKey(message.scope);
+              const entry = subscribed.get(scopeKey);
               if (entry === undefined) return;
+              // Asked without the person's token: this client's own fault, never HQ's outage.
+              // Asked once more with it; HQ answering the same again is the scope's error.
+              const tokenless = message.code === "token_required";
+              if (tokenless && !tokenReasked.has(scopeKey)) {
+                tokenReasked.add(scopeKey);
+                return yield* resubscribe(entry.registered);
+              }
               // Only HQ's authoritative access denial purges facts; a host probe's refusal is data.
               const accessDenied =
                 message.disposition === "refused" &&
@@ -590,7 +620,6 @@ export function hqNavigationLink(options: {
                   message.code === "chief_owner_required");
               if (accessDenied) {
                 deny(entry.registered.families.map(({ scope }) => scope));
-                const scopeKey = hqScopeKey(message.scope);
                 subscribed.delete(scopeKey);
                 if (asked.delete(scopeKey) && open !== null)
                   yield* open.send({ type: "unsubscribe", scopes: [message.scope] });
@@ -598,13 +627,15 @@ export function hqNavigationLink(options: {
               const fault: StreamFault = {
                 outcome: accessDenied
                   ? "authoritative-denial"
-                  : message.disposition === "refused"
+                  : message.disposition === "refused" || tokenless
                     ? "definitive-refusal"
                     : "transient",
-                message: message.reason ?? `HQ could not read this (${message.code}).`,
+                message: tokenless
+                  ? "Mate asked HQ for this without your Zerops access token. Try again."
+                  : (message.reason ?? `HQ could not read this (${message.code}).`),
                 code: message.code,
               };
-              if (message.disposition === "refused") refused.add(hqScopeKey(message.scope));
+              if (message.disposition === "refused") refused.add(scopeKey);
               const jitter = yield* Random.next;
               for (const { scope } of entry.generations)
                 yield* signal(scope, { kind: "fault", fault, jitter });
@@ -782,8 +813,7 @@ export function hqNavigationLink(options: {
             asked.clear();
             if (resumed.length > 0) {
               for (const registered of resumed) yield* register(registered);
-              yield* opened.send({ type: "subscribe", scopes: resumed.map(subscription) });
-              for (const { wire } of resumed) asked.add(hqScopeKey(wire));
+              yield* subscribe(opened, resumed);
             }
             for (const [projectId, resultIds] of untold)
               yield* opened.send({ type: "seen", projectId, resultIds: [...resultIds] });
