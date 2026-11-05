@@ -34,7 +34,7 @@ export interface BirthEvidence {
 export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
-    | { readonly kind: "create" | "import" | "unknown" | "blocked" }
+    | { readonly kind: "create" | "import" | "unknown" | "blocked" | "register-chief" }
     | {
         readonly kind: "wait";
         readonly attach: boolean;
@@ -60,6 +60,9 @@ export interface SharedBirth {
   readonly appId: string;
   readonly appName: string;
   readonly face: string;
+  readonly madeBy?: string;
+  readonly chief?: boolean;
+  readonly chiefRegistered?: boolean;
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   /** A registration may be skipped only after HQ proves this birth is attached. */
@@ -67,8 +70,8 @@ export interface SharedBirth {
   readonly intent: ReturnType<typeof readBirthIntent>;
   readonly progress: BirthProgress;
   readonly canContinue: boolean;
-  /** The next registration needs a project or organization administrator. */
-  readonly continueRequiresAdmin?: boolean;
+  /** Which permission the next actionable step needs when this person cannot continue. */
+  readonly continuePermission?: "maker" | "attach" | "add-mate";
   readonly canDelete: boolean;
 }
 
@@ -154,7 +157,7 @@ export const sharedBirths: Projection<
           press?.kind === "mate" &&
           press.appId === app.id &&
           !press.held;
-        const progress = {
+        const evidence = {
           ...birthProgressOf({
             birth,
             projects: roster.projects,
@@ -170,12 +173,16 @@ export const sharedBirths: Projection<
           }),
           ...(sessionEnded ? { sessionEnded: true as const } : {}),
         };
-        const authorized =
-          personId !== "" &&
-          navigation.live &&
-          current &&
-          roleLive &&
-          app.can?.add_mate?.allow === true;
+        const progress: BirthProgress =
+          birth.chief === true &&
+          birth.chiefRegistered === false &&
+          placement === "attached" &&
+          evidence.next.kind !== "unknown" &&
+          evidence.next.kind !== "blocked"
+            ? { ...evidence, next: { kind: "register-chief" } }
+            : evidence;
+        const roleCurrent = personId !== "" && navigation.live && current && roleLive;
+        const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const attachProject =
           projectId ?? (progress.next.kind === "bind" ? progress.next.projectId : null);
         const appProjects = app.projects.map((project) => project.projectId);
@@ -196,30 +203,51 @@ export const sharedBirths: Projection<
                     }),
                 )?.allow
               : undefined;
+        const actionable =
+          progress.next.kind !== "unknown" &&
+          progress.next.kind !== "blocked" &&
+          (progress.next.kind !== "wait" || progress.next.attach);
+        const canContinue =
+          authorized &&
+          (projectId !== null || birth.madeBy === personId) &&
+          attachment === true &&
+          actionable;
+        const continuePermission =
+          canContinue || !roleCurrent || !actionable
+            ? undefined
+            : projectId === null
+              ? "maker"
+              : placement === "unplaced" && (!authorized || attachment === false)
+                ? "attach"
+                : placement === "attached" && !authorized
+                  ? "add-mate"
+                  : undefined;
         return {
           id: birth.id,
           appId: app.id,
           appName: app.name,
           face: birth.face,
+          ...(birth.madeBy === undefined ? {} : { madeBy: birth.madeBy }),
+          ...(birth.chief === undefined ? {} : { chief: birth.chief }),
+          ...(birth.chiefRegistered === undefined
+            ? {}
+            : { chiefRegistered: birth.chiefRegistered }),
           projectId,
           importProcessId: birth.importProcessId ?? null,
           placement,
           intent: readBirthIntent(birth.intent),
           progress,
-          canContinue:
-            authorized &&
-            (projectId !== null || birth.madeBy === personId) &&
-            attachment === true &&
-            progress.next.kind !== "unknown" &&
-            progress.next.kind !== "blocked" &&
-            (progress.next.kind !== "wait" || progress.next.attach),
-          ...(authorized && attachment === false ? { continueRequiresAdmin: true } : {}),
+          canContinue,
+          ...(continuePermission === undefined ? {} : { continuePermission }),
           canDelete:
-            authorized &&
-            (projectId === null ||
-              decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
-                mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
-              )?.allow === true),
+            birth.adopted === true
+              ? false
+              : projectId === null
+                ? authorized
+                : roleCurrent &&
+                  decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
+                    mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
+                  )?.allow === true,
         };
       }),
     );

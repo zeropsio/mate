@@ -12,10 +12,10 @@ import {
 import type { PressElsewhere } from "../../zerops/hq/index.ts";
 import {
   isTerminalReachability,
-  type MateLink,
   type Reachability,
   reachabilityPhrase,
-} from "../../zerops/environments/index.ts";
+} from "../../zerops/environments/reachability.ts";
+import type { MateLink } from "../../zerops/environments/mateLink.ts";
 import type { MateRecovery } from "./mateRecovery.ts";
 import { NO_RESTARTS, readRestartRecovery } from "./restart.ts";
 import type { ActivityProcess } from "../../zerops/activity/dto.ts";

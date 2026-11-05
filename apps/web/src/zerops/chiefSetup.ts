@@ -34,6 +34,7 @@ import { useOrgOffers } from "./useHqOffers";
 import { useRunNewProject } from "./useRunNewProject";
 import { useZeropsRegistry } from "./useZeropsRegistry";
 import { useZeropsSession } from "./ZeropsSessionProvider";
+import { sharedBirthPresentation, useOwnChiefBirth } from "./sharedBirths";
 
 interface ChiefSetupState {
   /** The organization the setup runs in. */
@@ -83,7 +84,8 @@ export function useChiefSetupEntry(): boolean {
   const own = useHqOwnChief();
   const { setup } = useChiefSetup();
   const offered = useRoleOffers().setUpChief;
-  return offered && chiefSetupEntry(own, setup.phase);
+  const birth = useOwnChiefBirth();
+  return birth === undefined && offered && chiefSetupEntry(own, setup.phase);
 }
 
 /**
@@ -103,6 +105,8 @@ export function useChiefSetupLine(): ReturnType<typeof chiefSetupLine> {
   const own = useOwnChief();
   const { setup } = useChiefSetup();
   const mayCreate = useOrgOffers()("create_app").kind === "allowed";
+  const birth = useOwnChiefBirth();
+  if (birth !== undefined) return sharedBirthPresentation(birth).attention ? "stopped" : "running";
   return chiefSetupLine({ own, mayCreate, setup: setup.phase });
 }
 
@@ -123,6 +127,7 @@ export function useChiefSetupRunner(): {
   const runNewProject = useRunNewProject();
   const { setup, orgId } = useChiefSetupStore();
   const own = useOwnChief();
+  const ownBirth = useOwnChiefBirth();
   const birthId = setup.phase === "idle" ? null : setup.birthId;
   const creation = useCreation(birthId ?? "");
   const presses = useMatePresses();
@@ -132,7 +137,7 @@ export function useChiefSetupRunner(): {
       : presses.find((entry) => entry.projectId === creation.projectId);
 
   const start = useCallback(() => {
-    if (activeOrganization === null) return;
+    if (activeOrganization === null || ownBirth !== undefined) return;
     if (useChiefSetupStore.getState().setup.phase !== "idle") return;
     const ask: NewProjectAsk = {
       organizationId: activeOrganization.id,
@@ -148,7 +153,7 @@ export function useChiefSetupRunner(): {
     useChiefSetupStore.setState({ orgId: activeOrganization.id, startedAtMs: Date.now() });
     dispatch({ type: "start", birthId: ask.birthId });
     beginCreation({ ask, hq: configuredHq(), now: Date.now(), run: runNewProject });
-  }, [activeOrganization, runNewProject, user]);
+  }, [activeOrganization, ownBirth, runNewProject, user]);
 
   const again = useCallback(() => {
     if (setup.phase !== "failed") return;
@@ -176,21 +181,21 @@ export function useChiefSetupRunner(): {
   const finishing = useRef(false);
   const chiefProject = setup.phase === "running" && setup.step === "hq" ? setup.projectId : null;
   useEffect(() => {
-    if (chiefProject === null || operations === null || orgId === null) return;
+    if (chiefProject === null || operations === null || orgId === null || birthId === null) return;
     if (finishing.current) return;
     finishing.current = true;
     void finishChiefSetup({
       projectId: chiefProject,
-      setChief: (projectId) =>
+      setChief: () =>
         operations.run(
-          { kind: "set-chief", orgId, projectId },
+          { kind: "register-birth-chief", orgId, birthId },
           { orgId, unobserved: HQ_UNFOLLOWED },
         ),
       dispatch,
     }).finally(() => {
       finishing.current = false;
     });
-  }, [chiefProject, operations, orgId]);
+  }, [birthId, chiefProject, operations, orgId]);
 
   useEffect(() => {
     if (orgId === activeOrganization?.id && setup.phase === "done" && own === setup.projectId) {

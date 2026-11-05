@@ -766,6 +766,8 @@ export type PressRegistration = {
       readonly standUp: boolean;
       /** The birth intent its project was created under: the attach closes it. */
       readonly intent?: string;
+      /** Register the maker's Chief before its container can say hello. */
+      readonly chief?: true;
     }
   | {
       /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
@@ -836,6 +838,8 @@ export function pressRegistration(
           ...(registration.intent === undefined ? {} : { birth: registration.intent }),
         },
       });
+      if (registration.chief === true && registration.intent !== undefined)
+        await run({ kind: "register-birth-chief", orgId, birthId: registration.intent });
       return;
     }
     const added = await addGroupEnvironment({
@@ -1003,12 +1007,13 @@ async function pressRun(
       // Followed by its import's own process from now on, in any browser.
       onContainerImported: async ({ processId }) => {
         if (processId !== undefined) {
-          const recorded = await input.hold?.imported(processId).catch((cause: unknown) => {
-            if (input.birth !== undefined) throw cause;
+          if (input.birth !== undefined) {
+            const recorded = await input.hold?.imported(processId);
+            if (recorded !== "recorded") throw new Error("HQ did not confirm the import receipt.");
+          } else {
             // Ordinary presses continue when HQ does not answer their hold.
-          });
-          if (input.birth !== undefined && recorded !== "recorded")
-            throw new Error("HQ did not confirm the import receipt.");
+            await input.hold?.imported(processId).catch(() => undefined);
+          }
         }
       },
       onProgress: (progress) => {

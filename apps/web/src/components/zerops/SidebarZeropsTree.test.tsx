@@ -1232,6 +1232,26 @@ describe("a creation under way in the menu", () => {
     expect(afterSharedRecord).not.toContain("Coming up");
   });
 
+  it("a project of stopped births never says its Mates are coming up", () => {
+    const births = [
+      { ...birth({ projectId: "vera-dev" }), intent: "b1" },
+      { ...birth({ projectId: "bea-dev", displayName: "Bea" }), intent: "b2" },
+    ];
+    const presentation = { line: "Project created · Quota reached.", entries: [] };
+    const html = render([], {
+      births,
+      getBirth: () => ({ ...presentation, attention: true }),
+    });
+    expect(html).toContain("2 Mates · setup needs attention");
+    expect(html.toLowerCase()).not.toContain("coming up");
+
+    const mixed = render([], {
+      births,
+      getBirth: (id: string) => ({ ...presentation, attention: id === "b1" }),
+    });
+    expect(mixed).toContain("2 Mates · setup needs attention");
+  });
+
   it("a pending shared birth shows the phase and reason received from its shared record", () => {
     const html = render([CRM_DEV], {
       births: [{ ...birth(), intent: "b1" }],

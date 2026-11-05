@@ -20,6 +20,7 @@ import type { OperationKind } from "./kind.ts";
 declare module "../model.ts" {
   interface OperationIntents {
     readonly "set-chief": { readonly orgId: string; readonly projectId: string };
+    readonly "register-birth-chief": { readonly orgId: string; readonly birthId: string };
     readonly "decide-proposal": {
       readonly orgId: string;
       readonly proposalId: string;
@@ -29,6 +30,7 @@ declare module "../model.ts" {
   }
   interface OperationResults {
     readonly "set-chief": { readonly chief: HqChief };
+    readonly "register-birth-chief": { readonly projectId: string };
     readonly "decide-proposal": { readonly decision: HqProposalDecision };
     readonly "record-reveal": Record<string, never>;
   }
@@ -40,6 +42,12 @@ const answered = (_read: unknown, _intent: unknown, receipt: OperationReceipt) =
 
 export const setChief: OperationKind<"set-chief"> = {
   kind: "set-chief",
+  executor: "hq",
+  reflected: answered,
+};
+
+export const registerBirthChief: OperationKind<"register-birth-chief"> = {
+  kind: "register-birth-chief",
   executor: "hq",
   reflected: answered,
 };
@@ -56,7 +64,7 @@ export const recordReveal: OperationKind<"record-reveal"> = {
   reflected: answered,
 };
 
-export const HQ_CHIEF_KINDS = [setChief, decideProposal, recordReveal] as const;
+export const HQ_CHIEF_KINDS = [setChief, registerBirthChief, decideProposal, recordReveal] as const;
 
 export type HqChiefIntent = Extract<
   OperationIntent,

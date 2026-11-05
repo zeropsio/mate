@@ -61,6 +61,10 @@ vi.mock("./useZeropsMates", () => ({
 vi.mock("./useAskMate", () => ({ useAskMate: () => vi.fn() }));
 vi.mock("./useOpenMate", () => ({ useOpenMate: () => vi.fn() }));
 vi.mock("./ownChief", () => ({ useOwnChief: () => null, useKeepOwnChief: () => vi.fn() }));
+vi.mock("./sharedBirths", async (original) => ({
+  ...(await original<typeof import("./sharedBirths")>()),
+  useOwnChiefBirth: () => undefined,
+}));
 vi.mock("./useHqOffers", () => ({ useOrgOffers: () => () => ({ kind: "allowed" }) }));
 vi.mock("./creations", async (original) => ({
   ...(await original<typeof import("./creations")>()),
@@ -122,6 +126,8 @@ describe("every Chief creation entry uses the same setup intent", () => {
             return { appId: "app" };
           case "record-birth":
             return { birthId: "birth" };
+          case "claim-birth-attempt":
+            return { claim: { by: "alex", at: "claim-at" } };
           case "create-project":
             return { projectId: "chief-project" };
           default:

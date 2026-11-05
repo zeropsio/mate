@@ -2123,6 +2123,33 @@ describe("birthPresses — the presses that make a Mate, whose conversation the 
 });
 
 describe("pressRegistration — an automated Mate's attach", () => {
+  it("registers a Chief after its attach and before the import can start", async () => {
+    const sent: string[] = [];
+    const run = vi.fn(async (intent: { kind: string }) => {
+      sent.push(intent.kind);
+      if (intent.kind === "register-birth-chief") throw new Error("Chief refused");
+      return {} as never;
+    });
+    const register = pressRegistration(
+      {
+        client: {} as never,
+        operations: { run: run as never, untilEnvironment: vi.fn() as never },
+        organizationId: "org",
+      },
+      {
+        hq: { projectId: "hq", address: "https://hq.example" },
+        kind: "mate",
+        groupId: "shop",
+        mate: { face: { tint: "rose", shape: "seal" } },
+        standUp: true,
+        intent: "birth",
+        chief: true,
+      },
+    );
+    await expect(register("nova")).rejects.toThrow("Chief refused");
+    expect(sent).toEqual(["bind-birth", "attach-project", "register-birth-chief"]);
+  });
+
   it.each([
     ["an automated Mate is attached automated", { automated: true as const }, true],
     ["an ordinary Mate is attached as it always was", {}, false],

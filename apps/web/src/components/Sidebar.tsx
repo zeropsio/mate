@@ -1300,8 +1300,15 @@ export default function Sidebar() {
           zeropsSession.activeOrganization?.id,
           placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
         ),
+        zeropsSession.user?.id,
       ),
-    [sharedBirths, zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
+    [
+      sharedBirths,
+      zeropsPresses,
+      zeropsMade,
+      zeropsSession.activeOrganization?.id,
+      zeropsSession.user?.id,
+    ],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();

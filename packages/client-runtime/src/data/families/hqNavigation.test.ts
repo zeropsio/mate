@@ -82,6 +82,13 @@ it("slice one admits direct branches only and never invents a PR target", () => 
 });
 
 describe("navigation record decoding", () => {
+  it("keeps an adopted birth's identity so its existing project is protected", () => {
+    const birth = { id: "birth-ada", face: "ada", projectId: "ada", adopted: true };
+    expect(hqAppFamily.hq!.decode({ ...app, births: [birth] }, "app:shop")?.births).toEqual([
+      birth,
+    ]);
+  });
+
   it("a fresh observer retains the accepted import identity from an HQ birth without a press", () => {
     const birth = {
       id: "birth-ada",

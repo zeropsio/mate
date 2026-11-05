@@ -88,32 +88,38 @@ export function sharedBirthPresentation(birth: SharedBirth): {
     ? null
     : next.kind === "create"
       ? "Continue will create the project, attach the Mate, and submit the import."
-      : next.kind === "bind"
-        ? "Continue will bind the project and check the next step."
-        : next.kind === "import" && birth.projectId !== null
-          ? birth.placement === "unplaced"
-            ? "Continue will attach the Mate and submit the import."
-            : birth.placement === "attached"
-              ? "Continue will submit the import."
-              : null
-          : next.kind === "record-import"
+      : next.kind === "register-chief"
+        ? "Continue will register the Chief."
+        : next.kind === "bind"
+          ? "Continue will bind the project and check the next step."
+          : next.kind === "import" && birth.projectId !== null
             ? birth.placement === "unplaced"
-              ? "Continue will attach the Mate and record the accepted import."
+              ? "Continue will attach the Mate and submit the import."
               : birth.placement === "attached"
-                ? "Continue will record the accepted import."
+                ? "Continue will submit the import."
                 : null
-            : next.kind === "wait" && next.attach
-              ? "Continue will attach the Mate."
-              : null;
+            : next.kind === "record-import"
+              ? birth.placement === "unplaced"
+                ? "Continue will attach the Mate and record the accepted import."
+                : birth.placement === "attached"
+                  ? "Continue will record the accepted import."
+                  : null
+              : next.kind === "wait" && next.attach
+                ? "Continue will attach the Mate."
+                : null;
   return {
     line: [
       phaseLine,
       birth.progress.sessionEnded === true ? "Setup session ended" : null,
       detail,
       step,
-      birth.continueRequiresAdmin === true
-        ? "An organization or project administrator can continue."
-        : null,
+      birth.continuePermission === "maker"
+        ? "The person who started this setup can continue if they can add Mates and attach the project."
+        : birth.continuePermission === "attach"
+          ? "Someone who can add Mates and attach this project can continue."
+          : birth.continuePermission === "add-mate"
+            ? "Someone who can add Mates to this application can continue."
+            : null,
     ]
       .filter((part) => part !== null)
       .join(" · "),
@@ -140,17 +146,34 @@ export function useSharedBirths(): ReadonlyArray<SharedBirth> {
   return useSharedBirthState().open;
 }
 
+/** A person's Chief remains visible during its shared birth, including after a reload. */
+export function useOwnChiefBirth(): SharedBirth | undefined {
+  const { user } = useZeropsSession();
+  const { open } = useSharedBirthState();
+  return user == null
+    ? undefined
+    : open.find((birth) => birth.chief === true && birth.madeBy === user.id);
+}
+
 /** Place shared births ahead of locally pending creations. */
 export function placedSharedBirths(
   births: ReadonlyArray<SharedBirth>,
   local: ReadonlyArray<ZeropsPlacedBirth>,
+  personId?: string,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   const ids = new Set(births.map(({ id }) => id));
   const projects = new Set(
     births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId])),
   );
   const shared = births.flatMap((birth): ReadonlyArray<ZeropsPlacedBirth> => {
-    if (birth.intent?.placement.chief === true) return [];
+    if (
+      birth.intent?.placement.chief === true &&
+      (personId === undefined ||
+        birth.madeBy === personId ||
+        birth.chiefRegistered !== false ||
+        !birth.canContinue)
+    )
+      return [];
     const face = readMateFace(birth.face);
     return [
       {

@@ -108,12 +108,16 @@ describe("a stopped shared Mate birth", () => {
                 const surface = document.querySelector('[data-zerops-surface="mate-empty-state"]');
                 return {
                   reason: surface?.textContent?.includes("Creation refused by Zerops.") ?? false,
+                  guidance:
+                    surface?.textContent?.includes(
+                      "The person who started this setup can continue if they can add Mates and attach the project.",
+                    ) ?? false,
                   continues: [...(surface?.querySelectorAll("button") ?? [])].filter(
                     (button) => button.textContent?.trim() === "Continue",
                   ).length,
                 };
               });
-              expect(state).toEqual({ reason: true, continues: 0 });
+              expect(state).toEqual({ reason: true, guidance: true, continues: 0 });
             } finally {
               settled.close();
             }

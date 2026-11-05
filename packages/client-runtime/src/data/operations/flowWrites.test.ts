@@ -142,6 +142,7 @@ function hqOf(answer: () => Promise<unknown>) {
     createApp: call("createApp"),
     recordBirth: call("recordBirth"),
     bindBirth: call("bindBirth"),
+    registerBirthChief: call("registerBirthChief"),
     deleteBirth: call("deleteBirth"),
     claimBirthAttempt: call("claimBirthAttempt"),
     endBirthAttempt: call("endBirthAttempt"),

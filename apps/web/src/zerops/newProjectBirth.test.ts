@@ -591,6 +591,15 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
 const CREATOR_OWNS = { clientUserId: "cu-me", roleCode: "OWNER" } as const;
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
+  it("records a Chief as a top-level birth field before creating its project", async () => {
+    const { ports: made, read: now } = ports();
+    await runNewProjectBirth(held({ chief: true }), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith(
+      "b-acme:birth",
+      expect.objectContaining({ chief: true }),
+    );
+  });
+
   it("records the first Mate's original creation intent before creating its project", async () => {
     const { ports: made, read: now } = ports();
     await runNewProjectBirth(held({ locationId: "prg1", agents: ["claude-code"] }), now, made);

@@ -11,6 +11,7 @@ export interface ContinueBirthPorts {
   ) => Promise<SharedBirth | undefined>;
   readonly run: (birth: SharedBirth, from: "create" | "import") => Promise<void>;
   readonly recordImport: (birth: SharedBirth, receipt: string) => Promise<void>;
+  readonly registerChief: (birth: SharedBirth) => Promise<void>;
 }
 
 /** Acts on the account projection again after binding; a prior view never authorizes the next write. */
@@ -34,6 +35,10 @@ export async function continueBirth(
   }
   const next = birth.progress.next;
   switch (next.kind) {
+    case "register-chief":
+      if (birth.projectId === null || birth.placement !== "attached") return "unavailable";
+      await ports.registerChief(birth);
+      return "started";
     case "create":
       if (birth.projectId !== null || birth.intent === undefined) return "unavailable";
       await ports.run(birth, "create");

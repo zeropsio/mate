@@ -626,6 +626,7 @@ function mount(registry?: AtomRegistry.AtomRegistry): void {
           createApp: unused,
           recordBirth: unused,
           bindBirth: unused,
+          registerBirthChief: unused,
           deleteBirth: unused,
           claimBirthAttempt: unused,
           endBirthAttempt: unused,

@@ -41,6 +41,23 @@ const birth: SharedBirth = {
 };
 
 describe("shared births in the group tree", () => {
+  it("another authorized person can find an unregistered Chief birth", () => {
+    const chief: SharedBirth = {
+      ...birth,
+      madeBy: "ada",
+      chief: true,
+      chiefRegistered: false,
+      intent: { ...birth.intent!, placement: { ...birth.intent!.placement, chief: true } },
+      canContinue: true,
+      progress: { phase: "project-created", next: { kind: "register-chief" }, reason: null },
+    };
+    expect(placedSharedBirths([chief], [], "bea")).toMatchObject([
+      { intent: "b1", placement: { groupId: "a1", displayName: "Ada" } },
+    ]);
+    expect(placedSharedBirths([chief], [], "ada")).toEqual([]);
+    expect(placedSharedBirths([{ ...chief, chiefRegistered: true }], [], "bea")).toEqual([]);
+  });
+
   it('Decision: A birth that stopped (closed window, refused request, failed import, container never up, no hello yet) shows the last proven phase and, where known, the Zerops reason, and offers exactly two actions, Continue and Delete; it never renders as an ordinary unreachable Mate and never as "Coming up" for a Mate that is already linked.', () => {
     expect(sharedBirthPresentation(birth)).toMatchObject({
       line: "Creating project · Outcome unknown — waiting for Zerops",
@@ -73,9 +90,22 @@ describe("shared births in the group tree", () => {
       line: "Container starting · Waiting for the Mate to link",
       actions: ["continue", "delete"],
     });
-    expect(sharedBirthPresentation({ ...birth, continueRequiresAdmin: true })).toMatchObject({
-      line: "Creating project · Outcome unknown — waiting for Zerops · An organization or project administrator can continue.",
-    });
+  });
+
+  it("a stopped birth tells a person without Continue who can finish its remaining steps", () => {
+    const stopped = {
+      ...birth,
+      progress: { phase: "creating-project", next: { kind: "create" }, reason: "No capacity." },
+    } as const;
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "maker" }).line).toContain(
+      "The person who started this setup can continue if they can add Mates and attach the project.",
+    );
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "attach" }).line).toContain(
+      "Someone who can add Mates and attach this project can continue.",
+    );
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "add-mate" }).line).toContain(
+      "Someone who can add Mates to this application can continue.",
+    );
   });
 
   it("an interrupted setup names the remaining attachment while the accepted import awaits its service", () => {

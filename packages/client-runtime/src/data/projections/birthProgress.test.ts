@@ -67,6 +67,72 @@ function creationFinished(store: ReturnType<typeof makeAccountStore>) {
 }
 
 describe("shared birth progress", () => {
+  it("hello cannot end a Chief birth before its registration is recorded", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1", name: "Shop - Ada" }],
+      services: [
+        {
+          id: "s1",
+          projectId: "p1",
+          name: "zcp",
+          status: "ACTIVE",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        },
+      ],
+    }).forEach(store.dispatch);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const chief = {
+      ...initial.birth,
+      projectId: "p1",
+      importProcessId: "s1",
+      chief: true,
+      chiefRegistered: false,
+      state: "awaiting registration",
+    };
+    const project = {
+      projectId: "p1",
+      name: "Shop - Ada",
+      kind: "mate",
+      mate: { face: "rose:seal", birthId: "birth" },
+    };
+    const publish = (births: Array<typeof chief>) =>
+      seedHqNavigation(store, ORG, {
+        structure: {
+          apps: [{ id: "app", name: "Shop", projects: [project], births }],
+          ungrouped: [],
+        },
+      });
+    publish([chief]);
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read)).toMatchObject({
+      open: [
+        {
+          chief: true,
+          chiefRegistered: false,
+          canContinue: true,
+          progress: { next: { kind: "register-chief" } },
+        },
+      ],
+      readyProjectIds: [],
+    });
+    publish([{ ...chief, chiefRegistered: true }]);
+    expect(registry.get(read)).toMatchObject({
+      open: [
+        { chief: true, chiefRegistered: true, progress: { next: { kind: "wait", for: "hello" } } },
+      ],
+      readyProjectIds: [],
+    });
+    publish([]);
+    expect(registry.get(read)).toMatchObject({ open: [], readyProjectIds: ["p1"] });
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("an attached birth becomes ready only when HQ removes the open birth after hello", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
@@ -133,6 +199,81 @@ describe("shared birth progress", () => {
     registry.dispose();
   });
 
+  it("an adopted birth never offers to delete its existing project", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+      store.dispatch,
+    );
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const adopted = { ...initial.birth, projectId: "p1", adopted: true };
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [{ id: "app", name: "Shop", projects: [], births: [adopted] }],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([{ id: "birth", canDelete: false }]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
+  it("a project owner can delete a bound birth without permission to create projects", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [
+        {
+          id: "p1",
+          name: "Shop - Ada",
+          userRoles: [{ clientUserId: "member", roleCode: "OWNER" }],
+        },
+      ],
+      services: [],
+    }).forEach(store.dispatch);
+    creationFinished(store);
+    membershipInputs("BASIC_USER", false).forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [],
+            births: [{ ...initial.birth, projectId: "p1" }],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([{ canContinue: false, canDelete: true }]);
+    store.dispatch({
+      kind: "rows",
+      scope: projectsScope(ORG),
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "project",
+          id: "p1",
+          value: projectValue({ id: "p1", name: "Shop - Ada", userRoles: [] }),
+          revision: zeropsVersion(2),
+        },
+      ],
+    });
+    expect(registry.get(read).open).toMatchObject([{ canContinue: false, canDelete: false }]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("a bound birth before attachment offers Continue only to someone who can attach it", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
@@ -165,12 +306,18 @@ describe("shared birth progress", () => {
     seedHqNavigation(store, ORG, { structure: structure(false) });
     const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
     const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-    expect(registry.get(read).open).toMatchObject([{ placement: "unplaced", canContinue: false }]);
+    expect(registry.get(read).open).toMatchObject([
+      { placement: "unplaced", canContinue: false, continuePermission: "attach" },
+    ]);
     membershipInputs("ADMIN", false, 2).forEach(store.dispatch);
     expect(registry.get(read).open).toMatchObject([{ placement: "unplaced", canContinue: true }]);
     membershipInputs("READ_ONLY", true, 3).forEach(store.dispatch);
     seedHqNavigation(store, ORG, { structure: structure(true) });
     expect(registry.get(read).open).toMatchObject([{ placement: "attached", canContinue: true }]);
+    membershipInputs("READ_ONLY", false, 4).forEach(store.dispatch);
+    expect(registry.get(read).open).toMatchObject([
+      { placement: "attached", canContinue: false, continuePermission: "add-mate" },
+    ]);
     stop();
     store.close();
     registry.dispose();
@@ -235,9 +382,13 @@ describe("shared birth progress", () => {
     const stopMaker = registry.subscribe(maker, () => registry.get(maker), { immediate: true });
     const stopOther = registry.subscribe(other, () => registry.get(other), { immediate: true });
     expect(registry.get(maker).open).toMatchObject([{ canContinue: true, canDelete: true }]);
-    expect(registry.get(other).open).toMatchObject([{ canContinue: false, canDelete: true }]);
+    expect(registry.get(other).open).toMatchObject([
+      { canContinue: false, canDelete: true, continuePermission: "maker" },
+    ]);
     membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
-    expect(registry.get(maker).open).toMatchObject([{ canContinue: false, canDelete: false }]);
+    expect(registry.get(maker).open).toMatchObject([
+      { canContinue: false, canDelete: false, continuePermission: "maker" },
+    ]);
     membershipInputs("OWNER", false, 3).forEach(store.dispatch);
     expect(registry.get(maker).open).toMatchObject([{ canContinue: true, canDelete: true }]);
     store.dispatch({

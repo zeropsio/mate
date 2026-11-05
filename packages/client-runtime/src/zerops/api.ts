@@ -2053,7 +2053,11 @@ export class ZeropsApiClient {
       );
       return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
     } catch (cause) {
-      if (!importRequested && !(cause instanceof ZeropsWriteNotSent))
+      if (
+        !importRequested &&
+        !(cause instanceof ZeropsWriteNotSent) &&
+        !(cause instanceof ZeropsApiError && cause.kind === "uncertain")
+      )
         throw new ZeropsWriteNotSent(cause);
       throw cause;
     }

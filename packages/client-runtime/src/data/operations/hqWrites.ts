@@ -33,6 +33,7 @@ declare module "../model.ts" {
       readonly id: string;
       readonly face: string;
       readonly intent?: Readonly<Record<string, unknown>>;
+      readonly chief?: true;
       readonly standUp?: boolean;
       readonly automated?: true;
     };

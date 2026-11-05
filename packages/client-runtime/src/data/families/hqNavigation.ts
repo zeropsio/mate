@@ -60,6 +60,9 @@ const Birth = Schema.Struct({
   id: Schema.String,
   face: Schema.String,
   madeBy: Schema.optionalKey(Schema.String),
+  chief: Schema.optionalKey(Schema.Boolean),
+  chiefRegistered: Schema.optionalKey(Schema.Boolean),
+  adopted: Schema.optionalKey(Schema.Boolean),
   intent: Schema.optionalKey(Schema.Record(Schema.String, Schema.Unknown)),
   attempts: Schema.optionalKey(
     Schema.Struct({

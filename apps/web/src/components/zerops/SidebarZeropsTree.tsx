@@ -1981,6 +1981,9 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
       [...ordered.map((entry) => entry.projectId), ...coming.map((member) => member.projectId)],
       lead,
     );
+    const birthNeedsAttention = (member: ZeropsGroupPendingMember) =>
+      (member.intent === undefined ? undefined : getBirth?.(member.intent)?.attention) ??
+      member.failed === true;
     const faces: ReadonlyArray<ClusterFace> = cluster.shown.flatMap((projectId) => {
       const entry = ordered.find((candidate) => candidate.projectId === projectId);
       if (entry === undefined) {
@@ -1993,10 +1996,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             name: member.name,
             tint,
             shape: member.face?.shape ?? mateShapeOf(undefined, tint),
-            state: mateBirthFace(
-              (member.intent === undefined ? undefined : getBirth?.(member.intent)?.attention) ??
-                member.failed === true,
-            ),
+            state: mateBirthFace(birthNeedsAttention(member)),
             known: true,
             badge: null,
           },
@@ -2070,6 +2070,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         menu={projectMenu()}
         more={cluster.more}
         name={projectName}
+        pendingNeedsAttention={leadEntry === undefined && coming.some(birthNeedsAttention)}
         onDragStart={dragOf}
         onInto={() => {
           treeRef.current
@@ -2854,6 +2855,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   faces,
   more,
   mates,
+  pendingNeedsAttention,
   lead,
   asksMore,
   keyedReadings,
@@ -2876,6 +2878,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
   readonly more: number;
   /** How many Mates it holds, for its name in words. */
   readonly mates: number;
+  readonly pendingNeedsAttention: boolean;
   /** Its lead, where one of its Mates is listed; none while all of them are still being made. */
   readonly lead: GroupLeadInput<T> | undefined;
   readonly asksMore: number;
@@ -2993,7 +2996,7 @@ function ProjectGroupRow<T extends RosterCandidate>({
           const cluster = <ProjectCluster faces={faces} more={more} />;
           return lead === undefined ? (
             <Row
-              line={`${String(mates)} Mates coming up`}
+              line={`${String(mates)} Mates${pendingNeedsAttention ? " · setup needs attention" : " coming up"}`}
               lead={cluster}
               meta={<span className="min-w-16" />}
               pressable="band"

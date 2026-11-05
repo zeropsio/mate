@@ -53,7 +53,8 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
   const presses = useMatePresses();
   const made = useCreations();
   const births = useSharedBirths();
-  const organizationId = useZeropsSession().activeOrganization?.id;
+  const { activeOrganization, user } = useZeropsSession();
+  const organizationId = activeOrganization?.id;
   return useMemo(
     () =>
       (
@@ -62,6 +63,7 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
           births: placedSharedBirths(
             births,
             placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+            user?.id,
           ),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
       ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
@@ -71,7 +73,7 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
             ? [{ id: member.projectId, tier: "production" }]
             : [],
       ),
-    [births, groupId, listing, made, organizationId, presses],
+    [births, groupId, listing, made, organizationId, presses, user?.id],
   );
 }
 

@@ -51,6 +51,7 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         createApp: asked("createApp"),
         recordBirth: asked("recordBirth"),
         bindBirth: asked("bindBirth"),
+        registerBirthChief: asked("registerBirthChief"),
         deleteBirth: asked("deleteBirth"),
         claimBirthAttempt: asked("claimBirthAttempt"),
         endBirthAttempt: asked("endBirthAttempt"),
@@ -98,6 +99,28 @@ const progress = (store: AccountStore) =>
 const record = (store: AccountStore) => store.state().operations.get("r1");
 
 describe("a creation's writes at HQ", () => {
+  it.effect("sends a Chief birth's top-level flag through the HQ write", () =>
+    Effect.gen(function* () {
+      const store = account();
+      const sent: unknown[] = [];
+      const { operations } = operationsOf(store, {
+        recordBirth: async (birth) => {
+          sent.push(birth);
+          return { id: "birth-1", face: birth.face };
+        },
+      });
+      yield* operations.submit({
+        kind: "record-birth",
+        orgId: ORG,
+        appId: "app-1",
+        id: "birth-1",
+        face: "tint:shape",
+        chief: true,
+      });
+      expect(sent).toEqual([{ appId: "app-1", id: "birth-1", face: "tint:shape", chief: true }]);
+    }),
+  );
+
   it.effect("a lost unbound birth deletion is confirmed only by a live complete birth list", () =>
     Effect.gen(function* () {
       const intent = { kind: "delete-birth", orgId: ORG, appId: "app-1", birthId: "b1" } as const;

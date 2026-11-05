@@ -3137,6 +3137,12 @@ describe("Every HQ verb that decides on the person's role carries their current 
     },
     { call: "setChief", method: "PUT", path: "/api/chief", ask: (api) => api.setChief("p1") },
     {
+      call: "registerBirthChief",
+      method: "PUT",
+      path: "/api/births/b1/chief",
+      ask: (api) => api.registerBirthChief("b1"),
+    },
+    {
       call: "decideProposal",
       method: "PUT",
       path: "/api/proposals/x1",
