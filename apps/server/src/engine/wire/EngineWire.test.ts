@@ -401,6 +401,27 @@ describe("a client subscribed to an engine conversation", () => {
     ),
   );
 
+  it.effect("a reload after the conversation changed opens on the change", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const reload = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.flatMap((item) => ("text" in item ? [item.text] : []))
+            : [],
+        );
+        yield* w.tell({ _tag: "Send", text: "Check the build" });
+        yield* w.agent((agent, thread) => agent.say(thread, "Looking."));
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking."]);
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking."]);
+        yield* w.agent((agent, thread) => agent.say(thread, "It is green."));
+        assert.deepStrictEqual(yield* reload, ["Check the build", "Looking.", "It is green."]);
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("opens with the text streamed so far when it subscribes mid-stream", () =>
     Effect.scoped(
       Effect.gen(function* () {
