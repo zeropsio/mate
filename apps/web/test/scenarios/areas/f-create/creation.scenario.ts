@@ -1,6 +1,6 @@
 import { scenarioSuite } from "../../harness/suite.ts";
 import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
-import { describe, it, expect } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createScenario } from "../../harness/scenario.ts";
 import { installCreation } from "./fake.ts";
@@ -21,7 +21,15 @@ describe("F: creation through the hosted client", () => {
           yield* c.chooseDestination("zerops");
           yield* c.fill("Environment", "Shop-b");
           yield* c.withAgent;
+          const pressAccepted = s.page.waitForResponse(
+            (response) =>
+              response.request().method() === "PUT" &&
+              new URL(response.url()).pathname === "/api/presses/created-1",
+          );
           yield* c.click(`Add ${role} to Shop`);
+          const pressResponse = yield* Effect.promise(() => pressAccepted);
+          expect(pressResponse.status()).toBe(200);
+          expect(yield* Effect.promise(() => pressResponse.json())).toMatchObject({ held: true });
           yield* c.environmentAppears("Shop-b", tag);
           yield* c.acceptedOnce("Shop-b");
           yield* s.then.noExternalNetwork;

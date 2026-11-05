@@ -1085,6 +1085,10 @@ export function makeHqApi(input: {
   };
 }): HqApi {
   const origin = input.address.replace(/\/+$/u, "");
+  // HQ ties a press to this client's stream, including across stream reconnects.
+  const socketName = Array.from(globalThis.crypto.getRandomValues(new Uint8Array(16)), (byte) =>
+    byte.toString(16).padStart(2, "0"),
+  ).join("");
   /** The session HQ issued, or the door exchange under way that will issue it. */
   let session: Promise<string> | null = null;
 
@@ -1316,7 +1320,7 @@ export function makeHqApi(input: {
       const held = session;
       const token = held === null ? null : await held;
       signal.throwIfAborted();
-      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}`;
+      const url = `${origin.replace(/^http/u, "ws")}/api/structure/ws?ticket=${encodeURIComponent(ticket)}&socket=${encodeURIComponent(socketName)}`;
       return input.openSocket(url, {
         open: on.open,
         message: on.message,
@@ -1339,7 +1343,7 @@ export function makeHqApi(input: {
     holdPress: async (projectId, press) => {
       await authorized(
         `/api/presses/${encodeURIComponent(projectId)}`,
-        { method: "PUT", body: JSON.stringify(await withAccess(press)) },
+        { method: "PUT", body: JSON.stringify(await withAccess({ ...press, socket: socketName })) },
         true,
       );
     },

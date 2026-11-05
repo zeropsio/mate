@@ -960,7 +960,9 @@ describe("makeHqApi — the structure socket", () => {
     });
     const opened = opening(api);
     const socket = await sockets.next();
-    expect(socket.url).toBe(`${ADDRESS.replace(/^http/u, "ws")}/api/structure/ws?ticket=t-1`);
+    const ticketUrl = new URL(socket.url);
+    ticketUrl.searchParams.delete("socket");
+    expect(ticketUrl.href).toBe(`${ADDRESS.replace(/^http/u, "ws")}/api/structure/ws?ticket=t-1`);
     expect(hq.seen.at(-1)).toMatchObject({
       path: "/api/stream-ticket",
       authorization: "Bearer session-1",

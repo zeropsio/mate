@@ -5,7 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 
 import { accountHqApi, configuredHq, useOfficialHq } from "./accountHq";
-import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { accountStorageKeyOf, closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
 import { ZeropsSessionContext } from "./sessionContext";
 import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 
@@ -107,6 +107,56 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     return { client, doors: () => mints };
   };
 
+  it("a press shares its account's named stream and session across reconnects, but not another tab's", async () => {
+    const sockets: string[] = [];
+    const presses: Array<{ readonly socket?: string; readonly importProcessId?: string }> = [];
+    const fetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      const answer = await fetch(input, init);
+      if (path === "/api/stream-ticket") return Response.json({ ticket: "ticket", expiresIn: 60 });
+      if (path === "/api/presses/project-1")
+        presses.push(JSON.parse(String(init?.body)) as (typeof presses)[number]);
+      return answer;
+    });
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor(url: string) {
+          sockets.push(url);
+        }
+        addEventListener() {}
+      },
+    );
+
+    const firstTab = load();
+    const stream = accountHqApi(firstTab.client, "org-1", HQ);
+    const writer = accountHqApi(firstTab.client, "org-1", HQ);
+    const handlers = { open: () => {}, message: () => {}, close: () => {} };
+    const signal = new AbortController().signal;
+    await Promise.all([
+      stream.openScopeSocket(handlers, signal),
+      writer.holdPress("project-1", { owner: "press-1", kind: "mate" }),
+    ]);
+    await writer.holdPress("project-1", {
+      owner: "press-1",
+      kind: "mate",
+      importProcessId: "import-1",
+    });
+    await stream.openScopeSocket(handlers, signal);
+
+    expect(calls.filter((call) => call.path === "/api/door")).toHaveLength(1);
+    const socket = new URL(sockets[0]!).searchParams.get("socket");
+    expect(socket).toMatch(/^[a-zA-Z0-9-]{1,100}$/u);
+    expect(new URL(sockets[1]!).searchParams.get("socket")).toBe(socket);
+    expect(presses.map((press) => press.socket)).toEqual([socket, socket]);
+    expect(presses[1]?.importProcessId).toBe("import-1");
+    const secondTab = load();
+    const other = accountHqApi(secondTab.client, "org-1", HQ);
+    await other.openScopeSocket(handlers, signal);
+    expect(new URL(sockets[2]!).searchParams.get("socket")).not.toBe(socket);
+  });
+
   it("a reload with a kept session that is still valid comes through no door", async () => {
     const first = load();
     await accountHqApi(first.client, "org-1", HQ).structure();
@@ -181,6 +231,141 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
       expect(calls.filter((call) => call.path.endsWith("/zcp-authorization"))).toEqual([]);
     },
   );
+
+  it("a door answer that arrives after its account closed is revoked and never kept", async () => {
+    const before = globalThis.fetch;
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let held = false;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (new URL(String(input)).pathname === "/api/door" && !held) {
+        held = true;
+        const answer = await before(input, init);
+        started.resolve();
+        await release.promise;
+        return answer;
+      }
+      return before(input, init);
+    });
+
+    const api = accountHqApi(load().client, "org-1", HQ);
+    const first = api.structure();
+    await started.promise;
+    await closeAccountLifetime();
+    openAccountLifetime("person-2");
+    await accountHqApi(load().client, "org-1", HQ).structure();
+    const nextKey = accountStorageKeyOf("person-2", "hq-sessions.v1");
+    const nextKept = stored.get(nextKey);
+    expect(nextKept).toContain(issuedSession(2));
+
+    release.resolve();
+    await expect(first).rejects.toMatchObject({ code: "account_changed" });
+
+    expect(stored.get(nextKey)).toBe(nextKept);
+    expect(stored.get(nextKey)).not.toContain(issuedSession(1));
+    expect(calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: "/api/session", authorization: `Bearer ${issuedSession(1)}` },
+    ]);
+    await expect(api.structure()).rejects.toMatchObject({ code: "account_changed" });
+    expect(calls.filter((call) => call.path === "/api/structure")).toHaveLength(1);
+    const reload = load();
+    await accountHqApi(reload.client, "org-1", HQ).structure();
+    expect(reload.doors()).toBe(0);
+    expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
+  });
+
+  it("a renewal answered after the account closed is revoked and never kept", async () => {
+    lifetimeMs = 10 * 60_000;
+    const api = accountHqApi(load().client, "org-1", HQ);
+    await api.structure();
+    lifetimeMs = 12 * HOUR_MS;
+
+    const before = globalThis.fetch;
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (
+        new URL(String(input)).pathname === "/api/door" &&
+        new Headers(init?.headers).get("authorization") === `Bearer ${issuedSession(1)}`
+      ) {
+        started.resolve();
+        await release.promise;
+      }
+      return before(input, init);
+    });
+
+    const renewing = api.structure();
+    await started.promise;
+    await closeAccountLifetime();
+    openAccountLifetime("person-2");
+    await accountHqApi(load().client, "org-1", HQ).structure();
+    const nextKey = accountStorageKeyOf("person-2", "hq-sessions.v1");
+    const nextKept = stored.get(nextKey);
+    expect(nextKept).toContain(issuedSession(2));
+
+    // HQ may issue a new session when the old bearer was revoked before it processed the renewal.
+    release.resolve();
+    await expect(renewing).rejects.toMatchObject({ code: "account_changed" });
+
+    expect(stored.get(nextKey)).toBe(nextKept);
+    expect(stored.get(nextKey)).not.toContain(issuedSession(3));
+    expect(calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: "/api/session", authorization: `Bearer ${issuedSession(1)}` },
+      { method: "DELETE", path: "/api/session", authorization: `Bearer ${issuedSession(3)}` },
+    ]);
+    expect(calls.filter((call) => call.path === "/api/structure")).toHaveLength(2);
+    const reload = load();
+    await accountHqApi(reload.client, "org-1", HQ).structure();
+    expect(reload.doors()).toBe(0);
+    expect(calls.at(-1)?.authorization).toBe(`Bearer ${issuedSession(2)}`);
+  });
+
+  it("a late renewal of the same session is not kept or revoked twice", async () => {
+    lifetimeMs = 10 * 60_000;
+    const api = accountHqApi(load().client, "org-1", HQ);
+    await api.structure();
+    lifetimeMs = 12 * HOUR_MS;
+
+    const before = globalThis.fetch;
+    const started = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      if (
+        new URL(String(input)).pathname === "/api/door" &&
+        new Headers(init?.headers).get("authorization") === `Bearer ${issuedSession(1)}`
+      ) {
+        const answer = Response.json({
+          session: issuedSession(1),
+          expiresAt: "2099-01-01T00:00:00.000Z",
+          orgId: "org-1",
+          userId: "u1",
+        });
+        started.resolve();
+        await release.promise;
+        return answer;
+      }
+      return before(input, init);
+    });
+
+    const renewing = api.structure();
+    await started.promise;
+    await closeAccountLifetime();
+    openAccountLifetime("person-2");
+    await accountHqApi(load().client, "org-1", HQ).structure();
+    const nextKey = accountStorageKeyOf("person-2", "hq-sessions.v1");
+    const nextKept = stored.get(nextKey);
+    expect(nextKept).toContain(issuedSession(2));
+
+    release.resolve();
+    await expect(renewing).rejects.toMatchObject({ code: "account_changed" });
+
+    expect(stored.get(nextKey)).toBe(nextKept);
+    expect(stored.get(nextKey)).not.toContain(issuedSession(1));
+    expect(calls.filter((call) => call.method === "DELETE")).toEqual([
+      { method: "DELETE", path: "/api/session", authorization: `Bearer ${issuedSession(1)}` },
+    ]);
+    expect(calls.filter((call) => call.path === "/api/structure")).toHaveLength(2);
+  });
 
   it("a sign-out revokes HQ's session and forgets it", async () => {
     await accountHqApi(load().client, "org-1", HQ).structure();
