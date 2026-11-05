@@ -93,7 +93,7 @@ describe("the Persona page", () => {
     expect(
       page.groups.map((group) => [group.title, group.rows.map((row) => row.template.id)]),
     ).toEqual([
-      ["From Zerops", ["reviewer", "explainer"]],
+      ["Zerops templates", ["reviewer", "explainer"]],
       ["Acme's templates", ["house-style"]],
     ]);
     expect(page.groups.flatMap((group) => group.rows).every((row) => row.current === null)).toBe(
@@ -245,7 +245,7 @@ describe("the Persona page", () => {
     {
       title: "an organization without templates says it has none yet",
       org: { state: "ready", templates: [], orgName: "Acme", mayWrite: false, failure: null },
-      note: { kind: "empty", text: "No templates yet." },
+      note: { kind: "empty", text: "No templates yet" },
     },
     {
       title: "the organization's templates say plainly when they cannot be had",
