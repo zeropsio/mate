@@ -29,9 +29,10 @@ const cutOuts = JSON.stringify({
 });
 const launch = JSON.stringify({
   do: "design",
-  title: "Design the launch post",
-  templates: "coffee shop launch",
-  size: "instagram-post",
+  title: "Design the link preview",
+  for: "public/og.png",
+  templates: "coffee shop",
+  size: "link-preview",
   startWith: "/srv/shop/shots/home.png",
   words: "Fresh roast at your door.",
 });
@@ -62,6 +63,15 @@ describe("a Mate's picture ask", () => {
     ["something else to do", JSON.stringify({ do: "dance", title: "Dance" })],
   ])("sets up nothing from %s", (_, source) => {
     expect(parsePictureAsk(source)).toBeNull();
+  });
+
+  it.each([
+    ["link-preview", "link-preview"],
+    ["logo", "logo"],
+    ["instagram-post", undefined],
+  ])("makes a design at the size of the place it goes in the app (%s)", (size, canvas) => {
+    const ask = parsePictureAsk(JSON.stringify({ ...JSON.parse(launch), size }));
+    expect(ask?.kind === "design" ? ask.canvas : null).toBe(canvas);
   });
 
   it("starts each step from its own picture", () => {

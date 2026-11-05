@@ -41,17 +41,14 @@ const HISTORY_SHOWN = 12;
 /** A history tile's picture: about 190 px at twice the pixels. */
 const TILE_PICTURE = { width: 384, height: 384 } as const;
 
-/** Adobe's canvas for each a picture ask can start on (`CanvasType`). */
-const CANVAS_TYPES: Readonly<Record<keyof typeof PICTURE_CANVASES, string>> = {
-  "instagram-post": "Instagram",
-  "instagram-story": "InstagramStory",
-  "instagram-portrait": "InstagramPortraitPost",
-  "facebook-post": "Facebook",
-  "linkedin-post": "LinkedinPost",
-  "youtube-thumbnail": "YoutubeThumbnail",
-  presentation: "Presentation",
-  flyer: "Flyer",
-  poster: "Poster",
+/** Adobe's canvas for each a picture ask can start on: its `CanvasType`, or a size it has none for. */
+const CANVAS_TYPES: Readonly<
+  Record<keyof typeof PICTURE_CANVASES, string | { width: number; height: number; unit: "px" }>
+> = {
+  "link-preview": { width: 1200, height: 630, unit: "px" },
+  "page-banner": { width: 1920, height: 640, unit: "px" },
+  "email-header": "EmailHeader",
+  logo: "Logo",
 };
 
 type AskStep = Extract<ExpressOpenRequest, { readonly kind: "ask" }>;
