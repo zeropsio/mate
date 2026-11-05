@@ -14,40 +14,41 @@ import { handledQueue } from "@t3tools/shared/testing/handledQueue";
 import * as Fiber from "effect/Fiber";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
-import * as TestClock from "effect/testing/TestClock";
 
 import { ProviderRuntimeEventBus } from "../spi/ProviderRuntimeEventBus.ts";
 import { ZeropsSetup } from "./ZeropsSetup.ts";
 import {
   layer as relayLayer,
-  STAND_UP_RELAY_INTERVAL,
   standUpProgressOf,
   type StandUpProgress,
   ZeropsStandUpRelay,
 } from "./ZeropsStandUpRelay.ts";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { parseZcpStatus, type ZcpStatus } from "./zeropsSetupSteps.ts";
+import { manualFileWatch } from "./testing/manualFileWatch.ts";
 import { inertMateEngine } from "../engine/testing/inertEngine.ts";
 
-/**
- * Starts listening before the trigger; the next status pass must actually return. A followed
- * call's next pass is one interval away on the test clock.
- */
+/** Starts listening before the trigger; the pass it causes must actually return. */
 const checked = <A, E, R>(trigger: Effect.Effect<A, E, R>) =>
   Effect.gen(function* () {
     const relay = yield* ZeropsStandUpRelay;
     const pass = yield* relay.nextPass.pipe(Effect.forkChild({ startImmediately: true }));
     yield* trigger;
-    yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
     yield* Fiber.join(pass);
   }).pipe(Effect.orDie);
-/** The followed calls' ends: one more pass, an interval on, finds the stand-up gone. */
-const finished = Effect.gen(function* () {
-  const relay = yield* ZeropsStandUpRelay;
-  const ended = yield* relay.finished.pipe(Effect.forkChild({ startImmediately: true }));
-  yield* TestClock.adjust(STAND_UP_RELAY_INTERVAL);
-  yield* Fiber.join(ended);
-}).pipe(Effect.orDie);
+/** zcp writes its status file: `write` lands, then the file's watch fires. */
+const written = <A, E, R>(file: StatusFile, write: Effect.Effect<A, E, R>) =>
+  checked(Effect.andThen(write, file.change));
+/** The followed calls' ends: the file's next change finds the stand-up gone. */
+const finished = (file: StatusFile) =>
+  Effect.gen(function* () {
+    const relay = yield* ZeropsStandUpRelay;
+    const ended = yield* relay.finished.pipe(Effect.forkChild({ startImmediately: true }));
+    yield* file.change;
+    yield* Fiber.join(ended);
+  }).pipe(Effect.orDie);
+
+type StatusFile = Effect.Success<typeof manualFileWatch>;
 
 const CALL_AT = "2026-10-01T10:00:00.000Z";
 
@@ -144,6 +145,7 @@ describe("ZeropsStandUpRelay", () => {
   it.effect("relays each change of the call's section into one progress row, then stops", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
+      const file = yield* manualFileWatch;
       const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
       const appended = yield* Ref.make<ReadonlyArray<StandUpProgress>>([]);
       const appends = Ref.get(appended);
@@ -157,6 +159,7 @@ describe("ZeropsStandUpRelay", () => {
             }),
             Layer.mock(ZeropsSetup)({
               status: Ref.get(status),
+              statusChanges: file.watch,
               standUpGone: () => Effect.succeed(false),
               noteStandUpCall: () => Effect.void,
             }),
@@ -168,8 +171,8 @@ describe("ZeropsStandUpRelay", () => {
       yield* Effect.gen(function* () {
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT)));
         assert.deepStrictEqual(yield* appends, [], "nothing to say before zcp writes");
-        yield* checked(Ref.set(status, section()));
-        yield* checked(Effect.void);
+        yield* written(file, Ref.set(status, section()));
+        yield* written(file, Effect.void);
         const unchangedTwice = (yield* appends).length;
         yield* Ref.set(
           status,
@@ -202,6 +205,7 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
   it.effect("follows it from its first update, once, and never after its end", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
+      const file = yield* manualFileWatch;
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
       const appended = yield* Ref.make<ReadonlyArray<StandUpProgress>>([]);
       const appends = Ref.get(appended);
@@ -215,6 +219,7 @@ describe("ZeropsStandUpRelay: a call first seen running", () => {
             }),
             Layer.mock(ZeropsSetup)({
               status: Ref.get(status),
+              statusChanges: file.watch,
               standUpGone: () => Effect.succeed(false),
               noteStandUpCall: () => Effect.void,
             }),
@@ -250,17 +255,18 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
   it.effect("stops following it once its process is gone, and leaves the card's last state", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
+      const file = yield* manualFileWatch;
       const status = yield* Ref.make<ZcpStatus | undefined>(section());
       const gone = yield* Ref.make(false);
       const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const appended = yield* Ref.make(0);
-      const layer = deadLayer(events, status, gone, noted, appended);
+      const layer = deadLayer(events, file, status, gone, noted, appended);
       yield* Effect.gen(function* () {
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT)));
         assert.strictEqual(yield* Ref.get(appended), 1);
         yield* Ref.set(gone, true);
         yield* Ref.set(status, section({ state: "running", phase: "stage" }));
-        yield* finished;
+        yield* finished(file);
         yield* Ref.set(gone, false);
         yield* Ref.set(status, section({ state: "failed" }));
         assert.strictEqual(
@@ -275,6 +281,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
   it.effect("a stage call going on with its first call's section is followed, and judged", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
+      const file = yield* manualFileWatch;
       const carried = (state: string) =>
         section({
           phase: "stage",
@@ -286,13 +293,13 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
       const gone = yield* Ref.make(false);
       const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const appended = yield* Ref.make(0);
-      const layer = deadLayer(events, status, gone, noted, appended, "2026-10-01T09:40:00Z");
+      const layer = deadLayer(events, file, status, gone, noted, appended, "2026-10-01T09:40:00Z");
       yield* Effect.gen(function* () {
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT)));
         assert.strictEqual(yield* Ref.get(appended), 1, "the stage phase reaches the stage call");
         yield* Ref.set(gone, true);
         yield* Ref.set(status, carried("done"));
-        yield* finished;
+        yield* finished(file);
         assert.strictEqual(yield* Ref.get(appended), 1, "its process gone, it is followed no more");
       }).pipe(Effect.provide(layer), Effect.scoped);
     }),
@@ -301,6 +308,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
   it.effect("a retry is followed while the dead one's section is still in the file", () =>
     Effect.gen(function* () {
       const events = yield* handledQueue<SpiEvent>();
+      const file = yield* manualFileWatch;
       // The previous call's section, its process gone, until the retry's zcp call writes its own.
       const status = yield* Ref.make<ZcpStatus | undefined>(
         section({ startedAt: "2026-10-01T09:40:00Z" }),
@@ -308,11 +316,11 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
       const gone = yield* Ref.make(true);
       const noted = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const appended = yield* Ref.make(0);
-      const layer = deadLayer(events, status, gone, noted, appended, "2026-10-01T09:40:00Z");
+      const layer = deadLayer(events, file, status, gone, noted, appended, "2026-10-01T09:40:00Z");
       yield* Effect.gen(function* () {
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT)));
         assert.strictEqual(yield* Ref.get(appended), 0, "the dead section is not this call's");
-        yield* checked(Ref.set(status, section()));
+        yield* written(file, Ref.set(status, section()));
         assert.strictEqual(yield* Ref.get(appended), 1, "the retry's own section reaches its card");
         assert.deepStrictEqual(yield* Ref.get(noted), [
           { threadId: "thread-main", turnId: "turn-1", startedAt: CALL_AT },
@@ -325,6 +333,7 @@ describe("ZeropsStandUpRelay: a stand-up whose MCP server died", () => {
 /** The relay over a file whose stand-up at `deadAt` lost its process while `gone` holds. */
 const deadLayer = (
   events: Effect.Success<ReturnType<typeof handledQueue<SpiEvent>>>,
+  file: StatusFile,
   status: Ref.Ref<ZcpStatus | undefined>,
   gone: Ref.Ref<boolean>,
   noted: Ref.Ref<ReadonlyArray<unknown>>,
@@ -341,6 +350,7 @@ const deadLayer = (
         }),
         Layer.mock(ZeropsSetup)({
           status: Ref.get(status),
+          statusChanges: file.watch,
           standUpGone: (read) =>
             Effect.map(Ref.get(gone), (dead) => dead && read?.standup?.startedAt === deadAt),
           noteStandUpCall: (call) => Ref.update(noted, (all) => [...all, call]),
@@ -358,6 +368,7 @@ const deadLayer = (
 describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
   const world = Effect.gen(function* () {
     const events = yield* handledQueue<SpiEvent>();
+    const file = yield* manualFileWatch;
     const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
     const appended = yield* Ref.make<ReadonlyArray<string>>([]);
     const layer = relayLayer.pipe(
@@ -370,6 +381,7 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
           }),
           Layer.mock(ZeropsSetup)({
             status: Ref.get(status),
+            statusChanges: file.watch,
             standUpGone: () => Effect.succeed(false),
             noteStandUpCall: () => Effect.void,
           }),
@@ -387,21 +399,21 @@ describe("ZeropsStandUpRelay: only the newest call of a live thread", () => {
         ),
       ),
     );
-    return { events, status, appended, layer };
+    return { events, file, status, appended, layer };
   });
   const running = (startedAt: string, state: string) =>
     section({ startedAt, services: [{ hostname: "api", step: "build", state }] });
 
   it.effect("a newer stand-up call ends the following of the one before", () =>
     Effect.gen(function* () {
-      const { events, status, appended, layer } = yield* world;
+      const { events, file, status, appended, layer } = yield* world;
       yield* Effect.gen(function* () {
         yield* Ref.set(status, running("2026-10-01T10:00:01Z", "running"));
         yield* checked(events.publish(standUpEvent("item.started", CALL_AT, "call-1")));
         // The first call died without an end; its retry starts.
         yield* events.publish(standUpEvent("item.started", "2026-10-01T10:20:00.000Z", "call-2"));
-        yield* checked(Ref.set(status, running("2026-10-01T10:20:01Z", "running")));
-        yield* checked(Ref.set(status, running("2026-10-01T10:20:01Z", "done")));
+        yield* written(file, Ref.set(status, running("2026-10-01T10:20:01Z", "running")));
+        yield* written(file, Ref.set(status, running("2026-10-01T10:20:01Z", "done")));
         // The first call's section once, then the retry's twice: the first is followed no more.
         assert.deepStrictEqual(yield* Ref.get(appended), ["running", "running", "done"]);
       }).pipe(Effect.provide(layer), Effect.scoped);
@@ -415,6 +427,7 @@ describe("ZeropsStandUpRelay on the Mate engine", () => {
     () =>
       Effect.gen(function* () {
         const events = yield* handledQueue<SpiEvent>();
+        const file = yield* manualFileWatch;
         const status = yield* Ref.make<ZcpStatus | undefined>(undefined);
         const shown = yield* Ref.make<ReadonlyArray<readonly [string, string, unknown]>>([]);
         const layer = relayLayer.pipe(
@@ -427,6 +440,7 @@ describe("ZeropsStandUpRelay on the Mate engine", () => {
               }),
               Layer.mock(ZeropsSetup)({
                 status: Ref.get(status),
+                statusChanges: file.watch,
                 standUpGone: () => Effect.succeed(false),
                 noteStandUpCall: () => Effect.void,
               }),
@@ -441,7 +455,7 @@ describe("ZeropsStandUpRelay on the Mate engine", () => {
         );
         yield* Effect.gen(function* () {
           yield* events.publish(standUpEvent("item.started", CALL_AT));
-          yield* checked(Ref.set(status, section()));
+          yield* written(file, Ref.set(status, section()));
           yield* Ref.set(status, section({ state: "done" }));
           yield* events.publish(standUpEvent("item.completed", "2026-10-01T10:05:00.000Z"));
           const all = yield* Ref.get(shown);

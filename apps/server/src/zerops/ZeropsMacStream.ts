@@ -8,8 +8,8 @@
  * (`mac/macViewScript.ts`); the last one's leaving ends it. While a subscriber
  * remains, a dropped or refused connection is retried with backoff, re-reading
  * the pairing (`~/.t3/mac/host.json`) and the app to show
- * (`~/.t3/mac/view.json`, written by `mac open` and `mac device open`) on every attempt, so a
- * new pairing or a newly opened app is picked up without a restart.
+ * (`~/.t3/mac/view.json`, written by `mac open` and `mac device open`) on every attempt and at
+ * each change of either file, so a new pairing or a newly opened app is picked up at once.
  *
  * Input goes through the same in-use guard as `mac device`: while someone is
  * working on the Mac a click would take over their screen, so it is refused
@@ -54,6 +54,7 @@ import {
   type MacViewRecord,
   macViewStreamCommand,
 } from "./mac/MacHost.ts";
+import { type FileWatch, watchFiles, type WatchFiles } from "./fileWatch.ts";
 import { makeMacViewParser, type MacViewMessage } from "./mac/macViewWire.ts";
 
 /** One running stream from the Mac: its stdout, then how it exited (255: ssh could not connect). */
@@ -69,8 +70,10 @@ export interface ZeropsMacStreamOptions {
   readonly removeCommands: ReadonlyArray<string>;
   /** The pairing, read fresh on every attempt; `undefined` when no Mac is paired. */
   readonly readRecord: Effect.Effect<MacHostRecord | undefined>;
-  /** The app to show, read fresh on every attempt and while streaming. */
+  /** The app to show, read fresh on every attempt and at each change while streaming. */
   readonly readView: Effect.Effect<MacViewRecord | undefined>;
+  /** A watch on the pairing's and the app's files: both are read again at its change. */
+  readonly watch: WatchFiles;
   /** Drops the pairing and the app to show, as `mac unpair` does. */
   readonly forget: Effect.Effect<void>;
   /** Starts streaming `app`'s window from the Mac; closing the scope ends it. */
@@ -86,8 +89,6 @@ export interface ZeropsMacStreamOptions {
   ) => Effect.Effect<number>;
   /** Backoff while a subscriber remains and the view is not live; the last entry repeats. */
   readonly retryDelaysMs?: ReadonlyArray<number>;
-  /** How often the app to show is re-read while streaming, and the stream checked for silence. */
-  readonly pollMs?: number;
   /** A stream silent this long is dead (the Mac slept, the VPN dropped): it is dropped and retried. */
   readonly stallMs?: number;
 }
@@ -105,7 +106,6 @@ export class ZeropsMacStream extends Context.Service<
 >()("t3/zerops/ZeropsMacStream") {}
 
 const DEFAULT_RETRY_DELAYS_MS = [500, 1000, 2000, 5000] as const;
-const DEFAULT_POLL_MS = 1000;
 // Above the helper's slowest step (a 12 s capture), so a slow frame is never taken for a dead Mac.
 const DEFAULT_STALL_MS = 20_000;
 /**
@@ -162,7 +162,6 @@ export const make = (options: ZeropsMacStreamOptions) =>
     const lastState = yield* Ref.make<ZeropsMacStateEvent>(INITIAL_STATE);
     const latestFrame = yield* Ref.make<ZeropsMacFrame | undefined>(undefined);
     const delays = options.retryDelaysMs ?? DEFAULT_RETRY_DELAYS_MS;
-    const pollMs = options.pollMs ?? DEFAULT_POLL_MS;
     const stallMs = options.stallMs ?? DEFAULT_STALL_MS;
 
     const publishState = (patch: Partial<Omit<ZeropsMacStateEvent, "type">>) =>
@@ -218,7 +217,7 @@ export const make = (options: ZeropsMacStreamOptions) =>
     };
 
     /** One ssh stream of `view.app`'s window, until it ends, stalls, breaks or the app to show changes. */
-    const runOneConnection = (record: MacHostRecord, view: MacViewRecord) =>
+    const runOneConnection = (record: MacHostRecord, view: MacViewRecord, changes: FileWatch) =>
       Effect.scoped(
         Effect.gen(function* () {
           const process = yield* options.openStream(record, view.app);
@@ -237,34 +236,42 @@ export const make = (options: ZeropsMacStreamOptions) =>
             Effect.map((code): ConnectionOutcome => ({ kind: "exit", code })),
             Effect.catch(() => Effect.succeed<ConnectionOutcome>({ kind: "broken" })),
           );
-          const watch: Effect.Effect<ConnectionOutcome> = Effect.gen(function* () {
+          // Silent past its deadline, counted from the last thing heard.
+          const stalled: Effect.Effect<ConnectionOutcome> = Effect.gen(function* () {
             while (true) {
-              yield* Effect.sleep(Duration.millis(pollMs));
-              const now = yield* Clock.currentTimeMillis;
-              if (now - (yield* Ref.get(lastHeardAt)) >= stallMs) return { kind: "stalled" };
+              const left =
+                (yield* Ref.get(lastHeardAt)) + stallMs - (yield* Clock.currentTimeMillis);
+              if (left <= 0) return { kind: "stalled" };
+              yield* Effect.sleep(Duration.millis(left));
+            }
+          });
+          const viewChanged: Effect.Effect<ConnectionOutcome> = Effect.gen(function* () {
+            while (true) {
+              yield* changes.next;
               const current = yield* options.readView;
               if (current?.app !== view.app) return { kind: "view-changed" };
             }
           });
-          return yield* Effect.raceFirst(consume, watch);
+          return yield* Effect.raceAll([consume, stalled, viewChanged]);
         }),
       );
 
     /** Runs while at least one subscriber exists: forked on 0→1, interrupted on 1→0. */
     const connectionLoop: Effect.Effect<void> = Effect.gen(function* () {
+      const changes = yield* options.watch;
       let attempt = 0;
       while (true) {
         const record = yield* options.readRecord;
         if (record === undefined) {
           yield* publishState({ status: "not-paired", inUse: false });
-          yield* Effect.sleep(Duration.millis(pollMs));
+          yield* changes.next;
           continue;
         }
         const macName = record.name;
         const view = yield* options.readView;
         if (view === undefined) {
           yield* publishState({ status: "no-app", macName, inUse: false });
-          yield* Effect.sleep(Duration.millis(pollMs));
+          yield* changes.next;
           continue;
         }
         const current = yield* Ref.get(lastState);
@@ -275,7 +282,7 @@ export const make = (options: ZeropsMacStreamOptions) =>
           yield* publishState({ status: "connecting" });
         }
         const startedAt = yield* Clock.currentTimeMillis;
-        const outcome = yield* runOneConnection(record, view);
+        const outcome = yield* runOneConnection(record, view, changes);
         if (outcome.kind === "view-changed") {
           attempt = 0;
           continue;
@@ -293,7 +300,7 @@ export const make = (options: ZeropsMacStreamOptions) =>
         attempt += 1;
         yield* Effect.sleep(Duration.millis(delayMs));
       }
-    });
+    }).pipe(Effect.scoped);
 
     const subscribe: Effect.Effect<
       Stream.Stream<ZeropsMacStreamEvent>,
@@ -412,6 +419,7 @@ export const layer = Layer.effect(
       removeCommands: macRemoveCommands(config.zerops?.hostname ?? "zcp"),
       readRecord: readDecoded(paths.record, decodeMacHostRecord),
       readView: readDecoded(paths.view, decodeMacViewRecord),
+      watch: watchFiles([paths.record, paths.view]),
       forget: Effect.forEach([paths.record, paths.knownHosts, paths.view], (file) =>
         fs.remove(file, { force: true }).pipe(Effect.ignore),
       ).pipe(Effect.asVoid),

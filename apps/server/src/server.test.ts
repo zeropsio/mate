@@ -6656,18 +6656,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("subscribeZeropsBrowserStream applies flow control (Ack after every Chunk)", () =>
     Effect.gen(function* () {
       // A real (non-mocked) service instance publishing "no-browser" forever
-      // (`readStreamPort` never resolves, `reconnectDelaysMs: [0]`) so a
-      // real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
+      // (`readStreamPort` never resolves, its port file changes without end)
+      // so a real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
       // per-request Ack loop the effect-rpc protocol requires (spec-mate.md
       // §5.5) actually runs over the real websocket, not just proof the
       // handler exists — a client that never acked would receive exactly
       // one Chunk and stall.
       const browserStream = yield* ZeropsBrowserStreamModule.make({
         readStreamPort: Effect.succeed(undefined),
+        watchPort: Effect.succeed({ next: Effect.void }),
         connect: () => {
           throw new Error("unreachable: readStreamPort never resolves a port");
         },
-        reconnectDelaysMs: [0],
       });
       yield* buildAppUnderTest({
         layers: {
