@@ -944,12 +944,13 @@ export function mateRowMenu<
  * One that did not come sleeps, with the red dot of something broken (S3).
  */
 export function mateComingRowView(view: MateRowView, coming: MateComing): MateRowView {
+  const life = mateLifeOf(coming);
   return {
     ...view,
-    state: coming.kind === "failed" ? "needs" : "idle",
-    face: matePose(view.face, { life: mateLifeOf(coming) }),
+    state: life === "failed" ? "needs" : "idle",
+    face: matePose(view.face, { life }),
     slot: { kind: "none" },
-    dot: coming.kind === "failed" ? "attention" : undefined,
+    dot: life === "failed" ? "attention" : undefined,
     strongName: false,
     ask: undefined,
     reply: undefined,
@@ -960,7 +961,7 @@ export function mateComingRowView(view: MateRowView, coming: MateComing): MateRo
 /** Where a listed Mate is in its life, from its coming up (`mateComing`). */
 export function mateLifeOf(coming: MateComing | undefined): MateLife {
   if (coming === undefined) return "up";
-  return coming.kind === "failed" ? "failed" : "coming";
+  return coming.kind === "failed" || coming.birth?.attention === true ? "failed" : "coming";
 }
 
 /** Which of the table's states a row is in: what waits on the person first. */

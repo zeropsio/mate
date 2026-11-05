@@ -1216,6 +1216,22 @@ describe("a creation under way in the menu", () => {
     stored.opened = new Set(["aaa"]);
   });
 
+  it("a stopped birth never renders as Coming up", () => {
+    const pending = { ...birth(), intent: "b1" };
+    const beforeSharedRecord = render([CRM_DEV], { births: [pending] });
+    expect(beforeSharedRecord).not.toContain("Coming up");
+
+    const afterSharedRecord = render([CRM_DEV], {
+      births: [pending],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? { line: "Project created · Quota reached.", attention: true, entries: [] }
+          : undefined,
+    });
+    expect(afterSharedRecord).toContain("Project created · Quota reached.");
+    expect(afterSharedRecord).not.toContain("Coming up");
+  });
+
   it("a pending shared birth shows the phase and reason received from its shared record", () => {
     const html = render([CRM_DEV], {
       births: [{ ...birth(), intent: "b1" }],
@@ -1449,6 +1465,21 @@ describe("a listed Mate still coming up", () => {
       expect(row).not.toContain("Nobody has signed in yet");
     },
   );
+
+  it("a listed stopped shared birth shows its reason and rests", () => {
+    const html = render([CRM_DEV], {
+      getComing: () => ({
+        kind: "coming",
+        line: "Project created · Quota reached.",
+        birth: { attention: true },
+      }),
+    });
+    const row = rowOf(html);
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+    expect(row).toContain('data-zerops-coming-tone="attention"');
+    expect(row).not.toContain(">Coming up");
+  });
 
   it("counts its clock from when the platform took it, where its birth is held here", () => {
     const since = Date.now() - 42_000;
@@ -2992,6 +3023,44 @@ describe("a group of Mates folded to its row", () => {
     expect(face?.state).toBe(rowFace);
     expect(face?.state).not.toBe("needs");
     expect(face?.moment).toBeUndefined();
+  });
+
+  it("a stopped shared birth rests in its folded project and in its row", () => {
+    const pending: ZeropsPlacedBirth = {
+      intent: "b1",
+      projectId: "vera-dev",
+      placement: {
+        groupId: "aaa",
+        groupName: "Beviro CRM",
+        kind: "mate",
+        displayName: "Vera",
+      },
+    };
+    const props = {
+      births: [pending],
+      getBirth: () => ({
+        line: "Project created · Quota reached.",
+        attention: true,
+        entries: [],
+      }),
+    };
+    const folded = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+        {...props}
+      />,
+    );
+    const face = clusterOf(folded, ["crm-dev", "vera-dev"]).find(({ key }) => key === "vera-dev");
+    stored.opened = new Set(["aaa"]);
+    const open = render([CRM_DEV], props);
+    const at = open.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = open.slice(open.lastIndexOf("<button", at), open.indexOf("</button>", at));
+    expect(face?.state).toBe("sleep");
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
   });
 
   it("greets nothing its folded group's faces only stood in for until the Mate's state was read", () => {
