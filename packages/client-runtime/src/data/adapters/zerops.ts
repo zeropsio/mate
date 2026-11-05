@@ -3,7 +3,9 @@
  * carries the organization's navigation registrations (`demand.ts`). An attempt opens the
  * receiver, starts reading frames before it registers anything, then registers each scope —
  * updates first — and commits the membership answer as that scope's baseline. Frames that arrive
- * while a baseline is read are staged by the reducer and replayed after it. After an outage
+ * while a baseline is read are staged by the reducer and replayed after it. A receiver slow to open
+ * does not hold the first menu: past {@link SLOW_RECEIVER_MS} each scope never read yet is read
+ * once over REST, and the receiver's registration replaces that answer. After an outage
  * nothing is replayed by Zerops: the next attempt registers again and its answers are the truth;
  * what went missing meanwhile is not invented.
  *
@@ -81,7 +83,20 @@ export interface ZeropsWire {
    * rather than asking the platform the same question again.
    */
   readonly held?: (path: string) => { readonly body: unknown; readonly atMs: number } | undefined;
+  /**
+   * The session's REST reads, which need no receiver: a first baseline is read here while a slow
+   * receiver still opens ({@link SLOW_RECEIVER_MS}).
+   */
+  readonly rest?: Pick<ZeropsLink, "post">;
 }
+
+/**
+ * How long an attempt waits for its receiver before it reads the organization's first baselines
+ * over REST. A healthy web-socket login and greeting take a few hundred ms; a stalled one has
+ * taken 7–10 s, and every listing waited behind it. Past this, reading a listing twice (once now,
+ * once as the receiver's registration answer) costs less than an empty menu.
+ */
+export const SLOW_RECEIVER_MS = 1_000;
 
 /**
  * How an HTTP answer classifies, by its status alone; the wire applies it to every failed request.
@@ -260,10 +275,77 @@ export function zeropsNavigationLink(options: {
   // changed generation of its navigation scope (manual retry / changed input) permits it again.
   const refusedPairs = new Map<ScopeKey, number>();
 
+  /**
+   * A navigation scope never read in this account's lifetime, read once over REST while the
+   * receiver is slow to open. Its answer commits as the scope's first baseline under the
+   * generation it had before the receiver registered anything: the receiver's own registration
+   * moves the scope to a new generation first, so this answer, arriving after it, is fenced out,
+   * and the registration's answer replaces it as a fresh baseline would. It never makes a scope
+   * live, and a failure says nothing: the registration is the scope's authority.
+   */
+  const readFirstBaseline = (
+    rest: Pick<ZeropsLink, "post">,
+    scope: ScopeKey,
+  ): Effect.Effect<void> => {
+    const registration = registrations.find(
+      (entry) => entry.scope === scope && entry.role === "membership",
+    );
+    const { phase, generation } = streamOf(store.state(), scope);
+    if (
+      registration === undefined ||
+      phase === "refused" ||
+      (store.state().memberships.get(scope)?.coverage ?? "unknown") !== "unknown"
+    )
+      return Effect.void;
+    return rest
+      .post(registration.path, {
+        search: registration.search,
+        sort: [],
+        limit: ORGANIZATION_SEARCH_LIMIT,
+      })
+      .pipe(
+        Effect.map((answer) => {
+          const list = Option.getOrUndefined(decodeList(answer));
+          if (list === undefined) return;
+          const rows = rowsOf(registration.family, list.items);
+          // Its directives wait for the registration's own baseline, which has a receiver.
+          store.dispatch({
+            kind: "baseline-commit",
+            scope,
+            generation,
+            via: "zerops-read",
+            members: membersOf(list.items),
+            rows,
+            partial: partialAnswer(list.items, rows, list.totalHits),
+          });
+        }),
+        Effect.ignore,
+      );
+  };
+
   const attempt = (): Effect.Effect<never, StreamFault, Scope.Scope> =>
     Effect.gen(function* () {
-      const link = yield* options.wire.open;
       const attemptScope = yield* Effect.scope;
+      let opened = false;
+      const rest = options.wire.rest;
+      if (rest !== undefined)
+        yield* Effect.sleep(SLOW_RECEIVER_MS).pipe(
+          // Each read takes its scope's generation as it is built, in the same step as this
+          // check: once the receiver opened, its registrations own every scope.
+          Effect.andThen(
+            Effect.suspend(() =>
+              opened
+                ? Effect.void
+                : Effect.all(
+                    scopes.map((scope) => readFirstBaseline(rest, scope)),
+                    { concurrency: "unbounded", discard: true },
+                  ),
+            ),
+          ),
+          Effect.forkIn(attemptScope),
+        );
+      const link = yield* options.wire.open;
+      opened = true;
       const signal = (target: LinkKey | ScopeKey, event: StreamEvent) =>
         Effect.map(Clock.currentTimeMillis, (now) =>
           store.dispatch({ kind: "stream", key: target, now, event }),
@@ -906,7 +988,11 @@ export function zeropsNavigationLink(options: {
       });
       /**
        * Each navigation family opens independently: updates first, then its membership baseline.
-       * A slow family cannot hold back another family or its demanded details.
+       * A slow family cannot hold back another family or its demanded details. The pair stays in
+       * order: the platform answers a registration once it holds it, so a membership read sent
+       * after the updates registration answered snapshots rows whose later changes that
+       * registration delivers. Sent together, the platform may snapshot first, and a row changed
+       * between the two would keep its old value until it changes again.
        */
       const registerNavigation = Effect.forEach(
         scopes,

@@ -14,7 +14,7 @@ import {
 import { makeAccountStore } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
-import { classifyHttp, zeropsNavigationLink } from "./zerops.ts";
+import { classifyHttp, SLOW_RECEIVER_MS, zeropsNavigationLink } from "./zerops.ts";
 import { historyScope, runningScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
 import { activeScope, versionScope } from "../families/version.ts";
@@ -687,6 +687,104 @@ function counter() {
   let next = 0;
   return () => `sub-${(next += 1)}`;
 }
+
+describe("a receiver slow to open", () => {
+  const projects = projectsScope(ORG);
+  const renamed = { ...PROBE_PROJECT, name: "mate-rig-renamed", _version: 2 };
+  /** Listed over REST; deleted before the receiver's registration answered. */
+  const gone = { ...PROBE_PROJECT, id: "gone", name: "gone", _version: 1 };
+  /** Over REST the project as it was; the receiver's registration answers it renamed. */
+  const platform =
+    (restHeld?: Deferred.Deferred<void>) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
+      if (request.rest !== true)
+        return answers(
+          () => [],
+          () => [renamed],
+        )(request);
+      const answer = Effect.succeed({
+        items: request.path === PROJECT_SEARCH ? [PROBE_PROJECT, gone] : [],
+      });
+      return restHeld === undefined ? answer : Effect.andThen(Deferred.await(restHeld), answer);
+    };
+  const projectName = (store: ReturnType<typeof makeAccountStore>) => {
+    const content = factOf(store.state(), "project", PROBE_PROJECT_ID)?.content;
+    return content?.kind === "value" ? (content.value as { readonly name: string }).name : null;
+  };
+  const restReads = (fixture: ReturnType<typeof fixtureWire>) =>
+    fixture.requests.filter((request) => request.rest === true);
+
+  it.effect(
+    "does not hold the first menu: each listing is read over REST, then the receiver's answer replaces it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const gate = yield* Deferred.make<void>();
+        const fixture = fixtureWire(platform(), { rest: true, opening: Deferred.await(gate) });
+        const { fiber } = yield* runLink(store, fixture);
+        expect(store.state().memberships.get(projects)?.coverage ?? "unknown").toBe("unknown");
+        yield* TestClock.adjust(SLOW_RECEIVER_MS);
+        yield* settle;
+        expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
+        expect(projectName(store)).toBe("mate-rig-live");
+        expect(store.state().memberships.get(projects)?.members.get("gone")).toBe("member");
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).not.toBe("live");
+        // One plain search per listing, none registered on a receiver.
+        expect(restReads(fixture).every((request) => request.body?.receiverId === undefined)).toBe(
+          true,
+        );
+        expect(new Set(restReads(fixture).map((request) => request.path)).size).toBe(
+          restReads(fixture).length,
+        );
+
+        yield* Deferred.succeed(gate, undefined);
+        yield* settle;
+        expect(store.state().streams.get(linkKeys.zerops(ORG))?.phase).toBe("live");
+        expect(projectName(store)).toBe("mate-rig-renamed");
+        // Gone from the receiver's answer: it left the listing, which the owner is asked about.
+        expect(store.state().memberships.get(projects)?.members.get("gone")).not.toBe("member");
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a receiver that opens in time reads nothing over REST", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(platform(), { rest: true });
+      const { fiber } = yield* runLink(store, fixture);
+      yield* TestClock.adjust(SLOW_RECEIVER_MS * 5);
+      yield* settle;
+      expect(restReads(fixture)).toHaveLength(0);
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a REST answer landing after the receiver's baseline never replaces it", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const gate = yield* Deferred.make<void>();
+      const restHeld = yield* Deferred.make<void>();
+      const fixture = fixtureWire(platform(restHeld), {
+        rest: true,
+        opening: Deferred.await(gate),
+      });
+      const { fiber } = yield* runLink(store, fixture);
+      yield* TestClock.adjust(SLOW_RECEIVER_MS);
+      yield* settle;
+      expect(restReads(fixture).length).toBeGreaterThan(0);
+      yield* Deferred.succeed(gate, undefined);
+      yield* settle;
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      yield* Deferred.succeed(restHeld, undefined);
+      yield* settle;
+      expect(projectName(store)).toBe("mate-rig-renamed");
+      expect(store.state().memberships.get(projects)?.members.get("gone")).toBeUndefined();
+      expect(store.state().memberships.get(projects)?.coverage).toBe("complete");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});
 
 describe("a demanded detail", () => {
   const HISTORY_PATH = `/project/${PROBE_PROJECT_ID}/process?limit=100`;

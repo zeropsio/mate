@@ -148,6 +148,10 @@ export function makeZeropsWire(options: {
       const verified = client.verifiedUser?.();
       return verified == null ? undefined : { body: verified.user, atMs: verified.atMs };
     },
+    rest: {
+      post: (path, body) =>
+        request(path, { method: "POST", body }).pipe(Effect.mapError(({ fault }) => fault)),
+    },
     open: Effect.gen(function* () {
       const id = yield* receiverId;
       const { webSocketToken } = yield* Effect.tryPromise({
