@@ -309,13 +309,33 @@ describe("owner-reported layout regressions", () => {
               ["How did deploy 3 go?", answer],
               ["And now?", "The existing conversation is still here"],
             ] as const) {
+              const previousReply = yield* Effect.promise(() =>
+                s.page.evaluate(() =>
+                  [...document.querySelectorAll('[data-message-role="assistant"]')]
+                    .at(-1)
+                    ?.getAttribute("data-message-id"),
+                ),
+              );
               yield* ada.provider.turn([{ kind: "say", text: reply }]);
               yield* s.when.conversation.sends(question);
               expect((yield* ada.provider.received).input.input).toBe(question);
               yield* Effect.promise(() =>
                 s.page.waitForFunction(
-                  () => !document.querySelector('button[aria-label="Stop generation"]'),
-                  { polling: 100 },
+                  (previousReply, text) => {
+                    const latest = [
+                      ...document.querySelectorAll('[data-message-role="assistant"]'),
+                    ].at(-1);
+                    return (
+                      !location.pathname.startsWith("/draft/") &&
+                      latest !== undefined &&
+                      latest.getAttribute("data-message-id") !== previousReply &&
+                      latest.textContent?.includes(text) &&
+                      !document.querySelector('button[aria-label="Stop generation"]')
+                    );
+                  },
+                  { polling: "mutation" },
+                  previousReply ?? null,
+                  reply.split("\n", 1)[0]!,
                 ),
               );
             }
