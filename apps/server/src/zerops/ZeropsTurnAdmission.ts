@@ -306,7 +306,10 @@ export const make = Effect.gen(function* () {
       token: false,
       subject: principalUserId(principal),
       login: (yield* agentLogins.latest)[login.id],
-      currentLogin: agentLogins.latest.pipe(Effect.map((logins) => logins[login.id])),
+      currentLogin: {
+        latest: agentLogins.latest.pipe(Effect.map((logins) => logins[login.id])),
+        changes: agentLogins.changes,
+      },
     });
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
@@ -340,7 +343,10 @@ export const make = Effect.gen(function* () {
       agent,
       subject: principalUserId(principal),
       login: (yield* agentLogins.latest)[agentId],
-      currentLogin: agentLogins.latest.pipe(Effect.map((logins) => logins[agentId])),
+      currentLogin: {
+        latest: agentLogins.latest.pipe(Effect.map((logins) => logins[agentId])),
+        changes: agentLogins.changes,
+      },
     });
     if (refusal === undefined) return;
     return yield* new OrchestrationDispatchCommandError({
