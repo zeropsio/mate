@@ -30,7 +30,7 @@ import {
   type MateLink as MachineLink,
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId, ThreadId, type ScopedThreadRef } from "@t3tools/contracts";
-import { act, createElement as h, useSyncExternalStore, type ReactNode } from "react";
+import { act, createContext, createElement as h, useContext, type ReactNode } from "react";
 import { createRoot } from "react-dom/client";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -228,14 +228,20 @@ vi.mock("~/zerops/accountEnvironments", () => ({
 const environments = { setOnScreen: (projectId: string | null) => app.onScreen(projectId) };
 vi.mock("~/zerops/useOpenMate", () => ({ useOpenMate: () => app.openMate }));
 vi.mock("~/zerops/usePressesElsewhere", () => ({ usePressesElsewhere: () => () => "stopped" }));
+const readRevision = createContext(0);
+let readVersion = 0;
+
 vi.mock("~/zerops/useZeropsCandidates", () => ({
   useHeldZeropsDetailCandidates: () =>
     heldCandidates(app.listing as Shown<ReadonlyArray<CandidateRow>>).rows,
-  useZeropsDetailCandidates: () => ({
-    listing: app.listing,
-    wholeForPerson: app.wholeForPerson,
-    refresh: app.refresh,
-  }),
+  useZeropsDetailCandidates: () => {
+    useContext(readRevision);
+    return {
+      listing: app.listing,
+      wholeForPerson: app.wholeForPerson,
+      refresh: app.refresh,
+    };
+  },
 }));
 // The menu's verbs: none offered on these Mates, which are all whole.
 vi.mock("~/zerops/useMateActions", () => ({
@@ -448,9 +454,13 @@ let tree: ReactTestRenderer | undefined;
 
 /** Quinn's own view, rendered as the route draws it. */
 const comingView = (projectId: string) =>
-  app.birthProgress || app.chiefProjectRead
-    ? h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId }))
-    : h(ZeropsMateComingPage, { projectId });
+  h(
+    readRevision.Provider,
+    { value: ++readVersion },
+    app.birthProgress || app.chiefProjectRead
+      ? h(AppAtomRegistryProvider, null, h(ZeropsMateComingPage, { projectId }))
+      : h(ZeropsMateComingPage, { projectId }),
+  );
 
 function openView() {
   act(() => {

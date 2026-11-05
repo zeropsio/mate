@@ -122,6 +122,8 @@ describe("every Chief creation entry uses the same setup intent", () => {
             return { appId: "app" };
           case "record-birth":
             return { birthId: "birth" };
+          case "claim-birth-attempt":
+            return { claim: { by: "alex", at: "claim-at" } };
           case "create-project":
             return { projectId: "chief-project" };
           default:
