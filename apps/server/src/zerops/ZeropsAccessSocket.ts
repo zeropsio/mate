@@ -6,7 +6,8 @@
  * - `POST /web-socket/login {token}` → `webSocketToken`; the socket at
  *   `/web-socket/{receiverId}/{webSocketToken}` greets with `SocketSuccess` (ZEROPS-069).
  * - Four subscriptions, each an HTTP search carrying the receiver: the own project's
- *   `updateStream` (its `userRoles`, ZEROPS-069), the organisation's `client-user` `updateStream`
+ *   `updateStream` (its `userRoles`, ZEROPS-069, and `tagList` when carried), the organisation's
+ *   `client-user` `updateStream`
  *   (org role and status, ZEROPS-070/071) and `listStream` (membership), and the organisation's
  *   `process` `updateStream` (ZEROPS-078; a `projectId` filter answers 400, so the frames are
  *   narrowed to the own project here).
@@ -58,8 +59,12 @@ export interface MemberPatch {
 
 /** What one frame tells the list. */
 export type AccessFrame =
-  /** The own project's `userRoles`, whole. */
-  | { readonly kind: "project"; readonly overrides: Readonly<Record<string, string>> }
+  /** The own project's changed fields, each whole when present. */
+  | {
+      readonly kind: "project";
+      readonly overrides?: Readonly<Record<string, string>>;
+      readonly tagList?: ReadonlyArray<string>;
+    }
   /** Organisation members changed (`upsert`) or left (`remove`, by `clientUserId`). */
   | {
       readonly kind: "members";
@@ -186,10 +191,21 @@ export const decodeAccessFrame = (
   if (name === PROJECT_SUBSCRIPTION) {
     const own = [...rows("add"), ...rows("update")]
       .map(recordOf)
-      .findLast((row) => row?.["id"] === scope.projectId && Array.isArray(row["userRoles"]));
-    return own === undefined
-      ? undefined
-      : { kind: "project", overrides: readUserRoles(own["userRoles"]) };
+      .findLast(
+        (row) =>
+          row?.["id"] === scope.projectId &&
+          (Array.isArray(row["userRoles"]) || Array.isArray(row["tagList"])),
+      );
+    if (own === undefined) return undefined;
+    const userRoles = own["userRoles"];
+    const tagList = own["tagList"];
+    const tagsValid = Array.isArray(tagList) && tagList.every((tag) => typeof tag === "string");
+    if (!Array.isArray(userRoles) && !tagsValid) return undefined;
+    return {
+      kind: "project",
+      ...(Array.isArray(userRoles) ? { overrides: readUserRoles(userRoles) } : {}),
+      ...(tagsValid ? { tagList } : {}),
+    };
   }
   if (name !== MEMBERS_SUBSCRIPTION && name !== MEMBERSHIP_SUBSCRIPTION) return undefined;
   const upsert = [...rows("add"), ...rows("update")].flatMap((value) => {
