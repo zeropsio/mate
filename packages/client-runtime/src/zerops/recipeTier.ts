@@ -49,24 +49,27 @@
  *
  * The import goes into a project that exists, which takes no `project:` block (`recipeServicesYaml`;
  * zcp's importer refuses one for the same reason): the isolation is stated on each service, which
- * replaces the project's for it, and a tier's project variables do not go in with it.
+ * replaces the project's for it. Its project variables are applied to the project before import.
  *
  * ## A stage or a production takes its tier whole ({@link deployTargetTier})
  *
  * An environment with no container has no Mate, so its tier goes in as one import, as it always
  * has: every runtime starts empty for HQ's Core to deploy onto, and a utility is built.
  *
- * ## Line-based, like everything else that touches these documents
+ * ## Keep service text as written
  *
  * The tiers are written for people to read and carry comments that explain the
  * shape; a YAML round trip through a serializer drops every one of them, and
  * each service's own indentation — a person's two spaces or zcp's four — is the
- * one worked against.
+ * one worked against. The separate project block is parsed to read its variables.
  *
  * Pure: no network, no clock, no platform globals (rule R1).
  *
  * @module recipeTier
  */
+
+import { fromYaml } from "@t3tools/shared/schemaYaml";
+import * as Schema from "effect/Schema";
 
 import { isPoolOrSandboxServiceType } from "./infrastructureType.ts";
 
@@ -97,6 +100,59 @@ export interface MateTier {
   readonly managed: ReadonlyArray<string>;
   /** Each runtime it creates, in the tier's order. */
   readonly runtimes: ReadonlyArray<RecipeRuntime>;
+  /** Values as stated in the recipe, before its random expressions are expanded. */
+  readonly projectVariables?: ReadonlyArray<TierProjectVariable>;
+}
+
+export interface TierProjectVariable {
+  readonly key: string;
+  readonly value: string;
+  readonly sensitive: boolean;
+}
+
+const decodeYaml = Schema.decodeUnknownSync(fromYaml(Schema.Unknown));
+
+function record(value: unknown): Readonly<Record<string, unknown>> | undefined {
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Readonly<Record<string, unknown>>)
+    : undefined;
+}
+
+/** The project's own vault; service vaults stay in the import for Zerops to process. */
+function tierProjectVariables(yaml: string): ReadonlyArray<TierProjectVariable> {
+  const lines = yaml.split("\n");
+  const block = findProjectBlock(lines);
+  if (block === null) return [];
+  const project = record(
+    record(decodeYaml(lines.slice(block.start, block.end).join("\n")))?.project,
+  );
+  if (project === undefined) throw new Error("The tier's project is not a mapping.");
+  const variables: TierProjectVariable[] = [];
+  const keys = new Set<string>();
+  for (const [field, defaultSensitive] of [
+    ["envVariables", false],
+    ["envSecrets", true],
+    ["vault", false],
+  ] as const) {
+    if (project[field] === undefined) continue;
+    const entries = record(project[field]);
+    if (entries === undefined) throw new Error(`The tier's ${field} is not a mapping.`);
+    for (const [key, entry] of Object.entries(entries)) {
+      const full = record(entry);
+      const value = full === undefined ? entry : full.value;
+      const sensitive =
+        full === undefined ? defaultSensitive : (full.sensitive ?? defaultSensitive);
+      if (
+        (typeof value !== "string" && typeof value !== "number" && typeof value !== "boolean") ||
+        typeof sensitive !== "boolean" ||
+        keys.has(key.toLowerCase())
+      )
+        throw new Error(`The tier's project variable ${key} is invalid or duplicated.`);
+      keys.add(key.toLowerCase());
+      variables.push({ key, value: String(value), sensitive });
+    }
+  }
+  return variables;
 }
 
 // Indentation is the author's: a person's two spaces and zcp's four both
@@ -369,7 +425,13 @@ export function mateTier(yaml: string): MateTier | undefined {
     if (item.hostname !== undefined) runtimes.push({ hostname: item.hostname, role });
     return asMateRuntime(item, role);
   });
-  return { yaml: recipeServicesYaml(documentOf(tier, items)), managed, runtimes };
+  const projectVariables = tierProjectVariables(yaml);
+  return {
+    yaml: recipeServicesYaml(documentOf(tier, items)),
+    managed,
+    runtimes,
+    ...(projectVariables.length === 0 ? {} : { projectVariables }),
+  };
 }
 
 /** The item with an own key it does not state yet, after its last line of content. */

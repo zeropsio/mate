@@ -26,7 +26,7 @@ import { HQ_CHIEF_KINDS } from "./hqChief.ts";
 import { authorizeObserve } from "./hqObserveAuthorization.ts";
 import { HQ_WRITE_KINDS } from "./hqWrites.ts";
 import { PERSONA_TEMPLATE_KINDS } from "./hqPersonaTemplates.ts";
-import { importContainer } from "./importContainer.ts";
+import { importContainer, prepareTierVariables } from "./importContainer.ts";
 import { importProject } from "./importProject.ts";
 import { importServices } from "./importServices.ts";
 import { renameApp, deleteApp, answerKeptGit } from "./hqAppWrites.ts";
@@ -96,6 +96,7 @@ export const OPERATION_KINDS = defineOperationKinds([
   importProject,
   importServices,
   importContainer,
+  prepareTierVariables,
   hardenProject,
   ...HQ_WRITE_KINDS,
   ...PERSONA_TEMPLATE_KINDS,

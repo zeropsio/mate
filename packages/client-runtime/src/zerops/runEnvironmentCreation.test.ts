@@ -118,6 +118,11 @@ function fakePlatform(overrides: FakeOverrides = {}) {
       case "import-services":
         await writes.importServices(intent.projectId, intent.yaml);
         return undefined;
+      case "prepare-tier-variables":
+        calls.push(
+          `prepare:${intent.projectId}:${intent.variables.map(({ key }) => key).join(",")}`,
+        );
+        return undefined;
       case "import-container":
         return writes.importDevelopmentContainer(intent);
       case "grant-new-project-access":
@@ -173,6 +178,46 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it("prepares project variables before claiming the single import", async () => {
+    const creation = planEnvironmentCreation({
+      clientId: "client-1",
+      role: "dev",
+      name: "Shop",
+      recipe: {
+        kind: "tier",
+        tier: "mate",
+        revision: "r1",
+        yaml: `project:
+  vault:
+    APP_KEY: {value: <@generateRandomString(<32>)>, sensitive: true}
+${TIER_YAML}`,
+      },
+    });
+    if (!creation.ok) throw new Error(creation.reason);
+    const step = creation.steps.find((item) => item.kind === "import-container");
+    if (step === undefined) throw new Error("Missing import step.");
+    const { platform, calls } = fakePlatform();
+    const result = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [step],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop" },
+      birth: {
+        id: "birth-1",
+        attempt: async <T>(kind: "create" | "import", send: () => Promise<T>) => {
+          expect(kind).toBe("import");
+          expect(calls).toEqual(["prepare:proj-1:APP_KEY"]);
+          calls.push("claim:import");
+          return send();
+        },
+      },
+    });
+    expect(result.ok).toBe(true);
+    expect(calls[0]).toBe("prepare:proj-1:APP_KEY");
+    expect(calls[1]).toBe("claim:import");
+    expect(calls[2]).toMatch(/^container:proj-1:/u);
+  });
+
   it("records an accepted import before stopping for a lapsed press", async () => {
     let lapsed = false;
     const handles: string[] = [];
