@@ -402,6 +402,40 @@ describe("a client subscribed to an engine conversation", () => {
     ),
   );
 
+  it.effect("a long answer's whole, kept beside its record, reopens at its new length", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        const wire = yield* wireOf(w);
+        const answerOf = Effect.map(Effect.scoped(watch(w, wire)), ([snapshot]) =>
+          snapshot?.type === "snapshot"
+            ? snapshot.items.find((item) => item.kind === "note")
+            : undefined,
+        );
+        yield* w.tell({ _tag: "Send", text: "Write the report" });
+        yield* w.agent((agent, thread) => agent.say(thread, "line of the report\n".repeat(1_200)));
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const before = yield* answerOf;
+        assert.strictEqual(before?.cut?.total, "line of the report\n".length * 1_200);
+        // A step that closes the answer again with a longer end writes its whole and no event.
+        yield* w.within(
+          Effect.flatMap(
+            SqlClient.SqlClient,
+            (sql) => sql`
+              UPDATE engine_item_detail SET body = body || 'and its last line'
+              WHERE item_id = ${before!.id}
+            `,
+          ),
+        );
+        assert.strictEqual(
+          (yield* answerOf)?.cut?.total,
+          "line of the report\n".length * 1_200 + "and its last line".length,
+        );
+        yield* w.shutdown;
+      }),
+    ),
+  );
+
   it.effect("a window over its budget is read again on every reload, never kept", () =>
     Effect.scoped(
       Effect.gen(function* () {
