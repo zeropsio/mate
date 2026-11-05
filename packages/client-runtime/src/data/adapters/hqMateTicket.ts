@@ -71,12 +71,15 @@ const NO_HQ = new HqError({
  */
 export const PRIMED_TICKET_MS = 10_000;
 
+/** A ticket's life, as HQ issues it (`TICKET_SECONDS`) and the Mate holds it at most. */
+const TICKET_LIFE_MS = 60_000;
+
 export interface MateTicketPrimer extends MateTicketIssuerService {
   /**
    * Asks HQ now for the ticket the Mate's next connection attempt will present — beside the
    * descriptor read that precedes the attempt, never after it. Only that HQ's next attempt for
    * the project within `PRIMED_TICKET_MS` presents it, once; nothing is asked while an attempt is
-   * already asking. A ticket never presented ends unused: one use, its life 60 s, held by nobody.
+   * already asking, nor again within a ticket's life. A ticket never presented ends unused: one use, its life 60 s, held by nobody.
    */
   readonly prime: (mate: { readonly orgId: string; readonly projectId: string }) => void;
 }
@@ -95,6 +98,8 @@ export function mateTicketIssuer(
     string,
     { readonly hq: Ask; readonly at: number; readonly answer: Promise<HqMateTicket> }
   >();
+  /** When each project's ticket was last asked for ahead, and by whose HQ. */
+  const lastPrimed = new Map<string, { readonly hq: Ask; readonly at: number }>();
   /** The attempts asking for a ticket now, by project. */
   const asking = new Map<string, number>();
   const keyOf = (orgId: string, projectId: string) => JSON.stringify([orgId, projectId]);
@@ -141,12 +146,15 @@ export function mateTicketIssuer(
       const hq = hqOf(orgId);
       const key = keyOf(orgId, projectId);
       if (hq === null || asking.has(key)) return;
-      const held = primed.get(key);
-      if (held !== undefined && held.hq === hq && now() - held.at < PRIMED_TICKET_MS) return;
+      // Once per ticket's life: an exchange tried again — its retries, a repair — asks nothing
+      // ahead again; its attempts ask for their own.
+      const last = lastPrimed.get(key);
+      if (last !== undefined && last.hq === hq && now() - last.at < TICKET_LIFE_MS) return;
       const answer = hq.mateTicket(projectId);
       // Its refusal is the attempt's to hear, by asking again: never an unhandled rejection.
       answer.catch(() => undefined);
       primed.set(key, { hq, at: now(), answer });
+      lastPrimed.set(key, { hq, at: now() });
     },
   };
 }
