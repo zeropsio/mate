@@ -189,10 +189,11 @@ export interface HqStructure {
   /** What the person may do with the organization's applications (`organizationOffers`). */
   readonly can?: HqOffers;
   /**
-   * Each project of the organization HQ holds nowhere, by id, with whether the person may write its
-   * Mate's record (`create_mate_record`), where their roles are read.
+   * Each placeable project, by id: one in the person's own live Zerops list that HQ holds no row
+   * for, with whether they may write its Mate's record (`create_mate_record`), where their roles
+   * are read. The client derives it; HQ sends none. Absent until both are read.
    */
-  readonly unheld?: Readonly<Record<string, HqOffers>>;
+  readonly placeable?: Readonly<Record<string, HqOffers>>;
   readonly tools?: ReadonlyArray<{ readonly projectId: string; readonly kind: "gitea" }>;
   /** The Mates HQ holds in no application: their project's name in Zerops, and their record. */
   readonly ungrouped: ReadonlyArray<

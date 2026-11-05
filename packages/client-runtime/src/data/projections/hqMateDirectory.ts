@@ -121,11 +121,11 @@ export const canonicalHqListNavigation = {
       ...navigation,
       structure: {
         ...structure,
-        ...(structure.unheld === undefined
+        ...(structure.placeable === undefined
           ? {}
           : {
-              unheld: Object.fromEntries(
-                Object.entries(structure.unheld).filter(([id]) => !chiefIds.has(id)),
+              placeable: Object.fromEntries(
+                Object.entries(structure.placeable).filter(([id]) => !chiefIds.has(id)),
               ),
             }),
         apps: structure.apps.flatMap((app) => {
