@@ -1669,39 +1669,55 @@ describe("a closed card read from the results it draws alone", () => {
     lastItemSeq: 13,
   };
   /**
-   * What `engine.readRun` answers a closed card with, the window's person and answer beside it:
-   * with the client's `tools`, a call's result only of a tool they name or one a call failed with.
+   * What `engine.readRun` answers a closed card with, the window's person and answers beside it:
+   * with the client's `tools`, a call's result only of a tool they name or one a call failed with
+   * in the runs its card draws together (`groupOf`).
    */
-  const outcomeRead = (items: ReadonlyArray<Item>, lean: boolean) => {
+  const outcomeRead = (
+    items: ReadonlyArray<Item>,
+    lean: boolean,
+    runs: ReadonlyArray<RunRecord> = [held()],
+    groupOf: (runId: string | null) => string | null = (runId) => runId,
+  ) => {
+    const answers = new Set(runs.map((run) => run.summary.answerItemId));
     const works = new Set(
       items.flatMap((item) => (item.kind === "work" && item.call ? [item.call] : [])),
     );
     const failed = new Set(
       items.flatMap((item) =>
         item.kind === "call" && item.state === "failed" && item.result !== undefined
-          ? [item.result.toolName]
+          ? [`${groupOf(item.runId)} ${item.result.toolName}`]
           : [],
       ),
     );
     return items.filter(
       (item) =>
         item.kind === "person" ||
-        item.id === summary.answerItemId ||
+        answers.has(item.id as never) ||
         item.kind === "work" ||
         (item.kind === "call" &&
           ((item.result !== undefined &&
             (!lean ||
               closedCardReadsResultOf(item.result.toolName) ||
-              failed.has(item.result.toolName))) ||
+              failed.has(`${groupOf(item.runId)} ${item.result.toolName}`))) ||
             item.step === "look" ||
             works.has(item.id))),
     );
   };
-  const closed = (items: ReadonlyArray<Item>, lean: boolean) =>
+  /** The run as the engine settled it. */
+  function held(patch: Partial<RunRecord> = {}): RunRecord {
+    return stressRun({ endedAt: t0 + 42_500, summary, ...patch } as never);
+  }
+  const closed = (
+    items: ReadonlyArray<Item>,
+    lean: boolean,
+    runs: ReadonlyArray<RunRecord> = [held()],
+    groupOf?: (runId: string | null) => string | null,
+  ) =>
     render({
-      runs: [stressRun({ endedAt: t0 + 42_500, summary } as never)],
-      items: outcomeRead(items, lean),
-      paged: true,
+      runs: [...runs],
+      items: outcomeRead(items, lean, runs, groupOf),
+      spans: runs.map((run) => ({ runId: run.id, from: null, to: 0 })),
       zerops: true,
     });
   /**
@@ -1735,6 +1751,61 @@ describe("a closed card read from the results it draws alone", () => {
       expect(cardOf(lean).status?.face).toBe(face);
     },
   );
+
+  // A run nobody wrote to start (a wake) begins its card where its run began, never at its first
+  // held line: a lean read holds a later one first.
+  it("starts a closed card nobody wrote to start where its run began, from either read", () => {
+    const items = itemsOf([logRead(6, false), logRead(7, false)]).filter(
+      (item) => item.kind !== "person",
+    );
+    const runs = [
+      held({ trigger: { kind: "wake", cause: "job-finished", wakeId: null } } as never),
+    ];
+    const lean = closed(items, true, runs);
+    expect(shown(lean)).toEqual(shown(closed(items, false, runs)));
+    expect(cardOf(lean).status?.startedAt).toBe(new Date(t0 + 22_900).toISOString());
+  });
+
+  // A restart cut the run whose log read failed; its continuation read the log again on the same
+  // card. Read run by run, the continuation's read was left out, and the card's face said failed.
+  it("draws a card a restart's continuation goes on with the face it had, from either read", () => {
+    const run2 = "conversation/r/2";
+    const read = (ordinal: number, runId: string, failed: boolean, at: number) =>
+      ({ ...logRead(ordinal, failed), id: `${runId}/i/${ordinal}`, runId, at: t0 + at }) as Item;
+    const logsSummary = (answer: string | null, last: number) => ({
+      items: 2,
+      calls: { mcp: 1 },
+      tools: { mcp__zerops__zerops_logs: 1 },
+      answerItemId: answer,
+      lastItemSeq: last,
+    });
+    const runs = [
+      held({
+        end: { kind: "cut-by-restart", continuedBy: run2 },
+        endedAt: t0 + 41_000,
+        summary: logsSummary(null, 2),
+      } as never),
+      engineRun(key.conversationId, 2, {
+        joins: run1,
+        trigger: { kind: "wake", cause: "restart-continuation", wakeId: null },
+        queuedAt: t0 + 41_100,
+        admittedAt: t0 + 41_100,
+        startedAt: t0 + 41_200,
+        endedAt: t0 + 43_000,
+        summary: logsSummary(`${run2}/i/4`, 4),
+      } as never),
+    ].map((run) => decode(run));
+    const items = [
+      personItem(run1, 1, "Read the api's log", { at: t0 }),
+      read(2, run1, true, 40_000),
+      read(3, run2, false, 41_500),
+      noteItem(run2, 4, "The api is listening.", { at: t0 + 42_500, answer: true }),
+    ];
+    const card = () => run1;
+    const lean = closed(items, true, runs, card);
+    expect(shown(lean)).toEqual(shown(closed(items, false, runs, card)));
+    expect(cardOf(lean).status?.face).not.toBe("failed");
+  });
 
   it("still draws what the run left: its deploy, its picture, its job, its proposal, its page", () => {
     const rows = closed(itemsOf([logRead(6, false), logRead(7, false)]), true);
