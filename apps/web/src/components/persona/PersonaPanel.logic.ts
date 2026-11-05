@@ -12,7 +12,11 @@ import {
   type MatePersona,
   type MatePersonaTemplateRef,
 } from "@t3tools/contracts";
-import { ORG_PERSONA_TEMPLATES_MAX, type PersonaTemplate } from "@t3tools/shared/personaTemplates";
+import {
+  ORG_PERSONA_TEMPLATES_MAX,
+  type PersonaTemplate,
+  type PremadePersonaTemplate,
+} from "@t3tools/shared/personaTemplates";
 
 import type { PersonaTemplateDraft } from "~/zerops/usePersonaTemplates";
 
@@ -42,7 +46,7 @@ export interface PersonaPageInput {
   readonly capability: boolean | null;
   readonly settingsLoaded: boolean;
   readonly persona: MatePersona | null;
-  readonly premade: readonly PersonaTemplate[];
+  readonly premade: readonly PremadePersonaTemplate[];
   readonly org: OrgPersonaTemplatesInput;
 }
 
@@ -62,6 +66,8 @@ export type PersonaGroupNote =
   | { readonly kind: "empty" | "unavailable" | "failed" | "stale"; readonly text: string };
 
 export interface PersonaTemplateGroup {
+  /** `you` and `work` split Zerops's templates; `org` holds the organization's. */
+  readonly key: "you" | "work" | "org";
   readonly source: PersonaTemplateSource;
   readonly title: string;
   readonly rows: readonly PersonaTemplateRow[];
@@ -99,7 +105,8 @@ export const PERSONA_WORDS = {
   ownWay: (mate: MateName) => `${mateLeads(mate)} works and talks its own way.`,
   update: (mate: MateName) => `Update ${mateIn(mate)} to give it a persona.`,
   fromZerops: "From Zerops",
-  zeropsTemplates: "Zerops templates",
+  aboutYou: "How it works with you",
+  aboutWork: "What it focuses on",
   fromZeropsTemplate: (name: string) => `From Zerops: ${name}`,
   orgTemplates: (org: string | null) =>
     org === null ? "Your organization's templates" : `${org}'s templates`,
@@ -162,14 +169,21 @@ export function personaPage(input: PersonaPageInput): PersonaPageModel {
           ? "same"
           : "older",
     }));
+  const premadeAbout = (about: "you" | "work", title: string): PersonaTemplateGroup => ({
+    key: about,
+    source: "premade",
+    title,
+    rows: rowsOf(
+      "premade",
+      input.premade.filter((template) => template.about === about),
+    ),
+    note: null,
+  });
   const groups: PersonaTemplateGroup[] = [
+    premadeAbout("you", PERSONA_WORDS.aboutYou),
+    premadeAbout("work", PERSONA_WORDS.aboutWork),
     {
-      source: "premade",
-      title: PERSONA_WORDS.zeropsTemplates,
-      rows: rowsOf("premade", input.premade),
-      note: null,
-    },
-    {
+      key: "org",
       source: "org",
       title: PERSONA_WORDS.orgTemplates(org.orgName),
       rows: rowsOf("org", orgTemplates),

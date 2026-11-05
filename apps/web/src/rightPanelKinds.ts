@@ -261,13 +261,16 @@ export const RIGHT_PANEL_KIND_META = {
   persona: {
     launcher: {
       label: "Persona",
-      description: "Choose how this Mate works and talks.",
+      description: "Choose how this Mate works with you.",
       shortcut: "P",
       unavailableHint: "Update this Mate to give it a persona.",
       // An offline or restarting Mate has not said: an update is offered only once it has.
       unknownHint: "Waiting for this Mate to answer.",
     },
-    page: { title: "Persona", line: (mate) => `How ${mate} works and talks in every chat.` },
+    page: {
+      title: "Persona",
+      line: (mate) => `How ${mate} works with you, and what it focuses on.`,
+    },
     availability: (input) =>
       input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
   },
