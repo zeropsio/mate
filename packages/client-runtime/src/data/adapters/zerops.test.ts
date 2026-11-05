@@ -1509,6 +1509,71 @@ describe("a sampled detail", () => {
     }),
   );
 
+  describe("the person's own membership record", () => {
+    const USER_PATH = "/user/info";
+    const ME = { family: "organizationUser", ownerId: ORG } as const;
+    const user = (canCreateProjects: boolean) => ({
+      id: "u1",
+      email: "person@example.test",
+      clientUserList: [
+        { id: "cu1", roleCode: "OWNER", status: "ACTIVE", canCreateProjects, client: { id: ORG } },
+      ],
+    });
+    const platform = (request: WireRequest): Effect.Effect<unknown, StreamFault> =>
+      request.method === "GET" && request.path === USER_PATH
+        ? Effect.succeed({ status: 200, body: user(true) })
+        : answers(() => [])(request);
+
+    it.effect.each([
+      { name: "verified moments ago", verifiedAgoMs: 1_000, reads: 0, canCreate: false },
+      { name: "verified past its freshness", verifiedAgoMs: 30_000, reads: 1, canCreate: true },
+      { name: "never verified here", verifiedAgoMs: null, reads: 1, canCreate: true },
+    ])(
+      "takes the session's own user/info answer when it was $name: $reads read(s)",
+      ({ verifiedAgoMs, reads, canCreate }) =>
+        Effect.gen(function* () {
+          yield* TestClock.adjust(60_000);
+          const now = 60_000;
+          const store = makeAccountStore(AtomRegistry.make());
+          const fixture = fixtureWire(platform, {
+            held: (path) =>
+              path === USER_PATH && verifiedAgoMs !== null
+                ? { body: user(false), atMs: now - verifiedAgoMs }
+                : undefined,
+          });
+          const { fiber, link } = yield* runLink(store, fixture);
+          link.demandDetail(ME);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(reads);
+          expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+            kind: "value",
+            value: { clientUserList: [{ canCreateProjects: canCreate }] },
+          });
+          yield* Fiber.interrupt(fiber);
+        }),
+    );
+
+    it.effect("reads the platform after our own write, however fresh the session's answer", () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(platform, {
+          held: (path) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined),
+        });
+        const { fiber, link } = yield* runLink(store, fixture);
+        link.demandDetail(ME);
+        yield* settle;
+        expect(readsOf(fixture, USER_PATH)).toBe(0);
+        link.revalidate(ME);
+        yield* settle;
+        expect(readsOf(fixture, USER_PATH)).toBe(1);
+        expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+          value: { clientUserList: [{ canCreateProjects: true }] },
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
+    );
+  });
+
   it.effect("reads it again at once after our own write, held or held next", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

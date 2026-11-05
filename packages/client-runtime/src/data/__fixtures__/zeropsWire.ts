@@ -34,6 +34,7 @@ export interface FixtureWire {
 
 export function fixtureWire(
   answer: (request: WireRequest) => Effect.Effect<unknown, StreamFault>,
+  options: Pick<ZeropsWire, "held"> = {},
 ): FixtureWire {
   const requests: WireRequest[] = [];
   let frames: Queue.Queue<unknown, StreamFault> | null = null;
@@ -61,6 +62,7 @@ export function fixtureWire(
         frames === null ? Effect.void : Effect.asVoid(Queue.fail(frames, fault)),
       ),
     wire: {
+      ...options,
       open: Effect.gen(function* () {
         opens += 1;
         const queue = yield* Queue.unbounded<unknown, StreamFault>();

@@ -75,6 +75,12 @@ export interface ZeropsLink {
 /** Today's receiver (socket, web-socket login, REST client) behind the adapter, or a fixture. */
 export interface ZeropsWire {
   readonly open: Effect.Effect<ZeropsLink, StreamFault, Scope.Scope>;
+  /**
+   * The answer this session itself read for a GET moments ago, and when (wall ms): `/user/info`,
+   * which verifying the session read. A sampled detail's first read within its freshness takes it
+   * rather than asking the platform the same question again.
+   */
+  readonly held?: (path: string) => { readonly body: unknown; readonly atMs: number } | undefined;
 }
 
 /**
@@ -235,6 +241,11 @@ export function zeropsNavigationLink(options: {
    * predate the write, so each is read once more after it.
    */
   const written = new Set<ScopeKey>();
+  /**
+   * Sampled details our own write or the person's try again asked to read afresh: an answer the
+   * session read before is not theirs.
+   */
+  const askedAfresh = new Set<ScopeKey>();
   const tellDetail = (demand: DetailDemand, event: StreamEvent) => {
     const scope = detailScopeOf(orgId, demand);
     Effect.runSync(
@@ -692,10 +703,29 @@ export function zeropsNavigationLink(options: {
             sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
           const sampledSearch = sampled?.search?.(owner);
           // A search is a POST of it: its answer is the rows asked for, never a whole set.
+          // The session's own read of the same GET, moments ago, answers a first read.
+          const kept =
+            sampled !== undefined &&
+            sampledSearch === undefined &&
+            readAt === undefined &&
+            !askedAfresh.has(scope)
+              ? options.wire.held?.(path)
+              : undefined;
+          const heldAnswer =
+            kept !== undefined &&
+            sampled !== undefined &&
+            (sampled.freshMs === null || now - kept.atMs < sampled.freshMs)
+              ? kept
+              : undefined;
+          askedAfresh.delete(scope);
           const read =
-            sampledSearch === undefined
-              ? link.get(path)
-              : link.post(path, sampledSearch).pipe(Effect.map((body) => ({ status: 200, body })));
+            heldAnswer !== undefined
+              ? Effect.succeed({ status: 200, body: heldAnswer.body })
+              : sampledSearch === undefined
+                ? link.get(path)
+                : link
+                    .post(path, sampledSearch)
+                    .pipe(Effect.map((body) => ({ status: 200, body })));
           const answer = yield* read.pipe(
             Effect.map((read) => {
               if (detail?.member === true && ownerId !== null) {
@@ -754,7 +784,7 @@ export function zeropsNavigationLink(options: {
               members: [ownerId],
               rows: [row],
             });
-            sampledAt.set(scope, yield* Clock.currentTimeMillis);
+            sampledAt.set(scope, heldAnswer?.atMs ?? (yield* Clock.currentTimeMillis));
             return yield* signal(scope, {
               kind: "baseline-committed",
               ages: agesNow(sampled, value),
@@ -985,6 +1015,7 @@ export function zeropsNavigationLink(options: {
     revalidate: (demand) => {
       const scope = detailScopeOf(orgId, demand);
       sampledAt.delete(scope);
+      askedAfresh.add(scope);
       const { phase, mode } = streamOf(store.state(), scope);
       if (
         phase === "connecting" ||
@@ -994,7 +1025,10 @@ export function zeropsNavigationLink(options: {
         written.add(scope);
       tellDetail(demand, { kind: "revalidate" });
     },
-    retryDetail: (demand) => tellDetail(demand, { kind: "manual-retry" }),
+    retryDetail: (demand) => {
+      askedAfresh.add(detailScopeOf(orgId, demand));
+      tellDetail(demand, { kind: "manual-retry" });
+    },
     renew: (demand) => demands.renew(detailScopeOf(orgId, demand)),
     reread: () => endAttempt?.(),
   };
