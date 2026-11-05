@@ -187,7 +187,7 @@ export type MateTaskReport = typeof MateTaskReport.Type;
  * in the task's own conversation. Only what a person allowed to steer it said (HQ's gate).
  */
 export const MateTaskMessage = Schema.Struct({
-  /** HQ's id of the message: told twice, heard once. */
+  /** HQ's id of the message: told twice, taken once. */
   id: TrimmedNonEmptyString,
   from: Schema.Literals(["comment", "reply", "review", "edit"]),
   author: Schema.NullOr(TrimmedNonEmptyString),
