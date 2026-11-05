@@ -19,11 +19,11 @@ interface StoredEntry {
 }
 
 /** The Cache API in memory: each match hands out a fresh response, as the real one does. */
-function memoryCaches() {
+function memoryCaches(capacity: Readonly<Record<string, number>> = {}) {
   const stores = new Map<string, Map<string, StoredEntry>>();
   const revive = (entry: StoredEntry) =>
     new Response(entry.body, { status: entry.status, headers: entry.headers });
-  const cacheOf = (store: Map<string, StoredEntry>) =>
+  const cacheOf = (store: Map<string, StoredEntry>, limit: number) =>
     ({
       match: async (key: RequestInfo | URL) => {
         const entry = store.get(
@@ -32,6 +32,9 @@ function memoryCaches() {
         return entry === undefined ? undefined : revive(entry);
       },
       put: async (key: RequestInfo | URL, response: Response) => {
+        if (!store.has(String(key)) && store.size >= limit) {
+          throw new DOMException("The quota has been exceeded.", "QuotaExceededError");
+        }
         store.set(String(key), {
           body: await response.text(),
           status: response.status,
@@ -45,7 +48,7 @@ function memoryCaches() {
     open: async (name: string) => {
       let store = stores.get(name);
       if (store === undefined) stores.set(name, (store = new Map()));
-      return cacheOf(store);
+      return cacheOf(store, capacity[name] ?? Number.POSITIVE_INFINITY);
     },
     has: async (name: string) => stores.has(name),
     keys: async () => [...stores.keys()],
@@ -89,27 +92,44 @@ const pageOf = (build: number) =>
 const buildOf = (text: string | undefined) => /build \d+(?: \w+)?/u.exec(text ?? "")?.[0] ?? text;
 
 /** A browser with the worker installed, an origin it can redeploy, take down or stall. */
-function browser() {
-  const { storage, stores } = memoryCaches();
+function browser(options: { readonly assetCapacity?: number } = {}) {
+  const { storage, stores } = memoryCaches(
+    options.assetCapacity === undefined ? {} : { [ASSET_CACHE]: options.assetCapacity },
+  );
   let now = 1_000_000_000;
   const origin = {
     page: pageOf(1),
     assets: new Map<string, string>(),
     state: "up" as "up" | "offline" | "stalled",
+    /** Every bundle file the origin was asked for, in order. */
+    fetched: [] as string[],
+    /** Bundle files the origin answers only once their promise settles. */
+    held: new Map<string, Promise<void>>(),
   };
-  /** A deploy replaces the whole bundle; `missing` files never reached the origin. */
-  const deploy = (build: number, missing: readonly string[] = []) => {
+  /**
+   * A deploy replaces the whole bundle (`also` keeps the files of earlier builds the host still
+   * serves); `missing` files never reached the origin.
+   */
+  const deploy = (
+    build: number,
+    missing: readonly string[] = [],
+    also: ReadonlyMap<string, string> = new Map(),
+  ) => {
     origin.page = pageOf(build);
-    origin.assets = new Map(
-      filesOf(build)
+    origin.assets = new Map([
+      ...also,
+      ...filesOf(build)
         .filter((file) => !missing.includes(file))
-        .map((file) => [
-          file,
-          file === "/assets/shared.js"
-            ? "shared"
-            : `build ${build} ${file.slice(8, -5).split("-")[0]}`,
-        ]),
-    );
+        .map(
+          (file) =>
+            [
+              file,
+              file === "/assets/shared.js"
+                ? "shared"
+                : `build ${build} ${file.slice(8, -5).split("-")[0]}`,
+            ] as const,
+        ),
+    ]);
   };
   deploy(1);
   const fetch = async (input: Request | string) => {
@@ -117,6 +137,8 @@ function browser() {
     if (origin.state === "offline") throw new TypeError("Failed to fetch");
     if (origin.state === "stalled") return new Promise<Response>(() => {});
     if (url.origin !== ORIGIN) return served("elsewhere", url.href, "text/plain");
+    if (url.pathname.startsWith("/assets/")) origin.fetched.push(url.pathname);
+    await origin.held.get(url.pathname);
     const asset = origin.assets.get(url.pathname);
     if (asset !== undefined) return served(asset, url.href, "text/javascript");
     // The host's SPA fallback: any other path is the page.
@@ -255,6 +277,62 @@ describe("a reload of the hosted client", () => {
       "/assets/route-3.js",
       "/assets/shared.js",
     ]);
+  });
+
+  it("never leaves the kept page with holes when two pages are kept across deploys at once", async () => {
+    const tab = browser();
+    await tab.load("/");
+    await tab.settle();
+    let release = () => {};
+    tab.origin.held.set("/assets/route-2.js", new Promise<void>((resolve) => (release = resolve)));
+    tab.deploy(2);
+    await tab.answer("/", "navigation");
+    // Build 3 lands while page 2's files are still arriving; the host still serves build 2's.
+    tab.deploy(3, [], new Map(tab.origin.assets));
+    await tab.answer("/", "navigation");
+    release();
+    await tab.settle();
+    tab.origin.state = "offline";
+    expect(await tab.load("/")).toEqual(boots(3));
+    expect(await tab.cachedAssets()).toEqual([
+      "/assets/entry-2.js",
+      "/assets/entry-3.js",
+      "/assets/route-2.js",
+      "/assets/route-3.js",
+      "/assets/shared.js",
+    ]);
+  });
+
+  it("fetches each file of a new page once however many loads ask for it at the same time", async () => {
+    const tab = browser();
+    await tab.load("/");
+    await tab.settle();
+    tab.deploy(2);
+    tab.origin.fetched.length = 0;
+    await Promise.all([1, 2, 3].map(() => tab.answer("/", "navigation")));
+    await tab.settle();
+    expect(tab.origin.fetched.toSorted()).toEqual(
+      ["/assets/entry-2.js", "/assets/route-2.js"].toSorted(),
+    );
+  });
+
+  it("makes room in a full cache by dropping the files no kept page lists, then keeps the new page", async () => {
+    const tab = browser({ assetCapacity: 6 });
+    await tab.load("/");
+    await tab.settle();
+    // Files fetched on use (a grammar, a diagram) fill the cache to its quota.
+    tab.origin.assets.set("/assets/grammar-a.js", "grammar a");
+    tab.origin.assets.set("/assets/grammar-b.js", "grammar b");
+    tab.origin.assets.set("/assets/grammar-c.js", "grammar c");
+    for (const file of ["/assets/grammar-a.js", "/assets/grammar-b.js", "/assets/grammar-c.js"]) {
+      await tab.answer(file, "script");
+    }
+    await tab.settle();
+    tab.deploy(2);
+    await tab.load("/");
+    await tab.settle();
+    tab.origin.state = "offline";
+    expect(await tab.load("/")).toEqual(boots(2));
   });
 
   it("asks the origin first for a page an earlier worker kept without its files", async () => {

@@ -59,58 +59,95 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
   const shellKey = new URL(SHELL_CACHE_KEY_PATH, origin).href;
   const absolute = (path: string) => new URL(path, origin).href;
 
-  /** Keeps one bundle file unless it is already kept; rejects when it cannot be kept. */
-  const keepFile = async (assets: Cache, url: string) => {
-    if ((await assets.match(url, { ignoreVary: true })) !== undefined) return;
-    const response = await host.fetch(url, { credentials: "same-origin" });
-    if (!isKeepable("asset", factsOf(response), origin)) {
-      throw new Error(`${url} is not a bundle file the worker may keep`);
+  /** How keeping one bundle file ended: `no-room` when the cache refused to store it. */
+  type FileOutcome = "kept" | "unavailable" | "no-room";
+
+  /** Keeps one bundle file unless it is already kept. */
+  const keepFile = async (assets: Cache, url: string): Promise<FileOutcome> => {
+    if ((await assets.match(url, { ignoreVary: true })) !== undefined) return "kept";
+    let fetched: Response;
+    try {
+      fetched = await host.fetch(url, { credentials: "same-origin" });
+    } catch {
+      return "unavailable";
     }
-    await assets.put(url, stampResponse(response, host.now()));
+    if (!isKeepable("asset", factsOf(fetched), origin)) return "unavailable";
+    const stored = await outcomeOf(assets.put(url, stampResponse(fetched, host.now())));
+    return stored === "done" ? "kept" : "no-room";
   };
 
   /** Whether every file is kept, fetching the missing ones a few at a time. */
-  const keepFiles = async (assets: Cache, urls: readonly string[]) => {
+  const keepFiles = async (assets: Cache, urls: readonly string[]): Promise<FileOutcome> => {
     let next = 0;
-    let complete = true;
+    let outcome: FileOutcome = "kept";
     const lane = async () => {
-      while (complete && next < urls.length) {
-        const url = urls[next++]!;
-        if ((await outcomeOf(keepFile(assets, url))) === "failed") complete = false;
+      while (outcome === "kept" && next < urls.length) {
+        const kept = await keepFile(assets, urls[next++]!);
+        if (kept !== "kept") outcome = kept;
       }
     };
     await Promise.all(Array.from({ length: PRECACHE_CONCURRENCY }, lane));
-    return complete;
+    return outcome;
+  };
+
+  /** Drops every asset entry outside `keep`. */
+  const evictAllBut = async (assets: Cache, keep: ReadonlySet<string>) => {
+    const cached = (await assets.keys()).map((key) => key.url);
+    await Promise.all(assetsToEvict(cached, keep).map((url) => assets.delete(url)));
+  };
+
+  /** The files a page lists, as the absolute URLs the asset cache is keyed by. */
+  const listedUrls = (body: string | undefined) => (readShellFiles(body ?? "") ?? []).map(absolute);
+
+  /**
+   * Keeps a page once every file it lists is kept; rejects otherwise, leaving the page kept
+   * before. A new page is a deploy: the asset cache then holds the new page's files and those of
+   * the page it replaced (read right before, for tabs still running it), and nothing else. A cache
+   * out of room drops everything neither page lists and tries once more.
+   */
+  const keepPage = async (shells: Cache, body: string, headers: Headers) => {
+    const assets = await host.caches.open(ASSET_CACHE);
+    const urls = listedUrls(body);
+    const keptBefore = async () => (await shells.match(shellKey))?.text();
+    let outcome = await keepFiles(assets, urls);
+    if (outcome === "no-room") {
+      await evictAllBut(assets, new Set([...urls, ...listedUrls(await keptBefore())]));
+      outcome = await keepFiles(assets, urls);
+    }
+    if (outcome !== "kept") throw new Error(`A file the page boots from was ${outcome}`);
+    const replaced = await keptBefore();
+    await shells.put(
+      shellKey,
+      stampResponse(new Response(body, { status: 200, headers }), host.now()),
+    );
+    if (replaced === body) return;
+    await evictAllBut(assets, new Set([...urls, ...listedUrls(replaced)]));
   };
 
   /**
-   * Keeps `response` as the page once every file it lists is kept; rejects otherwise, leaving the
-   * page kept before. A new page is a deploy: the asset cache then holds the new page's files and
-   * the replaced page's, for tabs still running it.
+   * Keeps run one at a time, so two pages kept across a deploy never drop each other's files, and
+   * one page is kept once however many navigations ask for it at the same time.
    */
-  const keepShell = async (shells: Cache, response: Response, previous: Response | undefined) => {
+  let keeping: Promise<unknown> = Promise.resolve();
+  const inFlight = new Map<string, Promise<void>>();
+
+  /** Keeps `response` as the page (`keepPage`) when it is one the worker may keep. */
+  const keepShell = async (shells: Cache, response: Response) => {
     if (!isKeepable("shell", factsOf(response), origin)) {
       throw new Error("The origin's answer is not a page the worker may keep");
     }
     const body = await response.text();
     const files = readShellFiles(body);
     if (files === undefined) throw new Error("The page lists no files to boot from");
-    const assets = await host.caches.open(ASSET_CACHE);
-    const urls = files.map(absolute);
-    if (!(await keepFiles(assets, urls))) {
-      throw new Error("A file the page boots from could not be kept");
-    }
-    const previousBody = await previous?.text();
+    const running = inFlight.get(body);
+    if (running !== undefined) return running;
     const headers = new Headers(response.headers);
     headers.set(LISTED_FILES_HEADER, String(files.length));
-    await shells.put(
-      shellKey,
-      stampResponse(new Response(body, { status: response.status, headers }), host.now()),
-    );
-    if (previousBody === body) return;
-    const keep = new Set([...urls, ...(readShellFiles(previousBody ?? "") ?? []).map(absolute)]);
-    const cached = (await assets.keys()).map((key) => key.url);
-    await Promise.all(assetsToEvict(cached, keep).map((url) => assets.delete(url)));
+    const run = keeping.then(() => keepPage(shells, body, headers));
+    keeping = outcomeOf(run);
+    inFlight.set(body, run);
+    void outcomeOf(run).then(() => inFlight.delete(body));
+    return run;
   };
 
   /**
@@ -120,18 +157,18 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
    * revalidation stuck on a slow origin would hold a network-first reload behind it (measured:
    * 5.1 s instead of 3 s on a 3 s origin). The page is ~30 KB.
    */
-  const refreshShell = (shells: Cache, kept: Response | undefined) =>
+  const refreshShell = (shells: Cache) =>
     outcomeOf(
       host
         .fetch(shellKey, { cache: "no-store", credentials: "same-origin" })
-        .then((response) => keepShell(shells, response, kept)),
+        .then((response) => keepShell(shells, response)),
     );
 
   const serveShell = async (request: Request, keepAlive: KeepAlive) => {
     const shells = await host.caches.open(SHELL_CACHE);
     const kept = await shells.match(shellKey);
     if (planShell(keptPlanInput(kept), host.now()) === "cached" && kept !== undefined) {
-      keepAlive(refreshShell(shells, kept.clone()));
+      keepAlive(refreshShell(shells));
       return kept;
     }
     let response: Response;
@@ -143,7 +180,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
       throw error;
     }
     if (!response.ok && kept !== undefined) return kept;
-    keepAlive(outcomeOf(keepShell(shells, response.clone(), kept?.clone())));
+    keepAlive(outcomeOf(keepShell(shells, response.clone())));
     return response;
   };
 
@@ -187,7 +224,7 @@ export function makeAppShellWorker(host: AppShellWorkerHost) {
         host.caches.open(SHELL_CACHE).then(async (shells) => {
           const kept = await shells.match(shellKey);
           const fresh = planShell(keptPlanInput(kept), host.now()) === "cached";
-          return fresh ? "done" : refreshShell(shells, kept);
+          return fresh ? "done" : refreshShell(shells);
         }),
       );
     },
