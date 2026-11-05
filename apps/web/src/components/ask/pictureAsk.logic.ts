@@ -24,17 +24,12 @@ export const PICTURE_TOOLS = {
 } as const;
 export type PictureTool = keyof typeof PICTURE_TOOLS;
 
-/** The canvases a design can start on, and the words the card says. */
+/** The places in an app a design can be made for, and the words the card says. */
 export const PICTURE_CANVASES = {
-  "instagram-post": "Instagram post",
-  "instagram-story": "Instagram story",
-  "instagram-portrait": "Instagram portrait post",
-  "facebook-post": "Facebook post",
-  "linkedin-post": "LinkedIn post",
-  "youtube-thumbnail": "YouTube thumbnail",
-  presentation: "Presentation",
-  flyer: "Flyer",
-  poster: "Poster",
+  "link-preview": "Link preview, 1200 × 630",
+  "page-banner": "Page banner, 1920 × 640",
+  "email-header": "Email header, 600 × 200",
+  logo: "Logo, 500 × 500",
 } as const;
 export type PictureCanvas = keyof typeof PICTURE_CANVASES;
 
