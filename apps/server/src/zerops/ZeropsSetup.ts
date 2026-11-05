@@ -68,6 +68,7 @@ import { AUTOMATED_MODEL_SELECTION, ZeropsAutomation } from "./ZeropsAutomation.
 import { pickReadyAgentWithoutSignIn, resolveBootstrapModelSlug } from "./ZeropsBootstrapModel.ts";
 import { overlayZeropsAgentAuth } from "./zeropsAgentProviderOverlay.ts";
 import { isZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { watchFiles, type WatchFiles } from "./fileWatch.ts";
 import { ZeropsGitCredentialFile } from "./ZeropsGitCredentialFile.ts";
 import { ZeropsHqLink, type HqStanding } from "./ZeropsHqLink.ts";
 import { ZeropsProjectSigners, type ProjectSigners } from "./ZeropsProjectSigners.ts";
@@ -118,6 +119,8 @@ export class ZeropsSetupReads extends Context.Service<
     readonly serviceVariables: Effect.Effect<ReadonlyArray<string> | undefined>;
     /** zcp's status file, parsed as JSON; `undefined` when absent or unreadable. */
     readonly statusFile: Effect.Effect<unknown>;
+    /** A watch on zcp's status file; one that never fires where no file is named. */
+    readonly statusFileChanges: WatchFiles;
     /** Whether a process is provably gone: its PID absent, or reused under another start time. */
     readonly processGone: (process: ZcpProcess) => Effect.Effect<boolean>;
     /**
@@ -139,6 +142,8 @@ export class ZeropsSetup extends Context.Service<
     readonly status: Effect.Effect<ZcpStatus | undefined>;
     /** Whether the stand-up the file says runs lost its zcp MCP process, provably. */
     readonly standUpGone: (status: ZcpStatus | undefined) => Effect.Effect<boolean>;
+    /** A watch on zcp's status file: `status` is read again at its change. */
+    readonly statusChanges: WatchFiles;
     /**
      * A `zerops_standup` call an agent of this server started (`ZeropsStandUpRelay`): the turn
      * zcp's section waits on is read off the calls (`sectionCall`). Held in memory: every start of
@@ -860,6 +865,7 @@ export const makeZeropsSetup = (timings: ZeropsSetupTimings = TIMINGS) =>
       document,
       status,
       standUpGone,
+      statusChanges: reads.statusFileChanges,
       noteStandUpCall,
       retry,
       finished,
@@ -963,6 +969,10 @@ export const liveReadsLayer = Layer.effect(
         statusFilePath === undefined || statusFilePath.length === 0
           ? Effect.succeed(undefined)
           : readFileJson(fs, statusFilePath),
+      statusFileChanges:
+        statusFilePath === undefined || statusFilePath.length === 0
+          ? Effect.succeed({ next: Effect.never })
+          : watchFiles([statusFilePath]),
       processGone: (zcp) => zcpProcessGone(fs, zcp),
       providers: Effect.zipWith(instances.providers, agentAuth.latest, overlayZeropsAgentAuth),
       automatedModel: automation.modelSelection,

@@ -283,6 +283,7 @@ const fakes = (world: World) =>
       agents: Ref.get(world.agents),
       serviceVariables: Ref.get(world.variables),
       statusFile: Ref.get(world.statusFile),
+      statusFileChanges: Effect.succeed({ next: Effect.never }),
       processGone: (zcp) =>
         Effect.map(Ref.get(world.goneProcesses), (gone) => gone.includes(zcp.pid)),
       providers: Ref.get(world.providers),
