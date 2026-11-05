@@ -1,4 +1,5 @@
 import { describe, expect, it } from "@effect/vitest";
+import * as Clock from "effect/Clock";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as TestClock from "effect/testing/TestClock";
@@ -9,6 +10,7 @@ import { makeAccountStore, readsOfState } from "../store.ts";
 import type { StreamFault } from "../streamMachine.ts";
 import { superviseLink } from "../supervisor.ts";
 import { classifyHttp, zeropsNavigationLink } from "./zerops.ts";
+import { detailScopeOf } from "../demand.ts";
 import { SPEND_FRESH_MS } from "../families/projectSpend.ts";
 import { computeSpend } from "../projections/projectSpend.ts";
 
@@ -55,7 +57,7 @@ const run = (fixture: ReturnType<typeof fixtureWire>) =>
     yield* settle;
     const spendOf = (projectIds: ReadonlyArray<string>) =>
       computeSpend.derive(readsOfState(store.state()), { orgId: ORG, projectIds });
-    return { fiber, link, spendOf };
+    return { fiber, link, spendOf, store };
   });
 const reads = (fixture: ReturnType<typeof fixtureWire>) =>
   fixture.requests.filter((request) => request.method === "POST" && request.path === PATH);
@@ -112,6 +114,41 @@ describe("the organization's spend read", () => {
       expect(reads(fixture)).toHaveLength(2);
       yield* Fiber.interrupt(fiber);
     }),
+  );
+
+  it.effect(
+    "A sampled scope re-reads at its family's freshness; spend wakes hourly, not every 30 s",
+    () =>
+      Effect.gen(function* () {
+        const fixture = fixtureWire(answers(() => Effect.succeed(ANSWER)));
+        const { fiber, link, store } = yield* run(fixture);
+        const scope = detailScopeOf(ORG, DEMAND);
+        const release = link.demandDetail(DEMAND);
+        yield* settle;
+        const readAt = yield* Clock.currentTimeMillis;
+        const due = { kind: "revalidate", at: readAt + SPEND_FRESH_MS };
+        expect(store.state().streams.get(scope)?.next).toEqual(due);
+        // A new demand the held read answers keeps the instant that read set.
+        yield* TestClock.adjust(SPEND_FRESH_MS / 2);
+        release();
+        yield* settle;
+        link.demandDetail(DEMAND);
+        yield* settle;
+        expect(store.state().streams.get(scope)?.next).toEqual(due);
+        const generation = store.state().streams.get(scope)?.generation;
+        yield* TestClock.adjust(SPEND_FRESH_MS / 2 - 1);
+        yield* settle;
+        expect(store.state().streams.get(scope)?.generation).toBe(generation);
+        expect(reads(fixture)).toHaveLength(1);
+        yield* TestClock.adjust(1);
+        yield* settle;
+        expect(reads(fixture)).toHaveLength(2);
+        expect(store.state().streams.get(scope)?.next).toEqual({
+          kind: "revalidate",
+          at: readAt + 2 * SPEND_FRESH_MS,
+        });
+        yield* Fiber.interrupt(fiber);
+      }),
   );
 
   it.effect("a screen held open past the hour reads it once more", () =>

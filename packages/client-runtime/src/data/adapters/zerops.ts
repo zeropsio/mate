@@ -132,6 +132,23 @@ function agesNow(
   return sampled.agesWhile?.(value as never) === true;
 }
 
+/**
+ * When a sampled value read at `readAt` stops being fresh: its family's age, where it names one
+ * and the value does not still change without our write; the sampled cadence otherwise.
+ */
+function freshUntil(
+  sampled: {
+    readonly freshMs: number | null;
+    readonly agesWhile?: ((value: never) => boolean) | undefined;
+  },
+  readAt: number,
+  value: unknown,
+): number | undefined {
+  return sampled.freshMs !== null && sampled.freshMs > 0 && !agesNow(sampled, value)
+    ? readAt + sampled.freshMs
+    : undefined;
+}
+
 /** Each row its family decodes; a damaged row is refused alone, its neighbours admitted. */
 function rowsOf(family: Family, raw: ReadonlyArray<unknown>): ReadonlyArray<Row> {
   const spec = familySpec(family);
@@ -707,8 +724,8 @@ export function zeropsNavigationLink(options: {
           const readAt = sampledAt.get(scope);
           const now = yield* Clock.currentTimeMillis;
           // A sampled value read within its freshness is the answer to a new demand: nothing is
-          // read, and its next revalidation comes on the cadence. A value that still ages is
-          // never fresh.
+          // read, and its next revalidation comes when that read stops being fresh. A value that
+          // still ages is never fresh.
           const held = store.state().facts.get(factKey(spec.family, ownerId));
           if (
             sampled !== undefined &&
@@ -717,7 +734,13 @@ export function zeropsNavigationLink(options: {
             held !== undefined &&
             !(held.content.kind === "value" && agesNow(sampled, held.content.value))
           )
-            return yield* signal(scope, { kind: "baseline-committed" });
+            return yield* signal(scope, {
+              kind: "baseline-committed",
+              freshUntil:
+                held.content.kind === "value"
+                  ? freshUntil(sampled, readAt, held.content.value)
+                  : undefined,
+            });
           store.dispatch({ kind: "baseline-begin", scope, generation: generationOf(scope) });
           const navigationGeneration = streamOf(store.state(), scopeOf(spec, orgId)).generation;
           const search = detail?.zerops.subscription?.({ orgId, ownerId });
@@ -853,10 +876,12 @@ export function zeropsNavigationLink(options: {
               members: [ownerId],
               rows: [row],
             });
-            sampledAt.set(scope, yield* Clock.currentTimeMillis);
+            const answeredAt = yield* Clock.currentTimeMillis;
+            sampledAt.set(scope, answeredAt);
             return yield* signal(scope, {
               kind: "baseline-committed",
               ages: agesNow(sampled, value),
+              freshUntil: freshUntil(sampled, answeredAt, value),
             });
           }
           const items = detail?.zerops.items(answer.body);
