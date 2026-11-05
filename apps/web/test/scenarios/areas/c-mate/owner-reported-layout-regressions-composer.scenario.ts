@@ -896,8 +896,34 @@ describe("owner-reported layout regressions", () => {
           },
           {
             ask: "secret",
-            shows: "Goes to this project's vault for every app, never into this chat.",
-            raise: (engine, run) =>
+            shows: "Goes to the vault, not the chat",
+            // The agent asks through zcp's call, which answers at once: the engine records the
+            // ask on that call and the turn ends, its card holding the ask.
+            raise: (engine, run) => {
+              engine.item(run, {
+                kind: "call",
+                step: "mcp",
+                words: "MCP tool call",
+                state: "done",
+                // Just after the run began, on the engine's clock.
+                endedAt: Date.parse("2026-10-05T12:00:01.000Z"),
+                tool: { name: "zerops_env", server: "zerops" },
+                shows: {
+                  toolName: "mcp__zerops__zerops_env",
+                  input: {
+                    action: "request",
+                    key: "STRIPE_SECRET_KEY",
+                    project: true,
+                    label: "Stripe secret key",
+                    why: "to take card payments",
+                  },
+                },
+                result: {
+                  toolName: "zerops_env",
+                  resultText:
+                    '{"requested":{"key":"STRIPE_SECRET_KEY","label":"Stripe secret key","why":"to take card payments","scope":"shared","sensitive":true}}',
+                },
+              });
               engine.ask(
                 {
                   kind: "vault",
@@ -908,7 +934,9 @@ describe("owner-reported layout regressions", () => {
                   reason: "to take card payments",
                 },
                 { runId: run },
-              ),
+              );
+              engine.end(run);
+            },
           },
         ];
         const MESSAGE = "Lay out the summary for me";
@@ -969,13 +997,21 @@ describe("owner-reported layout regressions", () => {
                   message!,
                   `ASSERTION: the person's message stands above the ${ask}: ${seen}`,
                 ).toBeLessThanOrEqual(end.composerTop);
+                // An ask drawn in its own row is the conversation's last, under the run's card.
+                const inConversation =
+                  end.last.text.includes(shows) && !end.last.text.includes(LAST_WORDS);
+                const card = inConversation ? end.above : end.last;
                 expect(
-                  end.last.text,
-                  `ASSERTION: the conversation's last row is the run's card: ${seen}`,
+                  card?.text,
+                  `ASSERTION: the conversation ends on the run's card, or on the ask under it: ${seen}`,
                 ).toContain(LAST_WORDS);
                 expect(
-                  end.last.bottom,
+                  card!.bottom,
                   `ASSERTION: the run's card ends above the ${ask}: ${seen}`,
+                ).toBeLessThanOrEqual(inConversation ? end.last.top : end.composerTop);
+                expect(
+                  end.last.bottom,
+                  `ASSERTION: the conversation's end stands above the composer: ${seen}`,
                 ).toBeLessThanOrEqual(end.composerTop);
                 yield* s.then.noExternalNetwork;
               }
