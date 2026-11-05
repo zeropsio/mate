@@ -192,7 +192,7 @@ export const makeEngineWorld = (options: WorldOptions) =>
         )
       : Layer.empty;
     const lifeLayer = (scripted: ScriptedProvider) =>
-      liveEngineLayer({ worker: { pollMillis: 1_000 } }).pipe(
+      liveEngineLayer().pipe(
         Layer.provideMerge(
           Layer.mergeAll(
             scriptedProviderLayer(scripted),

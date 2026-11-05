@@ -38,7 +38,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
@@ -445,6 +444,7 @@ const browserStreamLayer = () =>
     ZeropsBrowserStreamModule.ZeropsBrowserStream,
     ZeropsBrowserStreamModule.make({
       readStreamPort: Effect.succeed(undefined),
+      watchPort: Effect.succeed({ next: Effect.never }),
       connect: () => {
         throw new Error("ZeropsBrowserStream fixture: connect is unreachable (always no-browser)");
       },
@@ -462,6 +462,7 @@ const macStreamLayer = () =>
     ZeropsMacStreamModule.make({
       readRecord: Effect.succeed(undefined),
       readView: Effect.succeed(undefined),
+      watch: Effect.succeed({ next: Effect.never }),
       forget: Effect.void,
       openStream: () => Effect.die("ZeropsMacStream fixture: no Mac is paired"),
       runDevice: () => Effect.succeed(69),
@@ -663,13 +664,6 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-    ),
-    // The project read reaches no platform: there is no key to read it with.
-    Layer.succeed(
-      ZeropsOrgReadModule.ZeropsOrgRead,
-      ZeropsOrgReadModule.ZeropsOrgRead.of({
-        project: () => Effect.succeed({ kind: "no-key" }),
-      }),
     ),
     // No HQ sends a fixture scene an access list: the list stays empty.
     ZeropsMateAccessListModule.relayLayer,

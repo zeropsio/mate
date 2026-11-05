@@ -29,12 +29,7 @@
  *
  * @module ZeropsMateAccessList
  */
-import {
-  type ProjectRoles,
-  projectAccess,
-  projectOwners,
-  type ZeropsOrgMember,
-} from "@t3tools/shared/mateAccess";
+import { projectAccess, projectOwners, type ZeropsOrgMember } from "@t3tools/shared/mateAccess";
 import type {
   AccessReport,
   KeyLinkAccess,
@@ -58,7 +53,7 @@ import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import { HttpClient } from "effect/http";
 
-import { type AccessRead, ZeropsAccessRead } from "./ZeropsAccessRead.ts";
+import { type AccessRead, type OwnProject, ZeropsAccessRead } from "./ZeropsAccessRead.ts";
 import {
   type AccessFrame,
   type AccessLiveEvent,
@@ -146,7 +141,7 @@ export function nextAccessList(
 
 /** The rows the Mate's own list is computed from: its project's roles and its org's members. */
 export interface OwnRows {
-  readonly project: ProjectRoles;
+  readonly project: OwnProject;
   readonly members: ReadonlyArray<ZeropsOrgMember>;
 }
 
@@ -286,6 +281,12 @@ export class ZeropsMateAccessList extends Context.Service<
      * never when it only aged.
      */
     readonly changes: Stream.Stream<void>;
+    /**
+     * The Mate's own project — its name and organisation — as the last own read and frames left
+     * it: the one copy of that document in the Mate. While no read has landed it joins the read
+     * in flight (or starts one); none where the list reads nothing of its own or no read landed.
+     */
+    readonly ownProject: Effect.Effect<Option.Option<OwnProject>>;
   }
 >()("t3/zerops/ZeropsMateAccessList") {}
 
@@ -474,6 +475,10 @@ export const make = (own?: {
         Stream.map((report) => report.value),
       ),
       changes: Stream.fromPubSub(moved),
+      ownProject: Effect.gen(function* () {
+        if ((yield* Ref.get(held)).rows === undefined) yield* recompute;
+        return Option.fromUndefinedOr((yield* Ref.get(held)).rows?.project);
+      }),
     });
   });
 

@@ -74,13 +74,13 @@ describe("EngineStore", () => {
           SELECT kind, state FROM engine_effect
         `;
         assert.deepStrictEqual(
-          { result: last?.result, run, item, effects, enqueued: last?.enqueued },
+          { result: last?.result, run, item, effects, outboxChanged: last?.outboxChanged },
           {
             result: { _tag: "Accepted", seq: 4, runId: r(1), itemId: `${r(1)}/i/1` },
             run: { state: "admitted", rev: 3 },
             item: { kind: "person" },
             effects: [{ kind: "run.prepare", state: "pending" }],
-            enqueued: true,
+            outboxChanged: true,
           },
         );
       }),

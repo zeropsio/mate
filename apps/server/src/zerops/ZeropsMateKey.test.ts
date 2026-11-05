@@ -86,40 +86,36 @@ describe("snapshotOnlyReader", () => {
   );
 });
 
+/** A watch that never fires on its own. */
+const noWatch = () => ({ dispose: () => {} });
+
 describe("ZeropsMateKey.make", () => {
-  const withStore = (env: string | undefined, snapshot: string | undefined) =>
-    Effect.gen(function* () {
-      const fs = yield* FileSystem.FileSystem;
-      const path = yield* Path.Path;
-      const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-" });
-      const storePath = path.join(dir, "env.json");
-      if (env !== undefined) yield* fs.writeFileString(storePath, env);
-      const reader = yield* make({ fs, snapshot, storePath, ttl: Duration.seconds(10) });
-      return { reader, storePath, fs };
-    });
-
   itEffect.layer(NodeServices.layer)("live store precedence", (it) => {
-    it.effect("serves from cache within the TTL, re-resolves after invalidate", () =>
+    it.effect("The Mate key is re-read at the env store's change; no 10 s TTL.", () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { reader, storePath, fs } = yield* withStore(storeDoc("old-key"), "snapshot-key");
+          const fs = yield* FileSystem.FileSystem;
+          const path = yield* Path.Path;
+          const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-" });
+          const storePath = path.join(dir, "env.json");
+          yield* fs.writeFileString(storePath, storeDoc("old-key"));
+          const watched: Array<{ readonly target: string; readonly onChange: () => void }> = [];
+          const reader = yield* make({
+            fs,
+            snapshot: "snapshot-key",
+            storePath,
+            watch: (target, onChange) => {
+              watched.push({ target, onChange });
+              return { dispose: () => {} };
+            },
+          });
+          expect(watched.map((watch) => watch.target)).toEqual([storePath]);
           expect(yield* reader.read).toBe("old-key");
-          // Rotated on disk, but still within the cache TTL.
+          // Rotated on disk: no time passing re-reads it, only the store's change does.
           yield* fs.writeFileString(storePath, storeDoc("new-key"));
+          yield* TestClock.adjust(Duration.hours(1));
           expect(yield* reader.read).toBe("old-key");
-          yield* reader.invalidate;
-          expect(yield* reader.read).toBe("new-key");
-        }),
-      ),
-    );
-
-    it.effect("re-resolves on its own once the TTL elapses", () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { reader, storePath, fs } = yield* withStore(storeDoc("old-key"), "snapshot-key");
-          expect(yield* reader.read).toBe("old-key");
-          yield* fs.writeFileString(storePath, storeDoc("new-key"));
-          yield* TestClock.adjust(Duration.seconds(11));
+          watched[0]!.onChange();
           expect(yield* reader.read).toBe("new-key");
         }),
       ),
@@ -163,7 +159,7 @@ describe("requestWithMateKey", () => {
           const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-retry-ok-" });
           const storePath = path.join(dir, "env.json");
           yield* fs.writeFileString(storePath, storeDoc("old-key"));
-          const reader = yield* make({ fs, snapshot: undefined, storePath });
+          const reader = yield* make({ fs, snapshot: undefined, storePath, watch: noWatch });
 
           const seen: Array<string> = [];
           const requestOnce = (token: string) =>
@@ -194,7 +190,7 @@ describe("requestWithMateKey", () => {
           const dir = yield* fs.makeTempDirectoryScoped({ prefix: "mate-key-retry-fail-" });
           const storePath = path.join(dir, "env.json");
           yield* fs.writeFileString(storePath, storeDoc("old-key"));
-          const reader = yield* make({ fs, snapshot: undefined, storePath });
+          const reader = yield* make({ fs, snapshot: undefined, storePath, watch: noWatch });
 
           let calls = 0;
           const requestAlwaysFails = (token: string) =>
