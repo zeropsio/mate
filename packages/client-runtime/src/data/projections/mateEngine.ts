@@ -1610,11 +1610,11 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
       const row = read.fact("mateEngineRow", id);
       if (row.kind !== "known") continue;
       // A held conversation's header is its newest word on the model it runs.
-      const held = read.fact(
-        "mateEngineConversation",
-        engineConversationId({ environmentId, conversationId: row.value.conversationId }),
-      );
-      const model = held.kind === "known" ? held.value.header.model : null;
+      const at = { environmentId, conversationId: row.value.conversationId };
+      const held = observed(read, at)
+        ? read.fact("mateEngineConversation", engineConversationId(at))
+        : null;
+      const model = held?.kind === "known" ? held.value.header.model : null;
       rows.push(
         row.value.agent === null || model === null || model === row.value.agent.model
           ? row.value
@@ -1624,6 +1624,14 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
     return rows;
   },
 };
+
+/**
+ * Whether a conversation's records are observed now: a view holds it. One kept after its last
+ * release (for a quick return) froze there, while its row is still observed and may be newer: a
+ * frozen header never speaks over the row.
+ */
+const observed = (read: ProjectionReads, conversationKey: EngineConversationKey): boolean =>
+  read.stream(engineConversationScopes(conversationKey).conversation).demanded;
 
 /** The turn of each conversation of a Mate the account holds, by conversation id. */
 export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTurn>>> = {
@@ -1635,10 +1643,9 @@ export const engineHeldTurns: Projection<string, Readonly<Record<string, HeldTur
     for (const id of read.index("engineRowsOf", engineRowsKey(environmentId))) {
       const row = read.fact("mateEngineRow", id);
       if (row.kind !== "known") continue;
-      const conversationKey = engineConversationId({
-        environmentId,
-        conversationId: row.value.conversationId,
-      });
+      const at = { environmentId, conversationId: row.value.conversationId };
+      if (!observed(read, at)) continue;
+      const conversationKey = engineConversationId(at);
       const conversation = read.fact("mateEngineConversation", conversationKey);
       if (conversation.kind !== "known") continue;
       turns[row.value.conversationId] = {
