@@ -75,6 +75,16 @@ export const HqScope = Schema.Union([
   }),
 ]);
 export type HqScope = typeof HqScope.Type;
+/**
+ * The scopes HQ admits only on a fresh read of the person's Zerops role, with the access token
+ * their `subscribe` frame carries; asked without it, HQ answers `token_required`.
+ */
+export const HQ_PROTECTED_SCOPE_KINDS: ReadonlySet<HqScope["kind"]> = new Set([
+  "app-detail",
+  "change",
+  "discussion",
+  "attention",
+]);
 export const HqCursor = Schema.Struct({
   incarnation: Schema.String,
   revision: Schema.Int.check(
@@ -112,6 +122,11 @@ export const HqStreamRequest = Schema.Union([
   Schema.Struct({
     type: Schema.Literal("subscribe"),
     scopes: Schema.Array(HqSubscription).check(Schema.isMaxLength(128)),
+    /**
+     * The person's current Zerops access token, which a frame asking a
+     * {@link HQ_PROTECTED_SCOPE_KINDS protected scope} carries: HQ admits it on one read with it.
+     */
+    accessToken: Schema.optionalKey(Schema.String),
   }),
   Schema.Struct({
     type: Schema.Literal("unsubscribe"),
