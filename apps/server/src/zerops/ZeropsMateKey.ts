@@ -17,24 +17,27 @@
  * written there. The precedence is therefore two-level, not three: the live
  * store, then the boot snapshot.
  *
- * A `ZeropsMateKeyReader` is cheap to construct (`make`) and safe to share:
- * its cache is a `Ref`, so every own-key read in this process — the door, the
- * membership watch, the signers gate — can be handed the SAME reader and see
- * the same key, invalidated together.
+ * A `ZeropsMateKeyReader` keeps the key it resolved until the store changes:
+ * it watches the store file and re-reads it at the next read after a change
+ * (or after a refusal invalidates it), never on a timer. It is safe to share:
+ * every own-key read in this process — the door, the membership watch, the
+ * signers gate — is handed the SAME reader and sees the same key, invalidated
+ * together.
  *
  * @module ZeropsMateKey
  */
-import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Result from "effect/Result";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
 
 import * as ServerConfig from "../config.ts";
+import { type WatcherHandle, watchWithFallback } from "./ZeropsAgentAuthWatcher.ts";
 import * as ZeropsKeyRefusal from "./ZeropsKeyRefusal.ts";
 
 /** Which of the two sources a resolved key most recently came from. */
@@ -42,9 +45,6 @@ export type ZeropsMateKeySource = "store" | "snapshot";
 
 /** The env store key this Mate's own key is published under. */
 const MATE_KEY_STORE_FIELD = "ZCP_API_KEY";
-
-/** How long a resolved key is served from cache before the store is re-read. */
-export const MATE_KEY_CACHE_TTL = Duration.seconds(10);
 
 /**
  * Reads `ZCP_API_KEY` out of a parsed env-store document. `undefined` for
@@ -114,38 +114,46 @@ export interface ZeropsMateKeyReader {
   /** Live readers report refusals; snapshot-only fixtures have no platform or HQ link. */
   readonly refusal?: ZeropsKeyRefusal.ZeropsKeyRefusal;
   /**
-   * The key to use for the Mate's own reads right now — from cache when the
-   * last resolve is still within {@link MATE_KEY_CACHE_TTL}, freshly resolved
-   * otherwise. Never logged; never appears in a span or an error payload.
+   * The key to use for the Mate's own reads right now — the one last resolved
+   * while the store has not changed since, freshly resolved otherwise. Never
+   * logged; never appears in a span or an error payload.
    */
   readonly read: Effect.Effect<string | undefined>;
   /** Which source the key {@link read} would answer right now came from. */
   readonly lastSource: Effect.Effect<ZeropsMateKeySource | undefined>;
-  /** Forces the next {@link read} to re-resolve regardless of cache age. */
+  /** Forces the next {@link read} to re-resolve, as a change of the store does. */
   readonly invalidate: Effect.Effect<void>;
 }
 
 interface CacheEntry {
   readonly key: string | undefined;
   readonly source: ZeropsMateKeySource | undefined;
-  readonly readAtMs: number;
+  /** How many changes the store had seen when this entry's read began. */
+  readonly changes: number;
 }
 
 /**
  * Builds a reader over a real (or test) filesystem. `snapshot` is the boot
  * value (`ZeropsEnvironment.apiToken`) to fall back to; `storePath` is
- * `ZeropsEnvironment.envStorePath`.
+ * `ZeropsEnvironment.envStorePath`, watched through `watch` for as long as
+ * the scope lives.
  */
 export const make = (input: {
   readonly fs: FileSystem.FileSystem;
   readonly snapshot: string | undefined;
   readonly storePath: string;
-  readonly ttl?: Duration.Duration;
-}): Effect.Effect<ZeropsMateKeyReader> =>
+  readonly watch: (target: string, onChange: () => void) => WatcherHandle;
+}): Effect.Effect<ZeropsMateKeyReader, never, Scope.Scope> =>
   Effect.gen(function* () {
     const { storePath } = input;
-    const ttlMs = Duration.toMillis(input.ttl ?? MATE_KEY_CACHE_TTL);
     const cache = yield* Ref.make<CacheEntry | undefined>(undefined);
+    // Counted synchronously in the watcher's callback: a read that began before a change cannot
+    // keep what it read past it.
+    let changes = 0;
+    const handle = input.watch(storePath, () => {
+      changes++;
+    });
+    yield* Effect.addFinalizer(() => Effect.sync(() => handle.dispose()));
     const lastGoodStoreKey = yield* Ref.make<string | undefined>(undefined);
 
     const readStoreResult = input.fs
@@ -153,6 +161,7 @@ export const make = (input: {
       .pipe(Effect.flatMap(decodeUnknownJson), Effect.map(extractApiKeyFromStore), Effect.result);
 
     const resolveNow = Effect.gen(function* () {
+      const seen = changes;
       const storeRead = yield* readStoreResult;
       const lastGood = yield* Ref.get(lastGoodStoreKey);
       const resolved = resolveMateKey({
@@ -163,25 +172,23 @@ export const make = (input: {
       if (resolved.lastGoodStoreKey !== lastGood) {
         yield* Ref.set(lastGoodStoreKey, resolved.lastGoodStoreKey);
       }
-      const now = yield* Clock.currentTimeMillis;
-      yield* Ref.set(cache, { key: resolved.key, source: resolved.source, readAtMs: now });
-      return resolved.key;
+      const entry: CacheEntry = { key: resolved.key, source: resolved.source, changes: seen };
+      yield* Ref.set(cache, entry);
+      return entry;
     });
 
     const currentOrResolve = Effect.gen(function* () {
-      const now = yield* Clock.currentTimeMillis;
       const cached = yield* Ref.get(cache);
-      if (cached !== undefined && now - cached.readAtMs < ttlMs) {
-        return cached;
-      }
-      yield* resolveNow;
-      return (yield* Ref.get(cache))!;
+      if (cached !== undefined && cached.changes === changes) return cached;
+      return yield* resolveNow;
     });
 
     const read = currentOrResolve.pipe(Effect.map((entry) => entry.key));
     const lastSource = currentOrResolve.pipe(Effect.map((entry) => entry.source));
 
-    const invalidate = Ref.set(cache, undefined);
+    const invalidate = Effect.sync(() => {
+      changes++;
+    });
 
     const refusal = yield* ZeropsKeyRefusal.make(Effect.andThen(invalidate, read));
     return { read, lastSource, invalidate, refusal };
@@ -253,10 +260,17 @@ export const layer = Layer.effect(
   Effect.gen(function* () {
     const config = yield* ServerConfig.ServerConfig;
     const fs = yield* FileSystem.FileSystem;
+    const path = yield* Path.Path;
     // Outside a Zerops container there is no platform store to read.
     if (config.zerops === undefined) return ZeropsMateKey.of(snapshotOnlyReader(undefined));
     return ZeropsMateKey.of(
-      yield* make({ fs, snapshot: config.zerops.apiToken, storePath: config.zerops.envStorePath }),
+      yield* make({
+        fs,
+        snapshot: config.zerops.apiToken,
+        storePath: config.zerops.envStorePath,
+        // The store's directory stands in while the file does not exist yet.
+        watch: (target, onChange) => watchWithFallback(target, path.dirname(target), onChange),
+      }),
     );
   }),
 );
