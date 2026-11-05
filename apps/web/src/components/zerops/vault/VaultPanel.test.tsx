@@ -27,7 +27,11 @@ interface Mounted {
   readonly restarts: Array<string>;
 }
 
-async function mount(over: Partial<VaultPanelBodyProps> = {}): Promise<Mounted> {
+/** `own` leaves the panel on its own clock, for what changes with time alone. */
+async function mount(
+  over: Partial<VaultPanelBodyProps> = {},
+  clock: "fixture" | "own" = "fixture",
+): Promise<Mounted> {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   const writes: Mounted["writes"] = [];
   const restarts: Array<string> = [];
@@ -49,7 +53,7 @@ async function mount(over: Partial<VaultPanelBodyProps> = {}): Promise<Mounted> 
     onRestart: async (serviceId) => {
       restarts.push(serviceId);
     },
-    nowMs: VAULT_FIXTURE_NOW,
+    ...(clock === "fixture" ? { nowMs: VAULT_FIXTURE_NOW } : {}),
     ...over,
   };
   await act(async () => root!.render(<VaultPanelBody {...props} />));
@@ -253,6 +257,36 @@ describe("VaultPanelBody — a row opens in place", () => {
     expect(q(container, '[data-vault-row="API_URL"] [data-vault-impact]')?.textContent).toBe(
       "appdev and appstage read it · a restart applies it",
     );
+  });
+
+  it("a saved row's check goes at its own instant, then its impact line at its own; no scan wakes between", async () => {
+    vi.useFakeTimers({
+      now: VAULT_FIXTURE_NOW,
+      toFake: ["setTimeout", "clearTimeout", "setInterval", "clearInterval", "Date"],
+    });
+    try {
+      const { container } = await mount({}, "own");
+      await openRow(container, "API_URL");
+      const body = q(container, '[data-vault-body="API_URL"]')!;
+      await typeInto(body.querySelector('input[aria-label="API URL"]'), "https://api.acme.shop");
+      await click(button(body, "Save"));
+      const savedAt = Date.now();
+      const saved = () => q(container, '[data-vault-row="API_URL"] [aria-label="Saved"]') !== null;
+      const impact = () => q(container, '[data-vault-row="API_URL"] [data-vault-impact]') !== null;
+      const at = (ms: number) => act(async () => vi.advanceTimersByTime(savedAt + ms - Date.now()));
+      expect([saved(), impact()]).toEqual([true, true]);
+      await at(1_399);
+      expect([saved(), impact()]).toEqual([true, true]);
+      await at(1_400);
+      expect([saved(), impact()]).toEqual([false, true]);
+      await at(7_999);
+      expect([saved(), impact()]).toEqual([false, true]);
+      await at(8_000);
+      expect([saved(), impact()]).toEqual([false, false]);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("never shows a sensitive value: its field starts empty and replaces it", async () => {
