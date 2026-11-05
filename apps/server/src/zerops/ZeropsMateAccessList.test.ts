@@ -367,6 +367,7 @@ const liveRead = Effect.gen(function* () {
   return {
     ...rig,
     orgs,
+    events,
     frame,
     connected: Queue.offer(events, { _tag: "connected" }),
     own: { ...rig.own, live },
@@ -428,6 +429,27 @@ describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
         yield* frame({ kind: "project", overrides: { "cu-eva": "OWNER" } });
         assert.isTrue(Option.isSome(yield* Fiber.join(changed)));
         assert.deepStrictEqual(yield* ownersNow, ["eva"]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "Each (re)connect and each own-project process frame reach whoever waits on a process; a process frame reads nothing",
+    () =>
+      Effect.gen(function* () {
+        const { connected, own, reads, events } = yield* liveRead;
+        const list = yield* makeAccessList(own);
+        yield* TestClock.adjust(Duration.zero);
+        const heard = yield* Stream.runCollect(Stream.take(yield* list.processes, 2)).pipe(
+          Effect.forkChild,
+        );
+        const process = { id: "proc-1", status: "FINISHED", row: { id: "proc-1" } };
+        yield* connected;
+        yield* Queue.offer(events, { _tag: "process", processes: [process] });
+        assert.deepStrictEqual(yield* Fiber.join(heard), [
+          { _tag: "connected" },
+          { _tag: "process", processes: [process] },
+        ]);
+        assert.strictEqual(yield* Ref.get(reads), 2);
       }).pipe(Effect.scoped),
   );
 
