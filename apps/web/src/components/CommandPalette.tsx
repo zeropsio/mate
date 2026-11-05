@@ -107,6 +107,7 @@ import {
   shownHqListedMatesAtom,
   shownCanonicalHqListNavigationAtom,
   shownHqMateDirectoryAtom,
+  shownMateVisibilitiesAtom,
   isListedMateEnvironment,
 } from "@t3tools/client-runtime/data";
 import { useEnvironmentLinks } from "../routes/-environmentTargets";
@@ -1260,6 +1261,9 @@ export function OpenCommandPaletteDialog(props: {
   );
 
   const hqMates = useAtomValue(shownHqListedMatesAtom);
+  const mateVisibilities = useAtomValue(
+    shownMateVisibilitiesAtom(Object.keys(hqMates.mates).join(",")),
+  );
   const candidateListing = useAtomValue(candidateListingAtom);
   const hqStructure = useAtomValue(shownCanonicalHqListNavigationAtom);
   const mateNames = useMemo(
@@ -1283,13 +1287,22 @@ export function OpenCommandPaletteDialog(props: {
       current: hqMates.live,
       connected: (environmentId) => connected.has(environmentId),
       linkable,
+      visibilityByProject: mateVisibilities,
       lastVisitedAt: (environmentId, threadId) =>
         threadLastVisitedAtById[scopedThreadKey(scopeThreadRef(environmentId, threadId))],
       mateName: (projectId) => mateNames.get(projectId),
       mateApp: (projectId) => mateApps.get(projectId),
       renderStatus: (status) => <ThreadRowResolvedStatus status={status} />,
     };
-  }, [environments, hqMates, mateNames, mateApps, linkable, threadLastVisitedAtById]);
+  }, [
+    environments,
+    hqMates,
+    mateNames,
+    mateApps,
+    mateVisibilities,
+    linkable,
+    threadLastVisitedAtById,
+  ]);
   const allThreadItems = useMemo(
     () =>
       buildThreadActionItems({

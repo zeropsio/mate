@@ -38,6 +38,7 @@ import {
   type Registration,
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
+import { projectsScope } from "../families/project.ts";
 import { servicesScope } from "../families/service.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
@@ -367,7 +368,15 @@ export function zeropsNavigationLink(options: {
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
-          if (family === "project" && !(yield* refreshReturnedProjects(ids))) return;
+          if (
+            family === "project" &&
+            ids.some((id) => {
+              const fact = factOf(store.state(), family, id);
+              return fact === undefined || fact.content.kind === "purged";
+            }) &&
+            !(yield* refreshProjectServices())
+          )
+            return;
           const generation = generationOf(scope);
           const ownerId = scope.split(":").slice(3).join(":");
           const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
@@ -503,6 +512,7 @@ export function zeropsNavigationLink(options: {
           const read = Effect.gen(function* () {
             do {
               pending.again = false;
+              const membersBefore = store.state().memberships.get(scope)?.members;
               store.dispatch({ kind: "baseline-begin", scope, generation });
               const answer = yield* readAgain(
                 link.post(registration.path, {
@@ -515,6 +525,16 @@ export function zeropsNavigationLink(options: {
               if (list === undefined)
                 return yield* Effect.fail(corrupt("A baseline answer is malformed."));
               const rows = rowsOf(registration.family, list.items);
+              if (
+                scope === projectsScope(orgId) &&
+                rows.some(
+                  (row) =>
+                    membersBefore?.get(row.id) !== "member" &&
+                    factOf(store.state(), "project", row.id)?.content.kind !== "purged",
+                )
+              ) {
+                if (!(yield* refreshProjectServices())) return yield* Effect.fail(ACCESS_CHANGED);
+              }
               yield* carryOut(
                 store.dispatch({
                   kind: "baseline-commit",
@@ -543,13 +563,9 @@ export function zeropsNavigationLink(options: {
             yield* Deferred.await(pending.done);
           });
         });
-      /** The service answer taken under a denied grant cannot describe a returned project. */
-      const refreshReturnedProjects = (
-        ids: ReadonlyArray<string>,
-      ): Effect.Effect<boolean, StreamFault> =>
+      /** A service baseline taken before a grant cannot describe a newly listed project. */
+      const refreshProjectServices = (): Effect.Effect<boolean, StreamFault> =>
         Effect.gen(function* () {
-          if (!ids.some((id) => factOf(store.state(), "project", id)?.content.kind === "purged"))
-            return true;
           const services = servicesScope(orgId);
           yield* Deferred.await(navigationReady.get(services)!);
           if (streamOf(store.state(), services).phase !== "live") return false;
@@ -635,23 +651,50 @@ export function zeropsNavigationLink(options: {
           if (registration.role === "membership") {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
+            const addedProjects =
+              scope === projectsScope(orgId) &&
+              registration.generation === streamOf(store.state(), scope).generation &&
+              new Set(
+                (delta.add ?? []).filter(
+                  (id) => store.state().memberships.get(scope)?.members.get(id) !== "member",
+                ),
+              );
             // Some listStream frames carry rows too; admit them before resolving id-only adds.
             const rows = rowsOf(registration.family, delta.update ?? []);
+            const admittedRows = addedProjects
+              ? rows.filter(
+                  (row) =>
+                    !addedProjects.has(row.id) ||
+                    factOf(store.state(), "project", row.id) !== undefined,
+                )
+              : rows;
             store.dispatch({
               kind: "rows",
               scope,
               generation: registration.generation,
               method: "push",
               via: "zerops-realtime",
-              rows,
+              rows: admittedRows,
             });
-            return carryOut(
-              store.dispatch({
-                kind: "membership",
-                scope,
-                generation: registration.generation,
-                delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
-              }),
+            return Effect.andThen(
+              carryOut(
+                store.dispatch({
+                  kind: "membership",
+                  scope,
+                  generation: registration.generation,
+                  delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
+                }),
+              ),
+              addedProjects &&
+                [...addedProjects].some(
+                  (id) => factOf(store.state(), "project", id)?.content.kind === "value",
+                )
+                ? refreshProjectServices().pipe(
+                    Effect.catch(sessionEnds),
+                    Effect.forkIn(attemptScope),
+                    Effect.asVoid,
+                  )
+                : Effect.void,
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));
