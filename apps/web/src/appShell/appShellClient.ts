@@ -95,8 +95,9 @@ export function reloadIntoFreshShell(): void {
 
 /**
  * Registers (or retires) the worker once the page has loaded, so it never competes with the boot.
- * `register` on every load is also the update check; `updateViaCache: "none"` keeps `/sw.js` out
- * of the HTTP cache on top of its `no-cache` header.
+ * Registering the same script again changes nothing; the browser itself checks `/sw.js` for a
+ * newer worker on navigations, and `updateViaCache: "none"` keeps that check out of the HTTP
+ * cache on top of the script's `no-cache` header.
  */
 export function startAppShellWorker(mode: AppShellWorkerMode): void {
   if (mode === "none") return;

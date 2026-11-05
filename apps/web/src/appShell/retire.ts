@@ -1,7 +1,7 @@
 /**
  * The kill switch: shipped as `/sw.js` instead of `sw.ts` when the build says
- * `VITE_APP_SHELL_WORKER=retire`. Every browser that runs the app-shell worker fetches `/sw.js` on
- * its next load (`no-cache`, `updateViaCache: "none"`), finds this, takes over at once, clears the
+ * `VITE_APP_SHELL_WORKER=retire`. Every browser that runs the app-shell worker checks `/sw.js` on
+ * its next navigation (`no-cache`, `updateViaCache: "none"`), finds this, takes over at once, clears the
  * worker's caches and unregisters. It has no fetch handler: from the moment it activates, every
  * request goes to the network as if no worker had ever been installed. The page of a retiring
  * build unregisters too (`appShellClient.ts`), for browsers that never fetch this.

@@ -8,10 +8,12 @@ How mate reaches users. Each step names the file that owns its detail.
   (`VITE_HQ_ORIGIN`); Mates born from it pin `T3CODE_ZEROPS_HQ_ORIGIN` to that HQ.
 - **Hosted client's service worker.** `prod` and `staging` build with
   `VITE_APP_SHELL_WORKER: app-shell`: `/sw.js` answers a reload with the page it kept and fetches the
-  new one behind it, so a deploy runs on the second load after it. To retire it, set the variable to
-  `retire` and deploy: `/sw.js` becomes a worker that clears its caches and unregisters on each
-  browser's next load. Keep that deploy up; deleting the variable or `/sw.js` strands installed
-  workers on their kept page. A person can always bypass it with a hard reload.
+  new one with its files behind it, so a deploy runs on the second load after it. A hard reload
+  skips the worker and runs the origin's page once; the next ordinary reload runs the kept page
+  again until the worker has kept the new one. To retire it, set the variable to `retire` and
+  deploy: `/sw.js` becomes a worker that clears its caches and unregisters on each browser's next
+  navigation. Keep that deploy up; deleting the variable or `/sw.js` strands installed workers on
+  their kept page.
 - **Shared production HQ.** Deploys from the private mate-hq repository's `scripts/deploy-hq.ts`.
 - **Mate server release.** `node scripts/release-mate.ts` (`--minor` when the client's compatibility
   floor rises, `--dry-run` prints the plan). It calls GitHub through `gh`; set `MATE_GH` to use a

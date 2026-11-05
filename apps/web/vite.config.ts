@@ -15,6 +15,8 @@ import { DEV_PROXIED_PATH_PREFIXES } from "@t3tools/shared/devProxy";
 
 import { loadRepoEnv } from "../../scripts/lib/public-config";
 import { buildDocumentTitle } from "./src/branding.logic";
+import { embedShellFiles } from "./src/appShell/appShell.logic";
+import { isWarmedRouteModule, precacheList } from "./src/appShell/appShellBuild.logic";
 
 const repoEnv = loadRepoEnv();
 Object.assign(process.env, repoEnv);
@@ -270,6 +272,51 @@ function appShellWorkerPlugin(mode: string): Plugin {
   };
 }
 
+/**
+ * Lists in the page what it boots and warms from (`src/appShell/appShellBuild.logic.ts`): the
+ * worker keeps a page only once all of it is kept. Warmed surfaces are read off the module graph:
+ * split route code, and every dynamic import of a module that declares surfaces with `appChunk()`.
+ */
+function appShellFilesPlugin(): Plugin {
+  const appChunksModule = `${import.meta.dirname}/src/lib/appChunks.ts`;
+  return {
+    name: "mate:app-shell-files",
+    apply: "build",
+    generateBundle: {
+      order: "post",
+      handler(_options, bundle) {
+        const warmed = new Set<string>();
+        for (const id of this.getModuleIds()) {
+          const info = this.getModuleInfo(id);
+          if (info === null) continue;
+          if (isWarmedRouteModule(id)) warmed.add(id);
+          if (info.importedIds.includes(appChunksModule)) {
+            for (const target of info.dynamicallyImportedIds) warmed.add(target);
+          }
+        }
+        const chunks = Object.values(bundle).flatMap((file) =>
+          file.type === "chunk"
+            ? [
+                {
+                  fileName: file.fileName,
+                  isEntry: file.isEntry,
+                  imports: file.imports,
+                  moduleIds: file.moduleIds,
+                  css: [...(file.viteMetadata?.importedCss ?? [])],
+                },
+              ]
+            : [],
+        );
+        const page = bundle["index.html"];
+        if (page === undefined || page.type !== "asset") {
+          throw new Error("The app-shell file list found no index.html to embed itself in");
+        }
+        page.source = embedShellFiles(String(page.source), precacheList(chunks, warmed));
+      },
+    },
+  };
+}
+
 const configuredAppShellWorker = process.env.VITE_APP_SHELL_WORKER?.trim().toLowerCase() || "";
 
 // Vite rejects requests whose Host header isn't localhost, which blocks sharing
@@ -297,7 +344,7 @@ export default defineConfig(({ command }) => {
       devCompressionPlugin(),
       ...(process.env.T3CODE_WEB_ANALYZE === "1" ? [bundleCompositionPlugin()] : []),
       ...(base === "/" && ["app-shell", "retire"].includes(configuredAppShellWorker)
-        ? [appShellWorkerPlugin(configuredAppShellWorker)]
+        ? [appShellWorkerPlugin(configuredAppShellWorker), appShellFilesPlugin()]
         : []),
       tanstackRouter({ autoCodeSplitting: true }),
       react(),
