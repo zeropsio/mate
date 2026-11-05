@@ -136,6 +136,7 @@ export const HqStreamRequest = Schema.Union([
     type: Schema.Literal("seen"),
     projectId: Schema.String,
     resultIds: Schema.Array(Schema.String).check(Schema.isMaxLength(50)),
+    accessToken: Schema.String,
   }),
   Schema.Struct({
     type: Schema.Literal("move-offers"),
