@@ -8,6 +8,7 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -16,7 +17,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 import { ServerConfig } from "../config.ts";
 import { ProviderRuntimeEventBusTest } from "../spi/ProviderRuntimeEventBus.ts";
-import { ZeropsOrgRead } from "../zerops/ZeropsOrgRead.ts";
+import { ZeropsMateAccessList } from "../zerops/ZeropsMateAccessList.ts";
 import { resolveZeropsEnvironment } from "../zerops/ZeropsEnvironment.ts";
 import { makeUsageCapture } from "./UsageCapture.ts";
 
@@ -68,9 +69,9 @@ const config = ServerConfig.of({
     apiToken: undefined,
   }),
 } as ServerConfig["Service"]);
-const org = ZeropsOrgRead.of({
-  project: () => Effect.succeed({ kind: "answered", status: 200, body: { clientId: "org" } }),
-});
+const org = ZeropsMateAccessList.of({
+  ownProject: Effect.succeed(Option.some({ clientId: "org", overrides: {} })),
+} as unknown as ZeropsMateAccessList["Service"]);
 
 describe("usage capture admission", () => {
   it.effect.each(
@@ -136,7 +137,7 @@ describe("usage capture admission", () => {
     }).pipe(
       Effect.provide(NodeServices.layer),
       Effect.provideService(ServerConfig, config),
-      Effect.provideService(ZeropsOrgRead, org),
+      Effect.provideService(ZeropsMateAccessList, org),
     ),
   );
 });

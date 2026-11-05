@@ -38,7 +38,6 @@ import * as ZeropsAgentAuth from "./ZeropsAgentAuth.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import * as ZeropsGitRemoteProbe from "./ZeropsGitRemoteProbe.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import { crewLayerInert } from "./crew/crewLayer.ts";
 import { macPairCommands, macRemoveCommands } from "./mac/MacHost.ts";
@@ -662,13 +661,6 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
     Layer.succeed(
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-    ),
-    // The project read reaches no platform: there is no key to read it with.
-    Layer.succeed(
-      ZeropsOrgReadModule.ZeropsOrgRead,
-      ZeropsOrgReadModule.ZeropsOrgRead.of({
-        project: () => Effect.succeed({ kind: "no-key" }),
-      }),
     ),
     // No HQ sends a fixture scene an access list: the list stays empty.
     ZeropsMateAccessListModule.relayLayer,
