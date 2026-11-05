@@ -36,9 +36,6 @@ class Socket implements LinkSocket {
   close() {
     this.closed = true;
   }
-  family() {
-    return "IPv6" as const;
-  }
   addEventListener(
     type: string,
     listener: (event: { data: unknown; code: number; reason: unknown }) => void,
