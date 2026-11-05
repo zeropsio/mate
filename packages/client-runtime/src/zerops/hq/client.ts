@@ -274,6 +274,7 @@ export interface HqBirth {
   readonly madeBy?: string;
   readonly chief?: boolean;
   readonly chiefRegistered?: boolean;
+  readonly adopted?: boolean;
   readonly intent?: Readonly<Record<string, unknown>>;
   /** Durable claims on the non-idempotent Zerops writes. */
   readonly attempts?: {

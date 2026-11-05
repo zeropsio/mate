@@ -227,12 +227,14 @@ export const sharedBirths: Projection<
             (progress.next.kind !== "wait" || progress.next.attach),
           ...(authorized && attachment === false ? { continueRequiresAdmin: true } : {}),
           canDelete:
-            projectId === null
-              ? authorized
-              : roleCurrent &&
-                decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
-                  mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
-                )?.allow === true,
+            birth.adopted === true
+              ? false
+              : projectId === null
+                ? authorized
+                : roleCurrent &&
+                  decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
+                    mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
+                  )?.allow === true,
         };
       }),
     );

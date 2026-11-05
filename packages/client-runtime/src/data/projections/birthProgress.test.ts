@@ -199,6 +199,28 @@ describe("shared birth progress", () => {
     registry.dispose();
   });
 
+  it("an adopted birth never offers to delete its existing project", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+      store.dispatch,
+    );
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const adopted = { ...initial.birth, projectId: "p1", adopted: true };
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [{ id: "app", name: "Shop", projects: [], births: [adopted] }],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([{ id: "birth", canDelete: false }]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("a project owner can delete a bound birth without permission to create projects", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);
