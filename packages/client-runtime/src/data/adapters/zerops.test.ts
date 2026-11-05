@@ -588,6 +588,109 @@ describe("zeropsNavigationLink", () => {
     }),
   );
 
+  it.effect("a project the viewer regains has its services read again", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = { id: "regained", name: "Regained", status: "ACTIVE", clientId: ORG };
+      const service = {
+        id: "regained-service",
+        projectId: project.id,
+        clientId: ORG,
+        name: "zcp",
+        status: "ACTIVE",
+      };
+      let granted = false;
+      const fixture = fixtureWire((request) => {
+        if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+        return Effect.succeed({
+          items:
+            request.path === PROJECT_SEARCH && granted
+              ? [project]
+              : request.path === "/service-stack/search" && granted
+                ? [service]
+                : [],
+        });
+      });
+      const fiber = yield* run(store, fixture);
+      const services = () =>
+        projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: project.id })
+          .services;
+      expect(services()).toBeUndefined();
+      const requestsBeforeGrant = fixture.requests.length;
+
+      granted = true;
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [project.id],
+      });
+      yield* settle;
+
+      expect(fixture.requests.slice(requestsBeforeGrant)).toContainEqual({
+        method: "POST",
+        path: "/service-stack/search",
+        body: {
+          search: [{ name: "clientId", operator: "eq", value: ORG }],
+          sort: [],
+          limit: 2000,
+        },
+      });
+      expect(services()).toMatchObject([service]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a project regained during the services baseline gets a fresh services read", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const project = { id: "regained", name: "Regained", status: "ACTIVE", clientId: ORG };
+      const service = {
+        id: "regained-service",
+        projectId: project.id,
+        clientId: ORG,
+        name: "zcp",
+        status: "ACTIVE",
+      };
+      const oldServices = yield* Deferred.make<void>();
+      let granted = false;
+      const fixture = fixtureWire((request) => {
+        if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
+        if (request.path === "/service-stack/search" && !granted)
+          return Effect.as(Deferred.await(oldServices), { items: [] });
+        return Effect.succeed({
+          items:
+            request.path === PROJECT_SEARCH && granted
+              ? [project]
+              : request.path === "/service-stack/search" && granted
+                ? [service]
+                : [],
+        });
+      });
+      const fiber = yield* run(store, fixture);
+      const requestsBeforeGrant = fixture.requests.length;
+
+      granted = true;
+      yield* fixture.push(fixture.subscription(PROJECT_SEARCH, "listStream"), {
+        add: [project.id],
+      });
+      yield* settle;
+      yield* Deferred.succeed(oldServices, undefined);
+      yield* settle;
+      const link = store.state().streams.get(linkKeys.zerops(ORG));
+      if (link?.next.kind === "retry") yield* TestClock.adjust(link.next.at);
+      yield* settle;
+
+      expect(
+        fixture.requests
+          .slice(requestsBeforeGrant)
+          .some((request) => request.path === "/service-stack/search"),
+      ).toBe(true);
+      expect(
+        projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: project.id })
+          .services,
+      ).toMatchObject([service]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("ends the attempt when a read of a member answers 401: the session is repaired", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -2132,7 +2235,7 @@ describe("visibility from what Zerops pushes", () => {
   });
   /** The account Zerops answers for, its org role and the projects it reaches as they are now. */
   const account = (roleCode: string, projects: ReadonlyArray<unknown>) => {
-    const now = { roleCode, projects };
+    const now = { roleCode, projects, services: [] as ReadonlyArray<unknown> };
     const answer = (request: WireRequest): Effect.Effect<unknown, StreamFault> => {
       if (request.path === USER_INFO)
         return Effect.succeed({
@@ -2156,7 +2259,12 @@ describe("visibility from what Zerops pushes", () => {
       if (request.path === `/project/${MATE}`) return Effect.succeed({ status: 403, body: {} });
       if (request.body?.wsOutputType === "updateStream") return Effect.succeed({ success: true });
       return Effect.succeed({
-        items: request.path === PROJECT_SEARCH ? now.projects : [],
+        items:
+          request.path === PROJECT_SEARCH
+            ? now.projects
+            : request.path === "/service-stack/search"
+              ? now.services
+              : [],
       });
     };
     return { now, answer };
@@ -2263,6 +2371,7 @@ describe("visibility from what Zerops pushes", () => {
         // Promoted to Read only: Zerops pushes the membership, and no project (ZEROPS-073).
         now.roleCode = "READ_ONLY";
         now.projects = [mateRow()];
+        now.services = [{ id: "service", projectId: MATE, name: "zcp", status: "ACTIVE" }];
         yield* fixture.push(
           fixture.subscription(CLIENT_USER_SEARCH, "updateStream"),
           membershipFrame("user", "READ_ONLY"),
@@ -2272,6 +2381,10 @@ describe("visibility from what Zerops pushes", () => {
         expect(readsOf(fixture, USER_INFO)).toBe(2);
         expect(store.state().memberships.get(projectsScope(ORG))?.members.get(MATE)).toBe("member");
         expect(visibility(store)).toBe("listed");
+        expect(
+          projectServices.derive(readsOfState(store.state()), { orgId: ORG, projectId: MATE })
+            .services,
+        ).toMatchObject(now.services);
         yield* Fiber.interrupt(fiber);
       }),
   );
