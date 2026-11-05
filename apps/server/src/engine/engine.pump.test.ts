@@ -20,6 +20,7 @@ import { CONTINUE_TEXT, resentText } from "./domain/decide.ts";
 import { PROVIDER_CALL_BOUND_MS } from "./effects/shared.ts";
 import { Conversations } from "./Conversations.ts";
 import { TEXT_KEPT_EVERY_MS } from "./pump/toCore.ts";
+import { HOST_IDLE_GRACE_MS } from "./pump/TurnPump.ts";
 import { steeredWith } from "./domain/told.ts";
 import { rowStateOf } from "./read/conversationRow.ts";
 import { readConversationView } from "./read/conversationView.ts";
@@ -1754,6 +1755,23 @@ describe("the running engine", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  it.effect("an idle host ends at its own instant; no periodic scan finds it", () =>
+    scene(
+      Effect.gen(function* () {
+        const w = yield* world("codex");
+        yield* send(w);
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        yield* w.advance(30 * MINUTE);
+        assert.strictEqual(w.provider.calls.at(-1), `stop ${w.thread}`);
+        yield* w.advance(HOST_IDLE_GRACE_MS - 1);
+        assert.isDefined(yield* (yield* w.pump).existing(mate));
+        yield* w.advance(1);
+        assert.isUndefined(yield* (yield* w.pump).existing(mate));
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   it.effect("a conversation's host is let go once its session closed and nothing waits on it", () =>

@@ -63,8 +63,11 @@ export interface OwnerCommitted<S, E> {
   /** The state after the step. */
   readonly state: S;
   readonly duplicate: boolean;
-  /** The step queued outbox rows: the worker has work. */
-  readonly enqueued: boolean;
+  /**
+   * The step queued outbox rows or recorded an effect's outcome (its row closed, so its lane's
+   * next row may run): the worker looks again.
+   */
+  readonly outboxChanged: boolean;
   /** The step armed, fired or cancelled a wake: the scheduler re-reads. */
   readonly wakesChanged: boolean;
 }
@@ -279,7 +282,7 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         events: [],
         state,
         duplicate,
-        enqueued: false,
+        outboxChanged: false,
         wakesChanged: false,
       });
 
@@ -414,7 +417,8 @@ export const makeEngineStore = Effect.fn("makeEngineStore")(function* (
         events,
         state: next,
         duplicate: false,
-        enqueued: step.effects.length > 0,
+        outboxChanged:
+          step.effects.length > 0 || events.some((event) => event._tag === "EffectOutcomeRecorded"),
         wakesChanged: events.some(touchesWakes),
       } satisfies OwnerCommitted<S, E>;
     });
