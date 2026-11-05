@@ -214,6 +214,64 @@ describe("superviseLink", () => {
       }),
   );
 
+  it.effect("A detail deadline wakes at its instant or a store change; no 10 s scan", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const detail = historyScope("org", "p1");
+      const demanded: Array<typeof detail> = [];
+      let looks = 0;
+      const supervisor = yield* superviseLink({
+        key: LINK,
+        scopes: [],
+        details: () => {
+          looks += 1;
+          return demanded;
+        },
+        store,
+        attempt: () =>
+          Effect.gen(function* () {
+            store.dispatch({ kind: "stream", key: LINK, now: 0, event: { kind: "handshake" } });
+            store.dispatch({
+              kind: "stream",
+              key: LINK,
+              now: 0,
+              event: { kind: "baseline-committed" },
+            });
+            return yield* Effect.never;
+          }),
+        repairSession: Effect.void,
+      });
+      const fiber = yield* Effect.forkChild(supervisor.run);
+      yield* Effect.yieldNow;
+      // Nothing waits: an hour passes without one look at the details.
+      const idle = looks;
+      yield* TestClock.adjust(3_600_000);
+      expect(looks).toBe(idle);
+      // A detail demanded now whose answer may take two seconds passes that deadline at its instant.
+      demanded.push(detail);
+      const at = 3_600_000;
+      store.dispatch({
+        kind: "stream",
+        key: detail,
+        now: at,
+        event: { kind: "demand", demanded: true },
+      });
+      store.dispatch({ kind: "stream", key: detail, now: at, event: { kind: "attempt" } });
+      store.dispatch({
+        kind: "stream",
+        key: detail,
+        now: at,
+        event: { kind: "handshake", baselineWithinMs: 2_000 },
+      });
+      yield* TestClock.adjust(1_999);
+      expect(store.state().streams.get(detail)?.phase).toBe("baselining");
+      yield* TestClock.adjust(1);
+      expect(store.state().streams.get(detail)?.phase).toBe("recovering");
+      expect(store.state().streams.get(LINK)?.phase).toBe("live");
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect(
     "lets its demand go at its release, and its late end takes none from the link after",
     () =>
