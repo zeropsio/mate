@@ -159,8 +159,9 @@ export interface SampledSource<Value> {
   /** The value the answer says, stripped to what a screen needs; `null` for one it cannot read. */
   readonly decode: (answer: unknown) => Value | null;
   /**
-   * A new demand reads it again once its last read is this old; `0`, on every new demand. `null`:
-   * time never ages it — read once, and again only on our write or the person's again; no cadence.
+   * A new demand reads it again once its last read is this old, and a demanded one is read again
+   * then; `0`: on every new demand, and on the sampled cadence while demanded. `null`: time never
+   * ages it — read once, and again only on our write or the person's again; no cadence.
    */
   readonly freshMs: number | null;
   /**
