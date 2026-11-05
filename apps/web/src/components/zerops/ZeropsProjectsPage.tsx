@@ -882,6 +882,7 @@ export function ZeropsProjectsContent({
     organizationStatus,
     selectOrganization,
     status,
+    user,
   } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
@@ -1012,6 +1013,7 @@ export function ZeropsProjectsContent({
         activeOrganization?.id,
         placedNewProjects(made, activeOrganization?.id),
       ),
+      user?.id,
     ),
   );
   const tints = useMemo(() => assignCandidateMateTints(candidates), [candidates]);

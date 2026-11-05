@@ -155,13 +155,21 @@ export function useOwnChiefBirth(): SharedBirth | undefined {
 export function placedSharedBirths(
   births: ReadonlyArray<SharedBirth>,
   local: ReadonlyArray<ZeropsPlacedBirth>,
+  personId?: string,
 ): ReadonlyArray<ZeropsPlacedBirth> {
   const ids = new Set(births.map(({ id }) => id));
   const projects = new Set(
     births.flatMap(({ projectId }) => (projectId === null ? [] : [projectId])),
   );
   const shared = births.flatMap((birth): ReadonlyArray<ZeropsPlacedBirth> => {
-    if (birth.intent?.placement.chief === true) return [];
+    if (
+      birth.intent?.placement.chief === true &&
+      (personId === undefined ||
+        birth.madeBy === personId ||
+        birth.chiefRegistered !== false ||
+        !birth.canContinue)
+    )
+      return [];
     const face = readMateFace(birth.face);
     return [
       {

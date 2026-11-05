@@ -41,6 +41,23 @@ const birth: SharedBirth = {
 };
 
 describe("shared births in the group tree", () => {
+  it("another authorized person can find an unregistered Chief birth", () => {
+    const chief: SharedBirth = {
+      ...birth,
+      madeBy: "ada",
+      chief: true,
+      chiefRegistered: false,
+      intent: { ...birth.intent!, placement: { ...birth.intent!.placement, chief: true } },
+      canContinue: true,
+      progress: { phase: "project-created", next: { kind: "register-chief" }, reason: null },
+    };
+    expect(placedSharedBirths([chief], [], "bea")).toMatchObject([
+      { intent: "b1", placement: { groupId: "a1", displayName: "Ada" } },
+    ]);
+    expect(placedSharedBirths([chief], [], "ada")).toEqual([]);
+    expect(placedSharedBirths([{ ...chief, chiefRegistered: true }], [], "bea")).toEqual([]);
+  });
+
   it('Decision: A birth that stopped (closed window, refused request, failed import, container never up, no hello yet) shows the last proven phase and, where known, the Zerops reason, and offers exactly two actions, Continue and Delete; it never renders as an ordinary unreachable Mate and never as "Coming up" for a Mate that is already linked.', () => {
     expect(sharedBirthPresentation(birth)).toMatchObject({
       line: "Creating project · Outcome unknown — waiting for Zerops",
