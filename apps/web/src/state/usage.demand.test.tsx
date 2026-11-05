@@ -7,6 +7,14 @@ const state = vi.hoisted(() => ({
   refresh: vi.fn(),
   accounting: "1",
   access: "0".repeat(64),
+  manageOrganization: true,
+  userId: "owner" as string | null,
+}));
+vi.mock("../zerops/usePlatformCapabilities", () => ({
+  usePlatformCapabilities: () => ({ manageOrganization: state.manageOrganization }),
+}));
+vi.mock("../zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({ user: state.userId === null ? null : { id: state.userId } }),
 }));
 vi.mock("../zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => ({ orgId: "org", retryDetail: state.refresh }),
@@ -69,11 +77,13 @@ const window: UsageSummaryInput = {
 function Harness({
   enabled = true,
   provenance = "live-responses",
+  person,
 }: {
   enabled?: boolean;
   provenance?: NonNullable<UsageReportQuery["provenance"]>;
+  person?: string;
 }) {
-  const view = useAgentUsage(window, {}, enabled, provenance);
+  const view = useAgentUsage(window, { person }, enabled, provenance);
   return (
     <span data-models={JSON.stringify(view.merged.models)}>
       {view.merged.providers.length} provider rows; {view.merged.daily.length} recorded periods;
@@ -90,8 +100,28 @@ beforeEach(() => {
   state.refresh.mockClear();
   state.accounting = "1";
   state.access = "0".repeat(64);
+  state.manageOrganization = true;
+  state.userId = "owner";
 });
 describe("usage observation ownership", () => {
+  it("a non-admin's every Usage report is scoped to themselves, even for another person's bookmark", () => {
+    state.manageOrganization = false;
+    state.userId = "dev";
+    renderToStaticMarkup(<Harness person="owner" />);
+    expect(state.demands.map((demand) => JSON.parse(demand.owner!).ownerUserId)).toEqual([
+      "dev",
+      "dev",
+      "dev",
+      "dev",
+      "dev",
+    ]);
+  });
+  it("Usage does not ask for an organization's reports before it knows the signed-in person", () => {
+    state.manageOrganization = false;
+    state.userId = null;
+    renderToStaticMarkup(<Harness />);
+    expect(state.demands.every((demand) => demand.owner === null)).toBe(true);
+  });
   it("Cost and Tokens demand only HQ reports without opening Mate sockets", () => {
     renderToStaticMarkup(<Harness />);
     expect(state.demands).toHaveLength(5);
