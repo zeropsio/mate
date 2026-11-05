@@ -1006,7 +1006,7 @@ const lifeLayer = (
     Layer.provide(crewServicesLayer),
     Layer.provide(crewEngineLinkLayer),
   );
-  const engine = liveEngineLayer({ worker: { pollMillis: 100 } }).pipe(
+  const engine = liveEngineLayer().pipe(
     Layer.provideMerge(
       Layer.mergeAll(
         scriptedProviderLayer(provider),
