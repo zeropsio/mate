@@ -30,6 +30,8 @@ import {
 } from "@t3tools/client-runtime/zerops";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
+import type { HqEndpoint } from "@t3tools/client-runtime/zerops/hq";
+import type { RoleProjectKind } from "@t3tools/shared/zeropsRoles";
 import { RegistryContext } from "@effect/atom-react";
 import {
   creationStepId,
@@ -44,7 +46,13 @@ import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvir
 import { accountHqApi, configuredHq } from "./accountHq";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
-import { beginPress, pressPlatform, pressRegistration, runPress } from "./matePress";
+import {
+  beginPress,
+  pressPlatform,
+  pressRegistration,
+  runPress,
+  type PressRegistration,
+} from "./matePress";
 import { useReadGroupAgents } from "./groupAgents";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 import { useZeropsData } from "./zeropsDataContext";
@@ -117,12 +125,34 @@ function addedMateStandUp(
 }
 
 /**
+ * What HQ places an environment added to a group as. A stage with its own Mate is a Mate that is
+ * also the stage, HQ's `devstage`, which HQ places as a Mate: its key is authorized only for a
+ * placed Mate or an open birth intent, so it is born as a Mate is. A stage without one is a stage
+ * HQ deploys.
+ */
+export function addedEnvironmentKind(
+  role: ZeropsEnvironmentRole,
+  withAgent: boolean,
+): RoleProjectKind {
+  switch (role) {
+    case "prod":
+      return "production";
+    case "stage":
+      return withAgent ? "devstage" : "stage";
+    case "devstage":
+      return "devstage";
+    case "dev":
+      return "mate";
+  }
+}
+
+/**
  * The birth intent a Mate added to a group is pressed under (F6c): recorded at HQ before its
  * project exists — its application, its face and, for a dev Mate, the person's ask for its
  * stand-up — so a press cut off between the project and its attach is finished where and as it
  * was asked for, in any browser, its attach recording the ask with the Mate (audit B3). Its name
- * is its project's (D3). None for a stage or a production, or an environment with no agent: no
- * Mate is born.
+ * is its project's (D3). None for a stage HQ deploys or a production, or an environment with no
+ * agent: no Mate is born.
  */
 export async function addedMateBirth(
   /** Records the birth intent at HQ (the `record-birth` operation): its id. */
@@ -139,7 +169,8 @@ export async function addedMateBirth(
   },
 ): Promise<string | undefined> {
   const { choice } = input;
-  if ((input.role !== "dev" && input.role !== "devstage") || !choice.withAgent) return undefined;
+  const kind = addedEnvironmentKind(input.role, choice.withAgent);
+  if ((kind !== "mate" && kind !== "devstage") || !choice.withAgent) return undefined;
   return record({
     appId: input.groupId,
     // Empty where none was picked, as its attach records it: the Mate wears its name's tint.
@@ -148,6 +179,38 @@ export async function addedMateBirth(
     // Made automated from its birth: the attach that closes it, in any browser, makes it so.
     ...(choice.automated === true ? { automated: true as const } : {}),
   });
+}
+
+/**
+ * The registration a press of an environment added to a group writes at HQ, as HQ places it
+ * (`addedEnvironmentKind`): a Mate, a Mate that is also the stage, a stage or a production.
+ */
+export function addedEnvironmentRegistration(input: {
+  readonly hq: HqEndpoint;
+  readonly groupId: string;
+  readonly role: ZeropsEnvironmentRole;
+  readonly choice: Pick<EnvironmentCreationChoice, "face" | "withAgent" | "recipe" | "automated">;
+  /** The Mate's birth intent (`addedMateBirth`), which its attach closes. */
+  readonly intent: string | undefined;
+}): PressRegistration {
+  const { hq, groupId, role, choice, intent } = input;
+  const kind = addedEnvironmentKind(role, choice.withAgent);
+  if (kind === "stage" || kind === "production") return { hq, groupId, kind };
+  return {
+    hq,
+    groupId,
+    kind: "mate",
+    ...(kind === "devstage" ? { devstage: true as const } : {}),
+    mate: {
+      face: choice.face,
+      ...(choice.automated === true ? { automated: true as const } : {}),
+    },
+    // The person adding a dev Mate with its agent asks for its stand-up — with its birth intent,
+    // which its attach closes; the press's close-off marks it closed off, after its record
+    // (`planEnvironmentCreation`).
+    standUp: addedMateStandUp(role, choice),
+    ...(intent === undefined ? {} : { intent }),
+  };
 }
 
 /**
@@ -252,7 +315,8 @@ export function useEnvironmentCreation(): (
       const isCurrent = captureAccountLifetime();
       const { group, role, choice, creationId } = request;
       const { name, shown } = environmentProjectName(role, group.name, choice.name);
-      const tier = role === "prod" ? "production" : role === "stage" ? "stage" : null;
+      const kind = addedEnvironmentKind(role, choice.withAgent);
+      const tier = kind === "stage" || kind === "production" ? kind : null;
 
       // A Mate's birth intent before its project: an HQ that cannot record it takes no project.
       let intent: string | undefined;
@@ -335,22 +399,7 @@ export function useEnvironmentCreation(): (
       const platform = pressPlatform(inputs, {
         register: pressRegistration(
           inputs,
-          tier === null
-            ? {
-                hq,
-                groupId: group.groupId,
-                kind: "mate",
-                mate: {
-                  face: choice.face,
-                  ...(choice.automated === true ? { automated: true as const } : {}),
-                },
-                // The person adding a dev Mate with its agent asks for its stand-up — with its
-                // birth intent, which its attach closes; the press's close-off marks it closed
-                // off, after its record (`planEnvironmentCreation`).
-                standUp: addedMateStandUp(role, choice),
-                ...(intent === undefined ? {} : { intent }),
-              }
-            : { hq, groupId: group.groupId, kind: tier },
+          addedEnvironmentRegistration({ hq, groupId: group.groupId, role, choice, intent }),
         ),
         hq,
         untilServicesSettled: (projectId) =>
@@ -378,7 +427,7 @@ export function useEnvironmentCreation(): (
             placement: {
               groupId: group.groupId,
               groupName: group.name,
-              kind: tier ?? "mate",
+              kind,
               displayName: shown,
               ...(choice.face === undefined ? {} : { face: choice.face }),
             },
