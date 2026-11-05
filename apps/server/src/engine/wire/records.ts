@@ -692,13 +692,27 @@ export const makeRecords = Effect.gen(function* () {
             return undefined;
         }
       }),
-    /** The keys the live plane names the conversation's open items by. */
+    /**
+     * The keys the live plane names the conversation's open items by, in the order they changed.
+     * Read kind by kind (`kinds` walks the kinds the conversation holds, an index seek each) by the
+     * items' state: a few open items, never a scan of every item an old conversation holds.
+     */
     openItemKeys: (conversation: ConversationId) =>
       sql<{ readonly item_id: string; readonly live_key: string | null }>`
+        WITH RECURSIVE kinds(kind) AS (
+          SELECT MIN(kind) FROM engine_item WHERE conversation_id = ${conversation}
+          UNION ALL
+          SELECT (
+            SELECT MIN(kind) FROM engine_item
+            WHERE conversation_id = ${conversation} AND kind > kinds.kind
+          ) FROM kinds WHERE kinds.kind IS NOT NULL
+        )
         SELECT i.item_id, json_extract(e.payload_json, '$.key') AS live_key
-        FROM engine_item i
+        FROM kinds
+        CROSS JOIN engine_item i
+          ON i.conversation_id = ${conversation} AND i.kind = kinds.kind AND i.state = 'open'
         JOIN engine_event e ON e.conversation_id = i.conversation_id AND e.seq = i.opened_seq
-        WHERE i.conversation_id = ${conversation} AND i.state = 'open'
+        ORDER BY i.rev, i.rowid
       `,
     /** The stored receipt of a command; none while it is unsettled or was never taken. */
     receipt: (conversation: ConversationId, commandId: string) =>
