@@ -78,7 +78,6 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
-import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
@@ -270,8 +269,8 @@ export interface ZeropsAgentLoginOptions {
   /** Where each sign-in's CLI runs: a scratch home, so no attempt touches the credential in use. */
   readonly homes: LoginHomes;
   /**
-   * Who signed each login in last, kept across restarts (`zeropsSignIns`): read back at start,
-   * written with every success. Absent, it lives only as long as the process.
+   * Who signed each login in last (`zeropsSignIns`), written with every success. Absent, nobody's
+   * sign-in is recorded.
    */
   readonly signIns?: SignInStore;
   /**
@@ -354,33 +353,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
       } satisfies ZeropsAgentLogin["Service"];
     }
 
-    // A restart picks up who signed each login in last: the credential lives on, and so does
-    // whose it is.
-    const kept = signIns === undefined ? {} : yield* signIns.load;
-    const state = yield* Ref.make<FeedState>({
-      logins: {
-        ...EMPTY_LOGIN_BY_AGENT,
-        ...Object.fromEntries(
-          Object.entries(kept).flatMap(([key, record]) => {
-            // An instant no `DateTime` holds is no sign-in: never a reason not to start.
-            const startedAt = Option.getOrUndefined(DateTime.make(record.at));
-            return startedAt === undefined
-              ? []
-              : [
-                  [
-                    key,
-                    {
-                      phase: "succeeded",
-                      terminalId: loginTerminalId(key),
-                      startedAt: DateTime.toUtc(startedAt),
-                      startedBy: record.by,
-                    } satisfies ZeropsAgentLoginState,
-                  ] as const,
-                ];
-          }),
-        ),
-      },
-    });
+    const state = yield* Ref.make<FeedState>({ logins: EMPTY_LOGIN_BY_AGENT });
     // A login whose credential goes takes its kept sign-in with it: from the first reading
     // without one (a credential gone while the server was down), or one seen to go — once the
     // absence still stands CREDENTIAL_GONE_AFTER on, and no sign-in was kept meanwhile. Not
@@ -516,7 +489,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
 
         // The credential its CLI wrote moves into the login's own home before anything hears of
         // the success; a success that wrote none fails, and the login stays as it was.
-        let result =
+        const result =
           stepped.nextPhase === "succeeded"
             ? yield* homes.commit(session.home).pipe(
                 Effect.as(stepped),
@@ -537,22 +510,11 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         const credentialCommitted = result.nextPhase === "succeeded";
         if (credentialCommitted && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
-          // overview go by it, and it outlives this process (`zeropsSignIns`).
-          result = yield* signIns
-            .save(key, {
-              by: session.startedBy,
-              at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
-            })
-            .pipe(
-              Effect.as(result),
-              Effect.catch((error) =>
-                Effect.succeed({
-                  ...result,
-                  nextPhase: "failed" as const,
-                  message: error.detail,
-                }),
-              ),
-            );
+          // overview go by it, and the overview carries it to HQ (`zeropsSignIns`).
+          yield* signIns.save(key, {
+            by: session.startedBy,
+            at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
+          });
         }
 
         if (credentialCommitted) {

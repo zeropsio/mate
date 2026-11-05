@@ -10,10 +10,11 @@
  * turn is about to spend, and refuse the ones that are not theirs (D6).
  *
  * The record is what this server saw: the person whose door session started
- * the sign-in that succeeded here (`ZeropsAgentLogin`), kept across restarts
- * beside the logins' homes (`zeropsSignIns`). Nobody writes it from outside —
- * not a project member by API, not the app. Forging it needs access to this
- * container, and that access already holds the login's credential.
+ * the sign-in that succeeded here (`ZeropsAgentLogin`), and what HQ holds as
+ * each login's last signer, sent on the link (`zeropsSignIns`) — how it
+ * outlives a restart. No project member writes it by API, and neither does the
+ * app. Forging it needs access to this container or to HQ's link, and the
+ * container already holds the login's credential.
  *
  * Said out loud, because it matters: this is a guardrail, not a lock. Everyone
  * who can open a Mate can also write in it and open a terminal as the agent's
@@ -113,9 +114,9 @@ export interface CurrentLogin {
 export class ZeropsProjectSigners extends Context.Service<
   ZeropsProjectSigners,
   {
-    /** Who this server saw sign each login in (`zeropsSignIns`). */
+    /** Whose each login is, by this server's sign-ins and HQ's map (`zeropsSignIns`). */
     readonly signers: Effect.Effect<ProjectSigners>;
-    /** Fires after each sign-in record is written or cleared: `signers` may have moved. */
+    /** Fires after each sign-in record is written, cleared or moved by HQ: `signers` may have moved. */
     readonly changes: Stream.Stream<void>;
     /**
      * {@link turnRefusal} for this session on `agentId`, against who this server saw sign it in.

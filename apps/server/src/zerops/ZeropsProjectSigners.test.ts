@@ -4,29 +4,18 @@ import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
-import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
-import * as Path from "effect/Path";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
 import * as TestClock from "effect/testing/TestClock";
 
-import type {
-  TerminalAttachStreamEvent,
-  TerminalSessionSnapshot,
-  ZeropsAgentLoginState,
-} from "@t3tools/contracts";
+import type { ZeropsAgentLoginState } from "@t3tools/contracts";
 import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import * as ServerConfig from "../config.ts";
-import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
-import { makeLoginHomes } from "./zeropsLoginHomes.ts";
 import {
-  fileSignInStore,
   memorySignInStore,
-  signInsPath,
   ZeropsSignIns,
   type SignInRecords,
   type SignInStore,
@@ -565,71 +554,6 @@ describe("the turn gate", () => {
       assert.deepStrictEqual(yield* Fiber.join(fiber), { kind: "someone-else" });
     }).pipe(Effect.scoped),
   );
-
-  // Eva signs in; the server restarts. The credential is still Eva's — it lives on under the
-  // home — and so does who signed it in.
-  describe("across a restart", () => {
-    const terminal = () => {
-      const listeners = new Map<
-        string,
-        (event: TerminalAttachStreamEvent) => Effect.Effect<void>
-      >();
-      const manager = {
-        open: () => Effect.succeed({} as TerminalSessionSnapshot),
-        write: () => Effect.void,
-        close: () => Effect.void,
-        attachStream: (
-          input: { readonly terminalId: string },
-          listener: (event: TerminalAttachStreamEvent) => Effect.Effect<void>,
-        ) =>
-          Effect.sync(() => {
-            listeners.set(input.terminalId, listener);
-            return () => listeners.delete(input.terminalId);
-          }),
-      } as unknown as Parameters<typeof makeAgentLogin>[0]["terminalManager"];
-      const succeed = (terminalId: string) =>
-        listeners.get(terminalId)?.({
-          type: "output",
-          threadId: "thread-1",
-          terminalId,
-          data: "Login successful. Press Enter to continue…\n",
-        }) ?? Effect.void;
-      return { manager, succeed };
-    };
-
-    it.effect("who signed a login in here outlives a restart", () =>
-      Effect.gen(function* () {
-        const fs = yield* FileSystem.FileSystem;
-        const path = yield* Path.Path;
-        const home = yield* fs.makeTempDirectoryScoped({ prefix: "mate-sign-ins-" });
-        const file = signInsPath(path, home);
-
-        yield* Effect.scoped(
-          Effect.gen(function* () {
-            const { manager, succeed } = terminal();
-            const logins = yield* makeAgentLogin({
-              terminalManager: manager,
-              zeropsAgentAuth: { recheckNow: () => Effect.void },
-              isZeropsEnvironment: true,
-              homes: yield* makeLoginHomes(home),
-              signIns: yield* fileSignInStore(file),
-            });
-            yield* logins.start("claude-code", "thread-1", `${ZEROPS_SUBJECT_PREFIX}${EVA}`);
-            // The CLI signs in in its scratch home.
-            yield* fs.writeFileString(`${home}/.mate/pending/claude-code/.credentials.json`, "{}");
-            yield* succeed("agent-login-claude-code");
-          }),
-        );
-
-        const { signers } = yield* gateOver(yield* fileSignInStore(file));
-        const on = (subject: string) =>
-          signers.turnRefusal({ agentId: "claude-code", agent: signedIn, subject });
-
-        assert.isUndefined(yield* on(EVA));
-        assert.deepStrictEqual(yield* on(JAN), { kind: "someone-else" });
-      }).pipe(Effect.scoped, Effect.provide(NodeServices.layer)),
-    );
-  });
 });
 
 // X3, D7: a turn no live session stands behind — the crew's, the stand-up's — is admitted by the

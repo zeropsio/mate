@@ -563,6 +563,16 @@ export const KeyLinkDown = Schema.Union([
     id: Schema.String,
     credential: Schema.NullOr(Schema.String),
   }),
+  /**
+   * Who HQ holds as each login's last signer (login → Zerops user id), sent after `hello` and
+   * again when an HQ write moves it; no credential. `at` is when HQ last wrote the map (epoch ms):
+   * a sign-in on the Mate younger than it is news HQ has not heard yet, and stands.
+   */
+  Schema.Struct({
+    type: Schema.Literal("signers"),
+    signers: Schema.Record(Schema.String, Schema.String),
+    at: Schema.optionalKey(Count),
+  }),
   TaskDown,
   TaskMessageDown,
   TaskStopDown,

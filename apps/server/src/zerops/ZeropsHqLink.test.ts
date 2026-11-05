@@ -45,6 +45,7 @@ import { makeAccessScene } from "./testing/accessScene.ts";
 import { makeChangesFile } from "./ZeropsChangesFile.ts";
 import { CREW_OFF_SNAPSHOT } from "./crew/crewSnapshot.ts";
 import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
+import { memorySignInStore } from "./zeropsSignIns.ts";
 import {
   type LinkSocket,
   HQ_LINK_ADDRESS_ORDER,
@@ -232,6 +233,8 @@ const rig = (
     /** The tasks the link handed on; each is answered `accepted`, and the latest is `task-0`. */
     const taken: Array<string> = [];
     const autoUpdatePolicy = yield* makeMateAutoUpdatePolicy;
+    /** Whose each login is, as the link's `signers` frames leave it. */
+    const signIns = yield* memorySignInStore();
     const link = yield* makeZeropsHqLink({
       autoUpdatePolicy,
       hqOrigin: "https://hq.test/",
@@ -266,6 +269,7 @@ const rig = (
       ...(options.observeCredential === undefined
         ? {}
         : { observeCredential: options.observeCredential }),
+      signers: signIns.heard,
       gitFingerprint: Ref.get(fingerprint),
       chief: (projectId) => Effect.sync(() => void chiefs.push(projectId)),
       automation: {
@@ -315,6 +319,7 @@ const rig = (
       chiefs,
       automation,
       taken,
+      signIns,
     };
   });
 
@@ -1131,6 +1136,24 @@ describe("ZeropsHqLink", () => {
           type: "observe-credential-ack",
           id: "new",
           ok: true,
+        });
+      }),
+    ),
+  );
+
+  it.effect("takes whose each login is from HQ's signers frame, at once", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, signIns } = yield* rig();
+        const moved = yield* Stream.runHead(signIns.changes).pipe(
+          Effect.forkScoped({ startImmediately: true }),
+        );
+        const socket = yield* linked(sockets, 0);
+        socket.hear({ type: "signers", signers: { "claude-code": "U-eva", codex: "U-jan" } });
+        yield* Fiber.join(moved);
+        assert.deepStrictEqual(yield* signIns.load, {
+          "claude-code": { by: "U-eva", at: 0 },
+          codex: { by: "U-jan", at: 0 },
         });
       }),
     ),

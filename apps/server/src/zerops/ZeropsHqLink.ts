@@ -216,6 +216,11 @@ export interface ZeropsHqLinkOptions {
   readonly gitCredential: (credential: string | null) => Effect.Effect<void>;
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
+  /** Applies HQ's map of each login's last signer (`signers`) to whose a login is (`ZeropsSignIns.heard`). */
+  readonly signers?: (
+    signers: Readonly<Record<string, string>>,
+    at?: number,
+  ) => Effect.Effect<void>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
@@ -606,6 +611,8 @@ export const makeZeropsHqLink = (
                 Effect.flatMap((ok) => send({ type: "observe-credential-ack", id: frame.id, ok })),
               ),
             );
+          case "signers":
+            return options.signers?.(frame.signers, frame.at) ?? Effect.void;
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":
@@ -942,6 +949,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
       const access = yield* ZeropsMateAccessList;
       const credential = yield* ZeropsGitCredentialFile;
       const observeCredential = yield* ZeropsObserveCredentialFile;
+      const signIns = yield* ZeropsSignIns;
       // The engine's conversations are the chats: V1's projections (a thread left running at the
       // flip among them) are never read.
       const attention = yield* ZeropsMateAttention;
@@ -960,7 +968,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         crew,
         agentAuth: yield* ZeropsAgentAuth,
         agentLogin: yield* ZeropsAgentLogin,
-        lastSigners: (yield* ZeropsSignIns).lastSigners,
+        lastSigners: signIns.lastSigners,
         logins: yield* ZeropsLogins,
         update: yield* ZeropsMateUpdate,
         domainEvents: chats.domainEvents,
@@ -984,6 +992,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
         closeSession: connections.closeSession,
         gitCredential: credential.write,
         observeCredential: observeCredential.write,
+        signers: signIns.heard,
         mateChanges: yield* makeChangesFile(
           paths.join(config.homeDir, ".zcp", "hq", "changes.json"),
         ),

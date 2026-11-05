@@ -14,7 +14,6 @@ import {
   ZeropsAgentAuthState,
   ZeropsAgentId,
   ZeropsAgentLoginCancelInput,
-  ZeropsAgentLoginError,
   ZeropsAgentLoginPhase,
   ZeropsAgentLoginStartInput,
   ZeropsAgentLoginStartResult,
@@ -27,7 +26,6 @@ import {
   ZeropsStateEnvelope,
 } from "./zerops.ts";
 
-const decodeLoginError = Schema.decodeUnknownSync(ZeropsAgentLoginError);
 const decodeAgentId = Schema.decodeUnknownSync(ZeropsAgentId);
 const decodeAgentAuthState = Schema.decodeUnknownSync(ZeropsAgentAuthState);
 const decodeAgentAuth = Schema.decodeUnknownSync(ZeropsAgentAuth);
@@ -460,15 +458,6 @@ describe("ZeropsLoginAddInput / ZeropsLoginRemoveInput", () => {
   it("decodes a removal", () => {
     expect(decodeLoginRemoveInput({ id: "codex-work" })).toEqual({ id: "codex-work" });
   });
-});
-
-it("decodes a signer persistence failure from adding a login", () => {
-  const decoded = decodeLoginError({
-    _tag: "ZeropsAgentLoginError",
-    reason: "signer-write-failed",
-    detail: "Sign-in could not be recorded.",
-  });
-  expect(decoded.reason).toBe("signer-write-failed");
 });
 
 const decodeEnvelope = Schema.decodeUnknownSync(ZeropsStateEnvelope);

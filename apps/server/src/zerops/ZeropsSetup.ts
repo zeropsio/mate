@@ -9,8 +9,8 @@
  *   (`ZeropsHqLink`); zcp's status file (`ZCP_STATUS_FILE`) for the runtimes;
  *   who asked for the
  *   stand-up (the Mate's birth record at its HQ, `ZeropsHqLink`) and who
- *   signed an agent in here (`ZeropsProjectSigners`) for the sign-in; the
- *   durable record for the stand-up.
+ *   signed an agent in here (`ZeropsProjectSigners`, kept by HQ and sent on its
+ *   link's `signers` frame) for the sign-in; the durable record for the stand-up.
  * - **It starts the stand-up**: once HQ names the person who asked for it and
  *   that person signed an agent in here, or another agent is ready to run,
  *   it sends the ask into the Mate's main
