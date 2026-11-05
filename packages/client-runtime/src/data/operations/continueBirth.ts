@@ -67,11 +67,7 @@ export async function continueBirth(
       await ports.recordImport(birth, next.receipt);
       return "started";
     case "wait":
-      if (
-        birth.projectId !== null &&
-        birth.importProcessId !== null &&
-        birth.placement === "unplaced"
-      ) {
+      if (next.attach) {
         await ports.attach(birth);
         return "started";
       }
