@@ -839,11 +839,13 @@ export function zeropsNavigationLink(options: {
             sampled !== undefined ? sampled.path(owner) : (detail?.zerops.path(owner) ?? "");
           const sampledSearch = sampled?.search?.(owner);
           // A search is a POST of it: its answer is the rows asked for, never a whole set.
-          // The session's own read of the same GET, moments ago, answers a first read.
+          // The session's own read of the same GET, moments ago, answers a first read: the
+          // account holds no value of it yet, and nobody asked for the platform's word since.
           const kept =
             sampled !== undefined &&
             sampledSearch === undefined &&
             readAt === undefined &&
+            held === undefined &&
             !askedAfresh.has(scope)
               ? options.wire.held?.(path)
               : undefined;
@@ -853,7 +855,6 @@ export function zeropsNavigationLink(options: {
             (sampled.freshMs === null || now - kept.atMs < sampled.freshMs)
               ? kept
               : undefined;
-          askedAfresh.delete(scope);
           const read =
             heldAnswer !== undefined
               ? Effect.succeed({ status: 200, body: heldAnswer.body })
@@ -921,6 +922,8 @@ export function zeropsNavigationLink(options: {
               rows: [row],
             });
             sampledAt.set(scope, heldAnswer?.atMs ?? (yield* Clock.currentTimeMillis));
+            // Only the platform's own answer settles a request to read it afresh.
+            if (heldAnswer === undefined) askedAfresh.delete(scope);
             return yield* signal(scope, {
               kind: "baseline-committed",
               ages: agesNow(sampled, value),

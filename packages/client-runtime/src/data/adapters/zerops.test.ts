@@ -1651,6 +1651,65 @@ describe("a sampled detail", () => {
         }),
     );
 
+    it.effect(
+      "after our own write, a platform read that fails is retried on the platform, never the session's answer",
+      () =>
+        Effect.gen(function* () {
+          const store = makeAccountStore(AtomRegistry.make());
+          let failures = 0;
+          const fixture = fixtureWire(
+            (request) =>
+              request.method === "GET" &&
+              request.path === USER_PATH &&
+              readsOf(fixture, USER_PATH) === 1 &&
+              failures++ === 0
+                ? Effect.fail({ outcome: "transient", message: "Zerops did not answer." })
+                : platform(request),
+            { held: (path) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined) },
+          );
+          const { fiber, link } = yield* runLink(store, fixture);
+          link.demandDetail(ME);
+          yield* settle;
+          link.revalidate(ME);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(1);
+          // The retry comes due well inside the session answer's freshness.
+          yield* TestClock.adjust(5_000);
+          yield* settle;
+          expect(readsOf(fixture, USER_PATH)).toBe(2);
+          expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+            value: { clientUserList: [{ canCreateProjects: true }] },
+          });
+          yield* Fiber.interrupt(fiber);
+        }),
+    );
+
+    it.effect("a link opened again never takes the session's answer over a newer one held", () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const held = {
+          held: (path: string) => (path === USER_PATH ? { body: user(false), atMs: 0 } : undefined),
+        };
+        const first = fixtureWire(platform, held);
+        const opened = yield* runLink(store, first);
+        const release = opened.link.demandDetail(ME);
+        yield* settle;
+        opened.link.revalidate(ME);
+        yield* settle;
+        expect(readsOf(first, USER_PATH)).toBe(1);
+        release();
+        yield* Fiber.interrupt(opened.fiber);
+        const again = fixtureWire(platform, held);
+        const reopened = yield* runLink(store, again);
+        reopened.link.demandDetail(ME);
+        yield* settle;
+        expect(factOf(store.state(), "organizationUser", ORG)?.content).toMatchObject({
+          value: { clientUserList: [{ canCreateProjects: true }] },
+        });
+        yield* Fiber.interrupt(reopened.fiber);
+      }),
+    );
+
     it.effect("reads the platform after our own write, however fresh the session's answer", () =>
       Effect.gen(function* () {
         const store = makeAccountStore(AtomRegistry.make());
