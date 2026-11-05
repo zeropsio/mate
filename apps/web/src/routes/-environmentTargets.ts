@@ -13,6 +13,7 @@ import {
   environmentLinkable,
   mateLink,
   resolveEnvironment,
+  routePreviewAtom,
   selectConversation,
   type ConversationAccess,
   type ConversationView,
@@ -22,10 +23,11 @@ import {
   type MateLink,
   type Reachability,
   type RouteContent,
+  type RoutePreview,
   type RouteTarget,
   type TargetKey,
 } from "@t3tools/client-runtime/zerops/environments";
-import { rosterAnswered } from "@t3tools/client-runtime/data";
+import { listedProjectAtom, rosterAnswered, type ProjectValue } from "@t3tools/client-runtime/data";
 import type { EnvironmentShellState } from "@t3tools/client-runtime/state/shell";
 import { EnvironmentId } from "@t3tools/contracts";
 import * as Option from "effect/Option";
@@ -53,10 +55,42 @@ const NO_SHELL = Atom.make<EnvironmentShellState>({
 }).pipe(Atom.withLabel("route-gate:no-environment"));
 const NO_PROJECT = Atom.make<string | null>(null).pipe(Atom.withLabel("route-gate:no-project"));
 const ANSWERED = Atom.make(true).pipe(Atom.withLabel("route-gate:no-listing-read"));
+const NO_ROW = Atom.make<ProjectValue | null>(null).pipe(Atom.withLabel("route-gate:no-row"));
+const NO_PREVIEW = Atom.make<RoutePreview | null>(null).pipe(
+  Atom.withLabel("route-gate:no-preview"),
+);
 
 export type Machines = ReadonlyMap<TargetKey, EnvironmentMachine>;
 
 export type RouteOrganization = "chosen" | "choosing" | "not-chosen";
+
+/**
+ * What is read of the project HQ names for the route's environment: `none` where HQ (or what
+ * this account remembered of it) names none; `reading` until its reads answer whether it holds a
+ * Mate; `without-mate` once they read it without one — its services, or the listing read again
+ * after HQ named it, without the project; `with-mate` once a Mate is read there.
+ */
+export type NamedProject = "none" | "reading" | "without-mate" | "with-mate";
+
+/**
+ * `NamedProject` from the reads: the project HQ names, whether the Zerops listing's latest read
+ * answered (`rosterAnswered`) and lists it, and its rows as read (`routePreviewAtom`). Absence is
+ * claimed only on that evidence: a listing that answered with the project but not yet its
+ * services says nothing of its Mate.
+ */
+export function namedProject(input: {
+  readonly hqProject: string | null;
+  readonly listingAnswered: boolean;
+  readonly listed: boolean;
+  readonly rows: ReadonlyArray<Pick<ZeropsCandidate, "service">> | null;
+}): NamedProject {
+  if (input.hqProject === null) return "none";
+  if (input.rows !== null)
+    return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
+  // HQ naming a project the listing lacks has it read again (`zerops/account/hqView.ts`): until
+  // that read answers, the listing's silence is not absence.
+  return input.listingAnswered && !input.listed ? "without-mate" : "reading";
+}
 
 /**
  * The gate joins HQ, cached descriptor and installed credentials by id. An unknown route waits
@@ -68,14 +102,8 @@ export function routeTarget(input: {
   readonly environmentId: EnvironmentId;
   /** The listed Mate HQ names for the environment (`hqNamedTarget`), where no machine does. */
   readonly hqNamed?: { readonly machine: EnvironmentMachine } | undefined;
-  /** HQ names a project for the environment, listed or not (`hqProjectAtom`). */
-  readonly hqNames: boolean;
-  /**
-   * The Zerops listing's latest read has answered (`rosterAnswered`). HQ naming a project the
-   * listing lacks has it read again (`zerops/account/hqView.ts`): until that read answers, the
-   * listing's silence is not absence.
-   */
-  readonly listingAnswered: boolean;
+  /** What is read of the project HQ names for the environment (`namedProject`). */
+  readonly named: NamedProject;
   /** The inventory is read under verified access, not loading or failing. */
   readonly inventoryKnown: boolean;
   readonly organization: RouteOrganization;
@@ -98,10 +126,13 @@ export function routeTarget(input: {
       content: input.content,
     };
   }
+  // A project HQ names is read through before its Mate is said to be absent: a Mate read there
+  // whose machine has not taken it in yet is on its way, not missing.
   const discovering =
     input.organization === "choosing" ||
     !input.inventoryKnown ||
-    (input.hqNames && !input.listingAnswered);
+    input.named === "reading" ||
+    input.named === "with-mate";
   if (discovering) return { kind: "unresolved", discovery: "pending" };
   return {
     kind: "unresolved",
@@ -173,6 +204,8 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
   );
   const hqNamed = hqNamedTarget(machines, hqProject);
   const listingAnswered = useProjection(rosterAnswered, useAccountOrgId(), ANSWERED);
+  const listed = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject)) !== null;
+  const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
   const target =
     environmentId === null
       ? null
@@ -181,8 +214,7 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           environmentId,
           hqNamed,
-          hqNames: hqProject !== null,
-          listingAnswered,
+          named: namedProject({ hqProject, listingAnswered, listed, rows: preview?.rows ?? null }),
           inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
           organization: ORGANIZATION[organizationStatus],
           content,
