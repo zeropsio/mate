@@ -429,14 +429,15 @@ export const makeRecords = Effect.gen(function* () {
 
   /**
    * What a window shows of its runs: the runs, every person message, request and answer, every
-   * page published above an answer, every open request (wherever it was asked), and the newest
-   * items of each run not ended.
+   * page published above an answer, every open request (wherever it was asked), the newest items
+   * of each run not ended, and the items loose of any run since its oldest run began.
+   *
+   * Read once for the widest window a read may send (`runIds`), then narrowed in memory to the
+   * groups it does send: a window over its budget carries fewer groups without reading again.
+   * A narrower window holds exactly what reading it alone would: each record is there for a run
+   * it holds, an open request, or its oldest run's floor, and each run's summary is its own.
    */
-  const windowOf = (
-    conversation: ConversationId,
-    runIds: ReadonlyArray<string>,
-    window: EngineWindow,
-  ) =>
+  const windowsOf = (conversation: ConversationId, runIds: ReadonlyArray<string>) =>
     Effect.gen(function* () {
       const runs = yield* runsById(conversation, runIds);
       const answers = runs.flatMap((run) =>
@@ -485,7 +486,8 @@ export const makeRecords = Effect.gen(function* () {
           `),
         );
       }
-      const floor = runs[0]?.seq;
+      // From the earliest of the runs, whichever a narrower window starts at.
+      const floor = runs.length === 0 ? undefined : Math.min(...runs.map((run) => run.seq));
       const loose =
         floor === undefined
           ? []
@@ -493,15 +495,35 @@ export const makeRecords = Effect.gen(function* () {
               SELECT * FROM engine_item WHERE conversation_id = ${conversation}
                 AND run_id IS NULL AND opened_seq >= ${floor}
             `;
+      // Why each item is there: for its run (shown, a live tail), an open request, or loose.
+      const ofRun = new Set([...shown, ...tails].map((row) => row.item_id));
+      const ofRequest = new Set(asked.map((row) => row.item_id));
       const unique = new Map<string, ItemRow>();
       for (const row of [...shown, ...asked, ...tails, ...loose]) unique.set(row.item_id, row);
       const requestRows = new Map<string, RequestRow>();
       for (const row of [...runRequests, ...openRequests]) requestRows.set(row.request_id, row);
-      return {
-        runs,
-        items: yield* items([...unique.values()].sort((a, b) => a.opened_seq - b.opened_seq)),
-        requests: yield* requests([...requestRows.values()].sort((a, b) => a.seq - b.seq)),
-        window,
+      const openIds = new Set(openRequests.map((row) => row.request_id));
+      const allItems = yield* items(
+        [...unique.values()].sort((a, b) => a.opened_seq - b.opened_seq),
+      );
+      const allRequests = yield* requests([...requestRows.values()].sort((a, b) => a.seq - b.seq));
+      return (held: ReadonlyArray<string>, window: EngineWindow) => {
+        const holds = new Set(held);
+        const kept = runs.filter((run) => holds.has(run.id));
+        const from = kept[0]?.seq;
+        return {
+          runs: kept,
+          items: allItems.filter(
+            (item) =>
+              (item.runId !== null && ofRun.has(item.id) && holds.has(item.runId)) ||
+              ofRequest.has(item.id) ||
+              (item.runId === null && from !== undefined && item.seq >= from),
+          ),
+          requests: allRequests.filter(
+            (request) => openIds.has(request.id) || holds.has(request.runId),
+          ),
+          window,
+        };
       };
     });
 
@@ -549,7 +571,7 @@ export const makeRecords = Effect.gen(function* () {
         return true;
       }),
     pickGroups,
-    windowOf,
+    windowsOf,
     runsById,
     /** How many records changed past a cursor: a resume carries no more than its budget. */
     changedCount: (conversation: ConversationId, after: number) =>

@@ -72,7 +72,7 @@ import { LiveBus, type LiveFrame } from "../LiveBus.ts";
 import { conversationRowOf } from "../read/conversationRow.ts";
 import { runStatusOf } from "../read/runState.ts";
 import { readConversationView, type ConversationView } from "../read/conversationView.ts";
-import { bytesOf, changesFrames, fitRecords, liveFrames, sliceUtf8 } from "./budget.ts";
+import { bytesOf, changesFrames, fitRecords, frameSizer, liveFrames, sliceUtf8 } from "./budget.ts";
 import { makeRecords } from "./records.ts";
 import type { MessagePictures } from "../ports.ts";
 
@@ -308,7 +308,10 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
     const header = (conversation: ConversationId) =>
       Effect.map(conversations.state(conversation), headerOf);
 
-    /** The window snapshot, within its budget: fewer older groups, then a shorter live tail. */
+    /**
+     * The window snapshot, within its budget: fewer older groups, then a shorter live tail. Read
+     * once, narrowed in memory (`windowsOf`), each record cut and counted once (`frameSizer`).
+     */
     const snapshot = (
       conversation: ConversationId,
       groupsAsked: number,
@@ -320,10 +323,14 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
         const all = yield* records.groups(conversation);
         const top = yield* header(conversation);
         let count = Math.min(Math.max(1, groupsAsked), ENGINE_WIRE_BUDGETS.earlierGroupsMax);
+        const narrow = yield* records.windowsOf(
+          conversation,
+          records.pickGroups(all, count).runIds,
+        );
+        const sizer = frameSizer();
         for (;;) {
           const picked = records.pickGroups(all, count);
-          const window = yield* records.windowOf(conversation, picked.runIds, picked.window);
-          const fitted = fitRecords(window);
+          const window = narrow(picked.runIds, picked.window);
           const frame: Extract<EngineConversationFrame, { readonly type: "snapshot" }> = {
             type: "snapshot",
             protocol: Math.max(...MATE_ENGINE_PROTOCOLS),
@@ -331,23 +338,25 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
             origin,
             head,
             header: top,
-            runs: fitted.runs,
-            items: fitted.items,
-            requests: fitted.requests,
+            runs: window.runs.map(sizer.fitRun),
+            items: window.items.map(sizer.fitItem),
+            requests: window.requests.map(sizer.fitRequest),
             window: window.window,
           };
-          if (bytesOf(frame) <= snapshotBytes) return frame;
+          let bytes = sizer.bytesOf(frame);
+          if (bytes <= snapshotBytes) return frame;
           if (count > 1) {
             count -= 1;
             continue;
           }
           // The newest group alone is over: its oldest work goes, its messages and asks stay.
           const items = [...frame.items];
-          while (items.length > 0 && bytesOf({ ...frame, items }) > snapshotBytes) {
+          while (items.length > 0 && bytes > snapshotBytes) {
             const index = items.findIndex(
               (item) => item.kind !== "person" && item.kind !== "request",
             );
             if (index === -1) break;
+            bytes -= sizer.listed(items[index]!, items.length);
             items.splice(index, 1);
           }
           return { ...frame, items };
@@ -775,23 +784,28 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       const refused = protocolRefusal(input.protocol);
       if (refused !== undefined) return Effect.succeed({ _tag: "Unserved", unserved: refused });
       const conversation = input.conversationId;
-      return pageOf(
-        (count) =>
-          Effect.gen(function* () {
-            const picked = records.pickGroups(
-              yield* records.groups(conversation),
-              count,
-              input.beforeOrdinal,
-            );
-            const window = yield* records.windowOf(conversation, picked.runIds, picked.window);
-            return { records: window, window: window.window, more: window.window.earlier };
-          }),
-        Math.min(
-          input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
-          ENGINE_WIRE_BUDGETS.earlierGroupsMax,
-        ),
-        ENGINE_WIRE_BUDGETS.earlierBytes,
+      const widest = Math.min(
+        input.groups ?? ENGINE_WIRE_BUDGETS.windowGroups,
+        ENGINE_WIRE_BUDGETS.earlierGroupsMax,
       );
+      // Read once for the widest page; a page over its budget is narrowed, never read again.
+      return Effect.gen(function* () {
+        const all = yield* records.groups(conversation);
+        const narrow = yield* records.windowsOf(
+          conversation,
+          records.pickGroups(all, widest, input.beforeOrdinal).runIds,
+        );
+        return yield* pageOf(
+          (count) =>
+            Effect.sync(() => {
+              const picked = records.pickGroups(all, count, input.beforeOrdinal);
+              const window = narrow(picked.runIds, picked.window);
+              return { records: window, window: window.window, more: window.window.earlier };
+            }),
+          widest,
+          ENGINE_WIRE_BUDGETS.earlierBytes,
+        );
+      }).pipe(Effect.catch(wireError(UNREADABLE)));
     };
 
     const readRun: EngineWireShape["readRun"] = (input) => {
