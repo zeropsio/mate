@@ -53,6 +53,7 @@ import { EMPTY_SERVER_PROVIDERS, serverEnvironment } from "../../state/server";
 import { useEnvironmentSessionState } from "../../state/session";
 import { useAtomCommand } from "../../state/use-atom-command";
 import { getRelativeTimeState } from "../../timestampFormat";
+import { useSecondsNowMs } from "../../zerops/useNowMs";
 import {
   ConnectionStatusDot,
   connectionPhaseDotClassName,
@@ -96,7 +97,6 @@ import {
   SettingsPageContainer,
   SettingsRow,
   SettingsSection,
-  useRelativeTimeTick,
 } from "./settingsLayout";
 import {
   buildProviderEnvironmentOptions,
@@ -138,7 +138,7 @@ function configuredBinaryPath(config: unknown): string {
 }
 
 function ProviderLastChecked({ lastCheckedAt }: { lastCheckedAt: string | null }) {
-  useRelativeTimeTick();
+  useSecondsNowMs(lastCheckedAt !== null);
   const lastCheckedRelative = getRelativeTimeState(lastCheckedAt);
 
   if (lastCheckedRelative.status === "missing") {
