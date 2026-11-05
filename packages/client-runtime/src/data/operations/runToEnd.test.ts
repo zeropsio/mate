@@ -71,21 +71,21 @@ const failure = async (promise: Promise<unknown>) => {
 };
 
 describe("runToEnd", () => {
-  it.each([401, 429])("a sent create or import answered %s remains uncertain", async (status) => {
-    const reply = new ZeropsApiError(
-      "The target did not give a definitive answer.",
-      "invalid-input",
-      status,
-    );
-    const create = await Effect.runPromise(
-      Effect.result(verb(() => Promise.reject(reply), { targetWrite: true })),
-    );
-    const imported = await Effect.runPromise(
-      Effect.result(verb(() => Promise.reject(new ZeropsTargetWriteRefused(reply)))),
-    );
-    expect(create).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
-    expect(imported).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
-  });
+  it.effect.each([401, 429])("a sent create or import answered %s remains uncertain", (status) =>
+    Effect.gen(function* () {
+      const reply = new ZeropsApiError(
+        "The target did not give a definitive answer.",
+        "invalid-input",
+        status,
+      );
+      const create = yield* Effect.result(verb(() => Promise.reject(reply), { targetWrite: true }));
+      const imported = yield* Effect.result(
+        verb(() => Promise.reject(new ZeropsTargetWriteRefused(reply))),
+      );
+      expect(create).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
+      expect(imported).toMatchObject({ failure: { outcome: "uncertain-acceptance" } });
+    }),
+  );
 
   it("a failure before the target write is sent retains that proof", async () => {
     const local = setUp(() =>
