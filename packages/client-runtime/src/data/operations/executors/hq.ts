@@ -40,7 +40,7 @@ import type { OperationIntent, OperationReceipt, OperationResult } from "../../m
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
 import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
-import { keptDeployTokenId, type HqWriteIntent } from "../hqWrites.ts";
+import { keptDeployToken, type HqWriteIntent } from "../hqWrites.ts";
 
 import {
   changeHandle,
@@ -417,25 +417,32 @@ export function makeHqExecutor(ports: {
   const keptToken = (appId: string | null, projectId: string) =>
     appId === null || ports.store === undefined
       ? undefined
-      : keptDeployTokenId(readsOfState(ports.store.state()), appId, projectId);
+      : keptDeployToken(readsOfState(ports.store.state()), appId, projectId);
   /**
-   * A token HQ no longer keeps, deleted on Zerops once: a failure is said, never retried and never
-   * the failure of the HQ write that let it go.
+   * A token HQ no longer keeps, deleted on Zerops once: a failure, or an id HQ never recorded, is
+   * said, never retried and never the failure of the HQ write that let it go.
    */
-  const retireToken = (orgId: string, tokenId: string | undefined) =>
-    tokenId === undefined
-      ? Effect.void
-      : Effect.promise(() =>
-          ports.zerops.deleteIntegrationToken({ clientId: orgId, tokenId }).then(
-            () => undefined,
-            (cause: unknown) =>
-              ports.tokenLeft?.(
-                `Zerops did not delete the deploy token HQ no longer uses (${
-                  cause instanceof Error ? cause.message : String(cause)
-                }). Delete it among the organization's access tokens in Zerops.`,
-              ),
+  const retireToken = (orgId: string, token: { readonly id: string | undefined } | undefined) => {
+    if (token === undefined) return Effect.void;
+    const tokenId = token.id;
+    if (tokenId === undefined)
+      return Effect.sync(() =>
+        ports.tokenLeft?.(
+          "HQ did not record which deploy token it used, so Mate could not delete it. Delete it among the organization's access tokens in Zerops.",
+        ),
+      );
+    return Effect.promise(() =>
+      ports.zerops.deleteIntegrationToken({ clientId: orgId, tokenId }).then(
+        () => undefined,
+        (cause: unknown) =>
+          ports.tokenLeft?.(
+            `Zerops did not delete the deploy token HQ no longer uses (${
+              cause instanceof Error ? cause.message : String(cause)
+            }). Delete it among the organization's access tokens in Zerops.`,
           ),
-        );
+      ),
+    );
+  };
 
   /**
    * The environment's own token minted, then kept by HQ; a refused one taken back, and the one HQ
@@ -468,7 +475,7 @@ export function makeHqExecutor(ports: {
             throw cause;
           }),
       );
-      if (previous !== minted.id) yield* retireToken(intent.orgId, previous);
+      if (previous?.id !== minted.id) yield* retireToken(intent.orgId, previous);
     });
 
   /** A Chief's registration and a proposal's decision: HQ's answer is their end. */

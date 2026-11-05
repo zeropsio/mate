@@ -391,7 +391,7 @@ export const HqNavigationEnvironment = Schema.Struct({
   /**
    * The Zerops id of the deploy token HQ keeps, never its value: the client deletes it on Zerops
    * once HQ keeps another or confirms the environment's removal. Absent from an HQ that records
-   * none: the client deletes nothing.
+   * none: the client deletes nothing and says so.
    */
   keyId: Schema.optionalKey(Schema.String),
   deleteProjectOnRemoval: Schema.optionalKey(Schema.Boolean),
