@@ -70,6 +70,13 @@ function Harness() {
             environmentId={null}
             history={[]}
             mate="Juno"
+            onAnswer={(files) =>
+              setAttached((current) => [
+                ...current,
+                ...files.map((file) => ({ name: file.name, url: URL.createObjectURL(file) })),
+              ])
+            }
+            threadId={null}
             onAttach={(files) =>
               setAttached((current) => [
                 ...current,

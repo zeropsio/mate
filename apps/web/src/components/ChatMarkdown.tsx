@@ -2,6 +2,7 @@ import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
+import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -2568,7 +2569,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
   pre: function MarkdownPre({ node, children, ...props }) {
-    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text } = use(
+    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text, threadRef } = use(
       ChatMarkdownRendererContext,
     );
     const codeBlock = extractCodeBlock(children);
@@ -2598,6 +2599,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
         </Suspense>
       </RenderErrorBoundary>
     );
+    // A picture the Mate set up for the person to make, edit or design (`PictureAsk`).
+    if (language === "picture-ask") {
+      return (
+        <PictureAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </PictureAskFence>
+      );
+    }
     if (language === "mermaid") {
       return (
         <MarkdownMermaidCodeBlock

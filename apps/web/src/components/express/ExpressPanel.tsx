@@ -3,11 +3,17 @@
  * design a conversation's link named. What the person saves lands in their message as a picture
  * the agent can look at; what the conversation holds of Express is listed to open again.
  */
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import { ImagePlusIcon, LayoutTemplateIcon, PencilIcon, SparklesIcon } from "lucide-react";
 import { useEffect, useEffectEvent, useId, useRef, useState, type ReactNode } from "react";
 
 import { useMateImage } from "~/assets/MateImages";
+import {
+  PICTURE_CANVASES,
+  type PictureAsk,
+  pictureAnswerWords,
+  pictureAskSource,
+} from "../ask/pictureAsk.logic";
 import { Failure } from "../ui/failure";
 import type { ExpressHistoryEntry } from "./expressHistory.logic";
 import { ExpressMark } from "./ExpressMark";
@@ -17,6 +23,7 @@ import {
   type ExpressCallbacks,
   expressAssetFile,
   expressClientId,
+  expressExports,
   loadExpress,
   resetExpress,
 } from "./expressSdk";
@@ -34,17 +41,50 @@ const HISTORY_SHOWN = 12;
 /** A history tile's picture: about 190 px at twice the pixels. */
 const TILE_PICTURE = { width: 384, height: 384 } as const;
 
+/** Adobe's canvas for each a picture ask can start on (`CanvasType`). */
+const CANVAS_TYPES: Readonly<Record<keyof typeof PICTURE_CANVASES, string>> = {
+  "instagram-post": "Instagram",
+  "instagram-story": "InstagramStory",
+  "instagram-portrait": "InstagramPortraitPost",
+  "facebook-post": "Facebook",
+  "linkedin-post": "LinkedinPost",
+  "youtube-thumbnail": "YoutubeThumbnail",
+  presentation: "Presentation",
+  flyer: "Flyer",
+  poster: "Poster",
+};
+
+type AskStep = Extract<ExpressOpenRequest, { readonly kind: "ask" }>;
+
+const dataUrlOf = (file: Blob) =>
+  new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener("load", () => resolve(String(reader.result)));
+    reader.addEventListener("error", () =>
+      reject(reader.error ?? new Error("Unreadable picture.")),
+    );
+    reader.readAsDataURL(file);
+  });
+
+const pictureAsset = (data: string) => ({ type: "image", dataType: "base64", data }) as const;
+
 export function ExpressPanel({
   mate,
   environmentId,
+  threadId,
   history,
   onAttach,
+  onAnswer,
   onEditingChange,
 }: {
   /** The Mate's name, for the line saying where a saved design goes. */
   readonly mate: string | undefined;
   /** The Mate the conversation's pictures are read from. */
   readonly environmentId: EnvironmentId | null;
+  /** The conversation a picture ask's pictures are read in. */
+  readonly threadId: ThreadId | null;
+  /** A picture ask's answer: its pictures and the words that tell the Mate what they are. */
+  readonly onAnswer: (files: File[], words: string) => void;
   /** What the conversation holds of Express, newest first (`expressHistoryOf`). */
   readonly history: ReadonlyArray<ExpressHistoryEntry>;
   readonly onAttach: (files: File[]) => void;
@@ -59,6 +99,12 @@ export function ExpressPanel({
   const pending = useExpressOpen((state) => state.pending);
   const clientId = expressClientId ?? "";
 
+  // A picture ask's step whose picture is being read before Express opens on it.
+  const [reading, setReading] = useState<{ readonly step: AskStep; readonly path: string } | null>(
+    null,
+  );
+  const work = useExpressOpen((state) => state.work);
+
   const callbacks: ExpressCallbacks = {
     onPublish: (_intent, params) => {
       setStage({ kind: "idle" });
@@ -68,11 +114,35 @@ export function ExpressPanel({
     onCancel: () => setStage({ kind: "idle" }),
     onError: (error) => setStage({ kind: "failed", details: String(error) }),
   };
+  // A picture ask's save goes straight back to the Mate, named for the step it answers.
+  const answering = ({ ask, step }: AskStep): ExpressCallbacks => ({
+    onPublish: (_intent, params) => {
+      setStage({ kind: "idle" });
+      work(null);
+      const file = expressAssetFile(params, { key: ask.key, step });
+      if (file === null) return;
+      onAnswer(
+        [file],
+        pictureAnswerWords(ask, step, { kind: "express", prompt: params.prompt?.trim() }),
+      );
+    },
+    onCancel: () => {
+      setStage({ kind: "idle" });
+      work(null);
+    },
+    onError: (error) => {
+      setStage({ kind: "failed", details: String(error) });
+      work(null);
+    },
+  });
+  const answerLabel = `Use for ${mate ?? "this Mate"}`;
   // `fill` mounts Adobe's frame into the panel edge to edge, with no backdrop or frame of its own.
   const container = { mode: "fill", parentElementId: containerId } as const;
 
   const launch = async (open: (sdk: Awaited<ReturnType<typeof loadExpress>>) => void) => {
     const replacing = stage.kind === "open" || stage.kind === "opening";
+    // Whatever opens now replaces any picture ask step that was open.
+    work(null);
     setStage({ kind: "opening" });
     try {
       if (replacing) await resetExpress();
@@ -94,26 +164,99 @@ export function ExpressPanel({
       sdk.module.createImageFromText({ appVersion: "2", callbacks }, EXPRESS_EXPORTS, container),
     );
   const editPicture = (file: Blob) => {
-    const reader = new FileReader();
-    reader.addEventListener("load", () => {
-      const data = String(reader.result);
-      void launch((sdk) =>
+    void dataUrlOf(file).then((data) =>
+      launch((sdk) =>
         sdk.module.editImage(
-          { asset: { type: "image", dataType: "base64", data } },
+          { asset: pictureAsset(data) },
           { appVersion: "2", callbacks },
           EXPRESS_EXPORTS,
           container,
         ),
-      );
+      ),
+    );
+  };
+  // A picture ask's step opens set up as the Mate wrote it, from its picture when it has one.
+  const openStep = async (request: AskStep, picture: Blob | undefined) => {
+    const { ask } = request;
+    const app = {
+      callbacks: answering(request),
+      metaData: { ask: ask.key, step: `${request.step}` },
+    };
+    const exports = expressExports(answerLabel);
+    let data: string | undefined;
+    try {
+      data = picture === undefined ? undefined : await dataUrlOf(picture);
+    } catch (error) {
+      setStage({ kind: "failed", details: String(error) });
+      return;
+    }
+    await launch((sdk) => {
+      openAsk(sdk, ask, app, exports, data);
+      // Its card says it is open in Express once Adobe took it.
+      work({ key: ask.key, step: request.step });
     });
-    reader.readAsDataURL(file);
+  };
+  const openAsk = (
+    sdk: Awaited<ReturnType<typeof loadExpress>>,
+    ask: PictureAsk,
+    app: { readonly callbacks: ExpressCallbacks; readonly metaData: Record<string, string> },
+    exports: ReturnType<typeof expressExports>,
+    data: string | undefined,
+  ) => {
+    switch (ask.kind) {
+      case "generate":
+        // A prompt starts Adobe generating at once.
+        sdk.module.createImageFromText(
+          {
+            ...app,
+            appVersion: "2",
+            promptText: ask.prompt,
+            imageDimensions: { aspectRatio: ask.shape },
+            ...(data === undefined ? {} : { imageStyleReference: pictureAsset(data) }),
+          },
+          exports,
+          container,
+        );
+        return;
+      case "edit":
+        if (data === undefined) throw new Error("The picture to edit could not be read.");
+        sdk.module.editImage(
+          { asset: pictureAsset(data), intent: ask.tool },
+          { ...app, appVersion: "2" },
+          exports,
+          container,
+        );
+        return;
+      case "design": {
+        const canvas = ask.canvas === undefined ? {} : { canvasSize: CANVAS_TYPES[ask.canvas] };
+        const editor = {
+          ...app,
+          selectedCategory: "templates",
+          ...(ask.templates === undefined ? {} : { categorySearchText: ask.templates }),
+        };
+        if (data === undefined) sdk.editor.create(canvas, editor, exports, container);
+        else
+          sdk.editor.createWithAsset(
+            { ...canvas, asset: pictureAsset(data) },
+            editor,
+            exports,
+            container,
+          );
+        return;
+      }
+    }
   };
   // What the conversation asked for (a design its link named, a picture to edit) opens here once,
   // whether the tab was open or opened for it.
   const openNamed = useEffectEvent((request: ExpressOpenRequest & { readonly id: number }) => {
     useExpressOpen.getState().take(request.id);
     if (request.kind === "design") editAgain(request.documentId);
-    else editPicture(request.picture);
+    else if (request.kind === "picture") editPicture(request.picture);
+    else {
+      const path = pictureAskSource(request.ask, request.step);
+      if (path === undefined) void openStep(request, undefined);
+      else setReading({ step: request, path });
+    }
   });
   useEffect(() => {
     if (pending !== null) openNamed(pending);
@@ -212,6 +355,23 @@ export function ExpressPanel({
                   )}
               </div>
             </section>
+          )}
+          {reading === null || environmentId === null || threadId === null ? null : (
+            <AskPictureReader
+              environmentId={environmentId}
+              key={`${reading.step.ask.key}:${reading.step.step}`}
+              onFailed={(details) => {
+                setReading(null);
+                setStage({ kind: "failed", details });
+              }}
+              onRead={(picture) => {
+                const step = reading.step;
+                setReading(null);
+                void openStep(step, picture);
+              }}
+              path={reading.path}
+              threadId={threadId}
+            />
           )}
           {reopening === null || environmentId === null ? null : (
             <PictureReader
@@ -322,6 +482,33 @@ function LinkedDesign({
       ) : null}
     </button>
   );
+}
+
+/** Reads the full file of a picture a Mate's picture ask names by its path. */
+function AskPictureReader({
+  environmentId,
+  threadId,
+  path,
+  onRead,
+  onFailed,
+}: {
+  readonly environmentId: EnvironmentId;
+  readonly threadId: ThreadId;
+  readonly path: string;
+  readonly onRead: (picture: Blob) => void;
+  readonly onFailed: (details: string) => void;
+}) {
+  const { read } = useMateImage({
+    environmentId,
+    resource: { _tag: "media-file", threadId, path },
+    rendition: "original",
+  });
+  const settle = useEffectEvent((value: typeof read) => {
+    if (value.kind === "ready") onRead(value.blob);
+    else if (value.kind === "failed") onFailed(`${path}: ${value.reason}`);
+  });
+  useEffect(() => settle(read), [read]);
+  return null;
 }
 
 /** Reads a saved picture's full file (its kept original when the composer had to fit it). */
