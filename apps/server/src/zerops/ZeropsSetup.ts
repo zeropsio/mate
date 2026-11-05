@@ -48,14 +48,12 @@ import * as Context from "effect/Context";
 import * as Crypto from "effect/Crypto";
 import * as DateTime from "effect/DateTime";
 import * as Semaphore from "effect/Semaphore";
-import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
-import * as Schedule from "effect/Schedule";
 import * as SqlClient from "effect/sql/SqlClient";
 import * as Stream from "effect/Stream";
 
@@ -96,9 +94,6 @@ import {
 
 /** How many of the latest stand-up calls are held: a section, its carry, and retries before. */
 const STAND_UP_CALLS_HELD = 8;
-
-/** How soon a flip looks again at an engine that could not read every conversation. */
-const UNREAD_RETRY = Duration.seconds(10);
 
 /** The reads this needs from outside the process; a test hands in its own. */
 export class ZeropsSetupReads extends Context.Service<
@@ -245,614 +240,616 @@ const TERMINAL: ReadonlySet<string> = new Set([
   "skipped",
 ]);
 
-export const makeZeropsSetup = (unreadRetry: Duration.Duration = UNREAD_RETRY) =>
-  Effect.gen(function* () {
-    const config = yield* ServerConfig.ServerConfig;
-    const reads = yield* ZeropsSetupReads;
-    const sql = yield* SqlClient.SqlClient;
-    const projection = yield* ProjectionSnapshotQuery;
-    const readiness = yield* ServerCommandReadiness;
-    const crypto = yield* Crypto.Crypto;
-    const engine = yield* MateEngine;
-    // The stand-up is a wake on the Mate engine.
-    // A flipped Mate's main conversation takes its earlier record before anything of the
-    // person's runs: their sends wait from here until it is adopted (or the server stops).
-    const letSendsGo = yield* engine.holdSends;
-    yield* Effect.addFinalizer(() => letSendsGo);
-    const environment = config.zerops;
-    const projectId = environment?.projectId ?? "";
-    const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
-    const startedAtMs = yield* Clock.currentTimeMillis;
-    const startedAt = yield* nowIso;
-    const gitAt = yield* Ref.make<string | undefined>(undefined);
-    const signinAt = yield* Ref.make<string | undefined>(undefined);
-    // The wait's end, read by the tasks too: an automated Mate takes none before it.
-    const receipt = yield* ZeropsStandUpReceipt;
-    const attempts = yield* Semaphore.make(1);
+export const makeZeropsSetup = Effect.gen(function* () {
+  const config = yield* ServerConfig.ServerConfig;
+  const reads = yield* ZeropsSetupReads;
+  const sql = yield* SqlClient.SqlClient;
+  const projection = yield* ProjectionSnapshotQuery;
+  const readiness = yield* ServerCommandReadiness;
+  const crypto = yield* Crypto.Crypto;
+  const engine = yield* MateEngine;
+  // The stand-up is a wake on the Mate engine.
+  // A flipped Mate's main conversation takes its earlier record before anything of the
+  // person's runs: their sends wait from here until it is adopted (or the server stops).
+  const letSendsGo = yield* engine.holdSends;
+  yield* Effect.addFinalizer(() => letSendsGo);
+  const environment = config.zerops;
+  const projectId = environment?.projectId ?? "";
+  const nowIso = Effect.map(DateTime.now, DateTime.formatIso);
+  const startedAtMs = yield* Clock.currentTimeMillis;
+  const startedAt = yield* nowIso;
+  const gitAt = yield* Ref.make<string | undefined>(undefined);
+  const signinAt = yield* Ref.make<string | undefined>(undefined);
+  // The wait's end, read by the tasks too: an automated Mate takes none before it.
+  const receipt = yield* ZeropsStandUpReceipt;
+  const attempts = yield* Semaphore.make(1);
 
-    /* ---------------------------------------------------------- the record */
+  /* ---------------------------------------------------------- the record */
 
-    const recordOf = sql<{
-      readonly threadId: string;
-      readonly commandId: string;
-      readonly startedAt: string;
-      readonly source: string;
-      readonly userId: string;
-    }>`
+  const recordOf = sql<{
+    readonly threadId: string;
+    readonly commandId: string;
+    readonly startedAt: string;
+    readonly source: string;
+    readonly userId: string;
+  }>`
     SELECT thread_id AS "threadId", command_id AS "commandId", started_at AS "startedAt",
       source, user_id AS "userId"
     FROM zerops_stand_ups WHERE project_id = ${projectId}
   `.pipe(
-      Effect.map((rows): StandUpRow | undefined => rows[0]),
-      Effect.catch(() => Effect.succeed(undefined)),
-    );
+    Effect.map((rows): StandUpRow | undefined => rows[0]),
+    Effect.catch(() => Effect.succeed(undefined)),
+  );
 
-    /** Records a stand-up unless one is recorded; whether this call recorded it. */
-    const claim = (row: StandUpRow) =>
-      sql`
+  /** Records a stand-up unless one is recorded; whether this call recorded it. */
+  const claim = (row: StandUpRow) =>
+    sql`
       INSERT INTO zerops_stand_ups
         (project_id, thread_id, command_id, user_id, source, started_at)
       VALUES (${projectId}, ${row.threadId}, ${row.commandId}, ${row.userId}, ${row.source}, ${row.startedAt})
       ON CONFLICT (project_id) DO NOTHING
       RETURNING project_id
     `.pipe(
-        Effect.map((inserted) => inserted.length === 1),
-        Effect.catch(() => Effect.succeed(false)),
-      );
+      Effect.map((inserted) => inserted.length === 1),
+      Effect.catch(() => Effect.succeed(false)),
+    );
 
-    /** A send that failed is final until its asker explicitly tries again. */
-    const fail = (commandId: string) =>
-      sql`UPDATE zerops_stand_ups SET source = 'server:failed'
+  /** A send that failed is final until its asker explicitly tries again. */
+  const fail = (commandId: string) =>
+    sql`UPDATE zerops_stand_ups SET source = 'server:failed'
         WHERE project_id = ${projectId} AND command_id = ${commandId}
           AND source = 'server:claimed'`.pipe(Effect.asVoid);
 
-    /** A claim resumed that nobody can be sent as: settled, as nobody asked. */
-    const settleTaken = (commandId: string) =>
-      sql`UPDATE zerops_stand_ups SET source = 'none'
+  /** A claim resumed that nobody can be sent as: settled, as nobody asked. */
+  const settleTaken = (commandId: string) =>
+    sql`UPDATE zerops_stand_ups SET source = 'none'
         WHERE project_id = ${projectId} AND command_id = ${commandId}
           AND source = 'server:claimed'`.pipe(
-        Effect.asVoid,
-        Effect.catch(() => Effect.void),
-      );
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    );
 
-    /** A claim on its way went out: its record stands for good. */
-    const confirm = (commandId: string) =>
-      sql`UPDATE zerops_stand_ups SET source = 'server'
+  /** A claim on its way went out: its record stands for good. */
+  const confirm = (commandId: string) =>
+    sql`UPDATE zerops_stand_ups SET source = 'server'
         WHERE project_id = ${projectId} AND command_id = ${commandId}
           AND source = 'server:claimed'`.pipe(
-        Effect.asVoid,
-        Effect.catch(() => Effect.void),
-      );
+      Effect.asVoid,
+      Effect.catch(() => Effect.void),
+    );
 
-    /* ---------------------------------------------------------- the facts */
+  /* ---------------------------------------------------------- the facts */
 
-    const latch = (ref: Ref.Ref<string | undefined>, reached: boolean) =>
-      Effect.gen(function* () {
-        const at = yield* Ref.get(ref);
-        if (at !== undefined || !reached) return at;
-        const now = yield* nowIso;
-        yield* Ref.set(ref, now);
-        return now;
-      });
+  const latch = (ref: Ref.Ref<string | undefined>, reached: boolean) =>
+    Effect.gen(function* () {
+      const at = yield* Ref.get(ref);
+      if (at !== undefined || !reached) return at;
+      const now = yield* nowIso;
+      yield* Ref.set(ref, now);
+      return now;
+    });
 
-    const status = Effect.map(reads.statusFile, parseZcpStatus);
+  const status = Effect.map(reads.statusFile, parseZcpStatus);
 
-    const standUpGone = (read: ZcpStatus | undefined) => {
-      const process = runningStandUpProcess(read);
-      return process === undefined ? Effect.succeed(false) : reads.processGone(process);
-    };
+  const standUpGone = (read: ZcpStatus | undefined) => {
+    const process = runningStandUpProcess(read);
+    return process === undefined ? Effect.succeed(false) : reads.processGone(process);
+  };
 
-    /** A turn's state as the stand-up reads it: running, or how it ended; not found, unread. */
-    const turnState = (rows: ReadonlyArray<{ readonly state: string }>) => {
-      const state = rows[0]?.state;
-      if (state === undefined) return undefined;
-      return state === "running" || state === "pending"
-        ? "running"
-        : state === "completed"
-          ? "done"
-          : "failed";
-    };
+  /** A turn's state as the stand-up reads it: running, or how it ended; not found, unread. */
+  const turnState = (rows: ReadonlyArray<{ readonly state: string }>) => {
+    const state = rows[0]?.state;
+    if (state === undefined) return undefined;
+    return state === "running" || state === "pending"
+      ? "running"
+      : state === "completed"
+        ? "done"
+        : "failed";
+  };
 
-    /**
-     * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
-     * are the command's) — never the thread's latest, which a later message would make another's.
-     * Asked and not started yet, it runs; not found (its thread gone), it is not read.
-     */
-    const turnOf = (record: StandUpRow) =>
-      sql<{ readonly state: string }>`
+  /**
+   * The recorded stand-up's own turn — the one its ask started, found by its message (its ids
+   * are the command's) — never the thread's latest, which a later message would make another's.
+   * Asked and not started yet, it runs; not found (its thread gone), it is not read.
+   */
+  const turnOf = (record: StandUpRow) =>
+    sql<{ readonly state: string }>`
         SELECT state FROM projection_turns
         WHERE thread_id = ${record.threadId} AND pending_message_id = ${record.commandId}
         ORDER BY row_id DESC LIMIT 1
       `.pipe(
-        Effect.map(turnState),
-        Effect.orElseSucceed(() => undefined),
-      );
-
-    /** The stand-up calls this server's agents started, the latest last; a few are enough. */
-    const calls = yield* Ref.make<ReadonlyArray<StandUpCall>>([]);
-    const noteStandUpCall = (call: StandUpCall) =>
-      Ref.update(calls, (held) => [...held, call].slice(-STAND_UP_CALLS_HELD));
-
-    /** A turn's state from the engine's run, ended or not; none when it holds no such run. */
-    const engineTurnState = (
-      found:
-        | { readonly wakeId: ReturnType<typeof standUpWakeIdOf> }
-        | { readonly providerTurnId: string },
-    ) =>
-      Effect.map(engine.runOf(found), (run) =>
-        run === undefined
-          ? undefined
-          : run.end === null
-            ? ("running" as const)
-            : run.end.kind === "completed"
-              ? ("done" as const)
-              : ("failed" as const),
-      );
-
-    /**
-     * A stand-up V1 ran before the flip: how its turn ended, read once from V1's projection; one
-     * V1 still says runs was cut by the flip (V1 runs nothing now).
-     */
-    const v1TurnAtFlip = (record: StandUpRow) =>
-      Effect.map(turnOf(record), (state) => (state === "running" ? ("failed" as const) : state));
-
-    /** The stand-up's own run on the engine; a stand-up V1 ran before the flip, its turn. */
-    const standUpTurnOf = (record: StandUpRow) =>
-      Effect.flatMap(
-        engineTurnState({
-          wakeId: standUpWakeIdOf(
-            ConversationId.make(record.threadId),
-            "standup",
-            record.commandId,
-          ),
-        }),
-        (state) => (state === undefined ? v1TurnAtFlip(record) : Effect.succeed(state)),
-      );
-
-    /** The turn zcp's section waits on: the engine's run that turn went into. */
-    const sectionStateOf = (read: ZcpStatus | undefined) =>
-      Effect.gen(function* () {
-        const call = sectionCall(read, yield* Ref.get(calls));
-        if (call?.turnId === undefined) return undefined;
-        return yield* engineTurnState({ providerTurnId: call.turnId });
-      });
-
-    const document = Effect.gen(function* () {
-      const variables = yield* reads.serviceVariables;
-      const standing = yield* reads.hq;
-      const git = gitAccessOf(
-        standing,
-        yield* latch(gitAt, yield* reads.gitCredentialHeld),
-        (yield* Clock.currentTimeMillis) - startedAtMs,
-      );
-      const marked = variables !== undefined && hasSetupMarker(variables);
-      const record = yield* Effect.flatMap(recordOf, seenOnEngine);
-      const ran = record !== undefined && RAN.has(record.source);
-      const signedInAt = yield* Ref.get(signinAt);
-      // Only a marked Mate whose stand-up is still pending says why it waits: a Mate made before
-      // has no stand-up of the server's, and a settled one has its record.
-      const pending = marked && record === undefined;
-      const hq = pending ? standing : undefined;
-      // Who asked, from HQ, where a marked Mate's record cannot say it: a stand-up still pending,
-      // or — settled as never due — a sign-in not seen yet. One that ran has its sign-in in its
-      // record.
-      const mate =
-        marked && (pending || (!ran && signedInAt === undefined)) && standing.kind === "linked"
-          ? Option.some(standing.mate)
-          : Option.none<LinkedMate>();
-      const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
-      const signers = yield* reads.signers;
-      const readyWithoutSignIn =
-        marked && pickReadyAgentWithoutSignIn(yield* reads.providers) !== undefined;
-      const signedIn =
-        ran ||
-        readyWithoutSignIn ||
-        (Option.isSome(mate) &&
-          (requestedBy === undefined
-            ? Object.keys(signers).length > 0
-            : standUpAgents(yield* reads.agents, signers, requestedBy).length > 0));
-      // The sign-in is known from a stand-up that ran, from HQ's word, or once seen: a step once
-      // done stays done.
-      const signinKnown = ran || marked || signedInAt !== undefined;
-      const zcpStatus = yield* status;
-      return setupDocument({
-        now: yield* nowIso,
-        startedAt,
-        git,
-        status: zcpStatus,
-        requestedBy,
-        standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
-        signinAt: yield* latch(signinAt, signedIn),
-        record:
-          record === undefined
-            ? undefined
-            : {
-                startedAt: record.startedAt,
-                ran,
-                claimed: record.source.endsWith(":claimed"),
-                failed: record.source === "server:failed",
-              },
-        // HQ's record carries its ask from the write that made it (audit B3), and names nobody:
-        // a Mate with no stand-up to run.
-        nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
-        standUpTurn: ran ? yield* standUpTurnOf(record) : undefined,
-        standUpProcessGone: yield* standUpGone(zcpStatus),
-        sectionTurn: yield* sectionStateOf(zcpStatus),
-        unknown: [
-          ...(signinKnown ? [] : (["signin"] as const)),
-          ...(marked || record !== undefined ? [] : (["standup"] as const)),
-        ],
-      });
-    });
-
-    /* ---------------------------------------------------------- the stand-up */
-
-    /** Settles the stand-up as never due; whether there is nothing left to do. */
-    const settle = (source: "none" | "skipped") =>
-      Effect.gen(function* () {
-        const at = yield* nowIso;
-        yield* claim({ threadId: "", commandId: source, userId: "", source, startedAt: at });
-        return true;
-      });
-
-    /* ---------------------------------------------------------- the stand-up on the engine */
-
-    /**
-     * The Mate's own conversation on the engine (the one its agent is the Mate's), or the one
-     * named; `unknown` while the engine cannot read every conversation — never taken for none.
-     */
-    const engineConversation = (id?: ConversationId) =>
-      Effect.map(engine.conversations, (list) => {
-        // The tasks' conversation, or an older task's own, is the tasks', never the Mate's own.
-        const found = list.views.find((view) =>
-          id === undefined
-            ? view.agent?.profile.kind === "mate" && !isTaskConversation(view.conversationId)
-            : view.conversationId === id,
-        );
-        return found !== undefined || list.complete ? found : ("unknown" as const);
-      });
-
-    /** Whether the conversation has heard from the person, or run anything at all. */
-    const spokenIn = (view: ConversationView | undefined) => view?.lastPerson != null;
-    const unstarted = (view: ConversationView | undefined) =>
-      view === undefined ||
-      (view.activeRun === null && view.lastEnded === null && view.queued.length === 0);
-
-    /** The conversation's agent: the instance, its driver, the model and its options. */
-    const agentOf = (
-      selection: ModelSelection,
-      providers: ReadonlyArray<ServerProvider>,
-    ): ConversationAgent => {
-      const options = Array.isArray(selection.options) ? selection.options : undefined;
-      return {
-        instanceId: selection.instanceId,
-        driver:
-          providers.find((provider) => provider.instanceId === selection.instanceId)?.driver ??
-          selection.instanceId,
-        model: selection.model,
-        ...(options === undefined || options.length === 0 ? {} : { options }),
-        profile: { kind: "mate" },
-      };
-    };
-
-    /** The project's default model, where a V1 project still holds one; none on a new Mate. */
-    const projectDefault = projection.getActiveProjectByWorkspaceRoot(config.cwd).pipe(
-      Effect.map((found) => Option.getOrUndefined(found)?.defaultModelSelection ?? null),
-      Effect.orElseSucceed(() => null),
+      Effect.map(turnState),
+      Effect.orElseSucceed(() => undefined),
     );
 
-    /** The wake a recorded stand-up armed, and the run it started (none until it fired). */
-    const recordedRun = (record: StandUpRow) =>
-      engine.runOf({
-        wakeId: standUpWakeIdOf(ConversationId.make(record.threadId), "standup", record.commandId),
-      });
+  /** The stand-up calls this server's agents started, the latest last; a few are enough. */
+  const calls = yield* Ref.make<ReadonlyArray<StandUpCall>>([]);
+  const noteStandUpCall = (call: StandUpCall) =>
+    Ref.update(calls, (held) => [...held, call].slice(-STAND_UP_CALLS_HELD));
 
-    /**
-     * The record as a reader takes it: a stand-up the engine ended before it provably reached the
-     * agent (its admission refused, its session never opened, its send refused) is a failed send,
-     * as V1 records one.
-     */
-    const seenOnEngine = (record: StandUpRow | undefined) =>
-      Effect.gen(function* () {
-        if (record?.source !== "server") return record;
-        const run = yield* recordedRun(record);
-        // A stand-up V1 was running at the flip was cut by the switch: its asker may try again.
-        if (run === undefined) {
-          return (yield* turnOf(record)) === "running"
-            ? { ...record, source: "server:failed" }
-            : record;
-        }
-        // Only a stand-up that provably never reached the agent is a failed send: one whose
-        // delivery is unknown may be in the agent already, and V1 never sends one twice.
-        return run.end?.kind === "failed" && run.reachedAgent === false
+  /** A turn's state from the engine's run, ended or not; none when it holds no such run. */
+  const engineTurnState = (
+    found:
+      | { readonly wakeId: ReturnType<typeof standUpWakeIdOf> }
+      | { readonly providerTurnId: string },
+  ) =>
+    Effect.map(engine.runOf(found), (run) =>
+      run === undefined
+        ? undefined
+        : run.end === null
+          ? ("running" as const)
+          : run.end.kind === "completed"
+            ? ("done" as const)
+            : ("failed" as const),
+    );
+
+  /**
+   * A stand-up V1 ran before the flip: how its turn ended, read once from V1's projection; one
+   * V1 still says runs was cut by the flip (V1 runs nothing now).
+   */
+  const v1TurnAtFlip = (record: StandUpRow) =>
+    Effect.map(turnOf(record), (state) => (state === "running" ? ("failed" as const) : state));
+
+  /** The stand-up's own run on the engine; a stand-up V1 ran before the flip, its turn. */
+  const standUpTurnOf = (record: StandUpRow) =>
+    Effect.flatMap(
+      engineTurnState({
+        wakeId: standUpWakeIdOf(ConversationId.make(record.threadId), "standup", record.commandId),
+      }),
+      (state) => (state === undefined ? v1TurnAtFlip(record) : Effect.succeed(state)),
+    );
+
+  /** The turn zcp's section waits on: the engine's run that turn went into. */
+  const sectionStateOf = (read: ZcpStatus | undefined) =>
+    Effect.gen(function* () {
+      const call = sectionCall(read, yield* Ref.get(calls));
+      if (call?.turnId === undefined) return undefined;
+      return yield* engineTurnState({ providerTurnId: call.turnId });
+    });
+
+  const document = Effect.gen(function* () {
+    const variables = yield* reads.serviceVariables;
+    const standing = yield* reads.hq;
+    const git = gitAccessOf(
+      standing,
+      yield* latch(gitAt, yield* reads.gitCredentialHeld),
+      (yield* Clock.currentTimeMillis) - startedAtMs,
+    );
+    const marked = variables !== undefined && hasSetupMarker(variables);
+    const record = yield* Effect.flatMap(recordOf, seenOnEngine);
+    const ran = record !== undefined && RAN.has(record.source);
+    const signedInAt = yield* Ref.get(signinAt);
+    // Only a marked Mate whose stand-up is still pending says why it waits: a Mate made before
+    // has no stand-up of the server's, and a settled one has its record.
+    const pending = marked && record === undefined;
+    const hq = pending ? standing : undefined;
+    // Who asked, from HQ, where a marked Mate's record cannot say it: a stand-up still pending,
+    // or — settled as never due — a sign-in not seen yet. One that ran has its sign-in in its
+    // record.
+    const mate =
+      marked && (pending || (!ran && signedInAt === undefined)) && standing.kind === "linked"
+        ? Option.some(standing.mate)
+        : Option.none<LinkedMate>();
+    const requestedBy = Option.getOrUndefined(mate)?.standupRequestedBy ?? undefined;
+    const signers = yield* reads.signers;
+    const readyWithoutSignIn =
+      marked && pickReadyAgentWithoutSignIn(yield* reads.providers) !== undefined;
+    const signedIn =
+      ran ||
+      readyWithoutSignIn ||
+      (Option.isSome(mate) &&
+        (requestedBy === undefined
+          ? Object.keys(signers).length > 0
+          : standUpAgents(yield* reads.agents, signers, requestedBy).length > 0));
+    // The sign-in is known from a stand-up that ran, from HQ's word, or once seen: a step once
+    // done stays done.
+    const signinKnown = ran || marked || signedInAt !== undefined;
+    const zcpStatus = yield* status;
+    return setupDocument({
+      now: yield* nowIso,
+      startedAt,
+      git,
+      status: zcpStatus,
+      requestedBy,
+      standUpWait: hq === undefined ? undefined : standUpWaitOf(hq),
+      signinAt: yield* latch(signinAt, signedIn),
+      record:
+        record === undefined
+          ? undefined
+          : {
+              startedAt: record.startedAt,
+              ran,
+              claimed: record.source.endsWith(":claimed"),
+              failed: record.source === "server:failed",
+            },
+      // HQ's record carries its ask from the write that made it (audit B3), and names nobody:
+      // a Mate with no stand-up to run.
+      nobodyAsked: hq?.kind === "linked" && hq.mate.standupRequestedBy === null,
+      standUpTurn: ran ? yield* standUpTurnOf(record) : undefined,
+      standUpProcessGone: yield* standUpGone(zcpStatus),
+      sectionTurn: yield* sectionStateOf(zcpStatus),
+      unknown: [
+        ...(signinKnown ? [] : (["signin"] as const)),
+        ...(marked || record !== undefined ? [] : (["standup"] as const)),
+      ],
+    });
+  });
+
+  /* ---------------------------------------------------------- the stand-up */
+
+  /** Settles the stand-up as never due; whether there is nothing left to do. */
+  const settle = (source: "none" | "skipped") =>
+    Effect.gen(function* () {
+      const at = yield* nowIso;
+      yield* claim({ threadId: "", commandId: source, userId: "", source, startedAt: at });
+      return true;
+    });
+
+  /* ---------------------------------------------------------- the stand-up on the engine */
+
+  /**
+   * The Mate's own conversation on the engine (the one its agent is the Mate's), or the one
+   * named; `unknown` while the engine cannot read every conversation — never taken for none.
+   */
+  const engineConversation = (id?: ConversationId) =>
+    Effect.map(engine.conversations, (list) => {
+      // The tasks' conversation, or an older task's own, is the tasks', never the Mate's own.
+      const found = list.views.find((view) =>
+        id === undefined
+          ? view.agent?.profile.kind === "mate" && !isTaskConversation(view.conversationId)
+          : view.conversationId === id,
+      );
+      return found !== undefined || list.complete ? found : ("unknown" as const);
+    });
+
+  /** Whether the conversation has heard from the person, or run anything at all. */
+  const spokenIn = (view: ConversationView | undefined) => view?.lastPerson != null;
+  const unstarted = (view: ConversationView | undefined) =>
+    view === undefined ||
+    (view.activeRun === null && view.lastEnded === null && view.queued.length === 0);
+
+  /** The conversation's agent: the instance, its driver, the model and its options. */
+  const agentOf = (
+    selection: ModelSelection,
+    providers: ReadonlyArray<ServerProvider>,
+  ): ConversationAgent => {
+    const options = Array.isArray(selection.options) ? selection.options : undefined;
+    return {
+      instanceId: selection.instanceId,
+      driver:
+        providers.find((provider) => provider.instanceId === selection.instanceId)?.driver ??
+        selection.instanceId,
+      model: selection.model,
+      ...(options === undefined || options.length === 0 ? {} : { options }),
+      profile: { kind: "mate" },
+    };
+  };
+
+  /** The project's default model, where a V1 project still holds one; none on a new Mate. */
+  const projectDefault = projection.getActiveProjectByWorkspaceRoot(config.cwd).pipe(
+    Effect.map((found) => Option.getOrUndefined(found)?.defaultModelSelection ?? null),
+    Effect.orElseSucceed(() => null),
+  );
+
+  /** The wake a recorded stand-up armed, and the run it started (none until it fired). */
+  const recordedRun = (record: StandUpRow) =>
+    engine.runOf({
+      wakeId: standUpWakeIdOf(ConversationId.make(record.threadId), "standup", record.commandId),
+    });
+
+  /**
+   * The record as a reader takes it: a stand-up the engine ended before it provably reached the
+   * agent (its admission refused, its session never opened, its send refused) is a failed send,
+   * as V1 records one.
+   */
+  const seenOnEngine = (record: StandUpRow | undefined) =>
+    Effect.gen(function* () {
+      if (record?.source !== "server") return record;
+      const run = yield* recordedRun(record);
+      // A stand-up V1 was running at the flip was cut by the switch: its asker may try again.
+      if (run === undefined) {
+        return (yield* turnOf(record)) === "running"
           ? { ...record, source: "server:failed" }
           : record;
+      }
+      // Only a stand-up that provably never reached the agent is a failed send: one whose
+      // delivery is unknown may be in the agent already, and V1 never sends one twice.
+      return run.end?.kind === "failed" && run.reachedAgent === false
+        ? { ...record, source: "server:failed" }
+        : record;
+    });
+
+  /**
+   * One look, on the engine: the same decision as V1's (who asked, who signed in, what is
+   * ready, whether the conversation is under way), but the stand-up goes as a wake for the
+   * principal it names — the person who asked — into the Mate's conversation, which it gives
+   * its agent first. The wake's run is admitted like any run, by the engine (D6); a refusal
+   * reads as V1's failed send (`seenOnEngine`), so its asker may retry.
+   */
+  const tickOnEngine = () =>
+    Effect.gen(function* () {
+      const held = yield* recordOf;
+      if (held !== undefined && TERMINAL.has(held.source)) return true;
+      const resuming = held?.source === "server:claimed" ? held : undefined;
+      const hq = yield* reads.hq;
+      if (hq.kind !== "linked") return false;
+      const asker = hq.mate.standupRequestedBy ?? undefined;
+      // An automated Mate runs on the organization's key only: its OpenCode, nobody's sign-in.
+      const automated = hq.mate.automated === true;
+      const allProviders = yield* reads.providers;
+      const providers = automated
+        ? allProviders.filter(
+            (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
+          )
+        : allProviders;
+      const ready = pickReadyAgentWithoutSignIn(providers);
+      const signers = automated ? {} : yield* reads.signers;
+      const agents = automated ? [] : yield* reads.agents;
+      const requestedBy =
+        resuming === undefined
+          ? asker
+          : [resuming.userId, asker].find(
+              (userId): userId is string =>
+                userId !== undefined &&
+                userId !== "" &&
+                (standUpAgents(agents, signers, userId).length > 0 || ready !== undefined),
+            );
+      const read = yield* engineConversation(
+        resuming === undefined ? undefined : ConversationId.make(resuming.threadId),
+      );
+      // A conversation the engine cannot read now may be the Mate's: look again when it moves.
+      if (read === "unknown") return false;
+      const main = read;
+      // Resumed, and its wake is in the engine already: it went out before.
+      if (resuming !== undefined && (yield* recordedRun(resuming)) !== undefined) {
+        yield* confirm(resuming.commandId);
+        return true;
+      }
+      if (requestedBy === undefined && resuming !== undefined) {
+        yield* spokenIn(main) ? confirm(resuming.commandId) : settleTaken(resuming.commandId);
+        return true;
+      }
+      if (requestedBy === undefined) return yield* settle("none");
+      const mainSelection =
+        main?.agent === null || main?.agent === undefined || main.agent.model === null
+          ? undefined
+          : {
+              modelSelection: {
+                instanceId: ProviderInstanceId.make(main.agent.instanceId),
+                model: main.agent.model,
+                ...(main.agent.options === undefined ? {} : { options: main.agent.options }),
+              },
+            };
+      const readyHere = pickReadyAgentWithoutSignIn(
+        providers,
+        mainSelection?.modelSelection.instanceId,
+      );
+      const decision = standUpDecision({
+        recorded: false,
+        requestedBy,
+        agents: standUpAgents(agents, signers, requestedBy),
+        ready: readyHere?.instanceId,
+        spoken: resuming === undefined && spokenIn(main),
       });
+      if (decision.kind === "spoken") return yield* settle("skipped");
+      if (decision.kind !== "start") return false;
 
-    /**
-     * One look, on the engine: the same decision as V1's (who asked, who signed in, what is
-     * ready, whether the conversation is under way), but the stand-up goes as a wake for the
-     * principal it names — the person who asked — into the Mate's conversation, which it gives
-     * its agent first. The wake's run is admitted like any run, by the engine (D6); a refusal
-     * reads as V1's failed send (`seenOnEngine`), so its asker may retry.
-     */
-    const tickOnEngine = () =>
-      Effect.gen(function* () {
-        const held = yield* recordOf;
-        if (held !== undefined && TERMINAL.has(held.source)) return true;
-        const resuming = held?.source === "server:claimed" ? held : undefined;
-        const hq = yield* reads.hq;
-        if (hq.kind !== "linked") return false;
-        const asker = hq.mate.standupRequestedBy ?? undefined;
-        // An automated Mate runs on the organization's key only: its OpenCode, nobody's sign-in.
-        const automated = hq.mate.automated === true;
-        const allProviders = yield* reads.providers;
-        const providers = automated
-          ? allProviders.filter(
-              (provider) => provider.instanceId === AUTOMATED_MODEL_SELECTION.instanceId,
-            )
-          : allProviders;
-        const ready = pickReadyAgentWithoutSignIn(providers);
-        const signers = automated ? {} : yield* reads.signers;
-        const agents = automated ? [] : yield* reads.agents;
-        const requestedBy =
-          resuming === undefined
-            ? asker
-            : [resuming.userId, asker].find(
-                (userId): userId is string =>
-                  userId !== undefined &&
-                  userId !== "" &&
-                  (standUpAgents(agents, signers, userId).length > 0 || ready !== undefined),
-              );
-        const read = yield* engineConversation(
-          resuming === undefined ? undefined : ConversationId.make(resuming.threadId),
-        );
-        // A conversation the engine cannot read now may be the Mate's: look again when it moves.
-        if (read === "unknown") return false;
-        const main = read;
-        // Resumed, and its wake is in the engine already: it went out before.
-        if (resuming !== undefined && (yield* recordedRun(resuming)) !== undefined) {
-          yield* confirm(resuming.commandId);
-          return true;
-        }
-        if (requestedBy === undefined && resuming !== undefined) {
-          yield* spokenIn(main) ? confirm(resuming.commandId) : settleTaken(resuming.commandId);
-          return true;
-        }
-        if (requestedBy === undefined) return yield* settle("none");
-        const mainSelection =
-          main?.agent === null || main?.agent === undefined || main.agent.model === null
-            ? undefined
-            : {
-                modelSelection: {
-                  instanceId: ProviderInstanceId.make(main.agent.instanceId),
-                  model: main.agent.model,
-                  ...(main.agent.options === undefined ? {} : { options: main.agent.options }),
-                },
-              };
-        const readyHere = pickReadyAgentWithoutSignIn(
-          providers,
-          mainSelection?.modelSelection.instanceId,
-        );
-        const decision = standUpDecision({
-          recorded: false,
-          requestedBy,
-          agents: standUpAgents(agents, signers, requestedBy),
-          ready: readyHere?.instanceId,
-          spoken: resuming === undefined && spokenIn(main),
+      const now = yield* nowIso;
+      const conversationId = ConversationId.make(
+        resuming?.threadId ?? main?.conversationId ?? (yield* crypto.randomUUIDv4),
+      );
+      const defaults = yield* projectDefault;
+      let chosen: ModelSelection;
+      if (automated) {
+        chosen = yield* reads.automatedModel;
+      } else if ("agentId" in decision) {
+        chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
+      } else if (readyHere !== undefined) {
+        chosen = standUpModelSelectionOn(readyHere, mainSelection, defaults);
+      } else {
+        return false;
+      }
+      // A new conversation's first run is on Extra High unless its model names an effort (D10).
+      const selection = unstarted(main) ? selectionWithPreferredEffort(providers, chosen) : chosen;
+      const ids =
+        resuming === undefined
+          ? standUpCommandIds(conversationId)
+          : { commandId: resuming.commandId, messageId: resuming.commandId };
+      if (resuming === undefined) {
+        const claimed = yield* claim({
+          threadId: conversationId,
+          commandId: ids.commandId,
+          userId: decision.userId,
+          source: "server:claimed",
+          startedAt: now,
         });
-        if (decision.kind === "spoken") return yield* settle("skipped");
-        if (decision.kind !== "start") return false;
-
-        const now = yield* nowIso;
-        const conversationId = ConversationId.make(
-          resuming?.threadId ?? main?.conversationId ?? (yield* crypto.randomUUIDv4),
-        );
-        const defaults = yield* projectDefault;
-        let chosen: ModelSelection;
-        if (automated) {
-          chosen = yield* reads.automatedModel;
-        } else if ("agentId" in decision) {
-          chosen = standUpModelSelection(decision.agentId, mainSelection, defaults);
-        } else if (readyHere !== undefined) {
-          chosen = standUpModelSelectionOn(readyHere, mainSelection, defaults);
-        } else {
+        if (!claimed) return false;
+      }
+      const sent = yield* Effect.gen(function* () {
+        if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) {
           return false;
         }
-        // A new conversation's first run is on Extra High unless its model names an effort (D10).
-        const selection = unstarted(main)
-          ? selectionWithPreferredEffort(providers, chosen)
-          : chosen;
-        const ids =
-          resuming === undefined
-            ? standUpCommandIds(conversationId)
-            : { commandId: resuming.commandId, messageId: resuming.commandId };
-        if (resuming === undefined) {
-          const claimed = yield* claim({
-            threadId: conversationId,
-            commandId: ids.commandId,
-            userId: decision.userId,
-            source: "server:claimed",
-            startedAt: now,
-          });
-          if (!claimed) return false;
-        }
-        const sent = yield* Effect.gen(function* () {
-          if (!(yield* engine.assignAgent(conversationId, agentOf(selection, providers)))) {
-            return false;
-          }
-          yield* engine.wake({
-            conversationId,
-            kind: "standup",
-            key: ids.commandId,
-            principal: { kind: "standup", startedBy: decision.userId },
-            text: STAND_UP_MESSAGE,
-            dueAt: yield* Clock.currentTimeMillis,
-          });
-          return true;
-        }).pipe(
-          Effect.catch((error) =>
-            Effect.logWarning("zerops setup: the stand-up did not go out", {
-              reason: error.message,
-            }).pipe(Effect.as(false)),
-          ),
-        );
-        if (!sent) {
-          yield* fail(ids.commandId);
-          return true;
-        }
-        yield* confirm(ids.commandId);
-        yield* Effect.logInfo("zerops setup: the stand-up went out on the engine", {
+        yield* engine.wake({
           conversationId,
+          kind: "standup",
+          key: ids.commandId,
+          principal: { kind: "standup", startedBy: decision.userId },
+          text: STAND_UP_MESSAGE,
+          dueAt: yield* Clock.currentTimeMillis,
         });
         return true;
       }).pipe(
-        Effect.catchCause(() =>
-          Effect.gen(function* () {
-            const held = yield* recordOf;
-            if (held?.source !== "server:claimed") return false;
-            yield* fail(held.commandId);
-            return true;
-          }),
+        Effect.catch((error) =>
+          Effect.logWarning("zerops setup: the stand-up did not go out", {
+            reason: error.message,
+          }).pipe(Effect.as(false)),
         ),
       );
-
-    /**
-     * A Mate flipped to the engine keeps its main conversation: the engine's Mate conversation
-     * takes the V1 main thread's id (so its links keep working), its record (copied in before it
-     * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
-     * projections are only read.
-     */
-    const looked = completionReceipt();
-    const adoptAtFlip = Effect.gen(function* () {
-      const held = yield* engineConversation();
-      // Unread is not none: adopting now could give a conversation that exists a second agent.
-      if (held === "unknown") return yield* Effect.fail("unread" as const);
-      // Every boot says what became of the main conversation: a boot after the flip finds it on
-      // the engine already, its record brought in then (Rhea's boot said nothing at all).
-      if (held !== undefined)
-        return yield* Effect.logInfo("zerops setup: the main conversation is on the engine", {
-          conversationId: held.conversationId,
-        });
-      const project = Option.getOrUndefined(
-        yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
-      );
-      const main =
-        project === undefined
-          ? undefined
-          : resolvePrimaryConversation(
-              (yield* projection.getShellSnapshot()).threads.filter(
-                (thread) => thread.projectId === project.id,
-              ),
-            ).primary;
-      if (main === undefined)
-        return yield* Effect.logInfo("zerops setup: no main conversation to move to the engine", {
-          reason: project === undefined ? "no project at its workspace" : "no V1 conversation",
-        });
-      const conversationId = ConversationId.make(main.id);
-      const turns = yield* engine.importHistory(conversationId, {
-        kind: "v1",
-        threadId: main.id,
-      });
-      const given = yield* engine.assignAgent(
+      if (!sent) {
+        yield* fail(ids.commandId);
+        return true;
+      }
+      yield* confirm(ids.commandId);
+      yield* Effect.logInfo("zerops setup: the stand-up went out on the engine", {
         conversationId,
-        agentOf(main.modelSelection, yield* reads.providers),
-      );
-      if (given)
-        yield* Effect.logInfo("zerops setup: the engine took the main conversation", {
-          conversationId: main.id,
-          // The turns its import reserved: none when its V1 thread held none.
-          turns,
-        });
+      });
+      return true;
     }).pipe(
-      Effect.retry({
-        while: (error) => error === "unread",
-        schedule: Schedule.spaced(unreadRetry),
-      }),
-      Effect.catchCause((cause) =>
-        Effect.logWarning(
-          "zerops setup: the main conversation could not move to the engine",
-          cause,
-        ),
+      Effect.catchCause(() =>
+        Effect.gen(function* () {
+          const held = yield* recordOf;
+          if (held?.source !== "server:claimed") return false;
+          yield* fail(held.commandId);
+          return true;
+        }),
       ),
-      Effect.ensuring(letSendsGo),
     );
 
-    /** One look. */
-    const step = tickOnEngine;
+  /**
+   * A Mate flipped to the engine keeps its main conversation: the engine's Mate conversation
+   * takes the V1 main thread's id (so its links keep working), its record (copied in before it
+   * runs anything of its own) and its agent, once, when the engine holds none yet. V1's
+   * projections are only read.
+   */
+  const looked = completionReceipt();
+  const adoptOnce = Effect.gen(function* () {
+    const held = yield* engineConversation();
+    // Unread is not none: adopting now could give a conversation that exists a second agent.
+    if (held === "unknown") return yield* Effect.fail("unread" as const);
+    // Every boot says what became of the main conversation: a boot after the flip finds it on
+    // the engine already, its record brought in then (Rhea's boot said nothing at all).
+    if (held !== undefined)
+      return yield* Effect.logInfo("zerops setup: the main conversation is on the engine", {
+        conversationId: held.conversationId,
+      });
+    const project = Option.getOrUndefined(
+      yield* projection.getActiveProjectByWorkspaceRoot(config.cwd),
+    );
+    const main =
+      project === undefined
+        ? undefined
+        : resolvePrimaryConversation(
+            (yield* projection.getShellSnapshot()).threads.filter(
+              (thread) => thread.projectId === project.id,
+            ),
+          ).primary;
+    if (main === undefined)
+      return yield* Effect.logInfo("zerops setup: no main conversation to move to the engine", {
+        reason: project === undefined ? "no project at its workspace" : "no V1 conversation",
+      });
+    const conversationId = ConversationId.make(main.id);
+    const turns = yield* engine.importHistory(conversationId, {
+      kind: "v1",
+      threadId: main.id,
+    });
+    const given = yield* engine.assignAgent(
+      conversationId,
+      agentOf(main.modelSelection, yield* reads.providers),
+    );
+    if (given)
+      yield* Effect.logInfo("zerops setup: the engine took the main conversation", {
+        conversationId: main.id,
+        // The turns its import reserved: none when its V1 thread held none.
+        turns,
+      });
+  });
+  /** {@link adoptOnce}, looked at again whenever the engine's records move while it is unread. */
+  const adoptAtFlip = Effect.gen(function* () {
+    // Subscribed before the first look, so a conversation readable again after it is heard.
+    const moved = yield* subscribeChanges([engine.changes]);
+    while (
+      yield* adoptOnce.pipe(
+        Effect.as(false),
+        Effect.catchIf(
+          (error) => error === "unread",
+          () => Effect.succeed(true),
+        ),
+      )
+    )
+      yield* moved;
+  }).pipe(
+    Effect.scoped,
+    Effect.catchCause((cause) =>
+      Effect.logWarning("zerops setup: the main conversation could not move to the engine", cause),
+    ),
+    Effect.ensuring(letSendsGo),
+  );
 
-    /**
-     * Until the stand-up is settled: one look now, then one after each change of what decides it
-     * (its reads' inputs, and the engine's conversations: one spoken in, or readable again).
-     */
-    const wait = Effect.gen(function* () {
-      // Subscribed before anything is read, so no change after a look goes unheard.
-      const moved = yield* subscribeChanges([...reads.changes, engine.changes]);
-      const variables = yield* reads.serviceVariables;
-      const marked = variables !== undefined && hasSetupMarker(variables);
-      yield* readiness.await;
-      // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
-      // rather than into a new one.
-      yield* adoptAtFlip;
-      // A Mate the new press did not make has no stand-up of the server's, and never looks.
-      if (!marked) {
+  /** One look. */
+  const step = tickOnEngine;
+
+  /**
+   * Until the stand-up is settled: one look now, then one after each change of what decides it
+   * (its reads' inputs, and the engine's conversations: one spoken in, or readable again).
+   */
+  const wait = Effect.gen(function* () {
+    // Subscribed before anything is read, so no change after a look goes unheard.
+    const moved = yield* subscribeChanges([...reads.changes, engine.changes]);
+    const variables = yield* reads.serviceVariables;
+    const marked = variables !== undefined && hasSetupMarker(variables);
+    yield* readiness.await;
+    // A flipped Mate's main conversation moves first, so a stand-up still due goes into it
+    // rather than into a new one.
+    yield* adoptAtFlip;
+    // A Mate the new press did not make has no stand-up of the server's, and never looks.
+    if (!marked) {
+      yield* receipt.settle;
+      return;
+    }
+    while (true) {
+      if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(looked.complete))) {
         yield* receipt.settle;
         return;
       }
-      while (true) {
-        if (yield* attempts.withPermit(step()).pipe(Effect.ensuring(looked.complete))) {
-          yield* receipt.settle;
-          return;
-        }
-        yield* moved;
-      }
-    }).pipe(Effect.scoped);
-
-    let finished = Effect.void;
-    if (environment !== undefined && isZeropsEnvironment(config)) {
-      const worker = yield* Effect.forkScoped(wait);
-      finished = Fiber.join(worker).pipe(Effect.orDie);
-    } else {
-      // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
-      // are known.
-      yield* receipt.settle;
-      const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
-      finished = Fiber.join(worker);
+      yield* moved;
     }
+  }).pipe(Effect.scoped);
 
-    const retry = (subject: string) =>
-      attempts
-        .withPermit(
-          Effect.gen(function* () {
-            const stored = yield* recordOf;
-            const held = yield* seenOnEngine(stored);
-            if (stored === undefined || held?.source !== "server:failed" || held.userId !== subject)
-              return false;
-            const id = `mate-standup-${held.threadId}-${yield* crypto.randomUUIDv4}`;
-            const changed = yield* sql`UPDATE zerops_stand_ups
+  let finished = Effect.void;
+  if (environment !== undefined && isZeropsEnvironment(config)) {
+    const worker = yield* Effect.forkScoped(wait);
+    finished = Fiber.join(worker).pipe(Effect.orDie);
+  } else {
+    // No stand-up outside Zerops; a flipped main conversation still moves, once the agents
+    // are known.
+    yield* receipt.settle;
+    const worker = yield* Effect.forkScoped(readiness.await.pipe(Effect.andThen(adoptAtFlip)));
+    finished = Fiber.join(worker);
+  }
+
+  const retry = (subject: string) =>
+    attempts
+      .withPermit(
+        Effect.gen(function* () {
+          const stored = yield* recordOf;
+          const held = yield* seenOnEngine(stored);
+          if (stored === undefined || held?.source !== "server:failed" || held.userId !== subject)
+            return false;
+          const id = `mate-standup-${held.threadId}-${yield* crypto.randomUUIDv4}`;
+          const changed = yield* sql`UPDATE zerops_stand_ups
         SET source = 'server:claimed', command_id = ${id}, started_at = ${yield* nowIso}
         WHERE project_id = ${projectId} AND command_id = ${held.commandId}
           AND source = ${stored.source}
         RETURNING project_id`;
-            if (changed.length === 0) return false;
-            // One attempt now. If prerequisites have disappeared, end visibly rather than leave a claim.
-            if (!(yield* step())) yield* fail(id);
-            return true;
-          }),
-        )
-        .pipe(Effect.catch(() => Effect.succeed(false)));
+          if (changed.length === 0) return false;
+          // One attempt now. If prerequisites have disappeared, end visibly rather than leave a claim.
+          if (!(yield* step())) yield* fail(id);
+          return true;
+        }),
+      )
+      .pipe(Effect.catch(() => Effect.succeed(false)));
 
-    return ZeropsSetup.of({
-      document,
-      status,
-      standUpGone,
-      noteStandUpCall,
-      retry,
-      finished,
-      nextLook: Effect.suspend(looked.next),
-      awaitStandUp: receipt.await,
-    });
+  return ZeropsSetup.of({
+    document,
+    status,
+    standUpGone,
+    noteStandUpCall,
+    retry,
+    finished,
+    nextLook: Effect.suspend(looked.next),
+    awaitStandUp: receipt.await,
   });
+});
 
 /**
  * The Mate's Git access: granted since `at` once its credential file holds HQ's credential — and
@@ -957,4 +954,4 @@ export const liveReadsLayer = Layer.effect(
   }),
 );
 
-export const layer = Layer.effect(ZeropsSetup, makeZeropsSetup());
+export const layer = Layer.effect(ZeropsSetup, makeZeropsSetup);
