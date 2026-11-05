@@ -511,10 +511,7 @@ export const make = (options: ZeropsAgentLoginOptions) =>
         if (credentialCommitted && signIns !== undefined) {
           // Kept before anything else hears of the success: the gate, the rows and the Mate's
           // overview go by it, and the overview carries it to HQ (`zeropsSignIns`).
-          yield* signIns.save(key, {
-            by: session.startedBy,
-            at: DateTime.toEpochMillis(before?.startedAt ?? (yield* DateTime.now)),
-          });
+          yield* signIns.save(key, { by: session.startedBy });
         }
 
         if (credentialCommitted) {

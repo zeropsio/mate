@@ -1152,8 +1152,8 @@ describe("ZeropsHqLink", () => {
         socket.hear({ type: "signers", signers: { "claude-code": "U-eva", codex: "U-jan" } });
         yield* Fiber.join(moved);
         assert.deepStrictEqual(yield* signIns.load, {
-          "claude-code": { by: "U-eva", at: 0 },
-          codex: { by: "U-jan", at: 0 },
+          "claude-code": { by: "U-eva" },
+          codex: { by: "U-jan" },
         });
       }),
     ),

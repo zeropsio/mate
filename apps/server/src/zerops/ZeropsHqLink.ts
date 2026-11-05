@@ -217,10 +217,7 @@ export interface ZeropsHqLinkOptions {
   /** Writes or removes the explicit personal Observe credential, returning its durable receipt. */
   readonly observeCredential?: (credential: string | null) => Effect.Effect<boolean>;
   /** Applies HQ's map of each login's last signer (`signers`) to whose a login is (`ZeropsSignIns.heard`). */
-  readonly signers?: (
-    signers: Readonly<Record<string, string>>,
-    at?: number,
-  ) => Effect.Effect<void>;
+  readonly signers?: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
   /** The fingerprint of the Git credential held now, read afresh for every dial; HQ keeps a live one it names. */
   readonly gitFingerprint: Effect.Effect<Option.Option<string>>;
   /** Keeps the Mate's changes from every state HQ sends where zcp reads them (`ZeropsChangesFile`). */
@@ -612,7 +609,7 @@ export const makeZeropsHqLink = (
               ),
             );
           case "signers":
-            return options.signers?.(frame.signers, frame.at) ?? Effect.void;
+            return options.signers?.(frame.signers) ?? Effect.void;
           case "provider-keys":
             return options.automation?.keysHeard(frame.keys, frame.model) ?? Effect.void;
           case "task":

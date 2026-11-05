@@ -636,7 +636,7 @@ it.effect("keeps who signed in last, and lets it go with the credential", () =>
   Effect.scoped(
     Effect.gen(function* () {
       const fakeTerminal = yield* makeFakeTerminalManager();
-      const store = yield* memorySignInStore({ codex: { by: "user-gone", at: 1 } });
+      const store = yield* memorySignInStore({ codex: { by: "user-gone" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       const feed = yield* makeFeed({
         terminalManager: fakeTerminal.service,
@@ -704,7 +704,7 @@ it.effect.each(
 )("$title", ({ readings, kept }) =>
   Effect.scoped(
     Effect.gen(function* () {
-      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva", at: 1 } });
+      const store = yield* memorySignInStore({ "claude-code": { by: "user-eva" } });
       const held = yield* Queue.unbounded<ReadonlyArray<readonly [string, boolean]>>();
       yield* makeFeed({
         terminalManager: (yield* makeFakeTerminalManager()).service,
@@ -1526,7 +1526,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
           const key = row.login?.(home).id ?? row.agentId;
-          const eva = { by: "user-eva", at: 1 };
+          const eva = { by: "user-eva" };
           const { fakeTerminal, feed, login, signIns, scratch } = yield* startReal(row, home, {
             signedIn: { [key]: eva },
           });

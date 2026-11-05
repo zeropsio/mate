@@ -278,7 +278,7 @@ describe("the turn gate", () => {
       return { signers, signIns };
     });
   const gate = (kept: SignInRecords = {}) => memorySignInStore(kept).pipe(Effect.flatMap(gateOver));
-  const by = (userId: string) => ({ by: userId, at: 1 });
+  const by = (userId: string) => ({ by: userId });
   /** A login whose code is being checked, started by `startedBy`. */
   const checking = (startedBy: string) =>
     Effect.gen(function* () {

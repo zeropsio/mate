@@ -485,7 +485,7 @@ describe("the keys model's link", () => {
       { type: "git-credential", credential: null },
       { type: "observe-credential", id: "obs-1", credential: "zobs.value" },
       { type: "observe-credential", id: "obs-2", credential: null },
-      { type: "signers", signers: { "claude-code": "U1" }, at: 1_700_000_000_000 },
+      { type: "signers", signers: { "claude-code": "U1" } },
       { type: "signers", signers: {} },
       // Today's frames a Mate keeps: its tasks, its usage and its update policy.
       { type: "task-stop", taskId: "task-1", reason: "closed" },
@@ -513,6 +513,12 @@ describe("the keys model's link", () => {
       missing: ["U3"],
     });
     expect(JSON.parse(encoded)).toEqual(report);
+  });
+
+  it("the signers frame carries no write time", () => {
+    const frame = { type: "signers", signers: { "claude-code": "U1" } };
+    const decoded = decodeKeyDown(JSON.stringify({ ...frame, at: 1 }));
+    expect(decoded._tag === "Success" && decoded.value).toEqual(frame);
   });
 
   it("HQ announces a positive ping period on its state while older HQ states remain readable", () => {

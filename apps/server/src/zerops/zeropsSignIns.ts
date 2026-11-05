@@ -21,10 +21,9 @@ import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 
-/** One login's latest sign-in: the Zerops user id, and when it started (epoch ms). */
+/** One login's latest signer. */
 export interface SignInRecord {
   readonly by: string;
-  readonly at: number;
   /** Display history only after logout; never credential authority. */
   readonly credentialCleared?: true;
 }
@@ -38,11 +37,8 @@ export interface SignInStore {
   readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
   readonly save: (key: string, record: SignInRecord) => Effect.Effect<void>;
   readonly clear: (key: string) => Effect.Effect<void>;
-  /**
-   * HQ's map of each login's signer (the link's `signers` frame), written `at` (epoch ms) by HQ;
-   * a map without its time is older than every sign-in here. See {@link applySigners}.
-   */
-  readonly heard: (signers: Readonly<Record<string, string>>, at?: number) => Effect.Effect<void>;
+  /** Fill logins without a signer from HQ's `signers` frame. */
+  readonly heard: (signers: Readonly<Record<string, string>>) => Effect.Effect<void>;
   /** Fires after each save, clear or map that moved a record: whose a login is may have moved. */
   readonly changes: Stream.Stream<void>;
 }
@@ -54,21 +50,17 @@ const lastSignersOf = (records: SignInRecords): Readonly<Record<string, string>>
   Object.fromEntries(Object.entries(records).map(([key, record]) => [key, record.by]));
 
 /**
- * `current` with HQ's map written `at` applied: a login the map names someone else for takes the
- * map's signer, unless its sign-in here is younger than the map — one HQ had not heard of when it
- * wrote it. A login the map names the same person for keeps its record (and its logout history);
- * a login the map does not name keeps its own. `undefined` when nothing moves.
+ * Fill gaps in `current` from HQ's map. Existing records, including logout history, stay in place.
+ * `undefined` when nothing moves.
  */
 const applySigners = (
   current: SignInRecords,
   signers: Readonly<Record<string, string>>,
-  at: number,
 ): SignInRecords | undefined => {
   const moved: Record<string, SignInRecord> = {};
   for (const [key, by] of Object.entries(signers)) {
-    const local = current[key];
-    if (local !== undefined && (local.by === by || local.at > at)) continue;
-    moved[key] = { by, at };
+    if (current[key] !== undefined) continue;
+    moved[key] = { by };
   }
   return Object.keys(moved).length === 0 ? undefined : { ...current, ...moved };
 };
@@ -93,9 +85,9 @@ export const memorySignInStore = (initial: SignInRecords = {}) =>
             ? [false, current]
             : [true, { ...current, [key]: { ...record, credentialCleared: true as const } }];
         }).pipe(Effect.flatMap((cleared) => (cleared ? told : Effect.void))),
-      heard: (signers, at = 0) =>
+      heard: (signers) =>
         Ref.modify(records, (current) => {
-          const next = applySigners(current, signers, at);
+          const next = applySigners(current, signers);
           return next === undefined ? [false, current] : [true, next];
         }).pipe(Effect.flatMap((changed) => (changed ? told : Effect.void))),
       changes: Stream.fromPubSub(moved),
