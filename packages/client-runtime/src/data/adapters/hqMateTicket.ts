@@ -13,7 +13,7 @@ import {
   type ConnectionAttemptError,
 } from "../../connection/model.ts";
 import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/capabilities.ts";
-import { HqError, type HqApi } from "../../zerops/hq/client.ts";
+import { HqError, type HqApi, type HqMateTicket } from "../../zerops/hq/client.ts";
 
 const notConnected = (reason: string | undefined): string => {
   switch (reason) {
@@ -65,18 +65,70 @@ const NO_HQ = new HqError({
 });
 
 /**
+ * How long a ticket minted ahead (`prime`) waits for the attempt that presents it: past it, the
+ * attempt asks for its own. Far inside the ticket's own life (60 s, `expiresIn`), which is checked
+ * too: a ticket presented is one the Mate still holds.
+ */
+export const PRIMED_TICKET_MS = 10_000;
+
+export interface MateTicketPrimer extends MateTicketIssuerService {
+  /**
+   * Asks HQ now for the ticket the Mate's next connection attempt will present — beside the
+   * descriptor read that precedes the attempt, never after it. Only that HQ's next attempt for
+   * the project within `PRIMED_TICKET_MS` presents it, once; nothing is asked while an attempt is
+   * already asking. A ticket never presented ends unused: one use, its life 60 s, held by nobody.
+   */
+  readonly prime: (mate: { readonly orgId: string; readonly projectId: string }) => void;
+}
+
+/**
  * The connection runtime's ticket issuer over HQ's `mateTicket`, in the Mate's organisation: `hqOf`
  * names the HQ API signed in to it, none while there is none yet.
  */
 export function mateTicketIssuer(
   hqOf: (orgId: string) => Pick<HqApi, "mateTicket"> | null,
-): MateTicketIssuerService {
+  now: () => number = Date.now,
+): MateTicketPrimer {
+  type Ask = Pick<HqApi, "mateTicket">;
+  /** Each project's ticket minted ahead: by whose HQ, when. */
+  const primed = new Map<
+    string,
+    { readonly hq: Ask; readonly at: number; readonly answer: Promise<HqMateTicket> }
+  >();
+  /** The attempts asking for a ticket now, by project. */
+  const asking = new Map<string, number>();
+  const keyOf = (orgId: string, projectId: string) => JSON.stringify([orgId, projectId]);
+  /** A ticket minted ahead by this HQ, fresh: taken once; else none. */
+  const take = (key: string, hq: Ask): { at: number; answer: Promise<HqMateTicket> } | null => {
+    const held = primed.get(key);
+    primed.delete(key);
+    return held !== undefined && held.hq === hq && now() - held.at < PRIMED_TICKET_MS ? held : null;
+  };
+  const ask = (hq: Ask, key: string, projectId: string, signal: AbortSignal) => {
+    const held = take(key, hq);
+    if (held === null) return hq.mateTicket(projectId, signal);
+    // HQ refused it, or it outlived its own life meanwhile: the attempt asks for its own.
+    return held.answer.then(
+      (ticket) =>
+        now() - held.at < ticket.expiresIn * 1000 ? ticket : hq.mateTicket(projectId, signal),
+      () => hq.mateTicket(projectId, signal),
+    );
+  };
   return {
     issue: ({ orgId, projectId }) =>
       Effect.tryPromise({
-        try: (signal) => {
+        try: async (signal) => {
           const hq = hqOf(orgId);
-          return hq === null ? Promise.reject(NO_HQ) : hq.mateTicket(projectId, signal);
+          if (hq === null) throw NO_HQ;
+          const key = keyOf(orgId, projectId);
+          asking.set(key, (asking.get(key) ?? 0) + 1);
+          try {
+            return await ask(hq, key, projectId, signal);
+          } finally {
+            const left = (asking.get(key) ?? 1) - 1;
+            if (left === 0) asking.delete(key);
+            else asking.set(key, left);
+          }
         },
         catch: attemptErrorOf,
       }).pipe(
@@ -85,5 +137,16 @@ export function mateTicketIssuer(
           origin: issued.origin,
         })),
       ),
+    prime: ({ orgId, projectId }) => {
+      const hq = hqOf(orgId);
+      const key = keyOf(orgId, projectId);
+      if (hq === null || asking.has(key)) return;
+      const held = primed.get(key);
+      if (held !== undefined && held.hq === hq && now() - held.at < PRIMED_TICKET_MS) return;
+      const answer = hq.mateTicket(projectId);
+      // Its refusal is the attempt's to hear, by asking again: never an unhandled rejection.
+      answer.catch(() => undefined);
+      primed.set(key, { hq, at: now(), answer });
+    },
   };
 }
