@@ -6,12 +6,7 @@
  * demanded. A hold ends when HQ says so in its presses scope: no reader times it out.
  */
 import { useAtomValue } from "@effect/atom-react";
-import {
-  accountReadsAtom,
-  creationImports,
-  projectCreations,
-  type HqPressValue,
-} from "@t3tools/client-runtime/data";
+import { accountReadsAtom, creationImports, projectCreations } from "@t3tools/client-runtime/data";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   pressElsewhere,
@@ -40,21 +35,6 @@ export function importsToFollow(
   );
 }
 
-/** Each press HQ lists, held while HQ says its hold runs on; a stopped one's record is unheld. */
-function pressHolds(presses: Readonly<Record<string, HqPressValue>>): HqPresses {
-  return Object.fromEntries(
-    Object.entries(presses).map(([projectId, press]) => [
-      projectId,
-      {
-        kind: press.kind,
-        ...(press.appId === undefined ? {} : { appId: press.appId }),
-        ...(press.importProcessId === undefined ? {} : { importProcessId: press.importProcessId }),
-        held: press.heldForMs > 0,
-      },
-    ]),
-  );
-}
-
 export function usePressesElsewhere(
   candidates: ReadonlyArray<ZeropsCandidate>,
 ): (projectId: string) => PressElsewhere {
@@ -64,10 +44,7 @@ export function usePressesElsewhere(
     account?.orgId == null ? NO_IMPORTS : account.data.project(creationImports, account.orgId),
   );
   // Unknown until HQ said what presses it holds.
-  const presses = useMemo(
-    () => (navigation.read === "unread" ? null : pressHolds(navigation.presses)),
-    [navigation.presses, navigation.read],
-  );
+  const presses = navigation.read === "unread" ? null : navigation.presses;
   const importing = useMemo(() => importsToFollow(candidates, presses), [candidates, presses]);
   const processes = useProjectsProcesses(importing);
   const recovered = candidates.flatMap((candidate) => {

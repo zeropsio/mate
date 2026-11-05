@@ -38,6 +38,8 @@ import {
   type Registration,
 } from "../demand.ts";
 import { familySpec, scopeListing, scopeSpec } from "../families/index.ts";
+import { projectsScope } from "../families/project.ts";
+import { servicesScope } from "../families/service.ts";
 import { factKey, linkKeys, type Family, type LinkKey, type ScopeKey } from "../model.ts";
 import { factOf, streamOf, type Row, type RuntimeDirective } from "../reducer.ts";
 import { readsOfState, type AccountStore, type ProjectionReads } from "../store.ts";
@@ -295,6 +297,7 @@ export function zeropsNavigationLink(options: {
       // has since replaced carries the old one, and the reducer fences it out.
       const generations = new Map<ScopeKey, number>();
       const generationOf = (scope: ScopeKey) => generations.get(scope) ?? -1;
+      const navigationReady = new Map(scopes.map((scope) => [scope, Deferred.makeUnsafe<void>()]));
       /** What ends this attempt from its side work: the credential refused, or access changed. */
       const ended = yield* Deferred.make<never, StreamFault>();
       const end = () => Deferred.doneUnsafe(ended, Effect.fail(ACCESS_CHANGED));
@@ -365,6 +368,15 @@ export function zeropsNavigationLink(options: {
           const family = familyOf(scope);
           const entity = familySpec(family).zerops?.entity;
           if (entity === undefined) return;
+          if (
+            family === "project" &&
+            ids.some((id) => {
+              const fact = factOf(store.state(), family, id);
+              return fact === undefined || fact.content.kind === "purged";
+            }) &&
+            !(yield* refreshProjectServices())
+          )
+            return;
           const generation = generationOf(scope);
           const ownerId = scope.split(":").slice(3).join(":");
           const filter = scopeListing(scope).detail?.zerops.subscription?.({ orgId, ownerId }) ?? [
@@ -461,70 +473,110 @@ export function zeropsNavigationLink(options: {
           carryOut(directives),
           Effect.forEach(
             scopes.filter((navigation) => says(scopeSpec(navigation).zerops?.refreshOn, null)),
-            rereadMembership,
+            (scope) =>
+              rereadMembership(scope).pipe(
+                Effect.catch(sessionEnds),
+                Effect.forkIn(attemptScope),
+                Effect.asVoid,
+              ),
             { discard: true },
           ),
         );
       };
-      /** Navigation scopes whose membership is read again now; `true`: once more after it. */
-      const rereading = new Map<ScopeKey, boolean>();
+      /** Concurrent requests share their read, with one further read if asked during it. */
+      const rereading = new Map<
+        ScopeKey,
+        { again: boolean; done: Deferred.Deferred<void, StreamFault> }
+      >();
       /**
        * Reads a navigation scope's membership again, its answer the scope's baseline under the
        * registrations it has: the frames arriving meanwhile wait behind it. One at a time; a push
        * asking again meanwhile reads once more after it. A read that cannot finish ends the
        * attempt, whose next one registers every scope again.
        */
-      const rereadMembership = (scope: ScopeKey): Effect.Effect<void> =>
+      const rereadMembership = (scope: ScopeKey): Effect.Effect<void, StreamFault> =>
         Effect.suspend(() => {
-          if (rereading.has(scope)) {
-            rereading.set(scope, true);
-            return Effect.void;
+          const current = rereading.get(scope);
+          if (current !== undefined) {
+            current.again = true;
+            return Deferred.await(current.done);
           }
           const registration = registrations.find(
             (entry) => entry.scope === scope && entry.role === "membership",
           );
           if (registration === undefined || streamOf(store.state(), scope).phase !== "live")
             return Effect.void;
-          rereading.set(scope, false);
+          const pending = { again: false, done: Deferred.makeUnsafe<void, StreamFault>() };
+          rereading.set(scope, pending);
           const generation = generationOf(scope);
           const read = Effect.gen(function* () {
-            store.dispatch({ kind: "baseline-begin", scope, generation });
-            const answer = yield* readAgain(
-              link.post(registration.path, {
-                search: registration.search,
-                sort: [],
-                limit: ORGANIZATION_SEARCH_LIMIT,
-              }),
-            );
-            const list = Option.getOrUndefined(decodeList(answer));
-            if (list === undefined)
-              return yield* Effect.fail(corrupt("A baseline answer is malformed."));
-            const rows = rowsOf(registration.family, list.items);
-            yield* carryOut(
-              store.dispatch({
-                kind: "baseline-commit",
-                scope,
-                generation,
-                via: "zerops-read",
-                members: membersOf(list.items),
-                rows,
-                partial: partialAnswer(list.items, rows, list.totalHits),
-              }),
-            );
+            do {
+              pending.again = false;
+              const membersBefore = store.state().memberships.get(scope)?.members;
+              store.dispatch({ kind: "baseline-begin", scope, generation });
+              const answer = yield* readAgain(
+                link.post(registration.path, {
+                  search: registration.search,
+                  sort: [],
+                  limit: ORGANIZATION_SEARCH_LIMIT,
+                }),
+              );
+              const list = Option.getOrUndefined(decodeList(answer));
+              if (list === undefined)
+                return yield* Effect.fail(corrupt("A baseline answer is malformed."));
+              const rows = rowsOf(registration.family, list.items);
+              if (
+                scope === projectsScope(orgId) &&
+                rows.some(
+                  (row) =>
+                    membersBefore?.get(row.id) !== "member" &&
+                    factOf(store.state(), "project", row.id)?.content.kind !== "purged",
+                )
+              ) {
+                if (!(yield* refreshProjectServices())) return yield* Effect.fail(ACCESS_CHANGED);
+              }
+              yield* carryOut(
+                store.dispatch({
+                  kind: "baseline-commit",
+                  scope,
+                  generation,
+                  via: "zerops-read",
+                  members: membersOf(list.items),
+                  rows: baselineRows(registration.family, rows),
+                  partial: partialAnswer(list.items, rows, list.totalHits),
+                }),
+              );
+            } while (pending.again);
+            rereading.delete(scope);
           });
-          return read.pipe(
-            Effect.catch((fault) => Deferred.fail(ended, fault)),
-            Effect.ensuring(
-              Effect.suspend(() => {
-                const again = rereading.get(scope) === true;
-                rereading.delete(scope);
-                return again ? rereadMembership(scope) : Effect.void;
+          return Effect.gen(function* () {
+            yield* Effect.forkIn(
+              Effect.gen(function* () {
+                const result = yield* Effect.exit(
+                  read.pipe(Effect.tapError((fault) => Deferred.fail(ended, fault))),
+                );
+                if (rereading.get(scope) === pending) rereading.delete(scope);
+                yield* Deferred.done(pending.done, result);
               }),
-            ),
-            Effect.forkIn(attemptScope),
-            Effect.asVoid,
-          );
+              attemptScope,
+            );
+            yield* Deferred.await(pending.done);
+          });
         });
+      /** A service baseline taken before a grant cannot describe a newly listed project. */
+      const refreshProjectServices = (): Effect.Effect<boolean, StreamFault> =>
+        Effect.gen(function* () {
+          const services = servicesScope(orgId);
+          yield* Deferred.await(navigationReady.get(services)!);
+          if (streamOf(store.state(), services).phase !== "live") return false;
+          yield* rereadMembership(services);
+          return true;
+        });
+      /** Resolve a returned project beside the baseline, so its service read holds no other row. */
+      const baselineRows = (family: Family, rows: ReadonlyArray<Row>): ReadonlyArray<Row> =>
+        family === "project"
+          ? rows.filter((row) => factOf(store.state(), family, row.id)?.content.kind !== "purged")
+          : rows;
       /**
        * Each demanded query's registration, by its subscription: the scope and generation it was
        * made for, and its frames held back until its answer is the scope's baseline. A released
@@ -599,23 +651,50 @@ export function zeropsNavigationLink(options: {
           if (registration.role === "membership") {
             const delta = Option.getOrUndefined(decodeMembership(frame.data));
             if (delta === undefined) return Effect.void;
+            const addedProjects =
+              scope === projectsScope(orgId) &&
+              registration.generation === streamOf(store.state(), scope).generation &&
+              new Set(
+                (delta.add ?? []).filter(
+                  (id) => store.state().memberships.get(scope)?.members.get(id) !== "member",
+                ),
+              );
             // Some listStream frames carry rows too; admit them before resolving id-only adds.
             const rows = rowsOf(registration.family, delta.update ?? []);
+            const admittedRows = addedProjects
+              ? rows.filter(
+                  (row) =>
+                    !addedProjects.has(row.id) ||
+                    factOf(store.state(), "project", row.id) !== undefined,
+                )
+              : rows;
             store.dispatch({
               kind: "rows",
               scope,
               generation: registration.generation,
               method: "push",
               via: "zerops-realtime",
-              rows,
+              rows: admittedRows,
             });
-            return carryOut(
-              store.dispatch({
-                kind: "membership",
-                scope,
-                generation: registration.generation,
-                delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
-              }),
+            return Effect.andThen(
+              carryOut(
+                store.dispatch({
+                  kind: "membership",
+                  scope,
+                  generation: registration.generation,
+                  delta: { add: delta.add ?? [], remove: delta.delete ?? [] },
+                }),
+              ),
+              addedProjects &&
+                [...addedProjects].some(
+                  (id) => factOf(store.state(), "project", id)?.content.kind === "value",
+                )
+                ? refreshProjectServices().pipe(
+                    Effect.catch(sessionEnds),
+                    Effect.forkIn(attemptScope),
+                    Effect.asVoid,
+                  )
+                : Effect.void,
             );
           }
           const updates = Option.getOrUndefined(decodeUpdates(frame.data));
@@ -1063,7 +1142,7 @@ export function zeropsNavigationLink(options: {
                   via: "zerops-realtime",
                   // Membership is every item's id: a damaged row keeps its member and its last value.
                   members: membersOf(list.items),
-                  rows,
+                  rows: baselineRows(registration.family, rows),
                   partial: partialAnswer(list.items, rows, list.totalHits),
                 }),
               );
@@ -1087,7 +1166,7 @@ export function zeropsNavigationLink(options: {
               yield* signal(scope, { kind: "baseline-committed" });
             }
             wake();
-          }),
+          }).pipe(Effect.ensuring(Deferred.succeed(navigationReady.get(scope)!, undefined))),
         { concurrency: "unbounded", discard: true },
       );
       const observeForever = Effect.forever(

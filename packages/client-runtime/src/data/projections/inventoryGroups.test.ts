@@ -293,7 +293,7 @@ it.each(["stage", "production"] as const)(
         apps: [{ id: "shop", name: "Shop", projects: [placed[0]!], environments: [stage] }],
       },
       presses: {
-        "project-prod": { kind, appId: "shop", heldForMs: 30000, until: "2026-10-13T00:00:30Z" },
+        "project-prod": { kind, appId: "shop", held: true },
       },
     });
     const tree = f.read();
