@@ -2,7 +2,7 @@ import { readBirthIntent } from "../../zerops/birthIntent.ts";
 import { attachPermission, mateRecordPermission } from "@t3tools/shared/zeropsPermissions";
 import { mateContainerOf } from "../../zerops/containerAddress.ts";
 import type { HqBirth, HqBirthAttempt } from "../../zerops/hq/client.ts";
-import { placementsScope } from "../families/hqNavigation.ts";
+import { hqPressesScope, placementsScope } from "../families/hqNavigation.ts";
 import { historyScope, runsStill, type ProcessValue } from "../families/process.ts";
 import { servicesScope } from "../families/service.ts";
 import { linkKeys } from "../model.ts";
@@ -22,21 +22,37 @@ export interface BirthEvidence {
   readonly projectsCurrent: boolean;
   readonly heldProjects: ReadonlySet<string>;
   readonly projectHistoryCurrent: boolean;
+  readonly placement: "unplaced" | "attached" | "unknown";
   readonly createProcess?: ProcessValue;
   readonly importProcess?: ProcessValue;
   /** The bound project's retained process facts, including a service's import and first build. */
   readonly processes?: ReadonlyArray<ProcessValue>;
-  /** `undefined` is unread, `null` is a current read without a single zcp service. */
-  readonly service: { readonly id: string; readonly status: string } | null | undefined;
+  /** `undefined` is unread, `null` is absent, and `several` is an ambiguous live read. */
+  readonly service: { readonly id: string; readonly status: string } | "several" | null | undefined;
 }
 
 export interface BirthProgress {
   readonly phase: "creating-project" | "project-created" | "import-accepted" | "container-starting";
   readonly next:
-    | { readonly kind: "create" | "import" | "wait" | "unknown" | "blocked" }
+    | { readonly kind: "create" | "import" | "unknown" | "blocked" }
+    | {
+        readonly kind: "wait";
+        readonly attach: boolean;
+        readonly for:
+          | "creation"
+          | "creation-history"
+          | "project"
+          | "service-observation"
+          | "service"
+          | "several-services"
+          | "container"
+          | "hello";
+      }
     | { readonly kind: "bind"; readonly projectId: string }
     | { readonly kind: "record-import"; readonly receipt: string };
   readonly reason: string | null;
+  /** HQ explicitly says the session holding this birth's press ended. */
+  readonly sessionEnded?: true;
 }
 
 export interface SharedBirth {
@@ -122,19 +138,38 @@ export const sharedBirths: Projection<
             ? undefined
             : mateContainerOf(services.services);
         const service =
-          container === undefined ? undefined : container.kind === "one" ? container.service : null;
-        const progress = birthProgressOf({
-          birth,
-          projects: roster.projects,
-          projectsCurrent: current,
-          heldProjects,
-          projectHistoryCurrent:
-            projectId !== null && read.stream(historyScope(orgId, projectId)).phase === "live",
-          ...(createFact?.kind === "known" ? { createProcess: createFact.value } : {}),
-          ...(importFact?.kind === "known" ? { importProcess: importFact.value } : {}),
-          ...(processes === undefined ? {} : { processes }),
-          service,
-        });
+          container === undefined
+            ? undefined
+            : container.kind === "one"
+              ? container.service
+              : container.kind === "none"
+                ? null
+                : "several";
+        const press = projectId === null ? undefined : navigation.presses[projectId];
+        const pressScope = hqPressesScope(orgId);
+        const sessionEnded =
+          read.stream(linkKeys.hq(orgId)).phase === "live" &&
+          read.stream(pressScope).phase === "live" &&
+          read.coverage(pressScope) === "complete" &&
+          press?.kind === "mate" &&
+          press.appId === app.id &&
+          !press.held;
+        const progress = {
+          ...birthProgressOf({
+            birth,
+            projects: roster.projects,
+            projectsCurrent: current,
+            heldProjects,
+            placement,
+            projectHistoryCurrent:
+              projectId !== null && read.stream(historyScope(orgId, projectId)).phase === "live",
+            ...(createFact?.kind === "known" ? { createProcess: createFact.value } : {}),
+            ...(importFact?.kind === "known" ? { importProcess: importFact.value } : {}),
+            ...(processes === undefined ? {} : { processes }),
+            service,
+          }),
+          ...(sessionEnded ? { sessionEnded: true as const } : {}),
+        };
         const authorized =
           personId !== "" &&
           navigation.live &&
@@ -176,7 +211,8 @@ export const sharedBirths: Projection<
             (projectId !== null || birth.madeBy === personId) &&
             attachment === true &&
             progress.next.kind !== "unknown" &&
-            progress.next.kind !== "blocked",
+            progress.next.kind !== "blocked" &&
+            (progress.next.kind !== "wait" || progress.next.attach),
           ...(authorized && attachment === false ? { continueRequiresAdmin: true } : {}),
           canDelete:
             authorized &&
@@ -229,7 +265,8 @@ const failureOf = (process: ProcessValue | undefined): string | null | undefined
 
 /** A verdict uses only HQ's record and facts read from Zerops, never local elapsed time. */
 export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
-  const { birth, projects, service } = evidence;
+  const { birth, projects } = evidence;
+  const service = evidence.service === "several" ? undefined : evidence.service;
   const unknown = (phase: BirthProgress["phase"]): BirthProgress => ({
     phase,
     next: { kind: "unknown" },
@@ -302,12 +339,30 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
         : service?.status === "STOPPED"
           ? "Container stopped."
           : null;
-  if (imported) return { phase, next: { kind: "wait" }, reason: containerReason };
+  if (imported)
+    return {
+      phase,
+      next: {
+        kind: "wait",
+        attach: evidence.placement === "unplaced",
+        for:
+          evidence.service === "several"
+            ? "several-services"
+            : service === undefined
+              ? "service-observation"
+              : service === null
+                ? "service"
+                : service.status === "ACTIVE"
+                  ? "hello"
+                  : "container",
+      },
+      reason: containerReason,
+    };
   if (creation !== undefined && runsStill(creation.status))
-    return { phase, next: { kind: "wait" }, reason: null };
+    return { phase, next: { kind: "wait", for: "creation", attach: false }, reason: null };
   if (creation === undefined && !evidence.projectHistoryCurrent)
-    return { phase, next: { kind: "wait" }, reason: null };
-  if (!made) return { phase, next: { kind: "wait" }, reason: null };
+    return { phase, next: { kind: "wait", for: "creation-history", attach: false }, reason: null };
+  if (!made) return { phase, next: { kind: "wait", for: "project", attach: false }, reason: null };
   if (plan === undefined || attempts === undefined) return unknown(phase);
   const importing = attemptState(attempts.import);
   if (importing.kind === "active" && service != null)
@@ -316,6 +371,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
       next: { kind: "record-import", receipt: correlatedImport?.id ?? service.id },
       reason: containerReason,
     };
-  if (importing.kind !== "free" || service != null) return unknown(phase);
+  if (importing.kind !== "free" || service != null || evidence.service === "several")
+    return unknown(phase);
   return { phase, next: { kind: "import" }, reason: importing.reason };
 }

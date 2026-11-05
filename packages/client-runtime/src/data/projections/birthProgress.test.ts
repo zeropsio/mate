@@ -10,6 +10,8 @@ import {
 } from "../__fixtures__/account.ts";
 import { seedHqNavigation } from "../__fixtures__/hqNavigation.ts";
 import { membershipInputs } from "../__fixtures__/membership.ts";
+import { hqPressesScope } from "../families/hqNavigation.ts";
+import { historyScope } from "../families/process.ts";
 import { projectsScope } from "../families/project.ts";
 import { makeAccountStore } from "../store.ts";
 import { birthProgressOf, sharedBirths, type BirthEvidence } from "./birthProgress.ts";
@@ -30,9 +32,39 @@ const initial: BirthEvidence = {
   projectsCurrent: true,
   heldProjects: new Set(),
   projectHistoryCurrent: true,
+  placement: "unknown",
   service: null,
 };
 const attempt = { by: "ada", at: "2026-11-05T10:00:00.000Z" };
+
+function creationFinished(store: ReturnType<typeof makeAccountStore>) {
+  const scope = historyScope(ORG, "p1");
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "demand", demanded: true } });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "attempt" } });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "handshake" } });
+  store.dispatch({ kind: "baseline-begin", scope, generation: 1 });
+  store.dispatch({
+    kind: "baseline-commit",
+    scope,
+    generation: 1,
+    via: "zerops-read",
+    members: ["create"],
+    rows: [
+      {
+        family: "process",
+        id: "create",
+        value: processValue({
+          id: "create",
+          projectId: "p1",
+          actionName: "project.create",
+          status: "FINISHED",
+        }),
+        revision: zeropsVersion(1),
+      },
+    ],
+  });
+  store.dispatch({ kind: "stream", key: scope, now: 0, event: { kind: "baseline-committed" } });
+}
 
 describe("shared birth progress", () => {
   it("an attached birth becomes ready only when HQ removes the open birth after hello", () => {
@@ -69,6 +101,7 @@ describe("shared birth progress", () => {
     liveZerops({ running: [], projects: [{ id: "p1", name: "Shop - Ada" }], services: [] }).forEach(
       store.dispatch,
     );
+    creationFinished(store);
     membershipInputs("READ_ONLY", true).forEach(store.dispatch);
     seedHqNavigation(store, ORG, {
       structure: {
@@ -106,6 +139,7 @@ describe("shared birth progress", () => {
     liveZerops({ running: [], projects: [{ id: "p1", name: "Shop - Ada" }], services: [] }).forEach(
       store.dispatch,
     );
+    creationFinished(store);
     membershipInputs("READ_ONLY", true).forEach(store.dispatch);
     const birth = { ...initial.birth, projectId: "p1" };
     const structure = (attached: boolean) => ({
@@ -299,6 +333,159 @@ describe("shared birth progress", () => {
         next: { kind: "wait" },
       },
     );
+  });
+
+  it("an accepted import without a Mate service says what is awaited without re-importing", () => {
+    const imported = {
+      ...initial,
+      birth: { ...initial.birth, projectId: "p1", importProcessId: "i1" },
+      projects: [{ id: "p1", name: "Shop - Ada" }],
+    };
+    expect(birthProgressOf({ ...imported, service: undefined })).toMatchObject({
+      phase: "import-accepted",
+      next: { kind: "wait", for: "service-observation" },
+    });
+    expect(birthProgressOf(imported)).toMatchObject({
+      phase: "import-accepted",
+      next: { kind: "wait", for: "service", attach: false },
+    });
+    expect(birthProgressOf({ ...imported, placement: "unplaced" })).toMatchObject({
+      next: { kind: "wait", for: "service", attach: true },
+    });
+    expect(
+      birthProgressOf({ ...imported, service: { id: "s1", status: "BUILDING" } }),
+    ).toMatchObject({
+      phase: "container-starting",
+      next: { kind: "wait", for: "container" },
+    });
+    expect(birthProgressOf({ ...imported, service: { id: "s1", status: "ACTIVE" } })).toMatchObject(
+      {
+        phase: "container-starting",
+        next: { kind: "wait", for: "hello" },
+      },
+    );
+  });
+
+  it("an attached running Mate awaits hello without offering a Continue that does nothing", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1", name: "Shop - Ada" }],
+      services: [
+        {
+          id: "s1",
+          projectId: "p1",
+          status: "ACTIVE",
+          serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+        },
+      ],
+    }).forEach(store.dispatch);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [
+              {
+                projectId: "p1",
+                name: "Shop - Ada",
+                kind: "mate",
+                mate: { face: "rose:seal", birthId: "birth" },
+              },
+            ],
+            births: [{ ...initial.birth, projectId: "p1", importProcessId: "i1" }],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([
+      {
+        placement: "attached",
+        canContinue: false,
+        progress: { next: { kind: "wait", for: "hello" } },
+      },
+    ]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
+  it("a stopped setup session is shown only while the matching HQ press is live", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1", name: "Shop - Ada" }], services: [] }).forEach(
+      store.dispatch,
+    );
+    membershipInputs("OWNER").forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [],
+            births: [{ ...initial.birth, projectId: "p1", importProcessId: "i1" }],
+          },
+        ],
+        ungrouped: [],
+      },
+      presses: { p1: { kind: "mate", appId: "app", held: false } },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open[0]?.progress.sessionEnded).toBe(true);
+    store.dispatch({
+      kind: "stream",
+      key: hqPressesScope(ORG),
+      now: 0,
+      event: { kind: "fault", fault: { outcome: "transient", message: "disconnected" }, jitter: 0 },
+    });
+    expect(registry.get(read).open[0]?.progress.sessionEnded).toBeUndefined();
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
+  it("several Mate services are not mistaken for an absent service", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [{ id: "p1", name: "Shop - Ada" }],
+      services: ["s1", "s2"].map((id) => ({
+        id,
+        projectId: "p1",
+        status: "ACTIVE",
+        serviceStackTypeInfo: { serviceStackTypeVersionName: "zcp@1" },
+      })),
+    }).forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [],
+            births: [{ ...initial.birth, projectId: "p1", importProcessId: "i1" }],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open[0]?.progress).toMatchObject({
+      next: { kind: "wait", for: "several-services" },
+    });
+    stop();
+    store.close();
+    registry.dispose();
   });
 
   it("a lost project answer advances only when exactly one unheld project of the original name arrives", () => {
