@@ -144,6 +144,11 @@ export interface RunEnvironmentCreationInput {
   readonly onContainerImported?: (imported: {
     readonly processId?: string;
   }) => void | Promise<void>;
+  /** A birth's durable, exclusive claim around each non-idempotent platform write. */
+  readonly birth?: {
+    readonly id: string;
+    readonly attempt: <T>(step: "create" | "import", send: () => Promise<T>) => Promise<T>;
+  };
 }
 
 /**
@@ -194,6 +199,8 @@ export async function runEnvironmentCreation(
   let deployments: ReadonlyArray<ServiceDeployment> = [];
   const run = input.platform.run;
   const orgId = input.clientId;
+  const attempt = <T>(step: "create" | "import", send: () => Promise<T>): Promise<T> =>
+    input.birth === undefined ? send() : input.birth.attempt(step, send);
   /** The project's acceptance told on, while the create waits for its end. */
   let accepting: Promise<{ readonly error: unknown } | null> = Promise.resolve(null);
   const accept = async (id: string) => {
@@ -220,25 +227,28 @@ export async function runEnvironmentCreation(
           // Named as Zerops takes it, before its end: a creation the platform then fails has
           // still made a project, and the outcome must say which one.
           projectName = step.name;
-          await run(
-            {
-              kind: "create-project",
-              orgId,
-              name: step.name,
-              tagList: step.tagList,
-              ...(step.location === undefined ? {} : { location: step.location }),
-              ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
-            },
-            {
-              orgId,
-              unobserved: UNCONFIRMED_PROJECT,
-              accepted: ({ projectId: id }) => {
-                accepting = accept(id).then(
-                  () => null,
-                  (error: unknown) => ({ error }),
-                );
+          await attempt("create", () =>
+            run(
+              {
+                kind: "create-project",
+                orgId,
+                name: step.name,
+                ...(input.birth === undefined ? {} : { birthId: input.birth.id }),
+                tagList: step.tagList,
+                ...(step.location === undefined ? {} : { location: step.location }),
+                ...(step.userRoles === undefined ? {} : { userRoles: step.userRoles }),
               },
-            },
+              {
+                orgId,
+                unobserved: UNCONFIRMED_PROJECT,
+                accepted: ({ projectId: id }) => {
+                  accepting = accept(id).then(
+                    () => null,
+                    (error: unknown) => ({ error }),
+                  );
+                },
+              },
+            ),
           ).finally(async () => {
             const stopped = await accepting;
             if (stopped !== null) throw stopped.error;
@@ -270,23 +280,28 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
-          const imported = await run(
-            {
-              kind: "import-container",
-              orgId,
-              projectId: requireProject(projectId),
-              projectName: projectName ?? "",
-              agents: step.agents,
-              ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
-              ...(input.platform.birthplace === undefined
-                ? {}
-                : { birthplace: input.platform.birthplace }),
-            },
-            { orgId, unobserved: UNCONFIRMED_WRITE },
+          const imported = await attempt("import", () =>
+            run(
+              {
+                kind: "import-container",
+                orgId,
+                projectId: requireProject(projectId),
+                projectName: projectName ?? "",
+                agents: step.agents,
+                ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
+                ...(input.platform.birthplace === undefined
+                  ? {}
+                  : { birthplace: input.platform.birthplace }),
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            ),
           );
           serviceName = imported.serviceName;
-          assertCurrent();
+          // A lapsed presence hold does not erase the accepted import's receipt. The original
+          // account alone may report it; after sign-out no continuation may use its session.
+          if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
           await input.onContainerImported?.(imported);
+          assertCurrent();
           break;
         }
         case "register": {

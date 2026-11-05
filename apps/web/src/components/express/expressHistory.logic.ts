@@ -31,7 +31,8 @@ export type ExpressHistoryEntry =
       readonly words: string | undefined;
     };
 
-const PICTURE_NAME = /^adobe-express-\d+(?:-(.+))?\.[a-z0-9]+$/iu;
+// A picture answering a Mate's picture ask leads with the ask it answers (`pictureAnswerName`).
+const PICTURE_NAME = /^(?:ask-[a-z0-9]+-\d+-)?adobe-express-\d+(?:-(.+))?\.[a-z0-9]+$/iu;
 
 /** The name of a picture saved from the panel: the panel's mark, when, and the design it came from. */
 export function expressPictureName(

@@ -57,6 +57,8 @@ vi.mock("../../state/usage", async (original) => {
           ? { kind: "reading" }
           : { kind: "read", report, stale: false };
       return {
+        canSeeOtherPeople: true,
+        scope: args[1],
         merged: actual.usageReportView(report),
         overall: actual.usageReportView(report),
         report,

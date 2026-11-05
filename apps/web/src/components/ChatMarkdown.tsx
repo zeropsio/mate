@@ -2,6 +2,7 @@ import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
+import { PictureAskFence } from "./ask/PictureAsk";
 import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
@@ -2279,6 +2280,9 @@ function useChatMarkdownState({
   return { componentState, handleCopy, markdownUrlTransform };
 }
 
+/** Who wrote the markdown: a person's message draws a Mate's fences as the code they are. */
+const ChatMarkdownVariantContext = React.createContext<ChatMarkdownVariant>("log");
+
 const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
 >(null!);
@@ -2568,9 +2572,10 @@ const CHAT_MARKDOWN_COMPONENTS = {
     return <MarkdownDetails open={detailsOpen}>{children}</MarkdownDetails>;
   },
   pre: function MarkdownPre({ node, children, ...props }) {
-    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text } = use(
+    const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text, threadRef } = use(
       ChatMarkdownRendererContext,
     );
+    const variant = use(ChatMarkdownVariantContext);
     const codeBlock = extractCodeBlock(children);
     if (!codeBlock) {
       return <pre {...props}>{children}</pre>;
@@ -2598,6 +2603,22 @@ const CHAT_MARKDOWN_COMPONENTS = {
         </Suspense>
       </RenderErrorBoundary>
     );
+    // A picture the Mate set up for the person to make, edit or design (`PictureAsk`).
+    if (language === "picture-ask" && variant !== "person") {
+      return (
+        <PictureAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
+          <MarkdownCodeBlock
+            code={codeBlock.code}
+            language={language}
+            fenceTitle={fenceTitle}
+            theme={resolvedTheme}
+            isStreaming={isStreaming}
+          >
+            {highlightedCode}
+          </MarkdownCodeBlock>
+        </PictureAskFence>
+      );
+    }
     if (language === "mermaid") {
       return (
         <MarkdownMermaidCodeBlock
@@ -2671,17 +2692,19 @@ function ChatMarkdown({
       onCopy={handleCopy}
     >
       <ChatMarkdownRendererContext value={componentState}>
-        <MarkdownImageOpenerContext value={onOpenImage ?? null}>
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
-            skipHtml={false}
-            components={CHAT_MARKDOWN_COMPONENTS}
-            urlTransform={markdownUrlTransform}
-          >
-            {text}
-          </ReactMarkdown>
-        </MarkdownImageOpenerContext>
+        <ChatMarkdownVariantContext value={variant}>
+          <MarkdownImageOpenerContext value={onOpenImage ?? null}>
+            <ReactMarkdown
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+              skipHtml={false}
+              components={CHAT_MARKDOWN_COMPONENTS}
+              urlTransform={markdownUrlTransform}
+            >
+              {text}
+            </ReactMarkdown>
+          </MarkdownImageOpenerContext>
+        </ChatMarkdownVariantContext>
       </ChatMarkdownRendererContext>
     </div>
   );

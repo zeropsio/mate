@@ -121,7 +121,12 @@ it("A chosen Git target survives the recipe arriving after first paint", () => {
       draw({
         ...props,
         recipe: "present",
-        tier: { kind: "tier", tier: "production", yaml: "services: []" },
+        tier: {
+          kind: "tier",
+          revision: "recipe-revision",
+          tier: "production",
+          yaml: "services: []",
+        },
       }),
     ),
   );

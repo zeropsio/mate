@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vite-plus/test";
 import { CONTENT_CONTRACT } from "../contentContract.ts";
 import { MAC_HOST_INSTRUCTIONS } from "../macHostInstructions.ts";
+import { PICTURE_ASK_INSTRUCTIONS } from "../pictureAskInstructions.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
 import { buildRuntimeInstructions } from "./RuntimeInstructions.ts";
 
@@ -71,7 +72,7 @@ describe("buildRuntimeInstructions", () => {
       expect(instructions).not.toContain("cannot see images");
       expect(instructions).toBe(buildRuntimeInstructions({ harness: "Claude Code" }));
       expect(instructions).toContain(
-        `</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}`,
+        `</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${PICTURE_ASK_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}`,
       );
     },
   );

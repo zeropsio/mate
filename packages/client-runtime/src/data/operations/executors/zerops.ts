@@ -475,7 +475,10 @@ export function makeZeropsExecutor(input: {
         updateOrganizationMember: (id, membership) =>
           source.updateOrganizationMember(id, membership, check),
       };
-      return admission().pipe(Effect.andThen(assemble(client).submit(requestId, intent)));
+      return admission().pipe(
+        Effect.mapError((fault) => ({ ...fault, writeNotSent: true as const })),
+        Effect.andThen(assemble(client).submit(requestId, intent)),
+      );
     },
   };
 }

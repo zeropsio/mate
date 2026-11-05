@@ -12,7 +12,11 @@ import {
   type MatePersona,
   type MatePersonaTemplateRef,
 } from "@t3tools/contracts";
-import { ORG_PERSONA_TEMPLATES_MAX, type PersonaTemplate } from "@t3tools/shared/personaTemplates";
+import {
+  ORG_PERSONA_TEMPLATES_MAX,
+  type PersonaTemplate,
+  type PremadePersonaTemplate,
+} from "@t3tools/shared/personaTemplates";
 
 import type { PersonaTemplateDraft } from "~/zerops/usePersonaTemplates";
 
@@ -42,7 +46,7 @@ export interface PersonaPageInput {
   readonly capability: boolean | null;
   readonly settingsLoaded: boolean;
   readonly persona: MatePersona | null;
-  readonly premade: readonly PersonaTemplate[];
+  readonly premade: readonly PremadePersonaTemplate[];
   readonly org: OrgPersonaTemplatesInput;
 }
 
@@ -62,6 +66,8 @@ export type PersonaGroupNote =
   | { readonly kind: "empty" | "unavailable" | "failed" | "stale"; readonly text: string };
 
 export interface PersonaTemplateGroup {
+  /** `you` and `work` split Zerops's templates; `org` holds the organization's. */
+  readonly key: "you" | "work" | "org";
   readonly source: PersonaTemplateSource;
   readonly title: string;
   readonly rows: readonly PersonaTemplateRow[];
@@ -71,7 +77,10 @@ export interface PersonaTemplateGroup {
 export interface PersonaSummary {
   readonly name: string;
   readonly instructions: string;
-  /** Where it came from: "From Zerops: Reviewer", "From Acme's templates", "Written for Nova". */
+  /**
+   * Where it came from: "From Zerops" ("From Zerops: Reviewer" once the template is named otherwise),
+   * "From Acme's templates", "Written for Nova".
+   */
   readonly origin: string;
   /** Its template now has a higher revision: the copy it would take. */
   readonly newer: {
@@ -96,13 +105,17 @@ export const PERSONA_WORDS = {
   ownWay: (mate: MateName) => `${mateLeads(mate)} works and talks its own way.`,
   update: (mate: MateName) => `Update ${mateIn(mate)} to give it a persona.`,
   fromZerops: "From Zerops",
+  aboutYou: "How it works with you",
+  aboutWork: "What it focuses on",
   fromZeropsTemplate: (name: string) => `From Zerops: ${name}`,
   orgTemplates: (org: string | null) =>
     org === null ? "Your organization's templates" : `${org}'s templates`,
   fromOrg: (org: string | null) =>
     org === null ? "From your organization's templates" : `From ${org}'s templates`,
   writtenFor: (mate: MateName) => `Written for ${mateIn(mate)}`,
-  noTemplates: "No templates yet.",
+  useFor: (mate: MateName) => `Use for ${mateIn(mate)}`,
+  save: "Save",
+  noTemplates: "No templates yet",
   orgUnavailable: "Not available here.",
   orgStale: (failure: string) => `This list may be out of date: ${failure}`,
   orgFailed: (org: string | null, cause: string) =>
@@ -156,14 +169,21 @@ export function personaPage(input: PersonaPageInput): PersonaPageModel {
           ? "same"
           : "older",
     }));
+  const premadeAbout = (about: "you" | "work", title: string): PersonaTemplateGroup => ({
+    key: about,
+    source: "premade",
+    title,
+    rows: rowsOf(
+      "premade",
+      input.premade.filter((template) => template.about === about),
+    ),
+    note: null,
+  });
   const groups: PersonaTemplateGroup[] = [
+    premadeAbout("you", PERSONA_WORDS.aboutYou),
+    premadeAbout("work", PERSONA_WORDS.aboutWork),
     {
-      source: "premade",
-      title: PERSONA_WORDS.fromZerops,
-      rows: rowsOf("premade", input.premade),
-      note: null,
-    },
-    {
+      key: "org",
       source: "org",
       title: PERSONA_WORDS.orgTemplates(org.orgName),
       rows: rowsOf("org", orgTemplates),
@@ -182,7 +202,9 @@ export function personaPage(input: PersonaPageInput): PersonaPageModel {
     ref === undefined
       ? PERSONA_WORDS.writtenFor(input.mate)
       : ref.source === "premade"
-        ? PERSONA_WORDS.fromZeropsTemplate(template?.name ?? persona.name)
+        ? template === undefined || template.name === persona.name
+          ? PERSONA_WORDS.fromZerops
+          : PERSONA_WORDS.fromZeropsTemplate(template.name)
         : PERSONA_WORDS.fromOrg(org.orgName);
   const newer =
     ref !== undefined && template !== undefined && template.revision > ref.revision
@@ -257,6 +279,66 @@ export function personaFromEditor(
         ? { name, instructions, template: previous.template }
         : { name, instructions },
   };
+}
+
+/** What the editor opens on: the persona itself, a template, its template's newer version, nothing. */
+export type PersonaEditorStart =
+  | { readonly kind: "edit" }
+  | { readonly kind: "template"; readonly row: PersonaTemplateRow }
+  | { readonly kind: "newer" }
+  | { readonly kind: "blank" };
+
+export interface PersonaEditorOpening {
+  /** What saving the text unchanged writes: the persona, a template's copy; `null` from nothing. */
+  readonly base: MatePersona | null;
+  readonly draft: PersonaDraft;
+  /** The save's label: the persona's own text saves; anything else is used for the Mate. */
+  readonly save: string;
+}
+
+/**
+ * The editor every persona passes through before the Mate takes it, so a template can be changed
+ * before it is used. `null` for an edit or a newer version while the Mate has no persona.
+ */
+export function personaEditorOpening(
+  start: PersonaEditorStart,
+  input: {
+    readonly mate: MateName;
+    readonly persona: MatePersona | null;
+    readonly page: Extract<PersonaPageModel, { kind: "ready" }>;
+  },
+): PersonaEditorOpening | null {
+  const use = PERSONA_WORDS.useFor(input.mate);
+  const copy = (base: MatePersona, save: string): PersonaEditorOpening => ({
+    base,
+    draft: { name: base.name, instructions: base.instructions },
+    save,
+  });
+  switch (start.kind) {
+    case "blank":
+      return { base: null, draft: { name: "", instructions: "" }, save: use };
+    case "template":
+      return copy(
+        personaFromTemplate(start.row.source, start.row.template),
+        start.row.current === "same" ? PERSONA_WORDS.save : use,
+      );
+    case "edit":
+      return input.persona === null ? null : copy(input.persona, PERSONA_WORDS.save);
+    case "newer": {
+      const newer = input.page.persona?.newer;
+      return input.persona === null || newer === undefined || newer === null
+        ? null
+        : copy(personaFromTemplate(newer.source, newer.template), use);
+    }
+  }
+}
+
+/** The draft no longer matches the template it opened on: saving it makes it the Mate's own. */
+export function personaLeavesTemplate(base: MatePersona | null, draft: PersonaDraft): boolean {
+  return (
+    base?.template !== undefined &&
+    (draft.name.trim() !== base.name || draft.instructions.trim() !== base.instructions)
+  );
 }
 
 /**

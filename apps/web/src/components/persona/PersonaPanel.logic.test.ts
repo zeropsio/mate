@@ -1,10 +1,12 @@
 import type { MatePersona } from "@t3tools/contracts";
-import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
+import type { PersonaTemplate, PremadePersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
   orgTemplateDraft,
+  personaEditorOpening,
   personaFromEditor,
+  personaLeavesTemplate,
   samePersona,
   savedTemplateLink,
   personaFromTemplate,
@@ -12,18 +14,20 @@ import {
   type PersonaPageInput,
 } from "./PersonaPanel.logic";
 
-const REVIEWER: PersonaTemplate = {
+const REVIEWER: PremadePersonaTemplate = {
   id: "reviewer",
   name: "Reviewer",
   description: "Questions every change.",
   instructions: "Find problems before they ship.",
+  about: "work",
   revision: 2,
 };
-const EXPLAINER: PersonaTemplate = {
+const EXPLAINER: PremadePersonaTemplate = {
   id: "explainer",
   name: "Explainer",
   description: "Talks in plain words.",
   instructions: "Talk in plain words.",
+  about: "you",
   revision: 1,
 };
 const HOUSE_STYLE: PersonaTemplate = {
@@ -91,7 +95,8 @@ describe("the Persona page", () => {
     expect(
       page.groups.map((group) => [group.title, group.rows.map((row) => row.template.id)]),
     ).toEqual([
-      ["From Zerops", ["reviewer", "explainer"]],
+      ["How it works with you", ["explainer"]],
+      ["What it focuses on", ["reviewer"]],
       ["Acme's templates", ["house-style"]],
     ]);
     expect(page.groups.flatMap((group) => group.rows).every((row) => row.current === null)).toBe(
@@ -103,11 +108,20 @@ describe("the Persona page", () => {
     {
       title: "a persona copied from Zerops says which template it came from",
       persona: {
+        name: "Critic",
+        instructions: REVIEWER.instructions,
+        template: { source: "premade", id: "reviewer", revision: 1 },
+      },
+      origin: "From Zerops: Reviewer",
+    },
+    {
+      title: "a Zerops copy under its template's own name says only that it came from Zerops",
+      persona: {
         name: "Reviewer",
         instructions: REVIEWER.instructions,
         template: { source: "premade", id: "reviewer", revision: 2 },
       },
-      origin: "From Zerops: Reviewer",
+      origin: "From Zerops",
     },
     {
       title: "a persona copied from the organization says whose templates it came from",
@@ -234,7 +248,7 @@ describe("the Persona page", () => {
     {
       title: "an organization without templates says it has none yet",
       org: { state: "ready", templates: [], orgName: "Acme", mayWrite: false, failure: null },
-      note: { kind: "empty", text: "No templates yet." },
+      note: { kind: "empty", text: "No templates yet" },
     },
     {
       title: "the organization's templates say plainly when they cannot be had",
@@ -345,6 +359,115 @@ describe("writing a Mate's persona", () => {
       ok: true,
       persona: { name: "Terse", instructions: "One line." },
     });
+  });
+});
+
+describe("opening the persona editor", () => {
+  const copied = personaFromTemplate("premade", REVIEWER);
+  const rowOf = (persona: MatePersona | null, key: string) => {
+    const row = ready({ persona })
+      .groups.flatMap((group) => group.rows)
+      .find((candidate) => candidate.key === key);
+    if (row === undefined) throw new Error(`no row ${key}`);
+    return row;
+  };
+
+  it.each([
+    {
+      title:
+        "a template opens in the editor with its text, and saving it unchanged uses the template",
+      persona: null,
+      start: { kind: "template", row: rowOf(null, "premade:explainer") },
+      draft: { name: "Explainer", instructions: EXPLAINER.instructions },
+      save: "Use for Nova",
+      saved: personaFromTemplate("premade", EXPLAINER),
+    },
+    {
+      title: "an organization template opens in the editor with its text",
+      persona: copied,
+      start: { kind: "template", row: rowOf(copied, "org:house-style") },
+      draft: { name: "House style", instructions: HOUSE_STYLE.instructions },
+      save: "Use for Nova",
+      saved: personaFromTemplate("org", HOUSE_STYLE),
+    },
+    {
+      title: "the template a Mate already uses opens on its text and saves rather than switches",
+      persona: copied,
+      start: { kind: "template", row: rowOf(copied, "premade:reviewer") },
+      draft: { name: "Reviewer", instructions: REVIEWER.instructions },
+      save: "Save",
+      saved: copied,
+    },
+    {
+      title: "a template's newer version opens in the editor before it is used",
+      persona: {
+        ...copied,
+        instructions: "Old text.",
+        template: { ...copied.template!, revision: 1 },
+      },
+      start: { kind: "newer" },
+      draft: { name: "Reviewer", instructions: REVIEWER.instructions },
+      save: "Use for Nova",
+      saved: copied,
+    },
+    {
+      title: "editing opens on the persona's own text",
+      persona: copied,
+      start: { kind: "edit" },
+      draft: { name: "Reviewer", instructions: REVIEWER.instructions },
+      save: "Save",
+      saved: copied,
+    },
+    {
+      title: "writing your own opens an empty editor with no template behind it",
+      persona: copied,
+      start: { kind: "blank" },
+      draft: { name: "", instructions: "" },
+      save: "Use for Nova",
+      saved: null,
+    },
+  ] as const)("$title", ({ persona, start, draft, save, saved }) => {
+    const opening = personaEditorOpening(start, {
+      mate: "Nova",
+      persona,
+      page: ready({ persona }),
+    });
+    expect(opening?.draft).toEqual(draft);
+    expect(opening?.save).toBe(save);
+    const written = personaFromEditor(opening?.base ?? null, draft);
+    if (saved === null) expect(written.ok).toBe(false);
+    else expect(written).toEqual({ ok: true, persona: saved });
+  });
+
+  it("editing or taking a newer version needs a persona to open on", () => {
+    for (const kind of ["edit", "newer"] as const)
+      expect(personaEditorOpening({ kind }, { mate: "Nova", persona: null, page: ready({}) })).toBe(
+        null,
+      );
+  });
+
+  it.each([
+    {
+      title: "changing a template's text before saving leaves the template",
+      draft: { name: "Reviewer", instructions: "Find problems, kindly." },
+      leaves: true,
+    },
+    {
+      title: "renaming a template before saving leaves the template",
+      draft: { name: "Critic", instructions: REVIEWER.instructions },
+      leaves: true,
+    },
+    {
+      title: "a template saved as it opened stays tied to it",
+      draft: { name: " Reviewer", instructions: `${REVIEWER.instructions} ` },
+      leaves: false,
+    },
+  ] as const)("$title", ({ draft, leaves }) => {
+    expect(personaLeavesTemplate(copied, draft)).toBe(leaves);
+  });
+
+  it("text written from nothing has no template to leave", () => {
+    expect(personaLeavesTemplate(null, { name: "Terse", instructions: "One line." })).toBe(false);
   });
 });
 

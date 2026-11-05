@@ -11,6 +11,13 @@ import { dismissCreation, startAddOver, useCreation } from "~/zerops/creations";
 import { creationEnds, type NewProjectBirth } from "~/zerops/newProjectBirth";
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
+import type { ZeropsMenuAction } from "./ZeropsProjectMenu";
+
+export interface SharedBirthRow {
+  readonly line: string;
+  readonly attention: boolean;
+  readonly entries: ReadonlyArray<ZeropsMenuAction>;
+}
 
 const ROW_ACTION_CLASS =
   "inline-flex size-5 cursor-pointer items-center justify-center rounded text-sidebar-muted-foreground outline-none transition-colors hover:bg-sidebar-row-hover hover:text-sidebar-foreground focus-visible:ring-2 focus-visible:ring-ring data-popup-open:bg-sidebar-row-active data-popup-open:text-sidebar-foreground";
@@ -50,6 +57,22 @@ export function SidebarComingEnds({
 }) {
   const made = useCreation(birthId);
   const entries = made === undefined ? [] : comingEndsEntries(made);
+  return (
+    <SidebarBirthMenu name={name} entries={entries}>
+      {children}
+    </SidebarBirthMenu>
+  );
+}
+
+export function SidebarBirthMenu({
+  name,
+  entries,
+  children,
+}: {
+  readonly name: string;
+  readonly entries: ReadonlyArray<ZeropsMenuAction>;
+  readonly children: ReactNode;
+}) {
   if (entries.length === 0) return children;
   return (
     // The row is the container, the menu's trigger beside its button, as a Mate's own row.
@@ -69,7 +92,12 @@ export function SidebarComingEnds({
           </MenuTrigger>
           <MenuPopup align="start" className="w-56" side="right">
             {entries.map((entry) => (
-              <MenuItem key={entry.id} onClick={entry.onSelect}>
+              <MenuItem
+                disabled={entry.disabled === true}
+                key={entry.id}
+                onClick={entry.onSelect}
+                variant={entry.variant ?? "default"}
+              >
                 {entry.label}
               </MenuItem>
             ))}

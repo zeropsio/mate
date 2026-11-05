@@ -13,6 +13,7 @@ import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetim
  *   that stops answering is `unavailable` from the stream's first failure, with that time (SPEC §4).
  */
 import {
+  HqError,
   sharedHq,
   type HqApi,
   type HqEndpoint,
@@ -22,7 +23,7 @@ import { makeBrowserHqApi, zeropsAccessToken } from "@t3tools/client-runtime/dat
 import type { ZeropsApiClient } from "@t3tools/client-runtime/zerops";
 import { useMemo } from "react";
 
-import { keptHqSessions } from "./keptSessions";
+import { endHqSession, keptHqSessions } from "./keptSessions";
 import { useZeropsSessionOptional } from "./ZeropsSessionProvider";
 
 /**
@@ -62,15 +63,27 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
   if (existing?.nativeEpoch === nativeEpoch) return existing.api;
   const accessToken = zeropsAccessToken(client);
   const active = captureAccountLifetime();
+  const isCurrent = () => active() && client.accountEpoch === nativeEpoch;
+  const accountChanged = () =>
+    new HqError({
+      kind: "refused",
+      code: "account_changed",
+      message: "This Zerops sign-in or its HQ has changed.",
+    });
   const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
       read: () => {
+        if (!isCurrent()) throw accountChanged();
         const kept = keptHqSessions.read(keptKey);
         return kept === null ? null : { token: kept.token, expiresAtMs: kept.expiresAtEpochMs };
       },
       keep: ({ token, expiresAt }) => {
         const expiresAtEpochMs = Date.parse(expiresAt);
+        if (!isCurrent()) {
+          endHqSession({ address: hq.address, token, expiresAtEpochMs });
+          throw accountChanged();
+        }
         if (!Number.isFinite(expiresAtEpochMs)) return;
         // A session another tab kept meanwhile may still be that tab's: it is never revoked from
         // here. It stays kept beside this one, so the account's close ends it with the rest.
@@ -82,9 +95,11 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
         if (displaced !== null)
           keptHqSessions.keep(`${keptKey}:displaced:${displaced.token}`, displaced);
       },
-      forget: (token) => keptHqSessions.forget(keptKey, token),
+      forget: (token) => {
+        if (isCurrent()) keptHqSessions.forget(keptKey, token);
+      },
     },
-    isCurrent: () => active() && client.accountEpoch === nativeEpoch,
+    isCurrent,
     accessToken,
     orgId: clientId,
   });

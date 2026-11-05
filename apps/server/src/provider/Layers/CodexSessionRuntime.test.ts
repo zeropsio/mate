@@ -728,7 +728,11 @@ describe("Codex developer instructions never mention preview tools", () => {
   it("Codex developer instructions never mention preview tools", () => {
     const runtime = { model: "gpt-5.3-codex", reasoningEffort: "medium" };
     const context = buildCodexAdditionalContext(runtime);
-    NodeAssert.deepStrictEqual(Object.keys(context), ["mate_runtime", "mate_places"]);
+    NodeAssert.deepStrictEqual(Object.keys(context), [
+      "mate_runtime",
+      "mate_places",
+      "mate_picture_ask",
+    ]);
     for (const instructions of [
       buildCodexDeveloperInstructions("default"),
       buildCodexDeveloperInstructions("plan"),

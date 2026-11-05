@@ -137,6 +137,7 @@ function Page() {
         model={model}
         orgName={org.orgName}
         persona={persona}
+        onManageTemplates={MAY_WRITE ? noop : undefined}
         onReadOrgAgain={noop}
         onSaveAsOrg={() => {
           setOrgSave({ stage: "pending" });

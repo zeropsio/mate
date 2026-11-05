@@ -931,7 +931,7 @@ it("Decision: The scenario selection and verdict of State Smoke stay exactly as 
     MATE_STATE_SMOKE_SELECTION: "${{ needs.prepare.outputs.state_smoke_selection }}",
   });
   expect(certify.run).toBe(
-    'vp run test:browser\nnode scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}\n',
+    'vp run test:browser\ntimeout --signal=TERM --kill-after=10s 10m node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}\n',
   );
   expect(consumer["continue-on-error"]).toBeUndefined();
 });
@@ -999,7 +999,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
     ),
   ).toEqual([
     expect.objectContaining({
-      run: "${{ matrix.command }}",
+      run: "timeout --signal=TERM --kill-after=10s 10m ${{ matrix.command }}",
       env: { MATE_SCENARIO_REQUIRE_BUNDLE: "1" },
     }),
   ]);
@@ -2131,6 +2131,38 @@ it.each(["ci", "signal"])(
     expect(workflow.on.pull_request).toBeNull();
   },
 );
+
+it("Decision: CI publishes its total budget and bounds scenario and classify process groups inside their jobs", () => {
+  const source = NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8");
+  const ci = parse(source);
+  const signal = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/signal.yml"), "utf8"),
+  );
+  const pathBudget = (
+    jobs: Record<string, { needs?: string | string[]; "timeout-minutes": number }>,
+    id: string,
+  ): number =>
+    jobs[id]!["timeout-minutes"] +
+    Math.max(0, ...[jobs[id]!.needs ?? []].flat().map((need) => pathBudget(jobs, need)));
+  expect(source).toContain("Blocking CI <= 33 min");
+  expect(source).toContain("Signal <= 41 min");
+  expect(
+    Math.max(...Object.keys(ci.jobs).map((id) => pathBudget(ci.jobs, id))),
+  ).toBeLessThanOrEqual(33);
+  expect(pathBudget(signal.jobs, "classify")).toBeLessThanOrEqual(41);
+  for (const [job, name] of [
+    [ci.jobs.state_smoke, "Certify sign-in, fixed smoke and affected scenarios"],
+    [signal.jobs.chat_scenarios, "Record this shard's test evidence"],
+    [signal.jobs.classify, "Rerun only failed tests once on this commit and classify"],
+  ] as const) {
+    const step = job.steps.find((step: { name?: string }) => step.name === name);
+    expect(step["timeout-minutes"]).toBe(11);
+    expect(job["timeout-minutes"]).toBe(14);
+    expect(step.run).toContain("timeout --signal=TERM --kill-after=10s 10m ");
+    expect(step.run).not.toContain("--foreground");
+    expect(step["continue-on-error"]).toBeUndefined();
+  }
+});
 
 it("blocking CI dependency paths have at most fifteen minutes of execution budget", () => {
   const workflow = parse(

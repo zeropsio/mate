@@ -186,7 +186,7 @@ export function runStateSmoke(root: string, args: ReadonlyArray<string>): number
         "test",
         "run",
         "--config",
-        "test/scenarios/vitest.config.ts",
+        "../../scripts/scenario-ci.config.ts",
         "--project",
         "scenarios",
         ...files,

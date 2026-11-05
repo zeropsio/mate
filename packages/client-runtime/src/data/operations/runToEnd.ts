@@ -39,10 +39,19 @@ const uncertain = (message: string) => new ZeropsApiError(message, "uncertain");
 /** A step stopped where nothing landed: its words, and its owner's code for a refusal. */
 export class OperationStopped extends Error {
   readonly code: string | undefined;
-  constructor(message: string, code: string | undefined) {
+  readonly synchronousRefusal: boolean;
+  readonly writeNotSent: boolean;
+  constructor(
+    message: string,
+    code: string | undefined,
+    synchronousRefusal = false,
+    writeNotSent = false,
+  ) {
     super(message);
     this.name = "OperationStopped";
     this.code = code;
+    this.synchronousRefusal = synchronousRefusal;
+    this.writeNotSent = writeNotSent;
   }
 }
 
@@ -78,6 +87,19 @@ export function runToEnd(input: {
     const stop = operationStop(end, store.state().operations.get(requestId));
     if (stop === null) return resultOf(requestId, intent.kind);
     const message = stop.reason ?? unobserved;
-    throw stop.uncertain ? uncertain(message) : new OperationStopped(message, stop.code);
+    const acceptance = store.state().operations.get(requestId)?.receipt?.acceptance;
+    throw stop.uncertain
+      ? uncertain(message)
+      : new OperationStopped(
+          message,
+          stop.code,
+          end.stage === "refused" &&
+            acceptance?.kind === "refused" &&
+            acceptance.synchronousRefusal === true,
+          end.stage === "unsent" ||
+            (end.stage === "refused" &&
+              acceptance?.kind === "refused" &&
+              acceptance.writeNotSent === true),
+        );
   };
 }

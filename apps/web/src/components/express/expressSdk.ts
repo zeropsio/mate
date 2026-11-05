@@ -6,6 +6,7 @@
  * Adobe serves the editor only on the domains listed for the API key, over HTTPS (localhost
  * allowed), and shows a red "not approved yet" bar until Adobe approves the integration.
  */
+import { pictureAnswerName } from "../ask/pictureAsk.logic";
 import { expressPictureName } from "./expressHistory.logic";
 
 const SDK_URL = "https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js";
@@ -14,9 +15,13 @@ const SDK_URL = "https://cc-embed.adobe.com/sdk/v4/CCEverywhere.js";
 export const expressClientId = import.meta.env.VITE_ADOBE_EXPRESS_CLIENT_ID?.trim() || null;
 
 export interface ExpressPublishParams {
-  /** The saved design's id, which reopens it as a design rather than a flat picture. */
+  /** The saved design's id, which reopens it as a design rather than a flat picture. Adobe's guide
+      calls it `projectId`, its reference `documentId`. */
   readonly projectId?: string;
+  readonly documentId?: string;
   readonly asset: ReadonlyArray<{ readonly data: Blob | string; readonly fileType?: string }>;
+  /** A picture from words: the prompt it was made from, as the person left it. */
+  readonly prompt?: string;
 }
 
 export interface ExpressCallbacks {
@@ -33,6 +38,12 @@ interface ExpressSdk {
   readonly editor: {
     create(doc: object, app: AppConfig, exports: ExportOption[], container: ContainerConfig): void;
     edit(doc: object, app: AppConfig, exports: ExportOption[], container: ContainerConfig): void;
+    createWithAsset(
+      doc: object,
+      app: AppConfig,
+      exports: ExportOption[],
+      container: ContainerConfig,
+    ): void;
   };
   readonly module: {
     editImage(
@@ -81,11 +92,14 @@ export async function resetExpress(): Promise<void> {
   await window.CCEverywhere?.terminate();
 }
 
-/** What every flow offers when it is done: the picture into the message, or a download. */
-export const EXPRESS_EXPORTS: ExportOption[] = [
+/**
+ * What every flow offers when it is done: the picture to the Mate (into the message, or straight
+ * back for a picture ask, named by `label`), or a download.
+ */
+export const expressExports = (label: string): ExportOption[] => [
   {
     id: "attach",
-    label: "Add to message",
+    label,
     action: {
       target: "publish",
       publishFileType: "image/png",
@@ -102,6 +116,8 @@ export const EXPRESS_EXPORTS: ExportOption[] = [
   },
 ];
 
+export const EXPRESS_EXPORTS = expressExports("Add to message");
+
 /** A base64 data address as its bytes; anything else (a remote URL) as `null`. */
 function dataUrlBlob(url: string): Blob | null {
   const match = /^data:([^;,]+);base64,(.*)$/su.exec(url);
@@ -111,15 +127,24 @@ function dataUrlBlob(url: string): Blob | null {
 }
 
 /**
- * A saved asset as a picture file the composer takes like a pasted one. `EXPRESS_EXPORTS` asks for a
- * blob; a flow that answers with base64 is decoded here.
+ * A saved asset as a picture file the composer takes like a pasted one, named for the picture ask
+ * step it answers, if any. `EXPRESS_EXPORTS` asks for a blob; a flow that answers with base64 is
+ * decoded here.
  */
-export function expressAssetFile(params: ExpressPublishParams): File | null {
+export function expressAssetFile(
+  params: ExpressPublishParams,
+  answers?: { readonly key: string; readonly step: number },
+): File | null {
   const asset = params.asset[0];
   if (asset === undefined) return null;
   const blob = typeof asset.data === "string" ? dataUrlBlob(asset.data) : asset.data;
   if (blob === null) return null;
   const type = blob.type || asset.fileType || "image/png";
   const extension = type === "image/jpeg" ? "jpg" : (type.split("/")[1] ?? "png");
-  return new File([blob], expressPictureName(params.projectId, extension, Date.now()), { type });
+  const name = expressPictureName(params.projectId ?? params.documentId, extension, Date.now());
+  return new File(
+    [blob],
+    answers === undefined ? name : pictureAnswerName(answers.key, answers.step, name),
+    { type },
+  );
 }

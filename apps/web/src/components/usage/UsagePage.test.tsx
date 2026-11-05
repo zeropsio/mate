@@ -59,6 +59,12 @@ vi.mock("react", async (original) => {
   };
 });
 vi.mock("../../env", () => ({ isElectron: false }));
+vi.mock("../../zerops/usePlatformCapabilities", () => ({
+  usePlatformCapabilities: () => ({ manageOrganization: true }),
+}));
+vi.mock("../../zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({ user: { id: "viewer" } }),
+}));
 vi.mock("@tanstack/react-router", () => ({
   Link: "a",
   useNavigate: () => vi.fn(),
@@ -72,6 +78,8 @@ vi.mock("../../state/usage", async (original) => {
       testState.accountObservation
         ? actual.useAgentUsage(...args)
         : {
+            canSeeOtherPeople: true,
+            scope: args[1],
             merged: actual.usageReportView(
               testState.report,
               testState.models,

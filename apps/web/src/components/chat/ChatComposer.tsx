@@ -471,7 +471,8 @@ export interface ChatComposerHandle {
   focusAtEnd: () => void;
   focusAt: (cursor: number) => void;
   /** `keepOriginal`: each picture sends its untouched file beside the copy fitted for the agent. */
-  addDroppedFiles: (files: File[], options?: ComposerPictureOptions) => void;
+  /** Settles once every picture is read into the draft, so a send after it carries them. */
+  addDroppedFiles: (files: File[], options?: ComposerPictureOptions) => Promise<void>;
   insertTextAtEnd: (text: string, options?: { ensureLeadingBoundary?: boolean }) => boolean;
   openModelPicker: () => void;
   toggleModelPicker: () => void;
@@ -3218,8 +3219,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
    * Pasted or dropped files: a picture Claude can look at goes to the
    * pictures, anything else to the files, and what cannot go says why.
    */
-  const addComposerAttachments = (files: ReadonlyArray<File>, options?: ComposerPictureOptions) => {
-    if (!activeThreadId || files.length === 0) return;
+  const addComposerAttachments = (
+    files: ReadonlyArray<File>,
+    options?: ComposerPictureOptions,
+  ): Promise<void> => {
+    if (!activeThreadId || files.length === 0) return Promise.resolve();
     const pictures: File[] = [];
     const others: File[] = [];
     for (const file of files) {
@@ -3230,7 +3234,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     }
     // Files land at once; pictures are read first, and land after them.
     composerFileList.add(others);
-    void addComposerImages(pictures, options);
+    return addComposerImages(pictures, options);
   };
 
   const onComposerPaste = (event: React.ClipboardEvent<HTMLElement>) => {
@@ -3242,7 +3246,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
         void props.questionAttachments?.add(files);
       return;
     }
-    addComposerAttachments(files);
+    void addComposerAttachments(files);
   };
 
   const insertComposerTextAtEnd = (

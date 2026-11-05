@@ -6,6 +6,7 @@ import type { MateAttention } from "@t3tools/contracts";
 import {
   HQ_ATTENTION_HEALTH_KEY,
   hqScopeKey,
+  HqStreamRequest,
   type HqScopeDelivery,
   type HqStreamMessage,
 } from "@t3tools/shared/hqStream";
@@ -50,6 +51,7 @@ import { classifyHqClose, HQ_SILENCE_MS, hqNavigationLink } from "./hq.ts";
 
 const ORG = "org";
 const NAVIGATION = { kind: "navigation" } as const;
+const encodeHqRequest = Schema.encodeSync(Schema.fromJsonString(HqStreamRequest));
 
 const app = (id: string, name: string, projectIds: ReadonlyArray<string> = []) => ({
   id,
@@ -1216,14 +1218,19 @@ describe("asking HQ on the open socket", () => {
           link.compare({ appId: "shop", repo: "api", base: "a".repeat(40), head }),
         );
         yield* settle;
-        const request = fixture.sent.at(-1)?.request as { requestId: string };
+        const request = fixture.sent.at(-1)?.request as Extract<
+          HqStreamRequest,
+          { type: "compare" }
+        >;
         expect(request).toMatchObject({
           type: "compare",
           appId: "shop",
           repo: "api",
           base: "a".repeat(40),
           head,
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         });
+        expect(JSON.parse(encodeHqRequest(request))).toEqual(request);
         const answer = { base: "a".repeat(40), head, commits: [], truncated: false, total: 0 };
         yield* fixture.send({
           type: "compare",
@@ -1739,6 +1746,135 @@ describe("an HQ outage", () => {
     }),
   );
 
+  it.effect(
+    "a seen acknowledgement carries the person's access token, live and after a reconnect",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = hqFixtureWire();
+        let token = "person-token-1";
+        const wire = {
+          ...fixture.wire,
+          withAccess: <T extends object>(frame: T) =>
+            Effect.succeed({ ...frame, accessToken: token }),
+        };
+        const { fiber, link } = yield* live(store, { ...fixture, wire });
+
+        yield* link.seen("ada", ["r1"]);
+        yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+        yield* settle;
+        yield* link.seen("ada", ["r2"]);
+        token = "person-token-2";
+        yield* TestClock.adjust(1_000);
+        yield* settle;
+
+        const seen = fixture.sent.filter(({ request }) => request.type === "seen");
+        const expected = [
+          {
+            segment: 1,
+            request: {
+              type: "seen",
+              projectId: "ada",
+              resultIds: ["r1"],
+              accessToken: "person-token-1",
+            },
+          },
+          {
+            segment: 2,
+            request: {
+              type: "seen",
+              projectId: "ada",
+              resultIds: ["r2"],
+              accessToken: "person-token-2",
+            },
+          },
+        ];
+        expect(seen).toEqual(expected);
+        expect(seen.map(({ request }) => JSON.parse(encodeHqRequest(request)))).toEqual(
+          expected.map(({ request }) => request),
+        );
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a viewed result waiting for its access token follows a reconnect", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      const token = Deferred.makeUnsafe<string>();
+      const wire = {
+        ...fixture.wire,
+        withAccess: <T extends object>(frame: T) =>
+          "type" in frame && frame.type === "seen"
+            ? Deferred.await(token).pipe(Effect.map((accessToken) => ({ ...frame, accessToken })))
+            : Effect.succeed({ ...frame, accessToken: "person-token" }),
+      };
+      const { fiber, link } = yield* live(store, { ...fixture, wire });
+      const acknowledging = yield* Effect.forkChild(link.seen("ada", ["r1"]));
+      const acknowledgingAgain = yield* Effect.forkChild(link.seen("ada", ["r2"]));
+      yield* settle;
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* settle;
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+      yield* Deferred.succeed(token, "person-token");
+      yield* Fiber.join(acknowledging);
+      yield* Fiber.join(acknowledgingAgain);
+      yield* settle;
+
+      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([
+        {
+          segment: 2,
+          request: {
+            type: "seen",
+            projectId: "ada",
+            resultIds: ["r1", "r2"],
+            accessToken: "person-token",
+          },
+        },
+      ]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
+  it.effect("a viewed result survives a failed access-token lookup until reconnect", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = hqFixtureWire();
+      let failSeen = true;
+      const wire = {
+        ...fixture.wire,
+        withAccess: <T extends object>(frame: T) => {
+          if ("type" in frame && frame.type === "seen" && failSeen) {
+            failSeen = false;
+            return Effect.fail({ outcome: "transient" as const, message: "Token unavailable." });
+          }
+          return Effect.succeed({ ...frame, accessToken: "person-token" });
+        },
+      };
+      const { fiber, link } = yield* live(store, { ...fixture, wire });
+      yield* link.seen("ada", ["r1"]);
+      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([]);
+      yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
+      yield* settle;
+      yield* TestClock.adjust(1_000);
+      yield* settle;
+
+      expect(fixture.sent.filter(({ request }) => request.type === "seen")).toEqual([
+        {
+          segment: 2,
+          request: {
+            type: "seen",
+            projectId: "ada",
+            resultIds: ["r1"],
+            accessToken: "person-token",
+          },
+        },
+      ]);
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+
   it.effect("tells HQ what the person saw while its socket was down once one opens again", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());
@@ -1756,11 +1892,21 @@ describe("an HQ outage", () => {
       yield* TestClock.adjust(1_000);
       yield* settle;
       expect(seen(2)).toEqual([
-        { type: "seen", projectId: "ada", resultIds: ["r1", "r2"] },
-        { type: "seen", projectId: "bea", resultIds: ["r3"] },
+        {
+          type: "seen",
+          projectId: "ada",
+          resultIds: ["r1", "r2"],
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
+        },
+        { type: "seen", projectId: "bea", resultIds: ["r3"], accessToken: HQ_FIXTURE_ACCESS_TOKEN },
       ]);
       yield* link.seen("ada", ["r4"]);
-      expect(seen(2).at(-1)).toEqual({ type: "seen", projectId: "ada", resultIds: ["r4"] });
+      expect(seen(2).at(-1)).toEqual({
+        type: "seen",
+        projectId: "ada",
+        resultIds: ["r4"],
+        accessToken: HQ_FIXTURE_ACCESS_TOKEN,
+      });
       yield* fixture.drop({ outcome: "transient", message: "HQ's stream broke." });
       yield* TestClock.adjust(2_000);
       yield* settle;

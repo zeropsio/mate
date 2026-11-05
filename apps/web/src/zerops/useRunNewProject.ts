@@ -3,6 +3,7 @@
  * its creation names (`creationSteps`), from the press and again on the person's *Try again*.
  */
 import { appProjectName, withZeropsMateTag } from "@t3tools/client-runtime/zerops";
+import { birthAttempt } from "@t3tools/client-runtime/data";
 import { useCallback } from "react";
 
 import { HQ_UNFOLLOWED, useAccountOperations } from "./accountOperations";
@@ -33,11 +34,13 @@ export function useRunNewProject(): (held: CreationAsk) => void {
               { kind: "create-app", orgId: organizationId, name: groupName },
               { ...hqStep, requestId },
             ),
-          recordBirth: (requestId, { appId, face: birthFace }) =>
+          recordBirth: (requestId, { appId, id, face: birthFace, intent }) =>
             operations.run(
-              { kind: "record-birth", orgId: organizationId, appId, face: birthFace },
+              { kind: "record-birth", orgId: organizationId, appId, id, face: birthFace, intent },
               { ...hqStep, requestId },
             ),
+          attemptProject: (birthId, send) =>
+            birthAttempt(operations.run, organizationId, birthId, isCurrent)("create", send),
           // The project alone, born a Mate under its birth intent (its marker on before anything
           // else): its press attaches it to its application, then imports its container (F6b). In
           // flight as a press: the background mints no throwaway while it reads the token list.
@@ -51,6 +54,7 @@ export function useRunNewProject(): (held: CreationAsk) => void {
                     kind: "create-project",
                     orgId: organizationId,
                     name: projectName,
+                    birthId: birth,
                     tagList:
                       ask.chief === true
                         ? [...withZeropsMateTag([]), CHIEF_TAG]

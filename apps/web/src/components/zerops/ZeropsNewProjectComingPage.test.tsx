@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import { KEEP_TAB_OPEN_LINE } from "~/zerops/mateArrival";
 import type { NewProjectBirth } from "~/zerops/newProjectBirth";
+import type { SharedBirth } from "@t3tools/client-runtime/data";
 
 import { ZeropsNewProjectComingPage } from "./ZeropsNewProjectComingPage";
 
@@ -34,6 +35,25 @@ const verbs = vi.hoisted(() => ({
   tryAgain: vi.fn(),
   startOver: vi.fn((creation: { readonly birthId: string }) => held.letGo(creation.birthId)),
   dismiss: vi.fn((birthId: string) => held.letGo(birthId)),
+}));
+const shared = vi.hoisted(() => ({
+  births: [] as Array<SharedBirth>,
+  proceed: vi.fn(),
+  remove: vi.fn(),
+}));
+vi.mock("~/zerops/sharedBirths", async () => ({
+  ...(await vi.importActual<typeof import("~/zerops/sharedBirths")>("~/zerops/sharedBirths")),
+  useSharedBirths: () => shared.births,
+}));
+vi.mock("~/zerops/useZeropsRegistry", () => ({ useZeropsRegistry: () => ({}) }));
+vi.mock("~/zerops/useMateActions", () => ({
+  useMateActions: () => ({
+    birthActionsFor: () => [
+      { id: "continue", label: "Continue", onSelect: shared.proceed },
+      { id: "delete", label: "Delete", onSelect: shared.remove },
+    ],
+    dialogs: null,
+  }),
 }));
 vi.mock("~/zerops/creations", async () => {
   const { useSyncExternalStore } = await import("react");
@@ -189,6 +209,9 @@ beforeEach(() => {
   app.navigate.mockClear();
   app.router.preloadRoute.mockReset().mockResolvedValue(undefined);
   for (const verb of Object.values(verbs)) verb.mockClear();
+  shared.births = [];
+  shared.proceed.mockClear();
+  shared.remove.mockClear();
   hold(undefined);
 });
 afterEach(() => {
@@ -200,6 +223,45 @@ afterEach(() => {
 // The owner, 2026-09-30: "you should add the project and the first mate in the same step, then
 // you should go to the mate detail and the only diff would be the progress".
 describe("a New project's first Mate, before its project exists", () => {
+  it("opens another device's shared birth and hands it to the bound project", async () => {
+    const birth: SharedBirth = {
+      id: "b-acme",
+      appId: "app-acme",
+      appName: "Acme CRM",
+      face: "rose:seal",
+      projectId: null,
+      importProcessId: null,
+      placement: "unknown",
+      intent: {
+        projectName: "Acme CRM - Vera",
+        recipe: { kind: "none" },
+        agents: [],
+        standUp: false,
+        automated: false,
+        placement: { role: "dev", name: "Vera", chief: false },
+        location: null,
+        userRoles: [],
+      },
+      progress: { phase: "creating-project", next: { kind: "create" }, reason: "Quota reached." },
+      canContinue: true,
+      canDelete: true,
+    };
+    shared.births = [birth];
+    openView();
+    expect(said()).toContain("Creating project · Quota reached.");
+    expect(said()).not.toContain("unreachable");
+    act(() => button("Continue")!.props.onClick());
+    expect(shared.proceed).toHaveBeenCalledTimes(1);
+    act(() => button("Delete")!.props.onClick());
+    expect(shared.remove).toHaveBeenCalledTimes(1);
+    shared.births = [{ ...birth, projectId: "p-vera" }];
+    await act(async () => tree!.update(h(ZeropsNewProjectComingPage, { birthId: birth.id })));
+    expect(app.navigate).toHaveBeenCalledWith({
+      to: "/mate/$projectId",
+      params: { projectId: "p-vera" },
+      replace: true,
+    });
+  });
   it("is coming up on its project, the project's own steps before its own", () => {
     hold(ACME);
     openView();

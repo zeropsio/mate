@@ -93,6 +93,14 @@ describe("useZeropsGroupRecipe", () => {
     await render(NOT_READ, false);
     expect(held.asked).toEqual([null]);
   });
+
+  it("retains the recipe revision the person chose for a later birth continuation", async () => {
+    const recipe = await render({
+      ...NOT_READ,
+      recipes: { stage: { state: "present", importYaml: YAML, mainHead: SHA } },
+    });
+    expect(recipe.tier).toMatchObject({ tier: "stage", revision: SHA });
+  });
 });
 
 describe("a held read of the setup files, for a gate before the press", () => {

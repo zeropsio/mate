@@ -4,7 +4,12 @@ import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import type { createScenario } from "../../harness/scenario.ts";
-import { menuMateRow, visibleInMenu, sendConversationMessage } from "../../harness/browser.ts";
+import {
+  menuMateRow,
+  visibleInMenu,
+  sendConversationMessage,
+  waitForConversation,
+} from "../../harness/browser.ts";
 import { chatFor, revokeProjectAccess } from "./fake.ts";
 
 type Scenario = Effect.Success<ReturnType<typeof createScenario>>;
@@ -77,7 +82,7 @@ export function mateChat(
         );
       yield* Effect.promise(async () => {
         try {
-          await page.waitForSelector(composer, { visible: true });
+          await waitForConversation(page);
         } catch (cause) {
           throw new Error(
             `Composer missing for ${name}: ${await page.evaluate(() =>

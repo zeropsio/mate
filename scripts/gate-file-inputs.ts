@@ -236,6 +236,11 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "scripts/release-publication.test.ts": [".github/workflows/release.yml"],
   "scripts/route-nesting.test.ts": ["apps/web/src/routes/**"],
   "scripts/scenario-wait-windows.test.ts": ["apps/web/test/scenarios/**"],
+  "scripts/signal-reporter.test.ts": [
+    "scripts/scenario-budget-runner.ts",
+    "scripts/scenario-budget.setup.ts",
+    "scripts/scenario-ci.config.ts",
+  ],
   "scripts/signal.test.ts": [],
   "scripts/showcase-scenes.test.ts": ["packages/shared/src/showcaseScenes/**"],
   "scripts/surface-manifest.test.ts": ["apps/**", "packages/**", "surfaces.json"],

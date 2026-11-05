@@ -9,6 +9,12 @@ const source = vi.hoisted(() => ({
   retry: vi.fn(),
   periodRead: null as AgentUsageRead | null,
 }));
+vi.mock("../../zerops/usePlatformCapabilities", () => ({
+  usePlatformCapabilities: () => ({ manageOrganization: true }),
+}));
+vi.mock("../../zerops/ZeropsSessionProvider", () => ({
+  useZeropsSessionOptional: () => ({ user: { id: "viewer" } }),
+}));
 vi.mock("../../zerops/ZeropsAccountData", () => ({
   useAccountDataOptional: () => ({ orgId: "org", retryDetail: source.retry }),
   useDetailDemand: vi.fn(),

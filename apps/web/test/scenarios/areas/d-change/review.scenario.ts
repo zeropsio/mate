@@ -23,6 +23,7 @@ const sheetSettled = (s: { readonly page: Page }) =>
 
 const setup = Effect.gen(function* () {
   const s = yield* createScenario([installArea]);
+  s.given.person("owner", { role: "OWNER", grants: { Ada: "OWNER" } });
   const area = { merge: mergeFor(s.drivers) };
   const change = yield* changeFixture(s);
   return { s, change, area, r: review(s) };
@@ -49,7 +50,15 @@ describe("D: change review, comments and merge", () => {
         yield* r.file("summary.txt");
         yield* r.mergeEnabled;
         yield* Effect.promise(async () => {
+          const compared = s.page.waitForResponse((response) =>
+            new URL(response.url()).pathname.endsWith("/browse/compare-file"),
+          );
           await s.page.locator(".rv-file").click();
+          const response = await compared;
+          if (!response.ok())
+            throw new Error(
+              `HQ compare-file read failed (${response.status()}): ${await response.text()}`,
+            );
           await s.page.waitForSelector(".rv-dl");
           await s.page.evaluate(() => document.fonts.ready);
           for (const width of [1786, 390]) {
@@ -162,6 +171,9 @@ describe("owner-reported layout regressions", () => {
           yield* s.given.signedIn;
           yield* r.open;
           yield* r.mergeEnabled;
+          yield* Effect.promise(() =>
+            s.page.waitForSelector("[data-review-ask]", { visible: true }),
+          );
           yield* Effect.promise(() => s.page.setViewport({ width: 400, height: 900 }));
           yield* sheetSettled(s);
           const at = yield* Effect.promise(() =>

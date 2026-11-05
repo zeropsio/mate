@@ -869,6 +869,13 @@ export function mateBornLine(coming: MateComing): MateBornLine {
       ? { words: coming.line, since: undefined, tone: "attention" }
       : BORN_STOPPED;
   }
+  if (coming.birth !== undefined) {
+    return {
+      words: coming.line,
+      since: undefined,
+      tone: coming.birth.attention ? "attention" : "muted",
+    };
+  }
   return { words: BORN_WORDS, since: coming.since, tone: "muted" };
 }
 
@@ -909,6 +916,7 @@ export function pendingBornLine(
 export function mateRowMenu<
   A extends {
     readonly muted: boolean;
+    readonly birthOnly?: boolean;
     readonly entries: ReadonlyArray<{ readonly id: string }>;
   },
 >(input: {
@@ -921,6 +929,7 @@ export function mateRowMenu<
   | undefined {
   const { actions } = input;
   if (input.deleting || actions === undefined) return undefined;
+  if (actions.birthOnly === true) return actions.entries.length === 0 ? undefined : actions;
   if (input.coming?.kind !== "coming") return actions;
   const entries = actions.entries.filter(
     (entry) => entry.id === "delete" && !("separator" in entry),

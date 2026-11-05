@@ -17,7 +17,7 @@ import type { IssuedMateTicket, MateTicketIssuerService } from "../../platform/c
 import { HqError, type HqApi } from "../../zerops/hq/client.ts";
 import { ZEROPS_READ_ONLY_DOOR_REASON } from "../../zerops/mateAccess.ts";
 
-/** HQ's reasons the Mate's project does not admit the person: Zerops's role, or the Mate's list. */
+/** HQ's codes when the Mate refuses on the person's role or its own list. */
 const PROJECT_REFUSALS = new Set([ZEROPS_READ_ONLY_DOOR_REASON, "not_in_list"]);
 
 const notConnected = (reason: string | undefined): string => {
@@ -39,7 +39,7 @@ function attemptErrorOf(cause: unknown): ConnectionAttemptError {
       detail: "Your role on this Mate's project lets you see it, not open it.",
     });
   }
-  if (cause.code === "forbidden" && PROJECT_REFUSALS.has(cause.reason ?? "")) {
+  if (cause.kind === "refused" && PROJECT_REFUSALS.has(cause.code)) {
     return new ConnectionBlockedError({
       reason: "read-only",
       detail: "This Mate's project does not admit you.",

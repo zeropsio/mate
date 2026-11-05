@@ -93,7 +93,8 @@ export interface HqWire {
   readonly picture?: (link: AttachmentLink) => Effect.Effect<Blob, StreamFault>;
   /**
    * A frame HQ decides on the person's role, with their current Zerops access token
-   * (`HqApi.withAccess`): the move picker's ask, and each subscribe naming a protected scope.
+   * (`HqApi.withAccess`): comparisons, the move picker's ask, seen acknowledgements, and each
+   * subscribe naming a protected scope.
    */
   readonly withAccess?: <T extends object>(
     frame: T,
@@ -321,8 +322,23 @@ export function hqNavigationLink(options: {
 
   /** The segment open now, if any: what a request is sent on. */
   let open: HqSegment | null = null;
-  /** What the person saw while no socket was open, by project: told HQ on the next one. */
+  /** What the person saw but has not yet sent to HQ, by project. */
   const untold = new Map<string, Set<string>>();
+  /** A token lookup may outlive its segment; leave its results for the current one to send. */
+  const tellSeen = (segment: HqSegment, projectId: string) =>
+    Effect.gen(function* () {
+      const held = untold.get(projectId);
+      if (held === undefined || wire.withAccess === undefined) return;
+      const resultIds = [...held];
+      const frame = yield* wire.withAccess({ type: "seen" as const, projectId, resultIds });
+      if (open !== segment) return;
+      const pending = untold.get(projectId);
+      const unsent = resultIds.filter((id) => pending?.has(id));
+      if (pending === undefined || unsent.length === 0) return;
+      yield* segment.send({ ...frame, resultIds: unsent });
+      for (const id of unsent) pending.delete(id);
+      if (pending.size === 0) untold.delete(projectId);
+    });
   /** The asks sent on the open socket that HQ has not answered yet, by request id. */
   const pendingOffers = new Map<string, Deferred.Deferred<unknown, StreamFault>>();
   let requests = 0;
@@ -815,9 +831,7 @@ export function hqNavigationLink(options: {
               for (const registered of resumed) yield* register(registered);
               yield* subscribe(opened, resumed);
             }
-            for (const [projectId, resultIds] of untold)
-              yield* opened.send({ type: "seen", projectId, resultIds: [...resultIds] });
-            untold.clear();
+            for (const projectId of untold.keys()) yield* tellSeen(opened, projectId);
             wake();
             const watching = Effect.forever(
               Effect.gen(function* () {
@@ -927,16 +941,23 @@ export function hqNavigationLink(options: {
           }),
       ),
     compare: (asked) =>
-      ask<CompareResponse>("compare", (requestId) =>
-        Effect.succeed({ type: "compare", requestId, ...asked }),
+      ask<CompareResponse>(
+        "compare",
+        (requestId) =>
+          wire.withAccess?.({ type: "compare" as const, requestId, ...asked }) ??
+          Effect.fail({
+            outcome: "definitive-refusal",
+            message: "This HQ cannot compare the repository's commits.",
+          }),
       ),
     seen: (projectId, resultIds) =>
       Effect.suspend(() => {
-        if (open !== null) return open.send({ type: "seen", projectId, resultIds });
         const held = untold.get(projectId) ?? new Set<string>();
         for (const id of resultIds) held.add(id);
         untold.set(projectId, held);
-        return Effect.void;
+        return open === null
+          ? Effect.void
+          : tellSeen(open, projectId).pipe(Effect.catch(() => Effect.void));
       }),
     rewire: (next) => {
       wire = next;

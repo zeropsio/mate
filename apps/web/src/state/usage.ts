@@ -9,6 +9,8 @@ import {
   useDetailDemand,
   useProjection,
 } from "../zerops/ZeropsAccountData";
+import { usePlatformCapabilities } from "../zerops/usePlatformCapabilities";
+import { useZeropsSessionOptional } from "../zerops/ZeropsSessionProvider";
 import type { UsageScope } from "../components/usage/usageDimensions";
 import {
   UNDATED_PERIOD,
@@ -41,22 +43,30 @@ const matchedRead = (report: UsageReport | null, read: AgentUsageRead): AgentUsa
   read.kind === "read" && !sameGeneration(report, read.report) ? READING : read;
 export function useAgentUsage(
   input: UsageWindow,
-  scope: UsageScope,
+  requestedScope: UsageScope,
   enabled = true,
   provenance: NonNullable<UsageReportQuery["provenance"]> = "live-responses",
   model?: Pick<ModelTotals, "provider" | "model">,
 ) {
+  const canSeeOtherPeople = usePlatformCapabilities(null).manageOrganization;
+  const viewerUserId = useZeropsSessionOptional()?.user?.id ?? null;
+  const scope = canSeeOtherPeople ? requestedScope : { ...requestedScope, person: undefined };
+  const reportEnabled = enabled && viewerUserId !== null;
   const query = {
     ...usageReportQuery(input, scope, provenance),
+    ...(canSeeOtherPeople ? {} : { ownerUserId: viewerUserId }),
     ...(model === undefined ? {} : { provider: model.provider, model: model.model }),
   };
-  const primary = useReport(query, enabled);
-  const overall = useReport({ ...query, appId: null, mateId: null, ownerUserId: null }, enabled);
-  const models = useReport({ ...query, groupBy: "model" }, enabled);
-  const providers = useReport({ ...query, groupBy: "provider" }, enabled);
+  const primary = useReport(query, reportEnabled);
+  const overall = useReport(
+    { ...query, appId: null, mateId: null, ownerUserId: canSeeOtherPeople ? null : viewerUserId },
+    reportEnabled,
+  );
+  const models = useReport({ ...query, groupBy: "model" }, reportEnabled);
+  const providers = useReport({ ...query, groupBy: "provider" }, reportEnabled);
   const periods = useReport(
     { ...query, groupBy: input.resolution === "hour" ? "hour" : "day" },
-    enabled,
+    reportEnabled,
   );
   const report = reportOf(primary.result);
   const sections = {
@@ -76,6 +86,8 @@ export function useAgentUsage(
     [report, sections.models, sections.providers, sections.periods, input.resolution],
   );
   return {
+    canSeeOtherPeople,
+    scope,
     merged,
     overall: useMemo(() => usageReportView(reportOf(overall.result)), [overall.result]),
     report,

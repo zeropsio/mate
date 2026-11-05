@@ -15,8 +15,8 @@ import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 export interface PressHold {
   /** Holds the press of `projectId`: `elsewhere` where another browser's press holds it. */
   readonly take: (projectId: string) => Promise<"held" | "elsewhere">;
-  /** Names the container import's Zerops process the press is followed by from now on. */
-  readonly imported: (processId: string) => Promise<void>;
+  /** Records the import's process, or says HQ refused it or no write was sent. An unknown answer throws. */
+  readonly imported: (processId: string) => Promise<"recorded" | "refused" | "unsent">;
   /** Ends the hold at the press's end: whether it `finished`, or stopped. */
   readonly end: (finished: boolean) => Promise<void>;
   /**
@@ -35,6 +35,10 @@ export interface PressHold {
  * lets the stream go.
  */
 export type KeepPress = (projectId: string, lapsed: () => void) => () => void;
+
+type HoldOutcome =
+  | { readonly kind: "recorded" | "unsent" }
+  | { readonly kind: "refused"; readonly reason: string | undefined };
 
 export function acquireHqPressLease(
   api: Pick<HqApi, "holdPress" | "endPress"> | null,
@@ -64,19 +68,27 @@ export function acquireHqPressLease(
     lapsed = true;
     letGo();
   };
-  const hold = (): Promise<void> => {
+  const hold = (): Promise<HoldOutcome> => {
     const held = projectId;
-    if (api === null || held === null || press.active?.() === false) return Promise.resolve();
+    if (api === null || held === null || press.active?.() === false)
+      return Promise.resolve({ kind: "unsent" });
     const body = {
       owner,
       kind: press.kind,
       ...(press.appId === undefined ? {} : { appId: press.appId }),
       ...(importProcessId === undefined ? {} : { importProcessId }),
     };
-    const sent = sending.then(async () => {
+    const sent = sending.then(async (): Promise<HoldOutcome> => {
       // The press ended while this waited its turn: nothing is held any more.
-      if (projectId !== held || press.active?.() === false) return;
-      await api.holdPress(held, body);
+      if (projectId !== held || press.active?.() === false) return { kind: "unsent" };
+      try {
+        await api.holdPress(held, body);
+        return { kind: "recorded" };
+      } catch (cause) {
+        if (cause instanceof HqError && cause.kind === "refused")
+          return { kind: "refused", reason: cause.reason };
+        throw cause;
+      }
     });
     // The next waits for this one to land, however it lands; its caller hears how.
     sending = Promise.allSettled([sent]).then(() => undefined);
@@ -90,31 +102,30 @@ export function acquireHqPressLease(
       // The stream the hold lives with is open before HQ is asked for it.
       if (api !== null && keep !== null) release = keep(pressed, lapse);
       try {
-        await hold();
-      } catch (cause) {
-        if (cause instanceof HqError && cause.reason === "press_held") {
+        const outcome = await hold();
+        if (outcome.kind === "refused" && outcome.reason === "press_held") {
           letGo();
           return "elsewhere";
         }
         // HQ's refusal of this person's hold is definitive: the press goes on unheld, and is
         // never asked again. One HQ did not answer is asked again with its import.
-        if (cause instanceof HqError && cause.kind === "refused") {
+        if (outcome.kind === "refused") {
           letGo();
           return "held";
         }
+      } catch {
+        // An unanswered hold may be asked again with its import.
       }
       return "held";
     },
     imported: async (processId) => {
       const held = projectId;
       importProcessId = processId;
-      try {
-        await hold();
-      } catch (cause) {
-        // Another browser's press holds it now: this one's hold lapsed.
-        if (cause instanceof HqError && cause.reason === "press_held" && projectId === held)
-          lapse();
-      }
+      const outcome = await hold();
+      // Another browser's press holds it now: this one's hold lapsed.
+      if (outcome.kind === "refused" && outcome.reason === "press_held" && projectId === held)
+        lapse();
+      return outcome.kind;
     },
     end: async (finished) => {
       const held = projectId;

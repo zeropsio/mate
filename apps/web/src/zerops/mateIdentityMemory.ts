@@ -71,9 +71,10 @@ export function rememberMates(
   memory: MateMemory,
   identities: ReadonlyArray<HqMateIdentity>,
   listRead: boolean,
+  unnamedProjectIds: ReadonlySet<string>,
 ): MateMemory {
   const next: Record<string, HqMateIdentity> = {};
-  for (const identity of seededIdentities(identities, memory, listRead)) {
+  for (const identity of seededIdentities(identities, memory, listRead, unnamedProjectIds)) {
     if (identity.environmentId !== undefined) next[identity.environmentId] = identity;
   }
   return sameValue(next, memory) ? memory : next;
@@ -82,12 +83,14 @@ export function rememberMates(
 /**
  * Navigation owns names, faces and project membership; the separately observed overview owns
  * the environment. A still-listed project keeps its remembered environment until that join
- * arrives. Before navigation is complete, retain projects it has not named yet as well.
+ * arrives, and its remembered identity while HQ cannot name it. Before navigation is complete,
+ * retain projects it has not named yet as well.
  */
 export function seededIdentities(
   identities: ReadonlyArray<HqMateIdentity>,
   memory: MateMemory,
   listRead: boolean,
+  unnamedProjectIds: ReadonlySet<string>,
 ): ReadonlyArray<HqMateIdentity> {
   const remembered = new Map(
     Object.entries(memory).map(([environmentId, identity]) => [
@@ -102,9 +105,10 @@ export function seededIdentities(
         ? { ...identity, environmentId: remembered.get(identity.projectId)?.environmentId }
         : identity,
     ),
-    ...(listRead
-      ? []
-      : [...remembered.values()].filter((identity) => !named.has(identity.projectId))),
+    ...[...remembered.values()].filter(
+      (identity) =>
+        !named.has(identity.projectId) && (!listRead || unnamedProjectIds.has(identity.projectId)),
+    ),
   ];
 }
 

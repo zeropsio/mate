@@ -25,6 +25,7 @@ import { HeldInventoryContext } from "./inventoryContext";
 import { placedPressesIn, useMatePresses } from "./matePress";
 import { useCreations } from "./creations";
 import { placedNewProjects } from "./newProjectBirth";
+import { placedSharedBirths, useSharedBirths } from "./sharedBirths";
 import type { ZeropsProjectFlow } from "./projectFlows";
 import { useSetUpEnvironment } from "./setUpEnvironment";
 import { useZeropsCandidates } from "./useZeropsCandidates";
@@ -51,13 +52,17 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
   const { listing } = useZeropsCandidates();
   const presses = useMatePresses();
   const made = useCreations();
+  const births = useSharedBirths();
   const organizationId = useZeropsSession().activeOrganization?.id;
   return useMemo(
     () =>
       (
         buildZeropsGroupTree(heldCandidates(listing).rows, {
           order: "name",
-          births: placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+          births: placedSharedBirths(
+            births,
+            placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
+          ),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
       ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
         member.kind === "stage" || member.kind === "devstage"
@@ -66,7 +71,7 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
             ? [{ id: member.projectId, tier: "production" }]
             : [],
       ),
-    [groupId, listing, made, organizationId, presses],
+    [births, groupId, listing, made, organizationId, presses],
   );
 }
 
