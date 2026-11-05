@@ -110,8 +110,6 @@ export interface ZeropsEnvironmentCreationFormProps {
   readonly onSetupChange?: (() => void) | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
-  /** Storage and notices for this project's attached repositories when adding a Mate. */
-  readonly repositories?: ReactNode;
   readonly git?:
     | Omit<GitEnvironmentFormProps, "groupName" | "tier" | "defaultName" | "onCancel" | "onBack">
     | undefined;
@@ -176,7 +174,6 @@ function CreationForm(props: ZeropsEnvironmentCreationFormProps) {
       }}
       access={props.access}
       forecast={props.forecast}
-      repositories={props.repositories}
       proposeAnotherName={props.proposeAnotherName}
       takenBotNames={takenBotNames}
       tier={tier}
@@ -530,6 +527,7 @@ export function ZeropsEnvironmentCreationDialog({
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogPopup
         className="max-w-lg"
+        placement="center"
         // Refused, the footer's Close is its one way out: never a second one in its corner.
         showCloseButton={form.closed === undefined}
         finalFocus={() => {

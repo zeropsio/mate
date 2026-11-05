@@ -88,8 +88,6 @@ export interface ZeropsNewMateFormProps {
   readonly access?: ProjectAccessSlot | undefined;
   /** The line forecasting the credit wall before Create (`ZeropsCreditForecast`); absent, none. */
   readonly forecast?: ReactNode;
-  /** Storage and notices for this project's attached repositories. */
-  readonly repositories?: ReactNode;
 }
 
 /**
@@ -117,7 +115,6 @@ export function ZeropsNewMateForm({
   onCreate,
   access,
   forecast,
-  repositories,
 }: ZeropsNewMateFormProps) {
   const id = useId();
   const [userRoles, setUserRoles] = useState<ReadonlyArray<ProjectGrant>>([]);
@@ -301,7 +298,6 @@ export function ZeropsNewMateForm({
               />
               {access === undefined ? null : access(setUserRoles)}
               {forecast}
-              {repositories}
               <p className="text-sm text-muted-foreground" data-zerops-mate-cost="">
                 {newMateCost(botName)}{" "}
                 <InlineButton

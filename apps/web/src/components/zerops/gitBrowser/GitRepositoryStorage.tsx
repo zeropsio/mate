@@ -3,7 +3,7 @@ import type { GitHomeAbout } from "@t3tools/shared/hqGitBrowse/home";
 import { Badge } from "~/components/ui/badge";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "~/components/ui/tooltip";
 
-/** One HQ repository's storage, shared by its heading and the Add Mate dialog. */
+/** One HQ repository's storage, under its heading. */
 export function GitRepositoryStorage({ storage }: { readonly storage: GitHomeAbout["storage"] }) {
   const said = repositoryStorage(storage);
   return (
