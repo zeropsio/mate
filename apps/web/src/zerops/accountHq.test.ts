@@ -107,6 +107,56 @@ describe("accountHqApi — HQ's session, kept as the Mates' sessions are", () =>
     return { client, doors: () => mints };
   };
 
+  it("a press shares its account's named stream and session across reconnects, but not another tab's", async () => {
+    const sockets: string[] = [];
+    const presses: Array<{ readonly socket?: string; readonly importProcessId?: string }> = [];
+    const fetch = globalThis.fetch;
+    vi.stubGlobal("fetch", async (input: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(String(input)).pathname;
+      const answer = await fetch(input, init);
+      if (path === "/api/stream-ticket") return Response.json({ ticket: "ticket", expiresIn: 60 });
+      if (path === "/api/presses/project-1")
+        presses.push(JSON.parse(String(init?.body)) as (typeof presses)[number]);
+      return answer;
+    });
+    vi.stubGlobal(
+      "WebSocket",
+      class {
+        constructor(url: string) {
+          sockets.push(url);
+        }
+        addEventListener() {}
+      },
+    );
+
+    const firstTab = load();
+    const stream = accountHqApi(firstTab.client, "org-1", HQ);
+    const writer = accountHqApi(firstTab.client, "org-1", HQ);
+    const handlers = { open: () => {}, message: () => {}, close: () => {} };
+    const signal = new AbortController().signal;
+    await Promise.all([
+      stream.openScopeSocket(handlers, signal),
+      writer.holdPress("project-1", { owner: "press-1", kind: "mate" }),
+    ]);
+    await writer.holdPress("project-1", {
+      owner: "press-1",
+      kind: "mate",
+      importProcessId: "import-1",
+    });
+    await stream.openScopeSocket(handlers, signal);
+
+    expect(calls.filter((call) => call.path === "/api/door")).toHaveLength(1);
+    const socket = new URL(sockets[0]!).searchParams.get("socket");
+    expect(socket).toMatch(/^[a-zA-Z0-9-]{1,100}$/u);
+    expect(new URL(sockets[1]!).searchParams.get("socket")).toBe(socket);
+    expect(presses.map((press) => press.socket)).toEqual([socket, socket]);
+    expect(presses[1]?.importProcessId).toBe("import-1");
+    const secondTab = load();
+    const other = accountHqApi(secondTab.client, "org-1", HQ);
+    await other.openScopeSocket(handlers, signal);
+    expect(new URL(sockets[2]!).searchParams.get("socket")).not.toBe(socket);
+  });
+
   it("a reload with a kept session that is still valid comes through no door", async () => {
     const first = load();
     await accountHqApi(first.client, "org-1", HQ).structure();
