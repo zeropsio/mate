@@ -5,8 +5,8 @@
  * GitHub app mounts) and the pick — on GitHub once HQ mounts every asked repository, from the
  * card's sheet or anywhere else, or in Mate on its press, once HQ follows each GitHub repository
  * or leaves its follow to an owner or admin — only the pick reaches the engine, for every ask
- * still open. What the person picked here is kept in memory by the card's first request, so the
- * card folds at once and stays folded until the engine's records say so too.
+ * still open. The card's state is the engine's records and HQ's mount; this tab holds only a pick
+ * still on its way, which the record outranks once it says so.
  */
 import {
   isAtomCommandInterrupted,
@@ -15,8 +15,7 @@ import {
 import { OperationStopped } from "@t3tools/client-runtime/data";
 import type { EnvironmentId, ScopedThreadRef } from "@t3tools/contracts";
 import { useNavigate } from "@tanstack/react-router";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { create } from "zustand";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { useThreadDetail } from "~/state/entities";
 import { threadEnvironment } from "~/state/threads";
@@ -31,13 +30,16 @@ import { useGitTargetOperations } from "~/zerops/useGitTargetOperations";
 import { useHqAppDetail } from "~/zerops/useHqAppDetail";
 import { useHqOffers } from "~/zerops/useHqOffers";
 import { useKnownMate } from "~/zerops/useZeropsMates";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useClientSettings } from "~/hooks/useSettings";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { OriginAskCard } from "./OriginAskCard";
 import {
   type OriginAskOfRequest,
   type OriginAskSaid,
   originAnswerSettled,
   originAskAnswer,
-  originAskFace,
+  originAskState,
   originAskGroup,
   originAsksFromKey,
   originAsksKey,
@@ -45,16 +47,6 @@ import {
   originAskOf,
   originConnected,
 } from "./originAsk.logic";
-
-/** What the person said to each ask here, by its request. Memory only. */
-const useOriginAskSaid = create<Readonly<Record<string, OriginAskSaid>>>()(() => ({}));
-
-const say = (requestId: string, said: OriginAskSaid | null) =>
-  useOriginAskSaid.setState((state) => {
-    if (said !== null) return { ...state, [requestId]: said };
-    const { [requestId]: _gone, ...rest } = state;
-    return rest;
-  });
 
 export function OriginAskCardContainer({
   requestIds,
@@ -97,8 +89,6 @@ function AskCard({
 }) {
   const group = useMemo(() => originAskGroup(asks), [asks]);
   const { ask, open, repos: asked } = group;
-  // The card's memory of the pick: its first request's.
-  const requestId = asks[0]?.requestId ?? "";
   const mate = useKnownMate(environmentId);
   const location = useMateOfEnvironment(environmentId);
   const application = useApplicationOfProject(location?.projectId ?? mate?.projectId);
@@ -114,15 +104,20 @@ function AskCard({
   const github = useGitMirrorApp(ask.state === "open");
   const admin = roleAtLeast(useZeropsSession().activeOrganization?.roleCode, "ADMIN");
   const navigate = useNavigate();
-  const said = useOriginAskSaid((state) => state[requestId] ?? null);
+  // A pick on its way: the engine's record outranks it once it says so.
+  const [pending, setPending] = useState<OriginAskSaid | null>(null);
+  const pendingRef = useRef<OriginAskSaid | null>(null);
+  const nameOf = usePersonNames(location?.orgId ?? undefined);
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const answerOriginAsk = useAtomCommand(threadEnvironment.answerOriginAsk, {
     reportFailure: false,
   });
   const tell = useCallback(
     async (outcome: OriginAskSaid): Promise<string | null> => {
       // The sheet's production and HQ's record both answer connected: the engine hears it once.
-      if (useOriginAskSaid.getState()[requestId] === outcome) return null;
-      say(requestId, outcome);
+      if (pendingRef.current === outcome) return null;
+      pendingRef.current = outcome;
+      setPending(outcome);
       // Every ask the card stands for that is still open hears the one pick.
       for (const each of open) {
         const result = await answerOriginAsk({
@@ -133,12 +128,13 @@ function AskCard({
         const error = squashAtomCommandFailure(result);
         // Settled by its Mate (or answered) meanwhile: nothing left to tell it.
         if (originAnswerSettled(error)) continue;
-        say(requestId, null);
+        pendingRef.current = null;
+        setPending(null);
         return error instanceof Error ? error.message : "The Mate did not take the answer.";
       }
       return null;
     },
-    [answerOriginAsk, environmentId, open, requestId, threadRef.threadId],
+    [answerOriginAsk, environmentId, open, threadRef.threadId],
   );
   const onAnswer = useCallback(
     (outcome: OriginAskSaid): Promise<string | null> =>
@@ -170,7 +166,7 @@ function AskCard({
   // The repositories HQ does not mount yet: the sheet speaks of the first, and mounts them all.
   const unmounted = asked.filter((repo) => !originConnected({ url: ask.url, repo }, repos));
   // HQ mounting the asked repository, from the sheet or anywhere else, answers once here.
-  const due = originAskAnswer(ask.state, said, connected);
+  const due = originAskAnswer(ask.state, pending, connected);
   const answered = useRef(false);
   useEffect(() => {
     if (due === null || answered.current) return;
@@ -206,9 +202,20 @@ function AskCard({
               onInstall: github.install,
             }
       }
-      face={originAskFace(ask.state, said, connected)}
       mateName={mate?.name ?? "Your Mate"}
       onAnswer={onAnswer}
+      state={originAskState({
+        state: ask.state,
+        pending,
+        connected,
+        url: ask.url,
+        mateName: mate?.name ?? "Your Mate",
+        by: group.answered.by === null ? null : (nameOf(group.answered.by) ?? null),
+        at:
+          group.answered.at === null
+            ? null
+            : formatDayAwareTimestamp(new Date(group.answered.at).toISOString(), timestampFormat),
+      })}
     />
   );
 }

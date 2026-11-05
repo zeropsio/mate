@@ -5,12 +5,14 @@ import {
   derivePendingUserInputProgress,
   type PendingUserInputDraftAnswer,
 } from "../../pendingUserInput";
-import { CheckIcon, ChevronDownIcon, XIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Collapsible, CollapsiblePanel, CollapsibleTrigger } from "../ui/collapsible";
-import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { cn } from "~/lib/utils";
+import { Button } from "../ui/button";
 
-import { ComposerAsk, ComposerAskMark } from "./ComposerAsk";
+import { NOT_NOW } from "../ask/ask.logic";
+import { AskDock } from "../ask/AskCard";
+import { ComposerAskMark } from "./ComposerAsk";
 
 /**
  * What a keystroke means for the option list, or undefined when the card should
@@ -292,31 +294,23 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
         setCollapsedQuestionId(open ? null : activeQuestion.id);
       }}
     >
-      <ComposerAsk
+      <AskDock
         actions={
           answer === null ? (
             <span className="text-line text-muted-foreground" data-pending-user-input-waiting>
               {waitingLabel}
             </span>
           ) : prompt.dismissible ? (
-            // Dismiss closes an async question without sending a reply.
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <button
-                    aria-label="Dismiss question without answering"
-                    className="composer-top-dismiss"
-                    data-pending-user-input-dismiss
-                    disabled={isResponding}
-                    onClick={() => answer.onDismiss(prompt.requestId)}
-                    type="button"
-                  >
-                    <XIcon aria-hidden="true" />
-                  </button>
-                }
-              />
-              <TooltipPopup side="top">Dismiss without answering</TooltipPopup>
-            </Tooltip>
+            // Not now closes an async question without sending a reply.
+            <Button
+              data-pending-user-input-dismiss
+              disabled={isResponding}
+              onClick={() => answer.onDismiss(prompt.requestId)}
+              size="sm"
+              variant="ghost"
+            >
+              {NOT_NOW}
+            </Button>
           ) : undefined
         }
         detail={
@@ -477,7 +471,7 @@ const ComposerPendingUserInputCard = memo(function ComposerPendingUserInputCard(
             )}
           </div>
         </CollapsiblePanel>
-      </ComposerAsk>
+      </AskDock>
     </Collapsible>
   );
 });

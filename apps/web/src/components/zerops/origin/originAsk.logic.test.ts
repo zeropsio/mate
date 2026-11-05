@@ -7,7 +7,7 @@ import { githubName, type GitMirrorApp } from "../gitMirror.logic";
 import {
   keepInMate,
   originAskAnswer,
-  originAskFace,
+  originAskState,
   originAnswerSettled,
   originAskGroup,
   originAskPlaces,
@@ -89,10 +89,67 @@ describe("an origin HQ already delivers to", () => {
   ] as const)(
     "an ask $state, said $said, connected in HQ $connected draws $face and answers $answer",
     ({ state, said, connected, face, answer }) => {
-      expect(originAskFace(state, said, connected)).toBe(face);
+      const drawn = originAskState({
+        state,
+        pending: said,
+        connected,
+        url: ask.url,
+        mateName: "Fen",
+        by: null,
+        at: null,
+      });
+      expect(
+        drawn.kind === "done"
+          ? drawn.words.endsWith("Kept on GitHub")
+            ? "connected"
+            : "declined"
+          : drawn.kind === "working"
+            ? said
+            : drawn.kind === "replaced"
+              ? "closed"
+              : "open",
+      ).toBe(face);
       expect(originAskAnswer(state, said, connected)).toBe(answer);
     },
   );
+
+  it.each([
+    {
+      name: "kept on GitHub, who and when",
+      state: "connected",
+      want: {
+        kind: "done",
+        words: "github.com/krls2020/eval2 · Kept on GitHub · Aleš, 15:02",
+        told: null,
+      },
+    },
+    {
+      name: "kept in Mate, who and when",
+      state: "declined",
+      want: {
+        kind: "done",
+        words: "github.com/krls2020/eval2 · Kept in Mate · Aleš, 15:02",
+        told: null,
+      },
+    },
+    {
+      name: "closed without an answer",
+      state: "closed",
+      want: { kind: "replaced", words: "Fen isn't waiting on this any more." },
+    },
+  ] as const)("the card says the engine's record of the pick: $name", ({ state, want }) => {
+    expect(
+      originAskState({
+        state,
+        pending: null,
+        connected: false,
+        url: ask.url,
+        mateName: "Fen",
+        by: "Aleš",
+        at: "15:02",
+      }),
+    ).toEqual(want);
+  });
 });
 
 const app = (repositories: ReadonlyArray<string>): GitMirrorApp => ({

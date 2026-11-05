@@ -755,7 +755,7 @@ describe("ClaudeAdapterLive", () => {
       assert.deepEqual(createInput?.options.systemPrompt, {
         type: "preset",
         preset: "claude_code",
-        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths.</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}\n${personaInstructions(null)}`,
+        append: `<runtime_info>In case you're asked: you are running in Zerops Mate through the Claude Code harness. No need to mention this otherwise. You can embed images and videos in your response using Markdown with absolute file paths. Embed a picture's full-size file, never a smaller copy: the conversation fits it to its room, and the person opens, edits and reuses the file you embedded.</runtime_info>\n${CONTENT_CONTRACT}\n${MATE_PLACES_INSTRUCTIONS}\n${MAC_HOST_INSTRUCTIONS}\n${personaInstructions(null)}`,
       });
       assert.equal(createInput?.options.permissionMode, "bypassPermissions");
       assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);

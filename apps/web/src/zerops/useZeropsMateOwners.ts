@@ -8,6 +8,7 @@
  */
 
 import { useAtomValue } from "@effect/atom-react";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
 import {
   shownHqProjectPeopleAtom,
@@ -19,9 +20,15 @@ import { Atom } from "effect/reactivity";
 import { shareEqual } from "@t3tools/shared/structuralSharing";
 import { useCallback } from "react";
 
-import { zeropsInitials } from "~/components/zerops/landing/ZeropsAccountControl.logic";
+import {
+  zeropsAccountDisplay,
+  zeropsInitials,
+} from "~/components/zerops/landing/ZeropsAccountControl.logic";
 
 import { hqNavigationAtom, hqPeopleAtom } from "../state/zerops";
+
+type ZeropsAccountSource = Parameters<typeof zeropsAccountDisplay>[0] & object;
+import { useZeropsSessionOptional } from "./sessionContext";
 import { useZeropsSession } from "./ZeropsSessionProvider";
 
 /** A Mate's owner, as a face in the corner of the Mate's own draws them. */
@@ -48,6 +55,30 @@ export function useHqPersonNames(
     (userId: string) => (shown ? people?.[userId]?.name : undefined),
     [people, shown],
   );
+}
+
+/**
+ * Who a record names by their Zerops user id, or by the subject the engine records a person's
+ * answer under: the person looking by their own account (HQ's people name only those its records
+ * hold), anyone else as HQ names them.
+ */
+export function personNameOf(
+  subject: string,
+  viewer: (ZeropsAccountSource & { readonly id?: string }) | null | undefined,
+  people: (userId: string) => string | undefined,
+): string | undefined {
+  const userId = zeropsUserIdOf(subject);
+  if (viewer?.id === userId) return zeropsAccountDisplay(viewer).name;
+  return people(userId);
+}
+
+/** `personNameOf` for the organization `clientId`, as a surface names who answered its ask. */
+export function usePersonNames(
+  clientId: string | undefined,
+): (userId: string) => string | undefined {
+  const people = useHqPersonNames(clientId);
+  const viewer = useZeropsSessionOptional()?.user;
+  return useCallback((subject: string) => personNameOf(subject, viewer, people), [people, viewer]);
 }
 
 /**

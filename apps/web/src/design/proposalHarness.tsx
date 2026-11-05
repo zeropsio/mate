@@ -7,24 +7,46 @@
  * putting production on the person's domain: undecided, with another change waiting, and approved
  * at each step its domain goes through. First, the Chief proposing who has access to an
  * application: undecided, held for a name nobody in the organization has, and done. Every face is
- * the mark there; the receiving Mate keeps its own. Approve answers after 900 ms; `?fail=1`
- * refuses it. `?theme=dark` for dark.
+ * the mark there; the receiving Mate keeps its own. The secret and the domain act on production.
+ * The main press answers after 900 ms; `?fail=1` refuses it. `?theme=dark` for dark. At the top,
+ * a Mate proposing to show the person a production secret, in each of its states — the first one
+ * live: Reveal shows an example value for half a minute; `?only=reveal` draws those alone. Then a
+ * Mate proposing an MCP server for its agents: with a key to type, proposed for the whole project,
+ * waiting for a sign-in and its paste fallback, connected, and failed; `?only=mcp` shows those
+ * alone.
  *
  * Served by the dev server at `/design-proposal.html`. Fixtures only: nothing here ships, and no
  * route imports this module.
  */
 import type { ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
+import { ProviderDriverKind } from "@t3tools/contracts";
+import { McpProposalCard } from "~/components/zerops/proposal/McpProposalCard";
+import {
+  mcpAskFace,
+  mcpProgress,
+  mcpProposalView,
+  type McpProposal,
+  type McpProposalStatus,
+  type McpSigning,
+} from "~/components/zerops/proposal/mcpProposal.logic";
 import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 
 import { recordsOf } from "~/components/zerops/addresses/addresses.logic";
-import { MateFaceAsMark } from "~/components/zerops/primitives";
+import { MateFace, MateFaceAsMark } from "~/components/zerops/primitives";
+import { Button } from "~/components/ui/button";
 import {
   ProposalCard,
   type ProposalCardProps,
   type ProposalRecipient,
 } from "~/components/zerops/proposal/ProposalCard";
 import type { ProposalStage } from "~/components/zerops/proposal/proposal.logic";
+import { RevealAskCard } from "~/components/zerops/proposal/RevealAskCard";
+import {
+  revealAskState,
+  type RevealAuthority,
+  type RevealPhase,
+} from "~/components/zerops/proposal/reveal.logic";
 import { applyThemePalette, ZEROPS_THEME_ID } from "~/themePalette";
 import "../index.css";
 
@@ -32,6 +54,180 @@ const params = new URLSearchParams(location.search);
 const appearance = params.get("theme") === "dark" ? "dark" : "light";
 const FAIL = params.get("fail") === "1";
 const MENU = Number(params.get("menu") ?? 435);
+const ONLY_MCP = params.get("only") === "mcp";
+
+const LINEAR: McpProposal = {
+  id: "mcp-linear",
+  kind: "mcp.add",
+  summary: "Set up Linear",
+  reason: "So I can read the issues you link and move them along as the work lands.",
+  projectId: "p-juno",
+  params: {
+    scope: "mate",
+    server: {
+      name: "linear",
+      title: "Linear",
+      transport: { type: "http", url: "https://mcp.linear.app/mcp" },
+      auth: { kind: "oauth" },
+    },
+    credentials: [],
+  },
+};
+
+const SENTRY: McpProposal = {
+  ...LINEAR,
+  id: "mcp-sentry",
+  summary: "Set up Sentry",
+  reason: "To read production's errors myself instead of asking you to paste them.",
+  params: {
+    scope: "mate",
+    server: {
+      name: "sentry",
+      title: "Sentry",
+      transport: { type: "http", url: "https://mcp.sentry.dev/mcp" },
+      auth: { kind: "header" },
+    },
+    credentials: [
+      {
+        key: "SENTRY_TOKEN",
+        label: "Sentry auth token",
+        placement: "header",
+        headerName: "Authorization",
+        prefix: "Bearer ",
+      },
+    ],
+  },
+};
+
+const MCP_CARDS: ReadonlyArray<{
+  readonly id: string;
+  readonly proposal: McpProposal;
+  readonly status: McpProposalStatus;
+  readonly signing?: McpSigning;
+}> = [
+  { id: "sentry-proposed", proposal: SENTRY, status: { kind: "proposed" } },
+  {
+    id: "sse-proposed",
+    proposal: {
+      ...LINEAR,
+      id: "mcp-sse",
+      params: {
+        ...LINEAR.params,
+        server: {
+          ...LINEAR.params.server,
+          transport: { type: "sse", url: "https://mcp.linear.app/sse" },
+        },
+      },
+    },
+    status: { kind: "proposed" },
+  },
+  {
+    id: "own-app-proposed",
+    proposal: {
+      ...LINEAR,
+      id: "mcp-own-app",
+      params: {
+        ...LINEAR.params,
+        server: { ...LINEAR.params.server, auth: { kind: "oauth-app", scopes: ["read"] } },
+      },
+    },
+    status: { kind: "proposed" },
+  },
+  { id: "linear-adding", proposal: LINEAR, status: { kind: "adding" } },
+  {
+    id: "linear-project",
+    proposal: { ...LINEAR, params: { ...LINEAR.params, scope: "project" } },
+    status: { kind: "proposed" },
+  },
+  { id: "linear-sign-in", proposal: LINEAR, status: { kind: "needs-sign-in", agent: "Claude" } },
+  {
+    id: "linear-signing",
+    proposal: LINEAR,
+    status: { kind: "needs-sign-in", agent: "Claude" },
+    signing: { phase: "mate", url: "https://linear.app/oauth/authorize" },
+  },
+  {
+    id: "linear-paste",
+    proposal: LINEAR,
+    status: { kind: "needs-sign-in", agent: "Codex" },
+    signing: { phase: "paste", url: "https://linear.app/oauth/authorize", finishing: false },
+  },
+  {
+    id: "linear-connected",
+    proposal: LINEAR,
+    status: { kind: "connected", tools: 23, agents: ["Claude", "Codex"] },
+  },
+  {
+    id: "sentry-failed",
+    proposal: SENTRY,
+    status: { kind: "failed", words: "HTTP 401: Invalid token", agent: "Codex" },
+  },
+  { id: "linear-declined", proposal: LINEAR, status: { kind: "declined" } },
+];
+
+/** The Mate's installed agents in the harness: who an added server is written for. */
+const MCP_AGENTS = [
+  ProviderDriverKind.make("claudeAgent"),
+  ProviderDriverKind.make("codex"),
+  ProviderDriverKind.make("opencode"),
+];
+const MCP_DENSITY = params.get("density") === "compact" ? "compact" : "full";
+
+function McpCard(card: (typeof MCP_CARDS)[number]) {
+  const signing = card.signing ?? { phase: "idle" as const };
+  const view = mcpProposalView({
+    proposal: card.proposal,
+    mateName: "Juno",
+    status: card.status,
+    signing,
+    approveBlocked: undefined,
+    agents: MCP_AGENTS,
+  });
+  const auth = card.proposal.params.server.auth.kind;
+  const drawn = (
+    <McpProposalCard
+      askId={card.proposal.id}
+      density={MCP_DENSITY}
+      face={mcpAskFace({
+        view,
+        status: card.status,
+        signing,
+        busy: false,
+        title: card.proposal.params.server.title,
+        signsIn: auth === "oauth" || auth === "oauth-app",
+        keyed: card.proposal.params.credentials.length > 0,
+        by: "Aleš",
+        at: "15:20",
+      })}
+      mateFace={<MateFace size={24} state="needs" tint="sky" />}
+      onAdd={() => undefined}
+      onChangeKey={async () => true}
+      onTryAgain={() => undefined}
+      onDecline={() => undefined}
+      onFinishSignIn={() => undefined}
+      onOpenAgain={() => undefined}
+      onSignIn={() => undefined}
+      onShowInConversation={MCP_DENSITY === "compact" ? () => undefined : undefined}
+      progress={mcpProgress(
+        card.proposal,
+        card.status,
+        card.status.kind === "needs-sign-in" ? card.status.agent : null,
+      )}
+      signing={signing}
+      view={view}
+    />
+  );
+  return MCP_DENSITY === "compact" ? (
+    <div className="w-full overflow-hidden rounded-3xl border border-border bg-card">
+      {drawn}
+      <div className="px-4 pt-3 pb-8 text-placeholder text-sm">Ask anything...</div>
+    </div>
+  ) : (
+    drawn
+  );
+}
+
+const ONLY_REVEAL = params.get("only") === "reveal";
 
 const RESTART: ZeropsProposal = {
   id: "restart",
@@ -257,6 +453,8 @@ function Card(card: (typeof CARDS)[number]) {
     <ProposalCard
       approveBlocked={card.approveBlocked}
       chiefTarget={card.chiefTarget}
+      decidedAt={stage === "open" ? null : "15:02"}
+      decidedBy={stage === "open" ? null : "Aleš"}
       domainAlso={card.domainAlso}
       domainState={card.domainState}
       domainRecords={card.domainRecords}
@@ -280,6 +478,99 @@ function Card(card: (typeof CARDS)[number]) {
       recipient={card.proposal.kind === "mate.message" ? ROSSY : undefined}
       refusal={card.refusal}
       stage={stage}
+      // The secret and the domain act on Contoso's production: its chip and press are red.
+      tier={
+        card.proposal.id === "secret" || card.proposal.kind === "domain.add" ? "production" : null
+      }
+    />
+  );
+}
+
+// ── reveal ───────────────────────────────────────────────────────────────────────────────────
+
+const REVEAL: Extract<ZeropsProposal, { kind: "env.reveal" }> = {
+  id: "reveal",
+  kind: "env.reveal",
+  summary: "Show DATABASE_PASSWORD from Production",
+  reason: "You asked for it to connect from your laptop. I can't see it; only you can.",
+  projectId: "p-prod",
+  projectName: "Production",
+  serviceId: "s-db",
+  serviceName: "db",
+  params: { scope: "service", key: "DATABASE_PASSWORD" },
+};
+/** An example value, never a real one. */
+const EXAMPLE = ["Hk7q", "2mVz", "example", "only"].join("-");
+const MAY: RevealAuthority = { kind: "may" };
+const REVEALED = { state: "running", at: "2026-11-04T15:32:00.000Z" } as const;
+
+const REVEALS: ReadonlyArray<{
+  readonly name: string;
+  readonly phase: RevealPhase;
+  readonly decided?: "revealed" | "notNow";
+  readonly authority?: RevealAuthority;
+}> = [
+  { name: "waiting", phase: { kind: "idle" } },
+  { name: "revealing", phase: { kind: "revealing" } },
+  { name: "confirm", phase: { kind: "confirming" } },
+  { name: "hidden", phase: { kind: "idle" }, decided: "revealed" },
+  { name: "failed", phase: { kind: "failed", words: "Couldn't show it. Try again." } },
+  {
+    name: "refused",
+    phase: { kind: "refused", words: "Your role in this organization can't show secrets." },
+  },
+  { name: "notNow", phase: { kind: "idle" }, decided: "notNow" },
+  {
+    name: "others",
+    phase: { kind: "idle" },
+    authority: {
+      kind: "others",
+      rule: "Only people with production access can reveal this.",
+      names: ["Petr"],
+    },
+  },
+];
+
+function Reveal(fixture: (typeof REVEALS)[number]) {
+  const [phase, setPhase] = useState(fixture.phase);
+  const [decided, setDecided] = useState(fixture.decided);
+  const decision =
+    decided === "revealed"
+      ? REVEALED
+      : decided === "notNow"
+        ? ({ state: "declined", at: REVEALED.at } as const)
+        : undefined;
+  const state = revealAskState({
+    phase,
+    decision,
+    by: decision === undefined ? null : "Aleš",
+    at: decision === undefined ? null : "15:32",
+    authority: fixture.authority ?? MAY,
+  });
+  return (
+    <RevealAskCard
+      confirm={
+        <Button onClick={() => setPhase({ kind: "shown" })} size="sm" variant="secondary">
+          Confirm in Zerops
+        </Button>
+      }
+      homeProjectId="p-mate"
+      mateName="Juno"
+      mayReveal={(fixture.authority ?? MAY).kind === "may"}
+      mayRetry={phase.kind !== "stuck"}
+      onHide={() => setPhase({ kind: "idle" })}
+      onNotNow={() => setDecided("notNow")}
+      onReveal={() => {
+        setPhase({ kind: "revealing" });
+        setTimeout(() => {
+          setDecided("revealed");
+          setPhase({ kind: "shown" });
+        }, 900);
+      }}
+      proposal={{ ...REVEAL, id: `reveal-${fixture.name}` }}
+      state={state}
+      tier="production"
+      value={phase.kind === "shown" ? EXAMPLE : null}
     />
   );
 }
@@ -291,7 +582,21 @@ function Harness() {
       <div className="min-w-0 flex-1 overflow-y-auto px-5 py-8">
         <MateFaceAsMark value>
           <div className="mx-auto grid w-full max-w-3xl gap-3">
-            {CARDS.map((card) => (
+            {(ONLY_MCP ? [] : REVEALS).map((fixture) => (
+              <div
+                className="min-w-0 px-1 py-0.5"
+                data-harness-state={`reveal:${fixture.name}`}
+                key={fixture.name}
+              >
+                <Reveal {...fixture} />
+              </div>
+            ))}
+            {(ONLY_REVEAL ? [] : MCP_CARDS).map((card) => (
+              <div className="min-w-0 px-1 py-0.5" data-harness-state={card.id} key={card.id}>
+                <McpCard {...card} />
+              </div>
+            ))}
+            {(ONLY_MCP || ONLY_REVEAL ? [] : CARDS).map((card) => (
               <div
                 className="min-w-0 px-1 py-0.5"
                 data-harness-state={`${card.proposal.id}:${card.stage}`}

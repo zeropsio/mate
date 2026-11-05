@@ -30,6 +30,7 @@ const ALL_AVAILABLE = {
   persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 const FILES_TAB: RightPanelSurface = { id: "files", kind: "files" };

@@ -784,7 +784,7 @@ describe("C: opening a Mate and chat", () => {
             request = frame.requests.find((request) => request.state === "open");
         }
         expect(request.ask).toMatchObject({ kind: "approval", detail: "vp run build" });
-        yield* chat.then.text("wants to run this command");
+        yield* chat.then.text("Run this command");
         expect(
           yield* Effect.promise(() =>
             s.page.$eval('[aria-label="Command"]', (element) => element.textContent),
@@ -794,7 +794,7 @@ describe("C: opening a Mate and chat", () => {
         expect(provider.answers).toEqual([]);
         yield* chat.then.noText(result);
         const receipt = gate.answered((tag) => tag === "engine.answer");
-        yield* chat.when.press(decision === "accept" ? "Approve" : "Decline");
+        yield* chat.when.press(decision === "accept" ? "Approve" : "Not now");
         expect(yield* Effect.promise(() => receipt)).toMatchObject({
           exit: { _tag: "Success", value: { _tag: "Accepted" } },
         });
@@ -814,7 +814,7 @@ describe("C: opening a Mate and chat", () => {
         expect(completed.summary.calls).toEqual(decision === "accept" ? { command: 1 } : {});
         yield* chat.then.text(result);
         yield* chat.then.noButton("Approve");
-        yield* chat.then.noButton("Decline");
+        yield* chat.then.noButton("Not now");
         yield* chat.then.control("Stop generation", "button", false);
         yield* s.then.noExternalNetwork;
       });

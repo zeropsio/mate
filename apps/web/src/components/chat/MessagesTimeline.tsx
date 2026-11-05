@@ -235,7 +235,8 @@ import { ProposalCardContainer } from "../zerops/proposal/ProposalCardContainer"
 import { useProposalDecisionsRead } from "../../zerops/proposalRecord";
 import { OriginAskCardContainer } from "../zerops/origin/OriginAskCardContainer";
 import { type OriginAskPlace } from "../zerops/origin/originAsk.logic";
-import { VaultRequestCardContainer } from "../zerops/vault/VaultRequestCardContainer";
+import { VaultRequestCardContainer } from "../zerops/vault/VaultAskContainer";
+import { useAskReveal } from "../ask/askReveal";
 import { vaultAskOf } from "../zerops/vault/vaultRequest.logic";
 import { useOperationCard } from "../../zerops/activity/useOperationCard";
 import { formatWorkspaceRelativePath } from "../../filePathDisplay";
@@ -1389,6 +1390,12 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   const notePersonSession = useCallback((event: PersonScrollSessionEvent) => {
     personSessionRef.current = nextPersonScrollSession(personSessionRef.current, event);
   }, []);
+  // "Show in conversation" on an ask docked above the composer: the person's way to its card.
+  useAskReveal(rows, (index) => {
+    onManualNavigation();
+    notePersonSession({ type: "input", at: performance.now() });
+    return listRef.current?.scrollToIndex({ index, animated: !reducedMotion(), viewOffset: 24 });
+  });
   // The wheel gesture under way and whether it is the list's (`latchWheelGesture`).
   const wheelLatchRef = useRef<WheelGestureLatch | null>(null);
   const onPersonInputRef = useRef(onPersonInput);
@@ -3973,21 +3980,22 @@ const OperationTimelineRow = memo(function OperationTimelineRow({
     true,
     ctx.threadRef?.threadId ?? null,
   );
-  // A request for a vault value is the person's to answer: its card is the ask.
-  if (vaultAskOf(row.operation) !== null) {
-    return (
-      <div className="min-w-0 px-1 py-0.5">
+  const card = (
+    <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+  );
+  return (
+    <div className="min-w-0 px-1 py-0.5">
+      {/* A request for a vault value is the person's to answer: its card is the ask. */}
+      {vaultAskOf(row.operation) === null ? (
+        card
+      ) : (
         <VaultRequestCardContainer
           environmentId={ctx.activeThreadEnvironmentId}
+          fallback={card}
           operation={row.operation}
           threadRef={ctx.threadRef}
         />
-      </div>
-    );
-  }
-  return (
-    <div className="min-w-0 px-1 py-0.5">
-      <ZeropsOperationCard operation={row.operation} threadRef={ctx.threadRef} {...regions} />
+      )}
     </div>
   );
 });
@@ -3999,10 +4007,12 @@ const VaultRequestTimelineRow = memo(function VaultRequestTimelineRow({
   row: Extract<TimelineRow, { kind: "vault-request" }>;
 }) {
   const ctx = use(TimelineRowCtx);
+  // Without the engine's record (older history) the run's own line is all it shows: no frame here.
   return (
-    <div className="min-w-0 px-1 py-0.5">
+    <div className="min-w-0 px-1 py-0.5 empty:hidden">
       <VaultRequestCardContainer
         environmentId={ctx.activeThreadEnvironmentId}
+        fallback={null}
         operation={row.operation}
         threadRef={ctx.threadRef}
       />
@@ -4038,8 +4048,10 @@ const ProposalTimelineRow = memo(function ProposalTimelineRow({
   return (
     <div className="min-w-0 px-1 py-0.5">
       <ProposalCardContainer
+        driver={ctx.driver ?? null}
         environmentId={ctx.activeThreadEnvironmentId}
         operation={row.operation}
+        threadId={ctx.threadRef?.threadId ?? null}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import {
   readTomlServers,
   removeTomlServer,
   setTomlServerBoolean,
+  setTomlServerStrings,
   TomlEditError,
   TomlSyntaxError,
   validateToml,
@@ -246,6 +247,95 @@ name = "b"
 command = "zcp"
 args = ["serve"]
 `;
+
+describe("setTomlServerStrings", () => {
+  const SERVER = `[mcp_servers.linear]
+url = "https://mcp.linear.app/mcp"
+startup_timeout_sec = 30
+
+[mcp_servers.linear.http_headers]
+Authorization = "Bearer old"
+`;
+  it.each([
+    {
+      case: "replaces a server's headers, keeping its other keys as they were written",
+      value: { Authorization: "Bearer new", "X-Team": "eng" },
+      expected: {
+        url: "https://mcp.linear.app/mcp",
+        startup_timeout_sec: "30",
+        http_headers: { Authorization: "Bearer new", "X-Team": "eng" },
+      },
+    },
+    {
+      case: "drops the headers when none are left",
+      value: {},
+      expected: { url: "https://mcp.linear.app/mcp", startup_timeout_sec: "30" },
+    },
+  ])("$case", ({ value, expected }) => {
+    const next = setTomlServerStrings(SERVER, "mcp_servers", "linear", "http_headers", value);
+    expect(readTomlServers(next, "mcp_servers")["linear"]).toEqual(expected);
+    // A number stays a number: written bare, never quoted.
+    expect(next).toContain("startup_timeout_sec = 30");
+  });
+
+  it("leaves a file without the server alone", () => {
+    expect(setTomlServerStrings(CODEX_ZCP, "mcp_servers", "linear", "env", { A: "b" })).toBe(
+      CODEX_ZCP,
+    );
+  });
+
+  const COMMENTED = `[mcp_servers.linear]
+# the team's tracker
+url = "https://mcp.linear.app/mcp" # remote
+
+[mcp_servers.linear.http_headers]
+# rotated monthly
+Authorization = "Bearer old"
+X-Team = "eng" # ours
+
+[profiles.fast]
+model = "x"
+`;
+
+  it("an edit that changes nothing leaves the file byte for byte", () => {
+    const same = { Authorization: "Bearer old", "X-Team": "eng" };
+    expect(setTomlServerStrings(COMMENTED, "mcp_servers", "linear", "http_headers", same)).toBe(
+      COMMENTED,
+    );
+  });
+
+  it.each([
+    {
+      case: "changes a value in place",
+      value: { Authorization: "Bearer new", "X-Team": "eng" },
+      expected: COMMENTED.replace("Bearer old", "Bearer new"),
+    },
+    {
+      case: "drops a line and adds one where the table stands",
+      value: { Authorization: "Bearer old", "X-Region": "eu" },
+      expected: COMMENTED.replace('X-Team = "eng" # ours\n', 'X-Region = "eu"\n'),
+    },
+    {
+      case: "adds headers to a server that had none, under its own table",
+      server: "zerops",
+      text: CODEX_ZCP,
+      value: { "X-Key": "k" },
+      expected: CODEX_ZCP.replace(
+        '"PATH","HOME"]\n',
+        '"PATH","HOME"]\n\n[mcp_servers.zerops.http_headers]\nX-Key = "k"\n',
+      ),
+    },
+  ])("$case, keeping the comments of lines it doesn't change", (input) => {
+    const next = setTomlServerStrings(
+      input.text ?? COMMENTED,
+      "mcp_servers",
+      input.server ?? "linear",
+      "http_headers",
+      input.value,
+    );
+    expect(next).toBe(input.expected);
+  });
+});
 
 describe("validateToml", () => {
   it.each([

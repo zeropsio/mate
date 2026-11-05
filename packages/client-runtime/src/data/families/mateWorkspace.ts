@@ -1,7 +1,7 @@
 /** The reviewed Mate workspace reads: distinct source identities and fact families. */
 import { ORCHESTRATION_WS_METHODS, WS_METHODS, type EnvironmentId } from "@t3tools/contracts";
 import type { EnvironmentRpcInput, EnvironmentRpcSuccess } from "../../rpc/client.ts";
-import type { ScopeKey } from "../model.ts";
+import type { LinkKey, ScopeKey } from "../model.ts";
 export const WORKSPACE_READS = {
   gitRemote: {
     family: "mateGitRemote",
@@ -103,6 +103,9 @@ export type WorkspaceValue<K extends WorkspaceRead> = EnvironmentRpcSuccess<
 >;
 export const workspaceId = <K extends WorkspaceRead>(target: WorkspaceTarget<K>): string =>
   JSON.stringify([target.environmentId, target.input]);
+/** The link that reads one workspace scope: its own attempts, retries and deadlines. */
+export const workspaceLinkKey = (scope: ScopeKey): LinkKey =>
+  `mate:workspace-${encodeURIComponent(scope)}`;
 export const workspaceScope = <K extends WorkspaceRead>(
   kind: K,
   target: WorkspaceTarget<K>,

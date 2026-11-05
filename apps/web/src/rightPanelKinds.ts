@@ -33,6 +33,7 @@ export const RIGHT_PANEL_KINDS = [
   "terminal",
   "mcp",
   "persona",
+  "express",
 ] as const;
 export type RightPanelKind = (typeof RIGHT_PANEL_KINDS)[number];
 
@@ -55,6 +56,8 @@ export interface RightPanelAvailabilityInput {
   readonly chief?: boolean;
   /** The Mate's server keeps a persona (`matePersona`); `null` while its config is unread. */
   readonly matePersona: boolean | null;
+  /** The person's Adobe Express Labs switch is on in a build with Adobe's key (`useExpressGate`). */
+  readonly express?: boolean;
 }
 
 /** What a Chief's panel offers: the organization's cards, its shell, its helpers and its tools. */
@@ -80,7 +83,8 @@ export interface RightPanelKindMeta {
    * Mate's name or "this Mate". `null` where the page wears a head of its own.
    */
   readonly page: {
-    readonly title: string;
+    /** A title that names the Mate ("Tools Juno can use") takes its name. */
+    readonly title: string | ((mate: string) => string);
     readonly line: (mate: string) => string;
   } | null;
   readonly availability: (input: RightPanelAvailabilityInput) => RightPanelAvailability;
@@ -240,15 +244,17 @@ export const RIGHT_PANEL_KIND_META = {
   },
   mcp: {
     launcher: {
-      label: "MCP",
-      description: "Add and check this Mate's tools.",
-      shortcut: "M",
+      label: "Tools",
+      description: "Add and check the tools this Mate's agents use.",
+      // Terminal holds T.
+      shortcut: null,
       unavailableHint: "Available from a conversation.",
     },
-    // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops.
+    // Every Mate's agents take MCP servers; the tab asks the Mate, not Zerops. "MCP server" is
+    // said only where one is added or inspected.
     page: {
-      title: "MCP servers",
-      line: (mate) => `Tools ${mate} can use, with each of its coding agents.`,
+      title: (mate) => `Tools ${mate} can use`,
+      line: (mate) => `${mate}'s agents use these while they work.`,
     },
     availability: () => "available",
   },
@@ -265,6 +271,18 @@ export const RIGHT_PANEL_KIND_META = {
     availability: (input) =>
       input.matePersona === null ? "unknown" : input.matePersona ? "available" : "unavailable",
   },
+  express: {
+    launcher: {
+      label: "Express",
+      description: "Design pictures with Adobe Express.",
+      shortcut: "E",
+      unavailableHint: "Not set up in this build.",
+    },
+    // Its own head carries Adobe's mark, and its editor fills the panel with no head over it.
+    page: null,
+    // A Labs preview: nothing of it shows until the person turns it on (`useExpressGate`).
+    availability: (input) => (input.express === true ? "available" : "hidden"),
+  },
 } satisfies Record<RightPanelKind, RightPanelKindMeta>;
 
 /** The head a side-panel page opens with; `mate` is the Mate's name while it is known. */
@@ -273,7 +291,12 @@ export function rightPanelPageHead(
   mate: string | undefined,
 ): { readonly title: string; readonly line: string } | null {
   const page = RIGHT_PANEL_KIND_META[kind].page;
-  return page === null ? null : { title: page.title, line: page.line(mate ?? "this Mate") };
+  if (page === null) return null;
+  const name = mate ?? "this Mate";
+  return {
+    title: typeof page.title === "string" ? page.title : page.title(name),
+    line: page.line(name),
+  };
 }
 
 /**

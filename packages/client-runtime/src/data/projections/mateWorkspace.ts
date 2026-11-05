@@ -4,6 +4,7 @@ import { AsyncResult } from "effect/reactivity";
 import {
   WORKSPACE_READS,
   workspaceId,
+  workspaceLinkKey,
   workspaceScope,
   type WorkspaceRead,
   type WorkspaceTarget,
@@ -11,7 +12,7 @@ import {
 } from "../families/mateWorkspace.ts";
 import type { Projection } from "../store.ts";
 import type { Coverage, PublicRead } from "../model.ts";
-import type { StreamFault, StreamState } from "../streamMachine.ts";
+import { liveOrHeld, type StreamFault, type StreamState } from "../streamMachine.ts";
 import { sameValue } from "./equal.ts";
 
 export interface WorkspaceReading<A> {
@@ -45,9 +46,14 @@ export function workspaceReading<K extends WorkspaceRead>(
         (kind === "assetUrl" && ["recovering", "reauthenticating", "stale"].includes(stream.phase));
       const previousSuccess =
         value === undefined ? Option.none() : Option.some(AsyncResult.success(value));
+      // A read that failed transiently, or passed its deadline, retries on its own link while the
+      // scope waits for it: once the link is down past its grace, its fault is the read's to say.
+      const link = read.stream(workspaceLinkKey(scope));
+      const linkDown = link.fault !== null && !liveOrHeld(link) && link.patientSince === undefined;
+      const fault = stream.fault ?? (stream.phase !== "live" && linkDown ? link.fault : null);
       const result =
-        stream.fault !== null
-          ? AsyncResult.fail<StreamFault, WorkspaceValue<K>>(stream.fault, {
+        fault !== null
+          ? AsyncResult.fail<StreamFault, WorkspaceValue<K>>(fault, {
               previousSuccess,
               waiting,
             })

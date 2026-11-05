@@ -665,7 +665,7 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
   }
   for (const [host, list] of loose) rows.push(pagesRow(host, list));
 
-  // What became of each value it asked the person for; one still asked stands in the drawer.
+  // What a value it asked the person for still needs: its own card says how the ask ended.
   if (facts.asks !== undefined) {
     for (const ask of outcome.asks ?? []) {
       const record = engineVaultAskFor(facts.asks.activities, ask);
@@ -675,13 +675,13 @@ export function resultRows(outcome: OutcomeModel, facts: ResultFacts = NO_FACTS)
         key: `ask:${ask.key}:${ask.askedAt}`,
         group: "running",
         mark: "dot",
-        tone: record?.state === "saved" ? "ok" : "muted",
+        tone: "attention",
         title: result.title,
-        words: result.words,
+        words: vaultAskRestartWords(result.restart),
         version: null,
-        sub: result.restart.length === 0 ? null : textSub(vaultAskRestartWords(result.restart)),
+        sub: null,
         url: null,
-        action: result.restart.length === 0 ? null : { kind: "restart", services: result.restart },
+        action: { kind: "restart", services: result.restart },
       });
     }
   }

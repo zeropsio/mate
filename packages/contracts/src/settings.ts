@@ -186,6 +186,8 @@ export const ClientSettingsSchema = Schema.Struct({
   // default UI; this beta flag restores it (plus the /plan and /default slash
   // commands) for users who still rely on the old workflow.
   planModeEnabled: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
+  // Labs: the Adobe Express panel (preview), off until a person turns it on in Settings.
+  adobeExpressPanel: Schema.Boolean.pipe(Schema.withDecodingDefault(Effect.succeed(false))),
   followUpBehavior: Schema.Literals(["queue", "steer"]).pipe(
     Schema.withDecodingDefault(Effect.succeed("queue")),
   ),
@@ -1107,6 +1109,7 @@ export const ClientSettingsPatch = Schema.Struct({
     ),
   ),
   planModeEnabled: Schema.optionalKey(Schema.Boolean),
+  adobeExpressPanel: Schema.optionalKey(Schema.Boolean),
   followUpBehavior: Schema.optionalKey(Schema.Literals(["queue", "steer"])),
   showSkillsInSlashMenu: Schema.optionalKey(Schema.Boolean),
   sidebarProjectGroupingMode: Schema.optionalKey(SidebarProjectGroupingMode),

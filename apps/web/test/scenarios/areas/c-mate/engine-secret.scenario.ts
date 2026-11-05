@@ -10,7 +10,6 @@ const LABEL = "Stripe secret key";
 const WHY = "for checkout";
 /** A value shaped like a live Stripe key, made from parts. */
 const SECRET = ["sk", "_live_", "Zq".repeat(12)].join("");
-const FIELD = `Your ${LABEL}`;
 
 /** Whether any string anywhere in a value holds the secret. */
 const holdsSecret = (value: unknown): boolean =>
@@ -62,14 +61,17 @@ describe("C: a secret the Mate asks the person for", () => {
           { runId: run },
         );
         engine.note(run, "I asked for your Stripe key on a private card.", { kind: "completed" });
-        // The ask waits at the composer's top, never as a card in the conversation.
-        yield* chat.then.text(`needs your ${LABEL}, ${WHY}`);
-        yield* chat.then.text("Goes to this project's vault for every app, never into this chat.");
+        // The ask's card stands where the Mate asked, and above the composer once its turn
+        // stopped on it: the same ask, its value going to the vault, never into the chat.
+        yield* chat.then.text(`Add ${KEY} to`);
+        yield* chat.then.text(WHY);
+        yield* chat.then.text("Goes to the vault, not the chat");
         yield* chat.then.noText("Put in vault");
-        yield* chat.when.fill(FIELD, SECRET);
+        yield* chat.when.fill(LABEL, SECRET);
         yield* chat.when.press("Save to vault");
-        // Answered, it is a result of the run that asked.
-        yield* chat.then.text("added for every app · hidden");
+        // Answered, the card says where it is, once.
+        yield* chat.then.text("vault · hidden");
+        yield* chat.then.noText("added for every app");
         yield* chat.then.noText("has been told");
         expect(vault.writes, "ASSERTION: the value went to the vault, as the person").toEqual([
           { key: KEY, content: SECRET },

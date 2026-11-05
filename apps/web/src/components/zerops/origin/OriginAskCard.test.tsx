@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 
 import type { GitMirrorApp } from "../gitMirror.logic";
 import { OriginAskCard, type OriginAskCardProps } from "./OriginAskCard";
-import { originAskFace, originConnected } from "./originAsk.logic";
+import { originAskState, originConnected } from "./originAsk.logic";
 
 const ask = {
   url: "https://github.com/zeropsio/mate",
@@ -69,7 +69,7 @@ beforeEach(async () => {
   root = createRoot(host);
   props = {
     ask,
-    face: "open",
+    state: { kind: "waiting" },
     mateName: "Fen",
     github: {
       app,
@@ -105,7 +105,17 @@ describe("an origin asked of the person", () => {
     await click("Keep the code in Mate");
     expect(props.onAnswer).toHaveBeenCalledWith("declined");
     expect(sheet()).toBeNull();
-    await draw({ face: "declined" });
+    await draw({
+      state: originAskState({
+        state: "declined",
+        pending: null,
+        connected: false,
+        url: ask.url,
+        mateName: "Fen",
+        by: null,
+        at: null,
+      }),
+    });
     expect(host.textContent).toContain("github.com/zeropsio/mate · Kept in Mate");
     expect(button("Keep the code on GitHub")).toBeUndefined();
   });
@@ -119,7 +129,15 @@ describe("an origin asked of the person", () => {
     expect(props.onAnswer).not.toHaveBeenCalled();
     await draw({
       github: { ...props.github!, repos: mounted },
-      face: originAskFace("open", null, originConnected(ask, mounted)),
+      state: originAskState({
+        state: "open",
+        pending: null,
+        connected: originConnected(ask, mounted),
+        url: ask.url,
+        mateName: "Fen",
+        by: null,
+        at: null,
+      }),
     });
     expect(host.textContent).toContain("github.com/zeropsio/mate · Kept on GitHub");
     // The sheet stays to say what GitHub still lets through.
@@ -179,7 +197,17 @@ describe("an origin asked of the person", () => {
 
   it("An origin card whose origin is already connected says so and offers no Not now", async () => {
     // HQ mounted it while the sheet was closed: the engine's record is still open.
-    await draw({ face: originAskFace("open", null, originConnected(ask, mounted)) });
+    await draw({
+      state: originAskState({
+        state: "open",
+        pending: null,
+        connected: originConnected(ask, mounted),
+        url: ask.url,
+        mateName: "Fen",
+        by: null,
+        at: null,
+      }),
+    });
     expect(host.textContent).toContain("github.com/zeropsio/mate · Kept on GitHub");
     expect(button("Keep the code on GitHub")).toBeUndefined();
     expect(button("Keep the code in Mate")).toBeUndefined();

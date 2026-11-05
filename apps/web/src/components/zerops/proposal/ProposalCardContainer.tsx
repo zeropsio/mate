@@ -7,7 +7,8 @@
  * account's own `set-project-access`, each person found among the organization's members, as an
  * application's People write it. What the person decided is kept
  * at HQ by proposal id (`proposalRecord.ts`), so a reload draws it as it was and no card offers
- * Approve twice; an approval is carried out only once HQ kept it.
+ * Approve twice; an approval is carried out only once HQ kept it. A reveal is its own card
+ * (`RevealAskContainer`).
  */
 import { useTimelineRowReading } from "~/components/chat/timelineRowReads";
 import {
@@ -29,7 +30,7 @@ import {
   type PlaceAddresses,
   type ProjectGrantsRead,
 } from "@t3tools/client-runtime/data";
-import type { EnvironmentId } from "@t3tools/contracts";
+import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
 import type { ZeropsOperation, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { useAtomValue } from "@effect/atom-react";
 import { useNavigate } from "@tanstack/react-router";
@@ -45,10 +46,17 @@ import { useKnownMate, useZeropsMateDirectory } from "~/zerops/useZeropsMates";
 import { useZeropsEnvironmentProject } from "~/zerops/useZeropsEnvironmentProject";
 import { recordVaultWrite } from "~/zerops/vaultTurnNotes";
 import { useProposalDecision } from "~/zerops/proposalRecord";
+import { useEnvironmentTier } from "~/zerops/environmentTier";
+import { usePersonNames } from "~/zerops/useZeropsMateOwners";
+import { useZeropsSessionOptional } from "~/zerops/sessionContext";
+import { useClientSettings } from "~/hooks/useSettings";
+import { formatDayAwareTimestamp } from "~/timestampFormat";
 import { useAddressesSheet } from "~/zerops/addressesSheet";
 import { useVaultWriter } from "../vault/VaultPanelContainer";
 import type { VaultWriteOutcome } from "../vault/VaultPanel";
+import { McpProposalCardContainer } from "./McpProposalCardContainer";
 import { ProposalCard } from "./ProposalCard";
+import { RevealAsk } from "./RevealAskContainer";
 import {
   chiefAsk,
   chiefMessageTarget,
@@ -112,12 +120,30 @@ const SERVICE_OPERATION = {
 export function ProposalCardContainer({
   operation,
   environmentId,
+  threadId = null,
+  driver = null,
 }: {
   readonly operation: ZeropsOperation;
   readonly environmentId: EnvironmentId | null;
+  /** The conversation the card is in: whose agent an MCP server's sign-in is. */
+  readonly threadId?: ThreadId | null;
+  readonly driver?: string | null;
 }) {
   const proposal = operation.proposal;
   if (proposal === undefined || environmentId === null) return null;
+  if (proposal.kind === "mcp.add") {
+    return (
+      <McpProposalCardContainer
+        driver={driver}
+        environmentId={environmentId}
+        proposal={proposal}
+        threadId={threadId}
+      />
+    );
+  }
+  // A reveal approves nothing to run: the person sees a value, on their screen only.
+  if (proposal.kind === "env.reveal")
+    return <RevealAsk environmentId={environmentId} proposal={proposal} />;
   return <Proposal environmentId={environmentId} proposal={proposal} />;
 }
 
@@ -125,7 +151,7 @@ function Proposal({
   proposal,
   environmentId,
 }: {
-  readonly proposal: ZeropsProposal;
+  readonly proposal: Exclude<ZeropsProposal, { readonly kind: "mcp.add" }>;
   readonly environmentId: EnvironmentId;
 }) {
   // The conversation's own project: the organization every approval acts in, and where HQ keeps
@@ -138,6 +164,11 @@ function Proposal({
   );
   const stage = proposalStage(decision, runningHere);
   const [refusal, setRefusal] = useState<string | undefined>(undefined);
+  // Where it acts, and who decided it when: the card's chip and its settled line.
+  const tier = useEnvironmentTier(proposal.projectId);
+  const nameOf = usePersonNames(home?.orgId);
+  const viewer = useZeropsSessionOptional()?.user?.id;
+  const timestampFormat = useClientSettings((settings) => settings.timestampFormat);
   const person = useProjection(hqProjectPerson, home === undefined ? null : home, UNKNOWN_PERSON);
   const chief = chiefMessageTarget(person?.chief?.projectId);
   const readOnlyChief = proposal.kind === "chief.message" && person?.chief?.mine !== true;
@@ -288,18 +319,26 @@ function Proposal({
                     ? accessPlan.words
                     : undefined;
 
+  /** A decision made here, recorded as the person's. */
+  const mine = useCallback(
+    (next: ProposalDecision): ProposalDecision =>
+      viewer === undefined ? next : { ...next, by: viewer },
+    [viewer],
+  );
   const ended = useCallback(
     (outcome: VaultWriteOutcome) =>
       void record(
-        outcome.ok
-          ? { state: "done", at: new Date().toISOString() }
-          : {
-              state: "failed",
-              at: new Date().toISOString(),
-              message: outcome.message ?? "Zerops did not do it.",
-            },
+        mine(
+          outcome.ok
+            ? { state: "done", at: new Date().toISOString() }
+            : {
+                state: "failed",
+                at: new Date().toISOString(),
+                message: outcome.message ?? "Zerops did not do it.",
+              },
+        ),
       ),
-    [record],
+    [mine, record],
   );
 
   /**
@@ -322,7 +361,7 @@ function Proposal({
   /** Records the person's decision at HQ: false, saying why, where HQ did not keep it. */
   const decide = async (next: ProposalDecision): Promise<boolean> => {
     setRefusal(undefined);
-    const refused = await record(next);
+    const refused = await record(mine(next));
     if (refused !== null) setRefusal(refused);
     return refused === null;
   };
@@ -450,6 +489,11 @@ function Proposal({
             : { lines: accessAskLines(proposal), dropped: [] }
       }
       chiefTarget={proposal.kind === "chief.message" ? chief : undefined}
+      decidedAt={
+        decision === undefined ? null : formatDayAwareTimestamp(decision.at, timestampFormat)
+      }
+      decidedBy={decision?.by === undefined ? null : (nameOf(decision.by) ?? null)}
+      homeProjectId={home?.projectId ?? null}
       readOnlyReason={readOnlyReason}
       failure={decision?.state === "failed" ? decision.message : undefined}
       mateName={proposer?.name ?? "Your Mate"}
@@ -471,6 +515,7 @@ function Proposal({
       recipient={recipient}
       refusal={refusal}
       stage={stage}
+      tier={tier}
     />
   );
 }

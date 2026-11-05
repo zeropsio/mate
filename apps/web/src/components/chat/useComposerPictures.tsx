@@ -86,10 +86,15 @@ export interface ComposerPicturesInput {
   readonly onError: (message: string) => void;
 }
 
+export interface ComposerPictureOptions {
+  /** Each picture sends its untouched file beside the copy fitted for the agent. */
+  readonly keepOriginal?: boolean;
+}
+
 export interface ComposerPictures {
   /** What the text shows of each picture, in the order they sit. */
   readonly chips: ReadonlyArray<ComposerPictureChip>;
-  readonly add: (files: ReadonlyArray<File>) => Promise<void>;
+  readonly add: (files: ReadonlyArray<File>, options?: ComposerPictureOptions) => Promise<void>;
   readonly open: (id: string) => void;
   readonly remove: (id: string) => void;
   readonly retry: (id: string) => void;
@@ -388,6 +393,8 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
         picture: {
           ...now.picture,
           ...size,
+          // A copy that is the file itself leaves no other original to send.
+          keepOriginal: copy.kind !== "as-pasted" && now.picture.keepOriginal,
           asPasted: copy.kind === "as-pasted",
           preparing: false,
         },
@@ -411,7 +418,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
   );
 
   const add = useCallback(
-    async (files: ReadonlyArray<File>) => {
+    async (files: ReadonlyArray<File>, options?: ComposerPictureOptions) => {
       const refusal = latest.current.refusal();
       if (refusal) {
         latest.current.onError(refusal);
@@ -471,7 +478,7 @@ export function useComposerPictures(input: ComposerPicturesInput): ComposerPictu
           sourceHeight: size.height,
           crop,
           marks: [],
-          keepOriginal: false,
+          keepOriginal: options?.keepOriginal === true && latest.current.supportsAttachmentUploads,
           width: fitted.width,
           height: fitted.height,
           asPasted: false,

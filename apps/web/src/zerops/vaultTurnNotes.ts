@@ -18,11 +18,15 @@ import { Atom } from "effect/reactivity";
 import { useCallback, useMemo } from "react";
 import { create } from "zustand";
 
+import { parseScopedThreadKey } from "@t3tools/client-runtime/environment";
+
 import { sameValue } from "../lib/sameValue";
+import { useThreadDetail } from "../state/entities";
 import { useDetailDemand } from "./ZeropsAccountData";
 import { useZeropsEnvironmentProject } from "./useZeropsEnvironmentProject";
 import {
   heldWrites,
+  vaultAsksAnswered,
   vaultChangeIdOf,
   vaultTurnChanges,
   vaultValueIdOf,
@@ -38,6 +42,12 @@ interface VaultTurnState {
 const useVaultTurnStore = create<VaultTurnState>()(() => ({ own: {}, hidden: {} }));
 
 const NO_CHANGES: ReadonlyArray<VaultChange> = [];
+
+/** The answered asks as one string, so the conversation's detail redraws nothing until they change. */
+const selectAnsweredKey = (detail: { readonly activities?: unknown } | null): string => {
+  const answered = vaultAsksAnswered(detail?.activities as Parameters<typeof vaultAsksAnswered>[0]);
+  return answered.length === 0 ? "" : JSON.stringify(answered);
+};
 const NO_IDS: ReadonlyArray<string> = [];
 
 /** A write the person made to a project's vault from here: told with the next message. */
@@ -118,6 +128,16 @@ export function useVaultTurnNotes(
   const hidden = useVaultTurnStore((state) =>
     threadKey === null ? NO_IDS : (state.hidden[threadKey] ?? NO_IDS),
   );
+  // A value the Mate heard of as its ask was answered is not told again.
+  const answeredKey = useThreadDetail(
+    useMemo(() => (threadKey === null ? null : parseScopedThreadKey(threadKey)), [threadKey]),
+    selectAnsweredKey,
+  );
+  const answered = useMemo(
+    () =>
+      answeredKey === "" ? [] : (JSON.parse(answeredKey) as ReturnType<typeof vaultAsksAnswered>),
+    [answeredKey],
+  );
   const changes = useMemo(
     () =>
       projectId === null || threadKey === null
@@ -126,8 +146,9 @@ export function useVaultTurnNotes(
             own,
             since,
             hidden: new Set(hidden),
+            answered,
           }),
-    [hidden, own, projectId, since, threadKey],
+    [answered, hidden, own, projectId, since, threadKey],
   );
   const note = useMemo(() => vaultNote(changes), [changes]);
   const dismiss = useCallback(

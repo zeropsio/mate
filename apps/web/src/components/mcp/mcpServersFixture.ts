@@ -98,6 +98,7 @@ export const MCP_SERVERS_FIXTURE: McpServersList = {
       name: "linear",
       managed: false,
       transport: { type: "http", url: "https://mcp.linear.app/sse" },
+      secretNames: ["Authorization"],
       agents: [{ driver: CLAUDE, state: "connecting" }],
     },
     {

@@ -2,6 +2,7 @@ import { useImageIntent } from "~/assets/MateImages";
 import { AssetImage } from "~/assets/AssetImage";
 import { ServiceBrowserLink, useLinkDestination } from "./ServiceBrowserLink";
 import { ZeropsChangeLinkChip } from "./zerops/ZeropsChangeLinkChip";
+import { ExpressDesignLinkChip } from "./express/ExpressDesignLinkChip";
 import { useAtomValue } from "@effect/atom-react";
 import {
   CheckIcon,
@@ -2481,19 +2482,21 @@ const CHAT_MARKDOWN_COMPONENTS = {
           )}
         </ServiceBrowserLink>
       );
-      // The chip wraps whichever link this would have been: it renders that
-      // link back unchanged for every address it cannot claim as a change.
+      // The chips wrap whichever link this would have been: each renders that
+      // link back unchanged for every address it cannot claim.
       return (
-        <ZeropsChangeLinkChip href={href} words={bareUrl === null ? children : undefined}>
-          {!faviconHost || !href ? (
-            link
-          ) : (
-            <Tooltip>
-              <TooltipTrigger render={link} />
-              <TooltipPopup side="top">{href}</TooltipPopup>
-            </Tooltip>
-          )}
-        </ZeropsChangeLinkChip>
+        <ExpressDesignLinkChip href={href} words={bareUrl === null ? children : undefined}>
+          <ZeropsChangeLinkChip href={href} words={bareUrl === null ? children : undefined}>
+            {!faviconHost || !href ? (
+              link
+            ) : (
+              <Tooltip>
+                <TooltipTrigger render={link} />
+                <TooltipPopup side="top">{href}</TooltipPopup>
+              </Tooltip>
+            )}
+          </ZeropsChangeLinkChip>
+        </ExpressDesignLinkChip>
       );
     }
 

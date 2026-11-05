@@ -63,7 +63,9 @@ export function makeWorkspaceActions(options: {
       record?.receipt?.acceptance.kind === "accepted" &&
       record.receipt.outcome.kind === "succeeded"
     ) {
-      if (kind.startsWith("mate-mcp-") && "threadId" in target.input)
+      // Every MCP action answers the fresh list, except a sign-in's start: the page it opens.
+      const answersList = kind.startsWith("mate-mcp-") && kind !== "mate-mcp-sign-in";
+      if (answersList && "threadId" in target.input)
         options.mcpAnswer?.(
           {
             environmentId: target.environmentId,
@@ -71,7 +73,7 @@ export function makeWorkspaceActions(options: {
           },
           value as import("@t3tools/contracts").McpServersList,
         );
-      else if (kind.startsWith("mate-mcp-"))
+      else if (answersList)
         options.mcpAnswer?.(
           { environmentId: target.environmentId, input: {} },
           value as import("@t3tools/contracts").McpServersList,

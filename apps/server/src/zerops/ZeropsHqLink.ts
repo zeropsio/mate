@@ -104,7 +104,7 @@ import { ZeropsMateKey } from "./ZeropsMateKey.ts";
 import type { ZeropsKeyRefusal } from "./ZeropsKeyRefusal.ts";
 import { ZeropsAutomation } from "./ZeropsAutomation.ts";
 import { ZeropsTasks } from "./ZeropsTasks.ts";
-import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 import { MateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import type { UsageLink } from "../usage/UsageLink.ts";
 import { makeUsageCapture } from "../usage/UsageCapture.ts";

@@ -12,7 +12,6 @@ import {
   Globe,
   Laptop,
   LayersIcon,
-  type LucideIcon,
   Plus,
   TerminalSquare,
   Plug,
@@ -20,6 +19,7 @@ import {
   Vault,
 } from "lucide-react";
 import {
+  type ComponentType,
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type ReactElement,
@@ -33,6 +33,7 @@ import {
 } from "react";
 
 import { isElectron } from "~/env";
+import { ExpressMark } from "./express/ExpressMark";
 import { resolveShortcutCommand, type ShortcutMatchContext } from "~/keybindings";
 import {
   launcherActions,
@@ -104,8 +105,9 @@ const SURFACE_DISABLED_REASONS = {
   data: "Data is only available from a Zerops project thread.",
   git: "Git is only available from a Zerops project thread.",
   crew: "The crew is only available from a Zerops project thread with crew mode on.",
-  mcp: "MCP servers are only available from a conversation.",
+  mcp: "Tools are only available from a conversation.",
   persona: "Update this Mate to give it a persona.",
+  express: "Adobe Express is not set up in this build.",
   vault: "The vault is only available from a Zerops project thread.",
   overview: "The overview opens from a Chief's conversation.",
 } as const satisfies Record<Exclude<RightPanelKind, "file">, string>;
@@ -203,12 +205,20 @@ function SurfaceMenuItem(props: {
 }
 
 type SurfaceAction = ReturnType<typeof launcherActions>[number] & {
-  readonly icon: LucideIcon;
+  readonly icon: SurfaceLauncherIcon;
   readonly onClick: () => void;
   readonly badgeCount: number;
 };
 
-function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon {
+/** Adobe's mark at a launcher card's glyph size, its tile rounded like the glyphs' strokes. */
+function ExpressLauncherMark({ className }: { readonly className?: string }) {
+  return <ExpressMark className={cn(className, "rounded-sm")} />;
+}
+
+/** A launcher card's mark: a lucide glyph, or a product's own mark (Adobe Express's). */
+type SurfaceLauncherIcon = ComponentType<{ readonly className?: string }>;
+
+function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): SurfaceLauncherIcon {
   switch (kind) {
     case "terminal":
       return TerminalSquare;
@@ -234,6 +244,8 @@ function surfaceLauncherIcon(kind: Exclude<RightPanelKind, "file">): LucideIcon 
       return Plug;
     case "persona":
       return PersonaIcon;
+    case "express":
+      return ExpressLauncherMark;
     case "vault":
       return Vault;
     case "overview":
@@ -451,9 +463,11 @@ function surfaceTitle(
     case "crew":
       return "Crew";
     case "mcp":
-      return "MCP";
+      return "Tools";
     case "persona":
       return "Persona";
+    case "express":
+      return "Express";
     case "vault":
       return "Vault";
     case "overview":
@@ -498,6 +512,8 @@ function SurfaceIcon({ surface, theme }: { surface: RightPanelSurface; theme: "l
       return <Plug className="size-3 shrink-0" />;
     case "persona":
       return <PersonaIcon className="size-3 shrink-0" />;
+    case "express":
+      return <ExpressMark className="size-3.5 shrink-0 rounded-xs" />;
     case "vault":
       return <Vault className="size-3 shrink-0" />;
     case "overview":

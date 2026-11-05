@@ -119,9 +119,9 @@ describe("right panel kinds", () => {
       },
       {
         kind: "mcp",
-        label: "MCP",
-        description: "Add and check this Mate's tools.",
-        shortcut: "M",
+        label: "Tools",
+        description: "Add and check the tools this Mate's agents use.",
+        shortcut: null,
         unavailableHint: "Available from a conversation.",
       },
       {
@@ -211,6 +211,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -238,6 +239,7 @@ describe("right panel kinds", () => {
         vault: "unavailable",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -259,6 +261,7 @@ describe("right panel kinds", () => {
         vault: "unknown",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -280,6 +283,7 @@ describe("right panel kinds", () => {
         vault: "available",
         persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
   ] as const;
@@ -365,6 +369,17 @@ describe("right panel kinds", () => {
     },
   );
 
+  it.each([
+    { express: true, launcher: true },
+    { express: false, launcher: false },
+  ] as const)(
+    "the panel offers Adobe Express only while the person's Labs switch is on: $express",
+    ({ express, launcher }) => {
+      const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, express });
+      expect(launcherActions(availability).some(({ kind }) => kind === "express")).toBe(launcher);
+    },
+  );
+
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });
@@ -405,7 +420,11 @@ describe("a side-panel page's head", () => {
   it.each([
     { kind: "terminal", mate: "Nova", line: "A shell on Nova's computer." },
     { kind: "terminal", mate: undefined, line: "A shell on this Mate's computer." },
-    { kind: "mcp", mate: "Nova", line: "Tools Nova can use, with each of its coding agents." },
+    {
+      kind: "mcp",
+      mate: "Nova",
+      line: "Nova's agents use these while they work.",
+    },
     { kind: "vault", mate: "Nova", line: "Settings and secrets your apps read." },
   ] as const)(
     "a page's line names the Mate once its name is known: $kind for $mate reads $line",

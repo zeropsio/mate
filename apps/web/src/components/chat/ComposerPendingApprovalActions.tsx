@@ -5,6 +5,7 @@ import {
 } from "@t3tools/contracts";
 import { memo } from "react";
 import { EllipsisIcon, TriangleAlertIcon } from "lucide-react";
+import { NOT_NOW } from "../ask/ask.logic";
 import { Button } from "../ui/button";
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
@@ -21,7 +22,7 @@ interface ComposerPendingApprovalActionsProps {
 
 const DEFAULT_APPROVAL_OPTIONS = [
   { decision: "cancel", label: "Cancel" },
-  { decision: "decline", label: "Decline" },
+  { decision: "decline", label: NOT_NOW },
   { decision: "acceptForSession", label: "Always allow this session" },
   { decision: "accept", label: "Approve" },
 ] satisfies ReadonlyArray<ProviderApprovalOption>;
@@ -54,7 +55,8 @@ export const ComposerPendingApprovalActions = memo(function ComposerPendingAppro
           <>
             {option.warning ? <TriangleAlertIcon className="size-3 shrink-0 text-warning" /> : null}
             <span className="max-w-48 whitespace-normal break-words text-center">
-              {option.label}
+              {/* The way out of every ask is said one way, whatever the agent calls it. */}
+              {option.decision === "decline" ? NOT_NOW : option.label}
             </span>
           </>
         );

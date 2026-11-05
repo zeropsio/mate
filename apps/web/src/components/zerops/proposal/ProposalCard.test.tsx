@@ -99,8 +99,11 @@ async function mount(over: Partial<ProposalCardProps> & { readonly proposal: Zer
   return { container, pressed };
 }
 
+/** The presses the card offers: a press held while its approval runs is not offered. */
 const buttons = (container: HTMLElement) =>
-  [...container.querySelectorAll("button")].map((button) => button.textContent);
+  [...container.querySelectorAll("button")]
+    .filter((button) => !button.disabled)
+    .map((button) => button.textContent);
 
 describe("ProposalCard", () => {
   it("titles itself by the summary and quotes the Mate's reason", async () => {
@@ -108,11 +111,11 @@ describe("ProposalCard", () => {
     expect(container.textContent).toContain("Restart medusa in Contoso");
     expect(container.querySelector("q")?.textContent).toBe("It stopped answering an hour ago.");
     expect(container.textContent).toContain("Fen: It stopped");
-    expect(container.textContent).toContain("medusa · Contoso");
+    expect(container.textContent).toContain("Project · medusa");
   });
 
   it.each<[ProposalStage, ReadonlyArray<string>]>([
-    ["open", ["Approve", "Decline"]],
+    ["open", ["Restart medusa", "Not now"]],
     ["running", []],
     ["unseen", []],
     ["done", []],
@@ -176,7 +179,7 @@ describe("ProposalCard", () => {
         opened += 1;
       },
     });
-    expect(container.textContent).toContain("Sent to Rossy.");
+    expect(container.textContent).toContain("Sent to Rossy");
     const open = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "Open Rossy",
     );
@@ -200,7 +203,7 @@ describe("ProposalCard", () => {
       chiefTarget: { kind: "none" },
       onSetUpChief: () => setUp.push("set up"),
     });
-    expect(buttons(container)).toEqual(["schema diff", "Set up Chief", "Decline"]);
+    expect(buttons(container)).toEqual(["schema diff", "Set up Chief", "Not now"]);
     const offer = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "Set up Chief",
     );
@@ -224,7 +227,7 @@ describe("ProposalCard", () => {
       stage: "done",
       onOpenRecipient: () => opened.push("chief"),
     });
-    expect(container.textContent).toContain("Sent to your Chief.");
+    expect(container.textContent).toContain("Sent to your Chief");
     const open = [...container.querySelectorAll("button")].find(
       (button) => button.textContent === "Open Chief",
     );
@@ -234,14 +237,14 @@ describe("ProposalCard", () => {
 
   it("a domain proposal puts the project on the domain and its www, says where it points, and offers the decision", async () => {
     const { container } = await mount({ proposal: domain });
-    expect(container.querySelector("[data-proposal-summary]")?.textContent).toBe(
+    expect(container.querySelector("[data-ask-id]")?.getAttribute("aria-label")).toBe(
       "Put Contoso - production on contoso.com and www.contoso.com",
     );
     expect(container.querySelector("[data-proposal-where]")?.textContent).toBe(
       "→ medusa · port 9000",
     );
     expect(container.querySelector("q")?.textContent).toBe("The shop is ready for its own name.");
-    expect(buttons(container)).toEqual(["Approve", "Decline"]);
+    expect(buttons(container)).toEqual(["Add the domains", "Not now"]);
   });
 
   it("names the other changes approving a domain puts in place, before the person approves", async () => {
@@ -250,7 +253,7 @@ describe("ProposalCard", () => {
       domainAlso: "Approving also puts in place: Removing api.shop.com.",
     });
     expect(container.textContent).toContain("Approving also puts in place: Removing api.shop.com.");
-    expect(buttons(container)).toEqual(["Approve", "Decline"]);
+    expect(buttons(container)).toEqual(["Add the domains", "Not now"]);
   });
 
   it.each<[ProposalStage]>([["done"], ["unseen"]])(
@@ -279,8 +282,8 @@ describe("ProposalCard", () => {
 
   it("an approved domain whose state is not read yet says it was added", async () => {
     const { container } = await mount({ proposal: domain, stage: "done" });
-    expect(container.querySelector("[role=status]")?.textContent).toContain(
-      "Added contoso.com and www.contoso.com.",
+    expect(container.querySelector("[data-ask-footer]")?.textContent).toContain(
+      "Added contoso.com and www.contoso.com",
     );
   });
 });
