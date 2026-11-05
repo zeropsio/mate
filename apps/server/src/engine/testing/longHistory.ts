@@ -31,6 +31,8 @@ export interface LongHistoryShape {
   readonly longAnswerEvery?: number;
   /** Every how many runs the person's message is long; 50 by default. */
   readonly longPersonEvery?: number;
+  /** A run whose end was never heard (an imported turn's): every later message waits behind it. */
+  readonly neverEnded?: number;
 }
 
 const T0 = 1_760_000_000_000;
@@ -153,7 +155,7 @@ export const longHistoryRows = (shape: LongHistoryShape) => {
     const at = T0 + ordinal * RUN_SPAN;
     const queuedAt = queued ? previous!.startedAt + 1_000 : at;
     const startedAt = at + 100;
-    const endedAt = working ? null : at + RUN_SPAN / 2;
+    const endedAt = working || ordinal === shape.neverEnded ? null : at + RUN_SPAN / 2;
     const end = working
       ? null
       : ordinal % 47 === 0

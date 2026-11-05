@@ -26,6 +26,8 @@ const agent = {
 } as const;
 /** A conversation whose every message and answer is long: its window is cut to its budget. */
 const heavy = ConversationId.make("heavy");
+/** A conversation one of whose old runs never heard its end. */
+const stuck = ConversationId.make("stuck");
 
 /** A frame as the wire writes it, its sequence space's random origin named by a constant. */
 const fingerprint = (frame: unknown) => {
@@ -54,6 +56,10 @@ const longWorld = Effect.gen(function* () {
       seed: 3,
     }),
   );
+  yield* w.tell({ _tag: "AssignAgent", agent }, undefined, stuck);
+  yield* w.within(
+    seedLongHistory({ conversation: stuck, runs: 14, itemsPerRun: 5, neverEnded: 4, seed: 4 }),
+  );
   for (let index = 1; index <= 4; index++) {
     const side = ConversationId.make(`side-${index}`);
     yield* w.tell({ _tag: "AssignAgent", agent }, undefined, side);
@@ -81,6 +87,13 @@ const framesOf = (options: EngineWireOptions) =>
     for (const groups of [undefined, 1, 3, 20]) {
       for (const frame of yield* opening(groups === undefined ? {} : { groups }))
         keep(`open ${mate} groups=${groups ?? "default"}`, frame);
+    }
+    for (const groups of [undefined, 1, 2]) {
+      for (const frame of yield* opening({
+        conversationId: stuck,
+        ...(groups === undefined ? {} : { groups }),
+      }))
+        keep(`open ${stuck} groups=${groups ?? "default"}`, frame);
     }
     const heavyOpening = yield* opening({ conversationId: heavy });
     for (const frame of heavyOpening) keep(`open ${heavy}`, frame);
@@ -168,6 +181,12 @@ const GOLDEN: ReadonlyArray<string> = [
   "open mate groups=3 46:2e3f7932b05d71c7",
   "open mate groups=20 130347:7beecdc4f81934b7",
   "open mate groups=20 46:2e3f7932b05d71c7",
+  "open stuck groups=default 28247:107e9eabd789a548",
+  "open stuck groups=default 46:af495cf9c0ba2e56",
+  "open stuck groups=1 22421:b332dcf6d6576d3c",
+  "open stuck groups=1 46:af495cf9c0ba2e56",
+  "open stuck groups=2 24413:cef68205979195aa",
+  "open stuck groups=2 46:af495cf9c0ba2e56",
   "open heavy 259794:147a6c5bce5a6362",
   "open heavy 46:4fa23367b5f0b0c9",
   "resume 122451:e9dacb7a75fe9d5b",
@@ -192,7 +211,7 @@ const GOLDEN: ReadonlyArray<string> = [
   "run 12 before=12055 16821:3a5f5be86dd5ca5b",
   "run 12 before=12025 22686:350b049d65bdb07e",
   "run 12 from start 25968:3dd31197fa00dc1d",
-  "rows 4767:e0aa096f69a68a0a",
+  "rows 5597:8bb3c20f66c97645",
 ];
 const GOLDEN_TIGHT: ReadonlyArray<string> = [
   "open mate groups=default 10496:c765f9297e04dffe",
@@ -203,6 +222,12 @@ const GOLDEN_TIGHT: ReadonlyArray<string> = [
   "open mate groups=3 46:2e3f7932b05d71c7",
   "open mate groups=20 10496:c765f9297e04dffe",
   "open mate groups=20 46:2e3f7932b05d71c7",
+  "open stuck groups=default 15734:017c1959a598bb27",
+  "open stuck groups=default 46:af495cf9c0ba2e56",
+  "open stuck groups=1 15734:017c1959a598bb27",
+  "open stuck groups=1 46:af495cf9c0ba2e56",
+  "open stuck groups=2 15734:017c1959a598bb27",
+  "open stuck groups=2 46:af495cf9c0ba2e56",
   "open heavy 19993:5f98ff816acdc748",
   "open heavy 46:4fa23367b5f0b0c9",
   "resume 30400:888694e5701cfc2f",
@@ -229,5 +254,5 @@ const GOLDEN_TIGHT: ReadonlyArray<string> = [
   "run 12 before=12055 16821:3a5f5be86dd5ca5b",
   "run 12 before=12025 22686:350b049d65bdb07e",
   "run 12 from start 25968:3dd31197fa00dc1d",
-  "rows 4767:e0aa096f69a68a0a",
+  "rows 5597:8bb3c20f66c97645",
 ];
