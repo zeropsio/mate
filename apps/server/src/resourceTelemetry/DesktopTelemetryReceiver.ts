@@ -10,10 +10,12 @@ import {
   type ResourceTelemetrySourceStatus,
 } from "@t3tools/contracts";
 import { resolveServerBackgroundActivitySettings } from "@t3tools/shared/backgroundActivitySettings";
+import * as Clock from "effect/Clock";
 import * as Context from "effect/Context";
 import * as DateTime from "effect/DateTime";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
+import * as FiberHandle from "effect/FiberHandle";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -33,7 +35,6 @@ const MIN_SNAPSHOT_STALE_AFTER_MS = 90_000;
 const STALE_GRACE_MS = 30_000;
 const DEFAULT_HOST_POWER_ACTIVE_INTERVAL_MS = 30_000;
 const DEFAULT_HOST_POWER_IDLE_INTERVAL_MS = 120_000;
-const STALE_CHECK_INTERVAL = Duration.seconds(30);
 
 export class DesktopTelemetryDescriptorUnavailable extends Schema.TaggedError<DesktopTelemetryDescriptorUnavailable>()(
   "DesktopTelemetryDescriptorUnavailable",
@@ -350,6 +351,92 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
   const updateSampleHealth = (sampledAt: DateTime.Utc) =>
     recordDesktopTelemetrySampleHealth(health, healthChanges, sampledAt);
 
+  /**
+   * Marks the latest sample stale once it is older than `snapshotStaleAfterMs`, or degrades a
+   * stream that made contact but sent no sample within `INITIAL_SAMPLE_DEADLINE_MS`.
+   */
+  const checkStale = (fd: number) =>
+    snapshotMutex
+      .withPermits(1)(
+        Effect.gen(function* () {
+          const now = yield* DateTime.now;
+          const nowMs = DateTime.toEpochMillis(now);
+          const staleAfterMs = yield* Ref.get(snapshotStaleAfterMs);
+          const staleSnapshot = yield* Ref.modify(latest, (current) => {
+            if (
+              Option.isNone(current) ||
+              current.value.power.stale ||
+              nowMs - current.value.sampledAtUnixMs < staleAfterMs
+            ) {
+              return [Option.none<DesktopHostTelemetrySnapshot>(), current] as const;
+            }
+            const stale: DesktopHostTelemetrySnapshot = {
+              ...current.value,
+              power: { ...current.value.power, stale: true },
+            };
+            return [Option.some(stale), Option.some(stale)] as const;
+          });
+          if (Option.isNone(staleSnapshot)) {
+            const lastContact = yield* Ref.get(lastContactAtMs);
+            if (!isDesktopTelemetryContactStale(lastContact, nowMs)) return;
+            const staleMessage = new DesktopTelemetryStale({
+              fd,
+              staleAfterMs: INITIAL_SAMPLE_DEADLINE_MS,
+            }).message;
+            const changed = yield* Ref.modify(health, (current) => {
+              if (
+                current.status === "stopped" ||
+                Option.isSome(current.lastSampleAt) ||
+                (current.status === "degraded" && Option.contains(current.lastError, staleMessage))
+              ) {
+                return [Option.none<DesktopTelemetryReceiverHealth>(), current] as const;
+              }
+              const next: DesktopTelemetryReceiverHealth = {
+                ...current,
+                status: "degraded",
+                lastError: Option.some(staleMessage),
+              };
+              return [Option.some(next), next] as const;
+            });
+            if (Option.isSome(changed)) {
+              yield* PubSub.publish(healthChanges, changed.value);
+            }
+            return;
+          }
+          yield* updateHealth((currentHealth) => ({
+            ...currentHealth,
+            status: currentHealth.status === "stopped" ? "stopped" : "degraded",
+            lastError:
+              currentHealth.status === "stopped"
+                ? currentHealth.lastError
+                : Option.some(new DesktopTelemetryStale({ fd, staleAfterMs }).message),
+          }));
+          yield* PubSub.publish(changes, staleSnapshot.value);
+        }),
+      )
+      .pipe(Effect.uninterruptible);
+  /** When `checkStale` next has something to find: the latest sample's or the first one's due. */
+  const nextDeadline = Effect.gen(function* () {
+    const current = yield* Ref.get(latest);
+    if (Option.isSome(current)) {
+      if (current.value.power.stale) return Option.none<number>();
+      return Option.some(current.value.sampledAtUnixMs + (yield* Ref.get(snapshotStaleAfterMs)));
+    }
+    return Option.map(yield* Ref.get(lastContactAtMs), (at) => at + INITIAL_SAMPLE_DEADLINE_MS);
+  });
+  const deadline = yield* FiberHandle.make<void>();
+  /** Arms the one stale check at its instant, replacing the one armed before; re-armed on change. */
+  const armDeadline = Effect.gen(function* () {
+    const fd = config.desktopTelemetryFd;
+    const due = yield* nextDeadline;
+    if (fd === undefined || Option.isNone(due)) return yield* FiberHandle.clear(deadline);
+    const nowMs = yield* Clock.currentTimeMillis;
+    yield* FiberHandle.run(
+      deadline,
+      Effect.sleep(Math.max(0, due.value - nowMs)).pipe(Effect.andThen(checkStale(fd))),
+    );
+  });
+
   const sendControlMessage = (message: DesktopTelemetryControlMessage) =>
     controlMutex.withPermits(1)(
       Effect.gen(function* () {
@@ -409,6 +496,7 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
           resolveDesktopTelemetrySnapshotStaleAfterMs(activeIntervalMs, idleIntervalMs),
         ),
       ),
+      Effect.andThen(armDeadline),
     );
   };
   if (config.desktopTelemetryControlFd !== undefined) {
@@ -499,18 +587,21 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
                 lastError: Option.none(),
               })),
             ),
+            Effect.andThen(armDeadline),
           );
         }
 
         const sampledAt = DateTime.makeUnsafe(message.sampledAtUnixMs);
-        return snapshotMutex.withPermits(1)(
-          recordContact.pipe(
-            Effect.andThen(Ref.set(latest, Option.some(message))),
-            Effect.andThen(updateSampleHealth(sampledAt)),
-            Effect.andThen(PubSub.publish(changes, message)),
-            Effect.asVoid,
-          ),
-        );
+        return snapshotMutex
+          .withPermits(1)(
+            recordContact.pipe(
+              Effect.andThen(Ref.set(latest, Option.some(message))),
+              Effect.andThen(updateSampleHealth(sampledAt)),
+              Effect.andThen(PubSub.publish(changes, message)),
+              Effect.asVoid,
+            ),
+          )
+          .pipe(Effect.andThen(armDeadline));
       }),
       Effect.andThen(
         updateHealth((current): DesktopTelemetryReceiverHealth => ({
@@ -529,70 +620,7 @@ export const make = Effect.fn("resourceTelemetry.desktopTelemetryReceiver.make")
       Effect.forkScoped,
     );
 
-    yield* Effect.forever(
-      Effect.sleep(STALE_CHECK_INTERVAL).pipe(
-        Effect.andThen(
-          snapshotMutex.withPermits(1)(
-            Effect.gen(function* () {
-              const now = yield* DateTime.now;
-              const nowMs = DateTime.toEpochMillis(now);
-              const staleAfterMs = yield* Ref.get(snapshotStaleAfterMs);
-              const staleSnapshot = yield* Ref.modify(latest, (current) => {
-                if (
-                  Option.isNone(current) ||
-                  current.value.power.stale ||
-                  nowMs - current.value.sampledAtUnixMs < staleAfterMs
-                ) {
-                  return [Option.none<DesktopHostTelemetrySnapshot>(), current] as const;
-                }
-                const stale: DesktopHostTelemetrySnapshot = {
-                  ...current.value,
-                  power: { ...current.value.power, stale: true },
-                };
-                return [Option.some(stale), Option.some(stale)] as const;
-              });
-              if (Option.isNone(staleSnapshot)) {
-                const lastContact = yield* Ref.get(lastContactAtMs);
-                if (!isDesktopTelemetryContactStale(lastContact, nowMs)) return;
-                const staleMessage = new DesktopTelemetryStale({
-                  fd,
-                  staleAfterMs: INITIAL_SAMPLE_DEADLINE_MS,
-                }).message;
-                const changed = yield* Ref.modify(health, (current) => {
-                  if (
-                    current.status === "stopped" ||
-                    Option.isSome(current.lastSampleAt) ||
-                    (current.status === "degraded" &&
-                      Option.contains(current.lastError, staleMessage))
-                  ) {
-                    return [Option.none<DesktopTelemetryReceiverHealth>(), current] as const;
-                  }
-                  const next: DesktopTelemetryReceiverHealth = {
-                    ...current,
-                    status: "degraded",
-                    lastError: Option.some(staleMessage),
-                  };
-                  return [Option.some(next), next] as const;
-                });
-                if (Option.isSome(changed)) {
-                  yield* PubSub.publish(healthChanges, changed.value);
-                }
-                return;
-              }
-              yield* updateHealth((currentHealth) => ({
-                ...currentHealth,
-                status: currentHealth.status === "stopped" ? "stopped" : "degraded",
-                lastError:
-                  currentHealth.status === "stopped"
-                    ? currentHealth.lastError
-                    : Option.some(new DesktopTelemetryStale({ fd, staleAfterMs }).message),
-              }));
-              yield* PubSub.publish(changes, staleSnapshot.value);
-            }),
-          ),
-        ),
-      ),
-    ).pipe(Effect.forkScoped);
+    yield* armDeadline;
   }
 
   return DesktopTelemetryReceiver.of({
