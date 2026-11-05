@@ -219,4 +219,27 @@ describe("a ticket minted ahead of its attempt", () => {
       expect(asked).toEqual(["P1"]);
     }),
   );
+
+  it.effect(
+    "an exchange tried again within a ticket's life asks HQ for no second ticket ahead",
+    () =>
+      Effect.gen(function* () {
+        const asked: Array<string> = [];
+        const shared = hq(asked);
+        let clock = 0;
+        const issuer = mateTicketIssuer(
+          () => shared,
+          () => clock,
+        );
+        issuer.prime({ orgId: "O1", projectId: "P1" });
+        yield* issuer.issue({ orgId: "O1", projectId: "P1" });
+        clock = 30_000;
+        issuer.prime({ orgId: "O1", projectId: "P1" });
+        expect(asked).toEqual(["hq P1 T1"]);
+
+        clock = 60_000;
+        issuer.prime({ orgId: "O1", projectId: "P1" });
+        expect(asked).toEqual(["hq P1 T1", "hq P1 T2"]);
+      }),
+  );
 });

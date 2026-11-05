@@ -2417,6 +2417,90 @@ describe("the route's project read ahead of the listing", () => {
       }),
   );
 
+  it.effect(
+    "the owner refusing the route's project after it was read ahead withholds what that read wrote",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        let refused = false;
+        const fixture = fixtureWire(
+          (request) =>
+            refused && request.rest === true
+              ? Effect.succeed({ status: 403, body: null })
+              : restAnswers(answers(() => []))(request),
+          { opening: Effect.never },
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        const project = link.demandDetail({
+          family: "project",
+          listing: "route-project",
+          ownerId: PROBE_PROJECT_ID,
+        });
+        const services = link.demandDetail({
+          family: "service",
+          listing: "route-services",
+          ownerId: PROBE_PROJECT_ID,
+        });
+        yield* settle;
+        project();
+        services();
+        refused = true;
+
+        readAhead(link);
+        yield* settle;
+
+        const read = readsOfState(store.state());
+        expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })).toBeNull();
+        expect(factOf(store.state(), "service", "s1")).toBeUndefined();
+        expect(
+          projectServices.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID }).services,
+        ).toBeUndefined();
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "what is read ahead after the organization's listing read the project whole adds nothing to it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const late = yield* Deferred.make<void>();
+        const listing = answers(
+          () => [],
+          () => [ROUTE_PROJECT_ROW],
+        );
+        const fixture = fixtureWire((request) =>
+          request.rest === true
+            ? Effect.as(Deferred.await(late), {
+                status: 200,
+                body:
+                  request.path === ROUTE_SERVICES_PATH
+                    ? { list: [ZCP, { ...ZCP, id: "s2", name: "gone" }] }
+                    : ROUTE_PROJECT_ROW,
+              } as unknown)
+            : request.path === "/service-stack/search" &&
+                request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [{ ...ZCP, projectId: PROBE_PROJECT_ID, clientId: ORG }],
+                })
+              : listing(request),
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        readAhead(link);
+        yield* settle;
+
+        yield* Deferred.succeed(late, undefined);
+        yield* settle;
+
+        expect(
+          projectServices
+            .derive(readsOfState(store.state()), { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id }) => id),
+        ).toEqual(["s1"]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
   it.effect("a route project the platform refuses says nothing ahead of the listing", () =>
     Effect.gen(function* () {
       const store = makeAccountStore(AtomRegistry.make());

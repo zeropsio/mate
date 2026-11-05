@@ -41,7 +41,7 @@ import {
   holdRoutePreview,
   holdServiceRead,
   projectProcessesAtom,
-  readMateFlag,
+  readMateFlagOnceLive,
 } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
@@ -405,7 +405,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** `ZCP_MATE_ENABLED` for a target's service, read by key with the organization's Mate variables. */
   const readTargetMateFlag = async (key: TargetKey): Promise<MateFlag> => {
     const serviceId = key.split(":")[1];
-    return serviceId === undefined ? "unknown" : readMateFlag(atomRegistry, serviceId);
+    return serviceId === undefined ? "unknown" : readMateFlagOnceLive(atomRegistry, serviceId);
   };
 
   /** Whose organization lists the target's project: the listing's, else the one shown. */
@@ -774,8 +774,15 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     const word = ports.closeOff.read();
     const pending = ports.closeOffPending.read();
     const holds = new Map<string, CloseOffHold>();
+    // A Mate found ahead of the listing comes before HQ may have spoken at all: it waits for HQ's
+    // first word on its close-off — or for the listing, which reads it as every other Mate.
+    const ahead = listings === listed ? null : (preview?.projectId ?? null);
     for (const row of rows) {
       if (row.service === undefined) continue;
+      if (row.project.id === ahead && word === null) {
+        holds.set(row.project.id, "awaiting-hq");
+        continue;
+      }
       const project = projectRefOf(row.project.id);
       if (project === undefined) continue;
       const closedOff = closedOffOf(word, project.organization.organizationId, row.project.id);

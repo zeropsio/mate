@@ -1018,6 +1018,9 @@ function routeTo(environmentId: EnvironmentId, value: Inventory = inventory("ACT
   return { read: () => JSON.parse(container.textContent) as Routed };
 }
 
+const ORG_1 = "org-1";
+const OWN_ROW = { clientId: ORG_1 };
+
 describe("routeTarget", () => {
   const NONE_INDEXED = { serving: new Map(), reported: new Map() };
   const target = (named: Parameters<typeof namedProject>[0]) =>
@@ -1035,7 +1038,13 @@ describe("routeTarget", () => {
   it.each([
     {
       name: "its read under way",
-      named: { hqProject: "project-1", listingAnswered: false, listed: false, rows: null },
+      named: {
+        hqProject: "project-1",
+        listingAnswered: false,
+        orgId: ORG_1,
+        row: null,
+        rows: null,
+      },
     },
   ])(
     "a conversation HQ names before the Zerops listing does waits for the listing instead of saying it isn't in your projects: $name",
@@ -1050,15 +1059,33 @@ describe("routeTarget", () => {
   it.each([
     {
       name: "the listing holds the project, its services not read yet",
-      named: { hqProject: "project-1", listingAnswered: true, listed: true, rows: null },
+      named: {
+        hqProject: "project-1",
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: null,
+      },
     },
     {
       name: "its services read with a Mate the account has not taken in yet",
-      named: { hqProject: "project-1", listingAnswered: true, listed: true, rows: [MATE_ROW] },
+      named: {
+        hqProject: "project-1",
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: [MATE_ROW],
+      },
     },
     {
       name: "its services read ahead of the listing, with a Mate",
-      named: { hqProject: "project-1", listingAnswered: false, listed: true, rows: [MATE_ROW] },
+      named: {
+        hqProject: "project-1",
+        listingAnswered: false,
+        orgId: ORG_1,
+        row: OWN_ROW,
+        rows: [MATE_ROW],
+      },
     },
   ])(
     "a conversation whose project HQ names never says it isn't in your projects before that project's Mate is read: $name",
@@ -1069,11 +1096,21 @@ describe("routeTarget", () => {
   it.each([
     {
       name: "HQ naming it",
-      named: { hqProject: "project-1", listingAnswered: true, listed: false, rows: null },
+      named: { hqProject: "project-1", listingAnswered: true, orgId: ORG_1, row: null, rows: null },
+    },
+    {
+      name: "the project HQ names another organization's",
+      named: {
+        hqProject: "project-1",
+        orgId: ORG_1,
+        listingAnswered: true,
+        row: { clientId: "org-2" },
+        rows: null,
+      },
     },
     {
       name: "HQ naming nothing",
-      named: { hqProject: null, listingAnswered: true, listed: false, rows: null },
+      named: { hqProject: null, listingAnswered: true, orgId: ORG_1, row: null, rows: null },
     },
   ])(
     "once the listing read after HQ named it still lacks the project, the conversation says it isn't in your Zerops projects: $name",
@@ -1098,7 +1135,13 @@ it.each([
         machines: new Map(),
         index: { serving: new Map(), reported: new Map() },
         environmentId: ENV_A,
-        named: namedProject({ hqProject: "project-1", listingAnswered, listed: true, rows: [{}] }),
+        named: namedProject({
+          hqProject: "project-1",
+          listingAnswered,
+          orgId: ORG_1,
+          row: OWN_ROW,
+          rows: [{}],
+        }),
         inventoryKnown: true,
         organization: "chosen",
         content: "empty",

@@ -80,16 +80,20 @@ export type NamedProject = "none" | "reading" | "without-mate" | "with-mate";
  */
 export function namedProject(input: {
   readonly hqProject: string | null;
+  /** The organization the account shows: a project another one owns is not listed here. */
+  readonly orgId: string | null;
   readonly listingAnswered: boolean;
-  readonly listed: boolean;
+  /** The project's own row as the account holds it, from the listing or a read ahead of it. */
+  readonly row: Pick<ProjectValue, "clientId"> | null;
   readonly rows: ReadonlyArray<Pick<ZeropsCandidate, "service">> | null;
 }): NamedProject {
   if (input.hqProject === null) return "none";
   if (input.rows !== null)
     return input.rows.some((row) => row.service !== undefined) ? "with-mate" : "without-mate";
+  const listed = input.row !== null && input.row.clientId === input.orgId;
   // HQ naming a project the listing lacks has it read again (`zerops/account/hqView.ts`): until
   // that read answers, the listing's silence is not absence.
-  return input.listingAnswered && !input.listed ? "without-mate" : "reading";
+  return input.listingAnswered && !listed ? "without-mate" : "reading";
 }
 
 /**
@@ -203,8 +207,9 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
     environmentId === null ? NO_PROJECT : hqProjectAtom(environmentId),
   );
   const hqNamed = hqNamedTarget(machines, hqProject);
-  const listingAnswered = useProjection(rosterAnswered, useAccountOrgId(), ANSWERED);
-  const listed = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject)) !== null;
+  const orgId = useAccountOrgId();
+  const listingAnswered = useProjection(rosterAnswered, orgId, ANSWERED);
+  const row = useAtomValue(hqProject === null ? NO_ROW : listedProjectAtom(hqProject));
   const preview = useAtomValue(hqProject === null ? NO_PREVIEW : routePreviewAtom(hqProject));
   const target =
     environmentId === null
@@ -214,7 +219,13 @@ export function useRouteGateInputs(environmentId: EnvironmentId | null): RouteGa
           index,
           environmentId,
           hqNamed,
-          named: namedProject({ hqProject, listingAnswered, listed, rows: preview?.rows ?? null }),
+          named: namedProject({
+            hqProject,
+            orgId,
+            listingAnswered,
+            row,
+            rows: preview?.rows ?? null,
+          }),
           inventoryKnown: inventory !== null && !inventory.isLoading && inventory.error === null,
           organization: ORGANIZATION[organizationStatus],
           content,

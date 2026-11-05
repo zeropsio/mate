@@ -20,6 +20,7 @@ import { Atom, type AtomRegistry } from "effect/reactivity";
 
 import type { ZeropsOrganization } from "../zerops/api.ts";
 import type { DetailDemand } from "./demand.ts";
+import type { StreamState } from "./streamMachine.ts";
 import { linkKeys } from "./model.ts";
 import { mateVariablesScope } from "./families/mateVariables.ts";
 import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
@@ -441,33 +442,44 @@ export function holdRoutePreview(
   registry: AtomRegistry.AtomRegistry,
   projectId: string,
 ): () => void {
-  let release: (() => void) | null = null;
+  let held: {
+    readonly demandDetail: AccountReads["demandDetail"];
+    readonly release: () => void;
+  } | null = null;
   const hold = (account: AccountReads | null) => {
-    release?.();
-    if (account === null) {
-      release = null;
-      return;
-    }
-    const project = account.demandDetail({
-      family: "project",
-      listing: ROUTE_PROJECT,
-      ownerId: projectId,
-    });
-    const services = account.demandDetail({
-      family: "service",
-      listing: ROUTE_SERVICES,
-      ownerId: projectId,
-    });
-    release = () => {
-      project();
-      services();
-    };
+    // The account's reads are published again as they change; the same account's demand is the
+    // same hold, so a read under way goes on through it.
+    if (account?.demandDetail === held?.demandDetail) return;
+    const before = held;
+    held =
+      account === null
+        ? null
+        : {
+            demandDetail: account.demandDetail,
+            release: (() => {
+              const project = account.demandDetail({
+                family: "project",
+                listing: ROUTE_PROJECT,
+                ownerId: projectId,
+              });
+              const services = account.demandDetail({
+                family: "service",
+                listing: ROUTE_SERVICES,
+                ownerId: projectId,
+              });
+              return () => {
+                project();
+                services();
+              };
+            })(),
+          };
+    before?.release();
   };
   const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
   return () => {
     unsubscribe();
-    release?.();
-    release = null;
+    held?.release();
+    held = null;
   };
 }
 
@@ -553,6 +565,41 @@ export function readMateFlag(
     });
     if (settled) unsubscribe();
   });
+}
+
+/** The organization's Zerops link as the mounted account holds it; null without one. */
+const zeropsLinkPhase = Atom.make((get): StreamState["phase"] | null => {
+  const account = get(accountReadsAtom);
+  if (account === null || account.orgId === null) return null;
+  return get(account.data.stream(linkKeys.zerops(account.orgId))).phase;
+}).pipe(Atom.withLabel("data:zerops-link-phase"));
+
+/**
+ * `readMateFlag` for a container machine, which reads its flag once: a flag that could not be
+ * said while the organization's link was not live yet — still logging in, or catching up — is
+ * read again once the link is live, so a Mate found before the listing (`holdRoutePreview`) is
+ * not left "unknown" for its life. A link refused, or the account gone, leaves it unknown.
+ */
+export async function readMateFlagOnceLive(
+  registry: AtomRegistry.AtomRegistry,
+  serviceId: string,
+): Promise<boolean | "unknown"> {
+  const before = registry.get(zeropsLinkPhase);
+  const flag = await readMateFlag(registry, serviceId);
+  if (flag !== "unknown" || before === null || before === "live") return flag;
+  const live = await new Promise<boolean>((resolve) => {
+    let unsubscribe: (() => void) | null = null;
+    let settled = false;
+    const heard = (phase: StreamState["phase"] | null) => {
+      if (settled || (phase !== null && phase !== "live" && phase !== "refused")) return;
+      settled = true;
+      unsubscribe?.();
+      resolve(phase === "live");
+    };
+    unsubscribe = registry.subscribe(zeropsLinkPhase, heard, { immediate: true });
+    if (settled) unsubscribe();
+  });
+  return live ? readMateFlag(registry, serviceId) : flag;
 }
 
 /** A Mate’s setup evidence, already delivered by the organization’s navigation. No detail demand. */
