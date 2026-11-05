@@ -111,6 +111,7 @@ import { type DraftId, useComposerDraftStore } from "~/composerDraftStore";
 import { readLocalApi } from "~/localApi";
 import { getSourceControlPresentation } from "~/sourceControlPresentation";
 import { openPullRequestLink } from "~/lib/openPullRequestLink";
+import { subscribeSecond } from "~/lib/secondTicker";
 
 interface GitActionsControlProps {
   presentation?: "toolbar" | "menu";
@@ -1029,6 +1030,8 @@ export default function GitActionsControl({
   const [pendingDefaultBranchAction, setPendingDefaultBranchAction] =
     useState<PendingDefaultBranchAction | null>(null);
   const activeGitActionProgressRef = useRef<ActiveGitActionProgress | null>(null);
+  // Whether a git action's progress toast stands: its elapsed time reads the shared second only then.
+  const [gitActionProgressShown, setGitActionProgressShown] = useState(false);
   const sourceControlScope = useMemo(
     () => ({ environmentId: activeEnvironmentId, cwd: gitCwd }),
     [activeEnvironmentId, gitCwd],
@@ -1192,17 +1195,9 @@ export default function GitActionsControl({
     : null;
 
   useEffect(() => {
-    const interval = window.setInterval(() => {
-      if (!activeGitActionProgressRef.current) {
-        return;
-      }
-      updateActiveProgressToast();
-    }, 1000);
-
-    return () => {
-      window.clearInterval(interval);
-    };
-  }, [updateActiveProgressToast]);
+    if (!gitActionProgressShown) return;
+    return subscribeSecond(updateActiveProgressToast);
+  }, [gitActionProgressShown, updateActiveProgressToast]);
 
   useEffect(() => {
     if (gitCwd === null) {
@@ -1347,6 +1342,7 @@ export default function GitActionsControl({
         lastOutputLine: null,
         currentPhaseLabel: progressStages[0] ?? "Running git action...",
       };
+      setGitActionProgressShown(true);
 
       if (progressToastId) {
         toastManager.update(progressToastId, {
@@ -1424,6 +1420,7 @@ export default function GitActionsControl({
       });
 
       activeGitActionProgressRef.current = null;
+      setGitActionProgressShown(false);
       if (result._tag === "Failure") {
         if (isAtomCommandInterrupted(result)) {
           toastManager.close(resolvedProgressToastId);
