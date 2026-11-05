@@ -6,7 +6,12 @@
  * on a stalled origin with a blank screen. The worker answers a reload with the page it kept and
  * asks the origin for a newer one beside it (stale-while-revalidate): the next load runs what the
  * origin served this time. The bundle's own files (`/assets/*`, named by their content) come from a
- * bounded cache first, so a kept page's chunks still load after a deploy removed them.
+ * cache first, so a kept page's chunks still load after a deploy removed them.
+ *
+ * **A page is kept only with its files.** The build lists in each page what it boots and warms
+ * from (`appShellBuild.logic.ts`); the worker fetches every listed file into the asset cache and
+ * only then keeps the page. A deploy that lands between a page's fetch and its files leaves the
+ * previous page kept, so a kept page always boots, however many deploys later.
  *
  * Every decision is a pure function of the request, a stored time or a list of entries; the worker
  * (`appShellWorker.ts`) only carries them out with the Cache API. The page reads the same names to
@@ -23,7 +28,7 @@ import { isDevProxiedPath } from "@t3tools/shared/devProxy";
 export const APP_SHELL_CACHE_PREFIX = "mate-app-";
 /** One entry: the page, kept under {@link SHELL_CACHE_KEY_PATH}. */
 export const SHELL_CACHE = `${APP_SHELL_CACHE_PREFIX}shell-v1`;
-/** The bundle's content-named files, bounded by {@link assetsToEvict}. */
+/** The bundle's content-named files: the kept build's and the one before it ({@link assetsToEvict}). */
 export const ASSET_CACHE = `${APP_SHELL_CACHE_PREFIX}assets-v1`;
 export const KNOWN_CACHES: ReadonlySet<string> = new Set([SHELL_CACHE, ASSET_CACHE]);
 
@@ -34,21 +39,24 @@ export const SHELL_CACHE_KEY_PATH = "/";
 export const STORED_AT_HEADER = "x-mate-app-shell-stored-at";
 
 /**
+ * On a kept page: how many files it listed, all kept before it was. A page kept without it (an
+ * earlier worker's) is not answered at once.
+ */
+export const LISTED_FILES_HEADER = "x-mate-app-shell-files";
+
+/** The element of the page that lists its files (`embedShellFiles`). */
+export const SHELL_FILES_ELEMENT_ID = "app-shell-files";
+
+/** How many listed files the worker fetches at once while it keeps a page. */
+export const PRECACHE_CONCURRENCY = 6;
+
+/**
  * A kept page this old is not answered at once: the origin is asked first (falling back to the
  * kept page only when it cannot answer). A week means someone who has not opened Mate for a week
  * waits for one round trip instead of running a week-old build for one load; every load that does
  * reach the origin refreshes the time, so daily use never meets the bound.
  */
 export const SHELL_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
-
-/**
- * How many content-named files the asset cache holds. A build ships ~630 files under /assets
- * (`ls dist/assets | wc -l`, 2026-11), of which a browser fetches only those its surfaces load;
- * this keeps that set for the current build and a few deploys before it, which is all an old page
- * or an old tab can still ask for. Eviction runs when a new page arrives and on activation, never
- * on a request's path.
- */
-export const ASSET_CACHE_MAX_ENTRIES = 2000;
 
 /** Paths the origin serves itself or that belong to a backend, never the app's page. */
 const NEVER_THE_PAGE_PREFIXES = ["/mate", "/assets", "/fonts"] as const;
@@ -112,11 +120,17 @@ export function routeRequest(request: AppShellRequest): AppShellRoute {
 export type ShellPlan = "cached" | "network";
 
 /**
- * A kept page is answered at once while it is younger than {@link SHELL_MAX_AGE_MS}. None kept, one
- * the page forgot (stored at 0, `forgetCachedShell`), one past the bound, or one stored in the
- * future (the clock went back) asks the origin first.
+ * A kept page is answered at once while it is younger than {@link SHELL_MAX_AGE_MS} and was kept
+ * with its files. None kept, one kept without its files (an earlier worker's), one the page forgot
+ * (stored at 0, `forgetCachedShell`), one past the bound, or one stored in the future (the clock
+ * went back) asks the origin first.
  */
-export function planShell(storedAt: number | undefined, now: number): ShellPlan {
+export function planShell(
+  kept: { readonly storedAt: number | undefined; readonly listed: boolean } | undefined,
+  now: number,
+): ShellPlan {
+  if (kept === undefined || !kept.listed) return "network";
+  const { storedAt } = kept;
   if (storedAt === undefined || !Number.isFinite(storedAt) || storedAt <= 0) return "network";
   const age = now - storedAt;
   return age >= 0 && age < SHELL_MAX_AGE_MS ? "cached" : "network";
@@ -169,28 +183,46 @@ export function stampResponse(response: Response, storedAt: number): Response {
   });
 }
 
-export interface AssetEntry {
-  readonly url: string;
-  /** `undefined` for an entry with no stamp: it goes first. */
-  readonly storedAt: number | undefined;
-}
-
 /**
- * The bundle files to drop so the cache holds at most `max`: the oldest stored first, so older
- * deploys' files go before the current build's. A file the current build still uses and that went
- * comes back from the origin (or the HTTP cache, immutable for a year) on its next request.
+ * The asset entries to drop when a new page is kept: everything but the files the new page and the
+ * page it replaces list. The replaced page's files stay for tabs still running it; anything else
+ * (an older build's, or a file fetched on use) comes back from the origin or the HTTP cache on its
+ * next request while its build is live.
  */
-export function assetsToEvict(
-  entries: readonly AssetEntry[],
-  max: number = ASSET_CACHE_MAX_ENTRIES,
-): string[] {
-  if (entries.length <= max) return [];
-  const oldestFirst = entries.toSorted(
-    (a, b) => (a.storedAt ?? -1) - (b.storedAt ?? -1) || a.url.localeCompare(b.url),
-  );
-  return oldestFirst.slice(0, entries.length - max).map((entry) => entry.url);
+export function assetsToEvict(cachedUrls: readonly string[], keep: ReadonlySet<string>): string[] {
+  return cachedUrls.filter((url) => !keep.has(url));
 }
 
+/** The page with its file list embedded, before `</head>` (the build's last step). */
+export function embedShellFiles(html: string, files: readonly string[]): string {
+  const json = JSON.stringify(files).replaceAll("<", "\\u003c");
+  const element = `<script type="application/json" id="${SHELL_FILES_ELEMENT_ID}">${json}</script>`;
+  const at = html.indexOf("</head>");
+  if (at === -1) throw new Error("The page has no </head> to list its files before");
+  return `${html.slice(0, at)}${element}\n  ${html.slice(at)}`;
+}
+
+const SHELL_FILES_PATTERN = new RegExp(
+  `<script type="application/json" id="${SHELL_FILES_ELEMENT_ID}">([^<]*)</script>`,
+  "u",
+);
+
+/** The files a page lists, or `undefined` for a page that lists none or an unreadable list. */
+export function readShellFiles(html: string): string[] | undefined {
+  const match = SHELL_FILES_PATTERN.exec(html);
+  if (match === null) return undefined;
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(match[1]!);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(parsed)) return undefined;
+  const files = parsed.filter(
+    (file): file is string => typeof file === "string" && file.startsWith("/assets/"),
+  );
+  return files.length === parsed.length && files.length > 0 ? files : undefined;
+}
 /** Caches of the worker's prefix that no build of it knows: a renamed cache, left behind. */
 export function cachesToDelete(names: readonly string[]): string[] {
   return names.filter((name) => name.startsWith(APP_SHELL_CACHE_PREFIX) && !KNOWN_CACHES.has(name));

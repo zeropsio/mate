@@ -3,9 +3,12 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   assetsToEvict,
   cachesToDelete,
+  embedShellFiles,
   isKeepable,
   planShell,
+  readShellFiles,
   routeRequest,
+  SHELL_FILES_ELEMENT_ID,
   SHELL_MAX_AGE_MS,
   type AppShellRequest,
   type ResponseFacts,
@@ -107,7 +110,13 @@ describe("what the app-shell worker answers", () => {
 describe("when a kept page answers a load at once", () => {
   const now = 100 * DAY;
   it.each([
-    { title: "no kept page asks the origin first", storedAt: undefined, plan: "network" },
+    { title: "no kept page asks the origin first", storedAt: "none", plan: "network" },
+    {
+      title: "a page an earlier worker kept without its files asks the origin first",
+      storedAt: now - 60 * 60 * 1000,
+      listed: false,
+      plan: "network",
+    },
     {
       title: "a page kept an hour ago answers at once",
       storedAt: now - 60 * 60 * 1000,
@@ -130,8 +139,12 @@ describe("when a kept page answers a load at once", () => {
       plan: "network",
     },
     { title: "an unreadable stamp asks the origin first", storedAt: Number.NaN, plan: "network" },
-  ] as const)("$title", ({ storedAt, plan }) => {
-    expect(planShell(storedAt, now)).toBe(plan);
+  ] as const)("$title", (row) => {
+    const kept =
+      row.storedAt === "none"
+        ? undefined
+        : { storedAt: row.storedAt, listed: "listed" in row ? row.listed : true };
+    expect(planShell(kept, now)).toBe(row.plan);
   });
 });
 
@@ -199,24 +212,46 @@ describe("what the worker keeps", () => {
 });
 
 describe("how the asset cache stays bounded", () => {
-  it("keeps everything while it holds no more than its bound", () => {
-    expect(assetsToEvict([{ url: "a", storedAt: 1 }], 1)).toEqual([]);
-  });
-
-  it("drops the oldest stored files first, so older deploys go before the current build", () => {
-    const entries = [
-      { url: "new-1", storedAt: 300 },
-      { url: "old-1", storedAt: 100 },
-      { url: "unstamped", storedAt: undefined },
-      { url: "new-2", storedAt: 300 },
-      { url: "old-2", storedAt: 200 },
-    ];
-    expect(assetsToEvict(entries, 2)).toEqual(["unstamped", "old-1", "old-2"]);
+  it("keeps the files of the new page and of the page it replaced, and drops every other", () => {
+    const keep = new Set(["/assets/entry-3.js", "/assets/entry-2.js"]);
+    expect(
+      assetsToEvict(
+        ["/assets/entry-1.js", "/assets/entry-2.js", "/assets/entry-3.js", "/assets/grammar-1.js"],
+        keep,
+      ),
+    ).toEqual(["/assets/entry-1.js", "/assets/grammar-1.js"]);
   });
 
   it("deletes only caches of its own prefix that no build knows", () => {
     expect(
       cachesToDelete(["mate-app-shell-v1", "mate-app-assets-v1", "mate-app-shell-v0", "other"]),
     ).toEqual(["mate-app-shell-v0"]);
+  });
+});
+
+describe("the files a page lists", () => {
+  const page = "<html><head><title>Mate</title></head><body></body></html>";
+
+  it("reads back exactly the files the build embedded", () => {
+    const files = ["/assets/index-a.js", "/assets/index-b.css"];
+    expect(readShellFiles(embedShellFiles(page, files))).toEqual(files);
+  });
+
+  it.each([
+    { title: "a page with no list lists nothing", html: page },
+    {
+      title: "an unreadable list lists nothing",
+      html: page.replace(
+        "</head>",
+        `<script type="application/json" id="${SHELL_FILES_ELEMENT_ID}">[</script></head>`,
+      ),
+    },
+    {
+      title: "a list naming a file outside the bundle lists nothing",
+      html: embedShellFiles(page, ["/assets/a.js", "/api/session"]),
+    },
+    { title: "an empty list lists nothing", html: embedShellFiles(page, []) },
+  ])("$title", ({ html }) => {
+    expect(readShellFiles(html)).toBeUndefined();
   });
 });
