@@ -143,12 +143,11 @@ export class ZeropsProjectSigners extends Context.Service<
       readonly currentLogin?: CurrentLogin | undefined;
     }) => Effect.Effect<TurnRefusal | undefined>;
     /**
-     * Whether `userId` is an opener of this project, as the deciding access list says — the
+     * Whether `userId` is an opener of this project, as the Mate's access list says — the
      * answer that keeps a connection open (`ZeropsConnections`). What admits a turn no session
      * stands behind: the crew's, the stand-up's (X3). The list holds at most 15 min from the read
-     * or frame that brought it (`ACCESS_LIST_HOLDS`); past that, with none yet, or while HQ says
-     * the organisation's key was refused, `undefined`: nobody is vouched for, and nobody's logins
-     * are taken on a guess.
+     * that brought it (`ACCESS_LIST_HOLDS`); past that, or with none yet, `undefined`: nobody is
+     * vouched for, and nobody's logins are taken on a guess.
      */
     readonly hasProjectAccess: (userId: string) => Effect.Effect<boolean | undefined>;
   }
@@ -168,7 +167,7 @@ export const make = Effect.gen(function* () {
       : Effect.gen(function* () {
           const list = Option.getOrUndefined(yield* accessList.current);
           const now = yield* Clock.currentTimeMillis;
-          if (list === undefined || list.refused || now > list.expiresAtMs) return undefined;
+          if (list === undefined || now > list.expiresAtMs) return undefined;
           return list.members.some(
             (member) => member.userId === userId && member.visibility === "open",
           );

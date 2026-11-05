@@ -468,9 +468,10 @@ export type MateLinkDown = typeof MateLinkDown.Type;
 /*
  * The keys model's link (mate-hq `spec/protocol.md`, "Mate link"): the Mate dials
  * HQ with nothing in the URL and proves itself with its project key in the first frame; HQ sends
- * its state, then the organisation's access with a version and the time of the view it was
- * computed from — advisory: the Mate admits by its own read of Zerops and reports it up
- * (`access_report`), refusing a ticket its own list does not admit (`ticket_refused`). Today's frames of tasks, usage and the update policy ride on it unchanged.
+ * its state. The Mate admits by its own read of Zerops alone and reports it up (`access_report`),
+ * refusing a ticket its own list does not admit (`ticket_refused`); HQ sends it no access list,
+ * and an older HQ's `access` frame is no frame of this union. Today's frames of tasks, usage and
+ * the update policy ride on it unchanged.
  * Today's `MateLinkUp`, `MateLinkDown` and `MateState` above stay for the HQ and clients that
  * still read them.
  */
@@ -496,15 +497,6 @@ export const LinkedMate = Schema.Struct({
 });
 export type LinkedMate = typeof LinkedMate.Type;
 
-/** A member's reach into the Mate's project; `none` removes the member in a delta. */
-export const LinkAccessMember = Schema.Struct({
-  userId: Schema.String,
-  role: Schema.Literals(["NO_ACCESS", "READ_ONLY", "BASIC_USER", "ADMIN", "OWNER"]),
-  visibility: Schema.Literals(["open", "listed", "none"]),
-});
-export type LinkAccessMember = typeof LinkAccessMember.Type;
-
-const AccessVersion = Schema.Number.check(Schema.isInt(), Schema.isGreaterThanOrEqualTo(0));
 const Ticket = Schema.String.check(Schema.isMinLength(1));
 
 export const KeyLinkUp = Schema.Union([
@@ -549,34 +541,11 @@ export type TicketRefusal = Extract<KeyLinkUp, { readonly type: "ticket_refused"
 /** The Mate's own access list as it reports it to HQ (`access_report`). */
 export type AccessReport = Omit<Extract<KeyLinkUp, { readonly type: "access_report" }>, "type">;
 
-/**
- * The organisation's key was refused: the Mate admits nobody until a full frame without it.
- * First in its union, so a frame marked `refused` never decodes as a snapshot.
- */
-export const RefusedAccessFrame = Schema.Struct({
-  type: Schema.Literal("access"),
-  version: AccessVersion,
-  full: Schema.Literal(true),
-  refused: Schema.Literal(true),
-  members: Schema.Tuple([]),
-});
-
-/** Who the project opens for and lists: a full snapshot, or a delta of the entries that changed. */
-export const AccessFrame = Schema.Struct({
-  type: Schema.Literal("access"),
-  version: AccessVersion,
-  viewAt: Schema.String,
-  full: Schema.Boolean,
-  members: Schema.Array(LinkAccessMember),
-});
-
 export const KeyLinkDown = Schema.Union([
   AutoUpdatePolicyDown,
   ...UsageLinkDown.members,
   Schema.Struct({ type: Schema.Literal("ping") }),
   Schema.Struct({ type: Schema.Literal("state"), mate: LinkedMate, ...StateExtras }),
-  RefusedAccessFrame,
-  AccessFrame,
   Schema.Struct({
     type: Schema.Literal("ticket"),
     ticket: Ticket,
@@ -600,8 +569,6 @@ export const KeyLinkDown = Schema.Union([
   ProviderKeysDown,
 ]);
 export type KeyLinkDown = typeof KeyLinkDown.Type;
-/** An access frame as the Mate keeps it: a snapshot, a delta, or the refused one. */
-export type KeyLinkAccess = Extract<KeyLinkDown, { readonly type: "access" }>;
 
 /** A key HQ does not admit: the close reason of `4403`, and the code of the same refusal on a call. */
 export const KeyNotAdmitted = Schema.Literals([

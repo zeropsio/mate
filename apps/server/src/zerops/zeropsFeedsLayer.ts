@@ -73,14 +73,14 @@ import * as ZeropsCrewProposalsModule from "./ZeropsCrewProposals.ts";
 
 /**
  * One access list for the auth boundary, the door, the watch and the link to HQ, with the own-key
- * reader it reads Zerops with: computed by the Mate in a Zerops container, HQ's relay elsewhere.
+ * reader it reads Zerops with: computed by the Mate in a Zerops container, empty elsewhere.
  */
 export const ZeropsMateAccessListLive = Layer.unwrap(
   Effect.gen(function* () {
     const config = yield* ServerConfig;
     const zerops = config.zeropsFixtures === undefined ? config.zerops : undefined;
     return zerops === undefined
-      ? ZeropsMateAccessListModule.relayLayer
+      ? ZeropsMateAccessListModule.emptyLayer
       : ZeropsMateAccessListModule.layer(zerops).pipe(
           Layer.provide(ZeropsAccessReadModule.layer(zerops)),
         );
@@ -107,7 +107,6 @@ export const ZeropsSessionAdmissionLive = Layer.effect(
               Option.match(current, {
                 onNone: () => false,
                 onSome: (list) =>
-                  !list.refused &&
                   list.members.some(
                     (member) =>
                       member.userId === zeropsUserIdOf(subject) && member.visibility === "open",
@@ -388,7 +387,7 @@ const liveLayer = Layer.mergeAll(
 ).pipe(
   // Startup's one read of why running turns were interrupted, over the same own-key reader.
   Layer.provideMerge(ZeropsRestartReadModule.layer),
-  // Reuse the exact layer the auth boundary reads; a second instance would miss HQ's list.
+  // Reuse the exact layer the auth boundary reads; a second instance would be a second list.
   Layer.provideMerge(ZeropsConnectionsLive),
   // The Mate's Git credential file: written by the link, read by the setup's git step.
   Layer.provide(ZeropsGitCredentialFileModule.layer),
