@@ -170,7 +170,7 @@ export function placementOffers(
   return Object.keys(offers).length === 0 ? undefined : offers;
 }
 
-/** A project HQ holds nowhere: whether the person may make its Mate's record. */
-export const unheldOffers = (facts: PermissionFacts, projectId: string): HqOffers => ({
+/** A placeable project, one HQ holds no row for: whether the person may make its Mate's record. */
+export const placeableOffers = (facts: PermissionFacts, projectId: string): HqOffers => ({
   create_mate_record: mateRecordPermission(facts, projectId, { create: true, held: "none" }),
 });

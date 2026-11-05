@@ -15,8 +15,8 @@ import {
   environmentOffers,
   gitEnvironmentOffers,
   organizationOffers,
+  placeableOffers,
   placementOffers,
-  unheldOffers,
   type ApplicationFacts,
 } from "@t3tools/shared/zeropsOffers";
 import type { HqPeople } from "@t3tools/shared/hqMates";
@@ -38,6 +38,7 @@ import {
   type PlacementValue,
 } from "../families/hqNavigation.ts";
 import { hqProtocolScope } from "../families/hqProtocol.ts";
+import { projectsScope } from "../families/project.ts";
 import { hqAppDetailScope } from "../families/hqAppDetail.ts";
 import type { HqGitTargetRecord } from "../adapters/hqGitTargets.ts";
 import { linkKeys } from "../model.ts";
@@ -208,13 +209,15 @@ function structureOf(
     );
   const ungroupedApp: ApplicationFacts = { projectIds: [], placements: [], production: null };
   return {
-    ...(organization === null
+    ...(organization === null ? {} : offered(decided(facts, [], organizationOffers))),
+    // Placeable: in the person's own live Zerops list, with no row in HQ's read structure.
+    ...(facts === undefined || read.coverage(placementsScope(orgId)) !== "complete"
       ? {}
       : {
-          ...offered(decided(facts, [], organizationOffers)),
-          unheld: Object.fromEntries(
-            organization.unheld.flatMap((projectId) => {
-              const can = decided(facts, [projectId], (live) => unheldOffers(live, projectId));
+          placeable: Object.fromEntries(
+            read.members(projectsScope(orgId)).ids.flatMap((projectId) => {
+              if (placements.has(projectId)) return [];
+              const can = decided(facts, [projectId], (live) => placeableOffers(live, projectId));
               return can === undefined ? [] : [[projectId, can]];
             }),
           ),

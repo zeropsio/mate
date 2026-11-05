@@ -22,7 +22,7 @@ import type { Known } from "../knowledge/known.ts";
 import type { HqMate, HqStructure } from "./client.ts";
 
 /** Mate placement readers use app projects/births, independently of environment targets. */
-export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "unheld"> & {
+export type MatePlacementStructure = Pick<HqStructure, "ungrouped" | "tools" | "placeable"> & {
   readonly apps: ReadonlyArray<Omit<HqStructure["apps"][number], "environments">>;
 };
 import type { HqPressHold } from "./pressElsewhere.ts";
@@ -325,7 +325,7 @@ export function hqMateOffers(
   if (mate === undefined) {
     return {
       held: false,
-      createRecord: hqOffer(structure.unheld?.[projectId], "create_mate_record", hq),
+      createRecord: hqOffer(structure.placeable?.[projectId], "create_mate_record", hq),
     };
   }
   return {
