@@ -26,7 +26,6 @@ export type {
   AccountEnvironmentPorts,
   AccountEnvironments,
   CatalogListener,
-  CloseOffHold,
   DoorCredential,
   DoorRequest,
   RegisteredEnvironment,

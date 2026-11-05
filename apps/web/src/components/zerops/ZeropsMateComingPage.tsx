@@ -148,7 +148,6 @@ import { useZeropsDetailCandidates } from "~/zerops/useZeropsCandidates";
 import { useProjectCreations } from "~/zerops/useProjectCreations";
 import { useProjectServices } from "~/zerops/ZeropsAccountData";
 import {
-  closeOffHoldOf,
   finishSetupView,
   forgetPress,
   pressFailure,
@@ -168,7 +167,7 @@ import { handsOverMates } from "@t3tools/shared/zeropsRoles";
 import { useZeropsSession } from "~/zerops/ZeropsSessionProvider";
 
 import { MateDetailFailure } from "./MateDetailFailure";
-import { useCloseOffHolds, useMateDetailRead } from "~/zerops/accountEnvironments";
+import { useMateDetailRead } from "~/zerops/accountEnvironments";
 import { MateLinkLine, MateOpeningLine } from "./MateLinkLine";
 import { ZeropsProjectLink } from "./ZeropsProjectLink";
 import { Button } from "../ui/button";
@@ -287,20 +286,12 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // Its first build's processes, read only while its container waits for that build.
   const firstBuilding = candidate?.service?.status === "READY_TO_DEPLOY";
   const { processes: firstBuildProcesses } = useProjectActivity(firstBuilding ? projectId : null);
-  // Held by the close-off gate: its view says why — and, where its project is known not closed
-  // off, offers Finish setup.
-  const closeOffHolds = useCloseOffHolds();
-  const closeOffHold = closeOffHoldOf(closeOffHolds, projectId, press);
   // A press of it in another browser, as HQ holds it: no container yet is that press at work.
   const pressOf = usePressesElsewhere(held.rows);
   const orgId = useAccountOrgId();
   const failedProcess = useProjection(
     setupFailureProjection,
-    orgId === null ||
-      (press === undefined &&
-        creation === undefined &&
-        closeOffHold === undefined &&
-        !firstBuilding)
+    orgId === null || (press === undefined && creation === undefined && !firstBuilding)
       ? null
       : { orgId, projectId, serviceId: candidate?.service?.id },
     NO_SETUP_FAILURE,
@@ -399,7 +390,6 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
     handover: arrivalDecision,
     projectUnavailable,
   } = mateArrival({
-    closeOffHold,
     press: pressComing(press),
     candidate,
     setUpFailed: pressFailure(press) ?? made?.failed?.reason,
@@ -669,10 +659,7 @@ export function ZeropsMateComingPage({ projectId }: { readonly projectId: string
   // offered to an owner or an admin in any browser — and at once, where this tab's press saw its
   // registration refused.
   const unregistered = pressNote(lineProgress?.press)?.kind === "unfinished";
-  const halfMade =
-    (coming?.kind === "failed" && coming.verb === "finish-setup") ||
-    closeOffHold === "open" ||
-    unregistered;
+  const halfMade = (coming?.kind === "failed" && coming.verb === "finish-setup") || unregistered;
   const registryState = useZeropsRegistry();
   const mateActions = useMateActions({ registry: registryState, serverVersions: NO_VERSIONS });
   const finishEntry =

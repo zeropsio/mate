@@ -1,7 +1,6 @@
 import { AGENT_USAGE_REPORT_PROTOCOL, MateHealth, type UsageReportQuery } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { hqMateHealthScope } from "../families/mateHealth.ts";
-import { hqMateSetup } from "../projections/hqMateSetup.ts";
 import { describe, expect, it } from "@effect/vitest";
 import type { MateAttention } from "@t3tools/contracts";
 import {
@@ -73,8 +72,6 @@ const project = (projectId: string, appId: string | null, mate = true) => ({
         face: "",
         madeBy: null,
         standupRequestedBy: null,
-        closedOff: false,
-        setupMarker: null,
       }
     : null,
   person: {
@@ -644,38 +641,6 @@ describe("hqNavigationLink", () => {
       expect(readsOfState(store.state()).coverage(hqAppsScope(ORG))).toBe("complete");
       yield* Fiber.interrupt(fiber);
     }),
-  );
-
-  it.effect(
-    "commits setup evidence through navigation and retains it after a corrupt marker or outage",
-    () =>
-      Effect.gen(function* () {
-        const store = makeAccountStore(AtomRegistry.make());
-        const fixture = hqFixtureWire();
-        const { fiber } = yield* live(store, fixture);
-        const row = project("ada", "shop");
-        yield* fixture.send(
-          navigation("scope-values", 4, [
-            { key: "project:ada", value: { ...row, mate: { ...row.mate, setupMarker: true } } },
-          ]),
-        );
-        yield* settle;
-        const setup = () =>
-          hqMateSetup.derive(readsOfState(store.state()), { orgId: ORG, projectId: "ada" });
-        expect(setup()).toEqual({ closedOff: false, marker: true });
-        yield* fixture.send(
-          navigation("scope-values", 5, [
-            { key: "project:ada", value: { ...row, mate: { ...row.mate, setupMarker: 17 } } },
-          ]),
-        );
-        yield* settle;
-        expect(setup().marker).toBe(true);
-        yield* fixture.drop({ outcome: "transient", message: "network" });
-        yield* settle;
-        for (const input of graceOver(store.state())) store.dispatch(input);
-        expect(setup()).toEqual({ closedOff: "unknown", marker: true });
-        yield* Fiber.interrupt(fiber);
-      }),
   );
 
   it.effect(

@@ -634,16 +634,15 @@ const PRESS_STEPS: ReadonlyArray<{
   readonly label: string;
   readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
 }> = [
-  { label: "Project", kinds: ["create-project", "import-project", "import-managed"] },
+  { label: "Project", kinds: ["create-project", "import-project"] },
   { label: "Registered", kinds: ["register"] },
   { label: "Its computer", kinds: ["import-container"] },
-  { label: "Private network ready", kinds: ["close-off"] },
 ];
 
 /**
  * The press as the Add dialog draws it, in the order it runs: Project, Registered — its record in
- * its application before its container (F6b) — Container, Closed off: what the Mate needs before
- * it needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
+ * its application before its container (F6b) — and its one import: what the Mate needs before it
+ * needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
  * is left out.
  */
 export function pressSteps(
@@ -664,16 +663,18 @@ export function pressSteps(
 }
 
 /**
- * The press has marked the project closed off — the Mate needs no browser — and its registration,
- * where it writes one, went through or was refused: its record may go.
+ * Every step before the wait is through — Zerops accepted its one import, so the platform finishes
+ * it and the Mate needs no browser — and its registration, where it writes one, went through or was
+ * refused: its record may go.
  */
 export function pressThrough(progress: ReadonlyArray<EnvironmentCreationStepProgress>): boolean {
-  const closedOff = progress.some(
-    (entry) => entry.step.kind === "close-off" && entry.state === "done",
-  );
-  const registration = progress.find((entry) => entry.step.kind === "register");
   return (
-    closedOff &&
-    (registration === undefined || registration.state === "done" || registration.state === "failed")
+    progress.length > 0 &&
+    progress.every(
+      ({ step, state }) =>
+        step.kind === "await-ready" ||
+        state === "done" ||
+        (step.kind === "register" && state === "failed"),
+    )
   );
 }

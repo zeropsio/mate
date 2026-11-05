@@ -29,8 +29,8 @@ import {
 import {
   appProjectName,
   formatMateFace,
+  mateTier,
   recipeTierServices,
-  splitRecipeTier,
   UNCONFIRMED_PROJECT,
   UNCONFIRMED_WRITE,
   type BirthPlacement,
@@ -591,9 +591,10 @@ export function creationManaged(birth: NewProjectBirth): ReadonlyArray<string> |
   return birth.adds?.managed;
 }
 
-/** The runtimes a recipe's tier brings up once its Mate is closed off: none where it names none. */
+/** The runtimes a recipe's tier brings up in its Mate's one import: none where it names none. */
 export function recipeRuntimes(yaml: string): ReadonlyArray<RecipeRuntime> | undefined {
-  return splitRecipeTier(yaml)?.runtimes?.services;
+  const runtimes = mateTier(yaml)?.runtimes;
+  return runtimes === undefined || runtimes.length === 0 ? undefined : runtimes;
 }
 
 /**
@@ -634,9 +635,8 @@ const REGISTRATION_REFUSED = "It was refused.";
 
 /** Each step of a press, by the runner's steps that make it. */
 const PRESS_KINDS = {
-  created: ["create-project", "import-project", "import-managed"],
+  created: ["create-project", "import-project"],
   container: ["import-container"],
-  "closed-off": ["close-off"],
 } as const satisfies Record<string, ReadonlyArray<EnvironmentCreationStep["kind"]>>;
 
 /** A step of the press as its entries say it: stopped, through, under way, or not begun. */
@@ -704,8 +704,8 @@ export function registrationSubstep(name: string, registration: MateRegistration
 
 /**
  * The steps this tab runs for a creation, as its view draws them under its project's row: a New
- * project registered and created, then its Mate registered, its container imported and closed
- * off; an added Mate follows the same HQ order after its copy is created. Each step carries its
+ * project registered and created, then its Mate registered and its one import accepted; an added
+ * Mate follows the same HQ order after its copy is created. Each step carries its
  * state and the full reason when it stops. A refused registration offers Finish setup. Its Mate's
  * steps are its press's (`progress`, null before the press begins).
  */
@@ -736,7 +736,6 @@ export function creationSubsteps(
       own("created", "Created", "create"),
       registered,
       fromPress("container", "Its computer"),
-      fromPress("closed-off", "Private network ready"),
     ];
   }
   // Before the platform took its project the creation says where it stands; after, its press.
@@ -758,6 +757,5 @@ export function creationSubsteps(
     created,
     ...(birth.adds.registers ? [registered] : []),
     fromPress("container", "Its computer"),
-    fromPress("closed-off", "Private network ready"),
   ];
 }

@@ -21,9 +21,7 @@ import type {
 import { normalizeOrigin, zeropsMateBaseUrl } from "@t3tools/client-runtime/zerops/candidates";
 import {
   automaticUpdateFrom,
-  closeOffWordOf,
   systemExchangeClock,
-  type CloseOffWord,
   type LinkPhase,
 } from "@t3tools/client-runtime/zerops/environments";
 import {
@@ -43,11 +41,10 @@ import { environmentCatalog } from "~/connection/catalog";
 import { connectionAtomRuntime } from "~/connection/runtime";
 import { environmentIdFromAddress } from "~/routes/-environmentRoute";
 import { serverEnvironment } from "~/state/server";
-import { hqMatesAtom, hqNavigationAtom, hqProjectOrRemembered } from "~/state/zerops";
+import { hqMatesAtom, hqProjectOrRemembered } from "~/state/zerops";
 
 import { accountStorageKey } from "./accountLifetime";
 import { mateDescriptors } from "./mateDescriptors";
-import { closeOffPendingProjects } from "./matePress";
 
 // ── The exchange, through the connection runtime ─────────────────────────────────────────────
 
@@ -126,27 +123,6 @@ export function linkPhaseOf(state: SupervisorConnectionState): LinkPhase | null 
           }
         : null;
   }
-}
-
-/**
- * HQ's word on which Mates' projects are closed off, from its structure as this tab holds it —
- * HQ's answer now, or what was last known of it (`closeOffWordOf`). None while nothing is known.
- */
-export function closeOffPort(
-  registry: AtomRegistry.AtomRegistry,
-): AccountEnvironmentPorts["closeOff"] {
-  let last: { readonly view: unknown; readonly word: CloseOffWord } | null = null;
-  return {
-    read: () => {
-      const view = registry.get(hqNavigationAtom);
-      if (view.orgId === null || view.structure === null) return null;
-      if (last?.view !== view) {
-        last = { view, word: closeOffWordOf(view.orgId, view.structure, view.live) };
-      }
-      return last.word;
-    },
-    subscribe: (listener) => registry.subscribe(hqNavigationAtom, listener),
-  };
 }
 
 /**
@@ -315,9 +291,5 @@ export function webEnvironmentPorts(registry: AtomRegistry.AtomRegistry): Accoun
     },
     admission: connectionAdmission,
     hqIndex: hqIndexPort(registry),
-    // Nobody is let into a Mate before its project is closed off: HQ's word, and where HQ says
-    // nothing, what this browser's own presses know.
-    closeOff: closeOffPort(registry),
-    closeOffPending: closeOffPendingProjects,
   };
 }

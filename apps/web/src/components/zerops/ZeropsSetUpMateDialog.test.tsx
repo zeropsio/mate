@@ -1,12 +1,12 @@
 /**
  * Set up Mate on an existing project confirms first, in the page's own words (security review 1,
- * 5): what it adds, and that the project's services restart once while it is closed off.
+ * 5): what it adds, and that the project's own services neither read its key nor restart.
  */
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { SET_UP_MATE_RESTART_LINE, ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
+import { SET_UP_MATE_ISOLATION_LINE, ZeropsSetUpMateDialog } from "./ZeropsSetUpMateDialog";
 
 vi.mock("../ui/dialog", () => {
   const pass = ({ children }: { readonly children?: React.ReactNode }) => children ?? null;
@@ -44,11 +44,11 @@ function mount() {
 }
 
 describe("ZeropsSetUpMateDialog", () => {
-  it("says what it adds to the project, and that its services restart once", () => {
+  it("says what it adds to the project, and that none of its services restarts", () => {
     const { text } = mount();
     expect(text).toContain("shop");
     expect(text).toContain("Mate container");
-    expect(text).toContain(SET_UP_MATE_RESTART_LINE);
+    expect(text).toContain(SET_UP_MATE_ISOLATION_LINE);
   });
 
   it("sets it up only on its confirm, and Cancel does nothing else", () => {

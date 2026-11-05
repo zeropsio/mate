@@ -21,7 +21,7 @@
  * shape, asked with the picker *New Mate* uses (`MateFacePicker`) and the same
  * rules — the face follows the name until a pick sticks, the name is new on
  * the account (`ZeropsNewProjectForm`). The Mate is born as *New Mate* makes
- * one — its record in HQ, its project closed off — but asks for no stand-up:
+ * one — its record in HQ, its one import — but asks for no stand-up:
  * a new project has no code to stand up, and its person says what to build.
  * No brief and no agent pick: the container offers
  * every agent when `ZCP_AGENTS` is absent, which an empty selection is
@@ -33,10 +33,10 @@
  * Create closes the dialog and lands on the first Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"). The steps this tab runs with the
  * person's session — the application and its birth intent in HQ, the
- * Mate's project, its close-off and its registration (`newProjectBirth.ts`, `matePress.ts`) — run
+ * Mate's project, its registration and its import (`newProjectBirth.ts`, `matePress.ts`) — run
  * on in the account's creations, whatever the person opens next, and the view draws them under
  * the project's row, saying to keep the tab open only while they run. A step that stops says why
- * there, with *Try again*; a tab closed before the close-off is the person's choice, and the Mate's
+ * there, with *Try again*; a tab closed before its import is the person's choice, and the Mate's
  * ⋯ menu finishes it (*Finish setup*).
  */
 import { useNavigate } from "@tanstack/react-router";

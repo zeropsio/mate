@@ -20,7 +20,6 @@ import {
   zeropsSubdomainDomainFromPublicZone,
 } from "./containerAddress.ts";
 import { creationUserRoles, withProjectGrant, type ProjectGrant } from "./projectAccess.ts";
-import { planProjectIsolation, type ProjectEnvEntry } from "./projectIsolation.ts";
 import { projectProcessSearchBody, zcpCreationUnderWay } from "./projectCreation.ts";
 import {
   findHeldMateKey,
@@ -40,7 +39,6 @@ import type {
 import type { HqPlacement } from "./hq/placement.ts";
 import {
   buildCreateProjectBody,
-  buildDevelopmentContainerImportBody,
   buildZcpDeploymentYaml,
   buildZcpServiceImportYaml,
   generateVscodePassword,
@@ -48,6 +46,7 @@ import {
   type MateBirthplace,
   type ZeropsAgentType,
 } from "./newProject.ts";
+import { mateBirthImportYaml } from "./recipeTier.ts";
 import {
   ZEROPS_CAPTCHA_ERROR_CODE,
   buildZeropsRegistrationBody,
@@ -409,17 +408,6 @@ export interface ZeropsService {
   readonly gitlabIntegration?: ZeropsGitIntegration | null;
   /** The effective autoscaling envelope; `null` on the core service. */
   readonly currentAutoscaling?: ZeropsAutoscaling | null;
-}
-
-/**
- * A managed service — a database, a cache, a storage: any type category but a
- * runtime's `USER`, the line the service map draws between its data and its
- * runtimes (`topology.ts`). A service whose category is not known is taken as
- * one that runs code.
- */
-function isManagedService(service: ZeropsService): boolean {
-  const category = service.serviceStackTypeInfo?.serviceStackTypeCategory;
-  return category !== undefined && category !== "USER";
 }
 
 /** One vault write's body: `sensitive` is always said (a write without it turns a value plain). */
@@ -1847,9 +1835,12 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `PUT /project/{id}/first-class-recipe/development-container` — the zcp
-   * that carries the agent, imported into a project that already exists,
-   * holding the Mate's own key.
+   * A Mate's birth as one `POST /project/{id}/service-stack/import` into the project that exists:
+   * the zcp that carries the agent, holding the Mate's own key, first by `priority`, and the tier's
+   * services beside it, every one isolated but to the container (`mateBirthImportYaml`). Zerops
+   * creates them in their waves whether this browser stays or not. The zcp@1 type and its inline
+   * `zeropsYaml` are an ordinary import's (the platform's import schema); the platform's own
+   * first-class-recipe endpoint takes the container alone.
    *
    * The key is minted here, by the person, with its own project and nothing
    * more: `BASIC_USER` there, no grant on any other project (ADR 0003), no
@@ -1882,8 +1873,8 @@ export class ZeropsApiClient {
       readonly projectName: string;
       readonly zcpVersion?: string;
       readonly agents?: ReadonlyArray<ZeropsAgentType>;
-      /** The tier's runtimes, for zcp to import on boot (`MATE_SETUP_RUNTIMES`). */
-      readonly setupRuntimesYaml?: string;
+      /** The tier's services as the birth imports them (`mateTier`); absent for a Mate alone. */
+      readonly tierYaml?: string;
       readonly birthplace?: MateBirthplace;
     },
     signal?: AbortSignal,
@@ -2011,34 +2002,28 @@ export class ZeropsApiClient {
 
     const serviceName = nextZcpServiceName(services.map((service) => service.name));
     this.#assertGeneration(generation);
-    const answered = await this.#request<{ readonly processes?: ReadonlyArray<unknown> }>(
-      `/project/${input.projectId}/first-class-recipe/development-container`,
-      {
-        method: "PUT",
-        signal: signal ?? null,
-        body: JSON.stringify(
-          buildDevelopmentContainerImportBody({
-            serviceImportYaml: buildZcpServiceImportYaml({
-              serviceName,
-              vscodePassword: generateVscodePassword(),
-              apiKey,
-              ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-              ...(input.agents ? { agents: input.agents } : {}),
-              ...(input.setupRuntimesYaml ? { setupRuntimesYaml: input.setupRuntimesYaml } : {}),
-              ...(input.birthplace ? { birthplace: input.birthplace } : {}),
-              ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
-                ? {}
-                : { apiHost: new URL(this.#baseUrl).host }),
-            }),
-          }),
-        ),
-      },
-      {
-        operationKind: "project-write",
-        ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-      },
+    const answered = await this.importServicesIntoProject(
+      input.projectId,
+      mateBirthImportYaml(
+        buildZcpServiceImportYaml({
+          serviceName,
+          vscodePassword: generateVscodePassword(),
+          apiKey,
+          ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+          ...(input.agents ? { agents: input.agents } : {}),
+          ...(input.birthplace ? { birthplace: input.birthplace } : {}),
+          ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
+            ? {}
+            : { apiHost: new URL(this.#baseUrl).host }),
+        }),
+        input.tierYaml,
+      ),
+      signal,
+      beforeWrite,
     );
-    const processId = importProcessOf(answered.processes);
+    const processId = importProcessOf(
+      answered.serviceStacks?.find((stack) => stack.name === serviceName)?.processes,
+    );
     return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
   }
 
@@ -2193,42 +2178,6 @@ export class ZeropsApiClient {
   }
 
   /**
-   * `POST /project/search` for one project, for its `envList` alone.
-   *
-   * The only read that carries project variables **with their entry ids**, and
-   * an id is what every update and delete needs — `POST /project/{pid}/env`
-   * answers with a *process* id, not the entry's (measured 2026-09-16). The
-   * index trails the write path, so this is re-read rather than remembered.
-   */
-  async readProjectEnv(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-  ): Promise<ReadonlyArray<ProjectEnvEntry>> {
-    const response = await this.#request<{
-      readonly items?: ReadonlyArray<{ readonly envList?: ReadonlyArray<ProjectEnvEntry> }>;
-    }>(
-      "/project/search",
-      {
-        method: "POST",
-        signal: signal ?? null,
-        body: JSON.stringify({
-          limit: 1,
-          // The organization scopes every project search: an id on its own is
-          // `400 invalidUserInput` — "clientId not defined" — which failed the
-          // isolation step of a second Mate's creation (measured 2026-09-18).
-          search: [
-            { name: "id", operator: "eq", value: projectId },
-            { name: "clientId", operator: "eq", value: clientId },
-          ],
-        }),
-      },
-      { operationKind: "read" },
-    );
-    return response.items?.[0]?.envList ?? [];
-  }
-
-  /**
    * `GET /project/{id}/service-stack` — the project's own services.
    *
    * Answered under `list`, not the `items` the search endpoints use (measured
@@ -2250,124 +2199,8 @@ export class ZeropsApiClient {
   }
 
   /**
-   * Stops a Mate's project handing its container's key — and its agent's
-   * login — to every container in it (`projectIsolation.ts`, guide 0.10).
-   *
-   * The decision is the pure planner's; this reads what it needs, walks the
-   * plan, and re-reads the entry ids before the delete because that is the
-   * only place they come from. Safe to call on a project that has already been
-   * through it: the plan is then empty and nothing, restarts included, runs.
-   *
-   * Returns whether the plan it ran restarted anything — the project's
-   * services that run its code, whose running processes still hold the
-   * sibling variables they captured at start; never a managed service, and
-   * never the Mate's own container, which needs no restart of its own
-   * (server commit 7d544119b, `projectIsolation.ts`).
-   */
-  async isolateProjectEnvironment(
-    clientId: string,
-    projectId: string,
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<{ readonly restarted: boolean; readonly steps: number }> {
-    const generation = this.#generation;
-    const [envList, services] = await Promise.all([
-      this.readProjectEnv(clientId, projectId, signal),
-      this.listProjectServices(projectId, signal),
-    ]);
-    const own = services.filter((service) => service.isSystem !== true);
-    const plan = planProjectIsolation({
-      envList,
-      services: own.map((service) => ({
-        name: service.name,
-        isControlPlane: isZcpService(service),
-        managed: isManagedService(service),
-      })),
-    });
-    // The read has not caught up with a project this new. Nothing is written
-    // from a list that cannot be complete; the caller comes back. `uncertain`
-    // is the conservative kind here — nothing was written at all, and the step
-    // is idempotent, so a caller that re-reads loses nothing.
-    if (!plan.ok)
-      throw new ZeropsApiError(
-        "This project's variables have not all appeared yet, so its isolation was left alone.",
-        "uncertain",
-      );
-    const { steps } = plan;
-    const restarted = steps.some((step) => step.kind === "restart-service");
-    if (steps.length === 0) return { restarted: false, steps: 0 };
-
-    const write = {
-      operationKind: "project-write" as const,
-      ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-    };
-    const serviceIdByName = new Map(own.map((service) => [service.name, service.id]));
-    const valueOf = (entryId: string): string =>
-      envList.find((entry) => entry.id === entryId)?.content ?? "";
-    let fresh = envList;
-
-    for (const step of steps) {
-      this.#assertGeneration(generation);
-      switch (step.kind) {
-        case "update-project-env":
-          // `key` beside `content`: a body carrying content alone is
-          // `400 invalidUserInput` — "key: field is required" — even for the
-          // project's owner (measured 2026-09-16).
-          await this.#request(
-            `/project-env/${step.entryId}`,
-            {
-              method: "PUT",
-              signal: signal ?? null,
-              body: JSON.stringify({ key: step.key, content: step.content }),
-            },
-            write,
-          );
-          break;
-        case "move-key-to-service": {
-          const serviceId = serviceIdByName.get(step.serviceName);
-          if (serviceId === undefined) {
-            throw new ZeropsApiError(
-              `The container "${step.serviceName}" is no longer in this project.`,
-              "uncertain",
-            );
-          }
-          const content = valueOf(step.fromEntryId);
-          await this.#writeServiceEnvOnce(
-            { clientId, serviceId, key: step.key, content, sensitive: true },
-            signal,
-            beforeWrite,
-          );
-          break;
-        }
-        case "reread-project-env":
-          fresh = await this.readProjectEnv(clientId, projectId, signal);
-          break;
-        case "delete-project-env": {
-          const entry = fresh.find((candidate) => candidate.key === step.key);
-          // Gone already — a half-finished earlier run, or someone else's
-          // edit. Nothing to take back.
-          if (entry === undefined) break;
-          await this.#request(
-            `/project-env/${entry.id}`,
-            { method: "DELETE", signal: signal ?? null },
-            write,
-          );
-          break;
-        }
-        case "restart-service": {
-          const serviceId = serviceIdByName.get(step.serviceName);
-          if (serviceId === undefined) break;
-          await this.restartService(serviceId, signal, beforeWrite);
-          break;
-        }
-      }
-    }
-    return { restarted, steps: steps.length };
-  }
-
-  /**
-   * The birth's hardening (spec-mate §3 B-1/B-2/B-3), whole: the token half
-   * and the isolation half, together, for one Mate's own project.
+   * A Mate's key hardened (spec-mate §3 B-1/B-3), for one Mate's own project: the isolation is the
+   * birth import's (`mateBirthImportYaml`), never written here.
    *
    * The token half sets the Mate's key to its own project alone at `BASIC_USER` (`planMateKey`):
    * the key HQ holds by id loses any other grant; a key found by its name is the Mate's only while
@@ -2376,15 +2209,8 @@ export class ZeropsApiClient {
    * (`groupReach.ts`, guide 0.4).
    *
    * Idempotent, and cheap to prove so: a token already at `BASIC_USER` with
-   * no wider grant plans nothing, a token with no delegations lists an empty
-   * page, and `isolateProjectEnvironment` is already idempotent on its own.
-   * A hardened Mate re-run through this makes no writes at all.
-   *
-   * `read-incomplete` from the isolation half is not caught here: it is the
-   * same "the read has not caught up yet, come back" signal the caller
-   * already knows from `isolateProjectEnvironment` alone, and swallowing it
-   * here would hide a retryable wait behind a token/delegation write that
-   * already succeeded.
+   * no wider grant plans nothing, and a token with no delegations lists an
+   * empty page. A hardened Mate re-run through this makes no writes at all.
    */
   async hardenMate(
     clientId: string,
@@ -2401,8 +2227,6 @@ export class ZeropsApiClient {
     /** Why a key of the Mate's could not be lowered — the platform refused this account the write. */
     readonly keyNotLowered: string | null;
     readonly delegationsDropped: number;
-    readonly isolationSteps: number;
-    readonly restarted: boolean;
   }> {
     const generation = this.#generation;
     let tokenLowered = false;
@@ -2439,21 +2263,7 @@ export class ZeropsApiClient {
       }
     }
 
-    this.#assertGeneration(generation);
-    const isolation = await this.isolateProjectEnvironment(
-      clientId,
-      projectId,
-      signal,
-      beforeWrite,
-    );
-
-    return {
-      tokenLowered,
-      keyNotLowered,
-      delegationsDropped,
-      isolationSteps: isolation.steps,
-      restarted: isolation.restarted,
-    };
+    return { tokenLowered, keyNotLowered, delegationsDropped };
   }
 
   /**
@@ -2520,67 +2330,6 @@ export class ZeropsApiClient {
         beforeWrite,
       );
       told.dropped();
-    }
-  }
-
-  /**
-   * `POST /service-stack/{id}/user-data`.
-   *
-   * A create the platform refuses is checked rather than swallowed: the only
-   * way the key is already there is a run of this that moved it and then
-   * failed before deleting the project entry, and in that case the move is
-   * done. Anything else still throws, because losing the key silently would
-   * leave a Mate that cannot reach the platform at all. The check reads that
-   * one key (`POST /user-data/search`), never the service's every variable;
-   * its value, sensitive, answers `REDACTED`, so the key's presence is the
-   * answer.
-   */
-  async #writeServiceEnvOnce(
-    input: {
-      readonly clientId: string;
-      readonly serviceId: string;
-      readonly key: string;
-      readonly content: string;
-      readonly sensitive: boolean;
-    },
-    signal?: AbortSignal,
-    beforeWrite?: () => Promise<void>,
-  ): Promise<void> {
-    try {
-      await this.#request(
-        `/service-stack/${input.serviceId}/user-data`,
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            key: input.key,
-            content: input.content,
-            sensitive: input.sensitive,
-          }),
-        },
-        {
-          operationKind: "project-write",
-          ...(beforeWrite === undefined ? {} : { beforeProjectWrite: beforeWrite }),
-        },
-      );
-    } catch (cause) {
-      const found = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-        "/user-data/search",
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify({
-            search: [
-              { name: "clientId", operator: "eq", value: input.clientId },
-              { name: "serviceStackId", operator: "eq", value: input.serviceId },
-              { name: "key", operator: "eq", value: input.key },
-            ],
-            sort: [],
-            limit: 1,
-          }),
-        },
-      );
-      if ((found.items ?? []).length === 0) throw cause;
     }
   }
 

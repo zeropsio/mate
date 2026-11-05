@@ -110,7 +110,7 @@ Source words and the product words that replace them:
 - surface → **page**
 - Add your domain → **Put it on your domain**
 - Set custom accesses → **Choose projects**; Advanced (a role's Zerops settings) → **Fine-tune permissions**
-- container (a Mate's) → **its computer**; closed off → **private network ready**
+- container (a Mate's) → **its computer**
 
 ## 3. Visual grammar
 

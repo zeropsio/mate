@@ -140,8 +140,6 @@ describe("hqProjectPeople", () => {
                 face: "sleep",
                 madeBy: null,
                 standupRequestedBy: null,
-                closedOff: true,
-                setupMarker: true,
                 keyRefused: true,
               },
             } as never,

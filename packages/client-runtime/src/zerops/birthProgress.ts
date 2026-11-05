@@ -14,8 +14,8 @@
  * `stack.build` and `stack.enableSubdomainAccess` all begin at the
  * container's own T0, so `public-access`'s own active condition is gated on
  * `container` being done — required to keep true the invariant that at most
- * one step is ever active. The project is closed off in the press, before any
- * of these begins, so no step waits on it.
+ * one step is ever active. Isolation comes with the import itself, so no step
+ * waits on it.
  *
  * A project's build helper service (named `build<serviceName>...`) is not
  * the Mate's own container; a caller resolving `BirthFacts.container` from a
@@ -650,7 +650,7 @@ export function deriveBirthProgress(facts: BirthFacts, nowMs: number): BirthProg
   const container = deriveContainerStep(facts, project.state === "done", nowMs);
   const publicAccess = derivePublicAccessStep(facts, container.state === "done");
   // The steps before it finish in no fixed order, so the Mate is waited on only once all of them
-  // are. The project is closed off in the press, before any of them begins.
+  // are.
   const mate = deriveMateStep(facts, container.state === "done" && publicAccess.state === "done");
   const connect = deriveConnectStep(facts, mate.state === "done");
 

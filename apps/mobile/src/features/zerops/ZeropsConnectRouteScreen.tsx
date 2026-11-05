@@ -1,6 +1,6 @@
 import { StackActions, useNavigation } from "@react-navigation/native";
 import type { RoleMateVisibility } from "@t3tools/client-runtime/zerops/mateAccess";
-import { hqMateSetupAtom, shownMateVisibilitiesAtom } from "@t3tools/client-runtime/data";
+import { shownMateVisibilitiesAtom } from "@t3tools/client-runtime/data";
 import type { CandidatesNotice } from "@t3tools/client-runtime/zerops/projections";
 import type { EnvironmentId } from "@t3tools/contracts";
 import { useCallback, useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -30,7 +30,6 @@ import {
 } from "./presentation";
 import { useZeropsCandidates } from "./useZeropsCandidates";
 import { useZeropsData } from "./ZeropsAccountEnvironmentProvider";
-import { checkCloseOff, closeOffFacts } from "./close-off";
 import { useAccountData } from "./ZeropsAccountData";
 import { projectNameInApp } from "@t3tools/client-runtime/zerops";
 import { useZeropsSession } from "./ZeropsSessionProvider";
@@ -338,19 +337,6 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
     })).filter((section) => section.rows.length > 0);
   }, [body, readAtMs, visibilityOf]);
 
-  // Opening reads the organization's already observed navigation, without detail demand.
-  const closeOffOf = useCallback(
-    (candidate: MobileCandidate): (() => Promise<"held" | "clear">) | undefined => {
-      if (candidate.service === undefined || accountData === null) return undefined;
-      return async () =>
-        checkCloseOff(closeOffFacts, {
-          projectId: candidate.project.id,
-          setup: accountData.registry.get(hqMateSetupAtom(candidate.project.id)),
-        });
-    },
-    [accountData],
-  );
-
   // The row's verb: Open a connected Mate, else the account's Connect on its target (§4.4).
   const openCandidate = useCallback(
     async (candidate: MobileCandidate) => {
@@ -360,12 +346,11 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         return;
       }
       if (visibilityOf(candidate) === "listed" || environments === null) return;
-      const closeOff = closeOffOf(candidate);
       connectingRef.current = true;
       setConnectingKey(candidate.key);
       setActionError(null);
       try {
-        const result = await connectMate(environments, candidate.key, closeOff);
+        const result = await connectMate(environments, candidate.key);
         if (result._tag === "Failed") {
           setActionError(result.error);
           return;
@@ -376,7 +361,7 @@ function ProjectPickerSurface(props: { readonly onDone: (environmentId: Environm
         setConnectingKey(null);
       }
     },
-    [closeOffOf, environments, props, visibilityOf],
+    [environments, props, visibilityOf],
   );
 
   return (

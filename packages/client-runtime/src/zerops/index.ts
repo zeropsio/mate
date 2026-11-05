@@ -71,12 +71,10 @@ export {
   VSCODE_PASSWORD_LENGTH,
   ZEROPS_AGENT_TYPE_CANONICAL_ORDER,
   buildCreateProjectBody,
-  buildDevelopmentContainerImportBody,
   buildZcpServiceImportYaml,
   generateVscodePassword,
   nextZcpServiceName,
   type CreateProjectBody,
-  type DevelopmentContainerImportBody,
   type RandomBytes,
   type ZeropsAgentType,
 } from "./newProject.ts";
@@ -124,15 +122,15 @@ export {
   recipeServicesWithout,
   recipeServicesYaml,
   recipeTierRepositories,
+  mateBirthImportYaml,
+  mateTier,
   recipeTierServices,
-  splitRecipeTier,
   type RecipeRuntime,
   type RecipeRuntimeRole,
-  type RecipeRuntimes,
   type RecipeServiceRole,
   type RecipeTier,
   type RecipeTierService,
-  type RecipeTierSplit,
+  type MateTier,
 } from "./recipeTier.ts";
 export { recipeReach, type RecipeReach } from "./recipeReach.ts";
 export { agentsFromOAuthFlags, unionAgents } from "./agentSelection.ts";
@@ -226,17 +224,6 @@ export {
   type ZeropsRegistryGroup,
   type ZeropsRegistryProject,
 } from "./hq/registry.ts";
-export {
-  planProjectIsolation,
-  projectIsolationStepLabel,
-  PROJECT_ENV_ISOLATION_KEY,
-  PROJECT_ENV_ISOLATION_SERVICE,
-  ZCP_API_KEY_ENV_KEY,
-  type ProjectEnvEntry,
-  type ProjectIsolationInput,
-  type ProjectIsolationService,
-  type ProjectIsolationStep,
-} from "./projectIsolation.ts";
 export {
   findHeldMateKey,
   mateAdminKeys,
@@ -593,7 +580,6 @@ export {
 } from "./gitOverview.ts";
 export {
   FINISH_MATE_SETUP_VERB,
-  finishMateSetupScope,
   finishMateSetupVerb,
   resolveAddProjectVerb,
   resolveMateRegistration,

@@ -12,17 +12,15 @@
  * The last steps are where the two kinds of environment part ways:
  *
  * - An environment **with an agent** is handed back at `await-ready`, every
- *   step that needs the person's rights done: its container imported with
- *   its key and its runtimes, its project closed off, its registration
- *   written. The container then sets itself up (zcp imports the runtimes on
- *   boot); the container wait is already a product surface — the
+ *   step that needs the person's rights done: its registration written, its
+ *   container and its tier imported as one, which Zerops finishes whether the
+ *   browser stays or not; the container wait is already a product surface — the
  *   provisioning state machine, its panel, its retry and enable paths — and
  *   duplicating it here would be a second opinion about when a container is
  *   ready.
  * - An environment **without one** has nothing to hand off to: no container,
  *   no health probe. So this waits for its services itself, on the account's
- *   services listing, until every one of them has settled — or the
- *   platform's patience for them runs out, which stops the step as uncertain.
+ *   services listing as Zerops pushes it, until every one of them has settled.
  *
  * The platform is a parameter (R1): this package may not reach for a client,
  * a clock or a timer, and the tests must not either.
@@ -45,11 +43,6 @@ import type { MateBirthplace } from "./newProject.ts";
 export interface EnvironmentCreationPlatform {
   readonly run: RunToEnd;
   /**
-   * The close-off recorded in the Mate's birth at HQ, as the person: zcp's boot import of the
-   * runtimes waits for it (pass 28). Idempotent.
-   */
-  readonly markClosedOff: (projectId: string) => Promise<void>;
-  /**
    * The environment's group registration (`addGroupEnvironment.ts`); safe to ask again. Throws
    * with the reason a write did not go through.
    */
@@ -58,10 +51,9 @@ export interface EnvironmentCreationPlatform {
   readonly birthplace?: MateBirthplace;
   /**
    * Resolves with the project's services once every one of them has settled
-   * (`servicesSettled`), as the account's services listing holds them: read as they change,
-   * performing no platform request. Rejects where that listing can no longer be followed, and —
-   * uncertain (`isUncertainZeropsFailure`) — once the platform's patience for them ran out: the
-   * bound is the platform's, since this package holds no clock.
+   * (`servicesSettled`), as the account's services listing holds them: read once, then at each
+   * frame Zerops pushes, performing no platform request. Rejects where that listing can no longer
+   * be followed.
    */
   readonly untilServicesSettled: (
     projectId: string,
@@ -158,7 +150,7 @@ export interface RunEnvironmentCreationInput {
  * there, or at the project itself, is removed rather than resumed.
  */
 export function resumableEnvironmentCreationStep(step: EnvironmentCreationStep): boolean {
-  return step.kind === "import-container" || step.kind === "close-off" || step.kind === "register";
+  return step.kind === "import-container" || step.kind === "register";
 }
 
 /** Where the project's `project.create` can no longer be followed to its end. */
@@ -196,8 +188,6 @@ export async function runEnvironmentCreation(
   let projectName: string | undefined = input.resume?.projectName;
   let serviceName: string | undefined = input.resume?.serviceName;
   let deployments: ReadonlyArray<ServiceDeployment> = [];
-  /** This press imported a container: a harden before it is no longer the last word. */
-  let containerImported = false;
   const run = input.platform.run;
   const orgId = input.clientId;
   /** The project's acceptance told on, while the create waits for its end. */
@@ -273,20 +263,6 @@ export async function runEnvironmentCreation(
               { orgId, unobserved: UNCONFIRMED_WRITE },
             );
           }
-          // Its Mate's owner marked on their own list, before its record (ZEROPS-075).
-          if (step.owner !== undefined) {
-            assertCurrent();
-            await run(
-              {
-                kind: "set-project-access",
-                orgId,
-                changes: [
-                  { clientUserId: step.owner, projectId: imported.projectId, roleCode: "OWNER" },
-                ],
-              },
-              { orgId, unobserved: UNCONFIRMED_WRITE },
-            );
-          }
           break;
         }
         case "import-container": {
@@ -297,7 +273,7 @@ export async function runEnvironmentCreation(
               projectId: requireProject(projectId),
               projectName: projectName ?? "",
               agents: step.agents,
-              ...(step.runtimes === undefined ? {} : { setupRuntimesYaml: step.runtimes.yaml }),
+              ...(step.tier === undefined ? {} : { tierYaml: step.tier.yaml }),
               ...(input.platform.birthplace === undefined
                 ? {}
                 : { birthplace: input.platform.birthplace }),
@@ -305,23 +281,8 @@ export async function runEnvironmentCreation(
             { orgId, unobserved: UNCONFIRMED_WRITE },
           );
           serviceName = imported.serviceName;
-          if (imported.imported) containerImported = true;
           assertCurrent();
           await input.onContainerImported?.(imported);
-          break;
-        }
-        case "close-off": {
-          const target = requireProject(projectId);
-          // A container imported after hardening may have changed isolation: the project is read,
-          // closed off where it is not, and read back. One that does not read closed off stops
-          // here; the creator's next action owns another check.
-          if (step.isolated !== true || containerImported)
-            await run(
-              { kind: "harden-project", orgId, projectId: target, confirm: true },
-              { orgId, unobserved: UNCONFIRMED_WRITE },
-            );
-          assertCurrent();
-          await input.platform.markClosedOff(target);
           break;
         }
         case "register": {
@@ -331,8 +292,7 @@ export async function runEnvironmentCreation(
           await input.platform.register(target);
           break;
         }
-        case "import-recipe":
-        case "import-managed": {
+        case "import-recipe": {
           await run(
             {
               kind: "import-services",

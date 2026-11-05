@@ -71,7 +71,6 @@ type ZeropsOperationsClient = Pick<
   | "importServicesIntoProject"
   | "importDevelopmentContainer"
   | "hardenMate"
-  | "readProjectEnv"
   | "listProjectServices"
   | "mintIntegrationToken"
   | "regenerateIntegrationToken"
@@ -160,7 +159,6 @@ export function makeZeropsExecutor(input: {
       importDevelopmentContainer: (input) => client.importDevelopmentContainer(input),
       hardenMate: (clientId, projectId, keyTokenId) =>
         client.hardenMate(clientId, projectId, undefined, undefined, keyTokenId),
-      readProjectEnv: (clientId, projectId) => client.readProjectEnv(clientId, projectId),
     });
     const publish = enableSubdomainAccessExecutor({
       enableSubdomainAccess: (serviceId) => client.enableSubdomainAccess(serviceId),
@@ -461,7 +459,6 @@ export function makeZeropsExecutor(input: {
         readIntegrationToken: (...args) => source.readIntegrationToken(...args),
         fetchProject: (...args) => source.fetchProject(...args),
         listClientProjects: (...args) => source.listClientProjects(...args),
-        readProjectEnv: (...args) => source.readProjectEnv(...args),
         listProjectServices: (...args) => source.listProjectServices(...args),
         listOrganizationMembers: (...args) => source.listOrganizationMembers(...args),
         readMemberProjectRoles: (...args) => source.readMemberProjectRoles(...args),

@@ -106,7 +106,6 @@ vi.mock("../zerops/ZeropsSessionProvider", () => ({
 function shellStage(): AccountEnvironments {
   return {
     setDeleting: () => undefined,
-    closeOffHolds: () => new Map(),
     detailProjects: () => new Set(),
     subscribe: () => () => undefined,
     connect: () => new Promise(() => undefined),

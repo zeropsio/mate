@@ -255,7 +255,6 @@ export {
   listedProjectAtom,
   shownMateVisibilityAtom,
   shownMateVisibilitiesAtom,
-  hqMateSetupAtom,
   NOT_READ_PROJECTS,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
@@ -310,7 +309,6 @@ export {
 
 export { environmentSetup } from "./projections/environmentSetup.ts";
 
-export { hqMateSetup, type HqMateSetup } from "./projections/hqMateSetup.ts";
 export { hqPicture, type HqPictureRead } from "./projections/hqPicture.ts";
 export {
   pictureOwner,
@@ -550,9 +548,6 @@ export {
   mateConnectKey,
   HALF_MADE_LINE,
   HALF_MADE_OWNER_LINE,
-  CLOSING_OFF_LINE,
-  CHECKING_SETUP_LINE,
-  AWAITING_HQ_LINE,
   halfMadeFor,
   asSentence,
   RESTARTING_SERVICE_STATUSES,

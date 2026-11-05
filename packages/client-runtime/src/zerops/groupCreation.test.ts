@@ -2,7 +2,6 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   resolveAddProjectVerb,
-  finishMateSetupScope,
   finishMateSetupVerb,
   resolveMateRegistration,
   type MateRegistration,
@@ -59,10 +58,7 @@ describe("finishMateSetupVerb", () => {
     registration: "registered" as MateRegistration,
     containerMissing: false,
     pressStopped: false,
-    closedOffMissing: false,
     pressedElsewhere: false,
-    viewerIsAdder: false,
-    hasContainer: true,
     containerKnown: true,
     recordMissing: false,
     mayCreateRecord: false,
@@ -77,7 +73,6 @@ describe("finishMateSetupVerb", () => {
         ...HALF_MADE,
         ...reason,
         writer: true,
-        hasContainer: false,
         containerKnown: false,
       }),
     ).toBeUndefined();
@@ -107,23 +102,11 @@ describe("finishMateSetupVerb", () => {
       writer: true,
       expected: "Finish setup",
     },
-    {
-      name: "an owner, on a Mate whose press stopped before its close-off was marked",
-      input: { ...HALF_MADE, closedOffMissing: true },
-      writer: true,
-      expected: "Finish setup",
-    },
-    // A press another browser holds at HQ is still running: its Mate reads unregistered, or not
-    // closed off, while it runs, and finishing it then would race it.
+    // A press another browser holds at HQ is still running: its Mate reads unregistered while it
+    // runs, and finishing it then would race it.
     {
       name: "nobody, on a Mate another browser still presses, that nobody has registered yet",
       input: { ...HALF_MADE, registration: "unplaced", pressedElsewhere: true },
-      writer: true,
-      expected: undefined,
-    },
-    {
-      name: "nobody, on a Mate another browser still presses, whose close-off is not marked yet",
-      input: { ...HALF_MADE, closedOffMissing: true, pressedElsewhere: true },
       writer: true,
       expected: undefined,
     },
@@ -133,30 +116,15 @@ describe("finishMateSetupVerb", () => {
       writer: true,
       expected: "Finish setup",
     },
-    // Closing off is all the adder may do, and a Mate with no container has nothing to close off:
-    // never reported finished (pass 28 review).
     {
       name: "nobody but an owner or admin, on a Mate whose press stopped before its container",
-      input: { ...HALF_MADE, pressStopped: true, viewerIsAdder: true, hasContainer: false },
-      writer: false,
-      expected: undefined,
-    },
-    // Closing off needs no registry rights: the member who added it may close it off.
-    {
-      name: "the member who added it, on a Mate its press left open",
-      input: { ...HALF_MADE, closedOffMissing: true, viewerIsAdder: true },
-      writer: false,
-      expected: "Finish setup",
-    },
-    {
-      name: "another member, on a Mate a press left open",
-      input: { ...HALF_MADE, closedOffMissing: true },
+      input: { ...HALF_MADE, pressStopped: true },
       writer: false,
       expected: undefined,
     },
     {
       name: "the member who added it, on a Mate nobody has registered: that is an owner's",
-      input: { ...HALF_MADE, registration: "unplaced", viewerIsAdder: true },
+      input: { ...HALF_MADE, registration: "unplaced" },
       writer: false,
       expected: undefined,
     },
@@ -190,7 +158,7 @@ describe("finishMateSetupVerb", () => {
     // application, with no container and no record — finished into its container's import.
     {
       name: "an owner, on a Mate in no application whose press stopped before its container",
-      input: { ...HALF_MADE, hasContainer: false, recordMissing: true, mayCreateRecord: true },
+      input: { ...HALF_MADE, recordMissing: true, mayCreateRecord: true },
       writer: true,
       expected: "Finish setup",
     },
@@ -218,16 +186,13 @@ describe("finishMateSetupVerb", () => {
 });
 
 // The web review, 2026-10-05: an admin who is also the Mate's adder, while HQ has not said whether
-// they write the registry, was offered the close-off alone and its registration skipped unsaid.
+// they write the registry, was offered part of the setup and its registration skipped unsaid.
 describe("finishMateSetupVerb while HQ has not said who writes the registry", () => {
   const HALF_MADE = {
     registration: "registered" as MateRegistration,
     containerMissing: false,
     pressStopped: false,
-    closedOffMissing: false,
     pressedElsewhere: false,
-    viewerIsAdder: false,
-    hasContainer: true,
     containerKnown: true,
     recordMissing: false,
     mayCreateRecord: false,
@@ -235,7 +200,7 @@ describe("finishMateSetupVerb while HQ has not said who writes the registry", ()
   it.each([
     [
       "a half-made Mate, whatever the viewer added",
-      { ...HALF_MADE, pressStopped: true, viewerIsAdder: true },
+      { ...HALF_MADE, pressStopped: true },
       undefined,
     ],
     [
@@ -245,14 +210,5 @@ describe("finishMateSetupVerb while HQ has not said who writes the registry", ()
     ],
   ] as const)("waits for HQ on %s", (_, input, expected) => {
     expect(finishMateSetupVerb({ ...input, writer: undefined })).toBe(expected);
-  });
-});
-
-describe("finishMateSetupScope", () => {
-  it.each([
-    { writer: true, want: "whole" },
-    { writer: false, want: "close-off" },
-  ])("a registry writer $writer: $want", ({ writer, want }) => {
-    expect(finishMateSetupScope(writer)).toBe(want);
   });
 });

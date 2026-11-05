@@ -180,7 +180,7 @@ describe("t3code/no-remote-io-outside-data-layer", () => {
       `export function useReads(client, hq, options) {`,
       `  const zerops = new ZeropsApiClient(options);`,
       `  const api = makeHqApi(options);`,
-      `  void client.readProjectEnv("o", "p");`,
+      `  void client.readIntegrationToken("o", "t");`,
       `  void hq.api.release("a", "b");`,
       `  void hq.api.gitTargetWrite("request", intent, candidate);`,
       `  void hq.api.gitTargetReceipt("request", intent);`,

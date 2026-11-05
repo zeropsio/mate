@@ -32,27 +32,29 @@
  * Core with the environment's deploy key. zcp reads which repository a runtime
  * comes from off the tier itself; nothing here carries that along.
  *
- * ## A Mate's tier comes in two imports ({@link splitRecipeTier})
+ * ## A Mate's tier goes in whole, with its container ({@link mateTier}, {@link mateBirthImportYaml})
  *
- * The managed part — the project block and the managed services — is imported
- * with the project. The runtimes follow as one import once the Mate has closed
- * the project off (`createEnvironment.ts`), so nothing that runs code ever
- * starts holding the Mate's key:
+ * A Mate's birth is one import into the project it was created with: its container first — the
+ * highest `priority`, so its build never queues behind the tier's waves — then the tier's services
+ * in their own waves, every one of them isolated but to the container (`envIsolation:
+ * service@<container>`), so nothing that runs code ever reads the Mate's key while the Mate reads
+ * what it works on:
  *
- * - a dev half starts empty (`startWithoutCode: true`) — running, the clone
- *   target;
+ * - a dev half starts empty (`startWithoutCode: true`) — running, the clone target;
  * - a stage half waits at `READY_TO_DEPLOY` for its first deploy: no build and
  *   no `startWithoutCode`;
  * - a utility keeps `buildFromGit` and `zeropsSetup` verbatim, and the platform
  *   builds it;
- * - none keeps a `priority`: one wave, since everything a runtime could wait on
- *   was created by the first import.
+ * - every service keeps its `priority`, and an `envIsolation` it states itself.
+ *
+ * The import goes into a project that exists, which takes no `project:` block (`recipeServicesYaml`;
+ * zcp's importer refuses one for the same reason): the isolation is stated on each service, which
+ * replaces the project's for it, and a tier's project variables do not go in with it.
  *
  * ## A stage or a production takes its tier whole ({@link deployTargetTier})
  *
- * An environment with no container has no Mate and nothing to close off, so its
- * tier goes in as one import, as it always has: every runtime starts empty for
- * HQ's Core to deploy onto, and a utility is built.
+ * An environment with no container has no Mate, so its tier goes in as one import, as it always
+ * has: every runtime starts empty for HQ's Core to deploy onto, and a utility is built.
  *
  * ## Line-based, like everything else that touches these documents
  *
@@ -87,25 +89,14 @@ export interface RecipeRuntime {
   readonly role: RecipeRuntimeRole;
 }
 
-/** A tier's runtimes, as the one import that brings them up. */
-export interface RecipeRuntimes {
-  /** Services only, converted, with no `priority` and the document's header still first. */
+/** A Mate's tier as its birth's one import carries it ({@link mateTier}). */
+export interface MateTier {
+  /** Services only, runtimes converted, priorities kept, the document's header still first. */
   readonly yaml: string;
-  /** Each runtime it creates, in the tier's order. */
-  readonly services: ReadonlyArray<RecipeRuntime>;
-}
-
-/** A Mate's tier as its two imports ({@link splitRecipeTier}). */
-export interface RecipeTierSplit {
-  /**
-   * The tier without its runtimes: its header, its project block and its
-   * managed services, byte for byte — `services: []` when it has none.
-   */
-  readonly managed: string;
   /** The managed services' hostnames, in the tier's order. */
-  readonly managedServices: ReadonlyArray<string>;
-  /** Undefined for a tier of managed services alone. */
-  readonly runtimes: RecipeRuntimes | undefined;
+  readonly managed: ReadonlyArray<string>;
+  /** Each runtime it creates, in the tier's order. */
+  readonly runtimes: ReadonlyArray<RecipeRuntime>;
 }
 
 // Indentation is the author's: a person's two spaces and zcp's four both
@@ -119,9 +110,6 @@ const NESTED_URL = /^\s*url:(.*)$/u;
 
 /** The keys that say a service runs code of its own: a build, its setup, an empty start. */
 const CODE_KEYS: ReadonlySet<string> = new Set(["buildFromGit", "zeropsSetup", "startWithoutCode"]);
-/** What a runtime of the Mate's second import comes without: its code keys and its wave. */
-const RUNTIME_KEYS: ReadonlySet<string> = new Set([...CODE_KEYS, "priority"]);
-const PRIORITY_KEY: ReadonlySet<string> = new Set(["priority"]);
 const START_EMPTY = "startWithoutCode: true";
 
 /** The only hosts whose repositories the platform clones with nobody's credentials. */
@@ -330,15 +318,15 @@ function rewritten(
   return kept;
 }
 
-/** A runtime as the Mate's second import brings it up (the module's header). */
+/** A runtime as a Mate's birth brings it up (the module's header). */
 function asMateRuntime(item: TierItem, role: RecipeRuntimeRole): ReadonlyArray<string> {
   switch (role) {
     case "dev":
-      return rewritten(item, RUNTIME_KEYS, START_EMPTY);
+      return rewritten(item, CODE_KEYS, START_EMPTY);
     case "stage":
-      return rewritten(item, RUNTIME_KEYS);
+      return rewritten(item, CODE_KEYS);
     case "utility":
-      return rewritten(item, PRIORITY_KEY);
+      return item.lines;
   }
 }
 
@@ -364,36 +352,70 @@ export function recipeTierZcpServices(yaml: string): ReadonlyArray<string> {
 }
 
 /**
- * A Mate's tier as its two imports: the managed part, which goes in with the
- * project, and the runtimes, which go in once the project is closed off
- * (the module's header). `undefined` when the tier declares no services — a
- * group repo whose recipe has not been merged yet.
+ * A Mate's tier as its birth imports it beside its container (the module's header). `undefined`
+ * when the tier declares no services — a group repo whose recipe has not been merged yet.
  */
-export function splitRecipeTier(yaml: string): RecipeTierSplit | undefined {
+export function mateTier(yaml: string): MateTier | undefined {
   const tier = parseTier(yaml);
   if (tier === undefined) return undefined;
-  const managed: Array<ReadonlyArray<string>> = [];
-  const managedServices: Array<string> = [];
-  const runtimeItems: Array<ReadonlyArray<string>> = [];
+  const managed: Array<string> = [];
   const runtimes: Array<RecipeRuntime> = [];
-  for (const item of tier.items) {
+  const items = tier.items.map((item) => {
     const role = roleOf(item);
     if (role === "managed") {
-      managed.push(item.lines);
-      if (item.hostname !== undefined) managedServices.push(item.hostname);
-      continue;
+      if (item.hostname !== undefined) managed.push(item.hostname);
+      return item.lines;
     }
-    runtimeItems.push(asMateRuntime(item, role));
     if (item.hostname !== undefined) runtimes.push({ hostname: item.hostname, role });
-  }
-  return {
-    managed: documentOf(tier, managed),
-    managedServices,
-    runtimes:
-      runtimeItems.length === 0
-        ? undefined
-        : { yaml: recipeServicesYaml(documentOf(tier, runtimeItems)), services: runtimes },
+    return asMateRuntime(item, role);
+  });
+  return { yaml: recipeServicesYaml(documentOf(tier, items)), managed, runtimes };
+}
+
+/** The item with an own key it does not state yet, after its last line of content. */
+function withOwnKey(item: TierItem, key: string, value: string): ReadonlyArray<string> {
+  if (ownKeyAt(item, key) !== undefined) return item.lines;
+  let at = item.lines.length;
+  while (at > 1 && /^\s*(?:#.*)?$/u.test(item.lines[at - 1] ?? "")) at -= 1;
+  return [
+    ...item.lines.slice(0, at),
+    `${" ".repeat(item.opening.length)}${key}: ${value}`,
+    ...item.lines.slice(at),
+  ];
+}
+
+/**
+ * A Mate's birth as one import (the module's header): its container — a services document of the
+ * one zcp item, `buildZcpServiceImportYaml` — created first, then the tier ({@link mateTier}) where
+ * it has one, every service isolated but to the container. The container takes the tier's item
+ * indentation, so the list stays one list.
+ */
+export function mateBirthImportYaml(container: string, tier: string | undefined): string {
+  const zcp = parseTier(container)?.items[0];
+  if (zcp?.hostname === undefined) throw new Error("A Mate's import needs its container.");
+  const services = tier === undefined ? undefined : parseTier(tier);
+  const items = services?.items ?? [];
+  const isolation = `service@${zcp.hostname}`;
+  const priorities = items.flatMap((item) => {
+    const priority = Number.parseInt(ownScalar(item, "priority") ?? "", 10);
+    return Number.isFinite(priority) ? [priority] : [];
+  });
+  const shift = " ".repeat(Math.max(0, (items[0]?.opening.length ?? 0) - zcp.opening.length));
+  const first: TierItem = {
+    ...zcp,
+    lines: zcp.lines.map((line) => (line.length === 0 ? line : `${shift}${line}`)),
+    opening: `${shift}${zcp.opening}`,
   };
+  const containerLines = withOwnKey(
+    { ...first, lines: withOwnKey(first, "envIsolation", isolation) },
+    "priority",
+    String(Math.max(0, ...priorities) + 1),
+  );
+  const tierLines = items.map((item) => withOwnKey(item, "envIsolation", isolation));
+  return documentOf(
+    services ?? { head: [], servicesLine: "services:", preamble: [], items: [], tail: [] },
+    [containerLines, ...tierLines],
+  );
 }
 
 /**
@@ -552,8 +574,8 @@ export function recipeProjectImportYaml(
   return [
     ...lines.slice(0, block.start),
     ...header,
-    // The project's isolation is the press's alone to write (`runEnvironmentCreation.ts`): a
-    // tier that named it, as a key or as a variable, would open a Mate's project at birth.
+    // The project keeps the platform's own isolation (`service`): a tier that named another, as a
+    // key or as a variable, would open the project at birth.
     ...withoutKeys(lines.slice(block.start + 1, block.end), [
       "name",
       "tags",

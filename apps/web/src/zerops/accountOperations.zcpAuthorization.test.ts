@@ -63,6 +63,10 @@ function automaticStatusRig(options: {
     baseUrl: "https://api.example.test",
     fetch: async (url, init) => {
       const path = new URL(url).pathname;
+      if (path.endsWith("/service-stack/import")) {
+        calls.push("import");
+        return Response.json({ serviceStacks: [] });
+      }
       if (path.includes("service-stack")) return Response.json({ list: [] });
       if (path.endsWith("integration-token/list")) return Response.json({ list: [] });
       if (path.endsWith("process/search")) return Response.json({ items: [] });
@@ -71,10 +75,6 @@ function automaticStatusRig(options: {
         return Response.json({ id: "new-key", token: "actual-key" });
       }
       if (path.includes("integration-token/")) return Response.json({});
-      if (path.includes("first-class-recipe")) {
-        calls.push("import");
-        return Response.json({});
-      }
       throw new Error(`Unexpected native request ${path}`);
     },
   });
@@ -295,6 +295,10 @@ it.each(["mint", "regenerate"] as const)(
       baseUrl: "https://api.example.test",
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
+        if (path.endsWith("/service-stack/import")) {
+          order.push("import");
+          return Response.json({ serviceStacks: [] });
+        }
         if (path.includes("service-stack")) {
           releaseNext = holdHqWrites("org", writer("later-viewer"), "hq");
           return Response.json({ list: [] });
@@ -311,10 +315,6 @@ it.each(["mint", "regenerate"] as const)(
           return Response.json({ token: "actual-key" });
         }
         if (path.includes("integration-token/")) return Response.json({});
-        if (path.includes("first-class-recipe")) {
-          order.push("import");
-          return Response.json({});
-        }
         throw new Error(`Unexpected native request ${path}`);
       },
     });
@@ -371,6 +371,10 @@ it.each([false, true])(
       baseUrl: "https://api.example.test",
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
+        if (path.endsWith("/service-stack/import")) {
+          writes.push("import");
+          return Response.json({ serviceStacks: [] });
+        }
         if (path.includes("service-stack"))
           return Response.json({
             list: existing
@@ -387,10 +391,6 @@ it.each([false, true])(
         if (init?.method === "POST" && path.endsWith("integration-token")) {
           writes.push("mint");
           return Response.json({ id: "key", token: "actual-key" });
-        }
-        if (path.includes("first-class-recipe")) {
-          writes.push("import");
-          return Response.json({});
         }
         throw new Error(`Unexpected request: ${path}`);
       },

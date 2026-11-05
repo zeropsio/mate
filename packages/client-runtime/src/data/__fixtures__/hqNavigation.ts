@@ -143,8 +143,6 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
     face: mate.face,
     madeBy: mate.madeBy ?? null,
     standupRequestedBy: mate.standupRequestedBy ?? null,
-    closedOff: mate.closedOff ?? false,
-    setupMarker: mate.setupMarker ?? null,
     ...(mate.birthId == null ? {} : { birthId: mate.birthId }),
     ...(mate.importProcessId === undefined ? {} : { importProcessId: mate.importProcessId }),
     ...(mate.automated === undefined ? {} : { automated: mate.automated }),

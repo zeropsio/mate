@@ -6,7 +6,7 @@
  * Mounted once, above every view, so a creation outlives the dialog and whatever the person opens
  * next. Add closes the dialog and lands on the new Mate's own view at once (`/mate/new/$birthId`,
  * the owner, 2026-10-03: "why are these two screens separate?"): the steps this tab runs with the
- * person's session — its project, its container, closed off, registered — run on in the account's
+ * person's session — its project, registered, its one import — run on in the account's
  * creations (`newProjectBirth.ts`), and the view draws them under its copy's row, saying to keep
  * the tab open only while they run. Once the platform takes its project the view hands the route
  * to the Mate's own (`/mate/$projectId`), in place. A step that stops says why there, with *Try

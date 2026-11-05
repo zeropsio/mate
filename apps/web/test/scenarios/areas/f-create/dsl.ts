@@ -72,12 +72,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
         drivers.zerops.rows("service-stack").some((row) => row.projectId === "created-1"),
       ).toBe(false);
     }),
-    stopAfterContainer: () => {
-      control.blockIsolation = true;
-    },
-    allowSetup: () => {
-      control.blockIsolation = false;
-    },
     failProject: () => {
       control.creationStatus = "FAILED";
     },
@@ -97,15 +91,6 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
       }
     }),
     finishSetup: click("Finish setup"),
-    originalSetupOnly: Effect.sync(() => {
-      expect(control.accepted).toEqual([{ id: "created-1", name: "Garden - Nova" }]);
-      expect(
-        drivers.zerops.requests.get(
-          "PUT /project/created-1/first-class-recipe/development-container",
-        ),
-      ).toBe(1);
-      expect(control.mateKeys).toEqual(["zcp-Garden - Nova"]);
-    }),
     failedProjectRemoved: Effect.sync(() => {
       expect(control.deleted).toEqual(["created-1"]);
       expect(drivers.zerops.rows("project").some((row) => row.id === "Ada")).toBe(true);
@@ -113,10 +98,10 @@ export function creation(s: Pick<Scenario, "page" | "drivers" | "clock" | "web">
     }),
     noAgentImported: Effect.sync(() => {
       expect(
-        drivers.zerops.requests.get(
-          "PUT /project/created-1/first-class-recipe/development-container",
-        ) ?? 0,
-      ).toBe(0);
+        drivers.zerops.world.imports.filter(
+          (entry) => entry.projectId === "created-1" && /type: zcp@/u.test(entry.yaml),
+        ),
+      ).toEqual([]);
     }),
     loseCreationReply: () => {
       control.outcome = "lost";

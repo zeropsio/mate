@@ -1128,11 +1128,6 @@ describe("makeHqApi — application name and a project's application", () => {
         body: { projectId: "p1", kind: "mate", mate: { face: "", standUp: true } },
       },
     ],
-    [
-      "records that a Mate's project is closed off",
-      (api) => api.recordClosedOff("p1"),
-      { method: "POST", path: "/api/mates/p1/closed-off" },
-    ],
     // SPEC §3.2b: a stage or a production attached as an environment of the application, named.
     [
       "attaches a stage under the environment's name",
@@ -2706,12 +2701,6 @@ describe("Every HQ verb that decides on the person's role carries their current 
       method: "PATCH",
       path: "/api/mates/p1",
       ask: (api) => api.updateMate("p1", { face: "sky" }),
-    },
-    {
-      call: "recordClosedOff",
-      method: "POST",
-      path: "/api/mates/p1/closed-off",
-      ask: (api) => api.recordClosedOff("p1"),
     },
     {
       call: "holdPress",

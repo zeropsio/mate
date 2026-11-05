@@ -1,6 +1,6 @@
 /**
  * The writes a creation makes at HQ: its application, a Mate's birth and its bind, a project's
- * attach, a Mate's record and its close-off, an environment's deploy key. HQ answers each at once;
+ * attach, a Mate's record, an environment's deploy key. HQ answers each at once;
  * where an answer is lost, HQ's navigation showing its effect — absent at the send — adopts it.
  * HQ keeps no request ids here: nothing is asked by one, and nothing is sent again blindly.
  */
@@ -50,7 +50,6 @@ function operationsOf(store: AccountStore, api: Partial<HqWrites>, zerops = fake
         bindBirth: asked("bindBirth"),
         attachProject: asked("attachProject"),
         createMate: asked("createMate"),
-        recordClosedOff: asked("recordClosedOff"),
         keepDeployToken: asked("keepDeployToken"),
         handOver: asked("handOver"),
         commentOnChange: asked("commentOnChange"),
@@ -186,15 +185,6 @@ describe("a creation's writes at HQ", () => {
           },
           undefined,
         ],
-        [
-          { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-          {
-            recordClosedOff: async (projectId) => {
-              said.push(`closed-off ${projectId}`);
-            },
-          },
-          undefined,
-        ],
       ];
       for (const [intent, api, result] of cases) {
         const store = account();
@@ -211,7 +201,6 @@ describe("a creation's writes at HQ", () => {
         "bind b1 p1",
         "attach app-1 p1 stage",
         "mate p1",
-        "closed-off p1",
       ]);
     }),
   );
@@ -353,39 +342,24 @@ describe("a creation's writes at HQ", () => {
 });
 
 describe("a write HQ answers as already done", () => {
-  it.effect(
-    "a Mate's record HQ holds already stands, and a Mate it holds none of has no close-off to mark",
-    () =>
-      Effect.gen(function* () {
-        for (const [intent, api] of [
-          [
-            { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
-            {
-              createMate: () =>
-                Promise.reject(
-                  new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
-                ),
-            },
-          ],
-          [
-            { kind: "mark-closed-off", orgId: ORG, projectId: "p1" },
-            {
-              recordClosedOff: () =>
-                Promise.reject(
-                  new HqError({
-                    kind: "refused",
-                    code: "mate_not_found",
-                    message: "No such Mate.",
-                  }),
-                ),
-            },
-          ],
-        ] as const) {
-          const store = account();
-          yield* operationsOf(store, api).operations.submit(intent);
-          expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
-        }
-      }),
+  it.effect("a Mate's record HQ holds already stands", () =>
+    Effect.gen(function* () {
+      for (const [intent, api] of [
+        [
+          { kind: "create-mate-record", orgId: ORG, mate: { projectId: "p1", face: "" } },
+          {
+            createMate: () =>
+              Promise.reject(
+                new HqError({ kind: "refused", code: "conflict", message: "It has a record." }),
+              ),
+          },
+        ],
+      ] as const) {
+        const store = account();
+        yield* operationsOf(store, api).operations.submit(intent);
+        expect(progress(store)).toMatchObject({ stage: "done", outcome: "succeeded" });
+      }
+    }),
   );
 });
 
