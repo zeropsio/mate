@@ -2280,6 +2280,9 @@ function useChatMarkdownState({
   return { componentState, handleCopy, markdownUrlTransform };
 }
 
+/** Who wrote the markdown: a person's message draws a Mate's fences as the code they are. */
+const ChatMarkdownVariantContext = React.createContext<ChatMarkdownVariant>("log");
+
 const ChatMarkdownRendererContext = React.createContext<
   ReturnType<typeof useChatMarkdownState>["componentState"]
 >(null!);
@@ -2572,6 +2575,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
     const { diffThemeName, isStreaming, onRunShellCommand, resolvedTheme, text, threadRef } = use(
       ChatMarkdownRendererContext,
     );
+    const variant = use(ChatMarkdownVariantContext);
     const codeBlock = extractCodeBlock(children);
     if (!codeBlock) {
       return <pre {...props}>{children}</pre>;
@@ -2600,7 +2604,7 @@ const CHAT_MARKDOWN_COMPONENTS = {
       </RenderErrorBoundary>
     );
     // A picture the Mate set up for the person to make, edit or design (`PictureAsk`).
-    if (language === "picture-ask") {
+    if (language === "picture-ask" && variant !== "person") {
       return (
         <PictureAskFence code={codeBlock.code} isStreaming={isStreaming} threadRef={threadRef}>
           <MarkdownCodeBlock
@@ -2688,17 +2692,19 @@ function ChatMarkdown({
       onCopy={handleCopy}
     >
       <ChatMarkdownRendererContext value={componentState}>
-        <MarkdownImageOpenerContext value={onOpenImage ?? null}>
-          <ReactMarkdown
-            remarkPlugins={remarkPlugins}
-            rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
-            skipHtml={false}
-            components={CHAT_MARKDOWN_COMPONENTS}
-            urlTransform={markdownUrlTransform}
-          >
-            {text}
-          </ReactMarkdown>
-        </MarkdownImageOpenerContext>
+        <ChatMarkdownVariantContext value={variant}>
+          <MarkdownImageOpenerContext value={onOpenImage ?? null}>
+            <ReactMarkdown
+              remarkPlugins={remarkPlugins}
+              rehypePlugins={parseRawHtml ? CHAT_MARKDOWN_REHYPE_PLUGINS : undefined}
+              skipHtml={false}
+              components={CHAT_MARKDOWN_COMPONENTS}
+              urlTransform={markdownUrlTransform}
+            >
+              {text}
+            </ReactMarkdown>
+          </MarkdownImageOpenerContext>
+        </ChatMarkdownVariantContext>
       </ChatMarkdownRendererContext>
     </div>
   );
