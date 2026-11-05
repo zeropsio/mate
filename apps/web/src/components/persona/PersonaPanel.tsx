@@ -20,15 +20,18 @@ import { useNavigate } from "@tanstack/react-router";
 import {
   ArrowLeftIcon,
   Building2Icon,
+  CompassIcon,
   DramaIcon,
   EllipsisIcon,
   GraduationCapIcon,
+  LightbulbIcon,
   MessagesSquareIcon,
   PaletteIcon,
   PenLineIcon,
   ScanSearchIcon,
   ShieldCheckIcon,
   SirenIcon,
+  SquareTerminalIcon,
   ZapIcon,
   type LucideIcon,
 } from "lucide-react";
@@ -117,7 +120,7 @@ export const PERSONA_PAGE_WORDS = {
   instructions: "Instructions",
   namePlaceholder: "e.g. Terse",
   instructionsPlaceholder: (mate: MateName) =>
-    `How ${mateIn(mate)} works and talks, in your words.`,
+    `How ${mateIn(mate)} works with you and what it focuses on, in your words.`,
   leaves: (mate: MateName) =>
     `Changed, so it becomes ${mateIn(mate)}'s own: the template's newer versions won't be offered.`,
   cancel: "Cancel",
@@ -354,7 +357,10 @@ type PersonaView =
     };
 
 const PREMADE_ICONS: Readonly<Record<string, LucideIcon>> = {
+  guide: CompassIcon,
   explainer: MessagesSquareIcon,
+  "creative-partner": LightbulbIcon,
+  direct: SquareTerminalIcon,
   prototyper: ZapIcon,
   "careful-engineer": ShieldCheckIcon,
   reviewer: ScanSearchIcon,
@@ -515,8 +521,8 @@ export function PersonaPanelBody(props: {
             {model.groups.map((group) => (
               <section
                 className="flex flex-col gap-2"
-                data-persona-group={group.source}
-                key={group.source}
+                data-persona-group={group.key}
+                key={group.key}
               >
                 <SectionHeader
                   action={

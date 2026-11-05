@@ -27,7 +27,7 @@ export function MatePersonaPress(props: {
         <span className="min-w-0 truncate">{props.persona}</span>
       </TooltipTrigger>
       <TooltipPopup align="start" side="bottom">
-        {`How ${props.mateName} works and talks in every chat.`}
+        {`How ${props.mateName} works with you, and what it focuses on.`}
       </TooltipPopup>
     </Tooltip>
   );
