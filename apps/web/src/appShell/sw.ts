@@ -14,8 +14,8 @@
  * origin: an update that finds no script keeps the installed worker.
  */
 
-import { outcomeOf, staticRoutes } from "./appShell.logic";
-import { makeAppShellWorker } from "./appShellWorker";
+import { outcomeOf } from "./appShell.logic";
+import { installStaticRoutes, makeAppShellWorker } from "./appShellWorker";
 
 interface ExtendableEvent extends Event {
   waitUntil(work: Promise<unknown>): void;
@@ -49,21 +49,16 @@ const appShell = makeAppShellWorker({
   scope: worker.registration.scope,
 });
 
-/** The static routes as the browser takes them: each URL pattern built as a `URLPattern`. */
-function browserRoutes(scope: string) {
-  return staticRoutes(scope).map((route) =>
-    "urlPattern" in route.condition
-      ? { ...route, condition: { urlPattern: new URLPattern(route.condition.urlPattern) } }
-      : route,
-  );
-}
-
 worker.addEventListener("install", (event) => {
   // Feature-detected: elsewhere every request reaches the handler, which passes what it does not route.
-  const routed =
-    typeof event.addRoutes === "function" && typeof URLPattern === "function"
-      ? outcomeOf(event.addRoutes(browserRoutes(worker.registration.scope)))
-      : Promise.resolve("done" as const);
+  const routed = installStaticRoutes(
+    {
+      addRoutes:
+        typeof event.addRoutes === "function" ? (rules) => event.addRoutes!(rules) : undefined,
+      URLPattern: typeof URLPattern === "function" ? URLPattern : undefined,
+    },
+    worker.registration.scope,
+  );
   event.waitUntil(Promise.all([routed, appShell.install()]).then(() => worker.skipWaiting()));
 });
 

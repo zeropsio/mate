@@ -1,66 +1,59 @@
 import { describe, expect, it } from "vite-plus/test";
 
-import { isWarmedRouteModule, precacheList, type BundleChunk } from "./appShellBuild.logic";
+import { precacheList, type BundleChunk } from "./appShellBuild.logic";
 
 const chunk = (fileName: string, rest: Partial<BundleChunk> = {}): BundleChunk => ({
   fileName,
   isEntry: false,
   imports: [],
-  moduleIds: [`/src/${fileName}.tsx`],
+  dynamicImports: [],
   css: [],
+  assets: [],
   ...rest,
 });
 
-describe("the files a page boots and warms from", () => {
+describe("the files a page may load while it runs", () => {
   const chunks = [
     chunk("assets/index.js", {
       isEntry: true,
       imports: ["assets/startup.js"],
+      dynamicImports: ["assets/settings.js", "assets/highlighter.js"],
       css: ["assets/index.css"],
     }),
     chunk("assets/startup.js"),
+    // A route the warmer loads, and a review diff nested lazily inside it.
     chunk("assets/settings.js", {
-      moduleIds: ["/src/routes/settings.tsx?tsr-split=component"],
-      imports: ["assets/shared.js"],
+      imports: ["assets/index.js"],
+      dynamicImports: ["assets/ReviewCommentDiff.js"],
     }),
-    chunk("assets/shared.js"),
-    chunk("assets/AgentsPanel.js", { moduleIds: ["/src/components/AgentsPanel.tsx"] }),
-    chunk("assets/kit.js", { moduleIds: ["/src/routes/kit.tsx?tsr-split=component"] }),
-    chunk("assets/grammar-rust.js", { moduleIds: ["/node_modules/shiki/rust.mjs"] }),
+    chunk("assets/ReviewCommentDiff.js", {
+      imports: ["assets/startup.js"],
+      assets: ["assets/diff-worker.js"],
+    }),
+    // The highlighter refers to the entry; its grammars refer to nothing that changes.
+    chunk("assets/highlighter.js", {
+      imports: ["assets/index.js"],
+      dynamicImports: ["assets/grammar-rust.js"],
+    }),
+    chunk("assets/grammar-rust.js"),
+    // A chunk that only refers to a changing chunk by dynamic import changes with it.
+    chunk("assets/loader.js", { dynamicImports: ["assets/settings.js"] }),
+    chunk("assets/unreached.js", { imports: ["assets/index.js"] }),
   ];
-  const warmed = new Set([
-    "/src/routes/settings.tsx?tsr-split=component",
-    "/src/components/AgentsPanel.tsx",
-  ]);
 
-  it("lists the entry with its CSS and static imports, and every warmed surface with its imports", () => {
-    expect(precacheList(chunks, warmed)).toEqual([
-      "/assets/AgentsPanel.js",
+  it("lists every chunk reachable through static or dynamic imports whose name changes with the build, with its CSS and URL-imported files", () => {
+    expect(precacheList(chunks)).toEqual([
+      "/assets/ReviewCommentDiff.js",
+      "/assets/diff-worker.js",
+      "/assets/highlighter.js",
       "/assets/index.css",
       "/assets/index.js",
       "/assets/settings.js",
-      "/assets/shared.js",
       "/assets/startup.js",
     ]);
   });
 
-  it.each([
-    {
-      title: "a route's split code is warmed",
-      id: "/src/routes/settings.general.tsx?tsr-split=component",
-      warmed: true,
-    },
-    {
-      title: "the design kit's split code is not warmed",
-      id: "/src/routes/kit.tsx?tsr-split=component",
-      warmed: false,
-    },
-    {
-      title: "a route file itself is not split code",
-      id: "/src/routes/settings.general.tsx",
-      warmed: false,
-    },
-  ])("$title", ({ id, warmed }) => {
-    expect(isWarmedRouteModule(id)).toBe(warmed);
+  it("leaves out chunks that refer to nothing that changes: the next build ships the same file", () => {
+    expect(precacheList(chunks)).not.toContain("/assets/grammar-rust.js");
   });
 });
