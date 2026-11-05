@@ -306,12 +306,18 @@ describe("shared birth progress", () => {
     seedHqNavigation(store, ORG, { structure: structure(false) });
     const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
     const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
-    expect(registry.get(read).open).toMatchObject([{ placement: "unplaced", canContinue: false }]);
+    expect(registry.get(read).open).toMatchObject([
+      { placement: "unplaced", canContinue: false, continuePermission: "attach" },
+    ]);
     membershipInputs("ADMIN", false, 2).forEach(store.dispatch);
     expect(registry.get(read).open).toMatchObject([{ placement: "unplaced", canContinue: true }]);
     membershipInputs("READ_ONLY", true, 3).forEach(store.dispatch);
     seedHqNavigation(store, ORG, { structure: structure(true) });
     expect(registry.get(read).open).toMatchObject([{ placement: "attached", canContinue: true }]);
+    membershipInputs("READ_ONLY", false, 4).forEach(store.dispatch);
+    expect(registry.get(read).open).toMatchObject([
+      { placement: "attached", canContinue: false, continuePermission: "add-mate" },
+    ]);
     stop();
     store.close();
     registry.dispose();
@@ -376,9 +382,13 @@ describe("shared birth progress", () => {
     const stopMaker = registry.subscribe(maker, () => registry.get(maker), { immediate: true });
     const stopOther = registry.subscribe(other, () => registry.get(other), { immediate: true });
     expect(registry.get(maker).open).toMatchObject([{ canContinue: true, canDelete: true }]);
-    expect(registry.get(other).open).toMatchObject([{ canContinue: false, canDelete: true }]);
+    expect(registry.get(other).open).toMatchObject([
+      { canContinue: false, canDelete: true, continuePermission: "maker" },
+    ]);
     membershipInputs("READ_ONLY", false, 2).forEach(store.dispatch);
-    expect(registry.get(maker).open).toMatchObject([{ canContinue: false, canDelete: false }]);
+    expect(registry.get(maker).open).toMatchObject([
+      { canContinue: false, canDelete: false, continuePermission: "maker" },
+    ]);
     membershipInputs("OWNER", false, 3).forEach(store.dispatch);
     expect(registry.get(maker).open).toMatchObject([{ canContinue: true, canDelete: true }]);
     store.dispatch({

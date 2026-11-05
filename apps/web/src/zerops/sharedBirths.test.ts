@@ -90,9 +90,22 @@ describe("shared births in the group tree", () => {
       line: "Container starting · Waiting for the Mate to link",
       actions: ["continue", "delete"],
     });
-    expect(sharedBirthPresentation({ ...birth, continueRequiresAdmin: true })).toMatchObject({
-      line: "Creating project · Outcome unknown — waiting for Zerops · An organization or project administrator can continue.",
-    });
+  });
+
+  it("a stopped birth tells a person without Continue who can finish its remaining steps", () => {
+    const stopped = {
+      ...birth,
+      progress: { phase: "creating-project", next: { kind: "create" }, reason: "No capacity." },
+    } as const;
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "maker" }).line).toContain(
+      "The person who started this setup can continue if they can add Mates and attach the project.",
+    );
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "attach" }).line).toContain(
+      "Someone who can add Mates and attach this project can continue.",
+    );
+    expect(sharedBirthPresentation({ ...stopped, continuePermission: "add-mate" }).line).toContain(
+      "Someone who can add Mates to this application can continue.",
+    );
   });
 
   it("an interrupted setup names the remaining attachment while the accepted import awaits its service", () => {

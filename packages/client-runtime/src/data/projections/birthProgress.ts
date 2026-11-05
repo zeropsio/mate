@@ -70,8 +70,8 @@ export interface SharedBirth {
   readonly intent: ReturnType<typeof readBirthIntent>;
   readonly progress: BirthProgress;
   readonly canContinue: boolean;
-  /** The next registration needs a project or organization administrator. */
-  readonly continueRequiresAdmin?: boolean;
+  /** Which permission the next actionable step needs when this person cannot continue. */
+  readonly continuePermission?: "maker" | "attach" | "add-mate";
   readonly canDelete: boolean;
 }
 
@@ -203,6 +203,25 @@ export const sharedBirths: Projection<
                     }),
                 )?.allow
               : undefined;
+        const actionable =
+          progress.next.kind !== "unknown" &&
+          progress.next.kind !== "blocked" &&
+          (progress.next.kind !== "wait" || progress.next.attach);
+        const canContinue =
+          authorized &&
+          (projectId !== null || birth.madeBy === personId) &&
+          attachment === true &&
+          actionable;
+        const continuePermission =
+          canContinue || !roleCurrent || !actionable
+            ? undefined
+            : projectId === null
+              ? "maker"
+              : placement === "unplaced" && (!authorized || attachment === false)
+                ? "attach"
+                : placement === "attached" && !authorized
+                  ? "add-mate"
+                  : undefined;
         return {
           id: birth.id,
           appId: app.id,
@@ -218,14 +237,8 @@ export const sharedBirths: Projection<
           placement,
           intent: readBirthIntent(birth.intent),
           progress,
-          canContinue:
-            authorized &&
-            (projectId !== null || birth.madeBy === personId) &&
-            attachment === true &&
-            progress.next.kind !== "unknown" &&
-            progress.next.kind !== "blocked" &&
-            (progress.next.kind !== "wait" || progress.next.attach),
-          ...(authorized && attachment === false ? { continueRequiresAdmin: true } : {}),
+          canContinue,
+          ...(continuePermission === undefined ? {} : { continuePermission }),
           canDelete:
             birth.adopted === true
               ? false

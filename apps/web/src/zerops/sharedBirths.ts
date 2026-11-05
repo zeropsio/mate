@@ -113,9 +113,13 @@ export function sharedBirthPresentation(birth: SharedBirth): {
       birth.progress.sessionEnded === true ? "Setup session ended" : null,
       detail,
       step,
-      birth.continueRequiresAdmin === true
-        ? "An organization or project administrator can continue."
-        : null,
+      birth.continuePermission === "maker"
+        ? "The person who started this setup can continue if they can add Mates and attach the project."
+        : birth.continuePermission === "attach"
+          ? "Someone who can add Mates and attach this project can continue."
+          : birth.continuePermission === "add-mate"
+            ? "Someone who can add Mates to this application can continue."
+            : null,
     ]
       .filter((part) => part !== null)
       .join(" · "),
