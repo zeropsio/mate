@@ -133,6 +133,59 @@ describe("shared birth progress", () => {
     registry.dispose();
   });
 
+  it("a project owner can delete a bound birth without permission to create projects", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({
+      running: [],
+      projects: [
+        {
+          id: "p1",
+          name: "Shop - Ada",
+          userRoles: [{ clientUserId: "member", roleCode: "OWNER" }],
+        },
+      ],
+      services: [],
+    }).forEach(store.dispatch);
+    creationFinished(store);
+    membershipInputs("BASIC_USER", false).forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "Shop",
+            projects: [],
+            births: [{ ...initial.birth, projectId: "p1" }],
+          },
+        ],
+        ungrouped: [],
+      },
+    });
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([{ canContinue: false, canDelete: true }]);
+    store.dispatch({
+      kind: "rows",
+      scope: projectsScope(ORG),
+      generation: 1,
+      method: "push",
+      via: "zerops-realtime",
+      rows: [
+        {
+          family: "project",
+          id: "p1",
+          value: projectValue({ id: "p1", name: "Shop - Ada", userRoles: [] }),
+          revision: zeropsVersion(2),
+        },
+      ],
+    });
+    expect(registry.get(read).open).toMatchObject([{ canContinue: false, canDelete: false }]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("a bound birth before attachment offers Continue only to someone who can attach it", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

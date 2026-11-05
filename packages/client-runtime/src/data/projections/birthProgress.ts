@@ -170,12 +170,8 @@ export const sharedBirths: Projection<
           }),
           ...(sessionEnded ? { sessionEnded: true as const } : {}),
         };
-        const authorized =
-          personId !== "" &&
-          navigation.live &&
-          current &&
-          roleLive &&
-          app.can?.add_mate?.allow === true;
+        const roleCurrent = personId !== "" && navigation.live && current && roleLive;
+        const authorized = roleCurrent && app.can?.add_mate?.allow === true;
         const attachProject =
           projectId ?? (progress.next.kind === "bind" ? progress.next.projectId : null);
         const appProjects = app.projects.map((project) => project.projectId);
@@ -215,11 +211,12 @@ export const sharedBirths: Projection<
             (progress.next.kind !== "wait" || progress.next.attach),
           ...(authorized && attachment === false ? { continueRequiresAdmin: true } : {}),
           canDelete:
-            authorized &&
-            (projectId === null ||
-              decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
-                mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
-              )?.allow === true),
+            projectId === null
+              ? authorized
+              : roleCurrent &&
+                decided(livePermissionFacts(read, orgId), [projectId], (facts) =>
+                  mateRecordPermission(facts, projectId, { create: false, held: "mate" }),
+                )?.allow === true,
         };
       }),
     );
