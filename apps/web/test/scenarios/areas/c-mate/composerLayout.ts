@@ -151,7 +151,7 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       // Held state, not a receipt: an unchanged list fires no change on the Mate.
       yield* mate.server.accessList.pipe(
         Effect.repeat({
-          until: (list) => Option.isSome(list) && list.value.heardAtMs >= at,
+          until: (list) => Option.isSome(list) && list.value.readAtMs >= at,
           schedule: Schedule.spaced("10 millis"),
         }),
       );

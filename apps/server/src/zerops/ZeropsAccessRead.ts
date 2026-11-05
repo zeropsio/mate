@@ -41,7 +41,7 @@ export type AccessRead =
     }
   /**
    * Zerops refused the key for good: `401` (revoked) or `400 userNotFound|projectNotFound` (the
-   * project or its key is gone, ZEROPS-064). The last list is kept and marked stale.
+   * project or its key is gone, ZEROPS-064). The last list is kept as it is.
    */
   | { readonly kind: "refused"; readonly status: number }
   /** No key, no answer, or one that proves nothing: the last list is kept as it is. */

@@ -665,7 +665,7 @@ export const makeFixtureZeropsLayer = (scene: ShowcaseScene) => {
       ZeropsMateKeyModule.ZeropsMateKey,
       ZeropsMateKeyModule.snapshotOnlyReader(undefined),
     ),
-    // No HQ sends a fixture scene an access list: the list stays empty.
-    ZeropsMateAccessListModule.relayLayer,
+    // A fixture scene has no Zerops to read: the list stays empty.
+    ZeropsMateAccessListModule.emptyLayer,
   );
 };

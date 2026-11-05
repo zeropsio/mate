@@ -146,6 +146,7 @@ import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
 import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
+import { accessSceneLayer } from "./zerops/testing/accessScene.ts";
 import * as ZeropsMateUpdateModule from "./zerops/ZeropsMateUpdate.ts";
 import { FIXTURE_ATTENTION, makeFixtureZeropsLayer } from "./zerops/ZeropsFixtureFeeds.ts";
 import * as ServerRuntimeStartup from "./serverRuntimeStartup.ts";
@@ -380,7 +381,6 @@ const testTicketStateByPort = new Map<
   number,
   {
     connections: ZeropsConnectionsModule.ZeropsConnections["Service"];
-    tickets: ZeropsTicketDoorModule.ZeropsTicketDoor["Service"];
   }
 >();
 const testTicketState = Effect.gen(function* () {
@@ -393,7 +393,7 @@ const ticketAuthTestLayer = EnvironmentAuth.zeropsLayer.pipe(
   Layer.provideMerge(
     ZeropsConnectionsModule.layer.pipe(
       Layer.provideMerge(ZeropsTicketDoorModule.layer),
-      Layer.provideMerge(ZeropsMateAccessListModule.relayLayer),
+      Layer.provideMerge(accessSceneLayer({ owner: "OWNER" })),
     ),
   ),
 );
@@ -1059,9 +1059,9 @@ const buildAppUnderTest = (options?: {
           // the fixture/feeds bundle the next `Layer.provide` supplies: a
           // test machine has no live env store either, so the reader
           // answers the boot snapshot (`undefined`, same as `config.zerops`
-          // being unset), the member list has no key to be read with, no HQ
-          // sends who the project opens for, and the status starts `"unknown"`.
-          ZeropsMateAccessListModule.relayLayer.pipe(
+          // being unset), the member list has no key to be read with, the
+          // access list names nobody, and the status starts `"unknown"`.
+          ZeropsMateAccessListModule.emptyLayer.pipe(
             Layer.provideMerge(
               Layer.succeed(
                 ZeropsMateKeyModule.ZeropsMateKey,
@@ -1398,9 +1398,6 @@ const buildAppUnderTest = (options?: {
       testTicketStateByPort.set(port, {
         connections: Option.getOrThrow(
           Context.getOption(context, ZeropsConnectionsModule.ZeropsConnections),
-        ),
-        tickets: Option.getOrThrow(
-          Context.getOption(context, ZeropsTicketDoorModule.ZeropsTicketDoor),
         ),
       });
     yield* Effect.addFinalizer(() =>
@@ -1881,22 +1878,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
           config: { zerops: zeropsTestEnvironment() },
           layers: { terminalManager: { closeOpenedBy: () => Effect.succeed(0) } },
         });
-        const { connections, tickets } = yield* testTicketState;
-        yield* connections.heard({
-          type: "access",
-          version: 1,
-          full: true,
-          viewAt: "1970-01-01T00:00:00.000Z",
-          members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
-        });
+        const { connections } = yield* testTicketState;
         const ticket = "ticket-on-the-first-frame";
-        yield* tickets.heard({
-          type: "ticket",
-          ticket,
-          userId: "owner",
-          sessionId: "hq-owner",
-          expiresIn: 60,
-        });
+        yield* Effect.flatten(
+          connections.ticket({
+            type: "ticket",
+            ticket,
+            userId: "owner",
+            sessionId: "hq-owner",
+            expiresIn: 60,
+          }),
+        );
         const before = yield* HttpClient.get("/api/auth/session", {
           headers: { authorization: `Bearer ${ticket}` },
         });
@@ -5085,22 +5077,17 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("serves a bearer call from any origin inside a Zerops project", () =>
     Effect.gen(function* () {
       yield* buildAppUnderTest({ ticketAuth: true, config: { zerops: zeropsTestEnvironment() } });
-      const { connections, tickets } = yield* testTicketState;
-      yield* connections.heard({
-        type: "access",
-        version: 1,
-        full: true,
-        viewAt: "1970-01-01T00:00:00.000Z",
-        members: [{ userId: "owner", role: "OWNER", visibility: "open" }],
-      });
+      const { connections } = yield* testTicketState;
       const session = { token: "http-origin-ticket" };
-      yield* tickets.heard({
-        type: "ticket",
-        ticket: session.token,
-        userId: "owner",
-        sessionId: "hq-owner",
-        expiresIn: 60,
-      });
+      yield* Effect.flatten(
+        connections.ticket({
+          type: "ticket",
+          ticket: session.token,
+          userId: "owner",
+          sessionId: "hq-owner",
+          expiresIn: 60,
+        }),
+      );
       assert.isTrue(
         Option.isSome(yield* connections.admit({ ticket: session.token }, Effect.void)),
       );

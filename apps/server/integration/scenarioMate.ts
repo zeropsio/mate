@@ -84,7 +84,7 @@ export interface ScenarioMate {
   readonly providers: ProviderInstances["Service"];
   /** Runs the production signer check after a platform membership input. */
   readonly offboarding: ZeropsOffboarding["Service"];
-  /** HQ's access list as this Mate holds it now, on its own clock: none past the hold. */
+  /** The Mate's own access list as it holds it now, on its own clock. */
   readonly accessList: Effect.Effect<Option.Option<AccessList>>;
   readonly root: string;
   readonly homeDir: string;

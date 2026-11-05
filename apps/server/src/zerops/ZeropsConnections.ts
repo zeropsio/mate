@@ -4,7 +4,8 @@
  * a list that changes closes the connections of whoever it no longer opens for, and one that only
  * aged closes nothing.
  */
-import type { KeyLinkAccess, LinkAccessMember, TicketRefusal } from "@t3tools/shared/mateLink";
+import type { MateAccessMember } from "@t3tools/shared/mateAccess";
+import type { TicketRefusal } from "@t3tools/shared/mateLink";
 import * as Clock from "effect/Clock";
 import * as Crypto from "effect/Crypto";
 import * as Context from "effect/Context";
@@ -21,7 +22,7 @@ export interface ConnectionIdentity {
   readonly connectionId: string;
   readonly userId: string;
   readonly sessionId: string;
-  readonly role: LinkAccessMember["role"];
+  readonly role: MateAccessMember["role"];
 }
 interface ConnectionInput {
   readonly connectionId: string;
@@ -34,7 +35,6 @@ interface ConnectionInput {
 export class ZeropsConnections extends Context.Service<
   ZeropsConnections,
   {
-    readonly heard: (frame: KeyLinkAccess) => Effect.Effect<void>;
     /**
      * Takes HQ's ticket in the order the link heard it, and gives what answers it: kept for its
      * socket when the list opens for its person, else refused. The answer may wait on a recompute,
@@ -64,7 +64,7 @@ export const make = Effect.gen(function* () {
     const connection = connections.get(id);
     if (connection === undefined) return Option.none<ConnectionIdentity>();
     const list = yield* access.current;
-    if (Option.isNone(list) || list.value.refused) return Option.none<ConnectionIdentity>();
+    if (Option.isNone(list)) return Option.none<ConnectionIdentity>();
     const member = list.value.members.find(
       (member) => member.userId === connection.userId && member.visibility === "open",
     );
@@ -86,16 +86,11 @@ export const make = Effect.gen(function* () {
   const reconcile = Effect.gen(function* () {
     for (const id of connections.keys()) if (Option.isNone(yield* current(id))) yield* remove(id);
   });
-  // The Mate's own recompute changes the list without a frame: every change re-evaluates.
+  // Every change of the list, a recompute's or a Zerops frame's, re-evaluates the connections.
   yield* Stream.runForEach(access.changes, () => lock.withPermits(1)(reconcile)).pipe(
     Effect.forkIn(scope, { startImmediately: true }),
   );
   return ZeropsConnections.of({
-    heard: (frame) =>
-      Effect.gen(function* () {
-        yield* access.heard(frame);
-        yield* reconcile;
-      }).pipe(lock.withPermits(1)),
     ticket: (frame) =>
       Effect.sync(() => {
         pending.add(frame);
