@@ -155,7 +155,7 @@ describe("environmentSetup", () => {
             family: "hqPress",
             id: "stage",
             revision,
-            value: { kind: "stage", appId: "shop", heldForMs: 0, until: "2000-01-01T00:00:00Z" },
+            value: { kind: "stage", appId: "shop", held: false },
           },
         ]),
       ),

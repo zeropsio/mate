@@ -56,7 +56,7 @@ export interface SeededHq {
   readonly people?: Readonly<
     Record<string, { readonly name: string; readonly clientUserId?: string }>
   >;
-  /** HQ's presses, each held for `heldForMs` from HQ's read. */
+  /** HQ's presses and the hold status HQ last wrote. */
   readonly presses?: Readonly<Record<string, HqPressValue>>;
   /** HQ answers now; `false` leaves it as it was read, its link down. */
   readonly live?: boolean;

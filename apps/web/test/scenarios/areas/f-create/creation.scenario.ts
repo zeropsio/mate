@@ -27,7 +27,9 @@ describe("F: creation through the hosted client", () => {
               new URL(response.url()).pathname === "/api/presses/created-1",
           );
           yield* c.click(`Add ${role} to Shop`);
-          expect((yield* Effect.promise(() => pressAccepted)).status()).toBe(200);
+          const pressResponse = yield* Effect.promise(() => pressAccepted);
+          expect(pressResponse.status()).toBe(200);
+          expect(yield* Effect.promise(() => pressResponse.json())).toMatchObject({ held: true });
           yield* c.environmentAppears("Shop-b", tag);
           yield* c.acceptedOnce("Shop-b");
           yield* s.then.noExternalNetwork;

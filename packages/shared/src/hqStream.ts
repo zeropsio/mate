@@ -432,12 +432,11 @@ export type HqGitNavigationEnvironment = typeof HqGitNavigationEnvironment.Type;
 
 export const CanonicalHqNavigationEnvironments = Schema.Array(CanonicalHqNavigationEnvironment);
 export type CanonicalHqNavigationEnvironments = typeof CanonicalHqNavigationEnvironments.Type;
-/** Remaining hold duration from HQ's read; transport silence never decides its outcome. */
+/** HQ's current hold; transport silence never decides its outcome. */
 export const HqNavigationPress = Schema.Struct({
   kind: Schema.Literals(["mate", "stage", "production"]),
   appId: Schema.optionalKey(Schema.String),
-  heldForMs: Schema.Number.check(Schema.isGreaterThanOrEqualTo(0)),
-  until: Schema.String,
+  held: Schema.Boolean,
   importProcessId: Schema.optionalKey(Schema.String),
 });
 export type HqNavigationPress = typeof HqNavigationPress.Type;

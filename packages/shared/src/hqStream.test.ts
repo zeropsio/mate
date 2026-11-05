@@ -140,8 +140,7 @@ it("navigation preserves production release standing and deploy evidence", () =>
   const press = {
     kind: "production",
     appId: "app",
-    heldForMs: 9000,
-    until: "2026-10-06T00:01:00Z",
+    held: true,
     importProcessId: "import",
   };
   expect(readPress(press)).toEqual(press);

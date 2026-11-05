@@ -44,7 +44,7 @@ function Probe() {
   return null;
 }
 
-/** HQ's presses as its navigation says them: each held for `heldForMs` from HQ's read. */
+/** HQ's presses as its navigation says them. */
 const mount = (presses: Readonly<Record<string, HqPressValue>> | null) => {
   const registry = AtomRegistry.make();
   if (presses !== null)
@@ -71,8 +71,28 @@ afterEach(() => {
 });
 
 describe("usePressesElsewhere", () => {
+  it("follows a hold HQ reports after first paint and its later release", () => {
+    const registry = mount({});
+    expect(said("p-una")).toBe("unknown");
+    const hold: HqPressValue = { kind: "mate", held: true };
+    act(() => {
+      mountHqNavigation(registry, "org-1", {
+        structure: { ungrouped: [], apps: [] },
+        presses: { "p-una": hold },
+      });
+    });
+    expect(said("p-una")).toBe("pressing");
+    act(() => {
+      mountHqNavigation(registry, "org-1", {
+        structure: { ungrouped: [], apps: [] },
+        presses: { "p-una": { ...hold, held: false } },
+      });
+    });
+    expect(said("p-una")).toBe("unknown");
+  });
+
   it("reads a slow press as at it for as long as HQ lists its hold: no reader times it out", async () => {
-    mount({ "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" } });
+    mount({ "p-una": { kind: "mate", held: true } });
     expect(said("p-una")).toBe("pressing");
     await act(async () => {
       await vi.advanceTimersByTimeAsync(10 * 60_000);
@@ -86,8 +106,7 @@ describe("usePressesElsewhere", () => {
     mount({
       "p-una": {
         kind: "mate",
-        heldForMs: 30_000,
-        until: "2026-10-05T10:00:30.000Z",
+        held: true,
         importProcessId: "imp-1",
       },
     });
@@ -99,7 +118,7 @@ describe("usePressesElsewhere", () => {
   // made until its container was listed.
   it("never reads a press HQ let go of as stopped: one that went through leaves no record", () => {
     const registry = mount({
-      "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" },
+      "p-una": { kind: "mate", held: true },
     });
     expect(said("p-una")).toBe("pressing");
     act(() => {

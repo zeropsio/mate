@@ -499,7 +499,7 @@ describe("an account's HQ", () => {
     const store = makeAccountStore(AtomRegistry.make());
     const account = observeAccount({ store, wire: emptyZerops().wire, repairSession: Effect.void });
     const scope = hqPressesScope("org-a");
-    const press = { kind: "mate" as const, heldForMs: 30_000, until: "2026-11-05T10:00:30.000Z" };
+    const press = { kind: "mate" as const, held: true };
     seedHqNavigation(store, "org-a", {
       presses: { "p-1": press, "p-2": { ...press, kind: "stage" } },
     });
