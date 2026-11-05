@@ -17,6 +17,39 @@ import {
 
 describe("addedMateBirth — the birth intent an added Mate is pressed under", () => {
   const record = () => vi.fn(async () => "b-gus");
+  const plan = { projectName: "Garden - Gus", displayName: "Gus", agents: [], userRoles: [] };
+
+  it("records the selected tier revision and creation inputs for another device", async () => {
+    const recorded = record();
+    await addedMateBirth(recorded, {
+      groupId: "app-g",
+      role: "stage",
+      choice: {
+        withAgent: true,
+        recipe: { kind: "tier", tier: "stage", revision: "revision-a", yaml: "services: []" },
+        face: { tint: "rose", shape: "seal" },
+      },
+      projectName: "Garden - stage",
+      displayName: "stage",
+      agents: ["codex"],
+      userRoles: [{ clientUserId: "member-1", roleCode: "OWNER" }],
+    });
+    expect(recorded).toHaveBeenCalledWith({
+      appId: "app-g",
+      face: "rose:seal",
+      standUp: false,
+      intent: {
+        projectName: "Garden - stage",
+        recipe: { kind: "tier", id: "group", revision: "revision-a", tier: "stage" },
+        agents: ["codex"],
+        standUp: false,
+        automated: false,
+        placement: { role: "stage", name: "stage", chief: false },
+        location: null,
+        userRoles: [{ clientUserId: "member-1", roleCode: "OWNER" }],
+      },
+    });
+  });
 
   // F6c (2026-10-03): recorded at HQ before its project exists, so a press cut off between the
   // project and its attach is finished where and as it was asked for, in any browser. Audit B3:
@@ -25,13 +58,23 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
     {
       case: "a dev Mate, asking its stand-up",
       role: "dev" as const,
-      recipe: { kind: "tier" as const, tier: "mate" as const, yaml: "services: []" },
+      recipe: {
+        kind: "tier" as const,
+        revision: "recipe-revision",
+        tier: "mate" as const,
+        yaml: "services: []",
+      },
       standUp: true,
     },
     {
       case: "a devstage Mate, asking none",
       role: "devstage" as const,
-      recipe: { kind: "tier" as const, tier: "mate" as const, yaml: "services: []" },
+      recipe: {
+        kind: "tier" as const,
+        revision: "recipe-revision",
+        tier: "mate" as const,
+        yaml: "services: []",
+      },
       standUp: false,
     },
     {
@@ -53,10 +96,28 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
         groupId: "app-g",
         role,
         choice: { withAgent: true, recipe, face: { tint: "rose", shape: "seal" } },
+        ...plan,
       }),
     ).toBe("b-gus");
     // D3: its name is its project's, never HQ's.
-    expect(recorded).toHaveBeenCalledWith({ appId: "app-g", face: "rose:seal", standUp });
+    expect(recorded).toHaveBeenCalledWith({
+      appId: "app-g",
+      face: "rose:seal",
+      standUp,
+      intent: {
+        projectName: "Garden - Gus",
+        recipe:
+          recipe.kind === "none"
+            ? { kind: "none" }
+            : { kind: "tier", id: "group", revision: "recipe-revision", tier: "mate" },
+        agents: [],
+        standUp,
+        automated: false,
+        placement: { role, name: "Gus", chief: false },
+        location: null,
+        userRoles: [],
+      },
+    });
   });
 
   it("records an automated Mate's birth as automated, so whichever browser finishes it makes it so", async () => {
@@ -64,9 +125,10 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
     await addedMateBirth(recorded, {
       groupId: "app-g",
       role: "dev",
+      ...plan,
       choice: {
         withAgent: true,
-        recipe: { kind: "tier", tier: "mate", yaml: "services: []" },
+        recipe: { kind: "tier", revision: "recipe-revision", tier: "mate", yaml: "services: []" },
         face: { tint: "rose", shape: "seal" },
         automated: true,
       },
@@ -76,6 +138,16 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
       face: "rose:seal",
       standUp: true,
       automated: true,
+      intent: {
+        projectName: "Garden - Gus",
+        recipe: { kind: "tier", id: "group", revision: "recipe-revision", tier: "mate" },
+        agents: [],
+        standUp: true,
+        automated: true,
+        placement: { role: "dev", name: "Gus", chief: false },
+        location: null,
+        userRoles: [],
+      },
     });
   });
 
@@ -90,6 +162,7 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
         groupId: "app-g",
         role,
         choice: { withAgent, recipe: { kind: "none" } },
+        ...plan,
       }),
     ).toBeUndefined();
     expect(recorded).not.toHaveBeenCalled();
@@ -99,6 +172,7 @@ describe("addedMateBirth — the birth intent an added Mate is pressed under", (
 describe("a stage added to a group, as its press writes it at HQ", () => {
   const STAGE_TIER = {
     kind: "tier" as const,
+    revision: "recipe-revision",
     tier: "stage" as const,
     yaml: "services:\n  - hostname: api\n    startWithoutCode: true\n",
   };
@@ -119,7 +193,15 @@ describe("a stage added to a group, as its press writes it at HQ", () => {
         calls.push("record-birth");
         return "b-1";
       },
-      { groupId: "app-g", role: "stage", choice },
+      {
+        groupId: "app-g",
+        role: "stage",
+        choice,
+        projectName: "Acme - stage",
+        displayName: "stage",
+        agents: [],
+        userRoles: [],
+      },
     );
     const run = (async (
       op: Parameters<RunToEnd>[0],

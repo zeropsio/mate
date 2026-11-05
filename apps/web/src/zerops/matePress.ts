@@ -27,7 +27,7 @@ import { randomUUID } from "~/lib/utils";
  * again. Nothing is stored: a reload forgets it, and the listing — the project is tagged into its
  * group at birth — draws the rest.
  */
-import { acquireHqPressLease, type PressHold } from "@t3tools/client-runtime/data";
+import { acquireHqPressLease, birthAttempt, type PressHold } from "@t3tools/client-runtime/data";
 import type { MateRegistration } from "@t3tools/client-runtime/data";
 import {
   resumableEnvironmentCreationStep,
@@ -893,6 +893,7 @@ export async function runPress(input: {
   readonly organizationId: string;
   readonly steps: ReadonlyArray<EnvironmentCreationStep>;
   readonly platform: EnvironmentCreationPlatform;
+  readonly birth?: Parameters<typeof runEnvironmentCreation>[0]["birth"];
   readonly isCurrent: () => boolean;
   readonly resume?: {
     readonly from: number;
@@ -982,6 +983,7 @@ async function pressRun(
       clientId: input.organizationId,
       steps: input.steps,
       platform: input.platform,
+      ...(input.birth === undefined ? {} : { birth: input.birth }),
       isCurrent: input.isCurrent,
       // A press whose hold lapsed writes nothing more: its setup is another browser's to finish now.
       stopped: () => (input.hold?.lapsed() === true ? PRESS_LAPSED : undefined),
@@ -993,12 +995,21 @@ async function pressRun(
           void withExclusiveLock(input.locks, matePressLockName(projectId), () => end);
         }
         // Its new project is held at HQ from the moment Zerops takes it: nobody else's yet.
-        await input.hold?.take(projectId);
+        const held = await input.hold?.take(projectId);
         await input.onProjectAccepted?.(projectId, projectName);
+        if (input.birth !== undefined && held === "elsewhere")
+          throw new Error(PRESSED_IN_ANOTHER_BROWSER);
       },
       // Followed by its import's own process from now on, in any browser.
       onContainerImported: async ({ processId }) => {
-        if (processId !== undefined) await input.hold?.imported(processId);
+        if (processId !== undefined) {
+          const recorded = await input.hold?.imported(processId).catch((cause: unknown) => {
+            if (input.birth !== undefined) throw cause;
+            // Ordinary presses continue when HQ does not answer their hold.
+          });
+          if (input.birth !== undefined && recorded !== "recorded")
+            throw new Error("HQ did not confirm the import receipt.");
+        }
       },
       onProgress: (progress) => {
         // Registered, a stage's or a production's press is over at HQ, which ended its hold.
@@ -1263,11 +1274,25 @@ async function finishLocked(
     }
   }
   if (resumeSetup !== undefined) return resumeSetup(true, input.onProgress, platform);
+  const birthId = input.registration?.kind === "mate" ? input.registration.intent : undefined;
   return runPress({
     organizationId: input.inputs.organizationId,
     steps,
     platform,
     isCurrent: input.isCurrent,
+    ...(birthId === undefined
+      ? {}
+      : {
+          birth: {
+            id: birthId,
+            attempt: birthAttempt(
+              input.inputs.operations.run,
+              input.inputs.organizationId,
+              birthId,
+              input.isCurrent,
+            ),
+          },
+        }),
     resume: { from: 0, projectId: input.projectId, projectName: input.projectName },
     ...(input.onProgress === undefined ? {} : { onProgress: input.onProgress }),
     locks: input.locks,

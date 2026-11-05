@@ -1382,6 +1382,21 @@ describe("mateBornLine — a Mate being born, as its row's one line", () => {
     expect(mateBornLine(coming).words).toBe("Coming up");
     expect(mateBornLine({ ...coming, line: "Coming up. A few minutes." }).words).toBe("Coming up");
   });
+
+  it("a shared birth's row shows its proven phase and reason without a local clock", () => {
+    expect(
+      mateBornLine({
+        kind: "coming",
+        line: "Import accepted · No capacity.",
+        birth: { attention: true },
+        since: SINCE,
+      }),
+    ).toEqual({
+      words: "Import accepted · No capacity.",
+      since: undefined,
+      tone: "attention",
+    });
+  });
 });
 
 // A creation the listing does not hold yet, drawn from its birth (`ZeropsGroupPendingMember`),
@@ -1837,6 +1852,20 @@ describe("mateAsker — who a row says asked its Mate", () => {
 // offers its Delete alone (live, 2026-10-01: a half-made Mate's row read "Setting up stopped" with
 // no ⋯; Brief W7, Karel 2026-11-04: a Mate that never came up could not be deleted from the web).
 describe("mateRowMenu", () => {
+  it("keeps both shared-birth actions while the birth is on its way", () => {
+    const actions = {
+      muted: false,
+      birthOnly: true,
+      entries: [{ id: "continue" }, { id: "delete" }],
+    };
+    expect(
+      mateRowMenu({
+        deleting: false,
+        coming: { kind: "coming", line: "Project created", birth: { attention: false } },
+        actions,
+      }),
+    ).toBe(actions);
+  });
   const ACTIONS = {
     muted: false,
     entries: [

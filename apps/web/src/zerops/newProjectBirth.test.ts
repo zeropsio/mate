@@ -573,6 +573,7 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
       record("birth", { birthId: "b-vera" });
       return { birthId: "b-vera" };
     }),
+    attemptProject: async (_birthId, send) => send(),
     createProject: vi.fn(async (requestId: string) => {
       order.push(`create ${requestId}`);
       record("project", { projectId: "p-vera" });
@@ -590,6 +591,26 @@ function ports(start: CreationRead = read(), over: Partial<NewProjectPorts> = {}
 const CREATOR_OWNS = { clientUserId: "cu-me", roleCode: "OWNER" } as const;
 
 describe("runNewProjectBirth — the project, then its first Mate", () => {
+  it("records the first Mate's original creation intent before creating its project", async () => {
+    const { ports: made, read: now } = ports();
+    await runNewProjectBirth(held({ locationId: "prg1", agents: ["claude-code"] }), now, made);
+    expect(made.recordBirth).toHaveBeenCalledWith("b-acme:birth", {
+      appId: "app-acme",
+      id: "b-acme",
+      face: "rose:seal",
+      intent: {
+        projectName: "Acme CRM - Vera",
+        recipe: { kind: "none" },
+        agents: ["claude-code"],
+        standUp: false,
+        automated: false,
+        placement: { role: "dev", name: "Vera", chief: false },
+        location: "prg1",
+        userRoles: [CREATOR_OWNS],
+      },
+    });
+  });
+
   // Decision: A birth from the web always writes the creator's OWNER override in the create body,
   // whatever the creator's org role, so every Mate carries its owner marker from creation.
   it.each<{ readonly case: string; readonly ask: Partial<NewProjectAsk> }>([

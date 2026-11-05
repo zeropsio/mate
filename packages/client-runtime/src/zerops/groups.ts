@@ -327,7 +327,7 @@ export interface ZeropsPlacedBirth {
   /** The project the platform made for it; a creation still being made, the client's own id for it. */
   readonly projectId: string;
   /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
-  readonly startedAt: number;
+  readonly startedAt?: number | undefined;
   readonly placement: BirthPlacement;
   /** The client's creation stopped before the platform took it: it says so where it is drawn. */
   readonly failed?: boolean | undefined;
@@ -341,11 +341,13 @@ export interface ZeropsPlacedBirth {
 /** A member of a group still being created: drawn until the listing holds its project. */
 export interface ZeropsGroupPendingMember {
   readonly projectId: string;
+  /** The durable HQ birth, where one has been recorded. */
+  readonly intent?: string | undefined;
   readonly kind: RoleProjectKind;
   /** A Mate's name, as it will be listed; anything else's, what the person called it. */
   readonly name: string;
   /** When its setup began, wall ms: the person's first press, its row's clock (board D1). */
-  readonly startedAt: number;
+  readonly startedAt?: number | undefined;
   /** The face its person picked for a Mate, worn asleep until the listing holds it. */
   readonly face?: ZeropsMateFace | undefined;
   /** Its creation stopped before the platform took it (`ZeropsPlacedBirth.failed`). */
@@ -483,9 +485,11 @@ function byBornNewestFirst(left: number | undefined, right: number | undefined):
 function heldBackByCreations(
   births: ReadonlyArray<ZeropsPlacedBirth>,
 ): (project: ZeropsProject) => boolean {
-  const since = births
-    .filter((birth) => birth.awaitingProject === true && birth.failed !== true)
-    .map((birth) => birth.startedAt);
+  const since = births.flatMap((birth) =>
+    birth.awaitingProject === true && birth.failed !== true && birth.startedAt !== undefined
+      ? [birth.startedAt]
+      : [],
+  );
   if (since.length === 0) return () => false;
   const earliest = Math.min(...since);
   return (project) => {
@@ -628,7 +632,14 @@ export function deriveCanonicalGroups(
     );
     const production = sorted.filter((environment) => environment.role === "prod");
     const coming = [...(pending.get(groupId) ?? [])].sort(
-      (left, right) => left.startedAt - right.startedAt || byName(left.projectId, right.projectId),
+      (left, right) =>
+        (left.startedAt === undefined
+          ? right.startedAt === undefined
+            ? 0
+            : 1
+          : right.startedAt === undefined
+            ? -1
+            : left.startedAt - right.startedAt) || byName(left.projectId, right.projectId),
     );
     const named = labels.get(groupId);
     const created = coming.find((birth) => birth.placement.groupName.trim() !== "")?.placement
@@ -646,9 +657,10 @@ export function deriveCanonicalGroups(
       environments: sorted,
       pending: coming.map((birth): ZeropsGroupPendingMember => ({
         projectId: birth.projectId,
+        ...(birth.intent === undefined ? {} : { intent: birth.intent }),
         kind: birth.placement.kind,
         name: nameUnderApp(birth.placement.displayName, birth.placement.groupName),
-        startedAt: birth.startedAt,
+        ...(birth.startedAt === undefined ? {} : { startedAt: birth.startedAt }),
         ...(birth.placement.face === undefined ? {} : { face: birth.placement.face }),
         ...(birth.failed === true ? { failed: true } : {}),
       })),

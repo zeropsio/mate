@@ -211,6 +211,24 @@ describe("create-project", () => {
   };
   const OTHER = { id: "p1", name: "shop-stage" };
 
+  it.effect(
+    "a lost birth creation waits for shared reconciliation instead of adopting a same-name project",
+    () =>
+      Effect.gen(function* () {
+        const store = account();
+        const { operations, calls } = operationsOf(store, lost, [
+          [OTHER],
+          [OTHER, { id: "p9", name: "shop-stage" }],
+        ]);
+        yield* operations.submit({ ...CREATE, birthId: "birth-1" });
+        expect(calls.filter((call) => call !== "list")).toHaveLength(1);
+        expect(
+          operationResult(store.state().operations.get("r1"), "create-project"),
+        ).toBeUndefined();
+        expect(progress(store)).toEqual({ stage: "uncertain", next: "ask-owner-again" });
+      }),
+  );
+
   it.effect("an uncertain creation goes on with its one new project, never a duplicate", () =>
     Effect.gen(function* () {
       const store = account();

@@ -44,7 +44,7 @@ import { PlacePanel } from "./PlacePanel";
 import { CardMate, ProjectCards } from "./ProjectCards";
 import { overviewKeeps } from "./projectsView.logic";
 import { cardMateReading } from "./projectCard.logic";
-import { entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
+import { born, entry, FLOW_PROPS, item, placed, STAGE_STOP, WREN } from "./flowTestFixtures";
 
 // The browser owns viewport intersection; this render case holds both already-visible cards.
 class VisibleCard {
@@ -64,6 +64,46 @@ afterEach(() => {
   detail.reads = {};
   detail.held.clear();
   detail.demand.mockClear();
+});
+
+it("a pending Mate's project card shows its shared birth phase and actions", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.stubGlobal("IntersectionObserver", VisibleCard);
+  const groups = born();
+  const container = document.createElement("div");
+  document.body.append(container);
+  const root = createRoot(container);
+  const onContinue = vi.fn();
+  try {
+    await act(async () =>
+      root.render(
+        <ProjectCards
+          focusGroup={undefined}
+          groups={groups}
+          props={{
+            ...FLOW_PROPS,
+            renderComingBirth: (projectId: string) =>
+              projectId === "vera-dev"
+                ? {
+                    line: "Project created · Quota reached.",
+                    menu: <button onClick={onContinue}>Continue</button>,
+                  }
+                : undefined,
+          }}
+        />,
+      ),
+    );
+    expect(container.textContent).toContain("Project created · Quota reached.");
+    await act(async () =>
+      [...container.querySelectorAll("button")]
+        .find((button) => button.textContent === "Continue")
+        ?.click(),
+    );
+    expect(onContinue).toHaveBeenCalledOnce();
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+  }
 });
 
 // The onboarding run: a card's first frame said "No changes yet" and had no History; 40 ms later

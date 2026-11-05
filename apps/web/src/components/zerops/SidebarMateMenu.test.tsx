@@ -71,6 +71,17 @@ const order = (html: string) =>
   [...html.matchAll(/data-zerops-mate-menu="([^"]+)"/gu)].map((match) => match[1]);
 
 describe("MateMenuItems — a Mate's own menu", () => {
+  it("an open shared birth's menu contains only its Continue and Delete actions", () => {
+    const actions: MateRowActions = {
+      ...ACTIONS,
+      birthOnly: true,
+      entries: [
+        { id: "continue", label: "Continue", onSelect: () => {} },
+        { id: "delete", label: "Delete", variant: "destructive", onSelect: () => {} },
+      ],
+    };
+    expect(order(items({ actions }))).toEqual(["continue", "delete"]);
+  });
   it("lists the ways in, what this viewer keeps, the shared verbs, then the stop", () => {
     expect(order(items({ actions: { ...ACTIONS, stop: () => {} } }))).toEqual([
       "open",

@@ -9,6 +9,7 @@ import { emptyAccount, type AccountState } from "../model.ts";
 import { reduceAccount, type AccountInput } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import { latestProjectCreation, projectCreations } from "./creation.ts";
+import { creationImports } from "./creationImports.ts";
 
 const apply = (state: AccountState, inputs: ReadonlyArray<AccountInput>) =>
   inputs.reduce((current, input) => reduceAccount(current, input).state, state);
@@ -30,6 +31,27 @@ const create = (id: string, status: string, created: string, patch = {}) =>
   processValue({ id, projectId: "p1", status, actionName: "project.create", created, ...patch });
 
 describe("projectCreations", () => {
+  it("a press without a handle cannot erase the open birth's accepted import", () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    liveZerops({ running: [] }).forEach(store.dispatch);
+    seedHqNavigation(store, ORG, {
+      structure: {
+        apps: [
+          {
+            id: "app",
+            name: "App",
+            projects: [],
+            births: [{ id: "birth", face: "", projectId: "p1", importProcessId: "accepted" }],
+          },
+        ],
+        ungrouped: [],
+      },
+      presses: { p1: { kind: "mate", held: true } },
+    });
+    expect(creationImports.derive(readsOfState(store.state()), ORG)).toEqual({ p1: "accepted" });
+    store.close();
+  });
+
   it.each<{
     readonly name: string;
     readonly processes: ReadonlyArray<ReturnType<typeof processValue>>;

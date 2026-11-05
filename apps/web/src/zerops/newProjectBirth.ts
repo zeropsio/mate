@@ -34,6 +34,7 @@ import {
   UNCONFIRMED_PROJECT,
   UNCONFIRMED_WRITE,
   type BirthPlacement,
+  type BirthIntent,
   type EnvironmentCreationOutcome,
   type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
@@ -254,8 +255,18 @@ export interface NewProjectPorts {
    */
   readonly recordBirth: (
     requestId: string,
-    birth: { readonly appId: string; readonly face: string },
+    birth: {
+      readonly appId: string;
+      readonly id: string;
+      readonly face: string;
+      readonly intent: BirthIntent;
+    },
   ) => Promise<{ readonly birthId: string }>;
+  /** Holds the birth's create attempt around its one project write. */
+  readonly attemptProject: (
+    birthId: string,
+    send: () => Promise<{ readonly projectId: string }>,
+  ) => Promise<{ readonly projectId: string }>;
   /**
    * Creates the first Mate's project, alone, and waits for its creation process to finish. Its
    * accepted receipt already places it in the UI; setup then attaches it and imports its container.
@@ -485,29 +496,51 @@ export async function runNewProjectBirth(
     async (requestId) => (await ports.registerGroup(requestId, ask.name)).appId,
   );
   if (appId === null) return;
+  const projectName = appProjectName(ask.name, ask.botName);
+  const userRoles = withProjectGrant(ask.userRoles ?? [], ask.creator, "OWNER");
+  const creationIntent: BirthIntent = {
+    projectName,
+    recipe: { kind: "none" },
+    agents: ask.agents,
+    standUp: false,
+    automated: false,
+    placement: { role: "dev", name: ask.botName, chief: ask.chief === true },
+    location: ask.locationId,
+    userRoles,
+  };
   // Recorded once: a creation tried again goes on under the intent it holds.
   const intent = await step(
     "birth",
     (now) => now.birthId,
     async (requestId) =>
-      (await ports.recordBirth(requestId, { appId, face: formatMateFace(ask.face) })).birthId,
+      (
+        await ports.recordBirth(requestId, {
+          appId,
+          id,
+          face: formatMateFace(ask.face),
+          intent: creationIntent,
+        })
+      ).birthId,
   );
   if (intent === null) return;
   const projectId = await step(
     "project",
     (now) => now.projectId,
-    async (requestId) =>
-      (
-        await ports.createProject(requestId, {
-          name: appProjectName(ask.name, ask.botName),
-          appId,
-          ...(ask.locationId === null ? {} : { location: ask.locationId }),
-          birth: intent,
-          // Every Mate carries its owner marker from birth, whatever its creator's organization
-          // role: their own `OWNER` override, which a hand-over later moves.
-          userRoles: withProjectGrant(ask.userRoles ?? [], ask.creator, "OWNER"),
-        })
-      ).projectId,
+    async (requestId) => {
+      return (
+        await ports.attemptProject(intent, () =>
+          ports.createProject(requestId, {
+            name: projectName,
+            appId,
+            ...(ask.locationId === null ? {} : { location: ask.locationId }),
+            birth: intent,
+            // Every Mate carries its owner marker from birth, whatever its creator's organization
+            // role: their own `OWNER` override, which a hand-over later moves.
+            userRoles,
+          }),
+        )
+      ).projectId;
+    },
   );
   if (projectId !== null) ports.accepted(projectId, { hq, appId, intent });
 }

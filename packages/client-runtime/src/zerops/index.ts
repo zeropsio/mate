@@ -150,6 +150,7 @@ export {
   summarizeEnvironmentServices,
   type ZeropsEnvironmentServices,
 } from "./environmentSummary.ts";
+export type { BirthIntent } from "./birthIntent.ts";
 export {
   assignCandidateMateTints,
   assignMateTints,

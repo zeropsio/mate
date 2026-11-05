@@ -3,12 +3,119 @@ import { RECIPE_REPO } from "@t3tools/shared/hqRecipe";
 import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createScenario } from "../../harness/scenario.ts";
+import { foldMenuGroup } from "../../harness/browser.ts";
+import { rendered } from "../../harness/completedHttp.ts";
 import { installCreation } from "./fake.ts";
 import { creation } from "./dsl.ts";
 import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
   scenarioSuite((it) => {
+    it.effect("an unresolved birth appears on both devices with Delete as its only action", () =>
+      Effect.gen(function* () {
+        const s = yield* createScenario([installCreation]);
+        yield* s.given.project("Ada", { mate: true, app: "Shop" });
+        yield* s.given.project("Bea", { mate: true, app: "Shop" });
+        yield* s.given.signedIn;
+        const second = yield* s.given.browserActor();
+        yield* second.given.signedIn;
+        const { core, owner, appIds, zerops } = s.drivers;
+        const id = "80e50103-27ac-4dc3-94c4-5495e7e5e63c";
+        const pages = [s.page, second.page];
+        yield* Effect.promise(() =>
+          Promise.all(pages.map((page) => foldMenuGroup(page, "Shop", false))),
+        );
+        const waiters = new Set<{
+          test: (frame: string) => boolean;
+          count: number;
+          resolve: () => void;
+        }>();
+        s.drivers.hq.mapFrames((frame) => {
+          for (const waiter of waiters) {
+            if (waiter.test(frame) && ++waiter.count === pages.length) {
+              waiters.delete(waiter);
+              waiter.resolve();
+            }
+          }
+          return frame;
+        });
+        const bothReceive = (test: (frame: string) => boolean) =>
+          new Promise<void>((resolve) => {
+            waiters.add({ test, count: 0, resolve });
+          });
+        const received = bothReceive((frame) => frame.includes(id) && frame.includes('"create"'));
+        const createCount = zerops.requests.get("POST /client/ORG/project") ?? 0;
+        const importCount = zerops.requests.get("POST /client/ORG/project/import") ?? 0;
+        const born = yield* core.call("POST", "/api/births", {
+          session: owner,
+          body: {
+            id,
+            appId: appIds.get("Shop"),
+            face: "rose:seal",
+            intent: {
+              projectName: "Shop - Nova",
+              recipe: { kind: "none" },
+              agents: ["codex"],
+              standUp: false,
+              automated: false,
+              placement: { role: "dev", name: "Nova", chief: false },
+              location: null,
+              userRoles: [],
+            },
+          },
+        });
+        expect(born.status).toBe(201);
+        expect(born.body).toMatchObject({ id });
+        const claimed = yield* core.call("PUT", `/api/births/${id}/attempt`, {
+          session: owner,
+          body: { step: "create" },
+        });
+        expect(claimed.status).toBe(200);
+        yield* Effect.promise(() => received);
+        for (const page of pages) {
+          yield* Effect.promise(async () => {
+            await rendered(page);
+            const line = await page
+              .$eval(`[data-zerops-mate-row="${id}"]`, (row) => row.textContent)
+              .catch(() => null);
+            expect(line ?? "").toContain("Outcome unknown — waiting for Zerops");
+          });
+        }
+        yield* Effect.promise(async () => {
+          await s.page.locator('button[aria-label="More for Nova"]').click();
+          await s.page.waitForSelector('[role="menuitem"]');
+          expect(
+            await s.page.$$eval('[role="menuitem"]', (items) =>
+              items.map((item) => item.textContent?.trim()),
+            ),
+          ).toEqual(["Delete"]);
+        });
+        const c = creation(s);
+        yield* c.click('Delete[role="menuitem"]');
+        yield* c.fill("Type Nova to confirm", "Nova");
+        const removal = bothReceive(
+          (frame) => frame.includes(`app:${appIds.get("Shop")}`) && frame.includes('"births":[]'),
+        );
+        const deleted = s.page.waitForResponse(
+          (response) =>
+            response.request().method() === "DELETE" &&
+            new URL(response.url()).pathname === `/api/births/${id}`,
+        );
+        yield* c.click("Delete Nova");
+        expect((yield* Effect.promise(() => deleted)).status()).toBe(204);
+        yield* Effect.promise(() => removal);
+        for (const page of pages) {
+          yield* Effect.promise(async () => {
+            await rendered(page);
+            expect(await page.$(`[data-zerops-mate-row="${id}"]`)).toBeNull();
+          });
+        }
+        expect(zerops.requests.get("POST /client/ORG/project") ?? 0).toBe(createCount);
+        expect(zerops.requests.get("POST /client/ORG/project/import") ?? 0).toBe(importCount);
+        yield* s.then.noExternalNetwork;
+      }),
+    );
+
     for (const [role, tag] of [["stage", "stage"]] as const) {
       // Catches adding an environment under the wrong name or losing the requested role in the project's view.
       it.effect(`add ${role} with an agent to an existing project`, () =>

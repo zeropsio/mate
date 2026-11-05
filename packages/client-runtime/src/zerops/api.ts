@@ -532,6 +532,21 @@ export class ZeropsApiError extends Error {
   }
 }
 
+/** The target import itself, rather than an earlier read or key write, was refused. */
+export class ZeropsTargetWriteRefused extends ZeropsApiError {
+  readonly targetWriteRefused = true;
+  constructor(refusal: ZeropsApiError) {
+    super(
+      refusal.message,
+      refusal.kind,
+      refusal.status,
+      refusal.code,
+      refusal.detail,
+      refusal.retryAfterMs,
+    );
+  }
+}
+
 /** The longest a `Retry-After` holds a read: a header asking for a day is read as ten minutes. */
 export const RETRY_AFTER_CAP_MS = 10 * 60_000;
 
@@ -1890,141 +1905,158 @@ export class ZeropsApiClient {
     /** The container's creation process Zerops answered the import with, where it named one. */
     readonly processId?: string;
   }> {
-    const generation = this.#generation;
-    const services = await this.listProjectServices(input.projectId, signal);
-    this.#assertGeneration(generation);
-    const container = mateContainerOf(services);
-    if (container.kind === "several") throw new Error(severalMatesLine(container.names));
-    if (container.kind === "one") return { serviceName: container.service.name, imported: false };
-
-    const grants: ReadonlyArray<ZeropsProjectGrant> = [
-      { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
-    ];
-    const tokens = await this.listIntegrationTokens(input.clientId, signal);
-    const earlier = newestMateKey(tokens, input.projectId);
-    this.#assertGeneration(generation);
-    if (earlier !== undefined) {
-      // A key is regenerated only where no container holds it: a zcp the platform is still
-      // creating does, though the listing above may not show it yet.
-      const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
-        "/process/search",
-        {
-          method: "POST",
-          signal: signal ?? null,
-          body: JSON.stringify(projectProcessSearchBody(input)),
-        },
-        { operationKind: "read" },
-      );
-      if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
-        throw new Error("Its container is still being created. Try again in a minute.");
-      }
+    let importRequested = false;
+    try {
+      const generation = this.#generation;
+      const services = await this.listProjectServices(input.projectId, signal);
       this.#assertGeneration(generation);
-    }
-    let apiKey: string;
-    /** The key this call minted, never an earlier press's. */
-    let minted: string | undefined;
-    if (earlier === undefined) {
-      const key = await this.mintIntegrationToken(
-        {
-          clientId: input.clientId,
-          name: mateKeyName(input.projectName),
-          roleCode: "NO_ACCESS",
-          projects: grants,
-        },
-        signal,
-        beforeWrite,
-      );
-      apiKey = key.token;
-      minted = key.id;
-    } else {
-      // The write replaces the key's whole project list: it is planned from the key as read
-      // under its lock, every token writer's, and lowers its org role to none. Found by its name,
-      // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
-      // handed to the container.
-      await this.#holdToken(earlier.id, async () => {
-        const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
-          (token) => token.id === earlier.id,
+      const container = mateContainerOf(services);
+      if (container.kind === "several") throw new Error(severalMatesLine(container.names));
+      if (container.kind === "one") return { serviceName: container.service.name, imported: false };
+
+      const grants: ReadonlyArray<ZeropsProjectGrant> = [
+        { projectId: input.projectId, roleCode: MATE_SELF_PROJECT_ROLE },
+      ];
+      const tokens = await this.listIntegrationTokens(input.clientId, signal);
+      const earlier = newestMateKey(tokens, input.projectId);
+      this.#assertGeneration(generation);
+      if (earlier !== undefined) {
+        // A key is regenerated only where no container holds it: a zcp the platform is still
+        // creating does, though the listing above may not show it yet.
+        const processes = await this.#request<{ readonly items?: ReadonlyArray<unknown> }>(
+          "/process/search",
+          {
+            method: "POST",
+            signal: signal ?? null,
+            body: JSON.stringify(projectProcessSearchBody(input)),
+          },
+          { operationKind: "read" },
         );
-        if (current === undefined) return;
-        this.#assertGeneration(generation);
-        const plan = planMateKey({
-          token: current,
-          selfProjectId: input.projectId,
-          foundBy: "name",
-        });
-        if (plan.kind === "not-its-key") {
-          throw new Error(
-            `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
-          );
+        if (zcpCreationUnderWay(Array.isArray(processes.items) ? processes.items : [])) {
+          throw new Error("Its container is still being created. Try again in a minute.");
         }
-        if (plan.kind === "held") return;
-        await this.setIntegrationTokenProjects(
+        this.#assertGeneration(generation);
+      }
+      let apiKey: string;
+      /** The key this call minted, never an earlier press's. */
+      let minted: string | undefined;
+      if (earlier === undefined) {
+        const key = await this.mintIntegrationToken(
           {
             clientId: input.clientId,
-            tokenId: current.id,
-            name: current.name,
-            projects: plan.projects,
+            name: mateKeyName(input.projectName),
+            roleCode: "NO_ACCESS",
+            projects: grants,
           },
           signal,
           beforeWrite,
         );
-      });
-      this.#assertGeneration(generation);
-      apiKey = await this.regenerateIntegrationToken(
-        { clientId: input.clientId, tokenId: earlier.id },
-        signal,
-        beforeWrite,
-      );
-    }
-
-    this.#assertGeneration(generation);
-    if (onKeyEstablished !== undefined) {
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
-      this.#assertGeneration(generation);
-      const keyHash = Array.from(new Uint8Array(digest), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-      ).join("");
-      try {
-        await onKeyEstablished({ projectId: input.projectId, keyHash });
-      } catch (cause) {
-        // A key HQ did not authorize is a key no container holds: the one this call minted is
-        // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
-        if (minted !== undefined && this.#generation === generation)
-          await this.deleteIntegrationToken(
-            { clientId: input.clientId, tokenId: minted },
+        apiKey = key.token;
+        minted = key.id;
+      } else {
+        // The write replaces the key's whole project list: it is planned from the key as read
+        // under its lock, every token writer's, and lowers its org role to none. Found by its name,
+        // a key that reaches another project by then is not the Mate's: it is neither narrowed nor
+        // handed to the container.
+        await this.#holdToken(earlier.id, async () => {
+          const current = (await this.listIntegrationTokens(input.clientId, signal)).find(
+            (token) => token.id === earlier.id,
+          );
+          if (current === undefined) return;
+          this.#assertGeneration(generation);
+          const plan = planMateKey({
+            token: current,
+            selfProjectId: input.projectId,
+            foundBy: "name",
+          });
+          if (plan.kind === "not-its-key") {
+            throw new Error(
+              `The key ${current.name} reaches another project now, so it is not reused. Try again.`,
+            );
+          }
+          if (plan.kind === "held") return;
+          await this.setIntegrationTokenProjects(
+            {
+              clientId: input.clientId,
+              tokenId: current.id,
+              name: current.name,
+              projects: plan.projects,
+            },
             signal,
             beforeWrite,
-          ).catch(() => undefined);
-        throw cause;
+          );
+        });
+        this.#assertGeneration(generation);
+        apiKey = await this.regenerateIntegrationToken(
+          { clientId: input.clientId, tokenId: earlier.id },
+          signal,
+          beforeWrite,
+        );
       }
-      this.#assertGeneration(generation);
-    }
 
-    const serviceName = nextZcpServiceName(services.map((service) => service.name));
-    this.#assertGeneration(generation);
-    const answered = await this.importServicesIntoProject(
-      input.projectId,
-      mateBirthImportYaml(
-        buildZcpServiceImportYaml({
-          serviceName,
-          vscodePassword: generateVscodePassword(),
-          apiKey,
-          ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
-          ...(input.agents ? { agents: input.agents } : {}),
-          ...(input.birthplace ? { birthplace: input.birthplace } : {}),
-          ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
-            ? {}
-            : { apiHost: new URL(this.#baseUrl).host }),
-        }),
-        input.tierYaml,
-      ),
-      signal,
-      beforeWrite,
-    );
-    const processId = importProcessOf(
-      answered.serviceStacks?.find((stack) => stack.name === serviceName)?.processes,
-    );
-    return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
+      this.#assertGeneration(generation);
+      if (onKeyEstablished !== undefined) {
+        const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(apiKey));
+        this.#assertGeneration(generation);
+        const keyHash = Array.from(new Uint8Array(digest), (byte) =>
+          byte.toString(16).padStart(2, "0"),
+        ).join("");
+        try {
+          await onKeyEstablished({ projectId: input.projectId, keyHash });
+        } catch (cause) {
+          // A key HQ did not authorize is a key no container holds: the one this call minted is
+          // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
+          if (minted !== undefined && this.#generation === generation)
+            await this.deleteIntegrationToken(
+              { clientId: input.clientId, tokenId: minted },
+              signal,
+              beforeWrite,
+            ).catch(() => undefined);
+          throw cause;
+        }
+        this.#assertGeneration(generation);
+      }
+
+      const serviceName = nextZcpServiceName(services.map((service) => service.name));
+      this.#assertGeneration(generation);
+      importRequested = true;
+      const answered = await this.importServicesIntoProject(
+        input.projectId,
+        mateBirthImportYaml(
+          buildZcpServiceImportYaml({
+            serviceName,
+            vscodePassword: generateVscodePassword(),
+            apiKey,
+            ...(input.zcpVersion ? { zcpVersion: input.zcpVersion } : {}),
+            ...(input.agents ? { agents: input.agents } : {}),
+            ...(input.birthplace ? { birthplace: input.birthplace } : {}),
+            ...(this.#baseUrl === DEFAULT_ZEROPS_API_BASE
+              ? {}
+              : { apiHost: new URL(this.#baseUrl).host }),
+          }),
+          input.tierYaml,
+        ),
+        signal,
+        beforeWrite,
+      ).catch((cause: unknown) => {
+        if (
+          cause instanceof ZeropsApiError &&
+          cause.status !== null &&
+          cause.status >= 400 &&
+          cause.status < 500
+        )
+          throw new ZeropsTargetWriteRefused(cause);
+        throw cause;
+      });
+      const processId = importProcessOf(
+        answered.serviceStacks?.find((stack) => stack.name === serviceName)?.processes,
+      );
+      return { serviceName, imported: true, ...(processId === undefined ? {} : { processId }) };
+    } catch (cause) {
+      if (!importRequested && !(cause instanceof ZeropsWriteNotSent))
+        throw new ZeropsWriteNotSent(cause);
+      throw cause;
+    }
   }
 
   /**

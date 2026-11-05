@@ -270,6 +270,39 @@ it.each([true, false])(
   },
 );
 
+it("a later HQ birth carries its original intent and attempts to another device", () => {
+  const birth = {
+    id: "birth-ada",
+    face: "rose:seal",
+    madeBy: "person-1",
+    intent: {
+      projectName: "Shop - Ada",
+      recipe: { id: "group", revision: "abc123", tier: "dev" },
+      agents: ["codex"],
+    },
+    attempts: {
+      create: {
+        by: "person-1",
+        at: "2026-11-05T17:00:00Z",
+        refused: { at: "2026-11-05T17:01:00Z", reason: "Project quota reached" },
+      },
+    },
+  };
+  const app = rows.find((row) => row.family === "hqApp")!;
+  const value = hqAppFamily.hq!.decode({ ...app.value, births: [birth] }, "app:shop")!;
+  const state = apply(read, [
+    {
+      kind: "delivery",
+      via: "hq-stream",
+      scopes: generations,
+      reset: false,
+      rows: [{ family: "hqApp", id: "shop", value, revision: { ...revision, revision: 2 } }],
+      removals: [],
+    },
+  ]);
+  expect(navigation(state).structure?.apps[0]?.births).toEqual([birth]);
+});
+
 it("navigation keeps each accepted import identity after the browser press is gone", () => {
   const birth = {
     id: "birth-ada",

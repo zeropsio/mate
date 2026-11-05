@@ -10,7 +10,12 @@ import {
   automatedWhatTheyDo,
 } from "./addAutomatedMates.logic";
 
-const TIER = { kind: "tier" as const, tier: "mate" as const, yaml: "services: []\n" };
+const TIER = {
+  kind: "tier" as const,
+  revision: "recipe-revision",
+  tier: "mate" as const,
+  yaml: "services: []\n",
+};
 const LIMITS = { minutes: 60, costUsd: 3 };
 
 describe("how many automated Mates one Add makes, and who they are", () => {

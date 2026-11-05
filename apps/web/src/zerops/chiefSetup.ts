@@ -9,7 +9,7 @@
 import { useRoleOffers } from "./usePlatformCapabilities";
 import { shownProjectsAtom } from "@t3tools/client-runtime/data";
 import { useAtomValue } from "@effect/atom-react";
-import { generateZeropsGroupId } from "@t3tools/client-runtime/zerops";
+import { randomUUID } from "~/lib/utils";
 import { MATE_SHAPE_OF_TINT } from "@t3tools/shared/brand";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { create } from "zustand";
@@ -137,7 +137,7 @@ export function useChiefSetupRunner(): {
     const ask: NewProjectAsk = {
       organizationId: activeOrganization.id,
       creator: activeOrganization.membershipId,
-      birthId: generateZeropsGroupId((bytes) => crypto.getRandomValues(bytes)),
+      birthId: randomUUID(),
       ...chiefNames(user),
       face: CHIEF_FACE,
       locationId: null,

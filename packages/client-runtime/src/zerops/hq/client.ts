@@ -270,6 +270,21 @@ export interface HqBirth {
   readonly id: string;
   /** Its face as its attach records it: empty where it wears its name's tint. */
   readonly face: string;
+  /** The person who opened the birth, and the plan HQ retained for it. */
+  readonly madeBy?: string;
+  readonly intent?: Readonly<Record<string, unknown>>;
+  /** Durable claims on the non-idempotent Zerops writes. */
+  readonly attempts?: {
+    readonly create?: HqBirthAttempt;
+    readonly import?: HqBirthAttempt;
+  };
+}
+
+export interface HqBirthAttempt {
+  readonly by: string;
+  readonly at: string;
+  readonly refused?: { readonly at: string; readonly reason: string };
+  readonly unsent?: { readonly at: string; readonly reason: string };
 }
 
 export class HqError extends Error {
@@ -402,7 +417,13 @@ export interface HqApi {
    * A Mate's birth intent in an application, before its project exists (`POST /api/births`):
    * the attach that closes it records the caller as its stand-up's asker where `standUp` says so.
    */
-  readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
+  readonly recordBirth: (
+    birth: {
+      readonly appId: string;
+      readonly id?: string;
+      readonly intent?: Readonly<Record<string, unknown>>;
+    } & HqNewMate,
+  ) => Promise<HqBirth>;
   /**
    * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
    * makes and into which application, with its container import's Zerops process once Zerops
@@ -425,6 +446,21 @@ export interface HqApi {
    */
   readonly endPress: (projectId: string, owner: string, finished: boolean) => Promise<void>;
   readonly bindBirth: (birthId: string, projectId: string) => Promise<void>;
+  /** Deletes an unbound birth; HQ rechecks the person's current role. */
+  readonly deleteBirth: (birthId: string) => Promise<void>;
+  /** Claims one non-idempotent birth write; only an answered claim permits the write. */
+  readonly claimBirthAttempt: (
+    birthId: string,
+    step: "create" | "import",
+  ) => Promise<{ readonly by: string; readonly at: string }>;
+  /** Records a proven refusal or an unsent write against its exact claim. */
+  readonly endBirthAttempt: (
+    birthId: string,
+    step: "create" | "import",
+    outcome: "refused" | "unsent",
+    at: string,
+    reason: string,
+  ) => Promise<void>;
   readonly attachProject: (appId: string, attach: HqAttach) => Promise<void>;
   /**
    * Hands a Mate over to `ownerUserId` (`POST /api/mates/:projectId/hand-over`): HQ moves its
@@ -1359,6 +1395,42 @@ export function makeHqApi(input: {
       await authorized(
         `/api/births/${encodeURIComponent(birthId)}/project`,
         { method: "PUT", body: JSON.stringify(await withAccess({ projectId })) },
+        true,
+      );
+    },
+    deleteBirth: async (birthId) => {
+      await authorized(
+        `/api/births/${encodeURIComponent(birthId)}`,
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
+    },
+    claimBirthAttempt: async (birthId, step) => {
+      try {
+        const answer = await decoded(
+          Schema.Struct({
+            step: Schema.Literals(["create", "import"]),
+            by: Schema.String,
+            at: Schema.String,
+          }),
+        )(
+          await authorized(
+            `/api/births/${encodeURIComponent(birthId)}/attempt`,
+            { method: "PUT", body: JSON.stringify(await withAccess({ step })) },
+            true,
+          ),
+        );
+        if (answer.step !== step) throw uncertain();
+        return { by: answer.by, at: answer.at };
+      } catch (cause) {
+        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
+        throw cause;
+      }
+    },
+    endBirthAttempt: async (birthId, step, outcome, at, reason) => {
+      await authorized(
+        `/api/births/${encodeURIComponent(birthId)}/attempt`,
+        { method: "PUT", body: JSON.stringify(await withAccess({ step, outcome, at, reason })) },
         true,
       );
     },

@@ -30,6 +30,7 @@ function plan(role: ZeropsEnvironmentRole): ReadonlyArray<EnvironmentCreationSte
     name: `Go Hello World - ${role}`,
     recipe: {
       kind: "tier",
+      revision: "recipe-revision",
       tier: role === "prod" ? "production" : "mate",
       yaml: TIER_YAML,
     },
@@ -172,6 +173,80 @@ function run(
 }
 
 describe("runEnvironmentCreation", () => {
+  it("records an accepted import before stopping for a lapsed press", async () => {
+    let lapsed = false;
+    const handles: string[] = [];
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: async () => {
+        lapsed = true;
+        return { serviceName: "zcp", imported: true, processId: "process-1" };
+      },
+    });
+    const result = await runEnvironmentCreation({
+      clientId: "client-1",
+      steps: [{ kind: "import-container", agents: [] }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop - Ada" },
+      stopped: () => (lapsed ? "Press lapsed." : undefined),
+      onContainerImported: ({ processId }) => {
+        if (processId !== undefined) handles.push(processId);
+      },
+    });
+    expect(handles).toEqual(["process-1"]);
+    expect(result).toMatchObject({ ok: false, error: "Press lapsed." });
+  });
+
+  it("Decision: Continue never sends a create or an import without first holding that step's attempt", async () => {
+    let imports = 0;
+    let claimed = false;
+    const { platform } = fakePlatform({
+      importDevelopmentContainer: async () => {
+        imports += 1;
+        throw new ZeropsApiError("The answer was lost.", "uncertain");
+      },
+    });
+    const attempt = async <T>(step: "create" | "import", send: () => Promise<T>): Promise<T> => {
+      expect(step).toBe("import");
+      if (claimed) throw new Error("attempt_taken");
+      claimed = true;
+      return send();
+    };
+    const input = {
+      clientId: "client-1",
+      steps: [{ kind: "import-container" as const, agents: ["claude-code" as const] }],
+      platform,
+      resume: { from: 0, projectId: "proj-1", projectName: "Shop - Ada" },
+      birth: { id: "birth-1", attempt },
+    };
+    const results = await Promise.all([
+      runEnvironmentCreation(input),
+      runEnvironmentCreation(input),
+    ]);
+    expect(imports).toBe(1);
+    expect(results).toMatchObject([
+      { ok: false, uncertain: true },
+      { ok: false, error: "attempt_taken" },
+    ]);
+
+    const second = fakePlatform();
+    const refused = {
+      clientId: "client-1",
+      steps: plan("dev"),
+      platform: second.platform,
+      birth: {
+        id: "birth-1",
+        attempt: async <T>(_step: "create" | "import", _send: () => Promise<T>): Promise<T> => {
+          throw new Error("attempt_taken");
+        },
+      },
+    };
+    expect(await runEnvironmentCreation(refused)).toMatchObject({
+      ok: false,
+      error: "attempt_taken",
+    });
+    expect(second.calls).toEqual([]);
+  });
+
   it.each([
     { case: "services only", yaml: TIER_YAML },
     { case: "a bundled project", yaml: `project:\n  name: published\n${TIER_YAML}` },
@@ -188,7 +263,10 @@ describe("runEnvironmentCreation", () => {
         clientId: "client-1",
         role: "prod",
         name: "Production",
-        recipe: yaml === undefined ? { kind: "none" } : { kind: "tier", tier: "production", yaml },
+        recipe:
+          yaml === undefined
+            ? { kind: "none" }
+            : { kind: "tier", revision: "recipe-revision", tier: "production", yaml },
         ...(location === undefined ? {} : { location }),
         ...(withAgent === undefined ? {} : { withAgent }),
         userRoles,
@@ -223,7 +301,7 @@ describe("runEnvironmentCreation", () => {
       clientId: "client-1",
       role: "stage",
       name: "Stage",
-      recipe: { kind: "tier", tier: "stage", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "stage", yaml },
     });
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -389,7 +467,7 @@ describe("runEnvironmentCreation", () => {
     const planned = planEnvironmentCreation({
       clientId: "client-1",
       name: "Go Hello World - stage",
-      recipe: { kind: "tier", tier: "stage", yaml },
+      recipe: { kind: "tier", revision: "recipe-revision", tier: "stage", yaml },
       role: "stage",
       withAgent: false,
       userRoles: [
@@ -440,7 +518,12 @@ describe("runEnvironmentCreation", () => {
     const planned = planEnvironmentCreation({
       clientId: "client-1",
       name: "Sia",
-      recipe: { kind: "tier", tier: role === "dev" ? "mate" : "stage", yaml },
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: role === "dev" ? "mate" : "stage",
+        yaml,
+      },
       role,
       userRoles: [{ clientUserId: "cu-bo", roleCode: "READ_ONLY" }],
       owner: "cu-me",
@@ -490,7 +573,12 @@ describe("runEnvironmentCreation", () => {
     const planned = planEnvironmentCreation({
       clientId: "client-1",
       name: "Sia",
-      recipe: { kind: "tier", tier: "mate", yaml: `project:\n  name: x\n${TIER_YAML}` },
+      recipe: {
+        kind: "tier",
+        revision: "recipe-revision",
+        tier: "mate",
+        yaml: `project:\n  name: x\n${TIER_YAML}`,
+      },
       role: "dev",
       agents: ["claude-code"],
       userRoles: [{ clientUserId: "cu-owner", roleCode: "ADMIN" }],
