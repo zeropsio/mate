@@ -42,6 +42,7 @@ import { EnvironmentSupervisor } from "../../connection/supervisor.ts";
 import { request } from "../../rpc/client.ts";
 import type { RpcSession } from "../../rpc/session.ts";
 
+import { CLOSED_CARD_RESULT_TOOLS } from "../../zerops/model/operations.ts";
 import type { EngineLiveText } from "../engineLive.ts";
 import {
   engineConversationId,
@@ -75,6 +76,8 @@ export interface RunPageAt {
   readonly before?: number;
   readonly after?: number;
   readonly only?: "outcome";
+  /** With `only`: the tools whose results it reads (`CLOSED_CARD_RESULT_TOOLS`). */
+  readonly tools?: ReadonlyArray<string>;
 }
 
 /** How many runs read their missing items at once. */
@@ -218,6 +221,7 @@ export function makeEngineConversationWire(
             ...(at.before === undefined ? {} : { beforeSeq: at.before }),
             ...(at.after === undefined ? {} : { afterSeq: at.after }),
             ...(at.only === undefined ? {} : { only: at.only }),
+            ...(at.tools === undefined ? {} : { tools: at.tools }),
           }),
         )
         .pipe(Effect.catchCause((cause) => Effect.fail(classifyEngineFailure(cause)))),
@@ -485,7 +489,9 @@ export function makeMateEngineConversations(options: {
    * What the runs a frame or a page carries lack of their own items, before they are drawn. A
    * card's closed face needs none of its run's items but what its result draws from: its worked
    * line counts its effort from the run's summary. So a finished run that made calls reads just
-   * those (`only: "outcome"`, one page however long the run, up to `ENGINE_RUN_PAGES`), and a live
+   * those (`only: "outcome"`, one page however long the run, up to `ENGINE_RUN_PAGES`) — of its
+   * calls' results only those of the tools a closed card draws (`CLOSED_CARD_RESULT_TOOLS`); a
+   * server before them reads every result, drawn the same — and a live
    * one reads nothing — the window carries its newest items, under the lines its card opens on.
    * Each such run says what stretch of its lines it holds (`mateEngineSpan`): a finished one none
    * until its card opens, a live one from its earliest held; the rest are read a page at a time
@@ -552,7 +558,11 @@ export function makeMateEngineConversations(options: {
               yield* Effect.gen(function* () {
                 let after = 0;
                 for (let page = 0; page < ENGINE_RUN_PAGES; page++) {
-                  const answer = yield* wire.readRun(key, run.id, { after, only: "outcome" });
+                  const answer = yield* wire.readRun(key, run.id, {
+                    after,
+                    only: "outcome",
+                    tools: CLOSED_CARD_RESULT_TOOLS,
+                  });
                   if (answer._tag !== "Page") return;
                   for (const item of answer.items)
                     if (!held.has(item.id)) {

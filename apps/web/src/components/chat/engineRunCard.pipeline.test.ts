@@ -24,7 +24,10 @@ import {
 import * as Schema from "effect/Schema";
 import { describe, expect, it } from "vite-plus/test";
 
-import { deriveZeropsThreadModel } from "@t3tools/client-runtime/zerops/model";
+import {
+  closedCardReadsResultOf,
+  deriveZeropsThreadModel,
+} from "@t3tools/client-runtime/zerops/model";
 import { deriveTimelineEntries, deriveWorkLogEntries } from "../../session-logic";
 import type { ChatMessage } from "../../types";
 import { backgroundLineOf, jobItems } from "./backgroundLine.logic";
@@ -1543,3 +1546,205 @@ it.each([
     ).toBe(true);
   },
 );
+
+// A zcp Mate's reload read every Zerops result its runs held before a closed card drew (434 KB a
+// page, two thirds of it results): its looks around, its logs and the docs it read among them.
+describe("a closed card read from the results it draws alone", () => {
+  const zerops = (
+    ordinal: number,
+    tool: string,
+    resultText: string,
+    patch: Record<string, unknown> = {},
+  ) =>
+    call(ordinal, 40_000 + ordinal * 100, {
+      step: "mcp",
+      tool: { name: `mcp__zerops__${tool}`, server: "zerops" },
+      words: "MCP tool call",
+      input: `mcp__zerops__${tool}: {}`,
+      shows: { toolName: `mcp__zerops__${tool}`, input: patch.input ?? {} },
+      result: { toolName: tool, resultText },
+      ...patch,
+    } as never);
+  const page = {
+    asset: {
+      id: "6f1c2b9e-0000-4000-8000-000000000002",
+      threadId: "conversation",
+      ownerId: `${run1}/i/12`,
+      name: "page-00000000000000ab.html",
+      provenance: "capture",
+      original: { status: "ready", digest: "c".repeat(64), mimeType: "text/html", sizeBytes: 17 },
+    },
+    title: "Release notes",
+    bytes: 17,
+    publishedAt: t0 + 41_300,
+  };
+  const proposal = JSON.stringify({
+    proposal: {
+      id: "prop-1",
+      kind: "service.restart",
+      summary: "Restart api in Northwind",
+      reason: "It stopped answering.",
+      projectId: "p-northwind",
+      serviceId: "s-api",
+      serviceName: "api",
+      params: {},
+    },
+  });
+  /** A read of the api's log, at `ordinal`, as it ended. */
+  const logRead = (ordinal: number, failed: boolean) =>
+    ({
+      ...zerops(
+        ordinal,
+        "zerops_logs",
+        failed ? '{"error":"timed out"}' : JSON.stringify({ lines: ["listening on 3000"] }),
+        {
+          input: 'mcp__zerops__zerops_logs: {"serviceHostname":"api"}',
+          shows: { toolName: "mcp__zerops__zerops_logs", input: { serviceHostname: "api" } },
+        },
+      ),
+      ...(failed ? { state: "failed" } : {}),
+    }) as Item;
+  const itemsOf = (logs: ReadonlyArray<Item>): Item[] => [
+    personItem(run1, 1, "Ship the api and tell me how it went", { at: t0 }),
+    zerops(2, "zerops_discover", JSON.stringify({ services: [{ hostname: "api" }] })),
+    zerops(3, "zerops_knowledge", "# Deploying\n".repeat(400)),
+    zerops(4, "zerops_deploy", '{"status":"DEPLOYED","serviceHostname":"api"}', {
+      input: 'mcp__zerops__zerops_deploy: {"targetService":"api"}',
+      shows: { toolName: "mcp__zerops__zerops_deploy", input: { targetService: "api" } },
+    }),
+    zerops(5, "zerops_events", JSON.stringify({ events: [] })),
+    ...logs,
+    call(8, 40_800, {
+      step: "look",
+      tool: { name: "Read" },
+      words: "Read",
+      input: "/tmp/home.png",
+      shows: {
+        toolName: "Read",
+        imagePath: "/tmp/home.png",
+        input: { file_path: "/tmp/home.png" },
+      },
+    } as never),
+    call(9, 40_900, {
+      step: "command",
+      tool: { name: "Bash" },
+      words: "Command run",
+      input: "Bash: ./soak.sh",
+      shows: {
+        toolName: "Bash",
+        command: "./soak.sh",
+        input: { description: "Run the soak in the background" },
+        rawOutput: { content: "Command running in background with ID: b9. Output is in /tmp/b9" },
+      },
+    } as never),
+    {
+      ...workItem(run1, 10, {
+        work: "conversation/s/1.9.w1",
+        workKind: "shell",
+        status: "completed",
+        title: "Run the soak in the background",
+        call: `${run1}/i/9`,
+      } as never),
+      at: t0 + 41_000,
+    } as Item,
+    zerops(11, "zerops_org_restart", proposal),
+    zerops(12, "zerops_publish_page", '{"page":{}}', {
+      result: { toolName: "zerops_publish_page", resultText: '{"page":{}}', page },
+    }),
+    noteItem(run1, 13, "Shipped; the soak passed.", { at: t0 + 42_000, answer: true }),
+  ];
+  const summary = {
+    items: 13,
+    calls: { mcp: 9, look: 1, command: 1 },
+    tools: {
+      mcp__zerops__zerops_discover: 1,
+      mcp__zerops__zerops_knowledge: 1,
+      mcp__zerops__zerops_deploy: 1,
+      mcp__zerops__zerops_logs: 2,
+      mcp__zerops__zerops_events: 1,
+      mcp__zerops__zerops_org_restart: 1,
+      mcp__zerops__zerops_publish_page: 1,
+    },
+    answerItemId: `${run1}/i/13`,
+    lastItemSeq: 13,
+  };
+  /**
+   * What `engine.readRun` answers a closed card with, the window's person and answer beside it:
+   * with the client's `tools`, a call's result only of a tool they name or one a call failed with.
+   */
+  const outcomeRead = (items: ReadonlyArray<Item>, lean: boolean) => {
+    const works = new Set(
+      items.flatMap((item) => (item.kind === "work" && item.call ? [item.call] : [])),
+    );
+    const failed = new Set(
+      items.flatMap((item) =>
+        item.kind === "call" && item.state === "failed" && item.result !== undefined
+          ? [item.result.toolName]
+          : [],
+      ),
+    );
+    return items.filter(
+      (item) =>
+        item.kind === "person" ||
+        item.id === summary.answerItemId ||
+        item.kind === "work" ||
+        (item.kind === "call" &&
+          ((item.result !== undefined &&
+            (!lean ||
+              closedCardReadsResultOf(item.result.toolName) ||
+              failed.has(item.result.toolName))) ||
+            item.step === "look" ||
+            works.has(item.id))),
+    );
+  };
+  const closed = (items: ReadonlyArray<Item>, lean: boolean) =>
+    render({
+      runs: [stressRun({ endedAt: t0 + 42_500, summary } as never)],
+      items: outcomeRead(items, lean),
+      paged: true,
+      zerops: true,
+    });
+  /**
+   * What a closed card shows: every row as drawn, a card's lines those its scroll holds
+   * (`chatItems`, none before it opens) — never the items held for it to draw them from, nor the
+   * record its live slot plays them from (drawn only while it runs).
+   */
+  const shown = (rows: ReturnType<typeof render>) =>
+    rows.map((row) => {
+      if (row.kind !== "record") return row;
+      const { items: _held, slot, ...face } = row;
+      const { record: _played, ...live } = slot;
+      return { ...face, slot: live };
+    });
+
+  it.each([
+    { logs: "read whole", read: [logRead(6, false), logRead(7, false)], face: "produced" },
+    {
+      logs: "failed, then read again",
+      read: [logRead(6, true), logRead(7, false)],
+      face: "produced",
+    },
+    { logs: "failed for good", read: [logRead(6, false), logRead(7, true)], face: "failed" },
+  ])(
+    "draws the same closed card from the results it draws alone as from every result: its log $logs",
+    ({ read, face }) => {
+      const items = itemsOf(read);
+      expect(outcomeRead(items, true).length).toBeLessThan(outcomeRead(items, false).length);
+      const lean = closed(items, true);
+      expect(shown(lean)).toEqual(shown(closed(items, false)));
+      expect(cardOf(lean).status?.face).toBe(face);
+    },
+  );
+
+  it("still draws what the run left: its deploy, its picture, its job, its proposal, its page", () => {
+    const rows = closed(itemsOf([logRead(6, false), logRead(7, false)]), true);
+    const outcome = cardOf(rows).outcome;
+    expect(outcome?.live.map((service) => [service.hostname, service.word])).toEqual([
+      ["api", "Deployed"],
+    ]);
+    expect(outcome?.pictures.map((picture) => picture.key)).toEqual(["file:/tmp/home.png"]);
+    expect(rows.map((row) => row.kind)).toEqual(
+      expect.arrayContaining(["background", "proposal", "page"]),
+    );
+  });
+});
