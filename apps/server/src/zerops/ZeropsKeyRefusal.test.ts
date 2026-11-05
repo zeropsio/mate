@@ -81,7 +81,12 @@ const rig = (open = true) =>
           store = value;
         }),
     });
-    const reader = yield* make({ fs, storePath, snapshot: undefined });
+    const reader = yield* make({
+      fs,
+      storePath,
+      snapshot: undefined,
+      watch: () => ({ dispose: () => {} }),
+    });
     const sockets: Socket[] = [];
     const connected = yield* Queue.unbounded<Socket>();
     yield* makeZeropsHqLink({
