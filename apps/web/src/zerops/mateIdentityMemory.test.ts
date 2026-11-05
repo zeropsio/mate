@@ -39,10 +39,10 @@ describe("the Mates' names a reload remembers", () => {
   it("a reload paints the Mate's name from the last visit before HQ answers", () => {
     const browser = storage();
     // The last visit: HQ named Milo.
-    writeMateMemory(rememberMates({}, [identity("env-milo", "Milo")], true), browser);
+    writeMateMemory(rememberMates({}, [identity("env-milo", "Milo")], true, new Set()), browser);
     // The reload: HQ has not answered yet.
     const remembered = readMateMemory(browser);
-    expect(namesOf(seededIdentities([], remembered, false))).toEqual(["env-milo:Milo"]);
+    expect(namesOf(seededIdentities([], remembered, false, new Set()))).toEqual(["env-milo:Milo"]);
   });
 
   it.each<{
@@ -110,8 +110,8 @@ describe("the Mates' names a reload remembers", () => {
       remembers: ["env-milo:Milo"],
     },
   ])("$name", ({ memory, hq, read, shows, remembers }) => {
-    expect(namesOf(seededIdentities(hq, memory, read))).toEqual(shows);
-    expect(namesOf(Object.values(rememberMates(memory, hq, read)))).toEqual(remembers);
+    expect(namesOf(seededIdentities(hq, memory, read, new Set()))).toEqual(shows);
+    expect(namesOf(Object.values(rememberMates(memory, hq, read, new Set())))).toEqual(remembers);
   });
 
   it.each([
@@ -127,12 +127,12 @@ describe("the Mates' names a reload remembers", () => {
     { name: "unreadable", browser: { getItem: () => "{not json" } },
     { name: "empty", browser: { getItem: () => null } },
   ])("remembers nothing when storage is $name", ({ browser }) => {
-    expect(seededIdentities([], readMateMemory(browser), false)).toEqual([]);
+    expect(seededIdentities([], readMateMemory(browser), false, new Set())).toEqual([]);
   });
 
   it("keeps the same memory when HQ says nothing new, so it is not written again", () => {
-    const memory = rememberMates({}, [identity("env-milo", "Milo")], true);
-    expect(rememberMates(memory, [identity("env-milo", "Milo")], true)).toBe(memory);
+    const memory = rememberMates({}, [identity("env-milo", "Milo")], true, new Set());
+    expect(rememberMates(memory, [identity("env-milo", "Milo")], true, new Set())).toBe(memory);
   });
 });
 

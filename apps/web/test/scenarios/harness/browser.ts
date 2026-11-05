@@ -14,6 +14,36 @@ import { ZEROPS_SESSION_STORAGE_KEY } from "../../../../../packages/client-runti
 import { clientClock, type ScenarioWallClock } from "./clientClock.ts";
 import { deadline, serve } from "./http.ts";
 
+/** An access denial is a completed opening, not a reason to wait for a composer forever. */
+export async function waitForConversation(page: Page, signal?: AbortSignal) {
+  const receipt = await page.waitForFunction(
+    () => {
+      const visible = (element: HTMLElement) =>
+        element.getBoundingClientRect().height > 0 &&
+        getComputedStyle(element).visibility !== "hidden";
+      const denied = [
+        ...document.querySelectorAll<HTMLElement>(
+          '[data-zerops-surface="mate-empty-state"] h1, [data-zerops-surface="mate-opening"] [role="status"]',
+        ),
+      ].find(
+        (element) =>
+          visible(element) &&
+          element.innerText.trim().endsWith(" isn't available with your access."),
+      );
+      if (denied) return denied.innerText.trim();
+      return [...document.querySelectorAll<HTMLElement>('[role="textbox"]')].some(
+        (element) => !element.closest('[inert], [aria-hidden="true"]') && visible(element),
+      )
+        ? "opened"
+        : false;
+    },
+    { polling: "raf", ...(signal === undefined ? {} : { signal }) },
+  );
+  const result = await receipt.jsonValue();
+  await receipt.dispose();
+  if (result !== "opened") throw new Error(String(result));
+}
+
 /** A positive send waits for the composer to acknowledge its text and offer Send or Queue. */
 export async function sendConversationMessage(page: Page, message: string, waitForReady = true) {
   const input = page.locator(
