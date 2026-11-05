@@ -103,17 +103,15 @@ const mainThread = (overrides: Partial<OrchestrationThreadShell> = {}): Orchestr
 
 /**
  * The Mate as its HQ sends it, `standupRequestedBy` naming who asked for its stand-up — from the
- * write that made its record (audit B3) — and whether its project is closed off.
+ * write that made its record (audit B3).
  */
-const linked = (standupRequestedBy: string | null, closedOff = true): HqStanding => ({
+const linked = (standupRequestedBy: string | null): Extract<HqStanding, { kind: "linked" }> => ({
   kind: "linked",
   mate: {
     projectId: "project-mate",
     name: "mate",
     face: "coral:gem",
     standupRequestedBy,
-    closedOff,
-    signers: {},
     appId: null,
     appName: null,
     changes: [],
@@ -237,7 +235,7 @@ interface World {
 
 const makeWorld = Effect.gen(function* () {
   return {
-    hq: yield* Ref.make(ASKED),
+    hq: yield* Ref.make<HqStanding>(ASKED),
     gitCredential: yield* Ref.make(true),
     automatedModel: yield* Ref.make("nebius/zai-org/GLM-5.3"),
     providers: yield* Ref.make<ReadonlyArray<ServerProvider>>(CLAUDE_SIGNED_IN),
@@ -909,10 +907,14 @@ describe("ZeropsSetup: the stand-up", () => {
   );
 
   // Audit B3: HQ's record of the Mate carries its ask from the write that made it, so a linked
-  // Mate naming nobody is one nobody asked for — settled at once, its project closed off or not.
+  // Mate naming nobody is one nobody asked for — even if an old record contains a closure flag.
+  const previouslyClosedOff = (closedOff: boolean): HqStanding => {
+    const mate = { ...NOBODY_ASKED.mate, closedOff };
+    return { kind: "linked", mate };
+  };
   const nobodyAsked: ReadonlyArray<[string, HqStanding]> = [
-    ["its project closed off", NOBODY_ASKED],
-    ["its project not closed off yet", linked(null, false)],
+    ["its project closed off", previouslyClosedOff(true)],
+    ["its project not closed off yet", previouslyClosedOff(false)],
   ];
   it.live.each(
     Array.from(nobodyAsked, ([name, hq]) => ({

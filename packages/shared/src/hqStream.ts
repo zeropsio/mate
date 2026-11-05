@@ -318,8 +318,6 @@ export const HqNavigationMate = Schema.Struct({
   madeBy: Schema.NullOr(Schema.String),
   standupRequestedBy: Schema.NullOr(Schema.String),
   /** Still sent by HQ; no client reads it since a birth is one import. */
-  closedOff: Schema.optionalKey(Schema.Boolean),
-  /** Still sent by HQ; no client reads it since a birth is one import. */
   setupMarker: Schema.optionalKey(Schema.NullOr(Schema.Boolean)),
   /** Still sent by older HQ builds; no client reads it. */
   keyWider: Schema.optionalKey(Schema.Boolean),

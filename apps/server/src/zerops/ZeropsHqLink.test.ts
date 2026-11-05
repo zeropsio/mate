@@ -160,8 +160,6 @@ const STATE: LinkedMate = {
   name: "Ada",
   face: "face-1",
   standupRequestedBy: "owner",
-  closedOff: true,
-  signers: {},
   appId: null,
   appName: null,
   changes: [],
@@ -178,7 +176,7 @@ const hello = (key: string) => ({
 
 /** HQ admits the key: its first state on the link. */
 const admit = (socket: FakeSocket, mate: LinkedMate = STATE) =>
-  socket.hear({ type: "state", mate });
+  socket.hear({ type: "state", mate: { ...mate, repos: [] } });
 
 /**
  * A link over a fake HQ, a socket per connect, the project's key `zk-1` unless a test takes it. It

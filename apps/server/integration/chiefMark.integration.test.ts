@@ -25,8 +25,6 @@ const mateState = (chief: LinkedMate["chief"]): LinkedMate => ({
   name: "Ada",
   face: "face-1",
   standupRequestedBy: "owner",
-  closedOff: true,
-  signers: {},
   appId: null,
   appName: null,
   changes: [],

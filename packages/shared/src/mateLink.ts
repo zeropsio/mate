@@ -17,8 +17,8 @@
  * - **Up**, beside the overview, the Mate's attention (`attention`, `MateAttention` in
  *   `@t3tools/contracts`): one value with its own revision, whole on every link and again at each
  *   new revision. An older HQ passes it by as a type it does not know.
- * - **Down**, the Mate's own state in HQ: its record, its birth (who asked for its stand-up,
- *   whether its project is closed off), and its changes with their outcome (`hqChanges.ts`); and
+ * - **Down**, the Mate's own state in HQ: its record, who asked for its stand-up,
+ *   and its changes with their outcome (`hqChanges.ts`); and
  *   its access (`access`): who its project opens for and whom it lists, by the door's own rule over
  *   the org's view HQ reads (`mateAccess.ts`), whole after every view, with how old that view is.
  *
@@ -88,10 +88,6 @@ export const MateState = Schema.Struct({
   face: Schema.String,
   /** The person who asked for the Mate's stand-up, or none yet. */
   standupRequestedBy: Schema.NullOr(Schema.String),
-  /** Whether the Mate's project is closed off: its runtimes may be imported. */
-  closedOff: Schema.Boolean,
-  /** Who signed in each login (`claude-code`, `codex`), keyed by login id: the port's, then the Mate's own link's. */
-  signers: Schema.optionalKey(Schema.Record(Schema.String, Schema.String)),
   /**
    * The Zerops user HQ records as the Mate's owner (`mateOwner`), or none named: everyone else
    * reads along. Absent from an HQ older than it, and where HQ could not read its org yet.
@@ -482,8 +478,6 @@ export const MateSelf = Schema.Struct({
   name: Schema.String,
   face: Schema.String,
   standupRequestedBy: Schema.NullOr(Schema.String),
-  closedOff: Schema.Boolean,
-  signers: Schema.Record(Schema.String, Schema.String),
   automated: Schema.optionalKey(Schema.Boolean),
   ...MateChanges.fields,
   chief: Schema.NullOr(Schema.Struct({ projectId: Schema.String })),

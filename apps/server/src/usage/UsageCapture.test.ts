@@ -55,7 +55,6 @@ const state = Schema.decodeUnknownSync(MateLinkDown)({
     name: "Mate",
     face: "face",
     standupRequestedBy: null,
-    closedOff: false,
     appId: null,
     appName: null,
     changes: [],

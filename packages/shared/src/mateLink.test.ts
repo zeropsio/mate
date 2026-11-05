@@ -9,6 +9,7 @@ import {
   MateLinkClosed,
   MATE_LINK_TEXT_MAX,
   MateLinkDown,
+  MateSelf,
   LoginDigest,
   MateLinkUp,
   linkFrameBytes,
@@ -365,7 +366,6 @@ describe("mateLink", () => {
           name: "Ada",
           face: "face-1",
           standupRequestedBy: null,
-          closedOff: true,
           appId: "A1",
           changes: [
             {
@@ -441,13 +441,39 @@ describe("the keys model's link", () => {
     name: "Ada",
     face: "face-1",
     standupRequestedBy: null,
-    closedOff: true,
-    signers: { "claude-code": "U1" },
     appId: "A1",
     appName: "Shop",
     changes: [],
     chief: { projectId: "P_CHIEF" },
   };
+
+  it("Decision: HQ's state and self read decode without closedOff or signers; signers come only from their own frame", () => {
+    // The unplaced Mate's self record, as link.go and ReadMateChanges build it.
+    const mate = {
+      projectId: "P_MATE",
+      name: "Ada",
+      face: "face-1",
+      standupRequestedBy: null,
+      chief: null,
+      appId: null,
+      appName: null,
+      changes: [],
+      repos: [],
+    };
+    const frame = { type: "state", mate, pingIntervalMs: 20_000 };
+    expect(Schema.decodeUnknownExit(MateSelf)(mate)._tag).toBe("Success");
+    const decoded = decodeKeyDown(JSON.stringify(frame));
+    expect(decoded._tag).toBe("Success");
+    const withRetiredFields = decodeKeyDown(
+      JSON.stringify({
+        ...frame,
+        mate: { ...mate, closedOff: true, signers: { codex: "U1" } },
+      }),
+    );
+    expect(withRetiredFields._tag === "Success" && withRetiredFields.value).toEqual(
+      decoded._tag === "Success" && decoded.value,
+    );
+  });
 
   it("a Mate opens its link with its project key and a service label, and every frame either side sends under the keys model decodes as its own type", () => {
     const up = [
