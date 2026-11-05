@@ -1,5 +1,5 @@
 import type { MatePersona } from "@t3tools/contracts";
-import type { PersonaTemplate } from "@t3tools/shared/personaTemplates";
+import type { PersonaTemplate, PremadePersonaTemplate } from "@t3tools/shared/personaTemplates";
 import { describe, expect, it } from "vite-plus/test";
 
 import {
@@ -14,18 +14,20 @@ import {
   type PersonaPageInput,
 } from "./PersonaPanel.logic";
 
-const REVIEWER: PersonaTemplate = {
+const REVIEWER: PremadePersonaTemplate = {
   id: "reviewer",
   name: "Reviewer",
   description: "Questions every change.",
   instructions: "Find problems before they ship.",
+  about: "work",
   revision: 2,
 };
-const EXPLAINER: PersonaTemplate = {
+const EXPLAINER: PremadePersonaTemplate = {
   id: "explainer",
   name: "Explainer",
   description: "Talks in plain words.",
   instructions: "Talk in plain words.",
+  about: "you",
   revision: 1,
 };
 const HOUSE_STYLE: PersonaTemplate = {
@@ -93,7 +95,8 @@ describe("the Persona page", () => {
     expect(
       page.groups.map((group) => [group.title, group.rows.map((row) => row.template.id)]),
     ).toEqual([
-      ["From Zerops", ["reviewer", "explainer"]],
+      ["How it works with you", ["explainer"]],
+      ["What it focuses on", ["reviewer"]],
       ["Acme's templates", ["house-style"]],
     ]);
     expect(page.groups.flatMap((group) => group.rows).every((row) => row.current === null)).toBe(
@@ -245,7 +248,7 @@ describe("the Persona page", () => {
     {
       title: "an organization without templates says it has none yet",
       org: { state: "ready", templates: [], orgName: "Acme", mayWrite: false, failure: null },
-      note: { kind: "empty", text: "No templates yet." },
+      note: { kind: "empty", text: "No templates yet" },
     },
     {
       title: "the organization's templates say plainly when they cannot be had",

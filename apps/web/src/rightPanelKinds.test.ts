@@ -127,7 +127,7 @@ describe("right panel kinds", () => {
       {
         kind: "persona",
         label: "Persona",
-        description: "Choose how this Mate works and talks.",
+        description: "Choose how this Mate works with you.",
         shortcut: "P",
         unavailableHint: "Update this Mate to give it a persona.",
       },
