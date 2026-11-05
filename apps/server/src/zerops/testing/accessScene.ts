@@ -19,7 +19,7 @@ export type SceneRoles = Readonly<Record<string, string>>;
 /** The read Zerops answers for `roles`: every person active, no project override. */
 export const sceneRead = (roles: SceneRoles): AccessRead => ({
   kind: "read",
-  project: { clientId: "org", overrides: {} },
+  project: { clientId: "org", overrides: {}, tagList: [] },
   members: Object.entries(roles).map(([userId, orgRole]) => ({
     clientUserId: `cu-${userId}`,
     userId,

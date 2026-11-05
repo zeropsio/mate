@@ -5,7 +5,8 @@
  * `userRoles` and the organisation's persons, through the shared door rule
  * (`@t3tools/shared/mateAccess` `projectAccess` over `zeropsRoles`): an active person whose
  * effective role (their override here, else their org role) is Basic user or above is opened for,
- * one at Read only is listed, anyone else is absent. It recomputes every
+ * one at Read only is listed, anyone else is absent. A project tagged `chief` opens only for
+ * the people its own `OWNER` overrides name. It recomputes every
  * {@link ACCESS_RECOMPUTE_EVERY} give or take {@link ACCESS_RECOMPUTE_JITTER}, and at once when a
  * ticket names a person the list does not open for. A read that fails, Zerops refusing the key
  * included, keeps the last list as it is. Between reads the Zerops websocket keeps it live
@@ -96,12 +97,22 @@ export interface OwnRows {
 }
 
 /** The Mate's own list from the rows of its project `projectId`, read at `nowMs`. */
-export const ownAccessList = (projectId: string, rows: OwnRows, nowMs: number): AccessList => ({
-  members: projectAccess({ projectId, members: rows.members, overrides: rows.project.overrides }),
-  owners: projectOwners({ members: rows.members, overrides: rows.project.overrides }),
-  readAtMs: nowMs,
-  expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
-});
+export const ownAccessList = (projectId: string, rows: OwnRows, nowMs: number): AccessList => {
+  const owners = projectOwners({ members: rows.members, overrides: rows.project.overrides });
+  const members = projectAccess({
+    projectId,
+    members: rows.members,
+    overrides: rows.project.overrides,
+  });
+  return {
+    members: rows.project.tagList.includes("chief")
+      ? members.filter((member) => owners.includes(member.userId))
+      : members,
+    owners,
+    readAtMs: nowMs,
+    expiresAtMs: nowMs + Duration.toMillis(ACCESS_LIST_HOLDS),
+  };
+};
 
 const patched = (member: ZeropsOrgMember, patch: MemberPatch): ZeropsOrgMember => ({
   clientUserId: member.clientUserId,
@@ -123,11 +134,18 @@ const sameMember = (a: ZeropsOrgMember, b: ZeropsOrgMember): boolean =>
  */
 export function applyAccessFrame(rows: OwnRows, frame: AccessFrame): OwnRows {
   if (frame.kind === "project") {
+    const overrides = frame.overrides ?? rows.project.overrides;
+    const tagList = frame.tagList ?? rows.project.tagList;
     const before = Object.entries(rows.project.overrides);
-    const same =
-      before.length === Object.keys(frame.overrides).length &&
-      before.every(([clientUserId, role]) => frame.overrides[clientUserId] === role);
-    return same ? rows : { ...rows, project: { ...rows.project, overrides: frame.overrides } };
+    const sameOverrides =
+      before.length === Object.keys(overrides).length &&
+      before.every(([clientUserId, role]) => overrides[clientUserId] === role);
+    const sameTags =
+      tagList.length === rows.project.tagList.length &&
+      tagList.every((tag, index) => tag === rows.project.tagList[index]);
+    return sameOverrides && sameTags
+      ? rows
+      : { ...rows, project: { ...rows.project, overrides, tagList } };
   }
   let changed = false;
   const members = rows.members.filter((member) => {

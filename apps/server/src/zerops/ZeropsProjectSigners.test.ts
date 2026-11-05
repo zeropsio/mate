@@ -679,7 +679,7 @@ describe("hasProjectAccess", () => {
         });
         const answer = yield* Ref.make<AccessRead>({
           kind: "read",
-          project: { clientId: "org", overrides: { [`cu-${EVA}`]: "READ_ONLY" } },
+          project: { clientId: "org", overrides: { [`cu-${EVA}`]: "READ_ONLY" }, tagList: [] },
           members: [member(JAN, "BASIC_USER"), member(EVA, "OWNER")],
         });
         const list = yield* ZeropsMateAccessListModule.make({

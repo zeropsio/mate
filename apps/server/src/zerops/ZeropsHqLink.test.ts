@@ -990,7 +990,7 @@ describe("ZeropsHqLink", () => {
         });
         const answer = yield* Ref.make<AccessRead>({
           kind: "read",
-          project: { clientId: "org", overrides: {} },
+          project: { clientId: "org", overrides: {}, tagList: [] },
           members: [member("jan", "OWNER"), member("eva", "BASIC_USER")],
         });
         /** One run of the Mate's server: its own list and its link, nothing kept in between. */
@@ -1024,7 +1024,7 @@ describe("ZeropsHqLink", () => {
         // Eva is taken away while the Mate restarts: HQ, not the Mate, finds her gone.
         yield* Ref.set(answer, {
           kind: "read",
-          project: { clientId: "org", overrides: {} },
+          project: { clientId: "org", overrides: {}, tagList: [] },
           members: [member("jan", "OWNER")],
         });
         yield* Effect.scoped(

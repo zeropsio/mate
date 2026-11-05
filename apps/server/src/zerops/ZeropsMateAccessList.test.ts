@@ -11,7 +11,7 @@ import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
 import type { AccessRead } from "./ZeropsAccessRead.ts";
-import type { AccessFrame, AccessLiveEvent } from "./ZeropsAccessSocket.ts";
+import { type AccessFrame, type AccessLiveEvent, decodeAccessFrame } from "./ZeropsAccessSocket.ts";
 import {
   ACCESS_LIST_HOLDS,
   ACCESS_READ_BUDGET,
@@ -65,11 +65,23 @@ const read = (
   overrides: Record<string, string> = {},
 ): Extract<AccessRead, { kind: "read" }> => ({
   kind: "read",
-  project: { clientId: "org", overrides },
+  project: { clientId: "org", overrides, tagList: [] },
   members,
 });
 
 describe("ownAccessList", () => {
+  it.each([
+    ["no OWNER override", {}],
+    ["an inactive OWNER-override holder", { "cu-ben": "OWNER" }],
+  ])("A Chief without an active OWNER-override holder admits nobody: %s", (_name, overrides) => {
+    const input = read(
+      [person("ada", "ADMIN"), person("ben", "NO_ACCESS", "WAITING_AUTHORIZATION")],
+      overrides,
+    );
+    const chief = { ...input, project: { ...input.project, tagList: ["mate", "chief"] } };
+    assert.deepStrictEqual(ownAccessList(PROJECT, chief, 0).members, []);
+  });
+
   it.each<[string, Extract<AccessRead, { kind: "read" }>, string]>([
     ["an active org Basic user is opened for", read([person("ben", "BASIC_USER")]), "ben:open"],
     ["an active org Read only is listed", read([person("eva", "READ_ONLY")]), "eva:listed"],
@@ -264,6 +276,55 @@ const evaRole = (orgRole: string): AccessFrame => ({
 });
 
 describe("ZeropsMateAccessList, live over the Zerops websocket", () => {
+  it.effect("A project's tag change updates its Chief-only door from the project frame", () =>
+    Effect.gen(function* () {
+      const { answer, frame, own } = yield* liveRead;
+      const input = read([person("jan", "NO_ACCESS"), person("ada", "ADMIN")], {
+        "cu-jan": "OWNER",
+      });
+      const ordinary = { ...input, project: { ...input.project, tagList: ["mate"] } };
+      yield* Ref.set(answer, ordinary);
+      const list = yield* makeAccessList(own);
+      const reports = yield* Stream.runCollect(Stream.take(list.reports, 3)).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
+      for (const tagList of [["mate", "chief"], ["mate"]]) {
+        const decoded = decodeAccessFrame(
+          {
+            type: "search",
+            subscriptionName: "mate-access-project",
+            data: { update: [{ id: PROJECT, tagList }] },
+          },
+          { projectId: PROJECT, clientId: "org" },
+        );
+        if (decoded === undefined) return assert.fail("the project tag frame was discarded");
+        yield* frame(decoded);
+      }
+      assert.deepStrictEqual(
+        (yield* Fiber.join(reports)).map((report) => report.openers),
+        [["jan", "ada"], ["jan"], ["jan", "ada"]],
+      );
+    }).pipe(Effect.scoped),
+  );
+
+  it.effect("A Chief's door follows the project's OWNER override when it moves", () =>
+    Effect.gen(function* () {
+      const { answer, frame, own } = yield* liveRead;
+      const input = read([person("jan", "OWNER"), person("eva", "OWNER")], {
+        "cu-jan": "OWNER",
+      });
+      const chief = { ...input, project: { ...input.project, tagList: ["mate", "chief"] } };
+      yield* Ref.set(answer, chief);
+      const list = yield* makeAccessList(own);
+      const reports = yield* Stream.runCollect(Stream.take(list.reports, 2)).pipe(Effect.forkChild);
+      yield* TestClock.adjust(Duration.zero);
+      yield* frame({ kind: "project", overrides: { "cu-eva": "OWNER" } });
+      assert.deepStrictEqual(
+        (yield* Fiber.join(reports)).map((report) => report.openers),
+        [["jan"], ["eva"]],
+      );
+    }).pipe(Effect.scoped),
+  );
+
   it.effect(
     "Every frame recomputes the list from its content and the last known rows; a frame seen twice changes nothing",
     () =>
