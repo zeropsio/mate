@@ -1611,10 +1611,9 @@ export const engineRows: Projection<string, ReadonlyArray<ConversationRow>> = {
       if (row.kind !== "known") continue;
       // A held conversation's header is its newest word on the model it runs.
       const at = { environmentId, conversationId: row.value.conversationId };
-      const held = observed(read, at)
-        ? read.fact("mateEngineConversation", engineConversationId(at))
-        : null;
-      const model = held?.kind === "known" ? held.value.header.model : null;
+      const held = read.fact("mateEngineConversation", engineConversationId(at));
+      const heldModel = held.kind === "known" ? held.value.header.model : null;
+      const model = observed(read, at) ? heldModel : null;
       rows.push(
         row.value.agent === null || model === null || model === row.value.agent.model
           ? row.value
