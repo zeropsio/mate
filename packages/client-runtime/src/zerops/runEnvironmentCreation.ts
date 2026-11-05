@@ -280,6 +280,17 @@ export async function runEnvironmentCreation(
           break;
         }
         case "import-container": {
+          if (step.tier?.projectVariables !== undefined)
+            await run(
+              {
+                kind: "prepare-tier-variables",
+                orgId,
+                projectId: requireProject(projectId),
+                variables: step.tier.projectVariables,
+              },
+              { orgId, unobserved: UNCONFIRMED_WRITE },
+            );
+          assertCurrent();
           const imported = await attempt("import", () =>
             run(
               {

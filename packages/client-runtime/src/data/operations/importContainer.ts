@@ -7,6 +7,7 @@
  * @module data/operations/importContainer
  */
 import type { MateBirthplace, ZeropsAgentType } from "../../zerops/newProject.ts";
+import type { TierProjectVariable } from "../../zerops/recipeTier.ts";
 import type { OperationKind } from "./kind.ts";
 
 declare module "../model.ts" {
@@ -21,6 +22,11 @@ declare module "../model.ts" {
       readonly tierYaml?: string;
       readonly birthplace?: MateBirthplace;
     };
+    readonly "prepare-tier-variables": {
+      readonly orgId: string;
+      readonly projectId: string;
+      readonly variables: ReadonlyArray<TierProjectVariable>;
+    };
   }
   interface OperationResults {
     readonly "import-container": {
@@ -34,6 +40,13 @@ declare module "../model.ts" {
 
 export const importContainer: OperationKind<"import-container"> = {
   kind: "import-container",
+  executor: "zerops",
+  reflected: () => true,
+};
+
+/** Preparation is idempotent by key and runs before the non-idempotent import claim. */
+export const prepareTierVariables: OperationKind<"prepare-tier-variables"> = {
+  kind: "prepare-tier-variables",
   executor: "zerops",
   reflected: () => true,
 };

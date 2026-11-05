@@ -136,6 +136,35 @@ describe("recipeTierServices", () => {
 describe("mateTier — the tier a Mate's birth imports beside its container", () => {
   const tier = mateTier(MATE_TIER);
 
+  it("retains a tier's project variables and their sensitivity for the project environment", () => {
+    const yaml = `project:
+  name: example
+  corePackage: LIGHT
+  envVariables:
+    APP_KEY: <@generateRandomString(<32>)>
+  envSecrets:
+    LEGACY_SECRET: legacy
+  vault:
+    SECRET: {value: <@generateRandomString(<40>)>, sensitive: true}
+    COUNT: 2
+    ENABLED: false
+    EMPTY: ""
+services:
+  - hostname: api
+    type: nodejs@22
+`;
+    expect(mateTier(yaml)).toMatchObject({
+      projectVariables: [
+        { key: "APP_KEY", value: "<@generateRandomString(<32>)>", sensitive: false },
+        { key: "LEGACY_SECRET", value: "legacy", sensitive: true },
+        { key: "SECRET", value: "<@generateRandomString(<40>)>", sensitive: true },
+        { key: "COUNT", value: "2", sensitive: false },
+        { key: "ENABLED", value: "false", sensitive: false },
+        { key: "EMPTY", value: "", sensitive: false },
+      ],
+    });
+  });
+
   it("names each runtime and what it is, in the tier's order", () => {
     expect(tier?.runtimes).toEqual([
       { hostname: "apidev", role: "dev" },
