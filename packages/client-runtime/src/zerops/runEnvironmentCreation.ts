@@ -130,6 +130,8 @@ export interface RunEnvironmentCreationInput {
   readonly platform: EnvironmentCreationPlatform;
   /** Captured account lifetime; a later login must never resume this operation. */
   readonly isCurrent?: () => boolean;
+  /** Why the press may write nothing more, once it may not: its hold at HQ lapsed. */
+  readonly stopped?: () => string | undefined;
   readonly onProgress?: (progress: ReadonlyArray<EnvironmentCreationStepProgress>) => void;
   /** Turns an unknown failure into the sentence the checklist shows. */
   readonly describeError?: (cause: unknown) => string;
@@ -178,6 +180,8 @@ export async function runEnvironmentCreation(
   const describeError = input.describeError ?? defaultDescribeError;
   const assertCurrent = () => {
     if (input.isCurrent?.() === false) throw new Error("This account session has ended.");
+    const stopped = input.stopped?.();
+    if (stopped !== undefined) throw new Error(stopped);
   };
 
   const progress: Array<EnvironmentCreationStepProgress> = input.steps.map((step) => ({

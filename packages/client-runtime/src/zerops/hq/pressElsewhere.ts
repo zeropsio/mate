@@ -1,8 +1,9 @@
 /**
  * Whether a Mate's press in another browser is still at it, as HQ holds it (B5): no project's age
- * says so. A press holds its Mate's project at HQ from the moment Zerops takes the project, renews
- * the hold while it runs and lets it go at its end (`holdPress`); once Zerops answered its container
- * import, the import's own process is what the press is followed by.
+ * says so. A press holds its Mate's project at HQ from the moment Zerops takes the project, keeps
+ * the hold with its HQ stream while it runs and lets it go at its end (`holdPress`); once Zerops
+ * answered its container import, the import's own process is what the press is followed by. A hold
+ * ends only by HQ's word: no reader times it out.
  *
  * - `pressing` — its hold runs on, or its import's process is queued, running or finished: its
  *   container is on its way, and nobody else imports one.
@@ -12,12 +13,12 @@
  *
  * @module pressElsewhere
  */
-/** A press HQ holds, its hold measured on this browser's clock from when HQ's word on it arrived. */
+/** A press HQ lists: `held` while its hold runs on, a stopped one's record unheld. */
 export interface HqPressHold {
   readonly kind: "mate" | "stage" | "production";
   readonly appId?: string;
   readonly importProcessId?: string;
-  readonly expiresAtMs: number;
+  readonly held: boolean;
 }
 
 /** The presses HQ holds, by project. */
@@ -31,7 +32,6 @@ export function pressElsewhere(input: {
   /** The presses HQ holds; null while it has said none. */
   readonly presses: HqPresses | null;
   readonly projectId: string;
-  readonly nowMs: number;
   /** The exact import named by the press or HQ birth/Mate; absent until its owner answers. */
   readonly importStatus?: string | undefined;
 }): PressElsewhere {
@@ -44,15 +44,5 @@ export function pressElsewhere(input: {
     return IMPORT_FAILED.has(input.importStatus) ? "stopped" : "pressing";
   }
   if (held === undefined) return "unknown";
-  return input.nowMs < held.expiresAtMs ? "pressing" : "unknown";
-}
-
-/** When the soonest of these presses' holds runs out, wall ms; null where none runs on. */
-export function nextPressExpiry(presses: HqPresses | null, nowMs: number): number | null {
-  let soonest: number | null = null;
-  for (const held of Object.values(presses ?? {})) {
-    if (held.expiresAtMs <= nowMs) continue;
-    if (soonest === null || held.expiresAtMs < soonest) soonest = held.expiresAtMs;
-  }
-  return soonest;
+  return held.held ? "pressing" : "unknown";
 }

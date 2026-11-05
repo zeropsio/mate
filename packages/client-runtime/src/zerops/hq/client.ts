@@ -414,11 +414,10 @@ export interface HqApi {
    */
   readonly recordBirth: (birth: { readonly appId: string } & HqNewMate) => Promise<HqBirth>;
   /**
-   * Holds, or renews, a press for this browser's press `owner` (`PUT /api/presses/{projectId}`):
-   * what it makes and into which application, with its container import's Zerops process once
-   * Zerops answered it — another browser takes it for a press still running. Another press's hold
-   * refuses it (`press_held`). A `renew` extends only this press's own live hold, never one its
-   * end let go (`press_not_held`).
+   * Holds a press for this browser's press `owner` (`PUT /api/presses/{projectId}`): what it
+   * makes and into which application, with its container import's Zerops process once Zerops
+   * answered it — another browser takes it for a press still running. Another press's hold refuses
+   * it (`press_held`). The hold lives with the holder's HQ stream: nothing renews it.
    */
   readonly holdPress: (
     projectId: string,
@@ -427,7 +426,6 @@ export interface HqApi {
       readonly kind: "mate" | "stage" | "production";
       readonly appId?: string;
       readonly importProcessId?: string;
-      readonly renew?: boolean;
     },
   ) => Promise<void>;
   /**

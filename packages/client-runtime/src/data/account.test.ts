@@ -9,7 +9,7 @@ import { listedProject, projectGone } from "./projections/projects.ts";
 import { hqFixtureWire } from "./__fixtures__/hqWire.ts";
 import { fixtureWire } from "./__fixtures__/zeropsWire.ts";
 import { observeAccount, startZeropsNavigation } from "./account.ts";
-import { hqAppsScope } from "./families/hqNavigation.ts";
+import { hqAppsScope, hqPressesScope } from "./families/hqNavigation.ts";
 import { historyScope, runningScope } from "./families/process.ts";
 import { projectsScope } from "./families/project.ts";
 import { linkKeys, type OperationIntent } from "./model.ts";
@@ -17,6 +17,7 @@ import type { RegisteredOperationKind } from "./operations/kind.ts";
 import { autoUpdatePolicySettings } from "./projections/hqAutoUpdatePolicy.ts";
 import { streamOf } from "./reducer.ts";
 import { makeAccountStore, readsOfState } from "./store.ts";
+import type { StreamEvent } from "./streamMachine.ts";
 
 /** A receipt from the reducer, after it publishes the expected state. */
 const until = (
@@ -461,6 +462,90 @@ describe("an account's HQ", () => {
       account.stop();
     }),
   );
+
+  it.live(
+    "a running press keeps its organization's HQ open, on its one socket, while another is shown, until it lets it go",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const account = observeAccount({
+          store,
+          wire: emptyZerops().wire,
+          repairSession: Effect.void,
+        });
+        const a = hqFixtureWire();
+        const b = hqFixtureWire();
+        account.show("org-a");
+        account.showHq({ orgId: "org-a", wire: a.wire });
+        yield* until(store, () => a.opens() === 1, "org-a's HQ registration");
+        const release = account.keepPress("org-a", "p-1", () => undefined);
+        account.show("org-b");
+        account.showHq({ orgId: "org-b", wire: b.wire });
+        yield* until(store, () => b.opens() === 1, "org-b's HQ registration");
+        expect(streamOf(store.state(), linkKeys.hq("org-a")).demanded).toBe(true);
+        expect(a.opens()).toBe(1);
+        release();
+        yield* until(
+          store,
+          () => !streamOf(store.state(), linkKeys.hq("org-a")).demanded,
+          "org-a's HQ release",
+        );
+        expect(streamOf(store.state(), linkKeys.hq("org-b")).demanded).toBe(true);
+        account.stop();
+      }),
+  );
+
+  it("lapses a running press only once its HQ stream came back without its hold: back within HQ's grace, or ended on a stream that stayed, it holds", () => {
+    const store = makeAccountStore(AtomRegistry.make());
+    const account = observeAccount({ store, wire: emptyZerops().wire, repairSession: Effect.void });
+    const scope = hqPressesScope("org-a");
+    const press = { kind: "mate" as const, heldForMs: 30_000, until: "2026-11-05T10:00:30.000Z" };
+    seedHqNavigation(store, "org-a", {
+      presses: { "p-1": press, "p-2": { ...press, kind: "stage" } },
+    });
+    const lapsed: Array<string> = [];
+    account.keepPress("org-a", "p-1", () => lapsed.push("p-1"));
+    const stage = account.keepPress("org-a", "p-2", () => lapsed.push("p-2"));
+    /** HQ's word on its presses: what it removed, on the socket it is said on. */
+    const said = (removed: ReadonlyArray<string>) => {
+      const scopes = [{ scope, generation: streamOf(store.state(), scope).generation }];
+      store.dispatch({
+        kind: "delivery",
+        via: "hq-stream",
+        scopes,
+        reset: false,
+        rows: [],
+        removals: removed.map((id) => ({
+          family: "hqPress" as const,
+          id,
+          reason: "deleted" as const,
+        })),
+      });
+      store.dispatch({ kind: "hq-ready", scopes });
+    };
+    const event = (event: StreamEvent) =>
+      store.dispatch({ kind: "stream", key: scope, now: 0, event });
+    /** HQ's stream went away; on its next socket, HQ says what it removed meanwhile. */
+    const back = (removed: ReadonlyArray<string>) => {
+      event({ kind: "parent-lost" });
+      event({ kind: "attempt" });
+      event({ kind: "handshake" });
+      said(removed);
+      event({ kind: "baseline-committed" });
+    };
+    // HQ ended a stage's hold at its registration, on a stream that stayed: no lapse.
+    said(["p-2"]);
+    stage();
+    // Its stream went away and came back within HQ's grace: still held.
+    back([]);
+    expect(lapsed).toEqual([]);
+    // Back past HQ's grace: HQ holds it no more.
+    back(["p-1"]);
+    expect(lapsed).toEqual(["p-1"]);
+    back([]);
+    expect(lapsed).toEqual(["p-1"]);
+    account.stop();
+  });
 
   it.live("named again in the same turn it was let go, keeps its one socket", () =>
     Effect.gen(function* () {

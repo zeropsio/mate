@@ -44,6 +44,7 @@ import { useCallback, useContext } from "react";
 
 import type { EnvironmentCreationChoice } from "../components/zerops/ZeropsEnvironmentCreationDialog";
 import { accountHqApi, configuredHq } from "./accountHq";
+import { pressStreamOf } from "./pressStreams";
 import { invalidateZerops } from "./accountInvalidations";
 import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 import {
@@ -389,6 +390,7 @@ export function useEnvironmentCreation(): (
           ? undefined
           : acquireHqPressLease(
               accountHqApi(client, organization.id, hq),
+              pressStreamOf(organization.id),
               {
                 kind: pressKind,
                 active: isCurrent,

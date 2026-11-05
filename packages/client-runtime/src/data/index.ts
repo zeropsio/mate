@@ -533,8 +533,7 @@ export { makeVcsReads, makeVcsWire } from "./adapters/mateVcs.ts";
 export { mateVcs, type VcsKey } from "./projections/mateVcs.ts";
 export {
   acquireHqPressLease,
-  PRESS_RENEW_MS,
-  PRESS_STEP_RENEW_MS,
+  type KeepPress,
   type PressHold,
 } from "./operations/executors/hqPressLease.ts";
 

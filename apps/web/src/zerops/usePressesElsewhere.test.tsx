@@ -1,6 +1,6 @@
 /**
  * B5, two browsers: whether a Mate's press in the other one is still at it is its hold at HQ and
- * its import's own process — drawn anew the moment its hold runs out, never by its project's age.
+ * its import's own process — gone when HQ says so, never by a reader's clock or its project's age.
  */
 import { RegistryContext } from "@effect/atom-react";
 import type { ZeropsCandidate } from "@t3tools/client-runtime/zerops/candidates";
@@ -32,10 +32,7 @@ const NOW = Date.parse("2026-10-05T10:00:00.000Z");
 const UNA = { key: "p-una", project: { id: "p-una" }, missingContainer: true } as ZeropsCandidate;
 
 let tree: ReactTestRenderer | undefined;
-/**
- * What the hook handed back last, and what each render said of Una: a hold running out is drawn
- * anew, not only read anew.
- */
+/** What the hook handed back last, and what each render said of Una. */
 const probe = { said: (_projectId: string): string => "", drawn: [] as Array<string> };
 const said = (projectId: string) => probe.said(projectId);
 function Probe() {
@@ -74,14 +71,14 @@ afterEach(() => {
 });
 
 describe("usePressesElsewhere", () => {
-  it("reads a slow press as at it while its hold runs, and as awaiting evidence when it runs out", async () => {
+  it("reads a slow press as at it for as long as HQ lists its hold: no reader times it out", async () => {
     mount({ "p-una": { kind: "mate", heldForMs: 30_000, until: "2026-10-05T10:00:30.000Z" } });
     expect(said("p-una")).toBe("pressing");
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(30_001);
+      await vi.advanceTimersByTimeAsync(10 * 60_000);
     });
-    expect(said("p-una")).toBe("unknown");
-    expect(probe.drawn.at(-1)).toBe("unknown");
+    expect(said("p-una")).toBe("pressing");
+    expect(probe.drawn).not.toContain("unknown");
   });
 
   it("reads a press whose import failed as stopped at once, though its hold still runs", () => {
