@@ -86,8 +86,9 @@ export type HqPersonFacts = typeof PersonFacts.Type;
 export type HqPersonValue = typeof Person.Type;
 
 /**
- * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and how
- * long its hold runs on from HQ's read (`heldForMs`) — renewed holds come with a new `until`.
+ * A press HQ holds, by its project: what it makes, where, its import once Zerops took it, and
+ * whether its hold runs on (`heldForMs` above 0; a stopped press keeps its record at 0). HQ removes
+ * or rewrites it when the hold ends: no reader times it out.
  */
 export type HqPressValue = HqNavigationPress;
 

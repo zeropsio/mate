@@ -192,7 +192,6 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
       pressElsewhere: pressElsewhere({
         presses,
         projectId: project.id,
-        nowMs,
         importStatus: presses[project.id]?.importProcessId === undefined ? undefined : "RUNNING",
       }),
     });
@@ -248,7 +247,7 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
       },
     ];
     const later = observe(nowMs + 15_000, services, {
-      [project.id]: { kind: "mate", importProcessId: "import-pepa", expiresAtMs: START },
+      [project.id]: { kind: "mate", importProcessId: "import-pepa", held: false },
     });
     expect(later.coming?.kind).toBe("coming");
     imported.resolve({ serviceName: "zcp", imported: true, processId: "import-pepa" });
@@ -282,7 +281,6 @@ it("a fresh observer awaits the original accepted setup beyond 0:42 and advances
         pressElsewhere: pressElsewhere({
           presses: {},
           projectId: project.id,
-          nowMs,
           importStatus: recovered()?.status,
         }),
       });

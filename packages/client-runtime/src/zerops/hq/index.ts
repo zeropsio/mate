@@ -56,7 +56,6 @@ export {
   type HqPlacement,
 } from "./placement.ts";
 export {
-  nextPressExpiry,
   pressElsewhere,
   type HqPressHold,
   type HqPresses,
