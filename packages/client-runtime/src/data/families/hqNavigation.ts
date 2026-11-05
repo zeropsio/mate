@@ -27,10 +27,8 @@ import type { ScopeKey } from "../model.ts";
 import { navigationRecord } from "./navigationRecord.ts";
 import { scopeOf, type FamilySpec } from "./spec.ts";
 
-/** The organization's own record: the projects HQ holds nowhere and the Core its HQ runs. */
+/** The organization's own record: the Core its HQ runs. */
 export interface HqOrganizationValue {
-  /** Each project of the organization HQ holds nowhere, by id. */
-  readonly unheld: ReadonlyArray<string>;
   /** The Core HQ runs. */
   readonly build: string;
   /**
@@ -104,10 +102,7 @@ declare module "../model.ts" {
   }
 }
 
-const Organization = Schema.Struct({
-  unheld: Schema.Record(Schema.String, Schema.Unknown),
-  build: Schema.String,
-});
+const Organization = Schema.Struct({ build: Schema.String });
 
 const Viewer = Schema.Struct({
   firstSignedInAt: Schema.NullOr(Schema.String),
@@ -119,8 +114,8 @@ const decodeViewer = Schema.decodeUnknownOption(Viewer);
 
 /** The record, its reader's first sign-in apart: one unreadable never loses the other. */
 const decodeOrganization = (raw: unknown): Option.Option<HqOrganizationValue> =>
-  Option.map(decodeOrganizationRecord(raw), ({ unheld, build }) => {
-    const organization = { unheld: Object.keys(unheld), build };
+  Option.map(decodeOrganizationRecord(raw), ({ build }) => {
+    const organization = { build };
     const viewer =
       typeof raw === "object" && raw !== null && "viewer" in raw
         ? Option.getOrUndefined(decodeViewer(raw.viewer))

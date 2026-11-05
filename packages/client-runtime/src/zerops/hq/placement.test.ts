@@ -284,7 +284,7 @@ describe("hqMateOffers — what HQ offers of a Mate, or of a project it holds no
   const LIVE = { current: true, unavailableSince: null } as const;
   const OFFERED: HqStructure = {
     ...STRUCTURE,
-    unheld: { "p-free": { create_mate_record: { allow: true } } },
+    placeable: { "p-free": { create_mate_record: { allow: true } } },
     ungrouped: [
       {
         ...STRUCTURE.ungrouped[0]!,
