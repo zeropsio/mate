@@ -31,8 +31,11 @@ services:
     type: nodejs@22
 `;
 
+/** A fixed instant: the witness asserts write order, never elapsed time. */
+const WORLD_START = Date.parse("2026-11-05T12:00:00Z");
+
 async function world(shape: "envVariables" | "vault", role: "dev" | "stage" = "dev") {
-  const fake = new ZeropsFake(seedCoreWorld(Date.now(), true, "ORG"));
+  const fake = new ZeropsFake(seedCoreWorld(WORLD_START, true, "ORG"));
   definePerson(fake.world, "owner", { role: "OWNER" });
   const events: string[] = [];
   let failKey: string | undefined;
