@@ -16,6 +16,7 @@ import {
   type AccessReport,
   KeyLinkUp,
   type LinkedMate,
+  MATE_OVERVIEW_EVERY_MS,
   type MateOverview,
 } from "@t3tools/shared/mateLink";
 import * as Deferred from "effect/Deferred";
@@ -1569,30 +1570,60 @@ describe("ZeropsHqLink", () => {
     ),
   );
 
-  it.effect("sends only the sections that changed, at most once per 500 ms", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { sockets, current, changes } = yield* rig();
-        const socket = yield* linked(sockets, 0);
-        // Two changes inside one 500 ms: the second is the one sent, in one frame.
-        yield* TestClock.adjust(Duration.millis(100));
-        yield* Ref.set(current, overview("Add a sign-up page"));
-        yield* PubSub.publish(changes, undefined);
-        yield* TestClock.adjust(Duration.millis(200));
-        yield* Ref.set(current, overview("Add a password reset"));
-        yield* PubSub.publish(changes, undefined);
-        yield* TestClock.adjust(Duration.millis(199));
-        assert.strictEqual(socket.sent.length, 2);
-        yield* TestClock.adjust(Duration.millis(1));
-        assert.deepStrictEqual(socket.sent.slice(2), [
-          {
+  it.effect(
+    "Decision: The Mate overview goes up at its change, at most once per 500 ms; nothing ticks while nothing changed.",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const now = yield* Ref.make(overview("Add a login page"));
+          const state = { readable: true, reads: 0 };
+          const { sockets, changes } = yield* rig({
+            overview: Effect.suspend(() => {
+              state.reads += 1;
+              return state.readable
+                ? Ref.get(now).pipe(Effect.map(Option.some))
+                : Effect.succeed(Option.none<MateOverview>());
+            }),
+          });
+          const socket = yield* linked(sockets, 0);
+          const sectionsOf = (title: string) => ({
             type: "overview",
             full: false,
-            sections: { threads: overview("Add a password reset").threads },
-          },
-        ]);
-      }),
-    ),
+            sections: { threads: overview(title).threads },
+          });
+          const change = (title: string) =>
+            Ref.set(now, overview(title)).pipe(
+              Effect.andThen(PubSub.publish(changes, undefined)),
+              Effect.andThen(TestClock.adjust(Duration.zero)),
+            );
+          // A change after a quiet while goes up at once, not at a next tick.
+          yield* TestClock.adjust(Duration.millis(10_250));
+          assert.strictEqual(state.reads, 1);
+          yield* change("Add a sign-up page");
+          assert.deepStrictEqual(socket.sent.slice(2), [sectionsOf("Add a sign-up page")]);
+          // Changes inside the window wait for its end, and go up as one frame of the last.
+          yield* TestClock.adjust(Duration.millis(100));
+          yield* change("Add a password reset");
+          yield* TestClock.adjust(Duration.millis(200));
+          yield* change("Add a password reset link");
+          yield* TestClock.adjust(Duration.millis(199));
+          assert.strictEqual(socket.sent.length, 3);
+          yield* TestClock.adjust(Duration.millis(1));
+          assert.deepStrictEqual(socket.sent.slice(3), [sectionsOf("Add a password reset link")]);
+          // An overview that cannot be read is read again at the next change, never on a timer.
+          yield* TestClock.adjust(Duration.seconds(1));
+          state.readable = false;
+          const before = state.reads;
+          yield* change("Add a profile page");
+          assert.strictEqual(state.reads, before + 1);
+          yield* TestClock.adjust(Duration.minutes(2));
+          assert.strictEqual(state.reads, before + 1);
+          state.readable = true;
+          yield* change("Add a profile page");
+          assert.deepStrictEqual(socket.sent.at(-1), sectionsOf("Add a profile page"));
+          assert.strictEqual(socket.sent.length, 5);
+        }),
+      ),
   );
 
   // F26: the Zerops L7 cuts every link at 120 s. A Mate opens its successor before that, and lets
@@ -1844,11 +1875,20 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       yield* TestClock.adjust(Duration.zero);
       const socket = sockets[0];
       if (socket === undefined) return yield* Effect.die("no socket");
+      /** The overview frames the link sends, in order: the receipt of each look. */
+      const overviews = yield* Queue.unbounded<Sent>();
+      socket.onSent = (message) => {
+        if (message.type === "overview") Queue.offerUnsafe(overviews, message);
+      };
       socket.emit("open");
       admit(socket);
-      // Settled: whatever the feeds said as the link subscribed has been looked at, and was sent.
-      yield* TestClock.adjust(Duration.seconds(1));
-      return { socket, crew, auth, update, providers, rows };
+      /** Waits for the next overview frame the link sends, then lets its window pass. */
+      const sent = Queue.take(overviews).pipe(
+        Effect.andThen(TestClock.adjust(Duration.millis(MATE_OVERVIEW_EVERY_MS))),
+      );
+      // Settled: the whole overview went up.
+      yield* sent;
+      return { socket, crew, auth, update, providers, rows, sent };
     });
   const feedRig = feedRigOf(false);
 
@@ -1862,7 +1902,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("relays a ready agent without a sign-in when its provider snapshot changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, providers } = yield* feedRig;
+        const { socket, providers, sent } = yield* feedRig;
         const provider: ServerProvider = {
           driver: ProviderDriverKind.make("cursor"),
           instanceId: ProviderInstanceId.make("cursor"),
@@ -1877,7 +1917,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           skills: [],
         };
         yield* SubscriptionRef.set(providers, [provider]);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         const overview = yield* decodeMateLinkUp(socket.sent.at(-1));
         assert.isTrue(
           overview.type === "overview" &&
@@ -1893,7 +1933,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
     () =>
       Effect.scoped(
         Effect.gen(function* () {
-          const { socket, auth } = yield* feedRig;
+          const { socket, auth, sent } = yield* feedRig;
           const token = { ...CLAUDE, credPresent: false, flagOAuth: false, flagToken: true };
           // What HQ holds: the full overview, then each identity section sent since.
           const runsWithoutSignIn = Effect.map(
@@ -1914,13 +1954,13 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
             available: true,
             agents: [{ ...token, providerAuth: "unknown", state: "authorized-token" }],
           });
-          yield* TestClock.adjust(Duration.seconds(1));
+          yield* sent;
           assert.strictEqual(yield* runsWithoutSignIn, false);
           yield* SubscriptionRef.set(auth, {
             available: true,
             agents: [{ ...token, state: "authorized-token" }],
           });
-          yield* TestClock.adjust(Duration.seconds(1));
+          yield* sent;
           assert.strictEqual(yield* runsWithoutSignIn, true);
         }),
       ),
@@ -1959,7 +1999,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           askedAt: null,
         });
         yield* SubscriptionRef.set(engine.rows, [working]);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* engine.sent;
         assert.deepStrictEqual(sectionsSent(engine.socket), [{ conversations: [working] }]);
       }),
     ),
@@ -1968,9 +2008,9 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when the crew's snapshot moves", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, crew } = yield* feedRig;
+        const { socket, crew, sent } = yield* feedRig;
         yield* SubscriptionRef.set(crew, APPLIED);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           {
             crew: {
@@ -1989,12 +2029,12 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when a login's signer changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, auth } = yield* feedRig;
+        const { socket, auth, sent } = yield* feedRig;
         yield* SubscriptionRef.set(auth, {
           available: true,
           agents: [{ ...CLAUDE, authorizedBy: { subject: "user-ada" } }],
         });
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           { logins: { "claude-code": { signedInBy: "user-ada", present: true, token: false } } },
         ]);
@@ -2005,7 +2045,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
   it.effect("sends again when the Mate's update line changes", () =>
     Effect.scoped(
       Effect.gen(function* () {
-        const { socket, update } = yield* feedRig;
+        const { socket, update, sent } = yield* feedRig;
         const line: ExecutionEnvironmentUpdate = {
           installed: "0.11.90",
           latest: "0.11.91",
@@ -2013,7 +2053,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
           checkedAt: "2026-10-03T10:00:00Z",
         };
         yield* SubscriptionRef.set(update, line);
-        yield* TestClock.adjust(Duration.seconds(1));
+        yield* sent;
         assert.deepStrictEqual(sectionsSent(socket), [
           {
             identity: {
