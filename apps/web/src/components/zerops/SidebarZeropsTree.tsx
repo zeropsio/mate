@@ -732,7 +732,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   hold = false,
   onNoticeAct,
   className,
-  births = NO_BIRTHS,
+  births: placedBirths = NO_BIRTHS,
   timestampFormat = "locale",
   getMateActions,
   getBirth,
@@ -741,6 +741,16 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   onShowEveryone,
   getCrew,
 }: SidebarZeropsTreeProps<T>) {
+  const births = useMemo(
+    () =>
+      placedBirths.filter(
+        (birth) =>
+          birth.placement.kind !== "mate" ||
+          birth.intent === undefined ||
+          getBirth?.(birth.intent) !== undefined,
+      ),
+    [getBirth, placedBirths],
+  );
   const structureView = useAtomValue(shownCanonicalHqListNavigationAtom);
   const identities = useAtomValue(shownHqMateIdentitiesAtom);
   const accountOrgId = useAccountOrgId();

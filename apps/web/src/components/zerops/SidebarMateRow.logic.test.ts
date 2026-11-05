@@ -1234,6 +1234,24 @@ describe("mateComingRowView — a Mate coming up, or one that did not come", () 
       coming,
     });
   });
+
+  it("a stopped shared birth rests and shows its reason", () => {
+    const coming = {
+      kind: "coming",
+      line: "Project created · Quota reached.",
+      birth: { attention: true },
+    } as const;
+    expect(mateComingRowView(view, coming)).toMatchObject({
+      state: "needs",
+      face: "sleep",
+      dot: "attention",
+    });
+    expect(mateBornLine(coming)).toEqual({
+      words: "Project created · Quota reached.",
+      since: undefined,
+      tone: "attention",
+    });
+  });
 });
 
 // The pose its face wears in the row (`mateFaceFor`): waking while it arrives — from its press

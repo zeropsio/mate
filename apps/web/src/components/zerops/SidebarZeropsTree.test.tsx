@@ -1216,6 +1216,22 @@ describe("a creation under way in the menu", () => {
     stored.opened = new Set(["aaa"]);
   });
 
+  it("a stopped birth never renders as Coming up", () => {
+    const pending = { ...birth(), intent: "b1" };
+    const beforeSharedRecord = render([CRM_DEV], { births: [pending] });
+    expect(beforeSharedRecord).not.toContain("Coming up");
+
+    const afterSharedRecord = render([CRM_DEV], {
+      births: [pending],
+      getBirth: (id: string) =>
+        id === "b1"
+          ? { line: "Project created · Quota reached.", attention: true, entries: [] }
+          : undefined,
+    });
+    expect(afterSharedRecord).toContain("Project created · Quota reached.");
+    expect(afterSharedRecord).not.toContain("Coming up");
+  });
+
   it("a pending shared birth shows the phase and reason received from its shared record", () => {
     const html = render([CRM_DEV], {
       births: [{ ...birth(), intent: "b1" }],
@@ -1449,6 +1465,21 @@ describe("a listed Mate still coming up", () => {
       expect(row).not.toContain("Nobody has signed in yet");
     },
   );
+
+  it("a listed stopped shared birth shows its reason and rests", () => {
+    const html = render([CRM_DEV], {
+      getComing: () => ({
+        kind: "coming",
+        line: "Project created · Quota reached.",
+        birth: { attention: true },
+      }),
+    });
+    const row = rowOf(html);
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+    expect(row).toContain('data-zerops-coming-tone="attention"');
+    expect(row).not.toContain(">Coming up");
+  });
 
   it("counts its clock from when the platform took it, where its birth is held here", () => {
     const since = Date.now() - 42_000;
