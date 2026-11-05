@@ -79,7 +79,7 @@ it.effect.each(
       id: "personal",
     });
     fake.people.set("personal", "owner");
-    const session = yield* personDoor(core, "owner", "hq");
+    const session = yield* personDoor(core, "owner");
     const socket = yield* openScenarioNavigation(core.origin, yield* ticketFor(core.call, session));
     const schedule = yield* realCoreSchedule(core, expected);
     for (const milliseconds of wanted) expect(schedule).toContain(milliseconds);

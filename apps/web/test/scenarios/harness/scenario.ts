@@ -31,6 +31,7 @@ import {
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
+import { personDoor } from "./mateAccess.ts";
 import {
   openScenarioNavigation,
   startScenarioCore,
@@ -156,16 +157,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     name: "Scenario personal access token",
   });
   zerops.people.set("personal", "owner");
-  const owner = yield* core
-    .call("POST", "/api/door", {
-      body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
-    })
-    .pipe(
-      Effect.map((response) => {
-        expect(response.status, JSON.stringify(response.body)).toBe(200);
-        return (response.body as { session: string }).session;
-      }),
-    );
+  const owner = yield* personDoor(core, "owner");
   const mates = new Map<string, MateFake>();
   const realMates = new Map<string, RealMate>();
   if (real)
@@ -357,6 +349,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         message.scope.projectId === name &&
         message.values.some((entry) => decodeAttentionScope(entry.value).overview != null),
       { kind: "attention", projectId: name },
+      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
     return credential;
   });
@@ -453,6 +446,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           return value.overview?.main?.id === mate.thread.id;
         }),
       { kind: "attention", projectId: name },
+      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
     return credential;
   });

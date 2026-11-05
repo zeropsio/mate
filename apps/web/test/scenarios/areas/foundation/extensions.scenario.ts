@@ -40,8 +40,7 @@ describe("harness extension APIs", () => {
             baseUrl: `${api.origin}/api/rest/public`,
             world: fake.world,
           });
-          // The first door keeps the organisation's key, which HQ then reads Zerops with.
-          const owner = yield* personDoor(core, "owner", "hq");
+          const owner = yield* personDoor(core, "owner");
           const appIds = new Map<string, string>();
           for (const name of ["Ada", "Bea", "Staging", "Production", "Cara"]) {
             fake.put("project", {

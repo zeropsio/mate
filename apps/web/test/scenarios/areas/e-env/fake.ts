@@ -26,13 +26,6 @@ export const environmentFixtureWith = Effect.fn("e-env.fixture")(function* (
   const credential = yield* s.given.project("Ada", { mate: true, app: "Shop" });
   if (credential === undefined) return yield* Effect.die("Ada must be enrolled by its fixture");
   const { core, zerops } = s.drivers;
-  // The embedded Core's person door takes a scoped hand-over token, as the browser creates from
-  // its account; the real Core takes the colleague's own access token.
-  zerops.world.tokens.set("door-colleague", {
-    ...zerops.world.tokens.get("door-owner")!,
-    id: "door-colleague",
-    createdByUser: "colleague",
-  });
   const colleague = yield* personDoor(core, "colleague");
   const appId = s.appIds.get("Shop")!;
   const tiers =
