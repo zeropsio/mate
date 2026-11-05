@@ -222,7 +222,7 @@ describe("hqRefusalWords — HQ's refusal, in the person's words", () => {
 // what the person can do — or that it tries again on its own.
 describe("enrollmentRefusalWords — HQ's refusal of a Mate's enrollment", () => {
   it.each([
-    ["not_a_mate", "HQ has no record of this Mate yet. Finish its setup from its menu."],
+    ["not_a_mate", "HQ has no record of this Mate yet."],
     ["project_not_in_org", "Its Zerops project is not in this HQ's organization."],
     ["project_gone", "Its Zerops project is gone."],
     ["env_mismatch", "HQ could not check its Zerops project yet. It tries again on its own."],

@@ -135,10 +135,9 @@ function WaitingCensus() {
 
       <CensusLook
         name="Ringed step list with durations (ProcessSteps)"
-        uses="8 sites in 5 files"
+        uses="7 sites in 4 files"
         places={[
           "apps/web/src/components/zerops/primitives/ProcessSteps.tsx:82 ProcessSteps",
-          "apps/web/src/components/zerops/ZeropsEnvironmentCreationDialog.tsx:118 PressSteps",
           "apps/web/src/components/zerops/ZeropsOperationCard.tsx:664 ZeropsOperationCard",
           "apps/web/src/components/zerops/ZeropsToolResultCards.tsx:181",
           "apps/web/src/components/zerops/ZeropsBirthProgress.tsx:122 ZeropsBirthChecklist",

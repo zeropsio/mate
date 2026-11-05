@@ -3,8 +3,8 @@ import { faceAction, NO_FACE_ACTION } from "@t3tools/client-runtime/data";
 /**
  * What can be done to a Mate, from wherever a Mate is listed.
  *
- * Nine verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*, *Finish
- * setup*, *Hand over this Mate*, *Change project or role*, *Leave the project*,
+ * Eight verbs — *Start*, *Restart*, *Rename Mate*, *Change face…*,
+ * *Hand over this Mate*, *Change project or role*, *Leave the project*,
  * *Delete {name}…* — and the server's version under them. Most lived inside
  * the projects screen's own row menu, wired to that page's state, so a
  * project's own page listed its Mates and could do nothing to any of them.
@@ -44,16 +44,13 @@ import {
   rankZeropsCandidateForListing,
   readZeropsMembership,
   renamedProjectName,
-  finishMateSetupVerb,
-  resolveMateRegistration,
   type ZeropsMembership,
   type ZeropsMateFace,
 } from "@t3tools/client-runtime/zerops";
 import { candidatesComplete, heldCandidates } from "@t3tools/client-runtime/zerops/projections";
 import { zeropsErrorMessage } from "@t3tools/client-runtime/zerops/errors";
-import { heldOf, type HqPlacement } from "@t3tools/client-runtime/zerops/hq";
+import { heldOf } from "@t3tools/client-runtime/zerops/hq";
 import { resolveMateVerbs } from "@t3tools/client-runtime/zerops/mateAccess";
-import type { HqOfferState } from "@t3tools/shared/hqOffers";
 import { handsOverMates, isMateKind } from "@t3tools/shared/zeropsRoles";
 import { useRouter } from "@tanstack/react-router";
 import {
@@ -69,7 +66,7 @@ import {
 import { MateDeployConfirmation } from "./MateDeployConfirmation";
 import { useMateComingOf } from "./useMenuMateReadings";
 import { RestartMateConfirmation } from "./RestartMateConfirmation";
-import type { HqMoveTo } from "@t3tools/shared/hqOffers";
+import type { HqMoveTo, HqOfferState } from "@t3tools/shared/hqOffers";
 import { useMateOffers, useOrgOffers } from "./useHqOffers";
 import { useAccountDataOptional, useDetailDemand } from "./ZeropsAccountData";
 import { useComposerDraftStore } from "../composerDraftStore";
@@ -123,7 +120,7 @@ import {
   type MembersRead,
 } from "@t3tools/client-runtime/data";
 import { HAND_OVER_VERB, handOverCandidates } from "./mateHandOver.logic";
-import { hqPlacementsAtom, hqNavigationAtom } from "../state/zerops";
+import { hqNavigationAtom } from "../state/zerops";
 import { invalidateZerops } from "./accountInvalidations";
 import {
   deletingMates,
@@ -142,19 +139,7 @@ import {
   useZeropsDetailCandidates,
   type ZeropsCandidatePresentation,
 } from "./useZeropsCandidates";
-import { finishSetupContainer } from "./finishSetup.logic";
-import { usePressesElsewhere } from "./usePressesElsewhere";
-import {
-  beginPress,
-  pressComing,
-  finishSetupRunning,
-  finishMateSetup,
-  forgetPress,
-  matePressPlacement,
-  mateFinishRegistration,
-  readMatePress,
-  useMatePresses,
-} from "./matePress";
+import { forgetPress } from "./matePress";
 import { useRestartMate } from "./mateRestart";
 import {
   planProjectLeave,
@@ -289,24 +274,15 @@ export interface MateRenameInPlace {
 
 /** The two reads a caller already holds, handed over rather than taken again here. */
 export interface MateActionsInput {
-  readonly registry: RegistryState;
   /** `candidate.key → "0.11.25"`, from `useZeropsContainers`. */
   readonly serverVersions: ReadonlyMap<string, string>;
-}
-
-interface RegistryState {
-  readonly registry: Parameters<typeof resolveMateRegistration>[0]["registry"];
 }
 
 /** A verb of HQ's on a Mate: offered, held while HQ has not said or does not answer, or not drawn. */
 type HqVerb = "offered" | "held" | "no";
 
-/** Whether HQ offers writing the registry; `undefined` while it has not said, or does not answer. */
-const writes = (createApp: HqOfferState): boolean | undefined =>
-  createApp.kind === "allowed" ? true : createApp.kind === "refused" ? false : undefined;
-
-export function useMateActions({ registry, serverVersions }: MateActionsInput): MateActions {
-  const { activeOrganization, client, user } = useZeropsSession();
+export function useMateActions({ serverVersions }: MateActionsInput): MateActions {
+  const { activeOrganization, user } = useZeropsSession();
   const { organizationRef } = useZeropsData();
   const operations = useAccountOperations();
   const atomRegistry = useContext(RegistryContext);
@@ -330,6 +306,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     readonly birthId: string;
     readonly orgId: string;
     readonly projectId: string | null;
+    readonly adopted?: true;
     readonly name: string;
     readonly environment: string;
     readonly cleanup?: { readonly preparedRequestId: string };
@@ -376,22 +353,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   // their own list, not a fixed order of their own.
   const projectOrder = useProjectOrderOptions();
 
-  // Whether HQ's structure is known: only then does a Mate it places nowhere have no record.
-  const hqPlacements = useAtomValue(hqPlacementsAtom);
   const hqStructure = useAtomValue(hqNavigationAtom);
   const projectPeople = useAtomValue(shownHqProjectPeopleAtom);
   // Each Mate's visibility for the person, as the account reads it from live Zerops data
   // (`mateVisibility`); one not judged yet is absent.
   const visibilities = useAtomValue(
     shownMateVisibilitiesAtom(candidates.map((candidate) => candidate.project.id).join(",")),
-  );
-  const hqKnown = hqPlacements !== null && hqStructure.live;
-  const presses = useMatePresses();
-  // Whether each Mate's press in another browser is still at it, as HQ holds it (B5).
-  const pressOf = usePressesElsewhere(candidates);
-  const pressedElsewhere = useCallback(
-    (projectId: string) => pressOf(projectId) !== "stopped",
-    [pressOf],
   );
   // An application HQ holds with no project is one too: a Mate may be moved into it, as the
   // projects page draws it (F29: a birth cut before its Mate was attached leaves its one empty).
@@ -504,7 +471,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /**
    * HQ's verbs on a Mate, as HQ offers them: its record, and its place among projects — each
    * offered; held while HQ has not said or does not answer (drawn, and not pressable); not drawn
-   * where HQ refuses it. None on a Mate HQ holds no record of — *Finish setup* is its verb.
+   * where HQ refuses it. None on a Mate HQ holds no record of.
    */
   const hqVerbsOf = useCallback(
     (candidate: ZeropsCandidatePresentation): Record<"edit" | "move" | "leave", HqVerb> => {
@@ -746,6 +713,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     NO_REMAINDERS,
   );
   const unrenamed = remainders.renames;
+  const remaindersEpoch = currentAccountEpoch();
   const renameProjects = useRenameProjects();
   const settleRenames = useCallback(
     async (renames: ReadonlyArray<ProjectRename>, lead: string) => {
@@ -889,176 +857,12 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
   /** Sends the renames a move left, as they were planned. */
   const finishRename = useCallback(
     (candidate: ZeropsCandidatePresentation) => {
+      if (currentAccountEpoch() !== remaindersEpoch) return;
       const left = renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name);
       if (left === undefined) return;
       void write(candidate.key, () => settleRenames([left], ""), refresh);
     },
-    [refresh, settleRenames, unrenamed, write],
-  );
-
-  /**
-   * *Finish setup* — the press's own steps on a half-made Mate (`finishMateSetupVerb`): what a
-   * colleague's Mate waits on, what a press a closed tab cut short left, a container that never
-   * came. Every step is safe to ask again; for a Mate it adopts, which HQ holds no record of, a
-   * harden first lowers a key still at `ADMIN` (`hardenMate`).
-   */
-  /** HQ holds no record of this Mate, as its structure says once it is known. */
-  const recordMissing = useCallback(
-    (candidate: ZeropsCandidatePresentation) => hqKnown && heldOf(candidate.project) === "none",
-    [hqKnown],
-  );
-  /** Whether HQ offers the viewer writing the record of a Mate it holds none of. */
-  const mayCreateRecord = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
-      const offers = mateOffersOf(candidate.project.id);
-      return offers?.held === false && offers.createRecord.kind === "allowed";
-    },
-    [mateOffersOf],
-  );
-  const finishSetupVerbFor = useCallback(
-    (candidate: ZeropsCandidatePresentation, tags: ZeropsMembership): string | undefined => {
-      if (
-        !hqStructure.live ||
-        hqStructure.structure === null ||
-        hqStructure.structure.apps.some((app) =>
-          app.births?.some((birth) => birth.projectId === candidate.project.id),
-        )
-      )
-        return undefined;
-      // A stage or a production is no Mate: its own setup is finished as its tier
-      // (`halfMadeGroupEnvironments`), never as a Mate's.
-      if (tags.role === "stage" || tags.role === "prod") return undefined;
-      const press = presses.find((entry) => entry.projectId === candidate.project.id);
-      if (pressComing(press)?.uncertain === true) return undefined;
-      // A Mate claimed from the pool is in no group: no registration of its, no container to make.
-      const grouped = tags.groupId !== undefined;
-      const group = groupTree.groups.find((entry) => entry.group.groupId === tags.groupId)?.group;
-      if (grouped && group === undefined) return undefined;
-      // Every fact from the platform, so any browser offers it, after a reload too.
-      return finishMateSetupVerb({
-        registration: grouped
-          ? resolveMateRegistration({
-              registry: registry.registry,
-              projectId: candidate.project.id,
-            })
-          : "registered",
-        containerMissing:
-          grouped &&
-          mateContainerMissing(
-            candidate,
-            press !== undefined,
-            pressedElsewhere(candidate.project.id),
-          ),
-        // A press this tab saw stop: no press elsewhere is still at it.
-        pressStopped: press?.state.kind === "failed",
-        pressedElsewhere: pressedElsewhere(candidate.project.id),
-        containerKnown: candidate.service !== undefined || candidate.missingContainer === true,
-        writer: writes(orgOffer("create_app")),
-        recordMissing: recordMissing(candidate),
-        mayCreateRecord: mayCreateRecord(candidate),
-      });
-    },
-    [
-      groupTree.groups,
-      hqStructure.live,
-      hqStructure.structure,
-      mayCreateRecord,
-      orgOffer,
-      pressedElsewhere,
-      presses,
-      recordMissing,
-      registry.registry,
-    ],
-  );
-
-  const finishSetup = useCallback(
-    (candidate: ZeropsCandidatePresentation) => {
-      if (activeOrganization === null) return;
-      const current = atomRegistry.get(hqNavigationAtom);
-      if (
-        current.orgId !== activeOrganization.id ||
-        !current.live ||
-        current.structure === null ||
-        current.structure.apps.some((app) =>
-          app.births?.some((birth) => birth.projectId === candidate.project.id),
-        )
-      )
-        return;
-      if (candidate.service === undefined && candidate.missingContainer !== true) return;
-      const organizationId = activeOrganization.id;
-      const projectId = candidate.project.id;
-      const press = readMatePress(projectId);
-      if (pressComing(press)?.uncertain === true) return;
-      const pressStopped = press?.state.kind === "failed";
-      // A Mate HQ holds no record of is adopted, and only then is its key lowered from ADMIN — by
-      // the harden itself, which finds its key by name as it runs; never from a token list read on
-      // a load (step A, A11).
-      const adopting = recordMissing(candidate) && mayCreateRecord(candidate);
-      // A container only where its project has none and no press elsewhere may still be importing
-      // one (`finishSetupContainer`).
-      const container = finishSetupContainer({
-        containerMissing: candidate.missingContainer === true,
-        pressStopped,
-        pressedElsewhere: pressedElsewhere(candidate.project.id),
-      });
-      // What it registers, by the rule Set up Mate registers by: in the application HQ or the
-      // press this tab holds places it in, under that face; a new Mate in no application
-      // only where neither does — the stand-up asked by whoever finishes a Mate its press made.
-      const registration = mateFinishRegistration({
-        hq: configuredHq(),
-        hqKnown,
-        structure: hqStructure?.structure ?? null,
-        project: candidate.project,
-        press,
-        mayCreateRecord: mayCreateRecord(candidate),
-        // Its server stands up only from a container a press imported (`MATE_SETUP`): this one's,
-        // where Finish setup imports it. A container standing without a record was never pressed.
-        standUp: container !== null,
-        candidates,
-      });
-      // Its row says it runs and ends (`finishSetupRowLine`), on any screen; its view draws the
-      // steps while a container comes up (`finishSetupView`). Only then is it coming.
-      beginPress({
-        projectId,
-        organizationId,
-        startedAt: Date.now(),
-        // Still placed by the press it was made by, so a Finish setup asked again finishes it there.
-        placement: matePressPlacement(press) ?? null,
-        container: container !== null,
-        finishing: true,
-      });
-      void write(
-        candidate.key,
-        async () => {
-          const finished = await finishMateSetup({
-            inputs: { client, operations, organizationId },
-            projectId,
-            projectName: candidate.project.name,
-            container,
-            harden: adopting,
-            registration,
-            hq: configuredHq(),
-            isCurrent: captureAccountLifetime(),
-          });
-          if (!finished.ok) throw new Error(finished.error);
-        },
-        refresh,
-      );
-    },
-    [
-      activeOrganization,
-      atomRegistry,
-      candidates,
-      client,
-      hqKnown,
-      hqStructure?.structure,
-      mayCreateRecord,
-      operations,
-      pressedElsewhere,
-      recordMissing,
-      refresh,
-      write,
-    ],
+    [refresh, remaindersEpoch, settleRenames, unrenamed, write],
   );
 
   /** Whose Mate it is, where that is a colleague: "Ada's Mate", as its row says it. */
@@ -1389,6 +1193,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
                     birthId: birth.id,
                     orgId: activeOrganization?.id ?? "",
                     projectId: birth.projectId,
+                    ...(birth.adopted === true ? { adopted: true as const } : {}),
                     name: birth.intent?.placement.name ?? "Mate",
                     environment: birth.intent?.projectName ?? "Mate",
                   });
@@ -1422,7 +1227,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       const input = rowInputFor(candidate);
       const rowAction = deriveZeropsRowAction(input);
       const restartAction = deriveZeropsRestartAction(input);
-      const finishSetupLabel = finishSetupVerbFor(candidate, tags);
       const serverVersion = serverVersions.get(candidate.key);
       const busy = busyKey === candidate.key;
       const quick: Array<ZeropsMenuEntry> = [];
@@ -1472,20 +1276,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           : hqVerbs.edit === "held" && changeFaceOffered({ candidate, mayEdit: true })
             ? [{ id: "face", label: CHANGE_FACE_VERB, disabled: true, onSelect: () => {} }]
             : []),
-        ...(finishSetupLabel === undefined
-          ? []
-          : [
-              {
-                id: "finish-setup",
-                label: finishSetupLabel,
-                disabled:
-                  busy ||
-                  finishSetupRunning(
-                    presses.find((press) => press.projectId === candidate.project.id),
-                  ),
-                onSelect: () => finishSetup(candidate),
-              },
-            ]),
         ...(handsOver
           ? [
               {
@@ -1518,8 +1308,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               },
             ]
           : []),
-        ...(renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name) !==
-        undefined
+        ...(currentAccountEpoch() === remaindersEpoch &&
+        renameStillDue(unrenamed.get(candidate.project.id), candidate.project.name) !== undefined
           ? [
               {
                 id: "finish-rename",
@@ -1581,10 +1371,8 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
       changeFace,
       deleting,
       finishRename,
+      remaindersEpoch,
       unrenamed,
-      finishSetup,
-      finishSetupVerbFor,
-      presses,
       rowInputFor,
       serverVersions,
       setDialog,
@@ -1821,12 +1609,15 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
               .open.find((birth) => birth.id === open.birthId);
             if (
               open.cleanup === undefined &&
-              (current === undefined || !current.canDelete || current.projectId !== open.projectId)
+              (current === undefined ||
+                !current.canDelete ||
+                current.projectId !== open.projectId ||
+                current.adopted !== open.adopted)
             ) {
               setPress({ pending: false, error: "The birth or your access has changed." });
               return;
             }
-            if (open.projectId !== null) {
+            if (open.projectId !== null && open.adopted !== true) {
               deleteMate(
                 candidates.find((candidate) => candidate.project.id === open.projectId),
                 open.cleanup,
@@ -1837,7 +1628,7 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
             }
             const isCurrent = captureAccountLifetime();
             setPress({ pending: true, error: null });
-            void birthActions.deleteUnbound(open.birthId).then(
+            void birthActions.deleteBirthOnly(open.birthId, open.projectId).then(
               () => {
                 if (isCurrent()) {
                   setPress(UNPRESSED);
@@ -1852,10 +1643,13 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
           open
           pending={press.pending}
           words={
-            deletingBirth.projectId === null
+            deletingBirth.projectId === null || deletingBirth.adopted === true
               ? {
                   title: `Delete ${deletingBirth.name}?`,
-                  body: "This removes the unfinished setup from the application. A project may still exist in Zerops.",
+                  body:
+                    deletingBirth.adopted === true
+                      ? "This stops setting up the Mate and leaves the existing project and its services untouched."
+                      : "This removes the unfinished setup from the application. A project may still exist in Zerops.",
                   label: `Type ${deletingBirth.name} to confirm`,
                   submit: `Delete ${deletingBirth.name}`,
                   pending: "Deleting…",
@@ -1884,20 +1678,6 @@ export function useMateActions({ registry, serverVersions }: MateActionsInput): 
     renameInPlace,
     changeFace,
   };
-}
-
-/**
- * Whether a Mate's container never came: a read of its project's services shows no zcp
- * (`missingContainer`) — services not read yet, or unreadable, are unknown, never missing — and no
- * press — this tab's, or one another browser holds at HQ (`pressElsewhere`) — is importing one:
- * importing one again would make a second.
- */
-export function mateContainerMissing(
-  candidate: Pick<ZeropsCandidatePresentation, "missingContainer">,
-  pressedHere: boolean,
-  pressedElsewhere: boolean,
-): boolean {
-  return candidate.missingContainer === true && !pressedHere && !pressedElsewhere;
 }
 
 /** Whether an HQ answer failed for good (`StreamFault` outcome `definitive-refusal`). */

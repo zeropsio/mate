@@ -580,8 +580,6 @@ export {
   type GitOverviewRepository,
 } from "./gitOverview.ts";
 export {
-  FINISH_MATE_SETUP_VERB,
-  finishMateSetupVerb,
   resolveAddProjectVerb,
   resolveMateRegistration,
   type GroupVerb,

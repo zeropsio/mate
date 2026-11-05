@@ -228,15 +228,20 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
     [activeOrganization, client, operations, organizationRef, recipes, registry, user, views],
   );
 
-  const deleteUnbound = useCallback(
-    async (birthId: string) => {
+  const deleteBirthOnly = useCallback(
+    async (birthId: string, projectId: string | null) => {
       if (activeOrganization === null || user === null || operations === null) return;
       const orgId = activeOrganization.id;
       const birth =
         registry.get(accountReadsAtom)?.orgId === orgId
           ? registry.get(sharedBirthsAtom(user.id)).open.find((entry) => entry.id === birthId)
           : undefined;
-      if (birth === undefined || !birth.canDelete || birth.projectId !== null)
+      if (
+        birth === undefined ||
+        !birth.canDelete ||
+        birth.projectId !== projectId ||
+        (birth.projectId !== null && birth.adopted !== true)
+      )
         throw new Error("The birth changed before it could be deleted.");
       await operations.run(
         { kind: "delete-birth", orgId, appId: birth.appId, birthId: birth.id },
@@ -245,5 +250,5 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
     },
     [activeOrganization, operations, registry, user],
   );
-  return useMemo(() => ({ proceed, deleteUnbound }), [proceed, deleteUnbound]);
+  return useMemo(() => ({ proceed, deleteBirthOnly }), [proceed, deleteBirthOnly]);
 }

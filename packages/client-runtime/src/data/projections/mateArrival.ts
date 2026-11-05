@@ -61,11 +61,6 @@ export type MateComingVerb =
   | "remove"
   /** A press stopped at a step safe to ask again: it resumes there, on the same project. */
   | "try-again"
-  /**
-   * A press that stopped before its container, in any browser: an owner or an admin finishes it
-   * (*Finish setup*), the same steps the press makes.
-   */
-  | "finish-setup"
   /** Its container has no deployment; create one through the same recipe as setup. */
   | "redeploy"
   /** The platform may have taken it anyway: the projects page lists it if it did. */
@@ -200,25 +195,6 @@ const containerCatchingUp = (input: Pick<MateComingInput, "madeAt" | "nowMs">): 
   input.nowMs !== undefined &&
   input.nowMs - input.madeAt < CONTAINER_CATCH_UP_MS;
 
-/** A Mate whose press stopped before its container: half-made, and *Finish setup* completes it. */
-export const HALF_MADE_LINE = "Its setup stopped before its workspace. Finish setup completes it.";
-
-/** The same Mate, for a viewer who may not finish it: who can. */
-export const HALF_MADE_OWNER_LINE =
-  "Its setup stopped before its workspace; an owner or admin can finish it.";
-
-/** Accepted identity without a container or a current owner result is still unresolved. */
-export const AWAITING_SETUP_LINE = "Waiting for evidence of its workspace setup.";
-
-/**
- * A half-made Mate as its viewer may act on it: the line names Finish setup only where the
- * viewer has it, and says who can where they do not.
- */
-export function halfMadeFor(coming: MateComing, canFinish: boolean): MateComing {
-  if (coming.kind !== "failed" || coming.verb !== "finish-setup" || canFinish) return coming;
-  return { ...coming, line: HALF_MADE_OWNER_LINE };
-}
-
 /** A reason, as a sentence: capitalised, and ended; empty where it says nothing. */
 export function asSentence(reason: string): string {
   const said = reason.trim();
@@ -329,15 +305,9 @@ function comingWords(input: MateComingInput): MateComing | undefined {
     };
   }
   if (press === undefined && candidate?.missingContainer === true) {
-    // A hold is caller ownership, not a setup result. Only the exact import's terminal receipt
-    // can say it stopped; an empty listing and absent/expired hold await owner evidence.
-    if (input.pressElsewhere === "pressing" || (created && containerCatchingUp(input))) {
-      return { kind: "coming", line: COMING_UP_LINE };
-    }
-    if (input.pressElsewhere === "stopped") {
-      return { kind: "failed", line: HALF_MADE_LINE, verb: "finish-setup" };
-    }
-    return { kind: "coming", line: AWAITING_SETUP_LINE };
+    return created && containerCatchingUp(input)
+      ? { kind: "coming", line: COMING_UP_LINE }
+      : undefined;
   }
   // Past its grace a first build is taking longer, however long — a slow or queued one looks the
   // same from its status as one whose process is not read yet — with no verb that cannot work on a

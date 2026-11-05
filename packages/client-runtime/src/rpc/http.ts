@@ -79,11 +79,16 @@ export type RemoteEnvironmentRequestError =
   | RemoteEnvironmentAuthUndeclaredStatusError
   | RemoteEnvironmentAuthTimeoutError;
 
-export const remoteHttpClientLayer = (
-  fetchFn: typeof globalThis.fetch,
-): Layer.Layer<HttpClient.HttpClient> =>
+type FetchCall = (
+  ...args: Parameters<typeof globalThis.fetch>
+) => ReturnType<typeof globalThis.fetch>;
+
+export const remoteHttpClientLayer = (fetchFn: FetchCall): Layer.Layer<HttpClient.HttpClient> =>
   Layer.merge(
-    FetchHttpClient.layer.pipe(Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchFn))),
+    // Effect only calls this port; Bun's global fetch type also carries a preconnect property.
+    FetchHttpClient.layer.pipe(
+      Layer.provide(Layer.succeed(FetchHttpClient.Fetch, fetchFn as typeof globalThis.fetch)),
+    ),
     httpHeaderRedactionLayer,
   );
 

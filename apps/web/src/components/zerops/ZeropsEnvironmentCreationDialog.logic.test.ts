@@ -37,7 +37,6 @@ import {
   validateCreationForm,
   type NewMateDoor,
   type RecipeOption,
-  pressSteps,
   pressThrough,
 } from "./ZeropsEnvironmentCreationDialog.logic";
 import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
@@ -996,7 +995,7 @@ describe("recipeChangeView — where Review the change goes", () => {
 
 // The Add dialog stays on the press until the Mate needs no browser (live, 2026-10-01: a tab
 // closed 2 s after the dialog left a Mate with no container).
-describe("pressSteps — the press as the Add dialog draws it", () => {
+describe("pressThrough — when the press needs no browser", () => {
   // As a Mate's press runs (F6b): its record in its application before its one import.
   const plan: ReadonlyArray<EnvironmentCreationStep> = [
     { kind: "create-project", name: "Beviro - Ivo", tagList: [], location: undefined },
@@ -1010,42 +1009,6 @@ describe("pressSteps — the press as the Add dialog draws it", () => {
       state: states[index]!,
       ...(error !== undefined && states[index] === "failed" ? { error } : {}),
     }));
-  const drawn = (progress: ReadonlyArray<EnvironmentCreationStepProgress>) =>
-    pressSteps(progress).map((step) => `${step.label}:${step.state}`);
-
-  it.each([
-    {
-      case: "creating the project",
-      states: ["running", "queued", "queued", "queued"],
-      want: ["Project:active", "Registered:waiting", "Its computer:waiting"],
-    },
-    {
-      case: "registering it, before its container",
-      states: ["done", "running", "queued", "queued"],
-      want: ["Project:done", "Registered:active", "Its computer:waiting"],
-    },
-    {
-      case: "a container that would not come",
-      states: ["done", "done", "failed", "queued"],
-      want: ["Project:done", "Registered:done", "Its computer:failed"],
-    },
-  ] as const)("draws $case", ({ states, want }) => {
-    expect(drawn(at(states))).toEqual(want);
-  });
-
-  // The dialog stays through the registration — a call or two — and goes before the wait for it,
-  // which the container covers.
-  it("says nothing of what comes after the registration", () => {
-    expect(pressSteps(at(["done", "done", "done", "running"]))).toHaveLength(3);
-  });
-
-  it("leaves Registered out of a press that writes no registration", () => {
-    const progress = at(["done", "done", "done", "running"]).filter(
-      (entry) => entry.step.kind !== "register",
-    );
-    expect(drawn(progress)).toEqual(["Project:done", "Its computer:done"]);
-  });
-
   it.each([
     { case: "registering", states: ["done", "running", "queued", "queued"], want: false },
     { case: "importing", states: ["done", "done", "running", "queued"], want: false },

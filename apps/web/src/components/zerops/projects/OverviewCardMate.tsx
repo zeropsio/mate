@@ -209,7 +209,6 @@ export function OverviewCardMate({
         ? sentAsk.text
         : undefined,
     deleting,
-    finishing: false,
     read: conversationsRead,
     asker: mateAsker(owner),
   });
@@ -220,7 +219,6 @@ export function OverviewCardMate({
     view,
     askLine,
     deleting,
-    finishing: false,
     outsideHq,
     mine: people?.waitsOnViewer,
     // A colleague's Mate waiting on its person says whom it waits on, never their question.

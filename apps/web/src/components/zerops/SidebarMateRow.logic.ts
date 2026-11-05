@@ -578,15 +578,6 @@ export function mateDeletingView(view: MateRowView): MateRowView {
   };
 }
 
-/**
- * A Mate whose setup is being finished (`finishSetupRowLine`): its row says so in place of its
- * last line — its words, else what was asked, else the sign-in line — so it keeps its height. The
- * Mate is going nowhere: its face, its time and its name stay as they were.
- */
-export function mateFinishingView(view: MateRowView): MateRowView {
-  return { ...view, ask: view.reply === undefined ? undefined : view.ask, reply: undefined };
-}
-
 /** A Mate's row's one line while its update restarts it (`mateRowReading`). */
 export const MATE_UPDATING_LINE = "Updating to the new version";
 
@@ -734,8 +725,6 @@ export function mateRowAskLine(input: {
   /** What this browser just sent it, its conversation not caught up yet (`mateRowSentAsk`). */
   readonly sent: string | undefined;
   readonly deleting: boolean;
-  /** *Finish setup* runs on it (`finishSetupRowLine`): its last line says so, as deleting's does. */
-  readonly finishing: boolean;
   /** Its conversations are read: none there is a fact, not a socket still opening. */
   readonly read: boolean;
   /** Who asks it, as the row names them (`mateAsker`). */
@@ -743,7 +732,7 @@ export function mateRowAskLine(input: {
 }): MateRowAskLine {
   const { view } = input;
   if (view.coming !== undefined) return undefined;
-  if (input.deleting || input.finishing) {
+  if (input.deleting) {
     return view.ask === undefined ? undefined : { kind: "ask", text: view.ask, by: input.asker };
   }
   if (input.signIn !== undefined) return { kind: "sign-in", ...input.signIn };
@@ -910,7 +899,7 @@ export function pendingBornLine(
 /**
  * A row's ⋯ menu: none while its Mate is going; while it is still being made, its Delete alone —
  * nothing else on it is about a Mate on its way, and one that never comes up is removed as any
- * Mate is; once it is up or its setup stopped, all of it (*Finish setup*, *Delete*). None where
+ * Mate is; once it is up or its setup stopped, all of it. None where
  * nothing is left on it.
  */
 export function mateRowMenu<
@@ -991,7 +980,7 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
  *
  * | the row                                  | its line                                   |
  * | ---------------------------------------- | ------------------------------------------ |
- * | coming up, deleting, finishing, outside  | that, in its own words                     |
+ * | coming up, deleting, outside  | that, in its own words                     |
  * | working                                  | its step, or what it is on and the dots    |
  * | what HQ last said of it, unreachable     | that                                       |
  * | a colleague's, waiting on its person     | "Waits on Alex"                           |
@@ -1008,7 +997,6 @@ function mateRowState(activity: ZeropsAgentActivity, face: MateMarkState): MateR
 export type MateRowSecond =
   | { readonly kind: "coming" }
   | { readonly kind: "deleting" }
-  | { readonly kind: "finishing" }
   | { readonly kind: "outside" }
   | { readonly kind: "sign-in" }
   /**
@@ -1335,7 +1323,6 @@ export function mateRowSecond(input: {
   readonly view: Pick<MateRowView, "state" | "reply" | "slot" | "coming">;
   readonly askLine: MateRowAskLine;
   readonly deleting: boolean;
-  readonly finishing: boolean;
   readonly outsideHq: boolean;
   /** The viewer's own Mate; `false` for a colleague's; `undefined` where nobody can say yet. */
   readonly mine: boolean | undefined;
@@ -1364,7 +1351,6 @@ export function mateRowSecond(input: {
     mateAutomatedLine(line, state, { saysWorking: true });
   if (view.coming !== undefined) return { kind: "coming" };
   if (input.deleting) return { kind: "deleting" };
-  if (input.finishing) return { kind: "finishing" };
   if (input.outsideHq) return { kind: "outside" };
   const reply = view.reply;
   const asked = automated === undefined && askLine !== undefined && askLine.kind !== "sign-in";

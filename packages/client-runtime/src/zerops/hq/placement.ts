@@ -36,7 +36,7 @@ export type HqPlacement =
       readonly mate: HqMate | null | undefined;
       /**
        * Placed by an accepted birth or an environment press, before its registration.
-       * The exact project is retained at HQ; Finish setup registers it in this application.
+       * The exact project is retained at HQ for the birth's continuation.
        */
       readonly unregistered?: true;
     }

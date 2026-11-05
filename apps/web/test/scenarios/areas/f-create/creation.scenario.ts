@@ -6,7 +6,7 @@ import { createScenario } from "../../harness/scenario.ts";
 import { foldMenuGroup } from "../../harness/browser.ts";
 import { rendered } from "../../harness/completedHttp.ts";
 import { installCreation } from "./fake.ts";
-import { creation } from "./dsl.ts";
+import { creation, receipt } from "./dsl.ts";
 import { environmentRecipe } from "./recipe.ts";
 
 describe("F: creation through the hosted client", () => {
@@ -313,13 +313,18 @@ describe("F: creation through the hosted client", () => {
         c.failProject();
         yield* c.newProject;
         yield* c.submitProject;
-        yield* c.text("Details");
-        expect(
-          yield* Effect.promise(() => s.page.evaluate(() => document.body.innerText)),
-        ).not.toContain("Project capacity exhausted");
-        yield* c.click("Details");
         yield* c.text("Project capacity exhausted");
-        yield* c.click("Remove");
+        yield* c.click("Delete");
+        yield* c.fill("Type Nova to confirm", "Nova");
+        const deleted = s.page.waitForResponse(
+          (response) =>
+            response.request().method() === "DELETE" &&
+            new URL(response.url()).pathname === "/api/rest/public/project/created-1",
+        );
+        yield* c.click("Delete Nova");
+        expect(
+          (yield* Effect.promise(() => receipt(deleted, "failed project deleted"))).status(),
+        ).toBe(200);
         yield* s.then.menu.row("Ada").appears();
         yield* c.settled;
         yield* c.failedProjectRemoved;

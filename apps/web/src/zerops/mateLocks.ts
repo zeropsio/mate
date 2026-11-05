@@ -1,6 +1,6 @@
 /**
  * The browser's locks a Mate's setup holds across this browser's tabs (`navigator.locks`): one
- * press or *Finish setup* per project at a time. A key's read-then-write is every token writer's
+ * press per project at a time. A key's read-then-write is every token writer's
  * one lock (`tokenWriteLock.ts`).
  */
 

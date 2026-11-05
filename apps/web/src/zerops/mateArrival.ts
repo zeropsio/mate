@@ -231,8 +231,7 @@ export interface ArrivalSubstep {
   readonly id: string;
   readonly label: string;
   /**
-   * `unfinished`: refused here, and left to *Finish setup* — the Mate runs on without it (its
-   * registration), so nothing waits on it and nothing stopped.
+   * `unfinished`: refused here; the Mate runs on without its registration.
    */
   readonly state: "done" | "active" | "waiting" | "failed" | "unfinished";
   /** Why it stopped, or why it is not finished, in its own words. */

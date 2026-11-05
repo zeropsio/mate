@@ -9,7 +9,6 @@ import {
   isRecipeProposal,
   recipeProposalRedone,
   ZEROPS_BOT_NAME_MAX_LENGTH,
-  type EnvironmentCreationStep,
   type EnvironmentCreationStepProgress,
   type EnvironmentRecipeChoice,
   type FlowPullRequest,
@@ -621,45 +620,6 @@ export function recipeChangeView(
     to: "/change/$groupId/$repository/$number",
     params: { groupId, repository: RECIPE_REPO, number: String(number) },
   };
-}
-
-/** One step of a press, as the Add dialog draws it while it stays open. */
-export interface PressStepView {
-  readonly label: string;
-  readonly state: "waiting" | "active" | "done" | "failed";
-}
-
-/** The press's steps the person waits on, and which runner steps make each. */
-const PRESS_STEPS: ReadonlyArray<{
-  readonly label: string;
-  readonly kinds: ReadonlyArray<EnvironmentCreationStep["kind"]>;
-}> = [
-  { label: "Project", kinds: ["create-project", "import-project"] },
-  { label: "Registered", kinds: ["register"] },
-  { label: "Its computer", kinds: ["import-container"] },
-];
-
-/**
- * The press as the Add dialog draws it, in the order it runs: Project, Registered — its record in
- * its application before its container (F6b) — and its one import: what the Mate needs before it
- * needs no browser. The wait for it comes after, the dialog gone. A step a press does not make
- * is left out.
- */
-export function pressSteps(
-  progress: ReadonlyArray<EnvironmentCreationStepProgress>,
-): ReadonlyArray<PressStepView> {
-  return PRESS_STEPS.flatMap(({ label, kinds }) => {
-    const own = progress.filter((entry) => kinds.includes(entry.step.kind));
-    if (own.length === 0) return [];
-    const state: PressStepView["state"] = own.some((entry) => entry.state === "failed")
-      ? "failed"
-      : own.every((entry) => entry.state === "done")
-        ? "done"
-        : own.some((entry) => entry.state === "running" || entry.state === "done")
-          ? "active"
-          : "waiting";
-    return [{ label, state }];
-  });
 }
 
 /**
