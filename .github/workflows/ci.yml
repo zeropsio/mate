@@ -40,8 +40,18 @@ jobs:
         with:
           sparse-checkout: |
             /package.json
+            /.mate-hq-ref
             /scripts/ci-tree-runs.sh
           sparse-checkout-cone-mode: false
+
+      - name: Check mate-hq ref for verified promotion
+        id: hq_ref_guard
+        continue-on-error: true
+        run: &require_main_hq |
+          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/heads/main && -f .mate-hq-ref ]] && [[ $(cat .mate-hq-ref) != main ]]; then
+            echo '::error::.mate-hq-ref must be main on a push to main'
+            exit 1
+          fi
 
       - name: Check kh-next verification
         id: verdict
@@ -50,8 +60,13 @@ jobs:
         continue-on-error: true
         env:
           GH_TOKEN: ${{ github.token }}
+          HQ_REF_VALID: ${{ steps.hq_ref_guard.outcome }}
         run: |
           set -euo pipefail
+          if [[ "${HQ_REF_VALID:-success}" != success ]]; then
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
           source scripts/ci-tree-runs.sh
           skip=false
           if [[ "$GITHUB_EVENT_NAME" == push && "$GITHUB_REF" == refs/heads/main ]]; then
@@ -450,6 +465,9 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
+      - name: Require mate-hq main on main
+        run: *require_main_hq
+
       - name: Restore pnpm metadata
         uses: actions/cache/restore@v4
         with:
@@ -709,13 +727,16 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
-      # Every z3 branch tests the maintained multitenant HQ.
       - name: Resolve the mate-hq ref
         id: hq_ref
         env:
           BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
           ref=main
+          if [[ -f .mate-hq-ref ]]; then
+            ref=$(cat .mate-hq-ref)
+          fi
+          git check-ref-format --branch "$ref" > /dev/null
           echo "$BRANCH tests against mate-hq $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
