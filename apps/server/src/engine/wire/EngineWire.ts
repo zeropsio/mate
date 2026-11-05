@@ -277,6 +277,8 @@ const INBOX = 1024;
 const PENDING_KEYS = 8;
 /** Keys of items whose boundary was sent: their late deltas are dropped. */
 const SETTLED_KEYS = 512;
+/** Conversations whose last snapshot is kept: at most this many window budgets (256 KiB) held. */
+const SNAPSHOTS_KEPT = 8;
 
 export const makeEngineWire = (options: EngineWireOptions = {}) =>
   Effect.gen(function* () {
@@ -312,7 +314,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
      * The window snapshot, within its budget: fewer older groups, then a shorter live tail. Read
      * once, narrowed in memory (`windowsOf`), each record cut and counted once (`frameSizer`).
      */
-    const snapshot = (
+    const readSnapshot = (
       conversation: ConversationId,
       groupsAsked: number,
       head: number,
@@ -361,6 +363,41 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
           }
           return { ...frame, items };
         }
+      });
+
+    type Snapshot = Effect.Success<ReturnType<typeof readSnapshot>>;
+    /**
+     * The snapshot each of the conversations opened last was sent, by what it was read at: a
+     * reload, a second tab or a reconnect of a conversation nothing changed in since is sent it
+     * again, never read again. A commit moves the head past it; a page's height, kept beside its
+     * call and never committed, moves `measured` past every one.
+     */
+    const snapshots = new Map<ConversationId, { readonly key: string; readonly frame: Snapshot }>();
+    let measured = 0;
+    const snapshot = (
+      conversation: ConversationId,
+      groupsAsked: number,
+      head: number,
+      epoch: number,
+      origin: string,
+    ) =>
+      Effect.gen(function* () {
+        const key = `${origin}:${epoch}:${head}:${groupsAsked}:${measured}`;
+        const kept = snapshots.get(conversation);
+        const top = headerJson(yield* header(conversation));
+        if (kept?.key === key && headerJson(kept.frame.header) === top) {
+          snapshots.delete(conversation);
+          snapshots.set(conversation, kept);
+          return kept.frame;
+        }
+        const frame = yield* readSnapshot(conversation, groupsAsked, head, epoch, origin);
+        snapshots.delete(conversation);
+        snapshots.set(conversation, { key, frame });
+        for (const oldest of snapshots.keys()) {
+          if (snapshots.size <= SNAPSHOTS_KEPT) break;
+          snapshots.delete(oldest);
+        }
+        return frame;
       });
 
     const subscribe: EngineWireShape["subscribe"] = (input, caller) => {
@@ -867,9 +904,11 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
       return records
         .recordPageHeight(input.conversationId, input.itemId, input.width, input.height)
         .pipe(
-          Effect.map((kept) =>
-            kept ? { _tag: "Recorded" as const } : { _tag: "Missing" as const },
-          ),
+          Effect.map((kept) => {
+            if (!kept) return { _tag: "Missing" as const };
+            measured += 1;
+            return { _tag: "Recorded" as const };
+          }),
           Effect.catch(wireError(UNREADABLE)),
         );
     };
