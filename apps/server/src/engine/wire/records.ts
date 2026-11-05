@@ -164,9 +164,6 @@ export const makeRecords = Effect.gen(function* () {
     Effect.gen(function* () {
       if (rows.length === 0) return [];
       const ids = rows.map((row) => row.run_id);
-      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
-      // Mate's (a reload read "15 commands" of a run whose Mate ran 7).
-      const ownCall = sql.literal("json_extract(by_json, '$.kind') IS NOT 'helper'");
       const counts = yield* sql<{
         readonly run_id: string;
         readonly items: number;
@@ -175,48 +172,52 @@ export const makeRecords = Effect.gen(function* () {
         SELECT run_id, COUNT(*) AS items, MAX(opened_seq) AS last_seq FROM engine_item
         WHERE ${sql.in("run_id", ids)} GROUP BY run_id
       `;
-      const calls = yield* sql<{
+      // A run's own calls: what its helpers ran is the helpers' (their card counts it), never the
+      // Mate's (a reload read "15 commands" of a run whose Mate ran 7). Each own call's body is
+      // parsed once (`own`, materialized), however long its result: counted by step, the generic
+      // and MCP ones by tool, each in the order its group sorts in; and the files an edit names
+      // where V1's row reads them (`collectChangedFiles`' keys), and where Claude's Write and Edit
+      // name theirs (`file_path`, a notebook's `notebook_path`), a row for each edit naming none.
+      const tallies = yield* sql<{
+        readonly what: "calls" | "edits" | "tools";
         readonly run_id: string;
-        readonly step: string | null;
-        readonly n: number;
+        readonly key: string | null;
+        readonly n: number | null;
+        readonly item_id: string | null;
       }>`
-        SELECT run_id, json_extract(body_json, '$.step') AS step, COUNT(*) AS n FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall} GROUP BY run_id, step
+        WITH own AS MATERIALIZED (
+          SELECT run_id, item_id, step, tool,
+            CASE WHEN step = 'edit' THEN body_json END AS edit_json
+          FROM (
+            SELECT run_id, item_id, json_extract(body_json, '$.step') AS step,
+              json_extract(body_json, '$.tool.name') AS tool, body_json
+            FROM engine_item
+            WHERE ${sql.in("run_id", ids)} AND kind = 'call'
+              AND json_extract(by_json, '$.kind') IS NOT 'helper'
+          )
+        )
+        SELECT 'calls' AS what, run_id, step AS key, COUNT(*) AS n, NULL AS item_id FROM own
+        GROUP BY run_id, step
+        UNION ALL
+        SELECT 'tools', run_id, tool, COUNT(*), NULL FROM own
+        WHERE step IN ('tool', 'mcp') GROUP BY run_id, tool
+        UNION ALL
+        SELECT 'edits', own.run_id, tree.value, NULL, own.item_id FROM own
+        LEFT JOIN json_tree(own.edit_json, '$.shows') AS tree
+          ON tree.type = 'text' AND tree.key IN (
+            'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
+            'newPath', 'oldPath'
+          )
+        WHERE own.step = 'edit'
+        ORDER BY what, run_id, key
       `;
-      const tools = yield* sql<{
-        readonly run_id: string;
-        readonly tool: string | null;
-        readonly n: number;
-      }>`
-        SELECT run_id, json_extract(body_json, '$.tool.name') AS tool, COUNT(*) AS n
-        FROM engine_item
-        WHERE ${sql.in("run_id", ids)} AND kind = 'call' AND ${ownCall}
-          AND json_extract(body_json, '$.step') IN ('tool', 'mcp')
-        GROUP BY run_id, tool
-      `;
-      // The files an edit names where V1's row reads them (`collectChangedFiles`' keys), and where
-      // Claude's Write and Edit name theirs (`file_path`, a notebook's `notebook_path`).
-      const edits = yield* sql<{
-        readonly run_id: string;
-        readonly item_id: string;
-        readonly path: string | null;
-      }>`
-        SELECT edit.run_id AS run_id, edit.item_id AS item_id, named.path AS path
-        FROM engine_item AS edit
-        LEFT JOIN (
-          SELECT item.item_id AS item_id, tree.value AS path
-          FROM engine_item AS item, json_tree(item.body_json, '$.shows') AS tree
-          WHERE ${sql.in("item.run_id", ids)} AND item.kind = 'call'
-            AND json_extract(item.body_json, '$.step') = 'edit' AND tree.type = 'text'
-            AND tree.key IN (
-              'path', 'filePath', 'file_path', 'notebook_path', 'relativePath', 'filename',
-              'newPath', 'oldPath'
-            )
-        ) AS named ON named.item_id = edit.item_id
-        WHERE ${sql.in("edit.run_id", ids)} AND edit.kind = 'call'
-          AND json_extract(edit.by_json, '$.kind') IS NOT 'helper'
-          AND json_extract(edit.body_json, '$.step') = 'edit'
-      `;
+      const calls = tallies.filter((row) => row.what === "calls");
+      const tools = tallies.filter((row) => row.what === "tools");
+      const edits = tallies.flatMap((row) =>
+        row.what === "edits" && row.item_id !== null
+          ? [{ run_id: row.run_id, item_id: row.item_id, path: row.key }]
+          : [],
+      );
       const answers = yield* sql<{ readonly run_id: string; readonly item_id: string }>`
         SELECT run_id, item_id FROM engine_item
         WHERE ${sql.in("run_id", ids)} AND kind = 'note' AND state = 'closed'
@@ -234,12 +235,12 @@ export const makeRecords = Effect.gen(function* () {
           calls: Object.fromEntries(
             calls
               .filter((row) => row.run_id === id)
-              .map((row) => [row.step ?? "tool", row.n] as const),
+              .map((row) => [row.key ?? "tool", row.n ?? 0] as const),
           ),
           tools: Object.fromEntries(
             tools
               .filter((row) => row.run_id === id)
-              .map((row) => [row.tool ?? "tool", row.n] as const),
+              .map((row) => [row.key ?? "tool", row.n ?? 0] as const),
           ),
           edited: editedOf(edits.filter((row) => row.run_id === id)),
           answerItemId: answer === undefined ? null : ItemId.make(answer.item_id),
@@ -275,11 +276,14 @@ export const makeRecords = Effect.gen(function* () {
       ).pipe(Effect.map((runs) => runs.map((run) => ({ ...run, turnState: turnStateOf(run) }))));
     });
 
+  // `+conversation_id` keeps SQLite off the conversation's own indexes: it reads the runs named,
+  // never every record an old conversation holds to find them.
   const runsById = (conversation: ConversationId, ids: ReadonlyArray<string>) =>
     ids.length === 0
       ? Effect.succeed([])
       : sql<RunRow>`
-          SELECT * FROM engine_run WHERE conversation_id = ${conversation} AND ${sql.in("run_id", ids)}
+          SELECT * FROM engine_run WHERE +conversation_id = ${conversation}
+            AND ${sql.in("run_id", ids)}
           ORDER BY ordinal
         `.pipe(Effect.flatMap(withSummaries));
 
@@ -451,11 +455,12 @@ export const makeRecords = Effect.gen(function* () {
                 AND state != 'open'
               ORDER BY seq
             `;
+      // By the runs' items (`+conversation_id`, as `runsById`), never a scan of every item.
       const shown =
         runIds.length === 0
           ? []
           : yield* sql<ItemRow>`
-              SELECT * FROM engine_item WHERE conversation_id = ${conversation}
+              SELECT * FROM engine_item WHERE +conversation_id = ${conversation}
                 AND ${sql.in("run_id", runIds)}
                 AND (kind IN ('person', 'request')
                   OR (kind = 'call' AND json_extract(body_json, '$.result.page') IS NOT NULL)
