@@ -41,7 +41,7 @@ import {
   holdRoutePreview,
   holdServiceRead,
   projectProcessesAtom,
-  readMateFlag,
+  readMateFlagOnceLive,
 } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
@@ -405,7 +405,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** `ZCP_MATE_ENABLED` for a target's service, read by key with the organization's Mate variables. */
   const readTargetMateFlag = async (key: TargetKey): Promise<MateFlag> => {
     const serviceId = key.split(":")[1];
-    return serviceId === undefined ? "unknown" : readMateFlag(atomRegistry, serviceId);
+    return serviceId === undefined ? "unknown" : readMateFlagOnceLive(atomRegistry, serviceId);
   };
 
   /** Whose organization lists the target's project: the listing's, else the one shown. */

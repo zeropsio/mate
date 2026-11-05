@@ -16,6 +16,7 @@ import {
   NOT_READ_USAGE,
   holdRoutePreview,
   readMateFlag,
+  readMateFlagOnceLive,
   projectProcessesAtom,
   projectUsageAtom,
   projectServicesAtom,
@@ -545,6 +546,37 @@ describe("readMateFlag", () => {
     });
     expect(await settled(readMateFlag(registry, "zcp"))).toBe("unknown");
   });
+
+  it.each([
+    { title: "it comes back", back: true, flag: true },
+    { title: "it is refused", back: false, flag: "unknown" },
+  ])(
+    "a container's flag that could not be said while the organization's link was down is read again once the link is live: $title",
+    async ({ back, flag }) => {
+      const { registry, store, answer } = mounted();
+      const link = (event: object) =>
+        store.dispatch({ kind: "stream", key: linkKeys.zerops(ORG), now: 0, event } as never);
+      link({ kind: "fault", fault: { outcome: "transient", message: "socket closed" }, jitter: 0 });
+      const read = readMateFlagOnceLive(registry, "zcp");
+      expect(await settled(read)).toBe("pending");
+
+      if (back) {
+        link({ kind: "retry-due" });
+        link({ kind: "handshake" });
+        link({ kind: "baseline-committed" });
+        await Promise.resolve();
+        answer("1");
+      } else {
+        link({
+          kind: "fault",
+          fault: { outcome: "definitive-refusal", message: "refused" },
+          jitter: 0,
+        });
+      }
+
+      expect(await read).toBe(flag);
+    },
+  );
 
   it("without a mounted account, unknown", async () => {
     expect(await readMateFlag(AtomRegistry.make(), "zcp")).toBe("unknown");
