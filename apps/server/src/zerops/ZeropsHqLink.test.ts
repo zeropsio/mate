@@ -1830,7 +1830,9 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       const auth = yield* SubscriptionRef.make<ZeropsAgentAuthSnapshot>(NO_AUTH);
       const update = yield* SubscriptionRef.make<ExecutionEnvironmentUpdate | undefined>(undefined);
       const providers = yield* SubscriptionRef.make<ReadonlyArray<ServerProvider>>([]);
+      const setupMarker = yield* Ref.make(true);
       const feed = yield* mateOverviewFeed({
+        setupMarker: Ref.get(setupMarker),
         providers: {
           latest: SubscriptionRef.get(providers),
           changes: SubscriptionRef.changes(providers).pipe(Stream.drop(1)),
@@ -1888,7 +1890,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
       );
       // Settled: the whole overview went up.
       yield* sent;
-      return { socket, crew, auth, update, providers, rows, sent };
+      return { socket, crew, auth, update, providers, rows, sent, setupMarker };
     });
   const feedRig = feedRigOf(false);
 
@@ -1926,6 +1928,33 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
         );
       }),
     ),
+  );
+
+  it.effect(
+    "The overview's identity carries the setup marker the Mate reads of its own service, as it stands at each look",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const { socket, update, setupMarker, sent } = yield* feedRig;
+          const first = yield* decodeMateLinkUp(socket.sent[1]);
+          assert.isTrue(
+            first.type === "overview" && first.full && first.overview.identity.setupMarker === true,
+          );
+          // The press's variable gone: the next look at the overview says so.
+          yield* Ref.set(setupMarker, false);
+          yield* SubscriptionRef.set(update, {
+            installed: "0.11.90",
+            latest: "0.11.91",
+            available: true,
+            checkedAt: "2026-10-03T10:00:00Z",
+          });
+          yield* sent;
+          const next = yield* decodeMateLinkUp(socket.sent.at(-1));
+          assert.isTrue(
+            next.type === "overview" && !next.full && next.sections.identity?.setupMarker === false,
+          );
+        }),
+      ),
   );
 
   it.effect(
@@ -2060,6 +2089,7 @@ describe("ZeropsHqLink's overview, from the Mate's own feeds", () => {
               environmentId: "env-1",
               serverVersion: "0.11.90",
               update: line,
+              setupMarker: true,
               runsWithoutSignIn: false,
             },
           },

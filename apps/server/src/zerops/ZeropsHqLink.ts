@@ -78,6 +78,7 @@ import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Queue from "effect/Queue";
@@ -99,6 +100,7 @@ import { ZeropsAgentAuth } from "./ZeropsAgentAuth.ts";
 import { combineAgentAuth, ZeropsAgentLogin } from "./ZeropsAgentLogin.ts";
 import { ZeropsSignIns } from "./zeropsSignIns.ts";
 import { mateOverviewOf } from "./zeropsHqOverview.ts";
+import { hasSetupMarker, readServiceVariableKeys } from "./zeropsSetupMarker.ts";
 import type { MateChanges } from "@t3tools/shared/hqChanges";
 import { MateEngine } from "../engine/MateEngine.ts";
 import { chatsSource } from "./engineOverview.ts";
@@ -845,6 +847,8 @@ export interface OverviewSources {
   readonly conversations?: Effect.Effect<ReadonlyArray<ConversationRow>, ProjectionRepositoryError>;
   /** The engine its conversation runs on, by the protocol its rows speak; none on a V1 Mate. */
   readonly engine?: { readonly protocol: number };
+  /** Whether its service holds the press's setup marker, read locally at each look; none off Zerops. */
+  readonly setupMarker?: Effect.Effect<boolean>;
 }
 
 /**
@@ -876,6 +880,7 @@ export const mateOverviewFeed = (
           serverVersion: sources.serverVersion,
           update: (yield* sources.update.current) ?? null,
           ...(sources.engine === undefined ? {} : { engine: sources.engine }),
+          ...(sources.setupMarker === undefined ? {} : { setupMarker: yield* sources.setupMarker }),
           ...(sources.providers === undefined
             ? {}
             : {
@@ -923,6 +928,7 @@ export const layer = (crew: OverviewSources["crew"]) =>
     Effect.gen(function* () {
       const config = yield* ServerConfig;
       const paths = yield* Path.Path;
+      const fs = yield* FileSystem.FileSystem;
       const providers = yield* ProviderInstances;
       // Separate home database: capture IO cannot lock the orchestration event store.
       // Admission waits for a subscribed capture service, including across storage recovery.
@@ -963,6 +969,10 @@ export const layer = (crew: OverviewSources["crew"]) =>
         domainEvents: chats.domainEvents,
         ...(chats.conversations === undefined ? {} : { conversations: chats.conversations }),
         ...(chats.engine === undefined ? {} : { engine: chats.engine }),
+        setupMarker: readServiceVariableKeys(zerops.envStorePath).pipe(
+          Effect.map(hasSetupMarker),
+          Effect.provideService(FileSystem.FileSystem, fs),
+        ),
       });
       return yield* makeZeropsHqLink({
         hqOrigin: zerops.hqOrigin,
