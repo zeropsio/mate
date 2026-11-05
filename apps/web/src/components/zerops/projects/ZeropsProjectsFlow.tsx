@@ -128,6 +128,10 @@ export interface ZeropsProjectsFlowProps<T> {
   ) => ReactNode;
   /** A Mate's face, beside its name in a row. */
   readonly renderMateFace: (item: T, size: MateFaceSize) => ReactNode;
+  /** A pending shared birth's phase and its actions, where HQ has one. */
+  readonly renderComingBirth?:
+    | ((projectId: string) => { readonly line: string; readonly menu: ReactNode } | undefined)
+    | undefined;
   /**
    * How a Mate opens into its conversation, wherever the list names it;
    * `undefined` where it cannot open yet (coming up, busy), and the name is

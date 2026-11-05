@@ -52,6 +52,7 @@ function render(
           takenBotNames={{ names: ["Fen"], complete: true }}
           tier={{
             kind: "tier",
+            revision: "recipe-revision",
             tier: "stage",
             yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
           }}
@@ -224,6 +225,7 @@ it("Adding a stage is one sheet: what it is for, where, and one button", () => {
     withAgent: true,
     recipe: {
       kind: "tier",
+      revision: "recipe-revision",
       tier: "stage",
       yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
     },

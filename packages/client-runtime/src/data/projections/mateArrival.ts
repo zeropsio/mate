@@ -78,6 +78,8 @@ export type MateComing =
       readonly kind: "coming";
       /** How far it has got, as the projects page says it. */
       readonly line: string;
+      /** A shared HQ birth carries its proven phase and does not use the local arrival clock. */
+      readonly birth?: { readonly attention: boolean };
       /** When its setup began, wall ms, where this browser pressed it: its first press, its clock. */
       readonly since?: number | undefined;
     }

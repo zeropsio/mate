@@ -189,6 +189,7 @@ import { useAskNewProject } from "../zerops/newProjectAsk";
 import { useRoleOffers, useTeamOffers } from "../zerops/usePlatformCapabilities";
 import { useCreations } from "../zerops/creations";
 import { newProjectView, placedNewProjects } from "../zerops/newProjectBirth";
+import { placedSharedBirths, useSharedBirths } from "../zerops/sharedBirths";
 import {
   useMateComingOf,
   useMateConversationsRead,
@@ -1289,14 +1290,18 @@ export default function Sidebar() {
   // A press ends once its Mate connects: nothing of it is left to say.
   useForgetConnectedPresses(zeropsCandidates);
   const zeropsMade = useCreations();
+  const sharedBirths = useSharedBirths();
   const zeropsPlacedBirths = useMemo(
     () =>
-      placedPressesIn(
-        zeropsPresses,
-        zeropsSession.activeOrganization?.id,
-        placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
+      placedSharedBirths(
+        sharedBirths,
+        placedPressesIn(
+          zeropsPresses,
+          zeropsSession.activeOrganization?.id,
+          placedNewProjects(zeropsMade, zeropsSession.activeOrganization?.id),
+        ),
       ),
-    [zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
+    [sharedBirths, zeropsPresses, zeropsMade, zeropsSession.activeOrganization?.id],
   );
   // Whose each Mate is, for the badge on the corner of its face.
   const zeropsMateOwner = useZeropsMateOwners();
@@ -1779,13 +1784,16 @@ export default function Sidebar() {
     (projectId: string) => {
       if (isMobile) setOpenMobile(false);
       const made = zeropsMade.find((creation) => creation.birthId === projectId);
-      if (made !== undefined && made.projectId === null) {
+      if (
+        (made !== undefined && made.projectId === null) ||
+        sharedBirths.some((birth) => birth.id === projectId && birth.projectId === null)
+      ) {
         void router.navigate(newProjectView(projectId));
         return;
       }
       void router.navigate(newMateView(projectId));
     },
-    [isMobile, router, setOpenMobile, zeropsMade],
+    [isMobile, router, setOpenMobile, sharedBirths, zeropsMade],
   );
 
   const navigateToZeropsProjects = useCallback(() => {
@@ -3108,6 +3116,7 @@ export default function Sidebar() {
               getFlow={zeropsSidebarFlowWithPages}
               getOwner={zeropsMateOwner}
               getMateActions={zeropsMateMenus.getMateActions}
+              getBirth={zeropsMateMenus.getBirth}
               shown={zeropsShown}
               timestampFormat={timestampFormat}
               onOpenGroup={openGroup}

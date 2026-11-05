@@ -111,6 +111,8 @@ function fakeRun(writes: Readonly<Record<string, FakeWrite | undefined>>): RunTo
         return hqApi().createMate(intent.mate);
       case "bind-birth":
         return hqApi().bindBirth(intent.birthId, intent.projectId);
+      case "claim-birth-attempt":
+        return { claim: { step: intent.step, by: "person", at: "2026-11-05T00:00:00Z" } };
       default:
         throw new Error(`No ${intent.kind} in this press.`);
     }

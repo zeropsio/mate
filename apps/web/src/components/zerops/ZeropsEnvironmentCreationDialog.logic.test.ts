@@ -45,6 +45,7 @@ import { draftPeople, type DraftInput } from "./projects/accessDraft.logic";
 /** A tier as the group repo's `main` hands it over, already import-ready. */
 const TIER = {
   kind: "tier" as const,
+  revision: "recipe-revision",
   tier: "stage" as const,
   yaml: "services:\n  - hostname: app\n    startWithoutCode: true\n",
 };

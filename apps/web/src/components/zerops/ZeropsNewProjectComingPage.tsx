@@ -29,12 +29,16 @@ import {
   newProjectProgress,
 } from "~/zerops/newProjectBirth";
 import { useSecondsNowMs } from "~/zerops/useNowMs";
+import { useSharedBirths } from "~/zerops/sharedBirths";
+import { newMateView } from "~/zerops/newMate";
+import type { SharedBirth } from "@t3tools/client-runtime/data";
 
 import {
   ComingBelow,
   type ArrivalProgress,
   MateComingFrame,
   MateComingHeader,
+  SharedBirthStage,
 } from "./ZeropsMateComingPage";
 import { MateOpeningLine } from "./MateLinkLine";
 import { MateEmptyStateView, type MateEmptyComing } from "./ZeropsMateEmptyState";
@@ -49,6 +53,33 @@ const NOBODY = {
 } as const;
 
 export function ZeropsNewProjectComingPage({ birthId }: { readonly birthId: string }) {
+  const birth = useSharedBirths().find((entry) => entry.id === birthId);
+  return birth === undefined ? (
+    <LocalNewProjectComingPage birthId={birthId} />
+  ) : (
+    <SharedNewProjectComingPage birth={birth} />
+  );
+}
+
+function SharedNewProjectComingPage({ birth }: { readonly birth: SharedBirth }) {
+  const navigate = useNavigate();
+  const router = useRouter();
+  useEffect(() => {
+    if (birth.projectId === null) return;
+    const target = { ...newMateView(birth.projectId), replace: true };
+    let current = true;
+    const go = () => {
+      if (current) void navigate(target);
+    };
+    void router.preloadRoute(target).then(go, go);
+    return () => {
+      current = false;
+    };
+  }, [birth.projectId, navigate, router]);
+  return <SharedBirthStage birth={birth} />;
+}
+
+function LocalNewProjectComingPage({ birthId }: { readonly birthId: string }) {
   const navigate = useNavigate();
   const router = useRouter();
   const birth = useCreation(birthId);

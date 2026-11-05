@@ -87,6 +87,9 @@ export type HqWrites = Pick<
   | "createApp"
   | "recordBirth"
   | "bindBirth"
+  | "deleteBirth"
+  | "claimBirthAttempt"
+  | "endBirthAttempt"
   | "attachProject"
   | "createMate"
   | "establishZcpAuthorization"
@@ -582,7 +585,9 @@ export function makeHqExecutor(ports: {
           write(() =>
             api.recordBirth({
               appId: intent.appId,
+              id: intent.id,
               face: intent.face,
+              ...(intent.intent === undefined ? {} : { intent: intent.intent }),
               ...(intent.standUp === undefined ? {} : { standUp: intent.standUp }),
               ...(intent.automated === true ? { automated: true as const } : {}),
             }),
@@ -592,6 +597,32 @@ export function makeHqExecutor(ports: {
       case "bind-birth":
         return Effect.as(
           write(() => api.bindBirth(intent.birthId, intent.projectId)),
+          answered(requestId, intent.birthId),
+        );
+      case "delete-birth":
+        return Effect.as(
+          Effect.tryPromise({
+            try: () => api.deleteBirth(intent.birthId),
+            catch: (cause) => faultOf(cause, true),
+          }),
+          answered(requestId, intent.birthId),
+        );
+      case "claim-birth-attempt":
+        return Effect.map(
+          write(() => api.claimBirthAttempt(intent.birthId, intent.step)),
+          (claim) => answered(requestId, intent.birthId, { claim }),
+        );
+      case "end-birth-attempt":
+        return Effect.as(
+          write(() =>
+            api.endBirthAttempt(
+              intent.birthId,
+              intent.step,
+              intent.outcome,
+              intent.at,
+              intent.reason,
+            ),
+          ),
           answered(requestId, intent.birthId),
         );
       case "attach-project":

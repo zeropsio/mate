@@ -141,7 +141,7 @@ import { cn } from "~/lib/utils";
 import { formatShortTimestamp, formatUpcomingTimestamp } from "~/timestampFormat";
 import { useComposerDraftStore } from "~/composerDraftStore";
 import { useChangedSinceShown } from "~/hooks/useChangedSinceShown";
-import { SidebarComingEnds } from "./SidebarComingEnds";
+import { SidebarBirthMenu, SidebarComingEnds, type SharedBirthRow } from "./SidebarComingEnds";
 import { Row } from "../ui/row";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
 import { MateAutomatedMark } from "./MateAutomatedMark";
@@ -612,6 +612,7 @@ export interface SidebarZeropsTreeProps<T extends RosterCandidate> {
   readonly getMateActions?:
     | ((candidate: T, activity: ZeropsAgentActivity | undefined) => MateRowActions | undefined)
     | undefined;
+  readonly getBirth?: ((birthId: string) => SharedBirthRow | undefined) | undefined;
   /**
    * Opens a Mate's conversation on its Crew tab, with the setup sheet over it
    * for *Set up a crew* — its menu's crew item (`mateCrewItem`). Absent, the
@@ -734,6 +735,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
   births = NO_BIRTHS,
   timestampFormat = "locale",
   getMateActions,
+  getBirth,
   onOpenCrew,
   shown,
   onShowEveryone,
@@ -1863,6 +1865,7 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
         <MateUnit active={active} key={`coming:${member.projectId}`} projectId={member.projectId}>
           <ComingMateRow
             active={active}
+            shared={member.intent === undefined ? undefined : getBirth?.(member.intent)}
             coming={member}
             kid={at === "kid"}
             name={member.name}
@@ -4937,6 +4940,7 @@ function ComingMateRow({
   onOpen,
   project,
   kid = false,
+  shared,
 }: {
   readonly name: string;
   readonly coming: ZeropsGroupPendingMember;
@@ -4946,6 +4950,7 @@ function ComingMateRow({
   readonly project?: string | undefined;
   /** It stands under its project's row, the group open. */
   readonly kid?: boolean;
+  readonly shared?: SharedBirthRow | undefined;
 }) {
   const tint = coming.face?.tint ?? "slate";
   const row = (
@@ -4962,14 +4967,26 @@ function ComingMateRow({
               className={kid ? "size-7" : "size-9"}
               shape={coming.face?.shape ?? mateShapeOf(undefined, tint)}
               size={kid ? 24 : 32}
-              state={mateBirthFace(coming.failed === true)}
+              state={mateBirthFace(shared?.attention ?? coming.failed === true)}
               tint={tint}
             />
           </span>
           {COMING_SEAT === null ? null : <MateOwnerMark seat={COMING_SEAT} />}
         </span>
       }
-      line={<MateComingLine line={pendingBornLine(coming)} />}
+      line={
+        <MateComingLine
+          line={
+            shared === undefined
+              ? pendingBornLine(coming)
+              : {
+                  words: shared.line,
+                  since: undefined,
+                  tone: shared.attention ? "attention" : "muted",
+                }
+          }
+        />
+      }
       onClick={() => {
         onOpen?.(coming.projectId);
       }}
@@ -4991,10 +5008,14 @@ function ComingMateRow({
     />
   );
   // A creation that stopped before Zerops took it: its ⋯ ends it, or starts it over.
-  return (
+  return shared === undefined ? (
     <SidebarComingEnds birthId={coming.projectId} name={name}>
       {row}
     </SidebarComingEnds>
+  ) : (
+    <SidebarBirthMenu entries={shared.entries} name={name}>
+      {row}
+    </SidebarBirthMenu>
   );
 }
 

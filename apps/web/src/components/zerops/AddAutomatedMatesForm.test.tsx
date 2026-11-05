@@ -10,7 +10,12 @@ import { afterEach, describe, expect, it, vi } from "vite-plus/test";
 import { Dialog } from "../ui/dialog";
 import { AddAutomatedMatesForm, type AutomatedMatesChoice } from "./AddAutomatedMatesForm";
 
-const TIER = { kind: "tier" as const, tier: "mate" as const, yaml: "services: []\n" };
+const TIER = {
+  kind: "tier" as const,
+  revision: "recipe-revision",
+  tier: "mate" as const,
+  yaml: "services: []\n",
+};
 const TINTS: Readonly<Record<string, MateTintId>> = { Otto: "violet", Ada: "sky", Milo: "coral" };
 const PEOPLE = [{ clientUserId: "member-2", roleCode: "DEVELOPER" }];
 

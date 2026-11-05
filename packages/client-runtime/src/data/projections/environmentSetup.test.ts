@@ -23,7 +23,7 @@ const environment = {
   release: null,
   birth: null,
 } as const;
-const app = (environments: unknown): Row =>
+const app = (environments: unknown, births: ReadonlyArray<unknown> = []): Row =>
   ({
     family: "hqApp",
     id: "shop",
@@ -33,7 +33,7 @@ const app = (environments: unknown): Row =>
       name: "Shop",
       contents: { empty: false, deletingProjectIds: [] },
       projectIds: ["stage"],
-      births: [],
+      births,
       changes: [],
       releaseOffer: null,
       environments,
@@ -120,6 +120,24 @@ const of = (state: AccountState) =>
   environmentSetup.derive(readsOfState(state), { orgId: ORG, projectIds: ["stage"] });
 
 describe("environmentSetup", () => {
+  it("an open Mate birth suppresses stage Finish even after its press ends", () => {
+    const withBirth = apply(
+      placed,
+      deliver([
+        {
+          ...app([environment], [{ id: "birth", face: "rose:seal", projectId: "stage" }]),
+          revision: { ...revision, revision: 2 },
+        },
+      ]),
+    );
+    expect(of(withBirth)).toEqual([]);
+    const finished = apply(
+      withBirth,
+      deliver([{ ...app([environment]), revision: { ...revision, revision: 3 } }]),
+    );
+    expect(of(finished)).toEqual(of(placed));
+  });
+
   it.each([
     {
       name: "a key still missing",

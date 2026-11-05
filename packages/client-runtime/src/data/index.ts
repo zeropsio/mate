@@ -211,6 +211,12 @@ export { HQ_SLOW, type UnavailableReason } from "./projections/freshness.ts";
 export { projectCreations } from "./projections/creation.ts";
 export { creationImports } from "./projections/creationImports.ts";
 export {
+  sharedBirths,
+  type SharedBirth,
+  type SharedBirthState,
+  type BirthProgress,
+} from "./projections/birthProgress.ts";
+export {
   creationStepId,
   creationSteps,
   creationsSteps,
@@ -240,6 +246,8 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
+export { birthAttempt } from "./operations/birthAttempt.ts";
+export { continueBirth } from "./operations/continueBirth.ts";
 export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
@@ -251,6 +259,7 @@ export { operationEnd, type OperationEnd } from "./projections/operationEnd.ts";
 export { operationWait, type OperationWait } from "./projections/operationWait.ts";
 export {
   accountReadsAtom,
+  sharedBirthsAtom,
   NOT_READ_PROCESSES,
   listedProjectAtom,
   shownMateVisibilityAtom,

@@ -70,7 +70,12 @@ export function defaultAgentForRole(role: ZeropsEnvironmentRole): boolean {
  * looked created and could not build.
  */
 export type EnvironmentRecipeChoice =
-  | { readonly kind: "tier"; readonly tier: RecipeTier; readonly yaml: string }
+  | {
+      readonly kind: "tier";
+      readonly tier: RecipeTier;
+      readonly revision: string;
+      readonly yaml: string;
+    }
   | { readonly kind: "none" };
 
 export interface EnvironmentCreationInput {

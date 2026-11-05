@@ -1,7 +1,7 @@
 import type { TokenWriteHold } from "./groupReach.ts";
 import { describe, expect, it, vi } from "@effect/vitest";
 
-import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient } from "./api.ts";
+import { DEFAULT_ZEROPS_API_BASE, ZeropsApiClient, ZeropsApiError } from "./api.ts";
 import {
   buildCreateProjectBody,
   buildZcpServiceImportYaml,
@@ -418,6 +418,25 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     projectName: "Acme Docs - Ada",
     tierYaml: "services:\n  - hostname: appdev\n    type: nodejs@22\n",
   };
+
+  it("distinguishes the import's refusal from an earlier failed read", async () => {
+    const refusal = new ZeropsApiError("No room.", "invalid-input", 400);
+    const target = platformClient({}).client;
+    vi.spyOn(target, "importServicesIntoProject").mockRejectedValue(refusal);
+    await expect(target.importDevelopmentContainer(INPUT)).rejects.toMatchObject({
+      message: "No room.",
+      targetWriteRefused: true,
+    });
+    const earlier = platformClient({}).client;
+    vi.spyOn(earlier, "listProjectServices").mockRejectedValue(refusal);
+    await expect(earlier.importDevelopmentContainer(INPUT)).rejects.not.toMatchObject({
+      targetWriteRefused: true,
+    });
+    await expect(earlier.importDevelopmentContainer(INPUT)).rejects.toMatchObject({
+      name: "ZeropsWriteNotSent",
+      message: "No room.",
+    });
+  });
 
   it.each(["minted", "regenerated"] as const)(
     "establishes the actual $0 key authorization before importing, carrying only project and hash",
