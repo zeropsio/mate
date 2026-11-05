@@ -11,6 +11,10 @@ import {
   ConversationOpeningProvider,
   ConversationOpeningLayer,
   ConversationOpeningStage,
+  ConversationOpeningYields,
+  opensAnew,
+  stageSaysMate,
+  type OpeningPhase,
 } from "./ConversationOpeningStage";
 
 const mate = {
@@ -639,5 +643,157 @@ it("with nothing remembered, the opening stage holds its place without a name", 
     expect(host.textContent).toContain("Milo is opening the conversation.");
   } finally {
     await close();
+  }
+});
+
+const SOURCE = { node: "link" } as const;
+const OTHER_MATE = { ...mate, projectId: "other-project", name: "Milo" };
+it.each([
+  {
+    title: "the Mate named after the wait began, on the same stage",
+    previous: { ...SOURCE, threadKey: "main", ready: false, mate: null },
+    next: { ...SOURCE, threadKey: "main", ready: false, mate },
+    completed: false,
+    anew: false,
+  },
+  {
+    title: "the route's gate handing its wait to the conversation's surface",
+    previous: { ...SOURCE, threadKey: "main", ready: false, mate },
+    next: { node: "conversation", threadKey: "main", ready: false, mate },
+    completed: false,
+    anew: false,
+  },
+  {
+    title: "a stage that names no conversation yet handing over to the one that does",
+    previous: { ...SOURCE, threadKey: undefined, ready: false, mate },
+    next: { node: "conversation", threadKey: "main", ready: false, mate },
+    completed: false,
+    anew: false,
+  },
+  {
+    title: "another conversation",
+    previous: { ...SOURCE, threadKey: "main", ready: false, mate },
+    next: { ...SOURCE, threadKey: "other", ready: false, mate },
+    completed: false,
+    anew: true,
+  },
+  {
+    title: "another Mate",
+    previous: { ...SOURCE, threadKey: undefined, ready: false, mate },
+    next: { ...SOURCE, threadKey: undefined, ready: false, mate: OTHER_MATE },
+    completed: false,
+    anew: true,
+  },
+  {
+    title: "another surface after the opening completed",
+    previous: { ...SOURCE, threadKey: "main", ready: true, mate },
+    next: { node: "conversation", threadKey: "main", ready: true, mate },
+    completed: true,
+    anew: true,
+  },
+])(
+  "one opening runs from a reload's first frame to the conversation; only another conversation, another Mate or a finished opening starts its own: $title",
+  ({ previous, next, completed, anew }) => {
+    expect(opensAnew(previous, next, completed)).toBe(anew);
+  },
+);
+
+it.each<{
+  readonly title: string;
+  readonly stage: Parameters<typeof stageSaysMate>[0];
+  readonly phase: OpeningPhase;
+  readonly says: boolean;
+}>([
+  { title: "no stage", stage: null, phase: "waiting", says: false },
+  {
+    title: "a waiting stage naming the Mate",
+    stage: { name: "Sage", mate },
+    phase: "waiting",
+    says: true,
+  },
+  { title: "a waking stage", stage: { name: "Sage", mate }, phase: "wake", says: true },
+  {
+    title: "a stage remembering only the name",
+    stage: { name: "Sage", mate: null },
+    phase: "waiting",
+    says: true,
+  },
+  {
+    title: "a stage with nothing remembered",
+    stage: { name: undefined, mate: null },
+    phase: "waiting",
+    says: false,
+  },
+  { title: "the hand-off", stage: { name: "Sage", mate }, phase: "hand-off", says: false },
+  { title: "a completed opening", stage: { name: "Sage", mate }, phase: "complete", says: false },
+])(
+  "the header says the Mate only where the opening stage does not: $title",
+  ({ stage, phase, says }) => {
+    expect(stageSaysMate(stage, phase)).toBe(says);
+  },
+);
+
+it("while the opening stage names the Mate, the header holds its name unsaid, and says it again from the hand-off", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  hosts.push(host);
+  const root = createRoot(host);
+  const show = (ready: boolean) =>
+    act(() =>
+      root.render(
+        <ConversationOpeningProvider>
+          <ConversationOpeningYields>
+            <span>Sage</span>
+          </ConversationOpeningYields>
+          <ConversationOpeningStage ready={ready} name="Sage" mate={mate} threadKey="main" />
+        </ConversationOpeningProvider>,
+      ),
+    );
+  const header = () =>
+    host.querySelector("[data-opening-waits]")?.getAttribute("aria-hidden") ?? null;
+  try {
+    await show(false);
+    expect(phase(host)).toBe("waiting");
+    expect(header()).toBe("true");
+    await show(true);
+    expect(phase(host)).toBe("wake");
+    expect(header()).toBe("true");
+    await end(host.querySelector('[data-mate-face-eye="left"]'), "conversation-eye-open");
+    expect(phase(host)).toBe("hand-off");
+    expect(header()).toBeNull();
+  } finally {
+    await act(() => root.unmount());
+  }
+});
+
+it("a waiting stage keeps its face and words when the Mate is named after it began", async () => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  const host = document.createElement("div");
+  document.body.appendChild(host);
+  hosts.push(host);
+  const root = createRoot(host);
+  const show = (named: boolean) =>
+    act(() =>
+      root.render(
+        <ConversationOpeningProvider>
+          <ConversationOpeningStage
+            ready={false}
+            name={named ? "Sage" : undefined}
+            mate={named ? mate : null}
+            threadKey="main"
+          />
+        </ConversationOpeningProvider>,
+      ),
+    );
+  try {
+    await show(false);
+    const stage = host.querySelector("[data-conversation-opening]");
+    expect(stage).not.toBeNull();
+    await show(true);
+    expect(host.querySelector("[data-conversation-opening]")).toBe(stage);
+    expect(host.textContent).toContain("Sage is opening the conversation.");
+  } finally {
+    await act(() => root.unmount());
   }
 });
