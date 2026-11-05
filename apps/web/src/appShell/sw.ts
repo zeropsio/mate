@@ -14,11 +14,16 @@
  * origin: an update that finds no script keeps the installed worker.
  */
 
-import { outcomeOf } from "./appShell.logic";
+import { outcomeOf, staticRoutes } from "./appShell.logic";
 import { makeAppShellWorker } from "./appShellWorker";
 
 interface ExtendableEvent extends Event {
   waitUntil(work: Promise<unknown>): void;
+}
+
+/** The install event of browsers with the Static Routing API (Chrome 123+). */
+interface RoutingInstallEvent extends ExtendableEvent {
+  addRoutes?(rules: readonly unknown[]): Promise<void>;
 }
 
 interface FetchEvent extends ExtendableEvent {
@@ -30,7 +35,8 @@ interface WorkerScope {
   readonly registration: ServiceWorkerRegistration;
   readonly clients: { claim(): Promise<void> };
   skipWaiting(): Promise<void>;
-  addEventListener(type: "install" | "activate", listener: (event: ExtendableEvent) => void): void;
+  addEventListener(type: "install", listener: (event: RoutingInstallEvent) => void): void;
+  addEventListener(type: "activate", listener: (event: ExtendableEvent) => void): void;
   addEventListener(type: "fetch", listener: (event: FetchEvent) => void): void;
 }
 
@@ -43,8 +49,22 @@ const appShell = makeAppShellWorker({
   scope: worker.registration.scope,
 });
 
+/** The static routes as the browser takes them: each URL pattern built as a `URLPattern`. */
+function browserRoutes(scope: string) {
+  return staticRoutes(scope).map((route) =>
+    "urlPattern" in route.condition
+      ? { ...route, condition: { urlPattern: new URLPattern(route.condition.urlPattern) } }
+      : route,
+  );
+}
+
 worker.addEventListener("install", (event) => {
-  event.waitUntil(appShell.install().then(() => worker.skipWaiting()));
+  // Feature-detected: elsewhere every request reaches the handler, which passes what it does not route.
+  const routed =
+    typeof event.addRoutes === "function" && typeof URLPattern === "function"
+      ? outcomeOf(event.addRoutes(browserRoutes(worker.registration.scope)))
+      : Promise.resolve("done" as const);
+  event.waitUntil(Promise.all([routed, appShell.install()]).then(() => worker.skipWaiting()));
 });
 
 worker.addEventListener("activate", (event) => {

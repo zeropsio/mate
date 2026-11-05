@@ -9,6 +9,7 @@ import {
   readShellFiles,
   routeRequest,
   SHELL_FILES_ELEMENT_ID,
+  staticRoutes,
   SHELL_MAX_AGE_MS,
   type AppShellRequest,
   type ResponseFacts,
@@ -253,5 +254,79 @@ describe("the files a page lists", () => {
     { title: "an empty list lists nothing", html: embedShellFiles(page, []) },
   ])("$title", ({ html }) => {
     expect(readShellFiles(html)).toBeUndefined();
+  });
+});
+
+describe("which requests wake the worker", () => {
+  const routes = staticRoutes(`${ORIGIN}/`);
+  /** The first route matching the request, as the browser applies them. */
+  const source = (url: string, mode: RequestMode) =>
+    routes.find(({ condition }) =>
+      "requestMode" in condition
+        ? condition.requestMode === mode
+        : new URLPattern(condition.urlPattern).test(url),
+    )?.source;
+
+  it.each([
+    {
+      title: "a navigation reaches the worker",
+      url: `${ORIGIN}/env-1/thread-1`,
+      mode: "navigate",
+      to: "fetch-event",
+    },
+    {
+      title: "a bundle file reaches the worker",
+      url: `${ORIGIN}/assets/a.js`,
+      mode: "cors",
+      to: "fetch-event",
+    },
+    {
+      title: "the Zerops API goes straight to the network",
+      url: "https://api.example.test/api/rest/public/user/info",
+      mode: "cors",
+      to: "network",
+    },
+    {
+      title: "HQ goes straight to the network",
+      url: "https://hq.example.test/api/mates",
+      mode: "cors",
+      to: "network",
+    },
+    {
+      title: "another origin's assets path goes straight to the network",
+      url: "https://cdn.example.test/assets/a.js",
+      mode: "cors",
+      to: "network",
+    },
+    {
+      title: "this origin's fonts go straight to the network",
+      url: `${ORIGIN}/fonts/roboto/a.woff2`,
+      mode: "cors",
+      to: "network",
+    },
+    {
+      title: "an avatar goes straight to the network",
+      url: "https://avatars.example.test/u/1",
+      mode: "no-cors",
+      to: "network",
+    },
+  ] as const)("$title", ({ url, mode, to }) => {
+    expect(source(url, mode)).toBe(to);
+  });
+
+  it("sends every request the worker answers to its handler", () => {
+    for (const [url, mode, destination] of [
+      [`${ORIGIN}/`, "navigate", "document"],
+      [`${ORIGIN}/settings/general`, "navigate", "document"],
+      [`${ORIGIN}/assets/a.js`, "cors", "script"],
+      [`${ORIGIN}/assets/a.css`, "no-cors", "style"],
+    ] as const) {
+      const request = { method: "GET", url, mode, destination, ranged: false, scope: `${ORIGIN}/` };
+      expect({ url, route: routeRequest(request), source: source(url, mode) }).toEqual({
+        url,
+        route: expect.not.stringMatching(/^pass$/u),
+        source: "fetch-event",
+      });
+    }
   });
 });

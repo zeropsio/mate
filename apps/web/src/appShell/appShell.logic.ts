@@ -223,6 +223,32 @@ export function readShellFiles(html: string): string[] | undefined {
   );
   return files.length === parsed.length && files.length > 0 ? files : undefined;
 }
+
+/** A static route the browser applies before waking the worker (the Static Routing API). */
+export interface AppShellStaticRoute {
+  readonly condition:
+    | { readonly urlPattern: Readonly<Record<string, string>> }
+    | { readonly requestMode: "navigate" };
+  readonly source: "fetch-event" | "network";
+}
+
+/**
+ * What wakes the worker at all: this origin's bundle files and navigations reach its fetch
+ * handler; every other request of a controlled tab (Zerops API, HQ, Mates, avatars, this origin's
+ * fonts) goes straight to the network, so a request after the worker went idle never waits for it
+ * to start. The handler still decides (`routeRequest`): these routes only keep requests away from
+ * it. Browsers without the API ignore it and send everything to the handler, which passes.
+ */
+export function staticRoutes(scope: string): AppShellStaticRoute[] {
+  const { protocol, hostname, port } = new URL(scope);
+  const thisOrigin = { protocol: protocol.replace(/:$/u, ""), hostname, port };
+  return [
+    { condition: { urlPattern: { ...thisOrigin, pathname: "/assets/*" } }, source: "fetch-event" },
+    { condition: { requestMode: "navigate" }, source: "fetch-event" },
+    { condition: { urlPattern: {} }, source: "network" },
+  ];
+}
+
 /** Caches of the worker's prefix that no build of it knows: a renamed cache, left behind. */
 export function cachesToDelete(names: readonly string[]): string[] {
   return names.filter((name) => name.startsWith(APP_SHELL_CACHE_PREFIX) && !KNOWN_CACHES.has(name));
