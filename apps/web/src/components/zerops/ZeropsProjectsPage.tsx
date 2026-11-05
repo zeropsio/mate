@@ -46,6 +46,7 @@ import {
   shownMateVisibilitiesAtom,
 } from "@t3tools/client-runtime/data";
 import { useSidebarWaiting } from "~/zerops/useSidebarWaiting";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 import { useEnvironmentOffers } from "~/zerops/useAddEnvironment";
 import { hqDown, hqPlacementsAtom, hqPlacementStatusAtom } from "~/state/zerops";
 import { useProjectOrderOptions } from "~/zerops/projectOrderPreference";
@@ -982,19 +983,10 @@ export function ZeropsProjectsContent({
     readonly groupId: string;
     readonly tier: GroupEnvironmentTier;
   } | null>(null);
-  // Ticks once a second while a creation runs, so the checklist's durations
+  // The shared second while a creation runs, so the checklist's durations
   // move; stops the moment it settles.
-  const [creationNowMs, setCreationNowMs] = useState(() => Date.now());
   const creationRunning = creation !== null && creation.outcome === undefined;
-  useEffect(() => {
-    if (!creationRunning) return;
-    const timer = setInterval(() => {
-      setCreationNowMs(Date.now());
-    }, 1000);
-    return () => {
-      clearInterval(timer);
-    };
-  }, [creationRunning]);
+  const creationNowMs = useSecondsNowMs(creationRunning);
   const projectOrder = useProjectOrderOptions();
   // A creation the platform accepted is drawn in its group before the
   // listing holds its project, and a New project this tab is making from the
@@ -1856,7 +1848,6 @@ export function ZeropsProjectsContent({
         choice,
         onPlanned: (steps) => {
           setToolError(null);
-          setCreationNowMs(Date.now());
           setCreation((current) =>
             current === null
               ? current

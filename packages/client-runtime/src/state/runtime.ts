@@ -13,6 +13,7 @@ import { EnvironmentNotRegisteredError, EnvironmentRegistry } from "../connectio
 import {
   type EnvironmentRpcInput,
   type EnvironmentRpcStreamFailure,
+  type EnvironmentRpcSuccess,
   type EnvironmentRpcStreamValue,
   type EnvironmentStreamCommandRpcTag,
   type EnvironmentSubscriptionRpcTag,
@@ -53,7 +54,11 @@ interface EnvironmentQueryAtomOptions<Input, A, E, R> extends EnvironmentAtomOpt
 > {
   readonly staleTimeMs?: number;
   readonly idleTtlMs?: number;
-  readonly refreshIntervalMs?: number;
+  /**
+   * When an answer stops holding, where it names it: read again at that instant, and never stale
+   * before it; `staleTimeMs` is not used.
+   */
+  readonly expiresAt?: (value: A) => number;
   readonly refreshTrigger?: (target: {
     readonly environmentId: EnvironmentIdType;
     readonly input: Input;
@@ -502,6 +507,28 @@ export function followStreamInEnvironment<A, E, R>(
   );
 }
 
+/** An answer that names when it stops holding is read again at that instant, never before. */
+const refreshedAtExpiry =
+  <A>(expiresAt: (value: A) => number) =>
+  <E>(self: Atom.Atom<AsyncResult.AsyncResult<A, E>>): Atom.Atom<AsyncResult.AsyncResult<A, E>> =>
+    Atom.transform(
+      self,
+      (get) => {
+        const result = get(self);
+        if (AsyncResult.isSuccess(result)) {
+          // @effect-diagnostics-next-line globalDate:off -- an atom's read is plain code; the expiry is dated on the wall clock.
+          const wait = expiresAt(result.value) - Date.now();
+          if (Number.isFinite(wait) && wait > 0) {
+            // @effect-diagnostics-next-line globalTimers:off -- an atom's read is plain code, its timer ends with the read.
+            const handle = setTimeout(() => get.refresh(self), wait);
+            get.addFinalizer(() => clearTimeout(handle));
+          }
+        }
+        return result;
+      },
+      { initialValueTarget: self },
+    );
+
 export function createEnvironmentQueryAtomFamily<R, ER, Input, A, E>(
   runtime: Atom.AtomRuntime<EnvironmentRegistry | R, ER>,
   options: EnvironmentQueryAtomOptions<Input, A, E, EnvironmentSupervisor | R>,
@@ -574,21 +601,19 @@ export function createEnvironmentQueryAtomFamily<R, ER, Input, A, E>(
         }
       })
       .pipe(
-        Atom.swr({
-          staleTime: options.staleTimeMs ?? 30_000,
-          revalidateOnMount: true,
-        }),
+        options.expiresAt === undefined
+          ? Atom.swr({
+              staleTime: options.staleTimeMs ?? 30_000,
+              revalidateOnMount: true,
+            })
+          : refreshedAtExpiry(options.expiresAt),
         Atom.setIdleTTL(idleTtlMs),
       );
-    const intervalQuery =
-      options.refreshIntervalMs === undefined
-        ? queryAtom
-        : queryAtom.pipe(Atom.withRefresh(options.refreshIntervalMs));
     const refreshTrigger = options.refreshTrigger?.(target);
     return (
       refreshTrigger === undefined
-        ? intervalQuery
-        : intervalQuery.pipe(Atom.makeRefreshOnSignal(refreshTrigger))
+        ? queryAtom
+        : queryAtom.pipe(Atom.makeRefreshOnSignal(refreshTrigger))
     ).pipe(Atom.setIdleTTL(idleTtlMs), Atom.withLabel(`${options.label}:${key}`));
   });
   return (target) => family(environmentRpcKey(target));
@@ -657,7 +682,7 @@ export function createEnvironmentRpcQueryAtomFamily<R, ER, TTag extends Environm
     readonly tag: TTag;
     readonly staleTimeMs?: number;
     readonly idleTtlMs?: number;
-    readonly refreshIntervalMs?: number;
+    readonly expiresAt?: (value: EnvironmentRpcSuccess<TTag>) => number;
     readonly refreshTrigger?: (target: {
       readonly environmentId: EnvironmentIdType;
       readonly input: EnvironmentRpcInput<TTag>;
@@ -668,9 +693,7 @@ export function createEnvironmentRpcQueryAtomFamily<R, ER, TTag extends Environm
     label: options.label,
     ...(options.staleTimeMs === undefined ? {} : { staleTimeMs: options.staleTimeMs }),
     ...(options.idleTtlMs === undefined ? {} : { idleTtlMs: options.idleTtlMs }),
-    ...(options.refreshIntervalMs === undefined
-      ? {}
-      : { refreshIntervalMs: options.refreshIntervalMs }),
+    ...(options.expiresAt === undefined ? {} : { expiresAt: options.expiresAt }),
     ...(options.refreshTrigger === undefined ? {} : { refreshTrigger: options.refreshTrigger }),
     execute: (input: EnvironmentRpcInput<TTag>) => request(options.tag, input),
   });

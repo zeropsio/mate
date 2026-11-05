@@ -202,8 +202,8 @@ it("explicit empty environments replace the known rows", () => {
 });
 
 describe("the organization's record, as its reader reads it", () => {
-  const organization = { unheld: {}, build: "0.15.80" };
-  const record = { unheld: [], build: "0.15.80" };
+  const organization = { build: "0.15.80" };
+  const record = { build: "0.15.80" };
   const decode = (raw: unknown) =>
     hqOrganizationFamily.hq!.decode(raw, "org", { orgId: "org", ownerId: null });
   it.each([

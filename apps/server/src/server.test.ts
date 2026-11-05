@@ -143,7 +143,6 @@ import sharp from "sharp";
 import { ENGINE_MOVED, MateEngine } from "./engine/MateEngine.ts";
 import * as ZeropsLifecycle from "./zerops/ZeropsLifecycle.ts";
 import * as ZeropsMateKeyModule from "./zerops/ZeropsMateKey.ts";
-import * as ZeropsOrgReadModule from "./zerops/ZeropsOrgRead.ts";
 import * as ZeropsConnectionsModule from "./zerops/ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./zerops/ZeropsTicketDoor.ts";
 import * as ZeropsMateAccessListModule from "./zerops/ZeropsMateAccessList.ts";
@@ -1064,13 +1063,9 @@ const buildAppUnderTest = (options?: {
           // sends who the project opens for, and the status starts `"unknown"`.
           ZeropsMateAccessListModule.relayLayer.pipe(
             Layer.provideMerge(
-              ZeropsOrgReadModule.layer.pipe(
-                Layer.provideMerge(
-                  Layer.succeed(
-                    ZeropsMateKeyModule.ZeropsMateKey,
-                    ZeropsMateKeyModule.snapshotOnlyReader(undefined),
-                  ),
-                ),
+              Layer.succeed(
+                ZeropsMateKeyModule.ZeropsMateKey,
+                ZeropsMateKeyModule.snapshotOnlyReader(undefined),
               ),
             ),
           ),
@@ -6656,18 +6651,18 @@ it.layer(NodeServices.layer)("server router seam", (it) => {
   it.effect("subscribeZeropsBrowserStream applies flow control (Ack after every Chunk)", () =>
     Effect.gen(function* () {
       // A real (non-mocked) service instance publishing "no-browser" forever
-      // (`readStreamPort` never resolves, `reconnectDelaysMs: [0]`) so a
-      // real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
+      // (`readStreamPort` never resolves, its port file changes without end)
+      // so a real acking `RpcClient` pulling MORE THAN ONE Chunk is proof the
       // per-request Ack loop the effect-rpc protocol requires (spec-mate.md
       // §5.5) actually runs over the real websocket, not just proof the
       // handler exists — a client that never acked would receive exactly
       // one Chunk and stall.
       const browserStream = yield* ZeropsBrowserStreamModule.make({
         readStreamPort: Effect.succeed(undefined),
+        watchPort: Effect.succeed({ next: Effect.void }),
         connect: () => {
           throw new Error("unreachable: readStreamPort never resolves a port");
         },
-        reconnectDelaysMs: [0],
       });
       yield* buildAppUnderTest({
         layers: {

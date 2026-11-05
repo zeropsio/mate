@@ -162,10 +162,7 @@ export function seedHqNavigation(store: AccountStore, orgId: string, seed: Seede
       family: "hqOrganization",
       id: orgId,
       revision,
-      value: {
-        unheld: Object.keys(structure?.unheld ?? {}),
-        build: "",
-      },
+      value: { build: "" },
     },
     {
       family: "hqStatus",

@@ -6,8 +6,6 @@ import type { EnvironmentRegistry } from "../connection/registry.ts";
 import { createEnvironmentRpcQueryAtomFamily } from "./runtime.ts";
 import { withBasePath } from "@t3tools/shared/basePath";
 
-const ASSET_URL_REFRESH_INTERVAL_MS = 30 * 60_000;
-const ASSET_URL_STALE_TIME_MS = 5 * 60_000;
 const ASSET_URL_IDLE_TTL_MS = 60 * 60_000;
 
 export class InvalidAssetCollectionKeyError extends Schema.TaggedError<InvalidAssetCollectionKeyError>()(
@@ -55,9 +53,9 @@ export function createAssetEnvironmentAtoms<R, E>(
   const createUrl = createEnvironmentRpcQueryAtomFamily(runtime, {
     label: "environment-data:assets:create-url",
     tag: WS_METHODS.assetsCreateUrl,
-    staleTimeMs: ASSET_URL_STALE_TIME_MS,
     idleTtlMs: ASSET_URL_IDLE_TTL_MS,
-    refreshIntervalMs: ASSET_URL_REFRESH_INTERVAL_MS,
+    // A URL's lifetime is the answer's own: it is asked again when it expires.
+    expiresAt: (answer) => answer.expiresAt,
   });
   const createUrlsFamily = Atom.family((key: string) => {
     const [environmentId, resources] = parseAssetCollectionKey(key);

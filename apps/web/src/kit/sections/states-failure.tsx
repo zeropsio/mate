@@ -16,16 +16,18 @@ import { ComingBelow } from "~/components/zerops/ZeropsMateComingPage";
 import { MateEmptyStateView } from "~/components/zerops/ZeropsMateEmptyState";
 import { ZeropsOperationCard } from "~/components/zerops/ZeropsOperationCard";
 import { comingSentenceOf } from "~/zerops/mateNoticeVoice";
+import { useSecondsNowMs } from "~/zerops/useNowMs";
 
 import { defineKitSection } from "../kitSection";
 import { Specimen } from "../Specimen";
-import { CensusLook, StateCensus, StateFrame, useKitNowMs } from "../states/Census";
+import { CensusLook, StateCensus, StateFrame } from "../states/Census";
 import { ChosenFailure } from "../states/Chosen";
 import { failedBirthProgress, showcaseOperation, WREN } from "../states/fixtures";
 
 /** A Mate whose container never came: the stage, its stopped steps, *Try again* and *Remove*. */
 function NotCreatedStage() {
-  const nowMs = useKitNowMs();
+  // Its setup stopped: its times stand.
+  const nowMs = useSecondsNowMs(false);
   const progress = failedBirthProgress(nowMs);
   const failure = setupFailureReason(WREN.name, "CommandExec: init command failed", [
     "curl: (6) Could not resolve host: zerops.io",

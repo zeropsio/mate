@@ -27,11 +27,16 @@ import { readJson, zeropsGet, zeropsPost } from "./zeropsApiRead.ts";
 /** One search page; an organisation with more members than this fails the read. */
 export const MEMBER_SEARCH_LIMIT = 200;
 
+/** The own project as its read carries it: what the door rule needs, and the project's name. */
+export interface OwnProject extends ProjectRoles {
+  readonly name?: string;
+}
+
 /** One read of both, as the access list tells the outcomes apart. */
 export type AccessRead =
   | {
       readonly kind: "read";
-      readonly project: ProjectRoles;
+      readonly project: OwnProject;
       readonly members: ReadonlyArray<ZeropsOrgMember>;
     }
   /**
@@ -107,9 +112,14 @@ const make = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "projectId">) 
         }),
       );
       if (projectAnswer.kind !== "body") return projectAnswer;
-      const project = readProjectRoles(projectAnswer.body);
-      if (project === null)
+      const roles = readProjectRoles(projectAnswer.body);
+      if (roles === null)
         return { kind: "failed", reason: "the project read names no organisation" } as const;
+      const name = (projectAnswer.body as Record<string, unknown>)["name"];
+      const project: OwnProject =
+        typeof name === "string" && name.trim().length > 0
+          ? { ...roles, name: name.trim() }
+          : roles;
       const membersAnswer = yield* answer((token) =>
         zeropsPost({
           url: `${environment.apiBaseUrl}/client-user/search`,

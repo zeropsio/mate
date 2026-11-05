@@ -248,6 +248,29 @@ describe("makeMateAdapter", () => {
     expect(first.intents.value).toBeNull();
   });
 
+  it("reads a restarting Mate HQ relays once, as HQ's presence turns online, and never before", async () => {
+    let initAt = "init-1";
+    const { adapter, store, clock, probes } = rig({
+      reading: (origin) => ({ ...ready(new URL(origin).hostname.split(".")[0] ?? ""), initAt }),
+    });
+    adapter.setTargets([target("p1")]);
+    adapter.presence("p1:zcp", true);
+    await flush();
+    expect(adapter.intend("p1:zcp", { kind: "restart", initAt: "init-1" })).toBe(true);
+    await flush();
+    adapter.presence("p1:zcp", false);
+    await clock.advance(60_000);
+    expect(probes).toEqual([]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("restarting");
+
+    initAt = "init-2";
+    adapter.presence("p1:zcp", true);
+    await flush();
+    await clock.advance(60_000);
+    expect(probes).toEqual([{ origin: "https://p1.example", ask: { fresh: true, initAt: true } }]);
+    expect(mateLink.derive(read(store), "p1:zcp")?.container.state.level).toBe("ready");
+  });
+
   it("a Mate restarted before a reload opens once it answers, though nothing proves its container re-initialized", async () => {
     const restarted = JSON.stringify([
       { target: "p1:zcp", kind: "restart", since: 1_800_000_000_000 - 60_000 },

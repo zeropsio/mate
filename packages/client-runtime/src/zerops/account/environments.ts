@@ -36,6 +36,7 @@ import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
   holdProjectHistory,
   holdServiceRead,
+  hqMatePresenceAtom,
   projectProcessesAtom,
   readMateFlag,
 } from "../../data/reads.ts";
@@ -337,6 +338,14 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   const exchangedAt = new Map<TargetKey, string>();
   /** What runs in each booting target's project, as the account's store holds it: followed. */
   const activity = new Map<string, { readonly stop: () => void }>();
+  /**
+   * HQ's presence for each target's Mate, by project, as the account's store holds it: a
+   * container coming up is read on its word instead of on a timer.
+   */
+  const hqPresence = new Map<
+    string,
+    { stop: () => void; online: boolean | null; keys: ReadonlyArray<TargetKey> }
+  >();
   const listeners = new Set<() => void>();
   /**
    * The processes each project of the active organization is read for while a container of it is
@@ -613,6 +622,47 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         };
       }),
     );
+    followHqPresence(listed.targets.map((target) => target.key));
+  };
+
+  /** Follows HQ's presence for every target's project and tells the adapter each target's. */
+  const followHqPresence = (keys: ReadonlyArray<TargetKey>) => {
+    if (adapter === null || closed) return;
+    const current = adapter;
+    const byProject = new Map<string, Array<TargetKey>>();
+    for (const key of keys) {
+      const projectKeys = byProject.get(targetProject(key));
+      if (projectKeys === undefined) byProject.set(targetProject(key), [key]);
+      else projectKeys.push(key);
+    }
+    for (const [projectId, followed] of hqPresence) {
+      if (byProject.has(projectId)) continue;
+      hqPresence.delete(projectId);
+      followed.stop();
+    }
+    for (const [projectId, projectKeys] of byProject) {
+      const followed = hqPresence.get(projectId);
+      if (followed !== undefined) {
+        followed.keys = projectKeys;
+        for (const key of projectKeys) current.presence(key, followed.online);
+        continue;
+      }
+      const entry = {
+        stop: (): void => undefined,
+        online: null as boolean | null,
+        keys: projectKeys as ReadonlyArray<TargetKey>,
+      };
+      hqPresence.set(projectId, entry);
+      entry.stop = atomRegistry.subscribe(
+        hqMatePresenceAtom(projectId),
+        (read) => {
+          if (adapter === null || closed) return;
+          entry.online = read.live && read.presence !== null ? read.presence.online : null;
+          for (const key of entry.keys) adapter.presence(key, entry.online);
+        },
+        { immediate: true },
+      );
+    }
   };
 
   /** The Mate left last stays connected `RECENT_MS`, unless another is left after it. */
@@ -1030,6 +1080,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         for (const stop of stops) stop();
         for (const followed of activity.values()) followed.stop();
         activity.clear();
+        for (const followed of hqPresence.values()) followed.stop();
+        hqPresence.clear();
         recent?.disarm();
         actions.clear();
         for (const stop of addressWatch.values()) stop();

@@ -17,7 +17,8 @@ import { emptyAccount, linkKeys, type AccountState, type ScopeKey } from "../mod
 import { reduceAccount, type AccountInput, type Row } from "../reducer.ts";
 import { readsOfState } from "../store.ts";
 import type { StreamEvent } from "../streamMachine.ts";
-import { pastGrace } from "../__fixtures__/account.ts";
+import { liveProjects, pastGrace } from "../__fixtures__/account.ts";
+import { membershipInputs } from "../__fixtures__/membership.ts";
 import { hqMates } from "./hqMates.ts";
 import { hqAppChanges, hqNavigation, hqPersonFacts, hqStatus } from "./hqNavigation.ts";
 import { gitEnvironment } from "../__fixtures__/hqWire.ts";
@@ -68,7 +69,7 @@ const rows: ReadonlyArray<Row> = [
     family: "hqOrganization",
     id: ORG,
     revision,
-    value: { unheld: [], build: "b1" },
+    value: { build: "b1" },
   },
   {
     family: "hqStatus",
@@ -606,6 +607,31 @@ describe("hqNavigation", () => {
     const { structure } = navigation(removed);
     expect(structure?.apps[0]?.projects.map(({ name }) => name)).toEqual(["Ada"]);
     expect(structure?.ungrouped).toEqual([]);
+  });
+});
+
+// Brief W18 (2026-11-05): HQ names no project it holds nowhere; the client derives the placeable
+// set from the person's own live Zerops list and HQ's rows, and offers by the shared role rule.
+describe("placeable projects", () => {
+  const placeable = (role: string) =>
+    navigation(
+      apply(read, [
+        ...liveProjects(ORG, [{ id: "ada" }, { id: "stage" }, { id: "lone" }, { id: "free" }]),
+        ...membershipInputs(role),
+      ]),
+    ).structure?.placeable;
+
+  it("a project in the person's live Zerops list that HQ holds no row for is placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toContain("free");
+  });
+
+  it("a project HQ holds as a Mate, a stage or a production is not placeable", () => {
+    expect(Object.keys(placeable("ADMIN") ?? {})).toEqual(["free"]);
+  });
+
+  it("a read-only person is offered no Mate record on a placeable project", () => {
+    expect(placeable("ADMIN")?.free?.create_mate_record?.allow).toBe(true);
+    expect(placeable("READ_ONLY")?.free?.create_mate_record?.allow).toBe(false);
   });
 });
 

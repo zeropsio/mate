@@ -19,9 +19,11 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Path from "effect/Path";
+import * as PubSub from "effect/PubSub";
 import * as Ref from "effect/Ref";
 import * as Schema from "effect/Schema";
 import * as Semaphore from "effect/Semaphore";
+import * as Stream from "effect/Stream";
 
 import { writeFileStringAtomically } from "../atomicWrite.ts";
 import { ServerConfig } from "../config.ts";
@@ -49,6 +51,8 @@ export interface SignInStore {
   readonly lastSigners: Effect.Effect<Readonly<Record<string, string>>>;
   readonly save: (key: string, record: SignInRecord) => Effect.Effect<void, SignInSaveError>;
   readonly clear: (key: string) => Effect.Effect<void>;
+  /** Fires after each save or clear it kept: whose a login is may have moved. */
+  readonly changes: Stream.Stream<void>;
 }
 
 /** Where the document lives under the server's home. */
@@ -110,6 +114,7 @@ export interface SignInDocument {
 export const makeSignInStore = (document: SignInDocument) =>
   Effect.gen(function* () {
     const lock = yield* Semaphore.make(1);
+    const moved = yield* PubSub.unbounded<void>();
     const kept = yield* document.read.pipe(
       Effect.flatMap((contents) =>
         contents === undefined
@@ -135,7 +140,8 @@ export const makeSignInStore = (document: SignInDocument) =>
       save: (key, record) =>
         Effect.gen(function* () {
           const current = yield* Ref.updateAndGet(records, (held) => ({ ...held, [key]: record }));
-          if (yield* document.write(encodeJson(current))) return;
+          if (yield* document.write(encodeJson(current)))
+            return yield* PubSub.publish(moved, undefined);
           yield* Ref.set(records, without(current, key));
           yield* forget(current, key);
           return yield* new SignInSaveError({ key });
@@ -147,10 +153,11 @@ export const makeSignInStore = (document: SignInDocument) =>
           if (record === undefined || record.credentialCleared) return;
           const next = { ...current, [key]: { ...record, credentialCleared: true as const } };
           yield* Ref.set(records, next);
-          if (yield* document.write(encodeJson(next))) return;
           // If history cannot be written, the former credential's authority must still go.
-          yield* forget(current, key);
+          if (!(yield* document.write(encodeJson(next)))) yield* forget(current, key);
+          yield* PubSub.publish(moved, undefined);
         }).pipe(lock.withPermits(1)),
+      changes: Stream.fromPubSub(moved),
     } satisfies SignInStore;
   });
 
@@ -184,10 +191,14 @@ export const fileSignInStore = (filePath: string) =>
 export const memorySignInStore = (initial: SignInRecords = {}) =>
   Effect.gen(function* () {
     const records = yield* Ref.make(initial);
+    const moved = yield* PubSub.unbounded<void>();
     return {
       load: Ref.get(records).pipe(Effect.map(activeRecords)),
       lastSigners: Ref.get(records).pipe(Effect.map(lastSignersOf)),
-      save: (key, record) => Ref.update(records, (current) => ({ ...current, [key]: record })),
+      save: (key, record) =>
+        Ref.update(records, (current) => ({ ...current, [key]: record })).pipe(
+          Effect.andThen(PubSub.publish(moved, undefined)),
+        ),
       clear: (key) =>
         Ref.update(records, (current) => {
           const record = current[key];
@@ -197,7 +208,8 @@ export const memorySignInStore = (initial: SignInRecords = {}) =>
                 ...current,
                 [key]: { ...record, credentialCleared: true as const },
               };
-        }),
+        }).pipe(Effect.andThen(PubSub.publish(moved, undefined))),
+      changes: Stream.fromPubSub(moved),
     } satisfies SignInStore;
   });
 

@@ -517,6 +517,38 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     expect(importOf(requests)).toBeUndefined();
   });
 
+  // W17 (alfa rev7 1b): a key HQ would not authorize is a key no container holds.
+  it.each([
+    { kind: "minted", deleted: ["DELETE /client/org-1/integration-token/token-new"] },
+    { kind: "regenerated", deleted: [] },
+  ] as const)(
+    "a $kind key whose authorization HQ refused is deleted only where this press minted it",
+    async ({ kind, deleted }) => {
+      const { client, requests } = platformClient(
+        kind === "regenerated"
+          ? {
+              tokens: [
+                {
+                  id: "earlier",
+                  name: "zcp-Acme Docs - Ada",
+                  roleCode: "NO_ACCESS",
+                  projects: [{ projectId: "project-9", roleCode: "BASIC_USER" }],
+                  createdByUser: { id: "delegating-creator" },
+                },
+              ],
+            }
+          : {},
+      );
+      await expect(
+        client.importDevelopmentContainer(INPUT, undefined, undefined, async () => {
+          throw new Error("HQ refused ZCP authorization");
+        }),
+      ).rejects.toThrow("HQ refused ZCP authorization");
+      expect(writesOf(requests).filter((write) => write.startsWith("DELETE"))).toEqual(deleted);
+      expect(importOf(requests)).toBeUndefined();
+    },
+  );
+
   it("an existing container does not establish or replace its authorizer", async () => {
     const { client, requests } = platformClient({
       services: [

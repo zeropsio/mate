@@ -58,7 +58,6 @@ import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";
 import * as ZeropsRestartReadModule from "./ZeropsRestartRead.ts";
-import * as ZeropsOrgReadModule from "./ZeropsOrgRead.ts";
 import * as ZeropsProjectSignersModule from "./ZeropsProjectSigners.ts";
 import * as ZeropsSetupModule from "./ZeropsSetup.ts";
 import * as ZeropsSignInsModule from "./zeropsSignIns.ts";
@@ -86,10 +85,7 @@ export const ZeropsMateAccessListLive = Layer.unwrap(
           Layer.provide(ZeropsAccessReadModule.layer(zerops)),
         );
   }),
-).pipe(
-  Layer.provideMerge(ZeropsOrgReadModule.layer),
-  Layer.provideMerge(ZeropsMateKeyModule.layer),
-);
+).pipe(Layer.provideMerge(ZeropsMateKeyModule.layer));
 
 /** One connection registry shared by the HQ link, WebSocket and HTTP transports. */
 export const ZeropsConnectionsLive = ZeropsConnectionsModule.layer.pipe(
