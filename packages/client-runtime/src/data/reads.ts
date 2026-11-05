@@ -441,33 +441,44 @@ export function holdRoutePreview(
   registry: AtomRegistry.AtomRegistry,
   projectId: string,
 ): () => void {
-  let release: (() => void) | null = null;
+  let held: {
+    readonly demandDetail: AccountReads["demandDetail"];
+    readonly release: () => void;
+  } | null = null;
   const hold = (account: AccountReads | null) => {
-    release?.();
-    if (account === null) {
-      release = null;
-      return;
-    }
-    const project = account.demandDetail({
-      family: "project",
-      listing: ROUTE_PROJECT,
-      ownerId: projectId,
-    });
-    const services = account.demandDetail({
-      family: "service",
-      listing: ROUTE_SERVICES,
-      ownerId: projectId,
-    });
-    release = () => {
-      project();
-      services();
-    };
+    // The account's reads are published again as they change; the same account's demand is the
+    // same hold, so a read under way goes on through it.
+    if (account?.demandDetail === held?.demandDetail) return;
+    const before = held;
+    held =
+      account === null
+        ? null
+        : {
+            demandDetail: account.demandDetail,
+            release: (() => {
+              const project = account.demandDetail({
+                family: "project",
+                listing: ROUTE_PROJECT,
+                ownerId: projectId,
+              });
+              const services = account.demandDetail({
+                family: "service",
+                listing: ROUTE_SERVICES,
+                ownerId: projectId,
+              });
+              return () => {
+                project();
+                services();
+              };
+            })(),
+          };
+    before?.release();
   };
   const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
   return () => {
     unsubscribe();
-    release?.();
-    release = null;
+    held?.release();
+    held = null;
   };
 }
 

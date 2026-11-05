@@ -14,6 +14,7 @@ import {
   NOT_READ_PROCESSES,
   NOT_READ_SERVICES,
   NOT_READ_USAGE,
+  holdRoutePreview,
   readMateFlag,
   projectProcessesAtom,
   projectUsageAtom,
@@ -580,5 +581,42 @@ describe("hqMateSetupAtom", () => {
       closedOff: "unknown",
       marker: "unknown",
     });
+  });
+});
+
+describe("holdRoutePreview", () => {
+  it("the route's project read ahead goes on through the account's reads published again, and moves to another account's", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    const events: Array<string> = [];
+    const demandOf = (account: string) => (demand: { readonly listing?: string }) => {
+      events.push(`${account} hold ${demand.listing}`);
+      return () => events.push(`${account} release ${demand.listing}`);
+    };
+    const first = demandOf("a");
+    const reads = (demandDetail: ReturnType<typeof demandOf>) => ({
+      data: store.data,
+      orgId: ORG,
+      demandDetail,
+      renewHeld: () => {},
+    });
+    registry.set(accountReadsAtom, reads(first));
+    const release = holdRoutePreview(registry, "p1");
+    registry.set(accountReadsAtom, reads(first));
+    expect(events).toEqual(["a hold route-project", "a hold route-services"]);
+
+    registry.set(accountReadsAtom, reads(demandOf("b")));
+    release();
+
+    expect(events).toEqual([
+      "a hold route-project",
+      "a hold route-services",
+      "b hold route-project",
+      "b hold route-services",
+      "a release route-project",
+      "a release route-services",
+      "b release route-project",
+      "b release route-services",
+    ]);
   });
 });

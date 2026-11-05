@@ -214,7 +214,10 @@ export function zeropsNavigationLink(options: {
 } {
   const { orgId, store } = options;
   /** Each detail read ahead over plain REST, by scope, while its read is under way. */
-  const readingAhead = new Map<ScopeKey, Fiber.Fiber<void>>();
+  const readingAhead = new Map<
+    ScopeKey,
+    { readonly token: object; fiber: Fiber.Fiber<void> | null }
+  >();
   const demands = makeDetailDemands({
     demanded: (scope, demanded) => {
       Effect.runSync(
@@ -227,36 +230,64 @@ export function zeropsNavigationLink(options: {
         ),
       );
       if (demanded) {
-        const read = readAhead(scope);
-        if (read !== null) readingAhead.set(scope, Effect.runFork(read));
+        const token = {};
+        const read = readAhead(scope, token);
+        if (read === null) return;
+        const reading: { readonly token: object; fiber: Fiber.Fiber<void> | null } = {
+          token,
+          fiber: null,
+        };
+        readingAhead.set(scope, reading);
+        const fiber = Effect.runFork(read);
+        // A read that answered at once has already let its handle go.
+        if (readingAhead.get(scope) === reading) reading.fiber = fiber;
       } else {
         const reading = readingAhead.get(scope);
         readingAhead.delete(scope);
-        if (reading !== undefined) Effect.runFork(Fiber.interrupt(reading));
+        if (reading?.fiber != null) Effect.runFork(Fiber.interrupt(reading.fiber));
       }
     },
   });
   /**
    * A detail read ahead (`DetailListing.ahead`), once per hold, over the wire's plain REST read:
-   * no receiver, no registration and no attempt waits before it, and none fences it. Only its
-   * answer commits; a failure or the owner's refusal leaves the scope unread, for the family's
-   * own scope to say. Its rows carry no revision: whatever that scope reads replaces them.
+   * no receiver, no registration and no attempt waits before it, and none fences it. Its rows
+   * carry no revision: whatever the family's own scope reads replaces them, and that scope's whole
+   * read forgets the rest (`reducer.ts`). An answer that lands once that scope is read whole says
+   * nothing it does not. The owner's 404 proves the project gone and its 403 withholds it, purging
+   * what the read ahead wrote; any other failure leaves the scope unread, for the listing to say.
    */
-  const readAhead = (scope: ScopeKey): Effect.Effect<void> | null => {
+  const readAhead = (scope: ScopeKey, token: object): Effect.Effect<void> | null => {
     const read = options.wire.read;
     const { spec, detail } = scopeListing(scope);
     if (read === undefined || detail?.ahead !== true) return null;
     const owner = { orgId, ownerId: scope.split(":").slice(3).join(":") };
+    const coveredWhole = () =>
+      store.state().memberships.get(scopeOf(spec, orgId))?.coverage === "complete";
     return Effect.gen(function* () {
       const generation = streamOf(store.state(), scope).generation;
-      store.dispatch({ kind: "baseline-begin", scope, generation });
       const answer = yield* read(detail.zerops.path(owner));
-      if (answer.status !== 200) return;
+      if (answer.status === 403 || answer.status === 404) {
+        store.dispatch({ kind: "forget", scopes: [scope] });
+        store.dispatch(
+          answer.status === 404
+            ? {
+                kind: "proven-deletion",
+                family: "project",
+                id: owner.ownerId,
+                scope,
+                evidence: `GET ${detail.zerops.path(owner)} answered 404`,
+              }
+            : { kind: "access", family: "project", id: owner.ownerId, scope, access: "denied" },
+        );
+        return;
+      }
+      if (answer.status !== 200 || coveredWhole()) return;
       const items = detail.zerops.items(answer.body, owner);
       if (items === undefined) return;
       const rows = rowsOf(spec.family, items).map(
         (row): Row => ({ ...row, revision: { kind: "zerops", version: null } }) as Row,
       );
+      store.dispatch({ kind: "baseline-begin", scope, generation });
       store.dispatch({
         kind: "baseline-commit",
         scope,
@@ -268,7 +299,12 @@ export function zeropsNavigationLink(options: {
       });
     }).pipe(
       Effect.catch(() => Effect.void),
-      Effect.ensuring(Effect.sync(() => readingAhead.delete(scope))),
+      // Only this read's own handle: a later hold's read is never let go by this one's end.
+      Effect.ensuring(
+        Effect.sync(() => {
+          if (readingAhead.get(scope)?.token === token) readingAhead.delete(scope);
+        }),
+      ),
     );
   };
   const key: LinkKey = linkKeys.zerops(orgId);
