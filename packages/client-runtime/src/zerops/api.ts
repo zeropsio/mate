@@ -1867,7 +1867,9 @@ export class ZeropsApiClient {
    * - a key an earlier press minted, its container never imported, is reused
    *   — set to its own project alone where it is still `ADMIN` (`planMateKey`),
    *   and its value regenerated, because the value is shown once and nothing
-   *   kept it — never a second key beside it.
+   *   kept it — never a second key beside it;
+   * - a key this call minted whose authorization `onKeyEstablished` refused is deleted: no
+   *   container will hold it.
    *
    * The value lives in this call alone: it is in the import's body and in no
    * answer, no log and no error.
@@ -1928,19 +1930,21 @@ export class ZeropsApiClient {
       this.#assertGeneration(generation);
     }
     let apiKey: string;
+    /** The key this call minted, never an earlier press's. */
+    let minted: string | undefined;
     if (earlier === undefined) {
-      apiKey = (
-        await this.mintIntegrationToken(
-          {
-            clientId: input.clientId,
-            name: mateKeyName(input.projectName),
-            roleCode: "NO_ACCESS",
-            projects: grants,
-          },
-          signal,
-          beforeWrite,
-        )
-      ).token;
+      const key = await this.mintIntegrationToken(
+        {
+          clientId: input.clientId,
+          name: mateKeyName(input.projectName),
+          roleCode: "NO_ACCESS",
+          projects: grants,
+        },
+        signal,
+        beforeWrite,
+      );
+      apiKey = key.token;
+      minted = key.id;
     } else {
       // The write replaces the key's whole project list: it is planned from the key as read
       // under its lock, every token writer's, and lowers its org role to none. Found by its name,
@@ -1989,7 +1993,19 @@ export class ZeropsApiClient {
       const keyHash = Array.from(new Uint8Array(digest), (byte) =>
         byte.toString(16).padStart(2, "0"),
       ).join("");
-      await onKeyEstablished({ projectId: input.projectId, keyHash });
+      try {
+        await onKeyEstablished({ projectId: input.projectId, keyHash });
+      } catch (cause) {
+        // A key HQ did not authorize is a key no container holds: the one this call minted is
+        // taken back, by the account that minted it; an earlier press's stays for the next to reuse.
+        if (minted !== undefined && this.#generation === generation)
+          await this.deleteIntegrationToken(
+            { clientId: input.clientId, tokenId: minted },
+            signal,
+            beforeWrite,
+          ).catch(() => undefined);
+        throw cause;
+      }
       this.#assertGeneration(generation);
     }
 
