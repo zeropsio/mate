@@ -7,7 +7,9 @@
  * replay-safe handler's failure backs off and retries by its owner kind's policy (a conversation's
  * five quick tries; the crew's ten, minutes apart, so an ssh hiccup passes); past it, it fails for
  * good. A process-bound handler's failure is its outcome: it may have acted, so it is never tried
- * again. A fiber sleeps until the next row comes due or the actor rings.
+ * again. A fiber sleeps until the next row comes due or the outbox changes: every writer rings
+ * (the actor's commit that queues a row or records an outcome, and the worker's own backoff,
+ * deferred settle and close), so a fiber of the pool that did not write looks again.
  *
  * The conversations' effects and every other owner's run on fibers of their own: a crew check or
  * setup may hold its fiber for minutes, and never holds a conversation's send.
@@ -105,6 +107,8 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     owner: options.ownerRetry ?? OWNER_RETRY,
   };
   const pollMillis = options.pollMillis ?? 30_000;
+  /** A write that changes what the pools may claim or when: the pools look again. */
+  const rung = <A, E>(write: Effect.Effect<A, E>) => Effect.tap(write, () => signals.effects.ring);
 
   const attempt = (row: EffectRow): Effect.Effect<HandlerResult> => {
     const handler = handlers.get(row.kind);
@@ -158,15 +162,17 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
     );
     if (told._tag === "Failure") {
       yield* Effect.logWarning("engine effect outcome not recorded yet", told.cause);
-      yield* outbox.settleLater(row, yield* Clock.currentTimeMillis);
+      yield* rung(outbox.settleLater(row, yield* Clock.currentTimeMillis));
       return;
     }
     // The owner no longer tracks it (a bug or a lost state): close the row so its lane moves on.
     if (told.value._tag === "Rejected") {
-      yield* outbox.close(
-        row.effectId,
-        outcome.kind === "ok" ? "done" : outcome.kind === "cut" ? "cut" : "failed",
-        `settle rejected: ${told.value.rejection.reason}`,
+      yield* rung(
+        outbox.close(
+          row.effectId,
+          outcome.kind === "ok" ? "done" : outcome.kind === "cut" ? "cut" : "failed",
+          `settle rejected: ${told.value.rejection.reason}`,
+        ),
       );
     }
   });
@@ -202,11 +208,13 @@ export const makeEffectWorker = Effect.fn("makeEffectWorker")(function* (
         if (row.attempt >= policy.maxAttempts) {
           yield* settle(row, { kind: "failed", reason: result.reason });
         } else {
-          yield* outbox.retry(
-            row,
-            yield* Clock.currentTimeMillis,
-            result.reason,
-            policy.delayMs(row.attempt),
+          yield* rung(
+            outbox.retry(
+              row,
+              yield* Clock.currentTimeMillis,
+              result.reason,
+              policy.delayMs(row.attempt),
+            ),
           );
         }
         return true;
