@@ -7,7 +7,11 @@
  *
  * Pure: no network, no clock.
  */
-import type { VaultChange } from "@t3tools/client-runtime/data";
+import {
+  VAULT_ASK_ACTIVITY_KIND,
+  type VaultAskActivityPayload,
+  type VaultChange,
+} from "@t3tools/client-runtime/data";
 
 const scopeIdOf = (change: Pick<VaultChange, "scope">): string =>
   change.scope.kind === "shared" ? "shared" : change.scope.serviceId;
@@ -31,6 +35,8 @@ export function vaultTurnChanges(input: {
   readonly since: ReadonlyArray<VaultChange>;
   /** Changes set aside or sent, by `vaultChangeIdOf`. */
   readonly hidden: ReadonlySet<string>;
+  /** Values the engine told the Mate of as it answered their ask. */
+  readonly answered: ReadonlyArray<VaultAskAnswered>;
 }): ReadonlyArray<VaultChange> {
   const byValue = new Map<string, VaultChange>();
   for (const change of input.own) byValue.set(vaultValueIdOf(change), change);
@@ -38,11 +44,42 @@ export function vaultTurnChanges(input: {
   for (const change of input.since) byValue.set(vaultValueIdOf(change), change);
   return [...byValue.values()]
     .filter((change) => !input.hidden.has(vaultChangeIdOf(change)))
+    .filter((change) => !input.answered.some((answer) => toldByAnswer(change, answer)))
     .sort(
       // Times come from the platform (seconds) and this client (milliseconds): compared as times.
       (left, right) =>
         Date.parse(left.at) - Date.parse(right.at) || left.key.localeCompare(right.key),
     );
+}
+
+/** A value the engine told the Mate of as it answered the ask for it: its key, vault and when. */
+export interface VaultAskAnswered {
+  readonly key: string;
+  readonly scope: VaultAskActivityPayload["scope"];
+  /** When the ask was answered (epoch ms). */
+  readonly at: number;
+}
+
+/** A change the ask's answer already told: that key in that vault, made before the answer. */
+const toldByAnswer = (change: VaultChange, answer: VaultAskAnswered): boolean =>
+  change.key === answer.key &&
+  (answer.scope.kind === "shared"
+    ? change.scope.kind === "shared"
+    : change.scope.kind === "service" && change.hostname === answer.scope.hostname) &&
+  Date.parse(change.at) <= answer.at;
+
+/** The values the engine's asks were answered saved for, off the conversation's records. */
+export function vaultAsksAnswered(
+  activities: ReadonlyArray<{ readonly kind: string; readonly payload: unknown }> | undefined,
+): ReadonlyArray<VaultAskAnswered> {
+  const answered: VaultAskAnswered[] = [];
+  for (const activity of activities ?? []) {
+    if (activity.kind !== VAULT_ASK_ACTIVITY_KIND) continue;
+    const ask = activity.payload as VaultAskActivityPayload;
+    if (ask.state === "saved" && ask.answer !== null)
+      answered.push({ key: ask.key, scope: ask.scope, at: ask.answer.at });
+  }
+  return answered;
 }
 
 /**

@@ -6,6 +6,7 @@ import {
   vaultChangeIdOf,
   vaultChipLabel,
   vaultChipsOnlyText,
+  type VaultAskAnswered,
   vaultTurnChanges,
 } from "./vaultTurnNotes.logic";
 
@@ -32,6 +33,7 @@ describe("vaultTurnChanges", () => {
     readonly own: ReadonlyArray<VaultChange>;
     readonly since: ReadonlyArray<VaultChange>;
     readonly hidden?: ReadonlyArray<VaultChange>;
+    readonly answered?: ReadonlyArray<VaultAskAnswered>;
     readonly told: ReadonlyArray<string>;
   }> = [
     { name: "nothing changed", own: [], since: [], told: [] },
@@ -85,6 +87,35 @@ describe("vaultTurnChanges", () => {
       told: ["A changed"],
     },
     {
+      name: "a value an ask's answer told the Mate is not told again",
+      own: [change("STRIPE_KEY", "added", "2026-10-07T10:00:00.400Z")],
+      since: [change("STRIPE_KEY", "added", "2026-10-07T10:00:00Z")],
+      answered: [
+        { key: "STRIPE_KEY", scope: { kind: "shared" }, at: Date.parse("2026-10-07T10:00:01Z") },
+      ],
+      told: [],
+    },
+    {
+      name: "the same key changed after the ask's answer is told",
+      own: [],
+      since: [change("STRIPE_KEY", "changed", "2026-10-07T10:09:00Z")],
+      answered: [
+        { key: "STRIPE_KEY", scope: { kind: "shared" }, at: Date.parse("2026-10-07T10:00:01Z") },
+      ],
+      told: ["STRIPE_KEY changed"],
+    },
+    {
+      name: "an ask's answer for another vault leaves the change to tell",
+      own: [],
+      since: [
+        change("PORT", "added", "2026-10-07T10:00:00Z", { kind: "service", serviceId: "s1" }),
+      ],
+      answered: [
+        { key: "PORT", scope: { kind: "shared" }, at: Date.parse("2026-10-07T10:00:01Z") },
+      ],
+      told: ["PORT added"],
+    },
+    {
       name: "oldest first",
       own: [change("Z", "added", "2026-10-07T10:00:00Z")],
       since: [change("A", "changed", "2026-10-07T10:03:00Z")],
@@ -92,18 +123,20 @@ describe("vaultTurnChanges", () => {
     },
   ];
   it.each(
-    Array.from(cases, ({ name, own, since, hidden, told }) => ({
+    Array.from(cases, ({ name, own, since, hidden, answered, told }) => ({
       title: name,
       own,
       since,
       hidden,
+      answered,
       told,
     })),
-  )("$title", ({ own, since, hidden, told }) => {
+  )("$title", ({ own, since, hidden, answered, told }) => {
     const changes = vaultTurnChanges({
       own,
       since,
       hidden: new Set((hidden ?? []).map(vaultChangeIdOf)),
+      answered: answered ?? [],
     });
     expect(changes.map(vaultChipLabel)).toEqual(told);
   });

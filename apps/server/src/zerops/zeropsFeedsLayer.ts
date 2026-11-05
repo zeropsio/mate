@@ -53,7 +53,7 @@ import * as ZeropsMateAccessListModule from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { mateAutoUpdatePolicyLayer } from "./MateAutoUpdatePolicy.ts";
 import * as ZeropsMateUpdateModule from "./ZeropsMateUpdate.ts";
-import { zeropsUserIdOf } from "./zeropsSubject.ts";
+import { zeropsUserIdOf } from "@t3tools/contracts";
 import * as ZeropsConnectionsModule from "./ZeropsConnections.ts";
 import * as ZeropsTicketDoorModule from "./ZeropsTicketDoor.ts";
 import * as ZeropsOffboardingModule from "./ZeropsOffboarding.ts";

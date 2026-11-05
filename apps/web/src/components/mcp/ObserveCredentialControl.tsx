@@ -1,4 +1,8 @@
-/** Status of the Zerops Control Plane observation access, and Authorize where it has none. */
+/**
+ * Whose Zerops permissions the built-in Zerops tools observe stage and production with, said in
+ * the Zerops row's facts: "Reads them as Aleš · until 4 Dec · Renew". Renew (Authorize, where
+ * none is held) is offered to a person who may operate the Mate; HQ's refusal is said in its words.
+ */
 import type { EnvironmentId } from "@t3tools/contracts";
 import {
   offersObserveAuthorize,
@@ -11,15 +15,11 @@ import { useAuthorizeObserve, type ObserveAuthorizePress } from "~/zerops/useObs
 import { useEnvironmentProjectRef } from "~/zerops/useZeropsFeeds";
 import { useAccountOrgId, useProjection } from "~/zerops/ZeropsAccountData";
 import { useHqPersonNames } from "~/zerops/useZeropsMateOwners";
-import { Button } from "../ui/button";
+import { InlineButton } from "../ui/button";
 
 const UNDECIDED = Atom.make<boolean | undefined>(undefined);
 
-export function ObserveCredentialControl({
-  environmentId,
-}: {
-  readonly environmentId: EnvironmentId;
-}) {
+export function ObserveLine({ environmentId }: { readonly environmentId: EnvironmentId }) {
   const project = useEnvironmentProjectRef(environmentId);
   const projectId = project?.projectId ?? null;
   const control = useObserveCredential(projectId);
@@ -37,88 +37,78 @@ export function ObserveCredentialControl({
     metadata: control.state.metadata,
   });
   return (
-    <ObserveCredentialControlBody
-      {...control}
-      personName={personName}
+    <ObserveLineBody
       authorize={offered ? authorize : null}
+      available={control.available}
+      personName={personName}
       press={press}
+      state={control.state}
     />
   );
 }
-export function ObserveCredentialControlBody(props: {
+
+const day = (iso: string) =>
+  new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short" });
+
+export function ObserveLineBody(props: {
   readonly state: ObserveCredentialRead;
   readonly available: boolean;
-  readonly again: () => void;
   readonly personName: (userId: string) => string | undefined;
-  /** Offered to a viewer who may operate the Mate while it reads not authorized; else `null`. */
+  /** Offered to a viewer who may operate the Mate; else `null`. */
   readonly authorize: (() => void) | null;
   readonly press: ObserveAuthorizePress | null;
 }) {
   const { metadata } = props.state;
-  const known = metadata.state === "known" ? metadata : null;
-  const reading = metadata.state === "reading" || metadata.state === "unread";
+  const working = props.press?.state === "working";
+  const action = (words: string) =>
+    props.authorize === null ? null : (
+      <>
+        {" · "}
+        <InlineButton disabled={working} onClick={props.authorize}>
+          {words}
+        </InlineButton>
+      </>
+    );
+  const refused =
+    props.press?.state === "refused" ? (
+      <span className="block text-destructive-foreground" role="alert">
+        {props.press.words}
+      </span>
+    ) : null;
+  if (!props.available) return <span className="text-muted-foreground">Unavailable here</span>;
+  if (metadata.state === "known") {
+    const { value, stale } = metadata;
+    if (!value.authorized) {
+      return (
+        <span data-observe-credential="none">
+          Not authorized{stale ? " · last known" : ""}
+          {action("Authorize")}
+          {refused}
+        </span>
+      );
+    }
+    const who =
+      value.userId === null ? "someone" : (props.personName(value.userId) ?? value.userId);
+    return (
+      <span data-observe-credential="authorized">
+        Reads them as {who}
+        {value.expiresAt === null ? "" : ` · until ${day(value.expiresAt)}`}
+        {stale ? " · last known" : ""}
+        {action("Renew")}
+        {refused}
+      </span>
+    );
+  }
+  if (metadata.state === "reading" || metadata.state === "unread") {
+    return (
+      <span className="text-muted-foreground" role="status">
+        Reading…
+      </span>
+    );
+  }
   return (
-    <section
-      aria-label="Observe authorization"
-      className="mt-4 flex flex-col gap-2 border-t border-border pt-4"
-      data-observe-credential
-    >
-      <h3 className="text-sm font-medium">Zerops Control Plane observation</h3>
-      <p className="text-xs leading-4.5 text-muted-foreground">
-        Observation uses the Zerops permissions of the person who set up this Mate’s Zerops Control
-        Plane.
-      </p>
-      {!props.available ? (
-        <p className="text-xs text-muted-foreground">Observe authorization is unavailable.</p>
-      ) : known !== null ? (
-        <>
-          <p className="text-xs">
-            {known.value.authorized ? "Authorized" : "Not authorized"}
-            {known.stale ? " · Last known state" : ""}
-          </p>
-          {known.value.authorized ? (
-            <p className="text-xs text-muted-foreground">
-              Authorized by{" "}
-              {known.value.userId === null
-                ? "Unknown person"
-                : (props.personName(known.value.userId) ?? known.value.userId)}
-              {known.value.expiresAt === null
-                ? ""
-                : ` · Expires ${new Date(known.value.expiresAt).toLocaleString()}`}
-            </p>
-          ) : null}
-        </>
-      ) : reading ? (
-        <p className="text-xs text-muted-foreground" role="status">
-          Reading authorization…
-        </p>
-      ) : (
-        <p className="text-xs text-destructive-foreground" role="alert">
-          {metadata.state === "failed" ? metadata.words : "You cannot read this authorization."}
-        </p>
-      )}
-      {props.press?.state === "refused" ? (
-        <p className="text-xs text-destructive-foreground" role="alert">
-          {props.press.words}
-        </p>
-      ) : null}
-      {props.available ? (
-        <div className="flex gap-2">
-          {props.authorize === null ? null : (
-            <Button
-              disabled={props.press?.state === "working"}
-              onClick={props.authorize}
-              size="sm"
-              variant="primary"
-            >
-              Authorize
-            </Button>
-          )}
-          <Button disabled={reading} onClick={props.again} size="sm" variant="ghost">
-            Refresh
-          </Button>
-        </div>
-      ) : null}
-    </section>
+    <span className="text-destructive-foreground" role="alert">
+      {metadata.state === "failed" ? metadata.words : "You can't read whose permissions these are."}
+    </span>
   );
 }

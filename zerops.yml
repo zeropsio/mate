@@ -48,6 +48,9 @@ zerops:
         # Mate HQ, the one every Mate and this client share (`configuredHq`):
         # named here, no organization's anchor is read to find it.
         VITE_HQ_ORIGIN: https://mate-hq.zerops.io
+        # Adobe Express Embed SDK's public client id (Adobe limits it to the
+        # domains listed for it); the panel still waits on each person's Labs switch.
+        VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -107,6 +110,7 @@ zerops:
         VITE_HOSTED_APP_URL: https://staging-web-origin-placeholder.invalid
         VITE_HQ_ORIGIN: https://hq-31d9-8080.prg1.zerops.app
         VITE_ZEROPS_SIGN_IN: device-login
+        VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"

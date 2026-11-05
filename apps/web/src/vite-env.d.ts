@@ -22,6 +22,8 @@ interface ImportMetaEnv {
   readonly VITE_HQ_ORIGIN: string;
   /** The login app the consent page asks for; `mate` when unset. */
   readonly VITE_ZEROPS_LOGIN_APP_CODE?: string;
+  /** The Adobe Express Embed SDK's API key (`components/express/expressSdk.ts`); no Express panel when unset. */
+  readonly VITE_ADOBE_EXPRESS_CLIENT_ID?: string;
   readonly APP_VERSION: string;
 }
 

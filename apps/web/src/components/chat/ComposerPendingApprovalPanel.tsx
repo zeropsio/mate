@@ -2,7 +2,8 @@ import { memo, type ReactNode } from "react";
 import { type PendingApproval } from "../../session-logic";
 import { cn } from "~/lib/utils";
 
-import { ComposerAsk, ComposerAskMark } from "./ComposerAsk";
+import { AskDock } from "../ask/AskCard";
+import { ComposerAskMark } from "./ComposerAsk";
 
 interface ComposerPendingApprovalPanelProps {
   approval: PendingApproval;
@@ -59,22 +60,22 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
             ? "Permission request"
             : "File change";
 
-  // What it asks, as the Mate would say it: the face's needs pose says it waits on the person.
+  // What approving does, a verb and its subject; who asks is the face (or named in the label).
   const asks =
     approval.requestKind === "mcp-elicitation"
       ? approval.appName
-        ? "asks for access to"
-        : "asks for access to an app"
+        ? "Give access to"
+        : "Give access to an app"
       : approval.requestKind === "command"
-        ? "wants to run this command"
+        ? "Run this command"
         : approval.requestKind === "file-read"
-          ? "wants to read this file"
+          ? "Read this file"
           : approval.requestKind === "permission"
-            ? "asks for a permission"
-            : "wants to change files";
+            ? "Grant a permission"
+            : "Change files";
 
   return (
-    <ComposerAsk
+    <AskDock
       // Someone else's agent: whom it waits on stands where its decisions would.
       actions={
         waitingLabel === undefined ? (
@@ -86,11 +87,13 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
       face={face ?? <ComposerAskMark />}
       kind="approval"
       label={fallbackLabel}
+      // A command, a file or an app runs in the Mate's own workspace.
+      where={{ scope: "mate", detail: null }}
       title={
         <>
           {/* The face's needs pose says it waits on the viewer; anyone else is named. */}
           {waitingLabel === undefined ? <span className="sr-only">Waiting for you</span> : null}
-          <span data-pending-request-kind={requestKind}>{`${who} ${asks}`}</span>
+          <span data-pending-request-kind={requestKind}>{asks}</span>
           {approval.appName ? (
             <>
               {" "}
@@ -122,6 +125,6 @@ export const ComposerPendingApprovalPanel = memo(function ComposerPendingApprova
       >
         {approval.detail || fallbackLabel}
       </Detail>
-    </ComposerAsk>
+    </AskDock>
   );
 });

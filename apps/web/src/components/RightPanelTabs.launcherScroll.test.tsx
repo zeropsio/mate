@@ -22,8 +22,11 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  // The last card stays MCP: these cases scroll the launcher, not its order.
+  persona: "hidden",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 let host: HTMLDivElement;
@@ -82,7 +85,7 @@ describe("RightPanelTabs launcher scrolling", () => {
   it.each([
     { keys: ["ArrowDown"], lit: "Browser" },
     { keys: ["ArrowDown", "ArrowDown"], lit: "Mac" },
-    { keys: ["ArrowUp"], lit: "MCP" },
+    { keys: ["ArrowUp"], lit: "Tools" },
   ])("brings the card $keys lights ($lit) into view", ({ keys, lit }) => {
     for (const key of keys) press(key);
     expect(scrolled.at(-1)).toMatch(new RegExp(`^${lit}`));

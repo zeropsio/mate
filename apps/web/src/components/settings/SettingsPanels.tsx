@@ -61,6 +61,8 @@ import {
 } from "../../hooks/useTheme";
 import { useLocalStorage } from "../../hooks/useLocalStorage";
 import { usePrimarySettings, useUpdatePrimarySettings } from "../../hooks/useSettings";
+import { expressLabNote } from "../express/expressGate.logic";
+import { useExpressGate } from "../express/useExpressGate";
 import { useThreadActions } from "../../hooks/useThreadActions";
 import { useDesktopUpdateState } from "../../state/desktopUpdate";
 import {
@@ -1714,9 +1716,19 @@ function TokenStreamingWarningDialog({
   );
 }
 
-function LegacyFeaturesSection() {
-  const settings = usePrimarySettings();
-  const updateSettings = useUpdatePrimarySettings();
+/**
+ * A settings section folded away by default; a settings-search jump to one of
+ * its rows (`targetIds`) unfolds it before the target can mount and scroll.
+ */
+function FoldedSettingsSection({
+  title,
+  targetIds,
+  children,
+}: {
+  readonly title: string;
+  readonly targetIds: ReadonlySet<string>;
+  readonly children: ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const searchTargetId = useSettingsSearchTargetId();
   // Unfold once per search jump; tracking the handled id lets the user fold
@@ -1729,40 +1741,74 @@ function LegacyFeaturesSection() {
       lastExpandedTargetRef.current = null;
       return;
     }
-    if (!LEGACY_FEATURE_TARGET_IDS.has(searchTargetId)) return;
+    if (!targetIds.has(searchTargetId)) return;
     if (lastExpandedTargetRef.current === searchTargetId) return;
     lastExpandedTargetRef.current = searchTargetId;
     setOpen(true);
-  }, [searchTargetId]);
+  }, [searchTargetId, targetIds]);
 
   return (
     <section className="space-y-3">
       <Collapsible open={open} onOpenChange={setOpen}>
         <CollapsibleTrigger className="group flex min-h-8 w-full items-center gap-2 px-3 sm:px-4">
           <h2 className="text-lg font-semibold tracking-[-0.025em] text-muted-foreground transition-colors group-hover:text-foreground">
-            Legacy features
+            {title}
           </h2>
           <ChevronRightIcon className="size-4 text-muted-foreground transition-transform duration-200 group-data-panel-open:rotate-90" />
         </CollapsibleTrigger>
         <CollapsiblePanel>
-          <div className="relative space-y-1 overflow-visible pt-3 text-foreground">
-            <SettingsRow
-              {...searchableSetting("legacy-plan-mode")}
-              description="Brings back the Build/Plan toggle in the composer along with the /plan and /default commands and the Shift+Tab shortcut. While off, every thread runs in build mode."
-              control={
-                <Switch
-                  checked={settings.planModeEnabled}
-                  onCheckedChange={(checked) => {
-                    updateSettings({ planModeEnabled: Boolean(checked) });
-                  }}
-                  aria-label="Plan mode (legacy)"
-                />
-              }
-            />
-          </div>
+          <div className="relative space-y-1 overflow-visible pt-3 text-foreground">{children}</div>
         </CollapsiblePanel>
       </Collapsible>
     </section>
+  );
+}
+
+function LegacyFeaturesSection() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  return (
+    <FoldedSettingsSection title="Legacy features" targetIds={LEGACY_FEATURE_TARGET_IDS}>
+      <SettingsRow
+        {...searchableSetting("legacy-plan-mode")}
+        description="Brings back the Build/Plan toggle in the composer along with the /plan and /default commands and the Shift+Tab shortcut. While off, every thread runs in build mode."
+        control={
+          <Switch
+            checked={settings.planModeEnabled}
+            onCheckedChange={(checked) => {
+              updateSettings({ planModeEnabled: Boolean(checked) });
+            }}
+            aria-label="Plan mode (legacy)"
+          />
+        }
+      />
+    </FoldedSettingsSection>
+  );
+}
+
+const LABS_TARGET_IDS: ReadonlySet<string> = new Set(["labs-adobe-express"]);
+
+/** Previews a person turns on for themselves; everything here starts off. */
+function LabsSection() {
+  const settings = usePrimarySettings();
+  const updateSettings = useUpdatePrimarySettings();
+  const express = useExpressGate();
+  return (
+    <FoldedSettingsSection title="Labs" targetIds={LABS_TARGET_IDS}>
+      <SettingsRow
+        {...searchableSetting("labs-adobe-express")}
+        description={expressLabNote(express)}
+        control={
+          <Switch
+            checked={settings.adobeExpressPanel}
+            onCheckedChange={(checked) => {
+              updateSettings({ adobeExpressPanel: Boolean(checked) });
+            }}
+            aria-label="Adobe Express panel (preview)"
+          />
+        }
+      />
+    </FoldedSettingsSection>
   );
 }
 
@@ -2558,6 +2604,7 @@ export function GeneralSettingsPanel() {
         />
       </SettingsSection>
 
+      <LabsSection />
       <LegacyFeaturesSection />
     </SettingsPageContainer>
   );

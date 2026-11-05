@@ -60,7 +60,7 @@ import {
 } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
-import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "./zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX, zeropsUserIdOf } from "@t3tools/contracts";
 
 /**
  * How long a list holds from the read that brought it: the cap a person stays at their last known

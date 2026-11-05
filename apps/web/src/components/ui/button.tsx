@@ -9,7 +9,8 @@ import { cn } from "~/lib/utils";
 
 /**
  * The one action. `primary` is the single next step on a surface (blue acts), `secondary` sits
- * beside it, `ghost` is a quiet tool, `destructive` only deletes or stops, `link` reads as a word.
+ * beside it, `ghost` is a quiet tool, `destructive` only deletes, stops or acts on Production,
+ * `link` reads as a word.
  * Sizes: `md` by default, `sm` in dense rows, `lg` only for a page's one hero action; `icon-sm` and
  * `icon-md` are the square forms of `sm` and `md`. A button is a rectangle on the control radius;
  * a label is a Badge pill, so an action never reads as a tag.
@@ -39,6 +40,9 @@ const buttonVariants = cva(
         destructive:
           "border-destructive bg-destructive text-primary-foreground shadow-xs shadow-destructive/24 not-disabled:inset-shadow-[0_1px_--theme(--color-white/16%)] [:active,[data-pressed]]:inset-shadow-[0_1px_--theme(--color-black/8%)] [:disabled,:active,[data-pressed]]:shadow-none [:hover,[data-pressed]]:bg-destructive/90",
         link: "border-transparent text-primary underline-offset-4 [:hover,[data-pressed]]:underline",
+        /** A quiet press that deletes: the red word alone, beside the quiet presses it ends. */
+        "destructive-ghost":
+          "[--control-icon-color:currentColor] border-transparent text-destructive-foreground [:hover,[data-pressed]]:bg-destructive/8",
       },
     },
   },

@@ -40,8 +40,10 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 function renderLauncher(
@@ -72,9 +74,9 @@ function renderLauncher(
 
 describe("RightPanelTabs launcher", () => {
   it("publishes the real shortcut order for available kinds", () => {
-    expect(renderLauncher()).toContain('data-surface-launcher-keys="BDZHCFGVTM"');
+    expect(renderLauncher()).toContain('data-surface-launcher-keys="BDZHCFGVTP"');
     expect(renderLauncher({ ...ALL_AVAILABLE, zerops: "unknown" })).toContain(
-      'data-surface-launcher-keys="BDHCFGVTM"',
+      'data-surface-launcher-keys="BDHCFGVTP"',
     );
   });
 
@@ -83,13 +85,13 @@ describe("RightPanelTabs launcher", () => {
     expect(html).toContain("Watch and use the app on the paired Mac.");
     expect(html.indexOf(">Mac<")).toBeGreaterThan(html.indexOf(">Browser<"));
     expect(html.indexOf(">Mac<")).toBeLessThan(html.indexOf(">Diff<"));
-    expect(html).toContain('data-surface-launcher-keys="BDZHCFGVTM"');
+    expect(html).toContain('data-surface-launcher-keys="BDZHCFGVTP"');
   });
 
   it("draws a crew card only while the crew kind is not hidden", () => {
     expect(renderLauncher()).toContain("Set up a crew and follow its tasks.");
     const hidden = renderLauncher({ ...ALL_AVAILABLE, crew: "hidden" });
-    expect(hidden).toContain('data-surface-launcher-keys="BDZHFGVTM"');
+    expect(hidden).toContain('data-surface-launcher-keys="BDZHFGVTP"');
     expect(hidden).not.toContain(">Crew<");
   });
 
@@ -107,8 +109,10 @@ describe("RightPanelTabs launcher", () => {
       git: "unavailable",
       crew: "hidden",
       mcp: "unavailable",
+      persona: "unavailable",
       vault: "unavailable",
       overview: "hidden",
+      express: "hidden",
     });
     expect(html.match(/Available when a project is open\./gu)).toHaveLength(2);
     expect(html).toContain("Available for Git repositories.");

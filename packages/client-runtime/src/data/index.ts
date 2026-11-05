@@ -240,7 +240,7 @@ export { releaseRequestOf, type FlowWriteIntent } from "./operations/flowWrites.
 export { flowAnswer, type FlowWriteAnswer } from "./projections/flowAnswer.ts";
 export { restartWay } from "./operations/mateRestart.ts";
 export { OperationStopped, runToEnd, type RunToEnd } from "./operations/runToEnd.ts";
-export { PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
+export { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE } from "./operations/hqChief.ts";
 export { readProposalDecisions } from "./adapters/hqProposalDecisions.ts";
 export {
   recordedEnvironment,
@@ -452,6 +452,23 @@ export {
   autoUpdatePolicySettings,
   type AutoUpdatePolicySettings,
 } from "./projections/hqAutoUpdatePolicy.ts";
+export {
+  hqPersonaTemplatesFamily,
+  personaTemplatesScope,
+  type HqPersonaTemplatesRecord,
+} from "./families/hqPersonaTemplates.ts";
+export {
+  PERSONA_TEMPLATE_CONFLICT,
+  personaTemplateGone,
+  personaTemplateIn,
+  personaTemplateSaved,
+} from "./operations/hqPersonaTemplates.ts";
+export {
+  orgPersonaTemplates,
+  personaTemplateWrite,
+  type OrgPersonaTemplates,
+  type PersonaTemplateWrite,
+} from "./projections/hqPersonaTemplates.ts";
 export { gitBrowse, type GitBrowseView } from "./projections/gitBrowse.ts";
 export { makeGitBrowseReads } from "./adapters/hqGitBrowse.ts";
 export { type GitBrowseKey } from "./families/hqGitBrowse.ts";

@@ -23,8 +23,10 @@ const ALL_AVAILABLE = {
   git: "available",
   crew: "available",
   mcp: "available",
+  persona: "available",
   vault: "available",
   overview: "hidden",
+  express: "hidden",
 } as const;
 
 const SURFACES = [

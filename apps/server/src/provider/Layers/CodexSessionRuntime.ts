@@ -41,6 +41,7 @@ import { buildCodexInitializeParams } from "./CodexProvider.ts";
 import { codexSessionAppServerArgs } from "./codexLaunchArgs.ts";
 import { expandHomePath } from "../../pathExpansion.ts";
 import type { CodexFileChange, CodexThreadSetup } from "../../spi/codexThreadProfile.ts";
+import { CODEX_SIGN_IN_TIMEOUT_SECONDS, ProviderMcpError } from "../../spi/mcpControl.ts";
 import {
   buildCodexAdditionalContext,
   buildCodexDeveloperInstructions,
@@ -166,6 +167,8 @@ export interface CodexSessionRuntimeOptions {
   readonly models?: Effect.Effect<ReadonlyArray<ServerProviderModel>>;
   /** A thread with a tool profile: its overrides, and the gate that answers its approvals. */
   readonly threadSetup?: CodexThreadSetup;
+  /** The Mate's persona text, read for each turn; absent in a crew, which takes none. */
+  readonly persona?: Effect.Effect<string | undefined>;
 }
 
 export interface CodexSessionRuntimeSendTurnInput {
@@ -220,6 +223,19 @@ export interface CodexSessionRuntimeShape {
   >;
   /** Re-reads the MCP servers of `config.toml` (`config/mcpServer/reload`). */
   readonly reloadMcpServers?: Effect.Effect<void, CodexSessionRuntimeError>;
+  /**
+   * Starts a server's OAuth sign-in (`mcpServer/oauth/login`); `completed`
+   * settles on the app-server's `mcpServer/oauthLogin/completed` for it.
+   */
+  readonly loginMcpServer?: (name: string) => Effect.Effect<
+    {
+      readonly authorizationUrl: string;
+      readonly completed: Effect.Effect<void, Error>;
+    },
+    CodexSessionRuntimeError
+  >;
+  /** Drops a server's OAuth sign-in: `codex mcp logout`, with this session's binary and home. */
+  readonly logoutMcpServer?: (name: string) => Effect.Effect<void, ProviderMcpError>;
   readonly events: Stream.Stream<ProviderEvent, never>;
   readonly close: Effect.Effect<void>;
 }
@@ -588,26 +604,29 @@ function buildCodexTurnInstructions(input: {
   readonly model?: string;
   readonly modelName?: string;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
+  readonly persona?: string;
 }): Pick<CodexTurnStartParamsWithCollaborationMode, "collaborationMode" | "additionalContext"> {
-  if (input.interactionMode === undefined) {
-    return {};
-  }
   const model = normalizeCodexModelSlug(input.model) ?? DEFAULT_MODEL;
   const reasoningEffort = input.effort ?? "medium";
   return {
-    collaborationMode: {
-      mode: input.interactionMode,
-      settings: {
-        model,
-        reasoning_effort: reasoningEffort,
-        developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
-      },
-    },
-    additionalContext: buildCodexAdditionalContext({
-      model,
-      modelName: input.modelName,
-      reasoningEffort,
-    }),
+    // The engine names only a mode other than the default; a turn without one keeps Codex's own.
+    ...(input.interactionMode === undefined
+      ? {}
+      : {
+          collaborationMode: {
+            mode: input.interactionMode,
+            settings: {
+              model,
+              reasoning_effort: reasoningEffort,
+              developer_instructions: buildCodexDeveloperInstructions(input.interactionMode),
+            },
+          },
+        }),
+    // Every turn carries Mate's context: default-mode turns arrive without a mode.
+    additionalContext: buildCodexAdditionalContext(
+      { model, modelName: input.modelName, reasoningEffort },
+      input.persona,
+    ),
   };
 }
 
@@ -629,6 +648,8 @@ export function buildTurnStartParams(input: {
   readonly serviceTier?: CodexServiceTier;
   readonly effort?: EffectCodexSchema.V2TurnStartParams__ReasoningEffort;
   readonly interactionMode?: ProviderInteractionMode;
+  /** The persona text, as its own context entry. */
+  readonly persona?: string;
   readonly overrides?: CodexThreadSetup["turn"];
 }): Effect.Effect<
   CodexTurnStartParamsWithCollaborationMode,
@@ -651,6 +672,7 @@ export function buildTurnStartParams(input: {
     ...(input.model ? { model: input.model } : {}),
     ...(input.modelName ? { modelName: input.modelName } : {}),
     ...(input.effort ? { effort: input.effort } : {}),
+    ...(input.persona !== undefined ? { persona: input.persona } : {}),
   });
 
   return decodeCodexTurnStartParamsWithCollaborationMode({
@@ -2113,6 +2135,19 @@ export const makeCodexSessionRuntime = (
 
     const currentSessionProviderThreadId = Effect.map(Ref.get(sessionRef), currentProviderThreadId);
 
+    // Each MCP sign-in in flight, by server name, until the app-server says how it ended.
+    const mcpLogins = new Map<string, Deferred.Deferred<void, Error>>();
+    yield* client.handleServerNotification("mcpServer/oauthLogin/completed", (payload) =>
+      Effect.suspend(() => {
+        const pending = mcpLogins.get(payload.name);
+        if (pending === undefined) return Effect.void;
+        mcpLogins.delete(payload.name);
+        return payload.success
+          ? Deferred.succeed(pending, undefined)
+          : Deferred.fail(pending, new Error(payload.error ?? "the sign-in did not finish"));
+      }).pipe(Effect.asVoid),
+    );
+
     yield* client.handleServerNotification("thread/started", (payload) =>
       currentSessionProviderThreadId.pipe(
         Effect.flatMap((providerThreadId) => {
@@ -2725,6 +2760,7 @@ export const makeCodexSessionRuntime = (
           );
           const models = options.models ? yield* options.models : [];
           const modelName = models.find((model) => model.slug === normalizedModel)?.name;
+          const persona = options.persona ? yield* options.persona : undefined;
           const params = yield* buildTurnStartParams({
             threadId: providerThreadId,
             runtimeMode: options.runtimeMode,
@@ -2735,6 +2771,7 @@ export const makeCodexSessionRuntime = (
             ...(input.serviceTier ? { serviceTier: input.serviceTier } : {}),
             ...(input.effort ? { effort: input.effort } : {}),
             ...(input.interactionMode ? { interactionMode: input.interactionMode } : {}),
+            ...(persona !== undefined ? { persona } : {}),
             ...(options.threadSetup ? { overrides: options.threadSetup.turn } : {}),
           });
           yield* Ref.set(lastAdditionalContextRef, params.additionalContext);
@@ -2841,6 +2878,46 @@ export const makeCodexSessionRuntime = (
         });
       }),
       reloadMcpServers: client.request("config/mcpServer/reload", undefined).pipe(Effect.asVoid),
+      loginMcpServer: (name) =>
+        Effect.gen(function* () {
+          const providerThreadId = yield* readProviderThreadId;
+          const completed = yield* Deferred.make<void, Error>();
+          mcpLogins.set(name, completed);
+          const { authorizationUrl } = yield* client.request("mcpServer/oauth/login", {
+            name,
+            threadId: providerThreadId,
+            timeoutSecs: CODEX_SIGN_IN_TIMEOUT_SECONDS,
+          });
+          return { authorizationUrl, completed: Deferred.await(completed) };
+        }),
+      logoutMcpServer: (name) =>
+        Effect.scoped(
+          Effect.gen(function* () {
+            const logout = yield* resolveSpawnCommand(options.binaryPath, ["mcp", "logout", name], {
+              env,
+              extendEnv,
+            });
+            const process = yield* spawner.spawn(
+              ChildProcess.make(logout.command, logout.args, {
+                cwd: options.cwd,
+                env,
+                extendEnv,
+                shell: logout.shell,
+              }),
+            );
+            const code = yield* process.exitCode;
+            if (code !== 0) {
+              return yield* new ProviderMcpError({
+                detail: `codex mcp logout ${name} exited with ${String(code)}`,
+              });
+            }
+          }),
+        ).pipe(
+          Effect.catchTags({
+            PlatformError: () =>
+              Effect.fail(new ProviderMcpError({ detail: `codex mcp logout ${name} didn't run` })),
+          }),
+        ),
       respondToRequest: (requestId, decision) =>
         Effect.gen(function* () {
           const pending = (yield* Ref.get(pendingApprovalsRef)).get(requestId);

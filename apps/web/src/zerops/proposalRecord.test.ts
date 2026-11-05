@@ -72,7 +72,7 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     expect(record.entry("a")).toEqual({ decision: undefined, known: false, runningHere: false });
     await record.read(hq.api, ["a"]);
     expect(record.entry("a")).toEqual({
-      decision: { state: "declined", at: AT },
+      decision: { state: "declined", at: AT, by: "u1" },
       known: true,
       runningHere: false,
     });
@@ -109,7 +109,7 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     await expect(record.record(hq.api, "a", "p", { state: "running", at: AT })).resolves.toBe(
       "It was decided elsewhere.",
     );
-    expect(record.entry("a").decision).toEqual({ state: "declined", at: AT });
+    expect(record.entry("a").decision).toEqual({ state: "declined", at: AT, by: "u1" });
   });
 
   it("keeps an approval's end drawn where HQ did not take it", async () => {
@@ -156,7 +156,7 @@ describe("the decisions HQ keeps, as a tab holds them", () => {
     expect(record.drawing()).not.toBe(before);
     expect(before.entry("a").known).toBe(false);
     expect(record.drawing().entry("a")).toEqual({
-      decision: { state: "declined", at: AT },
+      decision: { state: "declined", at: AT, by: "u1" },
       known: true,
       runningHere: false,
     });

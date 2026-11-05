@@ -39,7 +39,7 @@ import { commitOwn } from "../../adapters/hqSettingsReads.ts";
 import type { OperationIntent, OperationReceipt, OperationResult } from "../../model.ts";
 import type { StreamFault } from "../../streamMachine.ts";
 import type { OperationExecutor, UncertainAcceptance } from "../coordinator.ts";
-import { PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
+import { REVEAL_UNRECORDABLE, PROPOSAL_DECIDED_ELSEWHERE, type HqChiefIntent } from "../hqChief.ts";
 import { keptDeployTokenId, type HqWriteIntent } from "../hqWrites.ts";
 
 import {
@@ -96,13 +96,22 @@ export type HqWrites = Pick<
   | "setChief"
   | "decideProposal"
 > &
+  Partial<Pick<HqApi, "recordReveal">> &
   Partial<
     Pick<HqApi, "repoRemoteViaApp" | "followRepoUpstream" | "unfollowRepoUpstream" | "deleteRepo">
   > &
   FlowWrites &
   Partial<HqGitWrites> &
   Partial<
-    Pick<HqApi, "lifecycleWrite" | "lifecycleReceipt" | "updateMate" | "setAutoUpdatePolicy">
+    Pick<
+      HqApi,
+      | "lifecycleWrite"
+      | "lifecycleReceipt"
+      | "updateMate"
+      | "setAutoUpdatePolicy"
+      | "savePersonaTemplate"
+      | "deletePersonaTemplate"
+    >
   >;
 
 /** Optional adapter ports; an older HQ/client never implies support for a Git verb. */
@@ -240,6 +249,11 @@ function faultOf(cause: unknown, keepCode = false): StreamFault | UncertainAccep
     };
   return { outcome: "transient", message };
 }
+
+/** An HQ from before reveals were recorded: a retry never records one. */
+const HQ_RECORDS_NO_REVEALS = "Update HQ to record reveals.";
+/** An HQ that will not record a reveal by this person: someone HQ lets record it reveals it. */
+const HQ_REFUSES_REVEAL = "HQ won't record a reveal by you here, so it stays hidden.";
 
 const write = <A>(call: () => Promise<A>) =>
   Effect.tryPromise({
@@ -495,6 +509,29 @@ export function makeHqExecutor(ports: {
           }),
           (decision) => answered(requestId, intent.proposalId, { decision }),
         );
+      case "record-reveal": {
+        const record = api.recordReveal;
+        // Nothing recorded, so nothing is shown, where no retry records it: an HQ without reveals
+        // (no call, or no address for it) until HQ is updated, or one refusing the person.
+        const unrecordable = (message: string): StreamFault => ({
+          outcome: "definitive-refusal",
+          message,
+          code: REVEAL_UNRECORDABLE,
+        });
+        if (record === undefined) return Effect.fail(unrecordable(HQ_RECORDS_NO_REVEALS));
+        return Effect.map(
+          Effect.tryPromise({
+            try: () => record(intent.reveal),
+            catch: (cause) =>
+              cause instanceof HqError && cause.status === 404
+                ? unrecordable(HQ_RECORDS_NO_REVEALS)
+                : cause instanceof HqError && cause.status === 403
+                  ? unrecordable(HQ_REFUSES_REVEAL)
+                  : faultOf(cause),
+          }),
+          () => answered(requestId, intent.reveal.projectId, {}),
+        );
+      }
     }
   };
 
@@ -792,6 +829,39 @@ export function makeHqExecutor(ports: {
             outcome: { kind: "succeeded", evidence: "HQ answered the kept Git question." },
           };
         }
+        if (intent.kind === "save-persona-template" || intent.kind === "delete-persona-template") {
+          const api = ports.apiOf(intent.orgId);
+          if (api === null)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: HQ_NOT_OPEN,
+            });
+          const call: (() => Promise<unknown>) | undefined =
+            intent.kind === "save-persona-template"
+              ? api.savePersonaTemplate === undefined
+                ? undefined
+                : () =>
+                    api.savePersonaTemplate!(intent.templateId, {
+                      name: intent.name,
+                      description: intent.description,
+                      instructions: intent.instructions,
+                      revision: intent.revision,
+                    })
+              : api.deletePersonaTemplate === undefined
+                ? undefined
+                : () => api.deletePersonaTemplate!(intent.templateId, intent.revision);
+          if (call === undefined)
+            return yield* Effect.fail<StreamFault>({
+              outcome: "definitive-refusal",
+              message: "Update HQ to manage persona templates.",
+            });
+          // A conflict is HQ's answer that it holds another revision: refused, its code kept.
+          yield* Effect.tryPromise({ try: call, catch: (cause) => faultOf(cause, true) });
+          return {
+            ...answered(requestId, intent.templateId),
+            affected: [{ family: "hqPersonaTemplates", id: intent.orgId }],
+          };
+        }
         if (intent.kind === "rename-app" || intent.kind === "delete-app") {
           const api = ports.apiOf(intent.orgId);
           if (api === null)
@@ -910,7 +980,11 @@ export function makeHqExecutor(ports: {
             outcome: "definitive-refusal",
             message: HQ_NOT_OPEN,
           });
-        if (intent.kind === "set-chief" || intent.kind === "decide-proposal")
+        if (
+          intent.kind === "set-chief" ||
+          intent.kind === "decide-proposal" ||
+          intent.kind === "record-reveal"
+        )
           return yield* chiefWrite(requestId, api, intent);
         if (intent.kind === "authorize-observe") {
           const establish = api.establishZcpAuthorization;

@@ -4,6 +4,7 @@ import type { KeptGitAnswer } from "@t3tools/contracts";
 import { HqRemoteRefusal } from "@t3tools/shared/hqGitTargets";
 import { HqGitOperationReceipt, type HqGitTargetIntent } from "@t3tools/shared/hqGitTargets";
 import { HqAutoUpdatePolicy } from "@t3tools/shared/mateAutoUpdatePolicy";
+import { PersonaTemplate, type SavePersonaTemplate } from "@t3tools/shared/personaTemplates";
 import {
   HqGithubInstallView,
   HqGithubManifestView,
@@ -344,8 +345,20 @@ export interface HqApi {
   readonly proposalDecisions: HqChiefCalls["proposalDecisions"];
   /** One proposal's decision, then once how an approval ended (`chief.ts`). */
   readonly decideProposal: HqChiefCalls["decideProposal"];
+  /** Records that the person was shown a hidden value (`chief.ts`). */
+  readonly recordReveal: HqChiefCalls["recordReveal"];
   readonly autoUpdatePolicy: (signal?: AbortSignal) => Promise<HqAutoUpdatePolicy>;
   readonly setAutoUpdatePolicy: (enabled: boolean) => Promise<HqAutoUpdatePolicy>;
+  /**
+   * `PUT /api/persona-templates/{id}`, the id the client made: the template as saved, at its new
+   * revision. A write over a revision HQ no longer holds is refused (`revision_conflict`).
+   */
+  readonly savePersonaTemplate: (
+    id: string,
+    template: SavePersonaTemplate,
+  ) => Promise<PersonaTemplate>;
+  /** `DELETE /api/persona-templates/{id}?revision=N`: done also where HQ holds it no more. */
+  readonly deletePersonaTemplate: (id: string, revision: number) => Promise<void>;
   readonly structure: (signal?: AbortSignal) => Promise<HqStructure>;
   /**
    * A ticket to open the Mate of `projectId`'s socket with (`POST /api/mates/:projectId/ticket`):
@@ -1423,6 +1436,28 @@ export function makeHqApi(input: {
       decoded(HqAutoUpdatePolicy)(
         await authorized("/api/auto-update", signal === undefined ? {} : { signal }),
       ),
+    savePersonaTemplate: async (id, template) => {
+      try {
+        return await decoded(PersonaTemplate)(
+          await authorized(
+            `/api/persona-templates/${encodeURIComponent(id)}`,
+            { method: "PUT", body: JSON.stringify(await withAccess(template)) },
+            true,
+          ),
+        );
+      } catch (cause) {
+        // An answer this version cannot read still followed a write HQ made.
+        if (cause instanceof HqError && cause.code === "unreadable") throw uncertain();
+        throw cause;
+      }
+    },
+    deletePersonaTemplate: async (id, revision) => {
+      await authorized(
+        `/api/persona-templates/${encodeURIComponent(id)}?revision=${revision}`,
+        { method: "DELETE", body: JSON.stringify(await withAccess({})) },
+        true,
+      );
+    },
     setAutoUpdatePolicy: async (enabled) => {
       // Neither a matching boolean nor a later revision identifies a lost PUT as ours.
       try {

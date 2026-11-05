@@ -15,6 +15,7 @@ import * as NodeURL from "node:url";
 import { assert, describe, it } from "@effect/vitest";
 import {
   ApprovalRequestId,
+  DEFAULT_MODEL,
   type ModelSelection,
   ProviderDriverKind,
   ProviderInstanceId,
@@ -35,6 +36,7 @@ import {
 } from "./codexAdapterHarness.ts";
 import { ThreadToolPolicyRegistry } from "./threadToolPolicy.ts";
 import { MATE_PLACES_INSTRUCTIONS } from "../matePlacesInstructions.ts";
+import { personaInstructions } from "../personaInstructions.ts";
 import { checkOrUpdateGolden, describeFirstDivergence } from "./replay/goldenCheck.ts";
 
 const __dirname = NodePath.dirname(NodeURL.fileURLToPath(import.meta.url));
@@ -65,13 +67,17 @@ const markRuntimeContext = (params: Record<string, unknown>): Record<string, unk
     | {
         mate_runtime?: { kind: string; value: string };
         mate_places?: { kind: string; value: string };
+        mate_persona?: { kind: string; value: string };
       }
     | undefined;
-  if (!settings || !context?.mate_runtime) return params;
+  if (!context?.mate_runtime) return params;
+  // A turn without a mode names its model and effort only on the turn itself.
+  const model = settings?.model ?? (params.model as string | undefined) ?? DEFAULT_MODEL;
+  const effort = settings?.reasoning_effort ?? (params.effort as string | undefined) ?? "medium";
   const expected = buildRuntimeInstructions({
     harness: "Codex",
-    model: settings.model,
-    reasoningEffort: settings.reasoning_effort,
+    model,
+    reasoningEffort: effort,
     places: false,
   });
   if (context.mate_runtime.value !== expected) return params;
@@ -81,10 +87,13 @@ const markRuntimeContext = (params: Record<string, unknown>): Record<string, unk
       ...context,
       mate_runtime: {
         ...context.mate_runtime,
-        value: `[buildRuntimeInstructions({ harness: "Codex", model: "${settings.model}", reasoningEffort: "${settings.reasoning_effort}", places: false })]`,
+        value: `[buildRuntimeInstructions({ harness: "Codex", model: "${model}", reasoningEffort: "${effort}", places: false })]`,
       },
       ...(context.mate_places?.value === MATE_PLACES_INSTRUCTIONS
         ? { mate_places: { ...context.mate_places, value: "[MATE_PLACES_INSTRUCTIONS]" } }
+        : {}),
+      ...(context.mate_persona?.value === personaInstructions(null)
+        ? { mate_persona: { ...context.mate_persona, value: "[personaInstructions(null)]" } }
         : {}),
     },
   };
@@ -188,7 +197,8 @@ const recordScenario = (scenario: Scenario) =>
         threadId: THREAD_ID,
         input: `a ${interactionMode} turn`,
         attachments: [],
-        interactionMode,
+        // The engine never names the default mode: such a turn carries no interaction mode.
+        ...(interactionMode === "default" ? {} : { interactionMode }),
         ...(scenario.modelSelection ? { modelSelection: scenario.modelSelection } : {}),
       });
       if (interactionMode !== "default" || !scenario.approvals) continue;

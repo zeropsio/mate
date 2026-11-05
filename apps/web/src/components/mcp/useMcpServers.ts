@@ -8,9 +8,15 @@
  * placeholder the answer then replaces.
  */
 import { RegistryContext, useAtomValue } from "@effect/atom-react";
-import type { EnvironmentId, McpServerAddInput, ThreadId } from "@t3tools/contracts";
+import type {
+  EnvironmentId,
+  McpServerAddInput,
+  McpServerAuth,
+  McpServerSignIn,
+  ThreadId,
+} from "@t3tools/contracts";
 import { runAtomCommand, squashAtomCommandFailure } from "@t3tools/client-runtime/state/runtime";
-import { useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import * as Option from "effect/Option";
 import { AsyncResult } from "effect/reactivity";
 
@@ -21,7 +27,30 @@ export type McpAction =
   | { readonly kind: "add"; readonly input: McpServerAddInput }
   | { readonly kind: "remove"; readonly name: string }
   | { readonly kind: "reconnect"; readonly name: string }
-  | { readonly kind: "setEnabled"; readonly name: string; readonly enabled: boolean };
+  | { readonly kind: "signOut"; readonly name: string }
+  /** Replaces its environment or headers; names in `keep` keep their stored values. */
+  | {
+      readonly kind: "update";
+      readonly name: string;
+      readonly values: Readonly<Record<string, string>>;
+      readonly keep: ReadonlyArray<string>;
+      /** Stored values kept under a new name, new name → stored name. */
+      readonly renamed?: Readonly<Record<string, string>>;
+      /** A URL server's sign-in, changed; absent leaves it as it is. */
+      readonly auth?: McpServerAuth;
+    }
+  | { readonly kind: "setEnabled"; readonly name: string; readonly enabled: boolean }
+  /** Finishes a sign-in with the address the person's browser landed on. */
+  | {
+      readonly kind: "finishSignIn";
+      readonly name: string;
+      readonly flow: string;
+      readonly landed: string;
+    };
+
+export type McpSignInResult =
+  | { readonly ok: true; readonly signIn: McpServerSignIn }
+  | { readonly ok: false; readonly message: string };
 
 export type McpActionResult =
   | { readonly ok: true }
@@ -31,11 +60,30 @@ export interface UseMcpServers {
   readonly state: McpTabState;
   readonly refresh: () => void;
   readonly act: (action: McpAction) => Promise<McpActionResult>;
+  /** Starts the conversation's agent's sign-in to a server: the page to open. */
+  readonly signIn: (name: string) => Promise<McpSignInResult>;
+}
+
+/**
+ * Reads again whenever `key` changes after the first paint (the conversation's session and turns,
+ * `mcpRunKey`): the agent's own events say when its tools may stand differently, so nothing polls.
+ */
+export function useReadAgainWhen(key: string, read: () => void): void {
+  const last = useRef(key);
+  const latestRead = useRef(read);
+  latestRead.current = read;
+  useEffect(() => {
+    if (last.current === key) return;
+    last.current = key;
+    latestRead.current();
+  }, [key]);
 }
 
 export function useMcpServers(input: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId | undefined;
+  /** The conversation's session and turns (`mcpRunKey`): each change reads the list again. */
+  readonly runKey?: string;
 }): UseMcpServers {
   const { environmentId, threadId } = input;
   const registry = useContext(RegistryContext);
@@ -61,29 +109,58 @@ export function useMcpServers(input: {
                 { environmentId, input: { ...action.input, ...scope } },
                 options,
               )
-            : action.kind === "remove"
+            : action.kind === "setEnabled"
               ? await runAtomCommand(
                   registry,
-                  mcpServersEnvironment.remove,
-                  { environmentId, input: { name: action.name, ...scope } },
+                  mcpServersEnvironment.setEnabled,
+                  {
+                    environmentId,
+                    input: { name: action.name, enabled: action.enabled, ...scope },
+                  },
                   options,
                 )
-              : action.kind === "reconnect"
+              : action.kind === "update"
                 ? await runAtomCommand(
                     registry,
-                    mcpServersEnvironment.reconnect,
-                    { environmentId, input: { name: action.name, ...scope } },
-                    options,
-                  )
-                : await runAtomCommand(
-                    registry,
-                    mcpServersEnvironment.setEnabled,
+                    mcpServersEnvironment.update,
                     {
                       environmentId,
-                      input: { name: action.name, enabled: action.enabled, ...scope },
+                      input: {
+                        name: action.name,
+                        values: { ...action.values },
+                        keep: [...action.keep],
+                        ...(action.renamed !== undefined ? { renamed: { ...action.renamed } } : {}),
+                        ...(action.auth !== undefined ? { auth: action.auth } : {}),
+                        ...scope,
+                      },
                     },
                     options,
-                  );
+                  )
+                : action.kind === "finishSignIn"
+                  ? await runAtomCommand(
+                      registry,
+                      mcpServersEnvironment.finishSignIn,
+                      {
+                        environmentId,
+                        input: {
+                          name: action.name,
+                          flow: action.flow,
+                          landed: action.landed,
+                          ...scope,
+                        },
+                      },
+                      options,
+                    )
+                  : await runAtomCommand(
+                      registry,
+                      action.kind === "remove"
+                        ? mcpServersEnvironment.remove
+                        : action.kind === "signOut"
+                          ? mcpServersEnvironment.signOut
+                          : mcpServersEnvironment.reconnect,
+                      { environmentId, input: { name: action.name, ...scope } },
+                      options,
+                    );
         if (result._tag === "Success") return { ok: true };
         if (action.kind !== "reconnect") refresh();
         return { ok: false, message: describeMcpFailure(squashAtomCommandFailure(result)) };
@@ -93,6 +170,26 @@ export function useMcpServers(input: {
     },
     [environmentId, refresh, registry, target],
   );
+  const signIn = useCallback(
+    async (name: string): Promise<McpSignInResult> => {
+      setPending((count) => count + 1);
+      try {
+        const scope = target.input;
+        const result = await runAtomCommand(
+          registry,
+          mcpServersEnvironment.signIn,
+          { environmentId, input: { name, ...scope } },
+          { reportFailure: false },
+        );
+        if (result._tag === "Success") return { ok: true, signIn: result.value };
+        return { ok: false, message: describeMcpFailure(squashAtomCommandFailure(result)) };
+      } finally {
+        setPending((count) => count - 1);
+      }
+    },
+    [environmentId, registry, target],
+  );
+  useReadAgainWhen(input.runKey ?? "", refresh);
   useEffect(() => {
     const onFocus = () => refresh();
     window.addEventListener("focus", onFocus);
@@ -117,5 +214,6 @@ export function useMcpServers(input: {
     },
     refresh,
     act,
+    signIn,
   };
 }

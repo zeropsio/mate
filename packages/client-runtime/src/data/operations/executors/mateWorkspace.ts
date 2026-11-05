@@ -6,6 +6,7 @@ import type { EnvironmentRegistry } from "../../../connection/registry.ts";
 import { request } from "../../../rpc/client.ts";
 import { workspaceFailure } from "../../adapters/mateWorkspace.ts";
 import {
+  WORKSPACE_MUTATION_DEADLINE_MS,
   WORKSPACE_MUTATIONS,
   type WorkspaceMutation,
   type MutationTarget,
@@ -25,7 +26,7 @@ export const makeWorkspaceMutationWire = (
 ): WorkspaceMutationWire => ({
   call: (kind, target) =>
     registry.run(target.environmentId, request(WORKSPACE_MUTATIONS[kind], target.input)).pipe(
-      Effect.timeout(STREAM_POLICY.baselineTimeoutMs),
+      Effect.timeout(WORKSPACE_MUTATION_DEADLINE_MS[kind] ?? STREAM_POLICY.baselineTimeoutMs),
       Effect.catchCause((cause) => Effect.fail(workspaceFailure(Cause.squash(cause)))),
     ) as Effect.Effect<MutationValue<typeof kind>, StreamFault>,
 });

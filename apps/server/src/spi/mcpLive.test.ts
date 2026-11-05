@@ -12,7 +12,9 @@ import {
   codexMcpLiveServers,
   openCodeMcpControl,
   openCodeMcpLiveServers,
+  loopbackRedirect,
   type ClaudeMcpQuery,
+  type McpSignInStart,
   type OpenCodeMcpClient,
   layer as McpLiveLayer,
   McpLive,
@@ -106,9 +108,10 @@ describe("codexMcpLiveServers", () => {
       {
         name: "zerops",
         state: "connected",
+        signedIn: false,
         tools: [{ name: "zerops_discover", description: "Look", readOnly: true }],
       },
-      { name: "broken", state: "configured", error: "timed out" },
+      { name: "broken", state: "configured", signedIn: false, error: "timed out" },
     ]);
   });
 
@@ -215,19 +218,44 @@ describe("claudeMcpControl", () => {
     }),
   );
 
+  it.effect("turns a server off in every running session", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const control = claudeMcpControl({
+        get: () => undefined,
+        all: () => [live(recordingClaudeQuery(calls)), live(recordingClaudeQuery(calls))],
+      });
+      yield* control.configChanged({ kind: "enabled", name: "x", enabled: false });
+      expect(calls).toEqual(["toggle x false", "toggle x false"]);
+    }),
+  );
+
   it.effect(
-    "turns a server off in every running session, and leaves added or removed ones to the next",
+    "a server added in the MCP tab joins every running Claude conversation, and leaves it when removed",
     () =>
       Effect.gen(function* () {
         const calls: string[] = [];
+        const query = (): ClaudeMcpQuery => ({
+          ...recordingClaudeQuery(calls),
+          setMcpServers: async (servers) => {
+            calls.push(`set ${Object.keys(servers).join(",")}`);
+          },
+        });
         const control = claudeMcpControl({
           get: () => undefined,
-          all: () => [live(recordingClaudeQuery(calls)), live(recordingClaudeQuery(calls))],
+          all: () => sessions,
         });
-        yield* control.configChanged({ kind: "enabled", name: "x", enabled: false });
-        yield* control.configChanged({ kind: "added", name: "y", entry: {} });
-        yield* control.configChanged({ kind: "removed", name: "z" });
-        expect(calls).toEqual(["toggle x false", "toggle x false"]);
+        const sessions = [live(query()), live(query())];
+        yield* control.configChanged({
+          kind: "added",
+          name: "a",
+          entry: { type: "http", url: "u" },
+        });
+        yield* control.configChanged({ kind: "added", name: "b", entry: { command: "c" } });
+        yield* control.configChanged({ kind: "removed", name: "a" });
+        // A server the conversation started with is the next conversation's to drop.
+        yield* control.configChanged({ kind: "removed", name: "zerops" });
+        expect(calls).toEqual(["set a", "set a", "set a,b", "set a,b", "set b", "set b"]);
       }),
   );
 
@@ -299,6 +327,173 @@ describe("openCodeMcpControl", () => {
       ]);
     }),
   );
+});
+
+describe("signing in to a remote MCP server", () => {
+  const CODE = ["c0de", "0n3", "t1me"].join("-");
+  const PAGE = "https://mate.example.app/mate/mcp/oauth/callback";
+  const started = (answer: McpSignInStart | "signed-in"): McpSignInStart => {
+    if (answer === "signed-in") throw new Error("expected a sign-in to open");
+    return answer;
+  };
+
+  it.effect(
+    "Claude Code opens its own OAuth flow, sent back to the Mate's page, and takes the landing",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const query: ClaudeMcpQuery = {
+          mcpAuthenticate: async (name, redirectUri) => {
+            calls.push(`authenticate ${name} ${redirectUri ?? ""}`);
+            return {
+              requiresUserAction: true,
+              callbackExpected: true,
+              authUrl: "https://auth.example.com/a",
+            };
+          },
+          mcpSubmitOAuthCallbackUrl: async (name, url) => {
+            calls.push(`landed ${name} ${url}`);
+          },
+        };
+        const control = claudeMcpControl({ get: () => live(query), all: () => [] });
+        const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+        expect(start.url).toBe("https://auth.example.com/a");
+        yield* start.finish(new URL(`${PAGE}?code=${CODE}&state=s`));
+        expect(calls).toEqual([
+          `authenticate adobe ${PAGE}`,
+          `landed adobe ${PAGE}?code=${CODE}&state=s`,
+        ]);
+      }),
+  );
+
+  it.effect("Claude Code holding a valid sign-in opens nothing", () =>
+    Effect.gen(function* () {
+      const query: ClaudeMcpQuery = {
+        mcpAuthenticate: async () => ({ requiresUserAction: false, callbackExpected: false }),
+        mcpSubmitOAuthCallbackUrl: async () => undefined,
+      };
+      const control = claudeMcpControl({ get: () => live(query), all: () => [] });
+      expect(yield* control.signIn!(THREAD, "adobe", PAGE)).toBe("signed-in");
+    }),
+  );
+
+  it.effect(
+    "Codex's sign-in lands on its listener in the container and ends when the app-server says so",
+    () =>
+      Effect.gen(function* () {
+        const calls: string[] = [];
+        const runtime = {
+          loginMcpServer: (name: string) =>
+            Effect.succeed({
+              authorizationUrl: `https://auth.example.com/a?redirect_uri=${encodeURIComponent("http://127.0.0.1:5555/callback")}&state=s`,
+              completed: Effect.sync(() => {
+                calls.push(`completed ${name}`);
+              }),
+            }),
+          reloadMcpServers: Effect.sync(() => {
+            calls.push("reload");
+          }),
+        };
+        const control = codexMcpControl({ get: () => live(runtime), all: () => [] });
+        const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+        expect(start.listener?.href).toBe("http://127.0.0.1:5555/callback");
+        yield* start.finish(new URL(`http://127.0.0.1:5555/callback?code=${CODE}&state=s`));
+        expect(calls).toEqual(["completed adobe", "reload"]);
+      }),
+  );
+
+  it.effect("OpenCode exchanges the code the landing carries", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const client: OpenCodeMcpClient = {
+        status: async () => ({}),
+        connect: async () => undefined,
+        disconnect: async () => undefined,
+        add: async () => undefined,
+        startAuth: async () => ({ authorizationUrl: "https://auth.example.com/a?state=s" }),
+        finishAuth: async (name, code) => calls.push(`${name} ${code}`),
+      };
+      const control = openCodeMcpControl({ get: () => live(client), all: () => [] });
+      const start = started(yield* control.signIn!(THREAD, "adobe", PAGE));
+      yield* start.finish(
+        new URL(`http://127.0.0.1:19876/mcp/oauth/callback?code=${CODE}&state=s`),
+      );
+      expect(calls).toEqual([`adobe ${CODE}`]);
+    }),
+  );
+
+  it.each([
+    ["http://127.0.0.1:5555/callback", "http://127.0.0.1:5555/callback"],
+    ["http://localhost:19876/mcp/oauth/callback", "http://localhost:19876/mcp/oauth/callback"],
+    ["https://127.0.0.1:5555/callback", undefined],
+    ["http://10.0.0.5:5555/callback", undefined],
+    ["https://mate.example.app/mate/mcp/oauth/callback", undefined],
+  ])(
+    "only a plain-http loopback redirect is a listener in the container: %s",
+    (redirect, listener) => {
+      const url = `https://auth.example.com/a?redirect_uri=${encodeURIComponent(redirect)}`;
+      expect(loopbackRedirect(url)?.href).toBe(listener);
+    },
+  );
+});
+
+describe("signing out of a remote MCP server", () => {
+  it.effect("each agent drops its sign-in its own way, and the server asks for one again", () =>
+    Effect.gen(function* () {
+      const calls: string[] = [];
+      const claude = claudeMcpControl({
+        get: () =>
+          live({
+            mcpClearAuth: async (name: string) => {
+              calls.push(`claude clear ${name}`);
+            },
+          } satisfies ClaudeMcpQuery),
+        all: () => [],
+      });
+      const codex = codexMcpControl({
+        get: () =>
+          live({
+            logoutMcpServer: (name: string) =>
+              Effect.sync(() => {
+                calls.push(`codex logout ${name}`);
+              }),
+            reloadMcpServers: Effect.sync(() => {
+              calls.push("codex reload");
+            }),
+          }),
+        all: () => [],
+      });
+      const client: OpenCodeMcpClient = {
+        status: async () => ({}),
+        connect: async (name) => calls.push(`opencode connect ${name}`),
+        disconnect: async (name) => calls.push(`opencode disconnect ${name}`),
+        add: async () => undefined,
+        removeAuth: async (name) => calls.push(`opencode forget ${name}`),
+      };
+      const openCode = openCodeMcpControl({ get: () => live(client), all: () => [] });
+      for (const control of [claude, codex, openCode]) yield* control.signOut!(THREAD, "adobe");
+      expect(calls).toEqual([
+        "claude clear adobe",
+        "codex logout adobe",
+        "codex reload",
+        "opencode forget adobe",
+        "opencode disconnect adobe",
+        "opencode connect adobe",
+      ]);
+    }),
+  );
+
+  it.each([
+    ["oAuth", true],
+    ["bearerToken", false],
+    ["unsupported", false],
+    ["unknown", undefined],
+  ])("Codex says whether it holds a sign-in for a server: %s", (authStatus, signedIn) => {
+    const [server] = codexMcpLiveServers({
+      data: [{ name: "adobe", runtimeStatus: "connected", authStatus }],
+    });
+    expect(server?.signedIn).toBe(signedIn);
+  });
 });
 
 describe("McpLive", () => {

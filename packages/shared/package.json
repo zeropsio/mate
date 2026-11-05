@@ -15,6 +15,10 @@
       "types": "./src/mateAutoUpdatePolicy.ts",
       "import": "./src/mateAutoUpdatePolicy.ts"
     },
+    "./personaTemplates": {
+      "types": "./src/personaTemplates.ts",
+      "import": "./src/personaTemplates.ts"
+    },
     "./hqEnvironment": {
       "types": "./src/hqEnvironment.ts",
       "import": "./src/hqEnvironment.ts"

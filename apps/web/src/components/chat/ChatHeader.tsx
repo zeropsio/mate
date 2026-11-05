@@ -62,6 +62,7 @@ import { useRightPanelStore } from "~/rightPanelStore";
 import { MateFaceAsMark } from "../zerops/primitives";
 import { ChatHeaderLinks } from "./ChatHeaderLinks";
 import { ConversationStrip, useMateWorks } from "./ConversationStrip";
+import { MatePersonaPress } from "./MatePersonaPress";
 import { registerThreadSyncSlot } from "./threadSyncSlot";
 import {
   WorkspaceBreadcrumb,
@@ -637,6 +638,16 @@ export const ChatHeader = memo(function ChatHeader({
               onEditBrief={onEditBrief}
               onEditJob={onEditCrewmateJob}
               onRename={isServerThread && crewOrigin === null ? startRename : null}
+              persona={
+                // A crewmate's chat takes no persona: only the Mate's own chats show it.
+                crewOrigin === null && mate !== undefined && settings.persona != null ? (
+                  <MatePersonaPress
+                    mateName={mate.name}
+                    onOpen={() => useRightPanelStore.getState().open(activeThreadRef, "persona")}
+                    persona={settings.persona.name}
+                  />
+                ) : null
+              }
               renameField={
                 renamingTitle === null ? null : (
                   <div className="absolute inset-y-0 start-8.5 end-0 flex max-w-96 items-center">

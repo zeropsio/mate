@@ -17,6 +17,7 @@ const AVAILABLE_INPUT: RightPanelAvailabilityInput = {
   serverThread: true,
   zeropsPanel: "available",
   crewStatus: "applied",
+  matePersona: true,
 };
 
 describe("right panel kinds", () => {
@@ -118,10 +119,17 @@ describe("right panel kinds", () => {
       },
       {
         kind: "mcp",
-        label: "MCP",
-        description: "Add and check this Mate's tools.",
-        shortcut: "M",
+        label: "Tools",
+        description: "Add and check the tools this Mate's agents use.",
+        shortcut: null,
         unavailableHint: "Available from a conversation.",
+      },
+      {
+        kind: "persona",
+        label: "Persona",
+        description: "Choose how this Mate works and talks.",
+        shortcut: "P",
+        unavailableHint: "Update this Mate to give it a persona.",
       },
     ]);
   });
@@ -162,6 +170,7 @@ describe("right panel kinds", () => {
         "vault",
         "terminal",
         "mcp",
+        "persona",
       ],
     ],
   ] as const)("%s", (_title, chief, kinds) => {
@@ -200,7 +209,9 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -226,7 +237,9 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unavailable",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -246,7 +259,9 @@ describe("right panel kinds", () => {
         crew: "hidden",
         mcp: "available",
         vault: "unknown",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
     {
@@ -266,7 +281,9 @@ describe("right panel kinds", () => {
         crew: "available",
         mcp: "available",
         vault: "available",
+        persona: "available",
         overview: "hidden",
+        express: "hidden",
       },
     },
   ] as const;
@@ -319,6 +336,50 @@ describe("right panel kinds", () => {
     },
   );
 
+  it("the Chief's panel never offers Persona, even on a Mate that takes one", () => {
+    const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, chief: true });
+    expect(availability.persona).toBe("hidden");
+    expect(launcherActions(availability).some(({ kind }) => kind === "persona")).toBe(false);
+  });
+
+  it.each([
+    { matePersona: true, persona: "available" },
+    { matePersona: null, persona: "unknown" },
+    { matePersona: false, persona: "unavailable" },
+  ] as const)(
+    "a Mate whose server says persona support is $matePersona: Persona $persona",
+    ({ matePersona, persona }) => {
+      expect(resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }).persona).toBe(
+        persona,
+      );
+    },
+  );
+
+  it.each([
+    { matePersona: null, hint: "Waiting for this Mate to answer." },
+    { matePersona: false, hint: "Update this Mate to give it a persona." },
+  ] as const)(
+    "Persona says a Mate needs an update only once its server says so: $hint",
+    ({ matePersona, hint }) => {
+      const persona = launcherActions(
+        resolveRightPanelAvailability({ ...AVAILABLE_INPUT, matePersona }),
+      ).find(({ kind }) => kind === "persona");
+      expect(persona?.available).toBe(false);
+      expect(persona?.unavailableHint).toBe(hint);
+    },
+  );
+
+  it.each([
+    { express: true, launcher: true },
+    { express: false, launcher: false },
+  ] as const)(
+    "the panel offers Adobe Express only while the person's Labs switch is on: $express",
+    ({ express, launcher }) => {
+      const availability = resolveRightPanelAvailability({ ...AVAILABLE_INPUT, express });
+      expect(launcherActions(availability).some(({ kind }) => kind === "express")).toBe(launcher);
+    },
+  );
+
   it("names every retired persisted kind in one migration list", () => {
     expect(DROPPED_RIGHT_PANEL_KINDS).toEqual(["plan", "pull-request", "preview"]);
   });
@@ -359,7 +420,11 @@ describe("a side-panel page's head", () => {
   it.each([
     { kind: "terminal", mate: "Nova", line: "A shell on Nova's computer." },
     { kind: "terminal", mate: undefined, line: "A shell on this Mate's computer." },
-    { kind: "mcp", mate: "Nova", line: "Tools Nova can use, with each of its coding agents." },
+    {
+      kind: "mcp",
+      mate: "Nova",
+      line: "Nova's agents use these while they work.",
+    },
     { kind: "vault", mate: "Nova", line: "Settings and secrets your apps read." },
   ] as const)(
     "a page's line names the Mate once its name is known: $kind for $mate reads $line",

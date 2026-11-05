@@ -7,6 +7,8 @@ import type {
 import type { ZeropsAccessLevel, ZeropsProposal } from "@t3tools/client-runtime/zerops/model";
 import { describe, expect, it } from "vite-plus/test";
 
+import { askWhereWords } from "../../ask/ask.logic";
+
 import type { HqProposalDecision } from "@t3tools/client-runtime/zerops/hq";
 
 import {
@@ -24,7 +26,10 @@ import {
   proposalMessage,
   handOverWords,
   heldMessageWords,
+  proposalAskState,
+  proposalAskWhere,
   proposalOutcomeWords,
+  proposalPress,
   proposalRecipient,
   proposalStage,
   proposalTitle,
@@ -531,7 +536,7 @@ describe("proposalOutcomeWords", () => {
     projectId: "p-shop",
     params: { words: "Who owns orders?" },
   };
-  it.each<[ZeropsProposal, Exclude<ProposalStage, "open" | "failed">, string]>([
+  it.each<[ZeropsProposal, Exclude<ProposalStage, "open" | "failed" | "declined">, string]>([
     [restart, "running", "Restarting medusa…"],
     [restart, "done", "Restarted medusa."],
     [start, "running", "Starting medusa…"],
@@ -546,7 +551,6 @@ describe("proposalOutcomeWords", () => {
     [askChief, "done", "Sent to your Chief."],
     [domain, "running", "Adding contoso.com and www.contoso.com…"],
     [domain, "done", "Added contoso.com and www.contoso.com."],
-    [restart, "declined", "Declined. Nothing ran."],
     [restart, "unseen", "Approved before the page reloaded. How it ended was not seen here."],
   ])("%j %s: %s", (proposal, stage, words) => {
     expect(proposalOutcomeWords(proposal, stage)).toBe(words);
@@ -630,19 +634,23 @@ const held = (fields: Partial<HqProposalDecision>): HqProposalDecision => ({
 
 describe("decisions kept at HQ", () => {
   it.each<[string, HqProposalDecision, ProposalDecision]>([
-    ["an approval HQ holds no end of is still running", held({}), { state: "running", at: AT }],
-    ["an approval that ended done", held({ outcome: "done" }), { state: "done", at: AT }],
+    [
+      "an approval HQ holds no end of is still running",
+      held({}),
+      { state: "running", at: AT, by: "u1" },
+    ],
+    ["an approval that ended done", held({ outcome: "done" }), { state: "done", at: AT, by: "u1" }],
     [
       "an approval that failed says the platform's words",
       held({ outcome: "failed", words: "Zerops said no." }),
-      { state: "failed", at: AT, message: "Zerops said no." },
+      { state: "failed", at: AT, by: "u1", message: "Zerops said no." },
     ],
     [
       "a failure HQ holds no words of still says it failed",
       held({ outcome: "failed" }),
-      { state: "failed", at: AT, message: "Zerops did not do it." },
+      { state: "failed", at: AT, by: "u1", message: "Zerops did not do it." },
     ],
-    ["a decline", held({ decision: "declined" }), { state: "declined", at: AT }],
+    ["a decline", held({ decision: "declined" }), { state: "declined", at: AT, by: "u1" }],
   ])("a card reads %s", (_title, record, decision) => {
     expect(decisionFromHq(record)).toEqual(decision);
   });
@@ -1060,7 +1068,7 @@ describe("accessProposalPlan", () => {
     },
   );
 
-  it.each<[string, Exclude<ProposalStage, "open" | "failed">, string]>([
+  it.each<[string, Exclude<ProposalStage, "open" | "failed" | "declined">, string]>([
     ["running", "running", "Changing access to Contoso…"],
     ["done", "done", "Access to Contoso changed."],
   ])("an approved access change says it %s", (_title, stage, words) => {
@@ -1114,4 +1122,131 @@ describe("approveAuthority", () => {
       expect(approveAuthority(proposal, home, target)).toBe(words);
     },
   );
+});
+
+describe("a proposal on the ask card", () => {
+  const restart: ZeropsProposal = {
+    id: "p1",
+    kind: "service.restart",
+    summary: "Restart medusa in Contoso",
+    projectId: "p-contoso",
+    projectName: "Contoso",
+    serviceId: "s",
+    serviceName: "medusa",
+  };
+  const message: ZeropsProposal = {
+    id: "p2",
+    kind: "mate.message",
+    summary: "Ask Rossy",
+    params: { to: { projectId: "p", mateName: "Rossy" }, words: "Hi" },
+  };
+
+  it.each<[string, ZeropsProposal, "stage" | "production" | null, string]>([
+    ["a restart names its service", restart, null, "Restart medusa"],
+    ["a stop names its service", { ...restart, kind: "service.stop" }, null, "Stop medusa"],
+    ["a start names its service", { ...restart, kind: "service.start" }, null, "Start medusa"],
+    [
+      "a value on production",
+      envProposal("project", "STRIPE_KEY"),
+      "production",
+      "Set on production",
+    ],
+    ["a value on stage", envProposal("project", "STRIPE_KEY"), "stage", "Set on stage"],
+    [
+      "a value elsewhere names its key",
+      envProposal("project", "STRIPE_KEY"),
+      null,
+      "Set STRIPE_KEY",
+    ],
+    ["a message names its Mate", message, null, "Send to Rossy"],
+    ["two domains", domain, null, "Add the domains"],
+  ])("the main press names what it does: %s", (_name, proposal, tier, want) => {
+    expect(proposalPress(proposal, tier)).toBe(want);
+  });
+
+  it.each<[string, ZeropsProposal, "stage" | "production" | null, string | null, string | null]>([
+    ["a service on production", restart, "production", null, "Production · medusa"],
+    ["a service on stage", restart, "stage", null, "Stage · medusa"],
+    ["a service in the Mate's own project", restart, null, "p-contoso", "This Mate · medusa"],
+    ["a service in another project", restart, null, "p-home", "Project · medusa"],
+    [
+      "an app's own value, by the app alone",
+      { ...envProposal("service", "LOG_LEVEL"), projectName: "Shop", serviceName: "api" },
+      null,
+      "p-home",
+      "Project · api",
+    ],
+    [
+      "an app's own value on stage",
+      { ...envProposal("service", "LOG_LEVEL"), serviceName: "api" },
+      "stage",
+      null,
+      "Stage · api",
+    ],
+    [
+      "a production value for every app",
+      envProposal("project", "STRIPE_KEY"),
+      "production",
+      null,
+      "Production · every app",
+    ],
+    ["a message names the Mate it goes to", message, null, null, "Rossy"],
+  ])("the chip names where it acts: %s", (_name, proposal, tier, home, want) => {
+    const where = proposalAskWhere(proposal, tier, home);
+    expect(where === null ? null : askWhereWords(where)).toBe(want);
+  });
+
+  const state = (
+    stage: ProposalStage,
+    over: Partial<Parameters<typeof proposalAskState>[0]> = {},
+  ) =>
+    proposalAskState({
+      proposal: restart,
+      stage,
+      failure: undefined,
+      readOnlyReason: undefined,
+      by: "Aleš",
+      at: "15:02",
+      ...over,
+    });
+
+  it.each<[string, ProposalStage, Partial<Parameters<typeof proposalAskState>[0]>, unknown]>([
+    ["undecided: the press and Not now", "open", {}, { kind: "waiting" }],
+    [
+      "someone else's to decide",
+      "open",
+      { readOnlyReason: "Only someone who can work in this Mate can decide this." },
+      { kind: "othersToAnswer", words: "Only someone who can work in this Mate can decide this." },
+    ],
+    [
+      "approved and running",
+      "running",
+      {},
+      { kind: "working", words: "Restarting medusa…", pressed: "main" },
+    ],
+    [
+      "done: the result and who",
+      "done",
+      {},
+      { kind: "done", words: "Restarted medusa · Aleš, 15:02", told: null },
+    ],
+    [
+      "failed: the platform's words",
+      "failed",
+      { failure: "Service is mid-deploy." },
+      { kind: "failed", words: "Service is mid-deploy." },
+    ],
+    ["Not now: who and when", "declined", {}, { kind: "notNow", words: "Not now · Aleš, 15:02" }],
+    [
+      "approved before a reload, its end not seen",
+      "unseen",
+      { by: null, at: null },
+      {
+        kind: "replaced",
+        words: "Approved before the page reloaded. How it ended was not seen here.",
+      },
+    ],
+  ])("the card's state comes from HQ's decision record: %s", (_name, stage, over, want) => {
+    expect(state(stage, over)).toEqual(want);
+  });
 });

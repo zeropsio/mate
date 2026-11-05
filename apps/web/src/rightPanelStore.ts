@@ -58,6 +58,10 @@ export type RightPanelSurface =
   /** The crew's one home: its setup, or its section above its board. */
   | { id: "crew"; kind: "crew" }
   | { id: "mcp"; kind: "mcp" }
+  /** How the Mate works and talks in every chat: its persona and the templates to start from. */
+  | { id: "persona"; kind: "persona" }
+  /** Adobe Express, whose saved pictures go into the message. */
+  | { id: "express"; kind: "express" }
   /** The Zerops project's variables: Shared and each service's, who reads them, what is not live. */
   | { id: "vault"; kind: "vault" }
   /** The organization's project cards, in a Chief's conversation. */
@@ -173,6 +177,10 @@ const singletonSurface = (
       return { id: "crew", kind };
     case "mcp":
       return { id: "mcp", kind };
+    case "persona":
+      return { id: "persona", kind };
+    case "express":
+      return { id: "express", kind };
     case "vault":
       return { id: "vault", kind };
     case "overview":

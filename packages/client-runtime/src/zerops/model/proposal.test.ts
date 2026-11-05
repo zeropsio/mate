@@ -199,6 +199,47 @@ describe("readZeropsProposal", () => {
       },
     ],
     [
+      "a reveal names the value and where it lives, never the value itself",
+      // zcp's own document, as zerops_propose_reveal answers it.
+      "zerops_propose_reveal",
+      `{"proposal":{"id":"11111111-2222-3333-4444-555555555555","kind":"env.reveal","summary":"Show DATABASE_PASSWORD from Production","reason":"You asked for it to connect from your laptop.","projectId":"pProd","projectName":"Production","serviceId":"sDb","serviceName":"db","params":{"scope":"service","key":"DATABASE_PASSWORD"}},"note":"Nothing is shown to you."}`,
+      {
+        id: "11111111-2222-3333-4444-555555555555",
+        kind: "env.reveal",
+        summary: "Show DATABASE_PASSWORD from Production",
+        reason: "You asked for it to connect from your laptop.",
+        projectId: "pProd",
+        projectName: "Production",
+        serviceId: "sDb",
+        serviceName: "db",
+        params: { scope: "service", key: "DATABASE_PASSWORD" },
+      },
+    ],
+    [
+      "a reveal in this Mate names its service by hostname alone",
+      "zerops_propose_reveal",
+      result({
+        id: base.id,
+        kind: "env.reveal",
+        summary: "Show JWT_SECRET from this Mate",
+        reason: "to sign a test token",
+        projectId: "p-mate",
+        projectName: "This Mate",
+        serviceName: "appdev",
+        params: { scope: "service", key: "JWT_SECRET" },
+      }),
+      {
+        id: base.id,
+        kind: "env.reveal",
+        summary: "Show JWT_SECRET from this Mate",
+        reason: "to sign a test token",
+        projectId: "p-mate",
+        projectName: "This Mate",
+        serviceName: "appdev",
+        params: { scope: "service", key: "JWT_SECRET" },
+      },
+    ],
+    [
       "any Zerops tool's result holding a proposal is read, not only the organization's",
       "zerops_manage",
       result({ ...base, kind: "service.restart" }),
@@ -240,6 +281,31 @@ describe("readZeropsProposal", () => {
         kind: "access.set",
         params: { projects: [{ id: "p", name: "P" }], people: [] },
       }),
+    ],
+    [
+      "a reveal of a service's value that names no service",
+      "zerops_propose_reveal",
+      result({
+        ...base,
+        serviceId: undefined,
+        serviceName: undefined,
+        kind: "env.reveal",
+        params: { scope: "service", key: "API_KEY" },
+      }),
+    ],
+    [
+      "a reveal that carries a value",
+      "zerops_propose_reveal",
+      result({
+        ...base,
+        kind: "env.reveal",
+        params: { scope: "project", key: "API_KEY", value: "x" },
+      }),
+    ],
+    [
+      "a reveal with no key",
+      "zerops_propose_reveal",
+      result({ ...base, kind: "env.reveal", params: { scope: "project", key: " " } }),
     ],
     ["a result that is not JSON", "zerops_org_restart", "Restarted medusa."],
     ["a result with no proposal", "zerops_org_projects", JSON.stringify({ projects: [] })],
@@ -331,5 +397,170 @@ describe("readZeropsProposal", () => {
     ["a proposal that is not an object", "zerops_org_restart", JSON.stringify({ proposal: "x" })],
   ])("ignores %s", (_title, toolName, text) => {
     expect(readZeropsProposal(toolName, text)).toBeUndefined();
+  });
+});
+
+describe("readZeropsProposal: an MCP server", () => {
+  const mcp = (params: unknown, head: Record<string, unknown> = {}) =>
+    result({
+      id: base.id,
+      kind: "mcp.add",
+      summary: "Set up Linear",
+      reason: "to read the issues you link",
+      projectId: "p-juno",
+      projectName: "Shop - Juno",
+      ...head,
+      params,
+    });
+  const linear = {
+    name: "linear",
+    title: "Linear",
+    transport: { type: "http" as const, url: "https://mcp.linear.app/mcp" },
+    auth: { kind: "oauth" as const },
+  };
+  const head = {
+    id: base.id,
+    kind: "mcp.add" as const,
+    summary: "Set up Linear",
+    reason: "to read the issues you link",
+    projectId: "p-juno",
+    projectName: "Shop - Juno",
+  };
+
+  it.each<[string, string, ZeropsProposal]>([
+    [
+      "a remote server that signs in keeps its definition, for this Mate",
+      mcp({
+        scope: "mate",
+        server: { ...linear, docsUrl: "https://linear.app/docs/mcp" },
+        credentials: [],
+      }),
+      {
+        ...head,
+        params: {
+          scope: "mate",
+          server: { ...linear, auth: { kind: "oauth" }, docsUrl: "https://linear.app/docs/mcp" },
+          credentials: [],
+        },
+      },
+    ],
+    [
+      "a server with no scope or fields is this Mate's, with nothing to type",
+      mcp({ server: { ...linear, title: undefined } }),
+      {
+        ...head,
+        params: { scope: "mate", server: { ...linear, title: "linear" }, credentials: [] },
+      },
+    ],
+    [
+      "a command keeps its arguments and the keys the person types into its environment",
+      mcp({
+        scope: "org",
+        server: {
+          name: "github",
+          title: "GitHub",
+          transport: {
+            type: "stdio",
+            command: "npx",
+            args: ["-y", "@modelcontextprotocol/server-github"],
+          },
+          auth: { kind: "none" },
+        },
+        credentials: [
+          { key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub token", placement: "env" },
+        ],
+      }),
+      {
+        ...head,
+        params: {
+          scope: "org",
+          server: {
+            name: "github",
+            title: "GitHub",
+            transport: {
+              type: "stdio",
+              command: "npx",
+              args: ["-y", "@modelcontextprotocol/server-github"],
+            },
+            auth: { kind: "none" },
+          },
+          credentials: [
+            { key: "GITHUB_PERSONAL_ACCESS_TOKEN", label: "GitHub token", placement: "env" },
+          ],
+        },
+      },
+    ],
+    [
+      "a header sign-in keeps the header and what goes before the key",
+      mcp({
+        scope: "project",
+        server: { ...linear, auth: { kind: "header", scopes: [" read "] } },
+        credentials: [
+          {
+            key: "LINEAR_KEY",
+            label: "Linear API key",
+            placement: "header",
+            headerName: "Authorization",
+            prefix: "Bearer ",
+          },
+        ],
+      }),
+      {
+        ...head,
+        params: {
+          scope: "project",
+          server: { ...linear, auth: { kind: "header", scopes: ["read"] } },
+          credentials: [
+            {
+              key: "LINEAR_KEY",
+              label: "Linear API key",
+              placement: "header",
+              headerName: "Authorization",
+              prefix: "Bearer ",
+            },
+          ],
+        },
+      },
+    ],
+  ])("reads %s", (_title, text, expected) => {
+    expect(readZeropsProposal("zerops_propose_mcp", text)).toEqual(expected);
+  });
+
+  it.each<[string, string]>([
+    ["a name no agent's config takes", mcp({ server: { ...linear, name: "my server" } })],
+    ["a server with no address", mcp({ server: { ...linear, transport: { type: "http" } } })],
+    [
+      "a command with no command",
+      mcp({ server: { ...linear, transport: { type: "stdio", command: "" } } }),
+    ],
+    ["an unknown sign-in", mcp({ server: { ...linear, auth: { kind: "password" } } })],
+    ["no project", mcp({ server: linear }, { projectId: undefined })],
+    [
+      "a field with no label",
+      mcp({ server: linear, credentials: [{ key: "K", label: " ", placement: "header" }] }),
+    ],
+    [
+      "a field twice",
+      mcp({
+        server: linear,
+        credentials: [
+          { key: "K", label: "Key", placement: "header" },
+          { key: "K", label: "Key", placement: "header" },
+        ],
+      }),
+    ],
+    [
+      "an environment variable for a remote server",
+      mcp({ server: linear, credentials: [{ key: "K", label: "Key", placement: "env" }] }),
+    ],
+    [
+      "a header for a command",
+      mcp({
+        server: { ...linear, transport: { type: "stdio", command: "npx", args: [] } },
+        credentials: [{ key: "K", label: "Key", placement: "header" }],
+      }),
+    ],
+  ])("ignores %s", (_title, text) => {
+    expect(readZeropsProposal("zerops_propose_mcp", text)).toBeUndefined();
   });
 });

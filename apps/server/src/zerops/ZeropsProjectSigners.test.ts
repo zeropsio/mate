@@ -21,7 +21,7 @@ import { loginTurnRefusal, turnRefusal } from "@t3tools/shared/zeropsAgentAuth";
 
 import * as ServerConfig from "../config.ts";
 import { make as makeAgentLogin } from "./ZeropsAgentLogin.ts";
-import { ZEROPS_SUBJECT_PREFIX } from "./zeropsSubject.ts";
+import { ZEROPS_SUBJECT_PREFIX } from "@t3tools/contracts";
 import { makeLoginHomes } from "./zeropsLoginHomes.ts";
 import {
   fileSignInStore,

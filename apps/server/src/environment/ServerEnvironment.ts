@@ -109,6 +109,8 @@ export const makeServerEnvironmentCapabilities = (
     threadPullRequestLinking: true,
     projectCloneTracking: true,
     crewProposals: true,
+    matePersona: true,
+    mcpSignIn: true,
     ...(options?.mateUpdate === undefined ? {} : { mateUpdate: options.mateUpdate }),
     ...(options?.mateUpdateCheck === undefined ? {} : { mateUpdateCheck: options.mateUpdateCheck }),
     ...(options?.dataConsole === undefined ? {} : { dataConsole: options.dataConsole }),

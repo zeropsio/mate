@@ -432,6 +432,37 @@ it.layer(NodeServices.layer)("server settings", (it) => {
     ).pipe(Effect.provide(makeServerSettingsLayer())),
   );
 
+  it.effect("a Mate keeps its persona in its settings file until it is replaced or removed", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const serverConfig = yield* ServerConfig.ServerConfig;
+        const fileSystem = yield* FileSystem.FileSystem;
+        const serverSettings = yield* ServerSettingsModule.ServerSettingsService;
+        const readPersisted = fileSystem
+          .readFileString(serverConfig.settingsPath)
+          .pipe(Effect.flatMap(Schema.decodeUnknownEffect(Schema.fromJsonString(ServerSettings))));
+        const fromTemplate = {
+          name: "Reviewer",
+          instructions: "Review before you write.",
+          template: { source: "premade" as const, id: "reviewer", revision: 2 },
+        };
+        const edited = { name: "Reviewer", instructions: "Review twice before you write." };
+
+        yield* serverSettings.updateSettings({ persona: fromTemplate });
+        assert.deepStrictEqual((yield* readPersisted).persona, fromTemplate);
+
+        // Editing the text drops the template reference: the new persona replaces the old whole.
+        yield* serverSettings.updateSettings({ persona: edited });
+        assert.deepStrictEqual((yield* readPersisted).persona, edited);
+        assert.deepStrictEqual((yield* serverSettings.getSettings).persona, edited);
+
+        yield* serverSettings.updateSettings({ persona: null });
+        assert.strictEqual((yield* readPersisted).persona, null);
+        assert.strictEqual((yield* serverSettings.getSettings).persona, null);
+      }),
+    ).pipe(Effect.provide(makeServerSettingsLayer())),
+  );
+
   it.effect("preserves model when switching providers via textGenerationModelSelection", () =>
     Effect.gen(function* () {
       const serverSettings = yield* ServerSettingsModule.ServerSettingsService;

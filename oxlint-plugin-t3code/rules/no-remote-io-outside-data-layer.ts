@@ -205,6 +205,8 @@ export const ZEROPS_CLIENT_VERBS = [
 export const HQ_CLIENT_VERBS = [
   "autoUpdatePolicy",
   "setAutoUpdatePolicy",
+  "savePersonaTemplate",
+  "deletePersonaTemplate",
   "structure",
   "mateTicket",
   "openScopeSocket",
@@ -290,6 +292,7 @@ export const HQ_CLIENT_VERBS = [
   "proposalDecisions",
   "decideProposal",
   "withAccess",
+  "recordReveal",
 ] as const;
 
 const CLIENT_VERBS: ReadonlySet<string> = new Set([...ZEROPS_CLIENT_VERBS, ...HQ_CLIENT_VERBS]);

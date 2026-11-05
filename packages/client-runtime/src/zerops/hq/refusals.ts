@@ -1,3 +1,4 @@
+import { ORG_PERSONA_TEMPLATES_MAX } from "@t3tools/shared/personaTemplates";
 import * as Schema from "effect/Schema";
 import {
   HqRemoteRefusalReason,
@@ -158,6 +159,9 @@ const STRUCTURE_WORDS: Readonly<Record<string, string>> = {
   owner_not_member: "That person is not an active member of this organization.",
   mate_service_unknown: "HQ could not find this Mate's service to give it a new key.",
   key_unverified: "HQ has not verified this Mate's key yet. Try again in a few minutes.",
+  // An organization's persona templates (`@t3tools/shared/personaTemplates`).
+  revision_conflict: "Someone else changed this template meanwhile.",
+  too_many_templates: `An organization keeps at most ${ORG_PERSONA_TEMPLATES_MAX} templates. Delete one first.`,
   // A Mate's changes (`@t3tools/shared/hqChanges`), as a person meets them.
   repo_not_found: "HQ has no such repository.",
   // A repository HQ will not delete (`DELETE /api/apps/:appId/repos/:repo`).

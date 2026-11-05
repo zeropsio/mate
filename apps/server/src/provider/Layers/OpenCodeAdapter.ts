@@ -42,6 +42,8 @@ import { openCodeKeyProviderOfModel } from "@t3tools/shared/openCodeKeyProviders
 import { resolveAttachmentPath } from "../../attachmentStore.ts";
 import { withoutPictureOriginals } from "../../providerPictures.ts";
 import { ServerConfig } from "../../config.ts";
+import { makePersonaReader } from "../../personaInstructions.ts";
+import { ServerSettingsService } from "../../serverSettings.ts";
 import { type EventNdjsonLogger, makeEventNdjsonLogger } from "./EventNdjsonLogger.ts";
 import {
   ProviderAdapterProcessError,
@@ -367,7 +369,33 @@ const openCodeMcpClient = (client: OpencodeClient): OpenCodeMcpClient => ({
   // The entry is the one the MCP tab wrote into opencode.json, so it is OpenCode's own shape.
   add: (name, config) =>
     client.mcp.add({ name, config: config as unknown as McpLocalConfig | McpRemoteConfig }),
+  startAuth: (name) =>
+    client.mcp.auth.start({ name }).then((result) => {
+      if (result.data === undefined) throw new Error(openCodeAuthError(result.error));
+      return result.data;
+    }),
+  removeAuth: (name) =>
+    client.mcp.auth.remove({ name }).then((result) => {
+      if (result.data === undefined) throw new Error(openCodeAuthError(result.error));
+      return result.data;
+    }),
+  finishAuth: (name, code) =>
+    client.mcp.auth.callback({ name, code }).then((result) => {
+      if (result.data === undefined) throw new Error(openCodeAuthError(result.error));
+      return result.data;
+    }),
 });
+
+/** An OpenCode MCP auth refusal's own words, when it has any. */
+const openCodeAuthError = (error: unknown): string => {
+  const data =
+    typeof error === "object" && error !== null ? (error as { data?: unknown }).data : undefined;
+  const message =
+    typeof data === "object" && data !== null ? (data as { message?: unknown }).message : undefined;
+  return typeof message === "string" && message.trim() !== ""
+    ? message
+    : "OpenCode refused the sign-in";
+};
 
 interface OpenCodeSessionContext {
   session: ProviderSession;
@@ -950,6 +978,7 @@ export function makeOpenCodeAdapter(
   return Effect.gen(function* () {
     const boundInstanceId = options?.instanceId ?? ProviderInstanceId.make("opencode");
     const serverConfig = yield* ServerConfig;
+    const readPersona = yield* makePersonaReader(yield* ServerSettingsService);
     const openCodeRuntime = yield* OpenCodeRuntime;
     const threadPolicies = yield* readOpenCodeThreadPolicies;
     const crypto = yield* Crypto.Crypto;
@@ -3243,6 +3272,7 @@ export function makeOpenCodeAdapter(
             : undefined),
       );
       const modelSelection = turnProfile.modelSelection;
+      const persona = turnProfile.profiled ? undefined : yield* readPersona;
       if (modelSelection !== undefined && modelSelection.instanceId !== boundInstanceId) {
         return yield* new ProviderAdapterValidationError({
           provider: PROVIDER,
@@ -3463,6 +3493,7 @@ export function makeOpenCodeAdapter(
                         model: `${parsedModel.providerID}/${parsedModel.modelID}`,
                         imageInput: promptModel?.readsImages,
                       }),
+                      persona,
                       turnProfile.instructions,
                     ]
                       .filter(Boolean)
