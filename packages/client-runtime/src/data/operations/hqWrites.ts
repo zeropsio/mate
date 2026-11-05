@@ -200,14 +200,14 @@ export const deployKeyShown = (
 export const keepDeployKey = shown("keep-deploy-key", (intent) => intent.projectId, deployKeyShown);
 
 /**
- * The Zerops id of the deploy token HQ's navigation says it keeps for the application's
- * environment on `projectId`: what the client deletes once HQ no longer keeps it.
+ * The deploy token HQ's navigation says it keeps for the application's environment on `projectId`,
+ * with its Zerops id where HQ records one: what the client deletes once HQ no longer keeps it.
  */
-export const keptDeployTokenId = (
+export const keptDeployToken = (
   read: ProjectionReads,
   appId: string,
   projectId: string,
-): string | undefined => {
+): { readonly id: string | undefined } | undefined => {
   const environments = appOf(read, appId)?.environments;
   const kept = Array.isArray(environments)
     ? environments.find(
@@ -217,7 +217,7 @@ export const keptDeployTokenId = (
           environment.keyHeld,
       )
     : undefined;
-  return kept?.keyId;
+  return kept === undefined ? undefined : { id: kept.keyId };
 };
 
 export const updateMateFace = shown(
