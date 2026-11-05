@@ -5,6 +5,7 @@ import { describe, expect, it } from "vite-plus/test";
 import { hqMateScope } from "../families/hqMate.ts";
 import {
   hqAppFamily,
+  hqPressFamily,
   placementFamily,
   hqAppsScope,
   hqOrganizationScope,
@@ -48,8 +49,7 @@ const CHANGE = {
 const PRESS = {
   kind: "stage",
   appId: "shop",
-  heldForMs: 30_000,
-  until: "2026-10-06T00:00:30.000Z",
+  held: true,
 } as const;
 const person = {
   mine: true,
@@ -247,6 +247,28 @@ const removed = apply(read, [
 ]);
 
 const navigation = (state: AccountState) => hqNavigation.derive(readsOfState(state), ORG);
+
+it.each([true, false])(
+  "HQ's late press hold %s reaches the navigation of another device",
+  (held) => {
+    const wire = { kind: "mate", held, importProcessId: "accepted-import" } as const;
+    const value = hqPressFamily.hq!.decode(wire, "press:p1");
+    expect(value).toEqual(wire);
+    const state = apply(read, [
+      {
+        kind: "delivery",
+        via: "hq-stream",
+        scopes: generations,
+        reset: false,
+        rows: [
+          { family: "hqPress", id: "p1", value: value!, revision: { ...revision, revision: 2 } },
+        ],
+        removals: [],
+      },
+    ]);
+    expect(navigation(state).presses.p1).toEqual(wire);
+  },
+);
 
 it("navigation keeps each accepted import identity after the browser press is gone", () => {
   const birth = {
