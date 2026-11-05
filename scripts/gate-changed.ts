@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 // @effect-diagnostics nodeBuiltinImport:off globalConsole:off globalDate:off preferSchemaOverJson:off -- host gate runner.
+import { HostProcessArchitecture, HostProcessPlatform } from "@t3tools/shared/hostProcess";
 import * as NodeChildProcess from "node:child_process";
 import * as NodeCrypto from "node:crypto";
 import * as NodeFS from "node:fs";
+import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeUtil from "node:util";
 import {
@@ -1010,6 +1012,29 @@ function stageHashes(
   selection: string,
 ): Record<string, string> {
   const inputs = graph.related ?? buildRelatedFileGraph(root, []);
+  // The scanners walk the filesystem, including ignored source files that Git's inventory omits.
+  const scanned = (roots: ReadonlyArray<string>) => {
+    const files: string[] = [];
+    const visit = (directory: string) => {
+      const absolute = NodePath.join(root, directory);
+      if (!NodeFS.existsSync(absolute)) return;
+      for (const entry of NodeFS.readdirSync(absolute, { withFileTypes: true })) {
+        const path = NodePath.posix.join(directory, entry.name);
+        if (entry.isDirectory() && entry.name !== "node_modules" && entry.name !== ".git")
+          visit(path);
+        else if (
+          entry.isSymbolicLink() ||
+          /\.(?:[cm]?[jt]sx?|css)$/u.test(entry.name) ||
+          /^(?:components\.json|package\.json|[jt]sconfig(?:\.[^/]*)?\.json|\.gitignore|\.ignore|\.oxlintignore)$/u.test(
+            entry.name,
+          )
+        )
+          files.push(path);
+      }
+    };
+    roots.forEach(visit);
+    return files;
+  };
   const digest = (paths: ReadonlyArray<string>, baseline: ReadonlyArray<string>) => {
     const hash = NodeCrypto.createHash("sha256");
     const files = [...new Set(paths)].sort();
@@ -1080,10 +1105,14 @@ function stageHashes(
             );
         } else if (stage.name === "guard ledgers") {
           files.push(
+            ...scanned(["apps/web", ...guardScopePaths]),
             ...inventory.filter(
               (path) =>
                 guardScopePaths.some((directory) => path.startsWith(`${directory}/`)) ||
-                path.startsWith("oxlint-plugin-t3code/"),
+                path.startsWith("oxlint-plugin-t3code/") ||
+                /(?:^|\/)(?:\.gitignore|\.ignore|\.oxlintignore|components\.json|[jt]sconfig(?:\.[^/]*)?\.json)$/u.test(
+                  path,
+                ),
             ),
           );
           baseline = [
@@ -1094,6 +1123,7 @@ function stageHashes(
         } else if (stage.name === "runtime cycle ratchet") {
           files.push(
             "scripts/runtime-cycles.json",
+            ...scanned(runtimeCycleSourceRoots),
             ...inventory.filter(
               (path) =>
                 runtimeCycleSourceRoots.some((directory) => path.startsWith(`${directory}/`)) ||
@@ -1134,6 +1164,174 @@ function stageHashes(
         ];
       }),
   );
+}
+
+const sharedStageNames = new Set(["guard ledgers", "runtime cycle ratchet"]);
+
+/** Share only successful stages whose checkout inputs and local toolchain match. */
+async function sharedStageCache(
+  root: string,
+  base: ReadonlyMap<string, string>,
+  inventory: ReadonlyArray<string>,
+  full: boolean,
+) {
+  if (
+    full ||
+    process.env.CI ||
+    process.env.GITHUB_ACTIONS ||
+    process.env.NODE_OPTIONS ||
+    process.env.NODE_PATH ||
+    process.env.NAPI_RS_NATIVE_LIBRARY_PATH ||
+    process.env.NAPI_RS_FORCE_WASI ||
+    process.env.NAPI_RS_WASI_FLAVOR ||
+    process.env.VP_OVERRIDE_PACKAGES ||
+    Object.keys(process.env).some((key) => /^T3CODE_.*LEDGER_DIRECTORY$/u.test(key))
+  ) {
+    return undefined;
+  }
+
+  // The checks can follow links, whereas Git inventories the link text, not its target.
+  const hasLink = (directory: string): boolean => {
+    const absolute = NodePath.join(root, directory);
+    if (!NodeFS.existsSync(absolute)) return false;
+    return NodeFS.readdirSync(absolute, { withFileTypes: true }).some((entry) => {
+      if (["node_modules", ".git", ".tanstack", "dist", "build", "coverage"].includes(entry.name))
+        return false;
+      return (
+        entry.isSymbolicLink() ||
+        (entry.isDirectory() && hasLink(NodePath.posix.join(directory, entry.name)))
+      );
+    });
+  };
+  if (
+    ["apps/web", ...guardScopePaths, ...runtimeCycleSourceRoots].some(hasLink) ||
+    inventory.some(
+      (file) =>
+        /^(?:scripts|oxlint-plugin-t3code|apps|packages)\//u.test(file) &&
+        !/(?:^|\/)node_modules(?:\/|$)/u.test(file) &&
+        NodeFS.lstatSync(NodePath.join(root, file), { throwIfNoEntry: false })?.isSymbolicLink(),
+    )
+  ) {
+    return undefined;
+  }
+
+  const path = [NodePath.join(root, "node_modules/.bin"), process.env.PATH ?? ""].join(
+    NodePath.delimiter,
+  );
+  const env = { ...process.env, PATH: path, MATE_TEST_JOBS: process.env.MATE_TEST_JOBS ?? "8" };
+  const snapshot = async () => {
+    try {
+      const { hashGuardContext, hashPackageTrees, makeGuardSourceHasher } =
+        await import("./lib/guard-cache.ts");
+      const node = NodeChildProcess.spawnSync("which", ["node"], {
+        cwd: root,
+        env,
+        encoding: "utf8",
+      });
+      if (
+        node.status !== 0 ||
+        NodeFS.realpathSync(node.stdout.trim()) !== NodeFS.realpathSync(process.execPath)
+      ) {
+        return undefined;
+      }
+      const tools = hashPackageTrees(
+        ["vite-plus", "madge", "effect", "@effect/platform-node"].map((name) =>
+          NodePath.join(root, "scripts/node_modules", name, "package.json"),
+        ),
+        true,
+      );
+      const runLint = (args: ReadonlyArray<string>) =>
+        NodeChildProcess.spawnSync("vp", ["lint", ...args], {
+          cwd: root,
+          env,
+          encoding: "utf8",
+          maxBuffer: 64 * 1024 * 1024,
+        });
+      const version = runLint(["--version"]);
+      const config = runLint(["--print-config"]);
+      const selection = runLint(["--debug=files", ...guardScopePaths]);
+      if ([version, config, selection].some((result) => result.status !== 0)) {
+        return undefined;
+      }
+      if (!/^Version: \S+/u.test(version.stdout.trim())) return undefined;
+      const files = selection.stdout
+        .split(/\r?\n/u)
+        .filter(Boolean)
+        .map((file) =>
+          (NodePath.isAbsolute(file) ? NodePath.relative(root, file) : file).replaceAll("\\", "/"),
+        )
+        .sort();
+      if (files.some((file) => !guardScopePaths.some((scope) => file.startsWith(`${scope}/`))))
+        return undefined;
+      const context = hashGuardContext({
+        cwd: root,
+        config: config.stdout,
+        version: version.stdout.trim(),
+        ruleNames: [],
+      });
+      const source = makeGuardSourceHasher(root, files);
+      const guard = NodeCrypto.createHash("sha256")
+        .update(context)
+        .update(JSON.stringify(files.map((file) => [file, source(file)])))
+        .digest("hex");
+      const executable = NodeFS.readFileSync(
+        NodePath.join(root, "node_modules/.bin/vp"),
+        "utf8",
+      ).replaceAll(root, "<repo>");
+      return { tools, guard, executable, jobs: env.MATE_TEST_JOBS };
+    } catch {
+      // An unidentifiable toolchain must run the checks rather than reuse a result.
+      return undefined;
+    }
+  };
+  const before = await snapshot();
+  if (!before) return undefined;
+  const directory = NodePath.join(
+    process.env.XDG_CACHE_HOME || NodePath.join(NodeOS.homedir(), ".cache"),
+    "mate-gate-stages",
+  );
+  const key = (stage: GateStage, fingerprint: string | undefined) => {
+    if (!sharedStageNames.has(stage.name) || fingerprint === undefined) return undefined;
+    // Before enrollment the guard also reads the lane's Git history, not just its base tree.
+    if (
+      stage.name === "guard ledgers" &&
+      !base.has("oxlint-plugin-t3code/failure-to-empty-enrollment.json")
+    )
+      return undefined;
+    return NodeCrypto.createHash("sha256")
+      .update(
+        JSON.stringify([
+          fingerprint,
+          HostProcessPlatform.defaultValue(),
+          HostProcessArchitecture.defaultValue(),
+          process.version,
+          before,
+        ]),
+      )
+      .digest("hex");
+  };
+  const has = (value: string) => {
+    try {
+      return NodeFS.readFileSync(NodePath.join(directory, `${value}.json`), "utf8") === value;
+    } catch {
+      return false;
+    }
+  };
+  const put = (value: string) => {
+    let temporary: string | undefined;
+    try {
+      NodeFS.mkdirSync(directory, { recursive: true });
+      temporary = NodePath.join(directory, `${value}.${NodeCrypto.randomUUID()}.tmp`);
+      NodeFS.writeFileSync(temporary, value, { flag: "wx" });
+      NodeFS.renameSync(temporary, NodePath.join(directory, `${value}.json`));
+    } catch {
+      // An unavailable cache never prevents the actual checks from running.
+    } finally {
+      if (temporary) NodeFS.rmSync(temporary, { force: true });
+    }
+  };
+  const unchanged = async () => JSON.stringify(await snapshot()) === JSON.stringify(before);
+  return { key, has, put, unchanged };
 }
 
 function readReceipt(path: string): GateReceipt | undefined {
@@ -1631,7 +1829,25 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
       args: step.args.map((arg) => (arg === comparison ? "<comparison>" : arg)),
     }));
     const full = args.includes("--full") || args.includes("--force");
-    const fingerprints = stageHashes(root, comparison, baseTree, lane, steps, graph, selection);
+    const shared = await sharedStageCache(root, baseTree, lane.inventory, full);
+    const fingerprintsFor = (snapshot: typeof lane) => {
+      const fingerprints = stageHashes(
+        root,
+        comparison,
+        baseTree,
+        snapshot,
+        steps,
+        graph,
+        selection,
+      );
+      if (shared)
+        for (const step of steps) {
+          const key = shared.key(step, fingerprints[step.name]);
+          if (key) fingerprints[step.name] = key;
+        }
+      return fingerprints;
+    };
+    const fingerprints = fingerprintsFor(lane);
     const previousReceipt = full ? undefined : readReceipt(receiptPath);
     if (
       !full &&
@@ -1659,6 +1875,12 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
         )
         .map((step) => [step.name, { name: step.name, status: 0, durationMs: 0 }]),
     );
+    if (shared)
+      for (const step of steps) {
+        const key = shared.key(step, fingerprints[step.name]);
+        if (!reusable.has(step.name) && key && shared.has(key))
+          reusable.set(step.name, { name: step.name, status: 0, durationMs: 0 });
+      }
     const gateStarted = Date.now();
     const receipt: GateReceipt = {
       diffHash: hash,
@@ -1804,12 +2026,17 @@ export async function runGate(root: string, args: ReadonlyArray<string>): Promis
     if (
       diffHash(root, baseTree, after.paths) !== hash ||
       selectionHash(root) !== selection ||
-      JSON.stringify(stageHashes(root, comparison, baseTree, after, steps, graph, selection)) !==
-        JSON.stringify(fingerprints)
+      JSON.stringify(fingerprintsFor(after)) !== JSON.stringify(fingerprints) ||
+      (shared && !(await shared.unchanged()))
     )
       throw new Error(
         "Lane diff or selection inputs changed during the gate; run again for the changed code.",
       );
+    if (shared)
+      for (const step of steps) {
+        const key = shared.key(step, fingerprints[step.name]);
+        if (key) shared.put(key);
+      }
     receipt.completed = true;
     receipt.durationMs = Date.now() - gateStarted - receipt.queueWaitMs;
     writeReceipt(receiptPath, receipt);

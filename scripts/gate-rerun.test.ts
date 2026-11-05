@@ -3,7 +3,8 @@ import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
-import { expect, it } from "vite-plus/test";
+import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
+import { hashPackageTrees } from "./lib/guard-cache.ts";
 import { stateOnlySmoke } from "./state-smoke-cases.ts";
 
 const gateRunnerFiles = [
@@ -34,7 +35,7 @@ function fixture(assertion: (gate: ReturnType<typeof createFixture>) => void) {
   }
 }
 
-function createFixture() {
+function createFixture(cacheHome?: string) {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-rerun-"));
   const write = (path: string, text: string) => {
     const absolute = NodePath.join(root, path);
@@ -61,6 +62,26 @@ const fs = require("node:fs");
 const path = require("node:path");
 const command = path.basename(process.argv[1]);
 const args = process.argv.slice(2);
+if (command === "vp" && args[0] === "--version") {
+  console.log("fixture-vp-v1");
+  process.exit(0);
+}
+if (command === "vp" && args[0] === "lint") {
+  if (args[1] === "--version") console.log("Version: fixture-v1");
+  if (args[1] === "--print-config") console.log(JSON.stringify({ jsPlugins: [] }));
+  if (args[1] === "--debug=files") {
+    const walk = (dir) => {
+      if (!fs.existsSync(dir)) return;
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const file = path.join(dir, entry.name);
+        if (entry.isDirectory()) walk(file);
+        else if (/\\.tsx?$/.test(file)) console.log(file);
+      }
+    };
+    args.slice(2).forEach(walk);
+  }
+  process.exit(0);
+}
 const cwd = path.relative(process.env.GATE_FIXTURE_ROOT, process.cwd()) || ".";
 fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.stringify({ command, cwd, args }) + "\\n");
 const fail = process.env.GATE_FIXTURE_FAIL;
@@ -70,7 +91,29 @@ if (command === "vp" && (fail === "check" && args[0] === "check" || fail === "sm
     write(`node_modules/.bin/${command}`, stub);
     NodeFS.chmodSync(NodePath.join(root, "node_modules/.bin", command), 0o755);
   }
-  write(".gitignore", "node_modules/\nchecks.log\n.gate-receipt.json*\n");
+  if (cacheHome) {
+    NodeFS.rmSync(NodePath.join(root, "node_modules/.bin/node"));
+    NodeFS.mkdirSync(NodePath.join(root, "scripts/lib"), { recursive: true });
+    NodeFS.copyFileSync(
+      NodePath.join(import.meta.dirname, "lib/guard-cache.ts"),
+      NodePath.join(root, "scripts/lib/guard-cache.ts"),
+    );
+    const script = `const fs = require("node:fs");
+const path = require("node:path");
+fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.stringify({ command: "node", cwd: ".", args: [path.relative(process.cwd(), process.argv[1]), ...process.argv.slice(2)] }) + "\\n");
+`;
+    for (const name of [
+      "check-guard-exceptions",
+      "check-runtime-cycles",
+      "check-test-sentences",
+      "check-test-clock",
+    ])
+      write(`scripts/${name}.ts`, script);
+  }
+  write(
+    ".gitignore",
+    "node_modules/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
+  );
   write("README.md", "before\n");
   for (const path of Object.keys(stateOnlySmoke)) write(path, "export {};\n");
   const baseline = () => {
@@ -81,8 +124,8 @@ if (command === "vp" && (fail === "check" && args[0] === "check" || fail === "sm
     git("commit", "-qm", "base");
     git("branch", "base");
   };
-  const run = (args: string[] = [], fail = "") =>
-    NodeChildProcess.spawnSync(
+  const run = (args: string[] = [], fail = "") => {
+    const result = NodeChildProcess.spawnSync(
       process.execPath,
       ["scripts/gate-changed.ts", "--base", "base", ...args],
       {
@@ -90,12 +133,25 @@ if (command === "vp" && (fail === "check" && args[0] === "check" || fail === "sm
         encoding: "utf8",
         env: {
           ...process.env,
+          PATH: [NodePath.dirname(process.execPath), process.env.PATH ?? ""].join(
+            NodePath.delimiter,
+          ),
+          HOME: cacheHome ?? process.env.HOME,
+          // The repository vp wrapper sets NODE_PATH; these fake installs have their own modules.
+          NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
+          XDG_CACHE_HOME: cacheHome
+            ? NodePath.join(cacheHome, ".cache")
+            : process.env.XDG_CACHE_HOME,
+          CI: "",
+          GITHUB_ACTIONS: "",
           GATE_FIXTURE_ROOT: root,
           GATE_FIXTURE_FAIL: fail,
           NODE_COMPILE_CACHE: NodePath.join(root, "node_modules/.cache/node"),
         },
       },
     );
+    return result;
+  };
   const checks = (): Check[] =>
     NodeFS.existsSync(NodePath.join(root, "checks.log"))
       ? NodeFS.readFileSync(NodePath.join(root, "checks.log"), "utf8")
@@ -105,8 +161,85 @@ if (command === "vp" && (fail === "check" && args[0] === "check" || fail === "sm
           .map((line) => JSON.parse(line) as Check)
       : [];
   const clearChecks = () => NodeFS.rmSync(NodePath.join(root, "checks.log"), { force: true });
-  return { root, write, baseline, run, checks, clearChecks };
+  const clearReceipt = () =>
+    NodeFS.rmSync(NodePath.join(root, ".gate-receipt.json"), { force: true });
+  return { root, write, baseline, run, checks, clearChecks, clearReceipt };
 }
+
+describe("shared guard and cycle receipts", () => {
+  let home: string;
+  let first: ReturnType<typeof createFixture>;
+  let second: ReturnType<typeof createFixture>;
+
+  beforeAll(() => {
+    home = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-shared-"));
+    first = createFixture(home);
+    second = createFixture(home);
+    for (const gate of [first, second]) {
+      gate.write("oxlint-plugin-t3code/failure-to-empty-enrollment.json", "[]\n");
+      gate.write("apps/web/src/example.ts", "export const value = 0;\n");
+      gate.baseline();
+      gate.write("README.md", "after\n");
+    }
+  });
+  afterAll(() => {
+    for (const path of [first.root, second.root, home])
+      NodeFS.rmSync(path, { recursive: true, force: true });
+  });
+
+  it("shares results across worktrees and reruns both checks after one source byte changes", () => {
+    for (const gate of [first, second]) {
+      gate.write("apps/web/src/example.ts", "export const value = 1;\n");
+      gate.clearReceipt();
+      gate.clearChecks();
+    }
+    expect(first.run().status).toBe(0);
+    const reused = second.run();
+    expect(reused.status, reused.stderr).toBe(0);
+    expect(reused.stdout).toContain("reused stage: guard ledgers");
+    expect(reused.stdout).toContain("reused stage: runtime cycle ratchet");
+    second.clearChecks();
+    second.write("apps/web/src/example.ts", "export const value = 2;\n");
+    const changed = second.run();
+    expect(changed.status, changed.stderr).toBe(0);
+    expect(changed.stdout).not.toContain("reused stage: guard ledgers");
+    expect(changed.stdout).not.toContain("reused stage: runtime cycle ratchet");
+    expect(
+      second.checks().filter((check) => check.args[0] === "scripts/check-guard-exceptions.ts"),
+    ).toHaveLength(1);
+    expect(
+      second.checks().filter((check) => check.args[0] === "scripts/check-runtime-cycles.ts"),
+    ).toHaveLength(1);
+  });
+
+  it("invalidates a shared guard result after an ignored components config changes", () => {
+    for (const gate of [first, second]) {
+      gate.write("apps/web/src/example.ts", "export const value = 3;\n");
+      gate.write("apps/web/src/components.json", "{}\n");
+      gate.clearReceipt();
+      gate.clearChecks();
+    }
+    expect(first.run().status).toBe(0);
+    expect(second.run().stdout).toContain("reused stage: guard ledgers");
+    second.clearChecks();
+    second.write("apps/web/src/components.json", "{} \n");
+    const changed = second.run();
+    expect(changed.status, changed.stderr).toBe(0);
+    expect(
+      second.checks().filter((check) => check.args[0] === "scripts/check-guard-exceptions.ts"),
+    ).toHaveLength(1);
+  });
+
+  it("fingerprints installed dependency bytes as well as their package names", () => {
+    const pkg = "node_modules/stage-cache-fixture";
+    first.write(`${pkg}/package.json`, '{"name":"fixture"}');
+    first.write(`${pkg}/index.js`, "1");
+    const manifest = NodePath.join(first.root, pkg, "package.json");
+    const before = hashPackageTrees([manifest], true);
+    first.write(`${pkg}/index.js`, "2");
+    expect(hashPackageTrees([manifest], true)).not.toBe(before);
+  });
+});
 
 it("Decision: a gate re-run never repeats stages that passed on unchanged files.", () => {
   fixture((gate) => {
@@ -311,7 +444,8 @@ it("changing a scenario title reruns sentence retention after a previous success
     gate.write(scenario, 'it("the original sentence", () => {});\n');
     gate.baseline();
     gate.write(scenario, 'it("the original sentence", () => {});\nexport const changed = true;\n');
-    expect(gate.run().status).toBe(0);
+    const initial = gate.run();
+    expect(initial.status, initial.stderr).toBe(0);
     gate.clearChecks();
     gate.write(scenario, 'it("a replacement sentence", () => {});\nexport const changed = true;\n');
     const rerun = gate.run();

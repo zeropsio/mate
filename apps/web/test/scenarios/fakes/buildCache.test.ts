@@ -4,7 +4,7 @@ import * as NodeFSP from "node:fs/promises";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeURL from "node:url";
-import { expect, it } from "vite-plus/test";
+import { expect, it, vi } from "vite-plus/test";
 import { bundleKey, cachedBundle } from "../harness/buildCache.ts";
 
 async function cacheFixture() {
@@ -154,9 +154,9 @@ it("removing a tracked stylesheet invalidates the cache without blocking the nex
     const build = async (dist: string) => {
       await NodeFSP.writeFile(NodePath.join(dist, "index.html"), String(++builds));
     };
-    const before = await cachedBundle(root, {}, build);
+    const before = await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build);
     await NodeFSP.rm(NodePath.join(root, path));
-    const next = cachedBundle(root, {}, build);
+    const next = cachedBundle(root, { GITHUB_ACTIONS: "true" }, build);
     await expect(next).resolves.not.toBe(before);
     expect(await NodeFSP.readFile(NodePath.join(await next, "index.html"), "utf8")).toBe("2");
   } finally {
@@ -177,27 +177,27 @@ it("reuses identical input bytes, invalidates bundle inputs, and isolates worktr
     const input = NodePath.join(root, "apps/web/src/main.ts");
     await NodeFSP.writeFile(input, "first");
     const [a, b] = await Promise.all([
-      cachedBundle(root, {}, build),
-      cachedBundle(root, {}, build),
+      cachedBundle(root, { GITHUB_ACTIONS: "true" }, build),
+      cachedBundle(root, { GITHUB_ACTIONS: "true" }, build),
     ]);
     expect(a).toBe(b);
     expect(builds).toBe(1);
     await NodeFSP.writeFile(input, "first");
-    expect(await cachedBundle(root, {}, build)).toBe(a);
+    expect(await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build)).toBe(a);
     await NodeFSP.writeFile(NodePath.join(root, "unrelated.log"), "tests only");
-    expect(await cachedBundle(root, {}, build)).toBe(a);
+    expect(await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build)).toBe(a);
     await NodeFSP.writeFile(input, "second");
-    const updated = await cachedBundle(root, {}, build);
+    const updated = await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build);
     expect(updated).not.toBe(a);
     expect(builds).toBe(2);
     await NodeFSP.writeFile(
       NodePath.join(root, ".gitignore"),
       "node_modules/\n*.log\nsrc/ignored.ts\n",
     );
-    expect(await cachedBundle(root, {}, build)).not.toBe(updated);
+    expect(await cachedBundle(root, { GITHUB_ACTIONS: "true" }, build)).not.toBe(updated);
     expect(builds).toBe(3);
     expect(await bundleKey(root, { VITE_BASE_PATH: "/mate" })).not.toBe(await bundleKey(root, {}));
-    expect(await cachedBundle(other, {}, build)).not.toBe(a);
+    expect(await cachedBundle(other, { GITHUB_ACTIONS: "true" }, build)).not.toBe(a);
   } finally {
     await NodeFSP.rm(root, { recursive: true, force: true });
     await NodeFSP.rm(other, { recursive: true, force: true });
@@ -207,17 +207,17 @@ it("never publishes a failed or concurrently edited build", async () => {
   const root = await cacheFixture();
   try {
     await expect(
-      cachedBundle(root, {}, async () => {
+      cachedBundle(root, { GITHUB_ACTIONS: "true" }, async () => {
         throw new Error("build failed");
       }),
     ).rejects.toThrow("build failed");
     await expect(
-      cachedBundle(root, {}, async (dist) => {
+      cachedBundle(root, { GITHUB_ACTIONS: "true" }, async (dist) => {
         await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "stale");
         await NodeFSP.writeFile(NodePath.join(root, "package.json"), "{}");
       }),
     ).rejects.toThrow("inputs changed");
-    const dist = await cachedBundle(root, {}, async (dist) => {
+    const dist = await cachedBundle(root, { GITHUB_ACTIONS: "true" }, async (dist) => {
       await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "fresh");
     });
     expect(await NodeFSP.readFile(NodePath.join(dist, "index.html"), "utf8")).toBe("fresh");
@@ -321,7 +321,7 @@ it("a bundle artifact is reused in another checkout only when its input bytes ma
   const builder = await cacheFixture();
   const consumer = await cacheFixture();
   try {
-    const built = await cachedBundle(builder, {}, async (dist) => {
+    const built = await cachedBundle(builder, { GITHUB_ACTIONS: "true" }, async (dist) => {
       await NodeFSP.writeFile(NodePath.join(dist, "index.html"), "certified bundle");
     });
     const restored = NodePath.join(consumer, NodePath.relative(builder, built));
@@ -329,13 +329,60 @@ it("a bundle artifact is reused in another checkout only when its input bytes ma
     const noBuild = async () => {
       throw new Error("artifact required");
     };
-    expect(await cachedBundle(consumer, {}, noBuild)).toBe(restored);
+    expect(await cachedBundle(consumer, { GITHUB_ACTIONS: "true" }, noBuild)).toBe(restored);
     expect(await NodeFSP.readFile(NodePath.join(restored, "index.html"), "utf8")).toBe(
       "certified bundle",
     );
     await NodeFSP.mkdir(NodePath.join(consumer, "apps/web/src"), { recursive: true });
     await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/main.ts"), "changed");
-    await expect(cachedBundle(consumer, {}, noBuild)).rejects.toThrow("artifact required");
+    await expect(cachedBundle(consumer, { GITHUB_ACTIONS: "true" }, noBuild)).rejects.toThrow(
+      "artifact required",
+    );
+
+    // A waiting checkout can change before the other checkout publishes the old key.
+    for (const root of [builder, consumer]) {
+      await NodeFSP.mkdir(NodePath.join(root, "apps/web/src"), { recursive: true });
+      await NodeFSP.writeFile(NodePath.join(root, "apps/web/src/main.ts"), "1");
+    }
+    const sharedEnv = { XDG_CACHE_HOME: NodePath.join(builder, "shared-cache") };
+    let builds = 0;
+    const build = async (dist: string) => {
+      await NodeFSP.writeFile(NodePath.join(dist, "index.html"), String(++builds));
+    };
+    const requested = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    vi.doMock("../../../../../scripts/test-process-lock.ts", () => ({
+      acquireProcessLock: async () => {
+        requested.resolve();
+        await release.promise;
+        return async () => {};
+      },
+    }));
+    vi.resetModules();
+    try {
+      const { cachedBundle: waitingBundle } = await import("../harness/buildCache.ts");
+      const waiting = waitingBundle(consumer, sharedEnv, build);
+      await requested.promise;
+      const shared = await cachedBundle(builder, sharedEnv, build);
+      await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/main.ts"), "2");
+      release.resolve();
+      const changed = await waiting;
+      expect(changed).not.toBe(shared);
+      expect(await NodeFSP.readFile(NodePath.join(changed, "index.html"), "utf8")).toBe("2");
+      await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/main.ts"), "1");
+      expect(await cachedBundle(consumer, sharedEnv, noBuild)).toBe(shared);
+      expect(builds).toBe(2);
+    } finally {
+      release.resolve();
+      vi.doUnmock("../../../../../scripts/test-process-lock.ts");
+      vi.resetModules();
+    }
+
+    // A filename embedded in file bytes must not collide with a second file.
+    await NodeFSP.writeFile(NodePath.join(builder, "apps/web/src/a.ts"), "x\0apps/web/src/b.ts\0y");
+    await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/a.ts"), "x");
+    await NodeFSP.writeFile(NodePath.join(consumer, "apps/web/src/b.ts"), "y");
+    expect(await bundleKey(builder, {})).not.toBe(await bundleKey(consumer, {}));
   } finally {
     await NodeFSP.rm(builder, { recursive: true, force: true });
     await NodeFSP.rm(consumer, { recursive: true, force: true });
