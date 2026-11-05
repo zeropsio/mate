@@ -48,12 +48,11 @@ import { makeMateAutoUpdatePolicy } from "./MateAutoUpdatePolicy.ts";
 import { memorySignInStore } from "./zeropsSignIns.ts";
 import {
   type LinkSocket,
-  HQ_LINK_ADDRESS_ORDER,
+  connectLinkSocket,
   makeZeropsHqLink,
-  MATE_LINK_ROTATE_MS,
   HQ_AUTO_UPDATE_VERIFY_BUDGET,
   mateOverviewFeed,
-  preferringIpv6,
+  lookupIpv6,
   readsAlongOnly,
   type OverviewSources,
   type ZeropsHqLinkOptions,
@@ -78,11 +77,6 @@ class FakeSocket implements LinkSocket {
   >();
   closed = false;
   onSent: (message: Sent) => void = () => {};
-  /** The address family it went over; unknown unless a test says. */
-  over: "IPv4" | "IPv6" | undefined = undefined;
-  family() {
-    return this.over;
-  }
   constructor(url: string) {
     this.url = url;
   }
@@ -344,6 +338,27 @@ const linked = (sockets: ReadonlyArray<FakeSocket>, index: number) =>
   });
 
 describe("ZeropsHqLink", () => {
+  it.effect("keeps a healthy link until it closes", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets } = yield* rig({ everyMs: 10_000_000 });
+        const first = yield* linked(sockets, 0);
+        yield* TestClock.adjust(Duration.minutes(5));
+        assert.lengthOf(sockets, 1);
+        assert.isFalse(first.closed);
+        first.emit("close");
+        yield* TestClock.adjust(Duration.millis(30));
+        assert.isTrue(first.closed);
+        const failed = sockets[1]!;
+        failed.emit("error");
+        yield* TestClock.adjust(Duration.millis(30));
+        assert.isTrue(failed.closed);
+        const next = yield* linked(sockets, 2);
+        assert.deepStrictEqual(next.sent[0], hello("zk-1"));
+      }),
+    ),
+  );
+
   it.effect(
     "Decision: A Mate reconnects when its current HQ link stops receiving traffic, even if the socket never reports closed.",
     () =>
@@ -355,7 +370,6 @@ describe("ZeropsHqLink", () => {
               Effect.gen(function* () {
                 const { sockets } = yield* rig({ everyMs: 10_000_000 });
                 yield* TestClock.adjust(Duration.zero);
-                sockets[0]!.over = "IPv6";
                 const socket = yield* opened(sockets, 0);
                 socket.hear({ type: "state", mate: STATE, pingIntervalMs });
                 yield* TestClock.adjust(Duration.millis(3 * pingIntervalMs - 1));
@@ -378,25 +392,26 @@ describe("ZeropsHqLink", () => {
       Effect.gen(function* () {
         const { sockets } = yield* rig({ everyMs: 10_000_000 });
         const first = yield* opened(sockets, 0);
-        // Rotate before the old generation's silence deadline.
-        first.hear({ type: "state", mate: STATE, pingIntervalMs: MATE_LINK_ROTATE_MS / 2 });
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        sockets[1]!.over = "IPv6";
+        first.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        yield* TestClock.adjust(Duration.seconds(10));
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
         const successor = yield* opened(sockets, 1);
-        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 20_000 });
+        successor.hear({ type: "state", mate: STATE, pingIntervalMs: 30_000 });
         yield* TestClock.adjust(Duration.zero);
         assert.isTrue(first.closed);
-        // The successor has its own short budget, regardless of its predecessor's.
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS / 2 + 1));
+        // The old deadline passes while the successor has its own longer budget.
+        yield* TestClock.adjust(Duration.millis(49_970));
         assert.isFalse(successor.closed);
         assert.lengthOf(sockets, 2);
-        yield* TestClock.adjust(Duration.millis(60_000 - MATE_LINK_ROTATE_MS / 2 - 1));
+        yield* TestClock.adjust(Duration.millis(40_029));
+        assert.isFalse(successor.closed);
+        yield* TestClock.adjust(Duration.millis(1));
         assert.isTrue(successor.closed);
         yield* TestClock.adjust(Duration.millis(30));
-        sockets[2]!.over = "IPv6";
         const legacy = yield* opened(sockets, 2);
         admit(legacy);
-        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
+        yield* TestClock.adjust(Duration.minutes(5));
         assert.isFalse(legacy.closed);
         assert.lengthOf(sockets, 3);
       }),
@@ -410,7 +425,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { sockets, key, link, taken, autoUpdatePolicy } = yield* rig();
           yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
           const first = yield* opened(sockets, 0);
           first.hear({
             type: "state",
@@ -465,7 +479,6 @@ describe("ZeropsHqLink", () => {
               Deferred.succeed(writing, undefined).pipe(Effect.andThen(Deferred.await(written))),
           });
           yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
           const socket = yield* opened(sockets, 0);
           socket.hear({ type: "state", mate: STATE, pingIntervalMs: 1_000 });
           socket.hear({ type: "git-credential", credential: "credential-fixture" });
@@ -495,7 +508,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { sockets } = yield* rig({ everyMs: 10_000_000 });
           yield* TestClock.adjust(Duration.zero);
-          sockets[0]!.over = "IPv6";
           const socket = yield* opened(sockets, 0);
           yield* TestClock.adjust(Duration.minutes(31));
           assert.isFalse(socket.closed);
@@ -514,7 +526,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           socket.hear({
             type: "state",
@@ -549,7 +560,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           socket.hear({
             type: "state",
@@ -571,7 +581,6 @@ describe("ZeropsHqLink", () => {
         Effect.gen(function* () {
           const { autoUpdatePolicy, connected } = yield* rig();
           const socket = yield* Queue.take(connected);
-          socket.over = "IPv6";
           socket.emit("open");
           const value = { orgId: "ORG", enabled: true, revision: 0 };
           socket.hear({ type: "state", mate: STATE, autoUpdate: value });
@@ -692,6 +701,15 @@ describe("ZeropsHqLink", () => {
           assert.isFalse(socket.closed);
           assert.strictEqual(sockets.length, 1);
           assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+          socket.closeWith(1006);
+          yield* TestClock.adjust(Duration.millis(30));
+          const next = yield* linked(sockets, 1);
+          for (const frame of olderAccess) next.hear(frame);
+          next.hear({ type: "ping" });
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(next.sent.at(-1), { type: "pong" });
+          assert.isFalse(next.closed);
+          assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
         }),
       ),
   );
@@ -717,7 +735,6 @@ describe("ZeropsHqLink", () => {
           readKey: Effect.succeed("project-key"),
           connect: (url) => {
             const socket = new FakeSocket(url);
-            socket.over = "IPv6";
             socket.onSent = (message) => {
               if (message.type === "ticket-ack" || message.type === "ticket_refused")
                 Queue.offerUnsafe(answers, message);
@@ -784,7 +801,6 @@ describe("ZeropsHqLink", () => {
           readKey: Effect.succeed("project-key"),
           connect: (url) => {
             const socket = new FakeSocket(url);
-            socket.over = "IPv6";
             socket.onSent = (message) => {
               if (message.type === "ticket-ack") {
                 heldAtAcknowledgement.push(ticketHeld);
@@ -1119,17 +1135,17 @@ describe("ZeropsHqLink", () => {
             ),
         });
         const first = yield* linked(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        const successor = yield* opened(sockets, 1);
         first.hear({ type: "observe-credential", id: "old", credential: "zobs.old" });
-        // A second old frame is queued behind the in-flight write; it must never land.
-        first.hear({ type: "observe-credential", id: "stale", credential: "zobs.stale" });
         yield* TestClock.adjust(Duration.zero);
-        admit(successor);
-        successor.hear({ type: "observe-credential", id: "new", credential: "zobs.new" });
+        first.closeWith(4409);
+        // A late frame queued after the close must never land.
+        first.hear({ type: "observe-credential", id: "stale", credential: "zobs.stale" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(written, []);
         yield* Deferred.succeed(oldLands, undefined);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* linked(sockets, 1);
+        successor.hear({ type: "observe-credential", id: "new", credential: "zobs.new" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(written, ["zobs.old", "zobs.new"]);
         assert.deepStrictEqual(successor.sent.at(-1), {
@@ -1725,73 +1741,64 @@ describe("ZeropsHqLink", () => {
       ),
   );
 
-  // F26: the Zerops L7 cuts every link at 120 s. A Mate opens its successor before that, and lets
-  // the old link go only once HQ answered on the new one: HQ never sees it without a link.
-  it.effect("rotates to a successor before the cut, and closes the old link once HQ answered", () =>
+  it.effect("keeps the original link past the IPv4 cut and continues answering HQ", () =>
     Effect.scoped(
       Effect.gen(function* () {
         const { sockets } = yield* rig();
         const first = yield* linked(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS - 1));
-        assert.strictEqual(sockets.length, 1);
-        yield* TestClock.adjust(Duration.millis(1));
-        const successor = yield* opened(sockets, 1);
-        assert.deepStrictEqual(successor.sent, [hello("zk-1")]);
-        // Until HQ answers on it, the old link stays and still answers HQ.
+        yield* TestClock.adjust(Duration.seconds(150));
+        assert.lengthOf(sockets, 1);
         first.hear({ type: "ping" });
         yield* TestClock.adjust(Duration.zero);
         assert.deepStrictEqual(first.sent.at(-1), { type: "pong" });
         assert.isFalse(first.closed);
-
-        admit(successor);
-        yield* TestClock.adjust(Duration.zero);
-        assert.isTrue(first.closed);
-        assert.isFalse(successor.closed);
-        assert.deepStrictEqual(successor.sent.slice(1), [
-          { type: "overview", full: true, overview: overview("Add a login page") },
-        ]);
-        successor.hear({ type: "ping" });
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(successor.sent.at(-1), { type: "pong" });
-
-        // The successor rotates in its turn, counted from its own opening.
-        yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-        yield* opened(sockets, 2);
-        assert.strictEqual(sockets.length, 3);
+        assert.lengthOf(sockets, 1);
       }),
     ),
   );
 
-  // HQ admits the successor's key and closes the old link 4409 before it sends its state on the new.
-  it.effect(
-    "waits on its successor when HQ supersedes the old link on admitting it, and links nothing anew",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sockets, link } = yield* rig();
-          const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          first.closeWith(4409);
-          yield* TestClock.adjust(Duration.seconds(1));
-          assert.isFalse(successor.closed);
-          assert.lengthOf(sockets, 2);
-          admit(successor, { ...STATE, name: "Ada II" });
-          yield* TestClock.adjust(Duration.zero);
-          assert.deepStrictEqual(successor.sent.slice(1), [
-            { type: "overview", full: true, overview: overview("Add a login page") },
-          ]);
-          const standing = yield* link.standing;
-          assert.isTrue(standing.kind === "linked" && standing.mate.name === "Ada II");
-          // The successor is the link now, rotating in its turn.
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          assert.lengthOf(sockets, 3);
-          assert.isFalse(successor.closed);
-        }),
-      ),
+  it.effect("after HQ supersedes the single link, reconnects once and uses its new state", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, link } = yield* rig();
+        const first = yield* linked(sockets, 0);
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* opened(sockets, 1);
+        assert.isFalse(successor.closed);
+        assert.lengthOf(sockets, 2);
+        admit(successor, { ...STATE, name: "Ada II" });
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(successor.sent.slice(1), [
+          { type: "overview", full: true, overview: overview("Add a login page") },
+        ]);
+        const standing = yield* link.standing;
+        assert.isTrue(standing.kind === "linked" && standing.mate.name === "Ada II");
+        yield* TestClock.adjust(Duration.seconds(150));
+        assert.lengthOf(sockets, 2);
+        assert.isFalse(successor.closed);
+      }),
+    ),
   );
 
-  // During a rotation HQ's older link may still issue a credential the successor already replaced.
+  it.effect("reconnects after HQ closes a link before sending its first state", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const { sockets, link } = yield* rig();
+        const first = yield* opened(sockets, 0);
+        assert.deepStrictEqual(first.sent, [hello("zk-1")]);
+        first.closeWith(4409);
+        yield* TestClock.adjust(Duration.millis(30));
+        const successor = yield* linked(sockets, 1);
+        assert.isTrue(first.closed);
+        assert.isFalse(successor.closed);
+        assert.lengthOf(sockets, 2);
+        assert.deepStrictEqual(yield* link.standing, { kind: "linked", mate: STATE });
+      }),
+    ),
+  );
+
+  // A closed link's late credential cannot replace one delivered after reconnecting.
   it.effect(
     "a credential frame from a superseded link never overwrites the current link's credential",
     () =>
@@ -1803,58 +1810,17 @@ describe("ZeropsHqLink", () => {
               credential === "ORG.old" ? Deferred.await(oldLands) : Effect.void,
           });
           const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          // The old link's credential is still being written as HQ answers on the successor.
           first.hear({ type: "git-credential", credential: "ORG.old" });
           yield* TestClock.adjust(Duration.zero);
-          admit(successor);
-          successor.hear({ type: "git-credential", credential: "ORG.new" });
+          first.closeWith(4409);
+          first.hear({ type: "git-credential", credential: "ORG.stale" });
           yield* TestClock.adjust(Duration.zero);
           yield* Deferred.succeed(oldLands, undefined);
+          yield* TestClock.adjust(Duration.millis(30));
+          const successor = yield* linked(sockets, 1);
+          successor.hear({ type: "git-credential", credential: "ORG.new" });
           yield* TestClock.adjust(Duration.zero);
           assert.deepStrictEqual(credentials, ["ORG.old", "ORG.new"]);
-        }),
-      ),
-  );
-
-  // Only the shared IPv4 is cut at 120 s: a link that went over IPv6 is kept as it is.
-  it.effect("never rotates a link that went over IPv6", () =>
-    Effect.scoped(
-      Effect.gen(function* () {
-        const { sockets } = yield* rig();
-        yield* TestClock.adjust(Duration.zero);
-        sockets[0]!.over = "IPv6";
-        const first = yield* opened(sockets, 0);
-        yield* TestClock.adjust(Duration.millis(3 * MATE_LINK_ROTATE_MS));
-        assert.strictEqual(sockets.length, 1);
-        assert.isFalse(first.closed);
-      }),
-    ),
-  );
-
-  it.effect(
-    "keeps the old link when its successor never answers, and links again as ever once it closes",
-    () =>
-      Effect.scoped(
-        Effect.gen(function* () {
-          const { sockets } = yield* rig();
-          const first = yield* linked(sockets, 0);
-          yield* TestClock.adjust(Duration.millis(MATE_LINK_ROTATE_MS));
-          const successor = yield* opened(sockets, 1);
-          yield* TestClock.adjust(Duration.seconds(19));
-          assert.isFalse(first.closed);
-
-          // The L7's cut: the old link closes, the successor that never answered goes with it.
-          first.emit("close");
-          yield* TestClock.adjust(Duration.zero);
-          assert.isTrue(successor.closed);
-          yield* TestClock.adjust(Duration.millis(30));
-          const next = yield* linked(sockets, 2);
-          assert.deepStrictEqual(next.sent, [
-            hello("zk-1"),
-            { type: "overview", full: true, overview: overview("Add a login page") },
-          ]);
         }),
       ),
   );
@@ -1877,24 +1843,54 @@ describe("ZeropsHqLink", () => {
   );
 });
 
-// The 120 s cut is the shared IPv4's: a WebSocket over the project's IPv6 holds (verified.md,
-// 2026-10-03). A Mate container has IPv6, so its link asks for HQ's addresses IPv6 first.
 describe("ZeropsHqLink's addresses", () => {
-  it("resolves HQ IPv6 first, whatever else the connection asks", () => {
+  it("resolves HQ only over IPv6 even when the connection asks for IPv4", () => {
     const asked: Array<unknown> = [];
-    const lookup = preferringIpv6((hostname, options, callback) => {
+    const lookup = lookupIpv6((hostname, options, callback) => {
       asked.push({ hostname, options });
-      callback(null, [{ address: "2001:db8::1", family: 6 }]);
+      callback(null, [
+        { address: "::ffff:127.0.0.1", family: 6 },
+        { address: "2001:db8::1", family: 6 },
+      ]);
     });
     let answered: unknown;
-    lookup("hq.example", { all: true, hints: 0 }, (_error, addresses) => {
+    let failure: NodeJS.ErrnoException | null = null;
+    lookup("hq.example", { all: true, hints: 0, family: 4 }, (error, addresses) => {
+      failure = error;
       answered = addresses;
     });
-    assert.strictEqual(HQ_LINK_ADDRESS_ORDER, "ipv6first");
     assert.deepStrictEqual(asked, [
-      { hostname: "hq.example", options: { all: true, hints: 0, order: "ipv6first" } },
+      { hostname: "hq.example", options: { all: true, hints: 0, family: 6 } },
     ]);
+    assert.isNull(failure);
     assert.deepStrictEqual(answered, [{ address: "2001:db8::1", family: 6 }]);
+  });
+
+  it("rejects an IPv4 address without opening a socket", () => {
+    for (const address of ["127.0.0.1", "[::ffff:127.0.0.1]"]) {
+      let socket: LinkSocket | undefined;
+      try {
+        assert.throws(() => {
+          socket = connectLinkSocket(`ws://${address}:9/api/mate/link`);
+          socket.addEventListener("error", () => {});
+        });
+      } finally {
+        socket?.close();
+      }
+    }
+  });
+
+  it("rejects a DNS answer that maps to IPv4", () => {
+    for (const answer of ["::ffff:127.0.0.1", [{ address: "::ffff:7f00:1", family: 6 }]]) {
+      const lookup = lookupIpv6((_hostname, _options, callback) => {
+        callback(null, answer, 6);
+      });
+      const failures: Array<NodeJS.ErrnoException | null> = [];
+      lookup("hq.example", {}, (error) => {
+        failures.push(error);
+      });
+      assert.strictEqual(failures[0]?.code, "ENOTFOUND");
+    }
   });
 });
 
