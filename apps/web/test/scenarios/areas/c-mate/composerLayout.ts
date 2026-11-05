@@ -10,7 +10,6 @@ import * as Stream from "effect/Stream";
 import { expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Option from "effect/Option";
-import * as Schedule from "effect/Schedule";
 import { CLAUDE_SCENARIO_CODE } from "../../../../../server/integration/scriptedClaudeSignIn.ts";
 import { changeFixture } from "../../fakes/d-change/changes.ts";
 import { createScenario } from "../../harness/scenario.ts";
@@ -22,30 +21,17 @@ export const composerStates = ["plain", "notice", "review"] as const;
 /** How long the notice's session stands idle before it is offered compaction. */
 const NOTICE_IDLE_MS = 71 * 60_000;
 /**
- * The idle hour passes in steps inside the Mate's fifteen-minute hold on HQ's access list (with
- * room for the time the case took before it), each one followed by a fresh view from HQ.
+ * The idle hour passes in steps inside the Mate's fifteen-minute hold on its access list (with
+ * room for the time the case took before it), each one followed by a fresh own access read.
  */
 const NOTICE_STEP_MS = 10 * 60_000;
-/** Past every Core wait the steps move through, so the view refresh is the only one that ends. */
-const NOTICE_CORE_PERIOD_MS = 3 * 60 * 60_000;
 
 // Shared real-client input for geometry and the separate transparency compatibility check.
 export const composerLayout = Effect.fn("composerLayout")(function* (
   state: (typeof composerStates)[number] | "before-notice",
 ) {
   const claude = state === "notice" || state === "before-notice";
-  const s = yield* createScenario([], {
-    mate: "real",
-    ...(state === "notice"
-      ? {
-          hq: {
-            pingEvery: NOTICE_CORE_PERIOD_MS,
-            reconcileEvery: NOTICE_CORE_PERIOD_MS,
-            streamRecheck: NOTICE_CORE_PERIOD_MS,
-          },
-        }
-      : {}),
-  });
+  const s = yield* createScenario([], { mate: "real" });
   yield* Effect.promise(() => s.page.setViewport({ width: 1786, height: 1000 }));
   if (state === "review") yield* changeFixture(s);
   else
@@ -143,18 +129,13 @@ export const composerLayout = Effect.fn("composerLayout")(function* (
       type: "thread.token-usage.updated",
       payload: { usage: { usedTokens: 180_000 } },
     });
-    const core = s.drivers.core;
     for (let left = NOTICE_IDLE_MS; left > 0; left -= NOTICE_STEP_MS) {
       yield* Effect.promise(() => s.clock.advance(Math.min(left, NOTICE_STEP_MS), true));
       const at = s.drivers.zerops.clock.currentTimeMillis();
-      yield* core.clock.advance(core.periods.viewRefresh);
-      // Held state, not a receipt: an unchanged list fires no change on the Mate.
-      yield* mate.server.accessList.pipe(
-        Effect.repeat({
-          until: (list) => Option.isSome(list) && list.value.heardAtMs >= at,
-          schedule: Schedule.spaced("10 millis"),
-        }),
-      );
+      // Admission of an absent person makes the Mate read its own list and waits for that read.
+      expect(yield* mate.server.accessAdmission("scenario-absent-user")).toBe("not_in_list");
+      const list = yield* mate.server.accessList;
+      expect(Option.isSome(list) && list.value.heardAtMs >= at).toBe(true);
     }
   });
   if (state === "notice") yield* noticeArrives;
