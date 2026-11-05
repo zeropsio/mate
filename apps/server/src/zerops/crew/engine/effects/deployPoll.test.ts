@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 
 import { CrewPlatformProcesses } from "../../crewDeployState.ts";
 import { attempt, effectRow, okValue } from "../../testing/crewEffectFixture.ts";
@@ -18,7 +19,13 @@ const row = (attemptNumber = 1) =>
 const platform = (answers: ReadonlyArray<ReadonlyArray<unknown> | undefined>) => {
   const state = { reads: 0 };
   const read = Effect.sync(() => answers[Math.min(state.reads++, answers.length - 1)]);
-  return { state, provide: Effect.provideService(CrewPlatformProcesses, { read }) };
+  return {
+    state,
+    provide: Effect.provideService(CrewPlatformProcesses, {
+      read,
+      moved: Effect.succeed(Stream.never),
+    }),
+  };
 };
 
 const deploy = (status: string) => ({

@@ -13,7 +13,7 @@ import {
 
 import type { CrewInput } from "./command.ts";
 import { CrewInputUnrecorded, observeCrew } from "./CrewObserver.ts";
-import { initialCrewState, type CrewState, type MemberRecord } from "./state.ts";
+import { initialCrewState, type CrewState, type HostRecord, type MemberRecord } from "./state.ts";
 
 const MATE = ConversationId.make("mate");
 const BACKEND = ConversationId.make("crew-main-backend-1");
@@ -49,11 +49,15 @@ const scene = (
   records: Record<string, Array<EngineEvent>>,
   /** How many of the first `Observed` tells the crew does not take in. */
   unrecorded = 0,
+  /** A redeploy holds `appdev` frozen. */
+  frozen = false,
 ) =>
   Effect.gen(function* () {
     let failures = unrecorded;
     const changes = yield* PubSub.unbounded<ConversationId>();
-    let state = crewWith({});
+    const pushes = yield* PubSub.unbounded<void>();
+    const frozenHost = { appdev: { frozenSince: 1 } as HostRecord };
+    let state: CrewState = { ...crewWith({}), ...(frozen ? { hosts: frozenHost } : {}) };
     const told: Array<{ readonly input: CrewInput; readonly commandId: string }> = [];
     yield* observeCrew({
       changes: Stream.fromPubSub(changes),
@@ -77,6 +81,7 @@ const scene = (
       conversations: Effect.succeed([MATE]),
       gauges: Stream.empty,
       signIns: Stream.empty,
+      processes: Effect.map(PubSub.subscribe(pushes), Stream.fromSubscription),
     });
     const settle = Effect.forEach(Array.from({ length: 50 }), () => Effect.yieldNow, {
       discard: true,
@@ -87,10 +92,29 @@ const scene = (
       settle,
       changed: (conversationId: ConversationId) =>
         PubSub.publish(changes, conversationId).pipe(Effect.andThen(settle)),
+      pushed: PubSub.publish(pushes, undefined).pipe(Effect.andThen(settle)),
     };
   });
 
 describe("the crew's observer", () => {
+  it.effect(
+    "a process Zerops pushes is told while a host is frozen, once at subscribe start too, and never while none is",
+    () =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const moves = (told: ReadonlyArray<{ readonly input: CrewInput }>) =>
+            told.filter(({ input }) => input._tag === "ProcessesMoved").length;
+          const idle = yield* scene({}, 0, false);
+          yield* idle.pushed;
+          const frozen = yield* scene({}, 0, true);
+          const atStart = moves(frozen.told);
+          yield* frozen.pushed;
+          yield* frozen.pushed;
+          assert.deepStrictEqual([moves(idle.told), atStart, moves(frozen.told)], [0, 1, 3]);
+        }),
+      ),
+  );
+
   it.effect("reads each conversation's record after the crew's cursor, each event once", () =>
     Effect.scoped(
       Effect.gen(function* () {

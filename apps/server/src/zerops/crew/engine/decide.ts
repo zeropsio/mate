@@ -130,6 +130,7 @@ import {
   usagePercentOf,
   type ActiveRun,
   DEFAULT_CREW_TIMING,
+  frozenHosts,
   type AttentionRecord,
   type CrewState,
   type CrewTiming,
@@ -367,6 +368,9 @@ const handle = (b: Builder, input: CrewInput): void => {
       return settled(b, input.effectId, input.outcome);
     case "Recovered":
       return recovered(b);
+    case "ProcessesMoved":
+      for (const host of frozenHosts(b.state)) if (!recovering(b, host)) readDeploy(b, host);
+      return;
     case "Configure":
       if (JSON.stringify(b.state.timing) !== JSON.stringify(input.timing)) {
         b.emit({ _tag: "CrewConfigured", timing: input.timing });
@@ -3122,7 +3126,7 @@ const deploy = (b: Builder, host: string, phase: "started" | "ended"): void => {
   if (writers.length === 0) return;
   if (phase === "started") {
     if (record?.frozenSince != null) return;
-    b.emit({ _tag: "HostUpdated", host, set: { frozenSince: b.now, polls: 0 } });
+    b.emit({ _tag: "HostUpdated", host, set: { frozenSince: b.now } });
     for (const member of writers) {
       if (member.active === null) continue;
       // Its turn goes on once the copies are back, for whoever it ran for.
@@ -3163,16 +3167,20 @@ const redeployWords = (host: string): string =>
 const frozenWords = (host: string, phase: "running" | "unreadable"): string =>
   phase === "running"
     ? `${host} is still redeploying; its crew copies stay frozen until the deploy ends.`
-    : `Mate could not read whether ${host}'s deploy still runs; its crew copies stay frozen, and Mate tries again.`;
+    : `Mate could not read whether ${host}'s deploy still runs; its crew copies stay frozen, and Mate reads it again when Zerops reports a process.`;
 
 const timingOf = (state: CrewState): CrewTiming => state.timing ?? DEFAULT_CREW_TIMING;
 
-/** A frozen host's redeploy is read again: at boot at once, then backing off. */
-const pollDeploy = (b: Builder, host: string): void => {
-  const pending = Object.values(b.state.effects).some(
+/**
+ * A frozen host's redeploy is read: at boot, and again at each process Zerops pushes. A read
+ * under way may hold an answer from before the push, so one more queues behind it in the host's
+ * lane; a third would read what the second does.
+ */
+const readDeploy = (b: Builder, host: string): void => {
+  const reads = Object.values(b.state.effects).filter(
     (effect) => effect.kind === "crew.deploy.poll" && effect.host === host,
-  );
-  if (!pending) b.effect({ kind: "crew.deploy.poll", host }, host, { host });
+  ).length;
+  if (reads < 2) b.effect({ kind: "crew.deploy.poll", host }, host, { host });
 };
 
 /** A host whose copies are being recovered is no longer read for its redeploy. */
@@ -3183,7 +3191,6 @@ const recovering = (b: Builder, host: string): boolean =>
 
 const recover = (b: Builder, host: string): void => {
   if (recovering(b, host)) return;
-  b.cancel("deploy-poll", host, "the redeploy ended");
   b.cancel("thaw-offer", host, "the redeploy ended");
   const writers = membersInOrder(b.state).filter((member) => member.host === host);
   const handles = new Set(writers.map((member) => member.handle));
@@ -3212,7 +3219,7 @@ const thaw = (
   lost: ReadonlyArray<string>,
   losses: ReadonlyArray<string> = [],
 ): void => {
-  b.emit({ _tag: "HostUpdated", host, set: { frozenSince: null, polls: 0, unknownSince: null } });
+  b.emit({ _tag: "HostUpdated", host, set: { frozenSince: null, unknownSince: null } });
   if (b.state.attention.some((row) => row.id === `deploy-unreadable:${host}`)) {
     b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
   }
@@ -3320,9 +3327,7 @@ const AFTER_TURN_STAGES: Readonly<Partial<Record<TaskRecord["state"], string>>> 
 const recovered = (b: Builder): void => {
   renewLeadWakes(b);
   // A redeploy the restart cut off may still run: its host stays frozen until a read says it ended.
-  for (const [host, record] of Object.entries(b.state.hosts)) {
-    if (record.frozenSince != null) pollDeploy(b, host);
-  }
+  for (const host of frozenHosts(b.state)) readDeploy(b, host);
   for (const member of membersInOrder(b.state)) {
     if (
       member.kind === "writer" &&
@@ -3422,11 +3427,6 @@ const importV1 = (b: Builder, crew: CrewImport): void => {
     }
   }
   for (const member of membersInOrder(b.state)) assignAgent(b, member);
-  for (const [host, record] of Object.entries(b.state.hosts)) {
-    if (record.frozenSince !== null) {
-      b.effect({ kind: "crew.deploy.poll", host }, host, { host });
-    }
-  }
   recovered(b);
 };
 
@@ -3468,9 +3468,6 @@ const wakeFired = (b: Builder, wakeId: WakeId): void => {
       else if (claim?.state === "held") releaseClaim(b, key, { kind: "engine" }, "timeout");
       return;
     }
-    case "deploy-poll":
-      if (b.state.hosts[key]?.frozenSince != null) pollDeploy(b, key);
-      return;
     case "thaw-offer":
       if (b.state.hosts[key]?.frozenSince != null) {
         b.emit({
@@ -3828,39 +3825,26 @@ const settled = (
     case "crew.deploy.poll": {
       const host = pending.host!;
       const record = b.state.hosts[host];
-      // A read that was in flight when the recovery began must not re-arm the polling it stopped.
+      // A read that was in flight when the recovery began must not hold the host it let go.
       if (record?.frozenSince == null || recovering(b, host)) return;
       const phase = valueOf("crew.deploy.poll", value).phase;
       if (phase === "ended") return recover(b, host);
-      const timing = timingOf(b.state);
-      const polls = record.polls + 1;
       const unknownSince = phase === "unreadable" ? (record.unknownSince ?? b.now) : null;
-      b.emit({ _tag: "HostUpdated", host, set: { polls, unknownSince } });
+      if (unknownSince !== (record.unknownSince ?? null)) {
+        b.emit({ _tag: "HostUpdated", host, set: { unknownSince } });
+      }
       const words = frozenWords(host, phase);
       if (b.state.lastError !== words) b.emit({ _tag: "ErrorNoted", text: words });
-      // Unreadable for long enough, the person is offered to say it ended.
-      const offer = unknownSince !== null && b.now - unknownSince >= timing.thawOfferMs;
       const offered = b.state.attention.some((row) => row.id === `deploy-unreadable:${host}`);
-      if (offer && !offered) {
-        b.emit({
-          _tag: "AttentionRaised",
-          row: {
-            id: `deploy-unreadable:${host}`,
-            handle: null,
-            taskId: null,
-            text: `${host}'s redeploy could not be read`,
-            at: b.now,
-          },
+      if (unknownSince === null) {
+        b.cancel("thaw-offer", host, "its redeploy reads again");
+        if (offered) b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
+      } else if (!offered) {
+        // Unreadable for long enough, the person is offered to say it ended.
+        b.arm("thaw-offer", host, unknownSince + timingOf(b.state).thawOfferMs, {
+          kind: "engine",
         });
-      } else if (!offer && offered) {
-        b.emit({ _tag: "AttentionCleared", id: `deploy-unreadable:${host}` });
       }
-      b.arm(
-        "deploy-poll",
-        host,
-        b.now + Math.min(timing.deployPollMaxMs, timing.deployPollFirstMs * 2 ** (polls - 1)),
-        { kind: "engine" },
-      );
       return;
     }
     case "crew.recover": {

@@ -1,5 +1,6 @@
 import { assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
+import * as Stream from "effect/Stream";
 import * as Layer from "effect/Layer";
 
 import { CrewPlatformProcesses } from "../../crewDeployState.ts";
@@ -9,7 +10,10 @@ import { crewEffects, makeCrewEffectHandlers } from "./index.ts";
 import { CREW_EFFECT_KINDS } from "./shared.ts";
 
 const ports = Layer.mergeAll(
-  Layer.succeed(CrewPlatformProcesses, { read: Effect.succeed(undefined) }),
+  Layer.succeed(CrewPlatformProcesses, {
+    read: Effect.succeed(undefined),
+    moved: Effect.succeed(Stream.never),
+  }),
   Layer.succeed(CrewDelivery, { deliver: () => Effect.die("not delivered in this test") }),
 );
 

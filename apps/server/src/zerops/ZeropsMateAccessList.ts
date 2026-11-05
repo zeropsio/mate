@@ -17,6 +17,9 @@
  * list names whose the project is too: whom its `OWNER` override names (`projectOwners`), the
  * owner marker a hand-over moves.
  *
+ * The same socket carries the project's process frames (ZEROPS-078): the list hands them on,
+ * with each `connected`, to whoever waits on a process (`processes`), and reads none itself.
+ *
  * The list HQ relays down the link (`access`, `@t3tools/shared/mateLink`) is advisory: it decides
  * only while the Mate has no own list or its own is stale. A full frame always replaces the
  * relayed baseline, whatever its version (a redeployed HQ numbers afresh); a delta whose version
@@ -48,6 +51,7 @@ import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
 import * as Random from "effect/Random";
 import * as Ref from "effect/Ref";
+import type * as Scope from "effect/Scope";
 import * as Semaphore from "effect/Semaphore";
 import * as Stream from "effect/Stream";
 import * as SubscriptionRef from "effect/SubscriptionRef";
@@ -60,6 +64,7 @@ import {
   accessEvents,
   connectAccessSocket,
   type MemberPatch,
+  type ProcessLiveEvent,
 } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
@@ -287,6 +292,12 @@ export class ZeropsMateAccessList extends Context.Service<
      * in flight (or starts one); none where the list reads nothing of its own or no read landed.
      */
     readonly ownProject: Effect.Effect<Option.Option<OwnProject>>;
+    /**
+     * The project's processes as the socket pushes them from the moment this runs: `connected`
+     * after each (re)connect, then each frame's own-project processes. Nothing without an own
+     * socket.
+     */
+    readonly processes: Effect.Effect<Stream.Stream<ProcessLiveEvent>, never, Scope.Scope>;
   }
 >()("t3/zerops/ZeropsMateAccessList") {}
 
@@ -319,6 +330,7 @@ export const make = (own?: {
       relayed: undefined,
     });
     const moved = yield* PubSub.unbounded<void>();
+    const processes = yield* PubSub.unbounded<ProcessLiveEvent>();
     const reports = yield* SubscriptionRef.make(Option.none<AccessReport>());
     const scope = yield* Effect.scope;
     /** The recompute in flight: a ticket joins it rather than queueing a read of its own. */
@@ -431,9 +443,16 @@ export const make = (own?: {
       yield* Effect.forkScoped(
         Effect.gen(function* () {
           const clientId = yield* Deferred.await(organisation);
-          yield* Stream.runForEach(live(clientId), (event) =>
-            event._tag === "connected" ? recompute : heardFrame(own, event.frame),
-          );
+          yield* Stream.runForEach(live(clientId), (event) => {
+            switch (event._tag) {
+              case "connected":
+                return PubSub.publish(processes, event).pipe(Effect.andThen(recompute));
+              case "process":
+                return PubSub.publish(processes, event);
+              case "frame":
+                return heardFrame(own, event.frame);
+            }
+          });
         }),
       );
     }
@@ -479,6 +498,7 @@ export const make = (own?: {
         if ((yield* Ref.get(held)).rows === undefined) yield* recompute;
         return Option.fromUndefinedOr((yield* Ref.get(held)).rows?.project);
       }),
+      processes: Effect.map(PubSub.subscribe(processes), Stream.fromSubscription),
     });
   });
 
