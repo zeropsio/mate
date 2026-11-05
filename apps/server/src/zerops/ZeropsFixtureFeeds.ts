@@ -445,6 +445,7 @@ const browserStreamLayer = () =>
     ZeropsBrowserStreamModule.ZeropsBrowserStream,
     ZeropsBrowserStreamModule.make({
       readStreamPort: Effect.succeed(undefined),
+      watchPort: Effect.succeed({ next: Effect.never }),
       connect: () => {
         throw new Error("ZeropsBrowserStream fixture: connect is unreachable (always no-browser)");
       },
@@ -462,6 +463,7 @@ const macStreamLayer = () =>
     ZeropsMacStreamModule.make({
       readRecord: Effect.succeed(undefined),
       readView: Effect.succeed(undefined),
+      watch: Effect.succeed({ next: Effect.never }),
       forget: Effect.void,
       openStream: () => Effect.die("ZeropsMacStream fixture: no Mac is paired"),
       runDevice: () => Effect.succeed(69),

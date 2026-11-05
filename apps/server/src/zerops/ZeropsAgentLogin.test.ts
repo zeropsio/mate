@@ -28,6 +28,7 @@ import type { TerminalManager } from "../terminal/Manager.ts";
 import * as ZeropsAgentLoginModule from "./ZeropsAgentLogin.ts";
 import { makeSignInStore, memorySignInStore, type SignInRecords } from "./zeropsSignIns.ts";
 import type { ZeropsAgentLoginByAgent, ZeropsAgentLoginOptions } from "./ZeropsAgentLogin.ts";
+import { manualFileWatch } from "./testing/manualFileWatch.ts";
 import { makeLoginHomes, type LoginHomes, type LoginHomesOptions } from "./zeropsLoginHomes.ts";
 import { mateLoginEnvironment } from "./ZeropsLogins.ts";
 
@@ -1632,9 +1633,11 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
         Effect.gen(function* () {
           const fs = yield* FileSystem.FileSystem;
           const home = yield* seedHome(row);
+          const changes = yield* manualFileWatch;
           const { fakeTerminal, feed, key, scratch, waitingCredential } = yield* startReal(
             row,
             home,
+            { watch: () => changes.watch },
           );
 
           const success = yield* fakeTerminal
@@ -1642,6 +1645,7 @@ it.layer(NodeServices.layer, { excludeTestServices: true })(
             .pipe(Effect.forkChild);
           yield* waitingCredential;
           yield* fs.writeFileString(`${scratch}/${row.file}`, "new");
+          yield* changes.change;
           yield* Fiber.join(success);
 
           assert.equal((yield* feed.latest)[key]?.phase, "succeeded");
