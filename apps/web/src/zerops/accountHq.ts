@@ -1,4 +1,4 @@
-import { captureAccountLifetime } from "./accountLifetime";
+import { captureAccountLifetime, onAccountLifetimeClose } from "./accountLifetime";
 /**
  * The HQ this build names, as this tab reaches it (ADR 0001, SPEC §3.3, §4).
  *
@@ -41,16 +41,28 @@ export function configuredHq(): HqEndpoint {
 /** Where the account keeps HQ's session for the organization `clientId` and `hq`. */
 const keptHqKey = (clientId: string, hq: HqEndpoint) => `${clientId}:${hq.projectId}:${hq.address}`;
 
+// A press and its stream must use the same HQ session and socket identity.
+let accountHqClients = new WeakMap<
+  ZeropsApiClient,
+  Map<string, { readonly nativeEpoch: number; readonly api: HqApi }>
+>();
+onAccountLifetimeClose(() => {
+  accountHqClients = new WeakMap();
+});
+
 /**
  * HQ's API for this account and org, with the session the account kept for this HQ, else signed in
  * with the person's Zerops access token on the first call.
  */
 export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEndpoint): HqApi {
-  const accessToken = zeropsAccessToken(client);
   const keptKey = keptHqKey(clientId, hq);
-  const active = captureAccountLifetime();
   const nativeEpoch = client.accountEpoch;
-  return makeBrowserHqApi({
+  let clients = accountHqClients.get(client);
+  const existing = clients?.get(keptKey);
+  if (existing?.nativeEpoch === nativeEpoch) return existing.api;
+  const accessToken = zeropsAccessToken(client);
+  const active = captureAccountLifetime();
+  const api = makeBrowserHqApi({
     address: hq.address,
     kept: {
       read: () => {
@@ -76,6 +88,12 @@ export function accountHqApi(client: ZeropsApiClient, clientId: string, hq: HqEn
     accessToken,
     orgId: clientId,
   });
+  if (clients === undefined) {
+    clients = new Map();
+    accountHqClients.set(client, clients);
+  }
+  clients.set(keptKey, { nativeEpoch, api });
+  return api;
 }
 
 /**
