@@ -1218,14 +1218,19 @@ describe("asking HQ on the open socket", () => {
           link.compare({ appId: "shop", repo: "api", base: "a".repeat(40), head }),
         );
         yield* settle;
-        const request = fixture.sent.at(-1)?.request as { requestId: string };
+        const request = fixture.sent.at(-1)?.request as Extract<
+          HqStreamRequest,
+          { type: "compare" }
+        >;
         expect(request).toMatchObject({
           type: "compare",
           appId: "shop",
           repo: "api",
           base: "a".repeat(40),
           head,
+          accessToken: HQ_FIXTURE_ACCESS_TOKEN,
         });
+        expect(JSON.parse(encodeHqRequest(request))).toEqual(request);
         const answer = { base: "a".repeat(40), head, commits: [], truncated: false, total: 0 };
         yield* fixture.send({
           type: "compare",

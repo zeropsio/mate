@@ -104,7 +104,7 @@ describe("D: controlled transport to real HQ", () => {
       expect(seen).toEqual(["snapshot", "next-frame"]);
       frames.hold((frame) => frame === "compare");
       client.send("compare");
-      await frames.received();
+      expect(await frames.received()).toBe("compare");
       const fact = new Promise<string>((resolve) =>
         client.once("message", (frame) => resolve(String(frame))),
       );

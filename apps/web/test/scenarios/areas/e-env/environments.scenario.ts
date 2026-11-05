@@ -258,7 +258,10 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.click("Close");
           yield* a.then.reviewClosed;
           yield* a.then.rowShows("v0.1.2", "Live");
-          frames.hold((frame) => decodeHqFrame(frame).type === "compare");
+          frames.hold((frame) => {
+            const type = decodeHqFrame(frame).type;
+            return type === "compare" || type === "compare-error";
+          });
           const submissions: string[] = [];
           f.s.page.on("request", (request) => {
             if (
@@ -270,6 +273,14 @@ describe("E: stage, production, release and rollback", () => {
           yield* a.when.rollBack("v0.1.1");
           yield* a.then.text("Not known yet.", '[role="dialog"]');
           yield* a.when.click("Compare");
+          // Hold the actual answer; a refusal names the read instead of waiting for a success.
+          const answer = decodeHqFrame(yield* Effect.promise(() => frames.received()));
+          if (answer.type === "compare-error")
+            return yield* Effect.die(
+              new Error(
+                `HQ compare failed (${answer.code}): ${answer.reason ?? answer.disposition}`,
+              ),
+            );
           yield* a.then.text("Comparing in HQ…");
           const confirmation = yield* Effect.promise(() =>
             f.s.page.locator('::-p-aria(Roll back to v0.1.1[role="button"])').waitHandle(),
@@ -280,26 +291,6 @@ describe("E: stage, production, release and rollback", () => {
             ),
           ).toBe(true);
           expect(submissions).toHaveLength(0);
-          // The press was held behind a comparison HQ was really asked for, not behind a note.
-          yield* Effect.promise(async () => {
-            let stop: ReturnType<typeof setTimeout> | undefined;
-            try {
-              await Promise.race([
-                frames.received(),
-                new Promise<never>((_, reject) => {
-                  stop = setTimeout(async () => {
-                    reject(
-                      new Error(
-                        `No compare frame was held\n${await f.s.page.evaluate(() => document.body.innerText)}`,
-                      ),
-                    );
-                  }, 30_000);
-                }),
-              ]);
-            } finally {
-              clearTimeout(stop);
-            }
-          });
           frames.resume();
           yield* a.when.click("Roll back to v0.1.1");
           const process = yield* a.deployment("production");

@@ -94,6 +94,72 @@ function doors() {
   };
 }
 
+it("reads Git content with the person's current token and the HQ session", async () => {
+  const hq = fakeHq();
+  const door = doors();
+  const reads: Array<{ path: string; session: string | null; authorization: string | null }> = [];
+  const api = makeHqApi({
+    address: ADDRESS,
+    fetch: async (input, init) => {
+      const url = new URL(input);
+      if (!url.pathname.includes("/browse/")) return hq.fetch(input, init);
+      const headers = new Headers(init?.headers);
+      reads.push({
+        path: url.pathname,
+        session: headers.get("x-hq-session"),
+        authorization: headers.get("authorization"),
+      });
+      return url.pathname.endsWith("/compare-file")
+        ? json(200, { hunks: null })
+        : new Response("archive");
+    },
+    accessToken: door.accessToken,
+    orgId: ORG,
+    openSocket: NO_SOCKET,
+  });
+  const sha = "a".repeat(40);
+  await expect(
+    api.gitBrowse("compare-file", "app", "appdev", { base: sha, head: sha, path: "a.txt" }),
+  ).resolves.toEqual({ hunks: null });
+  await expect(
+    api.gitBrowseBytes("archive", "app", "appdev", { sha, format: "zip" }),
+  ).resolves.toBeInstanceOf(Blob);
+  expect(reads).toEqual([
+    {
+      path: "/api/apps/app/repos/appdev/browse/compare-file",
+      session: "session-1",
+      authorization: "Bearer access-2",
+    },
+    {
+      path: "/api/apps/app/repos/appdev/browse/archive",
+      session: "session-1",
+      authorization: "Bearer access-3",
+    },
+  ]);
+});
+
+it("sends no Git read after the account changes while obtaining its token", async () => {
+  const hq = fakeHq();
+  let current = true;
+  let calls = 0;
+  const api = makeHqApi({
+    address: ADDRESS,
+    fetch: hq.fetch,
+    accessToken: async () => {
+      if (++calls === 2) current = false;
+      return { token: "person-access" };
+    },
+    isCurrent: () => current,
+    orgId: ORG,
+    openSocket: NO_SOCKET,
+  });
+  const sha = "a".repeat(40);
+  await expect(
+    api.gitBrowse("compare-file", "app", "appdev", { base: sha, head: sha, path: "a.txt" }),
+  ).rejects.toMatchObject({ code: "account_changed" });
+  expect(hq.seen.some((request) => request.path.endsWith("/browse/compare-file"))).toBe(false);
+});
+
 describe("makeHqApi — a connection that drops", () => {
   /** HQ behind a connection that drops `drops` times first, then answers each session's calls. */
   const dropping = (drops: number) => {
