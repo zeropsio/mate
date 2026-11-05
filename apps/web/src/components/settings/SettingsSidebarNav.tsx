@@ -11,6 +11,7 @@ import {
   ArchiveIcon,
   BotIcon,
   CloudIcon,
+  DramaIcon,
   GitBranchIcon,
   KeyboardIcon,
   Link2Icon,
@@ -58,6 +59,7 @@ const SETTINGS_SECTION_ICONS: Readonly<
   "/settings/zerops": CloudIcon,
   "/settings/automation": WorkflowIcon,
   "/settings/team": UsersIcon,
+  "/settings/personas": DramaIcon,
   "/settings/archived": ArchiveIcon,
 };
 
@@ -76,11 +78,15 @@ function SettingsSectionIcon({ to }: { to: SettingsPath }) {
   return <Icon className="mt-0.5 size-3.5 shrink-0 text-sidebar-muted-foreground/60" />;
 }
 
-/** The team is an organization's: its page is offered only signed in with one. */
+/** The team and the persona templates are an organization's: offered only signed in with one. */
+const ORGANIZATION_PAGES: ReadonlySet<SettingsPath> = new Set([
+  "/settings/team",
+  "/settings/personas",
+]);
 const shownNavItems = (withOrganization: boolean) =>
   withOrganization
     ? SETTINGS_NAV_ITEMS
-    : SETTINGS_NAV_ITEMS.filter(({ to }) => to !== "/settings/team");
+    : SETTINGS_NAV_ITEMS.filter(({ to }) => !ORGANIZATION_PAGES.has(to));
 
 export function SettingsSidebarNav({ pathname }: { pathname: string }) {
   const navigate = useNavigate();
