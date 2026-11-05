@@ -416,7 +416,11 @@ it.each([false, true])(
       expect(store.state().operations.get(result.requestId)?.receipt?.acceptance).toEqual(
         existing
           ? { kind: "accepted", result: { serviceName: "zcp", imported: false } }
-          : { kind: "refused", reason: "HQ is not ready to record this Mate's ZCP authorization." },
+          : {
+              kind: "refused",
+              reason: "HQ is not ready to record this Mate's ZCP authorization.",
+              writeNotSent: true,
+            },
       );
     } finally {
       registry.dispose();

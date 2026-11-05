@@ -263,6 +263,7 @@ it.effect.each([
       if (Result.isFailure(result) && (change === "refused" || change === "unsupported"))
         expect(result.failure).toEqual({
           outcome: "definitive-refusal",
+          writeNotSent: true,
           message:
             change === "unsupported"
               ? "HQ is not ready to record this Mate's ZCP authorization."

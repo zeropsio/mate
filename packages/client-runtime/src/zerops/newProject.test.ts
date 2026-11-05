@@ -438,6 +438,14 @@ describe("ZeropsApiClient.importDevelopmentContainer: the Mate's key comes with 
     });
   });
 
+  it("a lost key creation answer stays uncertain before the container import", async () => {
+    const { client, requests } = platformClient({});
+    const lost = new ZeropsApiError("The key creation answer was lost.", "uncertain");
+    vi.spyOn(client, "mintIntegrationToken").mockRejectedValue(lost);
+    await expect(client.importDevelopmentContainer(INPUT)).rejects.toBe(lost);
+    expect(requests.some(({ url }) => url.endsWith("/service-stack/import"))).toBe(false);
+  });
+
   it.each(["minted", "regenerated"] as const)(
     "establishes the actual $0 key authorization before importing, carrying only project and hash",
     async (kind) => {

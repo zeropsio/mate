@@ -13,7 +13,7 @@ import * as Effect from "effect/Effect";
 import * as Result from "effect/Result";
 import type { AtomRegistry } from "effect/reactivity";
 
-import { ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
+import { ZeropsApiError, ZeropsWriteNotSent, type ZeropsApiClient } from "../../../zerops/api.ts";
 import { HqError, type HqApi } from "../../../zerops/hq/client.ts";
 import {
   makeProjectTagWriter,
@@ -413,7 +413,11 @@ export function makeZeropsExecutor(input: {
                   outcome: "definitive-refusal",
                   message: cause.message,
                 });
-              throw cause;
+              // The import is unsent, but HQ may already have authorized the key.
+              throw new ZeropsApiError(
+                cause instanceof Error ? cause.message : "HQ could not confirm authorization.",
+                "uncertain",
+              );
             }
             await checkCredentialAccount();
             // The status reader must discard any read begun before HQ acknowledged this context.
