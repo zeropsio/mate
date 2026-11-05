@@ -13,6 +13,8 @@ export interface WireRequest {
   readonly method: "POST" | "GET";
   readonly path: string;
   readonly body?: Readonly<Record<string, unknown>>;
+  /** Sent over the wire's plain REST read, with no receiver open (`ZeropsWire.read`). */
+  readonly rest?: true;
 }
 
 /** Lets every forked fiber run until it waits on something outside the test. */
@@ -34,6 +36,10 @@ export interface FixtureWire {
 
 export function fixtureWire(
   answer: (request: WireRequest) => Effect.Effect<unknown, StreamFault>,
+  options: {
+    /** The receiver's opening — its web-socket login, its greeting — before it is open. */
+    readonly opening?: Effect.Effect<void>;
+  } = {},
 ): FixtureWire {
   const requests: WireRequest[] = [];
   let frames: Queue.Queue<unknown, StreamFault> | null = null;
@@ -61,7 +67,17 @@ export function fixtureWire(
         frames === null ? Effect.void : Effect.asVoid(Queue.fail(frames, fault)),
       ),
     wire: {
+      read: (path) =>
+        Effect.suspend(() => {
+          const request: WireRequest = { method: "GET", path, rest: true };
+          requests.push(request);
+          return answer(request) as Effect.Effect<
+            { readonly status: number; readonly body: unknown },
+            StreamFault
+          >;
+        }),
       open: Effect.gen(function* () {
+        if (options.opening !== undefined) yield* options.opening;
         opens += 1;
         const queue = yield* Queue.unbounded<unknown, StreamFault>();
         frames = queue;

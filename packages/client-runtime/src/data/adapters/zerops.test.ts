@@ -2101,3 +2101,121 @@ describe("menu rows from Zerops owner evidence", () => {
     }),
   );
 });
+
+describe("the route's project read ahead of the listing", () => {
+  const ROUTE_PROJECT_ROW = { ...PROBE_PROJECT, clientId: ORG };
+  /** The route's Mate as its project's own service list answers it: no `projectId` named. */
+  const ZCP = { id: "s1", name: "zcp", status: "ACTIVE", _version: 4 };
+  const ROUTE_SERVICES_PATH = `/project/${PROBE_PROJECT_ID}/service-stack?limit=500`;
+  const readAhead = (link: ReturnType<typeof zeropsNavigationLink>) => {
+    link.demandDetail({ family: "project", listing: "route-project", ownerId: PROBE_PROJECT_ID });
+    link.demandDetail({ family: "service", listing: "route-services", ownerId: PROBE_PROJECT_ID });
+  };
+  const restAnswers =
+    (fallback: (request: WireRequest) => Effect.Effect<unknown, StreamFault>) =>
+    (request: WireRequest): Effect.Effect<unknown, StreamFault> =>
+      request.rest !== true
+        ? fallback(request)
+        : request.path === `/project/${PROBE_PROJECT_ID}`
+          ? Effect.succeed({ status: 200, body: ROUTE_PROJECT_ROW })
+          : request.path === ROUTE_SERVICES_PATH
+            ? Effect.succeed({ status: 200, body: { list: [ZCP] } })
+            : Effect.succeed({ status: 404, body: null });
+
+  it.effect(
+    "the route's project and its services are read over plain REST while the platform's socket is still logging in",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const fixture = fixtureWire(restAnswers(answers(() => [])), { opening: Effect.never });
+        const { fiber, link } = yield* runLink(store, fixture);
+
+        readAhead(link);
+        yield* settle;
+
+        expect(fixture.opens()).toBe(0);
+        expect(fixture.requests.map(({ method, path, rest }) => ({ method, path, rest }))).toEqual([
+          { method: "GET", path: `/project/${PROBE_PROJECT_ID}`, rest: true },
+          { method: "GET", path: ROUTE_SERVICES_PATH, rest: true },
+        ]);
+        const read = readsOfState(store.state());
+        expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })?.id).toBe(
+          PROBE_PROJECT_ID,
+        );
+        expect(
+          projectServices
+            .derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id, projectId }) => ({ id, projectId })),
+        ).toEqual([{ id: "s1", projectId: PROBE_PROJECT_ID }]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect(
+    "what the organization's listing reads of the route's Mate replaces what was read ahead of it",
+    () =>
+      Effect.gen(function* () {
+        const store = makeAccountStore(AtomRegistry.make());
+        const listing = answers(
+          () => [],
+          () => [ROUTE_PROJECT_ROW],
+        );
+        const opened = yield* Deferred.make<void>();
+        const fixture = fixtureWire(
+          restAnswers((request) =>
+            request.path === "/service-stack/search" && request.body?.wsOutputType === "listStream"
+              ? Effect.succeed({
+                  items: [
+                    { ...ZCP, projectId: PROBE_PROJECT_ID, clientId: ORG, status: "STOPPED" },
+                  ],
+                })
+              : listing(request),
+          ),
+          { opening: Deferred.await(opened) },
+        );
+        const { fiber, link } = yield* runLink(store, fixture);
+        readAhead(link);
+        yield* settle;
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { status: "ACTIVE" },
+        });
+
+        yield* Deferred.succeed(opened, undefined);
+        yield* settle;
+
+        expect(factOf(store.state(), "service", "s1")?.content).toMatchObject({
+          value: { status: "STOPPED" },
+        });
+        expect(
+          projectServices
+            .derive(readsOfState(store.state()), { orgId: ORG, projectId: PROBE_PROJECT_ID })
+            .services?.map(({ id }) => id),
+        ).toEqual(["s1"]);
+        yield* Fiber.interrupt(fiber);
+      }),
+  );
+
+  it.effect("a route project the platform refuses says nothing ahead of the listing", () =>
+    Effect.gen(function* () {
+      const store = makeAccountStore(AtomRegistry.make());
+      const fixture = fixtureWire(
+        (request) =>
+          request.rest === true
+            ? Effect.succeed({ status: 403, body: null })
+            : answers(() => [])(request),
+        { opening: Effect.never },
+      );
+      const { fiber, link } = yield* runLink(store, fixture);
+
+      readAhead(link);
+      yield* settle;
+
+      const read = readsOfState(store.state());
+      expect(listedProject.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID })).toBeNull();
+      expect(
+        projectServices.derive(read, { orgId: ORG, projectId: PROBE_PROJECT_ID }).services,
+      ).toBeUndefined();
+      yield* Fiber.interrupt(fiber);
+    }),
+  );
+});

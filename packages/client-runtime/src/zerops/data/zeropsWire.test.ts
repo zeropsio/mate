@@ -67,6 +67,27 @@ function harness(overrides: Partial<ZeropsWireClient> = {}) {
 
 describe("the Zerops wire", () => {
   it.effect(
+    "a read ahead goes over the session's REST client alone, never waiting for the socket's login",
+    () =>
+      Effect.gen(function* () {
+        const reads: Array<string> = [];
+        const { wire, sockets } = harness({
+          exchangeWebSocketToken: () => new Promise(() => undefined),
+          requestData: async ({ path, method }) => {
+            reads.push(`${method} ${path}`);
+            return { list: [] };
+          },
+        });
+
+        const answer = yield* wire.read!("/project/p1/service-stack?limit=500");
+
+        expect(answer).toEqual({ status: 200, body: { list: [] } });
+        expect(reads).toEqual(["GET /project/p1/service-stack?limit=500"]);
+        expect(sockets).toEqual([]);
+      }),
+  );
+
+  it.effect(
     "opens a receiver with a fresh socket login and hands on every frame after the greeting",
     () =>
       Effect.scoped(

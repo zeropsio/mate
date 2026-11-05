@@ -140,7 +140,20 @@ export function makeZeropsWire(options: {
       }),
     });
 
+  /** The owner's answer to "gone or not yours?" is a status, not a failure. */
+  const get = (path: string) =>
+    request(path, { method: "GET" }).pipe(
+      Effect.map((body) => ({ status: 200, body })),
+      Effect.catch(({ status, fault }) =>
+        status === 404 || status === 403
+          ? Effect.succeed({ status, body: null })
+          : Effect.fail(fault),
+      ),
+    );
+
   return {
+    // The session's REST client alone: no web-socket login, no receiver.
+    read: get,
     open: Effect.gen(function* () {
       const id = yield* receiverId;
       const { webSocketToken } = yield* Effect.tryPromise({
@@ -195,16 +208,7 @@ export function makeZeropsWire(options: {
         frames: Stream.fromQueue(frames),
         post: (path, body) =>
           request(path, { method: "POST", body }).pipe(Effect.mapError(({ fault }) => fault)),
-        // The owner's answer to "gone or not yours?" is a status, not a failure.
-        get: (path) =>
-          request(path, { method: "GET" }).pipe(
-            Effect.map((body) => ({ status: 200, body })),
-            Effect.catch(({ status, fault }) =>
-              status === 404 || status === 403
-                ? Effect.succeed({ status, body: null })
-                : Effect.fail(fault),
-            ),
-          ),
+        get,
       };
     }),
   };

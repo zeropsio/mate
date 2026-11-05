@@ -25,7 +25,8 @@ import { mateVariablesScope } from "./families/mateVariables.ts";
 import { hqMateSetup, UNKNOWN_MATE_SETUP, type HqMateSetup } from "./projections/hqMateSetup.ts";
 import { mateVariables } from "./projections/mateVariables.ts";
 import { projectProcesses, type ProjectProcesses } from "./projections/processes.ts";
-import type { ProjectValue } from "./families/project.ts";
+import { ROUTE_PROJECT, type ProjectValue } from "./families/project.ts";
+import { ROUTE_SERVICES } from "./families/service.ts";
 import { projectServices, projectsServices, type ProjectServices } from "./projections/services.ts";
 import { projectUsage, type ProjectUsage } from "./projections/usage.ts";
 import { publicAccess, type PublicAccess } from "./projections/publicAccess.ts";
@@ -422,6 +423,45 @@ export function holdServiceRead(
     release?.();
     release =
       account?.demandDetail({ family: "service", listing: "service", ownerId: serviceId }) ?? null;
+  };
+  const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
+  return () => {
+    unsubscribe();
+    release?.();
+    release = null;
+  };
+}
+
+/**
+ * Holds the route's project read ahead of the organization's listing, from outside React: its own
+ * row and its services, each over plain REST (`DetailListing.ahead`), through whichever account is
+ * mounted in `registry`; let go on release. What it reads is the store's like any other answer.
+ */
+export function holdRoutePreview(
+  registry: AtomRegistry.AtomRegistry,
+  projectId: string,
+): () => void {
+  let release: (() => void) | null = null;
+  const hold = (account: AccountReads | null) => {
+    release?.();
+    if (account === null) {
+      release = null;
+      return;
+    }
+    const project = account.demandDetail({
+      family: "project",
+      listing: ROUTE_PROJECT,
+      ownerId: projectId,
+    });
+    const services = account.demandDetail({
+      family: "service",
+      listing: ROUTE_SERVICES,
+      ownerId: projectId,
+    });
+    release = () => {
+      project();
+      services();
+    };
   };
   const unsubscribe = registry.subscribe(accountReadsAtom, hold, { immediate: true });
   return () => {
