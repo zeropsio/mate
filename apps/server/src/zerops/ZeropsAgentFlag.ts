@@ -34,11 +34,16 @@ import type { ZeropsAgentId } from "@t3tools/contracts";
 import * as Context from "effect/Context";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as Schema from "effect/Schema";
+import type * as Scope from "effect/Scope";
+import * as Stream from "effect/Stream";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
+import type { ProcessLiveEvent } from "./ZeropsAccessSocket.ts";
 import type { ZeropsEnvironment } from "./ZeropsEnvironment.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 import { requestWithMateKey } from "./ZeropsMateKey.ts";
 import { readJson, zeropsGet } from "./zeropsApiRead.ts";
@@ -144,6 +149,9 @@ export interface RegistrationProcess {
   readonly status?: string;
   readonly reason?: string;
 }
+
+/** The Mate's process frames, subscribed when this runs (`ZeropsMateAccessList.processes`). */
+export type ProcessEvents = Effect.Effect<Stream.Stream<ProcessLiveEvent>, never, Scope.Scope>;
 
 export interface MarkSignedInResult {
   readonly key: string;
@@ -276,31 +284,52 @@ const deleteUserDataRow = Effect.fn("ZeropsAgentFlag.deleteRow")(function* (inpu
   }
 });
 
-/** Follow only the accepted process id. A failed read ends this attempt; no new write is made. */
+const PROCESS_STATUSES = [
+  "PENDING",
+  "RUNNING",
+  "ROLLBACKING",
+  "CANCELING",
+  "FINISHED",
+  "FAILED",
+  "CANCELED",
+];
+
+/** The registration process `id` as `body` (a read's answer or a frame's row) states it, if it does. */
+const registrationOf = (id: string, body: unknown): RegistrationProcess | undefined => {
+  const status =
+    typeof body === "object" && body !== null && "status" in body ? body.status : undefined;
+  if (typeof status !== "string" || !PROCESS_STATUSES.includes(status)) return undefined;
+  const reason = registrationProcessReason(body);
+  return { id, status, ...(reason === undefined ? {} : { reason }) };
+};
+
+const unreadable = (process: RegistrationProcess) =>
+  new ZeropsAgentFlagError({
+    reason: "Could not read the registration process. Check its outcome before registering again.",
+    process,
+  });
+
+const ended = (process: RegistrationProcess): boolean =>
+  process.status === "FINISHED" || process.status === "FAILED" || process.status === "CANCELED";
+
+/**
+ * Follow only the accepted process id. It is read once the Mate's process frames are subscribed
+ * (covering a process that ended before any frame could arrive) and again after each socket
+ * (re)connect; otherwise its frames say how it goes. A failed read ends this attempt; no new
+ * write is made.
+ */
 const followRegistration = (
   apiBaseUrl: string,
   accepted: RegistrationProcess,
+  processes: ProcessEvents,
   onAccepted?: (process: RegistrationProcess) => Effect.Effect<void>,
 ) =>
   Effect.gen(function* () {
     const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
-    let process = accepted;
-    while (true) {
-      if (onAccepted !== undefined) yield* onAccepted(process);
-      if (process.status === "FINISHED") return process;
-      if (process.status === "FAILED" || process.status === "CANCELED") {
-        return yield* new ZeropsAgentFlagError({
-          reason:
-            process.reason ??
-            (process.status === "FAILED"
-              ? "Zerops registration failed."
-              : "Zerops registration was canceled."),
-          process,
-        });
-      }
+    const read = Effect.gen(function* () {
       const { response } = yield* requestWithMateKey(mateKey, (token) =>
         zeropsGet({
-          url: `${apiBaseUrl}/process/${encodeURIComponent(process.id)}`,
+          url: `${apiBaseUrl}/process/${encodeURIComponent(accepted.id)}`,
           token,
         }),
       ).pipe(
@@ -314,38 +343,49 @@ const followRegistration = (
               Effect.orElseSucceed(() => undefined),
             )
           : undefined;
-      const status =
-        typeof body === "object" && body !== null && "status" in body ? body.status : undefined;
-      if (
-        typeof status !== "string" ||
-        ![
-          "PENDING",
-          "RUNNING",
-          "ROLLBACKING",
-          "CANCELING",
-          "FINISHED",
-          "FAILED",
-          "CANCELED",
-        ].includes(status)
-      ) {
-        return yield* new ZeropsAgentFlagError({
-          reason:
-            "Could not read the registration process. Check its outcome before registering again.",
-          process,
-        });
-      }
-      const reason = registrationProcessReason(body);
-      process = { id: accepted.id, status, ...(reason === undefined ? {} : { reason }) };
-      if (status !== "FINISHED" && status !== "FAILED" && status !== "CANCELED")
-        yield* Effect.sleep("1 second");
-    }
-  });
+      const process = registrationOf(accepted.id, body);
+      if (process !== undefined) return process;
+      return yield* unreadable(accepted);
+    });
+    /** What a socket event says of the process: a fresh read after a (re)connect, else its frame row. */
+    const heard = (event: ProcessLiveEvent) =>
+      event._tag === "connected"
+        ? read
+        : Effect.succeed(
+            registrationOf(
+              accepted.id,
+              event.processes.findLast((process) => process.id === accepted.id)?.row,
+            ),
+          );
+    const updates = ended(accepted)
+      ? Stream.empty
+      : Stream.concat(Stream.fromEffect(read), Stream.mapEffect(yield* processes, heard));
+    const last = yield* Stream.concat(Stream.make(accepted), updates).pipe(
+      Stream.filter((process): process is RegistrationProcess => process !== undefined),
+      Stream.changesWith((a, b) => a.status === b.status && a.reason === b.reason),
+      Stream.tap((process) => onAccepted?.(process) ?? Effect.void),
+      Stream.filter(ended),
+      Stream.runHead,
+    );
+    if (Option.isNone(last)) return yield* unreadable(accepted);
+    const process = last.value;
+    if (process.status === "FINISHED") return process;
+    return yield* new ZeropsAgentFlagError({
+      reason:
+        process.reason ??
+        (process.status === "FAILED"
+          ? "Zerops registration failed."
+          : "Zerops registration was canceled."),
+      process,
+    });
+  }).pipe(Effect.scoped);
 
 /** `markSignedIn`'s I/O, testable directly against a mocked `HttpClient` without a `ZeropsAgentFlag` layer. */
 export const markSignedIn = Effect.fn("ZeropsAgentFlag.markSignedIn")(function* (input: {
   readonly environment: ZeropsEnvironment;
   readonly serviceId: string | undefined;
   readonly agentId: ZeropsAgentId;
+  readonly processes: ProcessEvents;
   readonly onAccepted?: (process: RegistrationProcess) => Effect.Effect<void>;
 }) {
   if (input.serviceId === undefined) {
@@ -374,7 +414,9 @@ export const markSignedIn = Effect.fn("ZeropsAgentFlag.markSignedIn")(function* 
           key,
           content: "true",
         }).pipe(
-          Effect.flatMap((process) => followRegistration(apiBaseUrl, process, input.onAccepted)),
+          Effect.flatMap((process) =>
+            followRegistration(apiBaseUrl, process, input.processes, input.onAccepted),
+          ),
         );
   return {
     key,
@@ -429,6 +471,7 @@ export const make = (options: {
   Effect.gen(function* () {
     const httpClient = yield* HttpClient.HttpClient;
     const mateKey = yield* ZeropsMateKeyModule.ZeropsMateKey;
+    const { processes } = yield* ZeropsMateAccessList;
     const withHttp = <A, E>(
       effect: Effect.Effect<A, E, HttpClient.HttpClient | ZeropsMateKeyModule.ZeropsMateKey>,
     ) =>
@@ -444,6 +487,7 @@ export const make = (options: {
             environment: options.environment,
             serviceId: options.serviceId,
             agentId,
+            processes,
             ...(onAccepted === undefined ? {} : { onAccepted }),
           }),
         ),

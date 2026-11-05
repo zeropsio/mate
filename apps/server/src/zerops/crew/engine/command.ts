@@ -112,6 +112,8 @@ export type CrewInput =
       readonly outcome: EffectOutcome;
     }
   | { readonly _tag: "Recovered"; readonly bootId: BootId }
+  /** Zerops pushed a process of the project, or its socket (re)connected: frozen hosts read again. */
+  | { readonly _tag: "ProcessesMoved" }
   /** The wiring's timing for the crew (tests shorten it). */
   | { readonly _tag: "Configure"; readonly timing: CrewTiming }
   /** V1's crew, taken once at the flip (`importV1Crew.ts`); a crew that holds one takes nothing. */

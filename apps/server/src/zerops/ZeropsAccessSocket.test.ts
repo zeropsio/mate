@@ -109,7 +109,7 @@ describe("ZeropsAccessSocket", () => {
           disableOutput: true,
         });
         const inOrg = { name: "clientId", operator: "eq", value: "ORG" };
-        assert.deepStrictEqual(requests.slice(1), [
+        assert.deepStrictEqual(requests.slice(1, 4), [
           {
             line: "POST /project/search",
             authorization: "Bearer project-key",
@@ -158,6 +158,51 @@ describe("ZeropsAccessSocket", () => {
         });
         yield* TestClock.adjust(Duration.seconds(15));
         assert.deepStrictEqual(sockets[0]!.sent, [JSON.stringify({ type: "ping" })]);
+      }).pipe(Effect.scoped),
+  );
+
+  it.effect(
+    "The same socket subscribes to its organisation's processes by clientId and hands on only its own project's",
+    () =>
+      Effect.gen(function* () {
+        const { requests, sockets, events, say } = yield* platform;
+        yield* say({ type: "SocketSuccess" });
+        assert.deepStrictEqual(yield* Queue.take(events), { _tag: "connected" });
+        const [, receiverId] =
+          /^wss:\/\/zerops\.test\/web-socket\/([0-9a-f-]{36})\//u.exec(sockets[0]!.url) ?? [];
+        // ZEROPS-078: a `projectId` filter answers 400; the organisation's is the one there is.
+        assert.deepStrictEqual(requests.slice(4), [
+          {
+            line: "POST /process/search",
+            authorization: "Bearer project-key",
+            body: {
+              search: [{ name: "clientId", operator: "eq", value: "ORG" }],
+              sort: [],
+              limit: 200,
+              receiverId,
+              subscriptionName: "mate-access-process",
+              wsOutputType: "updateStream",
+              disableOutput: true,
+            },
+          },
+        ]);
+        const own = { id: "proc-1", status: "FINISHED", projectId: "P_MATE", actionName: "a" };
+        const other = { id: "proc-2", status: "RUNNING", projectId: "P_OTHER" };
+        yield* say({
+          type: "search",
+          subscriptionName: "mate-access-process",
+          data: { update: [other] },
+        });
+        yield* say({
+          type: "search",
+          subscriptionName: "mate-access-process",
+          data: { update: [other, own] },
+        });
+        assert.deepStrictEqual(yield* Queue.take(events), {
+          _tag: "process",
+          processes: [{ id: "proc-1", status: "FINISHED", row: own }],
+        });
+        assert.strictEqual(yield* Queue.size(events), 0);
       }).pipe(Effect.scoped),
   );
 

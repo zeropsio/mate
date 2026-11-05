@@ -791,7 +791,11 @@ const enginePort = (input: {
         : mateTurn(true).pipe(
             Effect.andThen(deployCall("inProgress", options.opens ?? "item.started")),
           ),
-    deployState: (processes) => Ref.set(fx.processes, processes),
+    // The platform's list moves, and its socket pushes the process that moved it.
+    deployState: (processes) =>
+      Ref.set(fx.processes, processes).pipe(
+        Effect.andThen(PubSub.publish(fx.processPushes, undefined)),
+      ),
     // The plan's usage as the registry's snapshot of the login holds it, the bars the person sees.
     usage: (usedPercent) => {
       const providers = [
@@ -981,12 +985,8 @@ const lifeLayer = (
   const base = Layer.mergeAll(
     // The world's clock: real time, which a journey moves on to let a wait come due.
     Layer.succeed(Clock.Clock, clock),
-    // A redeploy's reads come within moments, not minutes, as V1's world has them.
-    Layer.succeed(CrewTimingConfig, {
-      deployPollFirstMs: 50,
-      deployPollMaxMs: 200,
-      thawOfferMs: 600,
-    }),
+    // An unreadable redeploy is offered for a thaw within moments, not half an hour.
+    Layer.succeed(CrewTimingConfig, { thawOfferMs: 600 }),
     platformFakes(world, signIns),
     admissionFake(world),
     countingSsh(world.sshCalls, holds),

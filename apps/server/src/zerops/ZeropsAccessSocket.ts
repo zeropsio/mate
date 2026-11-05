@@ -5,16 +5,19 @@
  *
  * - `POST /web-socket/login {token}` → `webSocketToken`; the socket at
  *   `/web-socket/{receiverId}/{webSocketToken}` greets with `SocketSuccess` (ZEROPS-069).
- * - Three subscriptions, each an HTTP search carrying the receiver: the own project's
+ * - Four subscriptions, each an HTTP search carrying the receiver: the own project's
  *   `updateStream` (its `userRoles`, ZEROPS-069), the organisation's `client-user` `updateStream`
- *   (org role and status, ZEROPS-070/071) and `listStream` (membership).
+ *   (org role and status, ZEROPS-070/071) and `listStream` (membership), and the organisation's
+ *   `process` `updateStream` (ZEROPS-078; a `projectId` filter answers 400, so the frames are
+ *   narrowed to the own project here).
  * - A `ping` every {@link ACCESS_SOCKET_PING_EVERY}; a socket whose pong is later than
  *   {@link ACCESS_SOCKET_PONG_DEADLINE} counts as closed, as the browser's does.
  * - A close reconnects after {@link ACCESS_SOCKET_RECONNECT_DELAYS}, the last repeating; a
  *   connection that reached its subscriptions starts the series again.
  *
- * Each connection that subscribed says `connected` (the list re-reads Zerops then); each frame is
- * decoded to the fields the list needs and nothing else. The key goes to Zerops only, as a request
+ * Each connection that subscribed says `connected` (the list re-reads Zerops then, and so does
+ * whoever waits on a process); each frame is decoded to the fields its reader needs and nothing
+ * else. The key goes to Zerops only, as a request
  * header and the login body; neither it nor the socket token is logged.
  *
  * @module ZeropsAccessSocket
@@ -64,15 +67,29 @@ export type AccessFrame =
       readonly remove: ReadonlyArray<string>;
     };
 
-export type AccessLiveEvent =
+/** A process of the own project as a frame carries it: its id, status and the whole row. */
+export interface ProjectProcess {
+  readonly id: string;
+  readonly status: string;
+  readonly row: Readonly<Record<string, unknown>>;
+}
+
+/** What a process waiter hears from the socket. */
+export type ProcessLiveEvent =
   /** A connection is subscribed: anything before it may have been missed. */
-  { readonly _tag: "connected" } | { readonly _tag: "frame"; readonly frame: AccessFrame };
+  | { readonly _tag: "connected" }
+  | { readonly _tag: "process"; readonly processes: ReadonlyArray<ProjectProcess> };
+
+export type AccessLiveEvent =
+  | ProcessLiveEvent
+  | { readonly _tag: "frame"; readonly frame: AccessFrame };
 
 const PROJECT_SUBSCRIPTION = "mate-access-project";
 const MEMBERS_SUBSCRIPTION = "mate-access-members";
 const MEMBERSHIP_SUBSCRIPTION = "mate-access-membership";
+const PROCESS_SUBSCRIPTION = "mate-access-process";
 
-/** The three subscriptions a connection with receiver `receiverId` makes, path and body. */
+/** The four subscriptions a connection with receiver `receiverId` makes, path and body. */
 export const accessSubscriptions = (input: {
   readonly projectId: string;
   readonly clientId: string;
@@ -103,6 +120,10 @@ export const accessSubscriptions = (input: {
       path: "/client-user/search",
       body: { search: [inOrg], ...subscription(MEMBERSHIP_SUBSCRIPTION, "listStream") },
     },
+    {
+      path: "/process/search",
+      body: { search: [inOrg], ...subscription(PROCESS_SUBSCRIPTION, "updateStream") },
+    },
   ];
 };
 
@@ -119,6 +140,34 @@ const patchOf = (row: Record<string, unknown>): MemberPatch | undefined => {
     ...(typeof status === "string" ? { status } : {}),
     ...(typeof canCreateProjects === "boolean" ? { canCreateProjects } : {}),
   };
+};
+
+/**
+ * The own project's processes a parsed frame names, if it is a process frame: rows of other
+ * projects, and rows without an id or status, drop out.
+ */
+export const decodeProcessFrame = (
+  parsed: unknown,
+  scope: { readonly projectId: string },
+): ReadonlyArray<ProjectProcess> | undefined => {
+  const frame = recordOf(parsed);
+  if (frame?.["type"] !== "search" || frame["subscriptionName"] !== PROCESS_SUBSCRIPTION)
+    return undefined;
+  const data = recordOf(frame["data"]) ?? {};
+  return ["add", "update"].flatMap((key) => {
+    const value = data[key];
+    return (Array.isArray(value) ? value : []).flatMap((entry): Array<ProjectProcess> => {
+      const row = recordOf(entry);
+      const id = row?.["id"];
+      const status = row?.["status"];
+      return row !== undefined &&
+        row["projectId"] === scope.projectId &&
+        typeof id === "string" &&
+        typeof status === "string"
+        ? [{ id, status, row }]
+        : [];
+    });
+  });
 };
 
 /** What a parsed frame tells the list of project `projectId` in organisation `clientId`, if anything. */
@@ -188,8 +237,9 @@ const PING = JSON.stringify({ type: "ping" });
 type Inbound = { readonly _tag: "message"; readonly data: unknown } | { readonly _tag: "closed" };
 
 /**
- * The live events of the access list of project `projectId` in organisation `clientId`, for as
- * long as the stream is pulled: connected, then frames, reconnecting on every close.
+ * The live events of the access list of project `projectId` in organisation `clientId`, and of
+ * that project's processes, for as long as the stream is pulled: connected, then frames,
+ * reconnecting on every close.
  */
 export const accessEvents = (input: {
   readonly apiBaseUrl: string;
@@ -285,6 +335,11 @@ export const accessEvents = (input: {
           const parsed = parse(next.data);
           if (recordOf(parsed)?.["type"] === "pong") {
             Queue.offerUnsafe(pongs, undefined);
+            continue;
+          }
+          const processes = decodeProcessFrame(parsed, input);
+          if (processes !== undefined) {
+            if (processes.length > 0) Queue.offerUnsafe(events, { _tag: "process", processes });
             continue;
           }
           const frame = decodeAccessFrame(parsed, input);
