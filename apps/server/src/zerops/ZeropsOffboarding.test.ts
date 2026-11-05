@@ -168,25 +168,26 @@ describe("ZeropsOffboarding, when the project changes hands", () => {
 // HQ sending a different access list signs a person who lost access out now, not at the next
 // role recheck.
 describe("ZeropsOffboarding's loop", () => {
-  it.effect("runs a pass at once when HQ relays a different answer", () =>
+  /** The layer's loop over Eva's Claude Code login: `access` answers for her, both feeds fire. */
+  const loop = <A>(
+    body: (feeds: {
+      readonly access: Ref.Ref<boolean>;
+      readonly signedOut: Ref.Ref<ReadonlyArray<unknown>>;
+      readonly relays: PubSub.PubSub<void>;
+      readonly signIns: PubSub.PubSub<void>;
+    }) => Effect.Effect<A, never, ZeropsOffboarding>,
+  ) =>
     Effect.gen(function* () {
       const access = yield* Ref.make(true);
       const signedOut = yield* Ref.make<ReadonlyArray<unknown>>([]);
       const relays = yield* PubSub.unbounded<void>();
+      const signIns = yield* PubSub.unbounded<void>();
       const environment = resolveZeropsEnvironment({
         projectId: "P",
         apiHost: undefined,
         apiToken: "key",
       })!;
-      yield* Effect.gen(function* () {
-        yield* ZeropsOffboarding;
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(yield* Ref.get(signedOut), []);
-        yield* Ref.set(access, false);
-        yield* PubSub.publish(relays, undefined);
-        yield* TestClock.adjust(Duration.zero);
-        assert.deepStrictEqual(yield* Ref.get(signedOut), [{ agentId: "claude-code" }]);
-      }).pipe(
+      return yield* body({ access, signedOut, relays, signIns }).pipe(
         Effect.provide(
           offboardingLayer.pipe(
             Layer.provide(
@@ -196,6 +197,7 @@ describe("ZeropsOffboarding's loop", () => {
                   ZeropsProjectSigners,
                   ZeropsProjectSigners.of({
                     signers: Effect.succeed({ "claude-code": EVA }),
+                    changes: Stream.fromPubSub(signIns),
                     hasProjectAccess: () => Ref.get(access),
                   } as unknown as ZeropsProjectSigners["Service"]),
                 ),
@@ -218,6 +220,35 @@ describe("ZeropsOffboarding's loop", () => {
           ),
         ),
       );
-    }).pipe(Effect.scoped),
+    }).pipe(Effect.scoped);
+
+  it.effect("runs a pass at once when HQ relays a different answer", () =>
+    loop(({ access, signedOut, relays }) =>
+      Effect.gen(function* () {
+        yield* ZeropsOffboarding;
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(yield* Ref.get(signedOut), []);
+        yield* Ref.set(access, false);
+        yield* PubSub.publish(relays, undefined);
+        yield* TestClock.adjust(Duration.zero);
+        assert.deepStrictEqual(yield* Ref.get(signedOut), [{ agentId: "claude-code" }]);
+      }),
+    ),
+  );
+
+  it.effect(
+    "signs a signer who is no longer an opener out when a sign-in is recorded, and time alone signs nobody out",
+    () =>
+      loop(({ access, signedOut, signIns }) =>
+        Effect.gen(function* () {
+          yield* ZeropsOffboarding;
+          yield* Ref.set(access, false);
+          yield* TestClock.adjust(Duration.minutes(5));
+          assert.deepStrictEqual(yield* Ref.get(signedOut), []);
+          yield* PubSub.publish(signIns, undefined);
+          yield* TestClock.adjust(Duration.zero);
+          assert.deepStrictEqual(yield* Ref.get(signedOut), [{ agentId: "claude-code" }]);
+        }),
+      ),
   );
 });
