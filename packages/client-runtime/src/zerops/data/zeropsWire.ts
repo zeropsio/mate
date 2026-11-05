@@ -141,12 +141,17 @@ export function makeZeropsWire(options: {
       }),
     });
 
+  /** The verified answer already handed out: it answers one first read, never a later one. */
+  let heldTaken: unknown = null;
   return {
-    // Verifying the session read `/user/info`; that answer is the account's, for this session only.
+    // Verifying the session read `/user/info`; that answer is the account's, for this session only,
+    // and for its first reader only: a later read may follow our own write.
     held: (path) => {
       if (path !== "/user/info") return undefined;
       const verified = client.verifiedUser?.();
-      return verified == null ? undefined : { body: verified.user, atMs: verified.atMs };
+      if (verified == null || verified.user === heldTaken) return undefined;
+      heldTaken = verified.user;
+      return { body: verified.user, atMs: verified.atMs };
     },
     rest: {
       post: (path, body) =>

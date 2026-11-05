@@ -88,6 +88,13 @@ describe("the Zerops wire", () => {
     expect(wire.held?.(path)).toEqual(held ? { body: user, atMs: 1_234 } : undefined);
   });
 
+  it("hands the session's verified user/info to its first reader only", () => {
+    const user = { id: "u1", email: "person@example.test", clientUserList: [] };
+    const { wire } = harness({ verifiedUser: () => ({ user: user as never, atMs: 1_234 }) });
+    expect(wire.held?.("/user/info")).toEqual({ body: user, atMs: 1_234 });
+    expect(wire.held?.("/user/info")).toBeUndefined();
+  });
+
   it.effect(
     "opens a receiver with a fresh socket login and hands on every frame after the greeting",
     () =>
