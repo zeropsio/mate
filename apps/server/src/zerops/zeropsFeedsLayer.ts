@@ -15,6 +15,7 @@
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Stream from "effect/Stream";
 import { CommandId, ConversationId, ThreadId } from "@t3tools/contracts";
 
 import { ServerConfig } from "../config.ts";
@@ -151,17 +152,23 @@ const ZeropsTurnAdmissionLive = ZeropsTurnAdmissionModule.layer.pipe(
  * until a crew is applied. It admits its turns through the same gate instance. One value, so the
  * link below reads the very engine the merge runs.
  */
-/** Crew's port to the platform's process list: whether a deploy a restart cut off still runs. */
+/**
+ * Crew's port to the platform's process list: whether a deploy a restart cut off still runs, read
+ * when the Mate's socket pushes a process of the project or (re)connects.
+ */
 const CrewPlatformProcessesLive = Layer.effect(
   CrewPlatformProcesses,
-  Effect.map(ZeropsRestartReadModule.ZeropsRestartRead, (reader) =>
-    CrewPlatformProcesses.of({
+  Effect.gen(function* () {
+    const reader = yield* ZeropsRestartReadModule.ZeropsRestartRead;
+    const access = yield* ZeropsMateAccessListModule.ZeropsMateAccessList;
+    return CrewPlatformProcesses.of({
       read: reader.read.pipe(
         Effect.map((evidence) => evidence.processes),
         Effect.orElseSucceed(() => undefined),
       ),
-    }),
-  ),
+      moved: Effect.map(access.processes, Stream.as(undefined)),
+    });
+  }),
 ).pipe(Layer.provide(ZeropsRestartReadModule.layer));
 
 /**
