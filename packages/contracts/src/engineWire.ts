@@ -320,7 +320,10 @@ export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
  * A run's items, the newest page first (`beforeSeq` pages back); with `afterSeq`, the oldest page
  * after it (`more`: later ones exist). `only: "outcome"` reads just the items a closed card draws
  * its result from: calls with a result or a picture looked at, and background work with the calls
- * that started it.
+ * that started it. With `tools`, a call's result counts only for the tools it names — those whose
+ * results the client draws a closed card from; a name ending in `*` names every tool it begins —
+ * and for every tool a call of the run failed with: its failure, and the calls that may have
+ * recovered from it. A server before `tools` ignores it and reads every result, drawn the same.
  */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,
@@ -329,6 +332,7 @@ export const EngineReadRunInput = Schema.Struct({
   beforeSeq: Schema.optionalKey(Schema.Int),
   afterSeq: Schema.optionalKey(Schema.Int),
   only: Schema.optionalKey(Schema.Literal("outcome")),
+  tools: Schema.optionalKey(Schema.Array(Schema.String)),
   limit: Schema.optionalKey(Schema.Int),
 });
 export type EngineReadRunInput = typeof EngineReadRunInput.Type;

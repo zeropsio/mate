@@ -597,6 +597,107 @@ describe("a client reading more of an engine conversation", () => {
     ),
   );
 
+  // A zcp Mate's reload read every Zerops result its runs held (434 KB a page, two thirds of it
+  // results), its looks around and its logs among them, before a closed card drew any of them.
+  it.effect.each([
+    {
+      asked: "names the tools it draws",
+      tools: ["zerops_deploy", "zerops_org_*"],
+      read: ["zerops_deploy", "zerops_events", "zerops_events", "zerops_org_restart", "Read"],
+    },
+    {
+      asked: "names none (a client before the names)",
+      tools: undefined,
+      read: [
+        "zerops_discover",
+        "zerops_deploy",
+        "zerops_logs",
+        "zerops_events",
+        "zerops_events",
+        "zerops_org_restart",
+        "Read",
+      ],
+    },
+  ])(
+    "reads a closed card's results only of the tools a client $asked and those that failed, its looks and work always",
+    ({ tools, read }) =>
+      Effect.scoped(
+        Effect.gen(function* () {
+          const w = yield* world;
+          const wire = yield* wireOf(w);
+          yield* w.tell({ _tag: "Send", text: "Deploy" });
+          for (const [tool, text] of [
+            ["zerops_discover", '{"services":[]}'],
+            ["zerops_deploy", '{"ok":true}'],
+            ["zerops_logs", '{"lines":["started"]}'],
+          ] as const)
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", text));
+          // A read that failed, then the same read again: the card's face says whether it recovered.
+          yield* w.agent((agent, thread) =>
+            Effect.gen(function* () {
+              const toolName = "mcp__zerops__zerops_events";
+              const payload = { itemType: "mcp_tool_call", title: "MCP tool call" };
+              yield* agent.emit("item.started", thread, {
+                itemId: "toolu_events",
+                payload: { ...payload, status: "inProgress", data: { toolName, input: {} } },
+              });
+              yield* agent.emit("item.completed", thread, {
+                itemId: "toolu_events",
+                payload: {
+                  ...payload,
+                  status: "failed",
+                  data: {
+                    toolName,
+                    input: {},
+                    result: { type: "tool_result", content: [{ type: "text", text: "timed out" }] },
+                  },
+                },
+              });
+            }),
+          );
+          for (const [tool, text] of [
+            ["zerops_events", '{"events":[]}'],
+            ["zerops_org_restart", '{"proposal":{}}'],
+          ] as const)
+            yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", text));
+          yield* w.agent((agent, thread) =>
+            Effect.gen(function* () {
+              const payload = {
+                itemType: "image_view",
+                title: "Read",
+                data: { toolName: "Read", input: { file_path: "/tmp/shot.png" } },
+              };
+              yield* agent.emit("item.started", thread, {
+                itemId: "toolu_look",
+                payload: { ...payload, status: "inProgress" },
+              });
+              yield* agent.emit("item.completed", thread, {
+                itemId: "toolu_look",
+                payload: { ...payload, status: "completed" },
+              });
+            }),
+          );
+          yield* w.agent((agent, thread) => agent.finish(thread));
+          const page = yield* wire.readRun({
+            protocol,
+            conversationId: mate,
+            runId: runId(mate, 1),
+            afterSeq: 0,
+            only: "outcome",
+            ...(tools === undefined ? {} : { tools }),
+          });
+          if (page._tag !== "Page") throw new Error(page._tag);
+          assert.deepStrictEqual(
+            page.items.map((item) =>
+              item.kind === "call" ? (item.result?.toolName ?? item.tool.name) : item.kind,
+            ),
+            read,
+          );
+          yield* w.shutdown;
+        }),
+      ),
+  );
+
   // Milo's stress runs: a reload's closed card lost the line of jobs it read live, its commands unread.
   it.effect("reads a closed card's background work with the commands that started it", () =>
     Effect.scoped(

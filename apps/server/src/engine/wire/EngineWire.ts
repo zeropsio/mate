@@ -804,6 +804,7 @@ export const makeEngineWire = (options: EngineWireOptions = {}) =>
               ...(input.beforeSeq === undefined ? {} : { beforeSeq: input.beforeSeq }),
               ...(input.afterSeq === undefined ? {} : { afterSeq: input.afterSeq }),
               ...(input.only === undefined ? {} : { only: input.only }),
+              ...(input.tools === undefined ? {} : { tools: input.tools }),
               limit,
             });
             return {

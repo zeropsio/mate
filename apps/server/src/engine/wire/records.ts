@@ -96,6 +96,8 @@ interface RequestRow {
 }
 
 const parse = (text: string | null): unknown => (text === null ? null : JSON.parse(text));
+/** Names as the JSON array SQLite reads with `json_each`. */
+const encodeNames = Schema.encodeSync(Schema.fromJsonString(Schema.Array(Schema.String)));
 
 export const itemOfRow = (row: ItemRow) =>
   decodeItem({
@@ -591,7 +593,9 @@ export const makeRecords = Effect.gen(function* () {
      * A run's items, the newest page; `more` when older ones exist before it. After `afterSeq`,
      * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
      * draws its result from — its background work with the calls that started it, which its line
-     * of jobs is drawn from.
+     * of jobs is drawn from. `tools` narrows the results to those of the tools it names (a name
+     * ending in `*` names every tool it begins, as a GLOB does) and of every tool a call of the run
+     * failed with: a failure a card's face says, and the calls that may have recovered from it.
      */
     runPage: (
       conversation: ConversationId,
@@ -600,11 +604,21 @@ export const makeRecords = Effect.gen(function* () {
         readonly beforeSeq?: number;
         readonly afterSeq?: number;
         readonly only?: "outcome";
+        readonly tools?: ReadonlyArray<string>;
         readonly limit: number;
       },
     ) =>
       Effect.gen(function* () {
         const forward = options.afterSeq !== undefined;
+        const resulted =
+          options.tools === undefined
+            ? sql`json_extract(body_json, '$.result') IS NOT NULL`
+            : sql`(EXISTS (SELECT 1 FROM json_each(${encodeNames(options.tools)}) AS named
+                  WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
+                OR json_extract(body_json, '$.result.toolName') IN (
+                  SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
+                  WHERE failed.conversation_id = ${conversation} AND failed.run_id = ${runId}
+                    AND failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
         const rows = yield* sql<ItemRow>`
           SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
             ${options.beforeSeq === undefined ? sql`` : sql`AND opened_seq < ${options.beforeSeq}`}
@@ -612,7 +626,7 @@ export const makeRecords = Effect.gen(function* () {
             ${
               options.only === "outcome"
                 ? sql`AND (kind = 'work' OR (kind = 'call' AND (
-                    json_extract(body_json, '$.result') IS NOT NULL
+                    ${resulted}
                     OR json_extract(body_json, '$.step') = 'look'
                     OR item_id IN (
                       SELECT json_extract(body_json, '$.call') FROM engine_item
