@@ -44,7 +44,8 @@ function useGroupProjects(): (groupId: string) => ReadonlyArray<ZeropsProject> {
 
 /**
  * The stages and productions of an application the platform accepted and HQ does not hold yet, as
- * the group tree draws them from this tab's presses (`placedPressesIn`).
+ * the group tree draws them from this tab's presses (`placedPressesIn`): a Mate that is also the
+ * stage is a stage.
  */
 export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<HeldEnvironment> {
   const { listing } = useZeropsCandidates();
@@ -59,9 +60,11 @@ export function useGroupPendingEnvironments(groupId: string): ReadonlyArray<Held
           births: placedPressesIn(presses, organizationId, placedNewProjects(made, organizationId)),
         }).groups.find((entry) => entry.group.groupId === groupId)?.group.pending ?? []
       ).flatMap((member): ReadonlyArray<HeldEnvironment> =>
-        member.kind === "stage" || member.kind === "production"
-          ? [{ id: member.projectId, tier: member.kind }]
-          : [],
+        member.kind === "stage" || member.kind === "devstage"
+          ? [{ id: member.projectId, tier: "stage" }]
+          : member.kind === "production"
+            ? [{ id: member.projectId, tier: "production" }]
+            : [],
       ),
     [groupId, listing, made, organizationId, presses],
   );
