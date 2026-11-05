@@ -1993,7 +1993,10 @@ function SidebarZeropsTreeView<T extends RosterCandidate>({
             name: member.name,
             tint,
             shape: member.face?.shape ?? mateShapeOf(undefined, tint),
-            state: mateBirthFace(member.failed === true),
+            state: mateBirthFace(
+              (member.intent === undefined ? undefined : getBirth?.(member.intent)?.attention) ??
+                member.failed === true,
+            ),
             known: true,
             badge: null,
           },

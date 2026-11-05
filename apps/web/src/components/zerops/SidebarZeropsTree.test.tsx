@@ -3025,6 +3025,44 @@ describe("a group of Mates folded to its row", () => {
     expect(face?.moment).toBeUndefined();
   });
 
+  it("a stopped shared birth rests in its folded project and in its row", () => {
+    const pending: ZeropsPlacedBirth = {
+      intent: "b1",
+      projectId: "vera-dev",
+      placement: {
+        groupId: "aaa",
+        groupName: "Beviro CRM",
+        kind: "mate",
+        displayName: "Vera",
+      },
+    };
+    const props = {
+      births: [pending],
+      getBirth: () => ({
+        line: "Project created · Quota reached.",
+        attention: true,
+        entries: [],
+      }),
+    };
+    const folded = mount(
+      <SidebarZeropsTree
+        candidates={[CRM_DEV]}
+        complete
+        onBrowseProjects={() => {}}
+        onSelect={() => {}}
+        {...props}
+      />,
+    );
+    const face = clusterOf(folded, ["crm-dev", "vera-dev"]).find(({ key }) => key === "vera-dev");
+    stored.opened = new Set(["aaa"]);
+    const open = render([CRM_DEV], props);
+    const at = open.indexOf('data-zerops-surface="sidebar-mate-coming"');
+    const row = open.slice(open.lastIndexOf("<button", at), open.indexOf("</button>", at));
+    expect(face?.state).toBe("sleep");
+    expect(row.match(/data-mate-face-state="([^"]+)"/u)?.[1]).toBe("sleep");
+    expect(row).toContain(">Project created · Quota reached.<");
+  });
+
   it("greets nothing its folded group's faces only stood in for until the Mate's state was read", () => {
     const told: ZeropsAgentActivity = {
       ...said("crm-dev", "idle", "idle"),
