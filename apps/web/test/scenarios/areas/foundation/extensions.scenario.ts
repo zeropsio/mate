@@ -40,8 +40,7 @@ describe("harness extension APIs", () => {
             baseUrl: `${api.origin}/api/rest/public`,
             world: fake.world,
           });
-          // The first door keeps the organisation's key, which HQ then reads Zerops with.
-          const owner = yield* personDoor(core, "owner", "hq");
+          const owner = yield* personDoor(core, "owner");
           const appIds = new Map<string, string>();
           for (const name of ["Ada", "Bea", "Staging", "Production", "Cara"]) {
             fake.put("project", {
@@ -83,10 +82,6 @@ describe("harness extension APIs", () => {
           expect(
             apps.find(({ id }) => id === cara)?.projects.map(({ projectId }) => projectId),
           ).toEqual(["Cara"]);
-          expect(
-            fake.requestsByCredential.get("hq")?.get("GET /client/ORG/user/list"),
-          ).toBeGreaterThan(0);
-
           const dist = yield* Effect.acquireRelease(
             Effect.promise(() =>
               NodeFSP.mkdtemp(NodePath.join(NodeOS.tmpdir(), "scenario-extensions-")),

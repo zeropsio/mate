@@ -13,14 +13,10 @@ import {
   unchangedHandovers,
   allowHqRetries,
   firstHqAnswer,
-  hqKeepsEverySession,
 } from "./dsl.ts";
 
-const accountScenario = Effect.fn("signin.scenario")(function* (sessionFault = false) {
-  const s = yield* createScenario(
-    [installSignIn],
-    sessionFault ? { signIn: "ui", hq: { streamRecheck: 1_000 } } : { signIn: "ui" },
-  );
+const accountScenario = Effect.fn("signin.scenario")(function* () {
+  const s = yield* createScenario([installSignIn], { signIn: "ui" });
   return { ...s, receivedReplies: receivedHqReplies(s.page, s.drivers.routes, s.hq.origin) };
 });
 describe("A: sign-in, session and organizations", () => {
@@ -103,7 +99,7 @@ describe("A: sign-in, session and organizations", () => {
         yield* signInOrganization(s);
         yield* s.then.menu.row("Shop").appears();
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).showsNoProjects;
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* account(s.page).selectOrganization("ACME");
         yield* s.then.menu.row("Shop").appears();
@@ -118,11 +114,11 @@ describe("A: sign-in, session and organizations", () => {
         yield* organizations(s);
         yield* signInOrganization(s);
         yield* account(s.page).selectOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).showsNoProjects;
         const retainedAuthorization = yield* unchangedHandovers(s);
         yield* account(s.page).reload;
         yield* account(s.page).showsOrganization("Second");
-        yield* account(s.page).needsAdministrator;
+        yield* account(s.page).showsNoProjects;
         yield* account(s.page).lacksRows(["Shop", "Ada"]);
         yield* retainedAuthorization();
         yield* s.then.noExternalNetwork;
@@ -180,7 +176,7 @@ describe("A: sign-in, session and organizations", () => {
     // Catches a definitive HQ refusal trapping a signed-in user after an explicit Try again.
     it.effect("Try again retries a refused HQ connection without account sign-in", () =>
       Effect.gen(function* () {
-        const s = yield* accountScenario(true);
+        const s = yield* accountScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;
         yield* s.then.menu.row("Shop").appears();
@@ -199,7 +195,7 @@ describe("A: sign-in, session and organizations", () => {
     // Catches a transient HQ session-database failure permanently stopping live updates after recovery.
     it.effect("HQ session-check outage recovers without user intervention", () =>
       Effect.gen(function* () {
-        const s = yield* accountScenario(true);
+        const s = yield* accountScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.signedIn;
@@ -261,7 +257,7 @@ describe("A: sign-in, session and organizations", () => {
     // Catches one tab's new HQ session revoking the one a neighbouring tab of the account still uses.
     it.effect("a second tab entering HQ leaves the first tab's HQ live", () =>
       Effect.gen(function* () {
-        const s = yield* accountScenario(true);
+        const s = yield* accountScenario();
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         const b = yield* s.given.browserActor({ context: s.page.browserContext() });
         // Tab B waits at the door; the sign-in in tab A signs it in too, and both enter HQ.
@@ -273,7 +269,6 @@ describe("A: sign-in, session and organizations", () => {
         yield* s.then.menu.row("Shop").appears();
         yield* Effect.promise(() => b.page.bringToFront());
         yield* b.then.menu.row("Shop").appears();
-        yield* hqKeepsEverySession(s);
         yield* s.when.hq.colleague.renamesProject("Shop", "Both live");
         yield* b.then.menu.row("Both live").appears();
         yield* Effect.promise(() => s.page.bringToFront());
@@ -287,7 +282,7 @@ describe("A: sign-in, session and organizations", () => {
     // Catches an expired HQ session permanently stopping live work until the user retries.
     it.effect("HQ session expires and renews itself", () =>
       Effect.gen(function* () {
-        const s = yield* accountScenario(true);
+        const s = yield* accountScenario();
         yield* Effect.promise(() => s.clock.install());
         yield* s.given.project("Ada", { mate: true, app: "Shop" });
         yield* s.given.signedIn;

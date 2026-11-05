@@ -9,6 +9,7 @@ import * as NodePath from "node:path";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import { vi } from "vite-plus/test";
 import { emptyWorld } from "../harness/fakeWorld.ts";
 import { startExternalCore } from "../harness/externalCore.ts";
 import { serve } from "../harness/http.ts";
@@ -22,6 +23,41 @@ const alive = (pid: number) => {
 };
 
 const quote = (value: string) => `'${value.replaceAll("'", "'\"'\"'")}'`;
+
+it.effect.each(["EPERM", "ESRCH"])(
+  "external Core shutdown accepts %s for its captured process group",
+  (code) =>
+    Effect.gen(function* () {
+      const script = `
+        process.stdout.write(JSON.stringify({
+          origin: "http://127.0.0.1:1",
+          database: String(process.pid),
+          clock: process.env.HQ_TEST_WAIT_CLOCK_FILE,
+        }) + "\\n");
+        process.stdin.resume();
+        process.stdin.once("end", () => process.exit(0));
+      `;
+      const core = yield* startExternalCore(`${quote(process.execPath)} -e ${quote(script)}`, {
+        baseUrl: "http://127.0.0.1:1",
+        world: emptyWorld(),
+      });
+      const pid = Number(core.url);
+      const kill = process.kill.bind(process);
+      const spy = yield* Effect.acquireRelease(
+        Effect.sync(() =>
+          vi.spyOn(process, "kill").mockImplementation((target, signal) => {
+            if (target === -pid && signal === "SIGKILL") {
+              throw Object.assign(new Error(`kill ${code}`), { code });
+            }
+            return kill(target, signal);
+          }),
+        ),
+        (spy) => Effect.sync(() => spy.mockRestore()),
+      );
+      yield* core.stop;
+      expect(spy).toHaveBeenCalledWith(-pid, "SIGKILL");
+    }).pipe(Effect.scoped),
+);
 
 it.effect.each([0, 23])(
   "external Core uses the caller's Zerops API and awaits shutdown with exit code %s",

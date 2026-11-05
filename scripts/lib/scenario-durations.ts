@@ -59,7 +59,6 @@ export const scenarioDurations: Readonly<Record<string, number>> = {
   "apps/web/test/scenarios/areas/b-menu/drafts.scenario.ts": 6_534,
   "apps/web/test/scenarios/areas/c-mate/opening.scenario.ts": 6_402,
   "apps/web/test/scenarios/areas/d-change/git-diff-jump.scenario.ts": 6_328,
-  "apps/web/test/scenarios/areas/foundation/hqTimings.scenario.ts": 5_671,
   "apps/web/test/scenarios/areas/c-mate/context-window.scenario.ts": 4_519,
   "apps/web/test/scenarios/areas/foundation/extensions.scenario.ts": 2_705,
 };

@@ -1,4 +1,3 @@
-import * as Effect from "effect/Effect";
 import type { WebSocket } from "ws";
 import { expect } from "@effect/vitest";
 import { deadline } from "../../harness/http.ts";
@@ -34,7 +33,6 @@ export async function endSessionCheck(
   if (fault === "outage") {
     await database.unavailable();
     try {
-      await coreRechecks(drivers);
       await database.sawSessionRead();
     } finally {
       await database.returns();
@@ -52,51 +50,9 @@ export async function endSessionCheck(
     expect(await deadline(closed, "HQ refused-source close")).toContain(4403);
   } else {
     await database.expires();
-    await coreRechecks(drivers);
     expect(await deadline(closed, "Core expired-session close")).toContain(4401);
   }
 }
-
-/** The Core's next session and role recheck of every socket: it comes when its wait clock passes the recheck period. */
-export const coreRechecks = (drivers: ScenarioDrivers) =>
-  Effect.runPromise(drivers.core.clock.advance(drivers.core.periods.streamRecheck));
-
-/**
- * The Core's next recheck, kept by every one of the browser's sockets in `links`: both rechecks of
- * each socket (the session's, the roles') ran and the real Core waited out the next ones, and every
- * socket open before it is still open, none ended and reopened.
- */
-export const everySocketRechecked = (
-  drivers: ScenarioDrivers,
-  links: ReadonlyMap<WebSocket, WebSocket>,
-) => {
-  const core = drivers.core;
-  const open = [...links.keys()];
-  if (open.length === 0) throw new Error("No socket of the browser reaches the Core");
-  const rechecks = (waits: ReadonlyArray<number>) =>
-    waits.filter((ms) => ms === core.periods.streamRecheck).length;
-  const before = rechecks(core.clock.waits());
-  return Effect.runPromise(
-    core.clock
-      .advance(core.periods.streamRecheck)
-      .pipe(
-        Effect.andThen(
-          core.clock.until(
-            (waits) => rechecks(waits) >= before + 2 * open.length,
-            "every socket waiting out the Core's next recheck",
-          ),
-        ),
-        Effect.andThen(
-          Effect.sync(() =>
-            expect(
-              open.filter((socket) => !links.has(socket)).length,
-              "A socket ended at the Core's recheck",
-            ).toBe(0),
-          ),
-        ),
-      ),
-  );
-};
 
 export const handoverCount = (drivers: ScenarioDrivers) =>
   drivers.zerops.requests.get("GET /authorize-app") ?? 0;
@@ -106,11 +62,7 @@ export function holdMemberList(drivers: ScenarioDrivers) {
   const held = Promise.withResolvers<void>();
   let released = false;
   drivers.zerops.handlers.push(async (request) => {
-    const bearer = request.headers.authorization?.replace(/^Bearer /u, "");
-    if (
-      bearer !== "hq" &&
-      /^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname)
-    )
+    if (/^\/api\/rest\/public\/client\/[^/]+\/user\/list$/u.test(request.url.pathname))
       await held.promise;
     return undefined;
   });

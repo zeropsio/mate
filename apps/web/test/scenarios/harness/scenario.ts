@@ -31,12 +31,8 @@ import {
 import { DataConsoleSpawn } from "../../../../server/src/zerops/ZeropsDataConsole.ts";
 import { transportGate } from "./transportGate.ts";
 import { answerInZerops, openZeropsWindow } from "./deviceLogin.ts";
-import {
-  openScenarioNavigation,
-  startScenarioCore,
-  type HqTimings,
-  type ScenarioCore,
-} from "./hqCore.ts";
+import { personDoor } from "./mateAccess.ts";
+import { openScenarioNavigation, startScenarioCore, type ScenarioCore } from "./hqCore.ts";
 import {
   openBrowser,
   menuMateRow,
@@ -86,7 +82,6 @@ export interface ScenarioDrivers {
 }
 
 export interface ScenarioOptions {
-  hq?: HqTimings;
   /**
    * Restore an account by default; UI sign-in cases explicitly retain the OAuth journey, and
    * `device-login` signs in through the Zerops window, on the build in `dist`.
@@ -145,10 +140,11 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
   const github = yield* Effect.acquireRelease(Effect.promise(startGithubFake), (github) =>
     Effect.promise(github.close),
   );
-  const core = yield* startScenarioCore(
-    { baseUrl: `${api.origin}/api/rest/public`, world, github },
-    options.hq,
-  );
+  const core = yield* startScenarioCore({
+    baseUrl: `${api.origin}/api/rest/public`,
+    world,
+    github,
+  });
   const personal = core.fake.tokens.get("door-owner")!;
   core.fake.tokens.set("personal", {
     ...personal,
@@ -156,16 +152,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
     name: "Scenario personal access token",
   });
   zerops.people.set("personal", "owner");
-  const owner = yield* core
-    .call("POST", "/api/door", {
-      body: { accessToken: "personal", orgId: "ORG", orgKey: "hq" },
-    })
-    .pipe(
-      Effect.map((response) => {
-        expect(response.status, JSON.stringify(response.body)).toBe(200);
-        return (response.body as { session: string }).session;
-      }),
-    );
+  const owner = yield* personDoor(core, "owner");
   const mates = new Map<string, MateFake>();
   const realMates = new Map<string, RealMate>();
   if (real)
@@ -357,6 +344,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
         message.scope.projectId === name &&
         message.values.some((entry) => decodeAttentionScope(entry.value).overview != null),
       { kind: "attention", projectId: name },
+      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
     return credential;
   });
@@ -453,6 +441,7 @@ export const createScenario = Effect.fn("scenarios.create")(function* (
           return value.overview?.main?.id === mate.thread.id;
         }),
       { kind: "attention", projectId: name },
+      core.call.accessOf(owner),
     ).pipe(Effect.scoped);
     return credential;
   });

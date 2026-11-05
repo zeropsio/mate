@@ -19,13 +19,12 @@ type Git = Effect.Success<typeof gitClient>;
  * A person's HQ session, through the door the scenario's Core serves: it takes the person's Zerops
  * access token (`definePerson` keeps it as `personal-<name>`).
  */
-export const personDoor = (core: ScenarioCore, person: string, orgKey?: string) =>
+export const personDoor = (core: ScenarioCore, person: string) =>
   core
     .call("POST", "/api/door", {
       body: {
         accessToken: person === "owner" ? "personal" : `personal-${person}`,
         orgId: "ORG",
-        ...(orgKey === undefined ? {} : { orgKey }),
       },
     })
     .pipe(
