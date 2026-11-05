@@ -5,11 +5,12 @@ import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
+import * as Option from "effect/Option";
 import * as HttpClient from "effect/http/HttpClient";
 
 import * as ServerConfig from "../config.ts";
+import { ZeropsMateAccessList } from "./ZeropsMateAccessList.ts";
 import { ZeropsMateKey } from "./ZeropsMateKey.ts";
-import { ZeropsOrgRead } from "./ZeropsOrgRead.ts";
 import {
   readJson,
   unavailable,
@@ -55,7 +56,7 @@ export const make = Effect.fnUntraced(function* (input: {
   readonly serviceId: string | undefined;
 }) {
   const config = yield* ServerConfig.ServerConfig;
-  const own = yield* ZeropsOrgRead;
+  const access = yield* ZeropsMateAccessList;
   const key = yield* ZeropsMateKey;
   const httpClient = yield* HttpClient.HttpClient;
   const fs = yield* FileSystem.FileSystem;
@@ -83,15 +84,11 @@ export const make = Effect.fnUntraced(function* (input: {
     const processes = record(body)?.["list"];
     if (!Array.isArray(processes))
       return yield* Effect.fail(unavailable("Zerops returned an unreadable process list."));
-    // Reuse the project document already shared by the door and membership readers.
-    const project = yield* own.project({
-      apiBaseUrl: environment.apiBaseUrl,
-      projectId: environment.projectId,
+    // The project document is the access list's: the Mate reads it nowhere else.
+    const name = Option.match(yield* access.ownProject, {
+      onNone: () => "Mate",
+      onSome: (project) => project.name ?? "Mate",
     });
-    const name =
-      project.kind === "answered" && project.status === 200
-        ? (text(record(project.body)?.["name"]) ?? "Mate")
-        : "Mate";
     const startedAt = yield* Effect.gen(function* () {
       const stat = yield* fs.readFileString("/proc/1/stat");
       const hostStat = yield* fs.readFileString("/proc/stat");
