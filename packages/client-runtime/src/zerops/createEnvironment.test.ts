@@ -429,6 +429,9 @@ services:
     priority: 10
 `,
       managed: ["db"],
+      projectVariables: [
+        { key: "APP_KEY", value: "<@generateRandomString(<32>)>", sensitive: false },
+      ],
       runtimes: [
         { hostname: "appdev", role: "dev" },
         { hostname: "appstage", role: "stage" },

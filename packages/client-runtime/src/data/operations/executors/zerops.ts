@@ -23,8 +23,10 @@ import {
 import type { DetailDemand } from "../../demand.ts";
 import { readsOfState, type AccountStore } from "../../store.ts";
 import { projectsScope } from "../../families/project.ts";
+import { projectVariablesScope } from "../../families/projectVariables.ts";
 import type { RunToEnd } from "../runToEnd.ts";
 import type { OperationExecutor } from "../coordinator.ts";
+import type { IntentOf } from "../kind.ts";
 import { createProjectExecutor } from "./createProject.ts";
 import { deleteProjectExecutor } from "./deleteProject.ts";
 import { readRetiredMateKey, retireMateKeyExecutor } from "./mateDeletion.ts";
@@ -48,6 +50,27 @@ import { addressWritesExecutor } from "./addressWrites.ts";
 import { appAccessExecutor } from "./appAccess.ts";
 import { teamExecutor } from "./team.ts";
 import { serviceRestartExecutor, vaultWriteExecutor } from "./vaultWrites.ts";
+import { answeredReceipt } from "./answered.ts";
+
+/** Expand the random-string expression used by shipped tiers, only for a missing key. */
+function expandTierVariable(value: string): string {
+  const expanded = value.replace(/<@generateRandomString\(<(\d+)>\)>/gu, (_whole, raw: string) => {
+    const length = Number(raw);
+    if (!Number.isSafeInteger(length) || length < 1 || length > 1024)
+      throw new Error("The tier's random-string length is invalid.");
+    // 62 characters divide 248 evenly, so rejection sampling avoids modulo bias.
+    const alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let output = "";
+    while (output.length < length) {
+      const bytes = globalThis.crypto.getRandomValues(new Uint8Array(length - output.length));
+      for (const byte of bytes) if (byte < 248) output += alphabet[byte % alphabet.length];
+    }
+    return output;
+  });
+  if (expanded.includes("<@"))
+    throw new Error("The tier uses an unsupported generator expression.");
+  return expanded;
+}
 
 type ZeropsOperationsClient = Pick<
   ZeropsApiClient,
@@ -122,6 +145,44 @@ export function makeZeropsExecutor(input: {
   readonly locks?: ProjectTagLocks;
 }): OperationExecutor {
   const tagLocks = input.locks ?? makeInMemoryProjectTagLocks();
+  const prepareVariables = async (intent: IntentOf<"prepare-tier-variables">) => {
+    const demand = { family: "projectVariables", ownerId: intent.projectId } as const;
+    const release = input.demandDetail(demand);
+    try {
+      if (!(await input.readDetail(demand)))
+        throw new Error("The project's variables could not be read.");
+      const read = readsOfState(input.store.state());
+      const fact = read.fact("projectVariables", intent.projectId);
+      if (
+        read.coverage(projectVariablesScope(intent.orgId, intent.projectId)) !== "complete" ||
+        fact.kind !== "known" ||
+        !fact.value.complete
+      )
+        throw new Error("The project's variables are not fully available yet.");
+      const existing = new Set(fact.value.rows.map((row) => row.key.toLowerCase()));
+      for (const variable of intent.variables) {
+        if (existing.has(variable.key.toLowerCase())) continue;
+        await input.run(
+          {
+            kind: "vault-write",
+            orgId: intent.orgId,
+            projectId: intent.projectId,
+            scope: { kind: "shared" },
+            write: {
+              kind: "add",
+              key: variable.key,
+              value: expandTierVariable(variable.value),
+              sensitive: variable.sensitive,
+            },
+          },
+          { orgId: intent.orgId, unobserved: "The project variable write could not be followed." },
+        );
+        existing.add(variable.key.toLowerCase());
+      }
+    } finally {
+      release();
+    }
+  };
   const assemble = (client: ZeropsOperationsClient): OperationExecutor => {
     const deploy = mateDeployExecutor({ deployMate: (serviceId) => client.deployMate(serviceId) });
     const restart = mateRestartOwner({
@@ -254,7 +315,7 @@ export function makeZeropsExecutor(input: {
     );
     return {
       submit: (requestId, intent) =>
-        Effect.suspend(() => {
+        Effect.suspend((): ReturnType<OperationExecutor["submit"]> => {
           switch (intent.kind) {
             case "mate-deploy":
               return deploy(requestId, intent);
@@ -282,6 +343,21 @@ export function makeZeropsExecutor(input: {
               return retag(requestId, intent);
             case "create-project":
               return create(requestId, intent);
+            case "prepare-tier-variables":
+              return Effect.map(
+                Effect.tryPromise({
+                  try: () => prepareVariables(intent),
+                  catch: (cause) => ({
+                    outcome: "definitive-refusal" as const,
+                    message:
+                      cause instanceof Error
+                        ? cause.message
+                        : "Preparing project variables failed.",
+                  }),
+                }),
+                () =>
+                  answeredReceipt(requestId, { family: "projectVariables", id: intent.projectId }),
+              );
             case "import-project":
             case "import-services":
             case "import-container":
