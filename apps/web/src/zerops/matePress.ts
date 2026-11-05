@@ -401,7 +401,9 @@ export function readMatePress(projectId: string): MatePress | undefined {
  * began; undefined for a press of a stage or a production, or one that placed nothing.
  */
 export function matePressPlacement(press: MatePress | undefined): BirthPlacement | undefined {
-  return press?.placement?.kind === "mate" ? press.placement : undefined;
+  return press?.placement?.kind === "mate" || press?.placement?.kind === "devstage"
+    ? press.placement
+    : undefined;
 }
 
 /**
@@ -416,6 +418,7 @@ export function placedMateRegistration(
     hq,
     groupId: placement.groupId,
     kind: "mate",
+    ...(placement.kind === "devstage" ? { devstage: true as const } : {}),
     mate: { face: placement.face },
     standUp: false,
   };
@@ -810,6 +813,8 @@ export type PressRegistration = {
       readonly kind: "mate";
       /** The project's group: its application in HQ. */
       readonly groupId: string;
+      /** The Mate is also its application's stage: HQ places it `devstage`. */
+      readonly devstage?: true;
       /**
        * Its face as picked — none where the press gives it its name's own — and whether it is made
        * automated.
@@ -880,7 +885,7 @@ export function pressRegistration(
         appId: registration.groupId,
         attach: {
           projectId,
-          kind: "mate",
+          kind: registration.devstage === true ? "devstage" : "mate",
           mate: {
             // Empty where none was picked: the Mate wears its name's tint.
             face:
