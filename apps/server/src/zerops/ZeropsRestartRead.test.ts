@@ -76,7 +76,9 @@ it.effect.each(
     Effect.provideService(
       ZeropsMateAccessList.ZeropsMateAccessList,
       ZeropsMateAccessList.ZeropsMateAccessList.of({
-        ownProject: Effect.succeed(Option.some({ name: "Fen", clientId: "org", overrides: {} })),
+        ownProject: Effect.succeed(
+          Option.some({ name: "Fen", clientId: "org", overrides: {}, tagList: [] }),
+        ),
       } as unknown as ZeropsMateAccessList.ZeropsMateAccessList["Service"]),
     ),
     Effect.provide(NodeServices.layer),
@@ -90,7 +92,7 @@ it.effect(
     const http = HttpClient.make((request) => {
       requests.push(`${request.method} ${request.url}`);
       const body = request.url.endsWith("/project/own-project")
-        ? { id: "own-project", name: "Fen", clientId: "org", userRoles: [] }
+        ? { id: "own-project", name: "Fen", clientId: "org", userRoles: [], tagList: [] }
         : request.url.endsWith("/client-user/search")
           ? { items: [], totalHits: 0 }
           : { list: [process] };

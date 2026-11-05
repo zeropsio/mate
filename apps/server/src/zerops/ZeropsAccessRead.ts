@@ -1,6 +1,6 @@
 /**
  * ZeropsAccessRead — the two Zerops reads this Mate computes its own access list from, made with
- * its project key (`ZeropsMateKey`): `GET /project/{own}` for the project's `userRoles`, and
+ * its project key (`ZeropsMateKey`): `GET /project/{own}` for its `userRoles` and `tagList`, and
  * `POST /client-user/search` over the project's organisation for every person with their org role
  * and status. Integration tokens are no persons: the search does not name them, and an override
  * of theirs in `userRoles` matches nobody.
@@ -29,6 +29,7 @@ export const MEMBER_SEARCH_LIMIT = 200;
 
 /** The own project as its read carries it: what the door rule needs, and the project's name. */
 export interface OwnProject extends ProjectRoles {
+  readonly tagList: ReadonlyArray<string>;
   readonly name?: string;
 }
 
@@ -115,11 +116,19 @@ const make = (environment: Pick<ZeropsEnvironment, "apiBaseUrl" | "projectId">) 
       const roles = readProjectRoles(projectAnswer.body);
       if (roles === null)
         return { kind: "failed", reason: "the project read names no organisation" } as const;
-      const name = (projectAnswer.body as Record<string, unknown>)["name"];
-      const project: OwnProject =
-        typeof name === "string" && name.trim().length > 0
-          ? { ...roles, name: name.trim() }
-          : roles;
+      const record = projectAnswer.body as Record<string, unknown>;
+      const tagList = record["tagList"];
+      if (
+        !Array.isArray(tagList) ||
+        !tagList.every((tag): tag is string => typeof tag === "string")
+      )
+        return { kind: "failed", reason: "the project read carried no usable tag list" } as const;
+      const name = record["name"];
+      const project: OwnProject = {
+        ...roles,
+        tagList,
+        ...(typeof name === "string" && name.trim().length > 0 ? { name: name.trim() } : {}),
+      };
       const membersAnswer = yield* answer((token) =>
         zeropsPost({
           url: `${environment.apiBaseUrl}/client-user/search`,

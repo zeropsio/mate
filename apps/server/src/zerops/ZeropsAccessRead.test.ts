@@ -4,6 +4,7 @@ import * as Layer from "effect/Layer";
 import { HttpClient, HttpClientResponse } from "effect/http";
 
 import * as ZeropsAccessReadModule from "./ZeropsAccessRead.ts";
+import { ownAccessList, ticketVerdict } from "./ZeropsMateAccessList.ts";
 import * as ZeropsMateKeyModule from "./ZeropsMateKey.ts";
 
 const PROJECT_ID = "P_MATE";
@@ -65,6 +66,58 @@ const readOnce = Effect.gen(function* () {
 });
 
 describe("ZeropsAccessRead", () => {
+  // The Mate admits only the owner (the person holding the project's OWNER override); HQ's own ticket check (card FA, running) admits only the registered person, which is the same person once registered; before registration the Mate's list is the gate.
+  it.effect(
+    "a project tagged chief admits only its owner, whatever role another member holds",
+    () => {
+      const zerops = platform({
+        project: () =>
+          json(200, {
+            id: PROJECT_ID,
+            clientId: ORG,
+            tagList: ["mate", "chief"],
+            userRoles: [{ clientUserId: "cu-owner", roleCode: "OWNER" }],
+          }),
+        search: () =>
+          json(200, {
+            items: [
+              { id: "cu-owner", userId: "owner", roleCode: "NO_ACCESS", status: "ACTIVE" },
+              { id: "cu-admin", userId: "admin", roleCode: "ADMIN", status: "ACTIVE" },
+              { id: "cu-org-owner", userId: "org-owner", roleCode: "OWNER", status: "ACTIVE" },
+              { id: "cu-basic", userId: "basic", roleCode: "BASIC_USER", status: "ACTIVE" },
+              { id: "cu-reader", userId: "reader", roleCode: "READ_ONLY", status: "ACTIVE" },
+            ],
+          }),
+      });
+      return Effect.gen(function* () {
+        const outcome = yield* readOnce;
+        if (outcome.kind !== "read") return assert.fail(`read failed: ${outcome.kind}`);
+        const list = ownAccessList(PROJECT_ID, outcome, 0);
+        assert.deepStrictEqual(list.members, [
+          { userId: "owner", role: "OWNER", visibility: "open" },
+        ]);
+        assert.deepStrictEqual(list.owners, ["owner"]);
+        assert.strictEqual(ticketVerdict(list, "owner", 0), "open");
+        for (const userId of ["admin", "org-owner", "basic", "reader"]) {
+          assert.strictEqual(ticketVerdict(list, userId, 0), "not_in_list");
+        }
+      }).pipe(Effect.provide(zerops.layer));
+    },
+  );
+
+  it.effect.each([undefined, null, ["mate", null]])(
+    "A project read without a usable tag list fails instead of treating an unknown Chief as ordinary: %s",
+    (tagList) => {
+      const zerops = platform({
+        project: () => json(200, { clientId: ORG, userRoles: [], tagList }),
+        search: () => json(200, { items: [] }),
+      });
+      return Effect.gen(function* () {
+        assert.strictEqual((yield* readOnce).kind, "failed");
+      }).pipe(Effect.provide(zerops.layer));
+    },
+  );
+
   it.effect(
     "The Mate server computes its own access list from the container's project key: GET /project/{own} for userRoles, then POST /client-user/search over its organisation",
     () => {
@@ -73,6 +126,7 @@ describe("ZeropsAccessRead", () => {
           json(200, {
             id: PROJECT_ID,
             clientId: ORG,
+            tagList: [],
             userRoles: [{ clientUserId: "cu-nia", roleCode: "BASIC_USER" }],
           }),
         search: () =>
@@ -103,7 +157,7 @@ describe("ZeropsAccessRead", () => {
         ]);
         assert.deepStrictEqual(outcome, {
           kind: "read",
-          project: { clientId: ORG, overrides: { "cu-nia": "BASIC_USER" } },
+          project: { clientId: ORG, overrides: { "cu-nia": "BASIC_USER" }, tagList: [] },
           members: [
             {
               clientUserId: "cu-jan",
@@ -131,7 +185,7 @@ describe("ZeropsAccessRead", () => {
     "A member search that names fewer persons than the organisation holds fails the read, so nobody past its page is taken for gone",
     () => {
       const zerops = platform({
-        project: () => json(200, { clientId: ORG, userRoles: [] }),
+        project: () => json(200, { clientId: ORG, userRoles: [], tagList: [] }),
         search: () =>
           json(200, {
             totalHits: 201,
@@ -159,7 +213,7 @@ describe("ZeropsAccessRead", () => {
     },
     {
       name: "400 userNotFound on the search",
-      project: () => json(200, { clientId: ORG, userRoles: [] }),
+      project: () => json(200, { clientId: ORG, userRoles: [], tagList: [] }),
       search: () => json(400, { error: { code: "userNotFound" } }),
       kind: "refused",
     },
