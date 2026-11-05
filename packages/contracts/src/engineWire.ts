@@ -322,8 +322,9 @@ export type EngineReadEarlierInput = typeof EngineReadEarlierInput.Type;
  * its result from: calls with a result or a picture looked at, and background work with the calls
  * that started it. With `tools`, a call's result counts only for the tools it names — those whose
  * results the client draws a closed card from; a name ending in `*` names every tool it begins —
- * and for every tool a call of the run failed with: its failure, and the calls that may have
- * recovered from it. A server before `tools` ignores it and reads every result, drawn the same.
+ * and for every tool a call failed with in the runs its card draws with it: its failure, and the
+ * calls that may have recovered from it. A server before `tools` ignores it and reads every
+ * result, drawn the same.
  */
 export const EngineReadRunInput = Schema.Struct({
   ...protocol,

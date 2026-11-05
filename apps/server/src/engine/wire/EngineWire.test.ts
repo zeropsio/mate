@@ -34,6 +34,7 @@ import { serverMessagePictures } from "../../zerops/engineAdapters.ts";
 import { MessagePictures } from "../ports.ts";
 import { PIXEL } from "../testing/bridge/callHeavy.ts";
 import { makeEngineWorld, mate, type EngineWorld } from "../testing/pump/engineWorld.ts";
+import type { ScriptedProvider } from "../testing/pump/scriptedProvider.ts";
 import { makeEngineWire, type EngineWireOptions, type WireCaller } from "./EngineWire.ts";
 
 /** A send as the RPC decodes it. */
@@ -96,6 +97,29 @@ const cursorOf = (frames: ReadonlyArray<EngineConversationFrame>): EngineCursor 
     seq: Math.max(synced.head, changes?.type === "changes" ? changes.to : 0),
   };
 };
+
+/** The agent reads the events and the read fails (Claude's shape of a Zerops call that failed). */
+const failedEvents = (agent: ScriptedProvider["agent"], thread: string) =>
+  Effect.gen(function* () {
+    const toolName = "mcp__zerops__zerops_events";
+    const payload = { itemType: "mcp_tool_call", title: "MCP tool call" };
+    yield* agent.emit("item.started", thread, {
+      itemId: "toolu_events",
+      payload: { ...payload, status: "inProgress", data: { toolName, input: {} } },
+    });
+    yield* agent.emit("item.completed", thread, {
+      itemId: "toolu_events",
+      payload: {
+        ...payload,
+        status: "failed",
+        data: {
+          toolName,
+          input: {},
+          result: { type: "tool_result", content: [{ type: "text", text: "timed out" }] },
+        },
+      },
+    });
+  });
 
 const send = (
   wire: Effect.Success<ReturnType<typeof wireOf>>,
@@ -633,28 +657,7 @@ describe("a client reading more of an engine conversation", () => {
           ] as const)
             yield* w.agent((agent, thread) => agent.zerops(thread, tool, {}, "{}", text));
           // A read that failed, then the same read again: the card's face says whether it recovered.
-          yield* w.agent((agent, thread) =>
-            Effect.gen(function* () {
-              const toolName = "mcp__zerops__zerops_events";
-              const payload = { itemType: "mcp_tool_call", title: "MCP tool call" };
-              yield* agent.emit("item.started", thread, {
-                itemId: "toolu_events",
-                payload: { ...payload, status: "inProgress", data: { toolName, input: {} } },
-              });
-              yield* agent.emit("item.completed", thread, {
-                itemId: "toolu_events",
-                payload: {
-                  ...payload,
-                  status: "failed",
-                  data: {
-                    toolName,
-                    input: {},
-                    result: { type: "tool_result", content: [{ type: "text", text: "timed out" }] },
-                  },
-                },
-              });
-            }),
-          );
+          yield* w.agent(failedEvents);
           for (const [tool, text] of [
             ["zerops_events", '{"events":[]}'],
             ["zerops_org_restart", '{"proposal":{}}'],
@@ -696,6 +699,41 @@ describe("a client reading more of an engine conversation", () => {
           yield* w.shutdown;
         }),
       ),
+  );
+
+  // A restart cut a run whose log read failed; its continuation read the log again on the same
+  // card. Read run by run, the continuation's read was left out, and the card's face said failed.
+  it.effect("reads a run's results of every tool a call failed with on the card it goes on", () =>
+    Effect.scoped(
+      Effect.gen(function* () {
+        const w = yield* world;
+        yield* w.tell({ _tag: "Send", text: "Read the events" });
+        yield* w.agent(failedEvents);
+        yield* w.crash;
+        yield* w.boot;
+        const continued = yield* w.run(runId(mate, 2));
+        assert.deepStrictEqual(continued?.joins, runId(mate, 1));
+        yield* w.agent((agent, thread) =>
+          agent.zerops(thread, "zerops_events", {}, "{}", '{"events":[]}'),
+        );
+        yield* w.agent((agent, thread) => agent.finish(thread));
+        const wire = yield* wireOf(w);
+        const page = yield* wire.readRun({
+          protocol,
+          conversationId: mate,
+          runId: runId(mate, 2),
+          afterSeq: 0,
+          only: "outcome",
+          tools: ["zerops_deploy"],
+        });
+        if (page._tag !== "Page") throw new Error(page._tag);
+        assert.deepStrictEqual(
+          page.items.map((item) => (item.kind === "call" ? item.result?.toolName : item.kind)),
+          ["zerops_events"],
+        );
+        yield* w.shutdown;
+      }),
+    ),
   );
 
   // Milo's stress runs: a reload's closed card lost the line of jobs it read live, its commands unread.

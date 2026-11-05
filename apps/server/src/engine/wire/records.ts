@@ -594,8 +594,9 @@ export const makeRecords = Effect.gen(function* () {
      * the oldest page; `more` when later ones exist. `only: "outcome"`: the items a closed card
      * draws its result from — its background work with the calls that started it, which its line
      * of jobs is drawn from. `tools` narrows the results to those of the tools it names (a name
-     * ending in `*` names every tool it begins, as a GLOB does) and of every tool a call of the run
-     * failed with: a failure a card's face says, and the calls that may have recovered from it.
+     * ending in `*` names every tool it begins, as a GLOB does) and of every tool a call failed
+     * with in the run's group (the runs a card draws together): a failure a card's face says, and
+     * the calls that may have recovered from it.
      */
     runPage: (
       conversation: ConversationId,
@@ -610,6 +611,14 @@ export const makeRecords = Effect.gen(function* () {
     ) =>
       Effect.gen(function* () {
         const forward = options.afterSeq !== undefined;
+        // A card draws the runs of a group together (a continuation, a wake, a message queued
+        // behind it), and a failure one of them made is recovered by a call another made.
+        const card =
+          options.tools === undefined
+            ? [runId]
+            : ((yield* groups(conversation)).find((group) => group.runs.includes(runId))?.runs ?? [
+                runId,
+              ]);
         const resulted =
           options.tools === undefined
             ? sql`json_extract(body_json, '$.result') IS NOT NULL`
@@ -617,7 +626,8 @@ export const makeRecords = Effect.gen(function* () {
                   WHERE json_extract(body_json, '$.result.toolName') GLOB named.value)
                 OR json_extract(body_json, '$.result.toolName') IN (
                   SELECT json_extract(failed.body_json, '$.result.toolName') FROM engine_item failed
-                  WHERE failed.conversation_id = ${conversation} AND failed.run_id = ${runId}
+                  WHERE failed.conversation_id = ${conversation}
+                    AND failed.run_id IN (SELECT value FROM json_each(${encodeNames(card)}))
                     AND failed.kind = 'call' AND json_extract(failed.body_json, '$.state') = 'failed'))`;
         const rows = yield* sql<ItemRow>`
           SELECT * FROM engine_item WHERE conversation_id = ${conversation} AND run_id = ${runId}
