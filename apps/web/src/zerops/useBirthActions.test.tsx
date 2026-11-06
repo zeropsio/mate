@@ -5,6 +5,7 @@ import { act, createElement } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, expect, it, vi } from "vite-plus/test";
 
+import { pressRegistration } from "./matePress";
 import { useBirthActions } from "./useBirthActions";
 
 const fixture = vi.hoisted(() => ({
@@ -70,6 +71,8 @@ vi.mock("./matePress", () => ({
   runPress: vi.fn(),
 }));
 
+const seeded = { ...fixture.birth };
+
 let tree: ReactTestRenderer | undefined;
 let proceed: ReturnType<typeof useBirthActions>["proceed"];
 let deleteBirthOnly: ReturnType<typeof useBirthActions>["deleteBirthOnly"];
@@ -83,8 +86,9 @@ beforeEach(() => {
   fixture.holdPress.mockReset();
   fixture.endPress.mockReset().mockResolvedValue(undefined);
   fixture.run.mockReset().mockResolvedValue(undefined);
-  fixture.birth.projectId = "project-1";
   Reflect.deleteProperty(fixture.birth, "adopted");
+  Object.assign(fixture.birth, seeded);
+  vi.mocked(pressRegistration).mockReset();
   act(() => {
     tree = create(
       createElement(RegistryContext.Provider, { value: AtomRegistry.make() }, createElement(Probe)),
@@ -149,4 +153,26 @@ it("Continue reports a recovered import only after HQ records its receipt", asyn
     skipped: false,
     recorded: "started",
   });
+});
+
+it("Continue registers an adopted project's Mate as its record, never attaching the project again", async () => {
+  Object.assign(fixture.birth, {
+    adopted: true,
+    placement: "unplaced",
+    intent: {
+      projectName: "Existing",
+      recipe: { kind: "none" },
+      agents: ["codex"],
+      standUp: false,
+      automated: false,
+      placement: { role: "dev", name: "Nova", chief: false },
+      location: null,
+      userRoles: [],
+    },
+  });
+  vi.mocked(pressRegistration).mockReturnValue(async () => {});
+  await proceed("birth-1");
+  expect(vi.mocked(pressRegistration).mock.calls.map(([, registration]) => registration)).toEqual([
+    { hq: {}, kind: "mate-record", record: { face: "rose:seal" }, standUp: false },
+  ]);
 });

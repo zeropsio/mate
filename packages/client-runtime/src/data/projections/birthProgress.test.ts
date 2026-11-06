@@ -223,6 +223,60 @@ describe("shared birth progress", () => {
     registry.dispose();
   });
 
+  it("an interrupted adoption HQ holds plain in its own application offers Continue to register its Mate", () => {
+    const registry = AtomRegistry.make();
+    const store = makeAccountStore(registry);
+    liveZerops({ running: [], projects: [{ id: "p1", name: "Existing" }], services: [] }).forEach(
+      store.dispatch,
+    );
+    creationFinished(store);
+    membershipInputs("OWNER").forEach(store.dispatch);
+    const adopted = {
+      ...initial.birth,
+      projectId: "p1",
+      adopted: true,
+      attempts: {
+        import: { ...attempt, refused: { at: "2026-11-05T10:00:01.000Z", reason: "Refused." } },
+      },
+    };
+    const held = (mate: { face: string; birthId: string } | null) =>
+      seedHqNavigation(store, ORG, {
+        structure: {
+          apps: [
+            {
+              id: "own",
+              name: "Existing",
+              projects: [
+                { projectId: "p1", name: "", kind: mate === null ? "plain" : "mate", mate },
+              ],
+              births: [adopted],
+            },
+          ],
+          ungrouped: [],
+        },
+      });
+    held(null);
+    const read = store.data.project(sharedBirths, { orgId: ORG, personId: "ada" });
+    const stop = registry.subscribe(read, () => registry.get(read), { immediate: true });
+    expect(registry.get(read).open).toMatchObject([
+      {
+        id: "birth",
+        adopted: true,
+        placement: "unplaced",
+        progress: { next: { kind: "import" } },
+        canContinue: true,
+        canDelete: true,
+      },
+    ]);
+    held({ face: "rose:seal", birthId: "birth" });
+    expect(registry.get(read).open).toMatchObject([
+      { id: "birth", placement: "attached", canContinue: true },
+    ]);
+    stop();
+    store.close();
+    registry.dispose();
+  });
+
   it("a project owner can delete a bound birth without permission to create projects", () => {
     const registry = AtomRegistry.make();
     const store = makeAccountStore(registry);

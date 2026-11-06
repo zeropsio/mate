@@ -65,6 +65,14 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
       const registration = (birth: SharedBirth): PressRegistration => {
         if (birth.intent === undefined)
           throw new Error("This birth's original plan is unavailable.");
+        // HQ holds an adopted project in its application already: its Mate's record carries the birth.
+        if (birth.adopted === true)
+          return {
+            hq,
+            kind: "mate-record",
+            record: { face: birth.face },
+            standUp: birth.intent.standUp,
+          };
         const face = readMateFace(birth.face);
         return {
           hq,

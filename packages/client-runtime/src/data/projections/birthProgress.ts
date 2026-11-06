@@ -119,16 +119,21 @@ export const sharedBirths: Projection<
           projectId === null || !placements.has(projectId)
             ? undefined
             : read.fact("placement", projectId);
+        const ownPlacement = placed?.kind === "known" && placed.value.appId === app.id;
         const placement =
           !placementsCurrent || projectId === null
             ? "unknown"
             : placed === undefined
               ? "unplaced"
-              : placed.kind === "known" &&
-                  placed.value.appId === app.id &&
-                  placed.value.mate?.birthId === birth.id
+              : ownPlacement && placed.value.mate?.birthId === birth.id
                 ? "attached"
-                : "unknown";
+                : // An adoption's project HQ holds plain in the birth's application until its Mate's record.
+                  birth.adopted === true &&
+                    ownPlacement &&
+                    placed.value.kind === "plain" &&
+                    placed.value.mate === null
+                  ? "unplaced"
+                  : "unknown";
         const services =
           projectId === null ? undefined : projectServices.derive(read, { orgId, projectId });
         const processes =
@@ -195,13 +200,19 @@ export const sharedBirths: Projection<
                   livePermissionFacts(read, orgId),
                   [attachProject, ...appProjects],
                   (facts) =>
-                    attachPermission(facts, {
-                      projectId: attachProject,
-                      projectIds: appProjects,
-                      kind: "mate",
-                      held: "none",
-                      slotTaken: false,
-                    }),
+                    // An adoption registers its Mate's record on the project HQ holds already.
+                    birth.adopted === true
+                      ? mateRecordPermission(facts, attachProject, {
+                          create: true,
+                          held: (placed?.kind === "known" && placed.value.kind) || "none",
+                        })
+                      : attachPermission(facts, {
+                          projectId: attachProject,
+                          projectIds: appProjects,
+                          kind: "mate",
+                          held: "none",
+                          slotTaken: false,
+                        }),
                 )?.allow
               : undefined;
         const actionable =
