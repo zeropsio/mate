@@ -453,6 +453,7 @@ describe("readMateFlag", () => {
     const store = makeAccountStore(registry);
     liveZerops({ running: [], services: [{ id: "zcp", projectId: "p1" }] }).forEach(store.dispatch);
     const holds: Array<string> = [];
+    let notifyDemand: (() => void) | undefined;
     registry.set(accountReadsAtom, {
       renewHeld: () => {},
       data: store.data,
@@ -466,6 +467,8 @@ describe("readMateFlag", () => {
           now: 0,
           event: { kind: "demand", demanded: true },
         });
+        notifyDemand?.();
+        notifyDemand = undefined;
         return () => {
           holds.splice(holds.indexOf(scope), 1);
           if (!holds.includes(scope))
@@ -507,7 +510,8 @@ describe("readMateFlag", () => {
         event: { kind: "baseline-committed" },
       });
     };
-    return { registry, store, holds, answer };
+    const nextDemand = () => new Promise<void>((resolve) => (notifyDemand = resolve));
+    return { registry, store, holds, answer, nextDemand };
   };
   /** What the read answered once every answer already due has run; `pending` if none did. */
   const settled = async <T>(promise: Promise<T>): Promise<T | "pending"> => {
@@ -515,7 +519,8 @@ describe("readMateFlag", () => {
     void promise.then((value) => {
       answer = value;
     });
-    for (let turn = 0; turn < 3; turn += 1) await Promise.resolve();
+    // These reads settle through Promise reactions after synchronous store updates.
+    await new Promise<void>((resolve) => setImmediate(resolve));
     return answer;
   };
 
@@ -578,7 +583,10 @@ describe("readMateFlag", () => {
         jitter: 0,
       },
     });
-    expect(await settled(readMateFlag(registry, "zcp"))).toBe("unknown");
+    const notImmediate = Symbol("not immediate");
+    expect(await Promise.race([readMateFlag(registry, "zcp"), Promise.resolve(notImmediate)])).toBe(
+      "unknown",
+    );
   });
 
   it.each([
@@ -587,7 +595,7 @@ describe("readMateFlag", () => {
   ])(
     "a container's flag that could not be said while the organization's link was down is read again once the link is live: $title",
     async ({ back, flag }) => {
-      const { registry, store, answer } = mounted();
+      const { registry, store, answer, nextDemand } = mounted();
       const link = (event: object) =>
         store.dispatch({ kind: "stream", key: linkKeys.zerops(ORG), now: 0, event } as never);
       link({ kind: "fault", fault: { outcome: "transient", message: "socket closed" }, jitter: 0 });
@@ -595,10 +603,11 @@ describe("readMateFlag", () => {
       expect(await settled(read)).toBe("pending");
 
       if (back) {
+        const requested = nextDemand();
         link({ kind: "retry-due" });
         link({ kind: "handshake" });
         link({ kind: "baseline-committed" });
-        await Promise.resolve();
+        await requested;
         answer("1");
       } else {
         link({

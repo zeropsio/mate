@@ -690,22 +690,19 @@ describe("the thread commands a view sends, by its Mate's wire", () => {
         ],
         SESSION(true),
       );
-      yield* Effect.forkChild(
-        r.run(
-          viaEngine(
-            r.registry,
-            ENV,
-            engineInterruptTurn(ENV, {
-              type: "thread.turn.interrupt",
-              commandId: "stop-1",
-              threadId: "thread-ada",
-              turnId: "thread-ada/r/1",
-              createdAt: "2026-10-08T00:00:00.000Z",
-            } as never),
-          ),
+      yield* r.run(
+        viaEngine(
+          r.registry,
+          ENV,
+          engineInterruptTurn(ENV, {
+            type: "thread.turn.interrupt",
+            commandId: "stop-1",
+            threadId: "thread-ada",
+            turnId: "thread-ada/r/1",
+            createdAt: "2026-10-08T00:00:00.000Z",
+          } as never),
         ),
       );
-      yield* Effect.yieldNow;
       expect(r.calls).toMatchObject([{ kind: "stop", runId: "thread-ada/r/2" }]);
     }),
   );
