@@ -94,15 +94,33 @@ describe("a tab whose test ended while it opened", () => {
 // test's 15 s under load (8 workers beside client-runtime's, measured 2026-10-03).
 describe("a file's slow first load of its tabs' modules", () => {
   let loads = 0;
-  /** A module whose first load takes 2 s, as a cold module graph does under load. */
+  let loaded = false;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  /** A cold module graph can remain pending until after the file's setup starts. */
   const load = async () => {
     loads += 1;
-    if (loads === 1) await new Promise((resolve) => setTimeout(resolve, 2_000));
+    if (loads === 1) {
+      await held;
+      loaded = true;
+    }
     return "a page";
   };
-  preloadTabs(load);
+  preloadTabs(
+    load,
+    () =>
+      new Promise<void>((resolve) => {
+        setImmediate(() => {
+          release();
+          resolve();
+        });
+      }),
+  );
 
   it("is the file's setup, never its first test's time", { timeout: 1_000 }, async () => {
+    expect(loaded).toBe(true);
     const harness = makeAccountHarness({ people: [{ user: person, password: "secret" }] });
     const tab = await mountTab(harness, harness.browser.openTab(), { page: load });
 
