@@ -193,11 +193,18 @@ export function resolveDraftPromotionNavigationTarget(input: {
   serverThreadRef: ScopedThreadRef | null;
   serverThreadStarted: boolean;
   backgroundSubmissionPending: boolean;
+  serverThreadMessages: ReadonlyArray<Pick<ChatMessage, "id" | "role">>;
+  pendingMessageIds: ReadonlyArray<MessageId>;
 }): ScopedThreadRef | null {
   if (input.backgroundSubmissionPending) {
     return null;
   }
-  return input.serverThreadStarted ? input.serverThreadRef : null;
+  // A shell can start before its detail includes the first sent message. The draft owns the
+  // optimistic row until then; remounting its conversation sooner would discard that row.
+  const reflected = input.pendingMessageIds.every((id) =>
+    input.serverThreadMessages.some((message) => message.id === id && message.role === "user"),
+  );
+  return input.serverThreadStarted && reflected ? input.serverThreadRef : null;
 }
 
 export function scheduleEnvironmentReconnectWarning(showWarning: () => void): () => void {

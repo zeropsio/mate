@@ -391,10 +391,9 @@ interface MessagesTimelineProps {
   runningTurnId: TurnId | null;
   routeThreadKey: string;
   /**
-   * The conversation its own draft just became: its message was already on screen in the draft's
-   * frame, so it opens with no opening of its own — nothing fades out and back in.
+   * A draft's sent message, and the conversation it becomes, stay visible while the list places.
    */
-  arrivesFromItsDraft?: boolean;
+  keepsDraftMessage?: boolean;
   /** The thread's provider driver: how its live field reads a batch (`batchesByTiming`). */
   provider?: string | null;
   onRunShellCommand?: (command: string) => void;
@@ -499,7 +498,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   latestTurn,
   runningTurnId,
   routeThreadKey,
-  arrivesFromItsDraft = false,
+  keepsDraftMessage = false,
   provider = null,
   onRunShellCommand,
   onImageExpand,
@@ -1972,6 +1971,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
   // later, 1,480 px away.
   const onItsWay = loading && timelineEntries.length === 0;
   const showsList = !onItsWay && (!empty || isWorking);
+  const lastDraftMessage =
+    keepsDraftMessage && !listPlaced
+      ? rows.findLastIndex((row) => row.kind === "message" && row.message.role === "user")
+      : -1;
+  // LegendList mounts its rows after its container. Keep the draft's first rows on screen until
+  // the measured list stands in their place, including when its conversation mounts afresh.
+  const draftRows = lastDraftMessage >= 0 ? rows.slice(0, lastDraftMessage + 1) : [];
   if (!showsList && (listReady || listPlaced)) {
     setListReady(false);
     setListPlaced(false);
@@ -2250,7 +2256,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
               // Placement proves readiness; the opening stage owns the conversation's entrance.
               data-timeline-arrives="at-once"
               // Its own draft's frame showed these rows: they show again in place, not eased in.
-              data-timeline-from-draft={arrivesFromItsDraft ? "" : undefined}
+              data-timeline-from-draft={keepsDraftMessage ? "" : undefined}
               data-timeline-thread={routeThreadKey}
             >
               <LegendList<MessagesTimelineRow>
@@ -2288,6 +2294,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                 }
                 onScroll={handleScroll}
                 onLoad={onListLoad}
+                {...(draftRows.length > 0 ? { style: { visibility: "hidden" as const } } : {})}
                 className={cn(
                   "timeline-legend-list scrollbar-gutter-both h-full min-h-0 overflow-x-hidden overscroll-y-contain px-3 [overflow-anchor:none] sm:px-5",
                   topFadeEnabled && "conversation-scroll-fade",
@@ -2316,6 +2323,13 @@ export const MessagesTimeline = memo(function MessagesTimeline({
                   ) : null
                 }
               />
+              {draftRows.length > 0 ? (
+                <div className="absolute inset-0 overflow-hidden px-3 sm:px-5">
+                  {draftRows.map((row) => (
+                    <Fragment key={row.id}>{renderItem({ item: row })}</Fragment>
+                  ))}
+                </div>
+              ) : null}
               <TimelineMinimap
                 items={minimapItems}
                 hasPersistentGutter={minimapHasPersistentGutter}
@@ -2345,7 +2359,7 @@ export const MessagesTimeline = memo(function MessagesTimeline({
       <div className="h-full min-h-0" data-conversation-content="">
         <TimelineRowReadsCtx value={rowReads}>{content}</TimelineRowReadsCtx>
       </div>
-      {kept?.shown === false || pauseStageId !== null || arrivesFromItsDraft ? null : (
+      {kept?.shown === false || pauseStageId !== null || keepsDraftMessage ? null : (
         <ConversationOpeningStage
           ready={standing}
           readPending={onItsWay}

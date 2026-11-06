@@ -1,5 +1,5 @@
 import { createFileRoute, useNavigate } from "@tanstack/react-router";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import ChatViewBoundary from "../components/ChatViewBoundary";
 import {
   resolveDraftPromotionNavigationTarget,
@@ -16,11 +16,13 @@ import { waitForDraftHeroTransition } from "../components/chat/draftHeroTransiti
 import { buildThreadRouteParams } from "../threadRoutes";
 import { useThread, useThreadRefs } from "../state/entities";
 import { useMateStandUpHandOver } from "../zerops/useMateStandUp";
+import type { ChatMessage } from "../types";
 
 function DraftChatThreadRouteView() {
   const navigate = useNavigate();
   const { draftId: rawDraftId } = Route.useParams();
   const draftId = DraftId.make(rawDraftId);
+  const [optimisticMessages, setOptimisticMessages] = useState<ChatMessage[]>([]);
   const draftSession = useComposerDraftStore((store) => store.getDraftSession(draftId));
   const threadRefs = useThreadRefs();
   const inferredThreadRef = draftSession
@@ -47,7 +49,9 @@ function DraftChatThreadRouteView() {
       serverThreadRef,
       serverThreadStarted,
       backgroundSubmissionPending,
-    }) ?? standUpThreadRef;
+      serverThreadMessages: serverThread?.messages ?? [],
+      pendingMessageIds: optimisticMessages.map((message) => message.id),
+    }) ?? (optimisticMessages.length === 0 ? standUpThreadRef : null);
 
   useEffect(() => {
     if (!inferredThreadRef || draftSession?.promotedTo) {
@@ -96,6 +100,8 @@ function DraftChatThreadRouteView() {
         environmentId={draftSession.environmentId}
         threadId={draftSession.threadId}
         routeKind="draft"
+        optimisticMessages={optimisticMessages}
+        setOptimisticMessages={setOptimisticMessages}
         forceExpandedMobileComposer
       />
     </SidebarInset>

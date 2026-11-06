@@ -1,5 +1,5 @@
 import { scenarioSuite } from "../../harness/suite.ts";
-import { describe, expect, it } from "@effect/vitest";
+import { describe, expect } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import { createScenario } from "../../harness/scenario.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
@@ -8,6 +8,9 @@ import { waitForStillFrames } from "../../harness/stillFrames.ts";
 interface SendFrame {
   readonly draft: boolean;
   readonly opacity: number | null;
+  readonly submitted: boolean;
+  readonly composerShowsMessage: boolean;
+  readonly top: number | null;
 }
 
 describe("owner-reported layout regressions", () => {
@@ -27,7 +30,11 @@ describe("owner-reported layout regressions", () => {
           yield* Effect.promise(() => waitForStillFrames(s.page));
           const trace = yield* Effect.promise(() =>
             s.page.evaluateHandle(() => {
-              const state = { active: true, frames: [] as SendFrame[] };
+              const state = { active: true, submitted: false, frames: [] as SendFrame[] };
+              const onSend = (event: KeyboardEvent) => {
+                if (event.key === "Enter" && !event.shiftKey) state.submitted = true;
+              };
+              document.addEventListener("keydown", onSend, true);
               const tick = () => {
                 if (!state.active) return;
                 const message = [...document.querySelectorAll('[data-message-role="user"]')].at(-1);
@@ -43,11 +50,37 @@ describe("owner-reported layout regressions", () => {
                       ? 0
                       : opacity * Number(style.opacity);
                 }
-                state.frames.push({ draft: location.pathname.includes("/draft/"), opacity });
+                state.frames.push({
+                  draft: location.pathname.includes("/draft/"),
+                  opacity,
+                  submitted: state.submitted,
+                  top: message?.getBoundingClientRect().top ?? null,
+                  composerShowsMessage: [
+                    ...document.querySelectorAll<HTMLElement>('[role="textbox"]'),
+                  ].some((box) => {
+                    if (!box.textContent?.includes("Keep the message in sight")) return false;
+                    for (let at: HTMLElement | null = box; at !== null; at = at.parentElement) {
+                      const style = getComputedStyle(at);
+                      if (
+                        style.display === "none" ||
+                        style.visibility === "hidden" ||
+                        Number(style.opacity) !== 1
+                      )
+                        return false;
+                    }
+                    return true;
+                  }),
+                });
                 requestAnimationFrame(tick);
               };
               requestAnimationFrame(tick);
-              return state;
+              return {
+                frames: state.frames,
+                stop: () => {
+                  state.active = false;
+                  document.removeEventListener("keydown", onSend, true);
+                },
+              };
             }),
           );
           yield* s.drivers.realMates
@@ -57,9 +90,9 @@ describe("owner-reported layout regressions", () => {
           yield* s.then.conversation.showsMessage("The conversation is here.");
           yield* Effect.promise(() => waitForStillFrames(s.page));
           const frames = yield* Effect.promise(async () => {
-            const frames = await trace.evaluate((state) => {
-              state.active = false;
-              return state.frames;
+            const frames = await trace.evaluate((recording) => {
+              recording.stop();
+              return recording.frames;
             });
             await trace.dispose();
             return frames;
@@ -78,6 +111,24 @@ describe("owner-reported layout regressions", () => {
             frames.slice(promoted).filter((frame) => frame.opacity !== 1),
             `The conversation shows the message as the draft did, never easing it in again: ${trail}`,
           ).toEqual([]);
+          expect(
+            frames.some((frame) => frame.submitted),
+            "ASSERTION: the send was observed",
+          ).toBe(true);
+          expect(
+            frames.filter(
+              (frame) => frame.submitted && frame.opacity !== 1 && !frame.composerShowsMessage,
+            ),
+            "The submitted words stay visible in the composer or the conversation in every frame",
+          ).toEqual([]);
+          const messageTops = frames.flatMap((frame) =>
+            frame.submitted && frame.opacity === 1 && frame.top !== null ? [frame.top] : [],
+          );
+          expect(messageTops.length, "ASSERTION: the sent message was visible").toBeGreaterThan(0);
+          expect(
+            Math.max(...messageTops) - Math.min(...messageTops),
+            "The sent message stays in place as its draft becomes the conversation",
+          ).toBeLessThanOrEqual(1);
           yield* s.then.noExternalNetwork;
         }),
     );
