@@ -1023,9 +1023,9 @@ describe("owner-reported layout regressions", () => {
     describe("Decision: what the composer's drawer says stands fully clear of the composer card.", () => {
       scenarioSuite((it) => {
         /**
-         * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer, its
-         * last-known line quoting `lastWords`. Where its box and its painted card end, against the
-         * composer card's top.
+         * Ada's conversation, then her link gone: the reconnect notice in the composer's drawer once
+         * the reconnect is slow, with `lastWords` as her last reply. Where its box and its painted
+         * card end, against the composer card's top.
          */
         const reconnecting = (lastWords: string, evidence: string) =>
           Effect.gen(function* () {
@@ -1069,7 +1069,8 @@ describe("owner-reported layout regressions", () => {
             unavailable = true;
             yield* s.drivers.links.get("Ada")!.close;
             wire.disconnect();
-            yield* chat.then.text("Last known");
+            // Over a shown conversation a lost link says its one line only once it is slow.
+            yield* chat.then.text("Reconnecting to Ada");
             yield* Effect.promise(() => waitForStillFrames(s.page));
             const geometry = yield* Effect.promise(() =>
               s.page.evaluate(() => {
@@ -1129,29 +1130,6 @@ describe("owner-reported layout regressions", () => {
               geometry.noticeBottom,
               `ASSERTION: no part of the notice stands under the composer card: ${quoted(geometry)}`,
             ).toBeLessThanOrEqual(geometry.cardTop);
-            yield* s.then.noExternalNetwork;
-          }),
-        );
-
-        // Milo's stress run 5 (A +1:34): the restart notice's words wrapped to three lines and its
-        // card ran on under the composer, its bottom edge hidden, though its box ended at the top.
-        it.effect("the reconnect notice's card ends above the composer, whatever its words", () =>
-          Effect.gen(function* () {
-            const { s, geometry } = yield* reconnecting(
-              "The second second-wave helper is back: note written, and its job printed " +
-                '"second-wave" with exit code 0 (09:56:24 to 09:56:44). One left, and the first ' +
-                "helper's note is in the shared folder beside the job's log, both read back.",
-              "reconnect-long",
-            );
-            const seen = quoted(geometry);
-            expect(
-              geometry.lines,
-              `ASSERTION: the notice's words wrap, as Milo's did: ${seen}`,
-            ).toBeGreaterThanOrEqual(2);
-            expect(
-              geometry.paintedBottom,
-              `ASSERTION: the notice's card ends above the composer card, its bottom edge in view: ${seen}`,
-            ).toBeLessThan(geometry.cardTop);
             yield* s.then.noExternalNetwork;
           }),
         );
