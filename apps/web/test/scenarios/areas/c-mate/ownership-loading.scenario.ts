@@ -8,7 +8,6 @@ import { transportGate } from "../../harness/transportGate.ts";
 import { waitForStillFrames } from "../../harness/stillFrames.ts";
 import { mateChat } from "./dsl.ts";
 import { ownerViewport } from "./ownerViewport.ts";
-import { installArea } from "./fake.ts";
 
 interface OwnershipPaints {
   controls: number;
@@ -20,46 +19,7 @@ interface OwnershipPaints {
 
 describe("owner-reported layout regressions", () => {
   scenarioSuite((it) => {
-    it.effect("a read-only Mate shows one honest line, no fake input area", () =>
-      Effect.gen(function* () {
-        const s = yield* createScenario([installArea]);
-        // The grant exists before HQ reads the project: HQ's organisation view ages before it
-        // learns a grant made after that read.
-        s.given.person("owner", { role: "OWNER", grants: { Chief: "OWNER", Ada: "OWNER" } });
-        s.given.person("dev", { role: "Developer", grants: { Ada: "BASIC_USER" } });
-        yield* s.given.project("Ada", { mate: true });
-        mateChat(s).fixture().history();
-        const colleague = yield* s.given.browserActor({ person: "dev" });
-        yield* colleague.given.signedIn;
-        const chat = mateChat({ ...s, ...colleague });
-        yield* chat.when.openReadOnly("Ada");
-        yield* Effect.promise(() => ownerViewport(colleague.page));
-        yield* chat.then.text("you can read along");
-        yield* Effect.promise(async () => {
-          await waitForStillFrames(colleague.page);
-          const room = await colleague.page.$eval(
-            "[data-zerops-read-only-conversation] [data-chat-composer-main-surface]",
-            (surface) => {
-              const line = surface.querySelector("p")!;
-              const padding = getComputedStyle(line.parentElement!);
-              return {
-                height: surface.getBoundingClientRect().height,
-                content:
-                  line.getBoundingClientRect().height +
-                  parseFloat(padding.paddingTop) +
-                  parseFloat(padding.paddingBottom),
-              };
-            },
-          );
-          expect(
-            Math.abs(room.height - room.content),
-            `ASSERTION: read-along box fits its text line and padding with no empty band (height ${room.height}, content ${room.content})`,
-          ).toBeLessThanOrEqual(1);
-        });
-        yield* s.then.noExternalNetwork;
-      }),
-    );
-    const ownershipArrives = (anchor: boolean) =>
+    const ownershipArrives = () =>
       Effect.gen(function* () {
         const s = yield* createScenario([], { mate: "real" });
         s.given.person("owner", { role: "OWNER", grants: { Chief: "OWNER", Ada: "OWNER" } });
@@ -219,83 +179,81 @@ describe("owner-reported layout regressions", () => {
           const paints = await colleague.page.evaluate(
             () => (window as unknown as { ownershipPaints: OwnershipPaints }).ownershipPaints,
           );
-          if (anchor) {
-            expect(
-              paints.answers.length - before.count,
-              "ASSERTION: the answer stays painted through ownership resolution",
-            ).toBeGreaterThanOrEqual(60);
-            expect(
-              before.count,
-              "ASSERTION: the answer has painted before ownership resolves",
-            ).toBeGreaterThanOrEqual(60);
-            expect(
-              Math.max(
-                ...paints.answers.slice(before.count).map((top) => Math.abs(top - before.top)),
-              ),
-              "ASSERTION: resolving ownership moves already-painted answer words by at most 1 px",
-            ).toBeLessThanOrEqual(1);
-            expect(
-              Math.max(
-                ...paints.rooms.slice(before.count).map((height) => Math.abs(height - before.room)),
-              ),
-              "ASSERTION: read-along keeps the room held while ownership was pending",
-            ).toBeLessThanOrEqual(1);
-            const compact = await colleague.page.$eval(
-              "[data-zerops-read-only-conversation] [data-chat-composer-main-surface]",
-              (surface) => {
-                const line = surface.querySelector("p")!;
-                const padding = getComputedStyle(line.parentElement!);
-                return {
-                  height: surface.getBoundingClientRect().height,
-                  content:
-                    line.getBoundingClientRect().height +
-                    parseFloat(padding.paddingTop) +
-                    parseFloat(padding.paddingBottom),
-                };
-              },
-            );
-            expect(
-              Math.abs(compact.height - compact.content),
-              "ASSERTION: delayed ownership shows a compact line below transparent held room",
-            ).toBeLessThanOrEqual(1);
-            expect(
-              before.footer - paints.footers.at(-1)!,
-              "ASSERTION: the held room leaves the composer chrome",
-            ).toBeGreaterThan(1);
-            // A real scroll is the next layout change: the temporary room is released.
-            const beforeScroll = await colleague.page.$eval(
-              ".timeline-legend-list",
-              (list) => list.scrollHeight,
-            );
-            const list = await colleague.page.$(".timeline-legend-list");
-            const box = (await list!.boundingBox())!;
-            const beforeTop = await colleague.page.$eval(
-              ".timeline-legend-list",
-              (list) => list.scrollTop,
-            );
-            // The side gutter targets the timeline, outside a run's nested scroll surface.
-            await colleague.page.mouse.move(box.x + box.width - 80, box.y + box.height / 2);
-            await colleague.page.mouse.wheel({ deltaY: -200 });
-            await colleague.page.waitForFunction(
-              (beforeTop) => document.querySelector(".timeline-legend-list")!.scrollTop < beforeTop,
-              { polling: "raf" },
-              beforeTop,
-            );
-            await colleague.page.waitForFunction(
-              (beforeScroll) =>
-                document.querySelector(".timeline-legend-list")!.scrollHeight < beforeScroll,
-              { polling: "raf" },
-              beforeScroll,
-            );
-            const afterScroll = await colleague.page.$eval(
-              ".timeline-legend-list",
-              (list) => list.scrollHeight,
-            );
-            expect(
-              Math.abs(beforeScroll - afterScroll - (before.footer - paints.footers.at(-1)!)),
-              "ASSERTION: scrolling releases the transparent room",
-            ).toBeLessThanOrEqual(1);
-          }
+          expect(
+            paints.answers.length - before.count,
+            "ASSERTION: the answer stays painted through ownership resolution",
+          ).toBeGreaterThanOrEqual(60);
+          expect(
+            before.count,
+            "ASSERTION: the answer has painted before ownership resolves",
+          ).toBeGreaterThanOrEqual(60);
+          expect(
+            Math.max(
+              ...paints.answers.slice(before.count).map((top) => Math.abs(top - before.top)),
+            ),
+            "ASSERTION: resolving ownership moves already-painted answer words by at most 1 px",
+          ).toBeLessThanOrEqual(1);
+          expect(
+            Math.max(
+              ...paints.rooms.slice(before.count).map((height) => Math.abs(height - before.room)),
+            ),
+            "ASSERTION: read-along keeps the room held while ownership was pending",
+          ).toBeLessThanOrEqual(1);
+          const compact = await colleague.page.$eval(
+            "[data-zerops-read-only-conversation] [data-chat-composer-main-surface]",
+            (surface) => {
+              const line = surface.querySelector("p")!;
+              const padding = getComputedStyle(line.parentElement!);
+              return {
+                height: surface.getBoundingClientRect().height,
+                content:
+                  line.getBoundingClientRect().height +
+                  parseFloat(padding.paddingTop) +
+                  parseFloat(padding.paddingBottom),
+              };
+            },
+          );
+          expect(
+            Math.abs(compact.height - compact.content),
+            `ASSERTION: delayed ownership shows a compact line below transparent held room; read-along box fits its text line and padding with no empty band (height ${compact.height}, content ${compact.content})`,
+          ).toBeLessThanOrEqual(1);
+          expect(
+            before.footer - paints.footers.at(-1)!,
+            "ASSERTION: the held room leaves the composer chrome",
+          ).toBeGreaterThan(1);
+          // A real scroll is the next layout change: the temporary room is released.
+          const beforeScroll = await colleague.page.$eval(
+            ".timeline-legend-list",
+            (list) => list.scrollHeight,
+          );
+          const list = await colleague.page.$(".timeline-legend-list");
+          const box = (await list!.boundingBox())!;
+          const beforeTop = await colleague.page.$eval(
+            ".timeline-legend-list",
+            (list) => list.scrollTop,
+          );
+          // The side gutter targets the timeline, outside a run's nested scroll surface.
+          await colleague.page.mouse.move(box.x + box.width - 80, box.y + box.height / 2);
+          await colleague.page.mouse.wheel({ deltaY: -200 });
+          await colleague.page.waitForFunction(
+            (beforeTop) => document.querySelector(".timeline-legend-list")!.scrollTop < beforeTop,
+            { polling: "raf" },
+            beforeTop,
+          );
+          await colleague.page.waitForFunction(
+            (beforeScroll) =>
+              document.querySelector(".timeline-legend-list")!.scrollHeight < beforeScroll,
+            { polling: "raf" },
+            beforeScroll,
+          );
+          const afterScroll = await colleague.page.$eval(
+            ".timeline-legend-list",
+            (list) => list.scrollHeight,
+          );
+          expect(
+            Math.abs(beforeScroll - afterScroll - (before.footer - paints.footers.at(-1)!)),
+            "ASSERTION: scrolling releases the transparent room",
+          ).toBeLessThanOrEqual(1);
           expect(
             paints.history,
             "ASSERTION: history paints while HQ ownership waits",
@@ -307,12 +265,13 @@ describe("owner-reported layout regressions", () => {
         });
         yield* s.then.noExternalNetwork;
       });
-    it.effect(
-      "a colleague's conversation never paints writable controls while HQ ownership arrives after history",
-      () => ownershipArrives(false),
-    );
-    it.effect("resolving ownership keeps already-painted conversation words in place", () =>
-      ownershipArrives(true),
-    );
+    describe("a read-only Mate shows one honest line, no fake input area", () => {
+      describe("a colleague's conversation never paints writable controls while HQ ownership arrives after history", () => {
+        it.effect(
+          "resolving ownership keeps already-painted conversation words in place",
+          ownershipArrives,
+        );
+      });
+    });
   });
 });
