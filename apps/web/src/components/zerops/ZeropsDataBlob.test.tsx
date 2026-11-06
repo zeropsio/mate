@@ -67,6 +67,7 @@ describe("ZeropsDataBlob", () => {
     expect(html).toContain("hello");
     expect(html).toContain('data-zerops-data-blob-kind="text"');
     expect(html).toContain("text/plain · 5 bytes");
+    expect(html).not.toContain("data-zerops-data-blob-truncated");
   });
 
   it("adds the humanized expiry to the meta line when the value has a ttl", () => {
@@ -175,11 +176,6 @@ describe("ZeropsDataBlob", () => {
     const html = render(blob({ truncated: true, size: 40 }));
     expect(html).toContain("data-zerops-data-blob-truncated");
     expect(html).toContain("40 bytes");
-  });
-
-  it("shows no truncated banner when the blob was not truncated", () => {
-    const html = render(blob({ truncated: false }));
-    expect(html).not.toContain("data-zerops-data-blob-truncated");
   });
 
   it("clips a text body past the preview cap and counts the rest", () => {
