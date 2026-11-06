@@ -14,7 +14,7 @@ import { linkKeys } from "../model.ts";
 import type { Projection, ProjectionReads } from "../store.ts";
 import type { MateProjectKey } from "./mateAttention.ts";
 import { sameValue } from "./equal.ts";
-import { liveOrHeld } from "../streamMachine.ts";
+import { liveOrHeld, streamTrouble } from "../streamMachine.ts";
 
 export interface HqMatesRead {
   readonly mates: Readonly<Record<string, MateLiveView>>;
@@ -71,6 +71,42 @@ export const hqMatesAnswered: Projection<string, boolean> = {
       if (placement.kind !== "known" || placement.value.mate == null) return true;
       return hqMateAnswered.derive(read, { orgId, projectId });
     }),
+  equals: Object.is,
+};
+
+/**
+ * Where HQ's index of the Mates the reader observes stands for the organization — whether it may
+ * still name the project an environment's Mate serves:
+ *
+ * - `answered`: its navigation is read and HQ answered every Mate it places — with its overview,
+ *   with none (`overview: null`), or by refusing that Mate's scope: an environment none of those
+ *   answers names is none of its Mates. What it said so stands through a later outage.
+ * - `due`: HQ is asked and that answer is not whole yet — its navigation unread, or a placed
+ *   Mate not answered yet; its silence proves nothing.
+ * - `silent`: HQ is not asked, refused, or failing past its grace before it answered so.
+ */
+export type HqIndexWord = "due" | "answered" | "silent";
+
+export const hqIndexWord: Projection<string, HqIndexWord> = {
+  name: "hqIndexWord",
+  keyOf: (orgId) => orgId,
+  derive: (read, orgId) => {
+    const link = read.stream(linkKeys.hq(orgId));
+    if (!link.demanded) return "silent";
+    const placements = placementsScope(orgId);
+    if (
+      read.coverage(placements) === "complete" &&
+      read.members(placements).ids.every((projectId) => {
+        const placement = read.fact("placement", projectId);
+        if (placement.kind !== "known" || placement.value.mate == null) return true;
+        return hqMateAnswered.derive(read, { orgId, projectId });
+      })
+    )
+      return "answered";
+    return streamTrouble(link) !== null || streamTrouble(read.stream(placements)) !== null
+      ? "silent"
+      : "due";
+  },
   equals: Object.is,
 };
 

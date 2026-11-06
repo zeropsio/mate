@@ -14,6 +14,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test"
 import { gatedPortal } from "../components/ui/portal-gate";
 import { readableText, TestNode } from "../zerops/__fixtures__/testDom";
 import { useMateVoice } from "../zerops/mateVoiceContext";
+import { AccountDataContext } from "../zerops/accountData";
 import { RouteGateView } from "./-routeGate";
 import {
   mateProjectUnavailable,
@@ -353,3 +354,51 @@ it("project deletion is named and leaves no dead Open in Zerops link", () => {
     registry.dispose();
   }
 });
+
+it.each([
+  {
+    title: "HQ unavailable asks again",
+    hq: "unreachable",
+    says: "HQ unavailable.",
+    verbs: ["Try again"],
+  },
+  {
+    title: "HQ slow offers nothing to press, since only HQ's answer can help",
+    hq: "slow",
+    says: "HQ is connected but slow to answer. Still waiting…",
+    verbs: [],
+  },
+  {
+    title: "HQ unconfirmed past the deadline leads back to the projects",
+    hq: "unconfirmed",
+    says: "HQ hasn't confirmed where this conversation is yet.",
+    verbs: ["Go to projects"],
+  },
+] as const)(
+  "a conversation only HQ can name says HQ's standing with only a verb that can act, never that it isn't in your projects: $title",
+  ({ hq, says, verbs }) => {
+    const gate = { kind: "wait", reachability: null, hq } as const;
+    act(() =>
+      root.render(
+        <AccountDataContext value={{ retry: () => undefined } as never}>
+          <RouteGateView
+            {...gateFor(READY, "empty")}
+            gate={gate}
+            phrase={routeGatePhrase(gate, { nowMs: 0, mateName: "Wren" })}
+            stage="the opening stage"
+          >
+            The existing conversation is still here
+          </RouteGateView>
+        </AccountDataContext>,
+      ),
+    );
+    const text = readableText(container);
+    expect(text).toContain(says);
+    const offered = ["Try again", "Try now", "Go to projects"].filter((verb) =>
+      text.includes(verb),
+    );
+    expect(offered).toEqual(verbs);
+    expect(text).not.toContain("isn't in your Zerops projects");
+    expect(text).not.toContain("the opening stage");
+  },
+);

@@ -1022,12 +1022,25 @@ const OWN_ROW = { clientId: ORG_1 };
 
 describe("routeTarget", () => {
   const NONE_INDEXED = { serving: new Map(), reported: new Map() };
-  const target = (named: Parameters<typeof namedProject>[0]) =>
+  type Named = Parameters<typeof namedProject>[0];
+  /** HQ answered for the organization unless a case says otherwise. */
+  const target = (
+    named: Omit<Named, "hqIndex" | "waited" | "absenceSaid"> & {
+      readonly hqIndex?: Named["hqIndex"] | undefined;
+      readonly waited?: Named["waited"] | undefined;
+      readonly absenceSaid?: boolean | undefined;
+    },
+  ) =>
     routeTarget({
       machines: new Map(),
       index: NONE_INDEXED,
       environmentId: ENV_A,
-      named: namedProject(named),
+      named: namedProject({
+        ...named,
+        hqIndex: named.hqIndex ?? "answered",
+        waited: named.waited ?? "patient",
+        absenceSaid: named.absenceSaid ?? false,
+      }),
       inventoryKnown: true,
       organization: "chosen",
       content: "empty",
@@ -1121,6 +1134,79 @@ describe("routeTarget", () => {
       );
     },
   );
+  it.each([
+    {
+      name: "HQ's first answer still due, inside its patience",
+      hqIndex: "due",
+      waited: "patient",
+      gate: { kind: "wait", reachability: null },
+      text: "Opening this conversation…",
+      actions: [],
+    },
+    {
+      name: "HQ's first answer due past its patience: slow, with nothing to try again",
+      hqIndex: "due",
+      waited: "slow",
+      gate: { kind: "wait", reachability: null, hq: "slow" },
+      text: "HQ is connected but slow to answer. Still waiting…",
+      actions: [],
+    },
+    {
+      name: "HQ's first answer due past the route's deadline",
+      hqIndex: "due",
+      waited: "overdue",
+      gate: { kind: "wait", reachability: null, hq: "unconfirmed" },
+      text: "HQ hasn't confirmed where this conversation is yet.",
+      actions: ["go-to-projects"],
+    },
+    {
+      name: "HQ refused or failing, the listing never read whole",
+      hqIndex: "silent",
+      waited: "patient",
+      gate: { kind: "wait", reachability: null, hq: "unreachable" },
+      text: "HQ unavailable.",
+      actions: ["try-again"],
+    },
+  ] as const)(
+    "a conversation nothing remembers names never says it isn't in your projects before HQ answered every Mate it places: $name",
+    ({ hqIndex, waited, gate, text, actions }) => {
+      const selected = selectRouteGate(
+        target({
+          hqProject: null,
+          hqIndex,
+          waited,
+          listingAnswered: true,
+          orgId: ORG_1,
+          row: null,
+          rows: null,
+        }),
+      );
+      expect(selected).toEqual(gate);
+      expect(routeGatePhrase(selected, { nowMs: 0, mateName: "Ada" })).toEqual({ text, actions });
+    },
+  );
+  it.each([
+    { name: "HQ's index due again for a Mate placed since", hqIndex: "due", waited: "slow" },
+    { name: "HQ's index silent again", hqIndex: "silent", waited: "patient" },
+  ] as const)(
+    "a conversation already said not to be in your projects on HQ's answer is not taken back while HQ still names nothing: $name",
+    ({ hqIndex, waited }) => {
+      const named = {
+        hqProject: null,
+        hqIndex,
+        waited,
+        absenceSaid: true,
+        listingAnswered: true,
+        orgId: ORG_1,
+        row: null,
+        rows: null,
+      };
+      expect(selectRouteGate(target(named))).toEqual({ kind: "unavailable", reachability: null });
+      expect(
+        selectRouteGate(target({ ...named, hqProject: "project-1", rows: [MATE_ROW] })),
+      ).toEqual({ kind: "wait", reachability: null });
+    },
+  );
 });
 
 it.each([
@@ -1136,6 +1222,9 @@ it.each([
         environmentId: ENV_A,
         named: namedProject({
           hqProject: "project-1",
+          hqIndex: "answered",
+          waited: "patient",
+          absenceSaid: false,
           listingAnswered,
           orgId: ORG_1,
           row: OWN_ROW,

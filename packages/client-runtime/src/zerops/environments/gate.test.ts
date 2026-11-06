@@ -384,6 +384,22 @@ describe("I9: the route gate over every machine and content", () => {
       );
     }
   });
+
+  it.each([
+    { discovery: "hq-slow", hq: "slow" },
+    { discovery: "hq-unconfirmed", hq: "unconfirmed" },
+    { discovery: "hq-unreachable", hq: "unreachable" },
+  ] as const)(
+    "waits saying HQ's standing, never 'not in your projects', while only HQ can name the environment: $discovery",
+    ({ discovery, hq }) => {
+      const gate = selectRouteGate({ kind: "unresolved", discovery });
+
+      expect(gate).toEqual({ kind: "wait", reachability: null, hq });
+      expect(routeGatePhrase(gate, CONTEXT).text).not.toBe(
+        "This conversation isn't in your Zerops projects.",
+      );
+    },
+  );
 });
 
 // ── C1b: a conversation without verified access ───────────────────────────────────────────────
