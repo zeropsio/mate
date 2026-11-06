@@ -8,6 +8,7 @@ import {
   pictureAnswersOf,
   pictureAnswerWords,
   pictureAskSource,
+  pictureAsksPassed,
   pictureAskSteps,
 } from "./pictureAsk.logic";
 
@@ -118,5 +119,42 @@ describe("an answer to a picture ask", () => {
       { role: "user", attachments: [{ type: "image", id: "b", name: "photo.png" }] },
     ] as unknown as ReadonlyArray<ChatMessage>;
     expect([...(pictureAnswersOf(messages).get(ask.key) ?? [])]).toEqual([1]);
+  });
+});
+
+describe("a picture ask the conversation moved past", () => {
+  const asking = (source: string) => ({
+    role: "assistant",
+    text: `One press and it's set up.\n\n\`\`\`picture-ask\n${source}\n\`\`\``,
+  });
+  const answering = (source: string, step: number) => ({
+    role: "user",
+    text: "Here it is.",
+    attachments: [
+      {
+        type: "image",
+        id: `a${step}`,
+        name: pictureAnswerName(parsePictureAsk(source)!.key, step, "x.png"),
+      },
+    ],
+  });
+  const writing = { role: "user", text: "Make the menu bar darker instead." };
+
+  it.each([
+    ["ends once the person writes about something else", [asking(cutOuts), writing], true],
+    ["stays open while the person has not written since", [asking(cutOuts)], false],
+    [
+      "stays open while the person answers it one picture at a time",
+      [asking(cutOuts), answering(cutOuts, 0)],
+      false,
+    ],
+    [
+      "ends once the person answers a picture, then writes about something else",
+      [asking(cutOuts), answering(cutOuts, 0), writing],
+      true,
+    ],
+  ])("%s", (_, messages, ended) => {
+    const passed = pictureAsksPassed(messages as unknown as ReadonlyArray<ChatMessage>);
+    expect(passed.has(parsePictureAsk(cutOuts)!.key)).toBe(ended);
   });
 });

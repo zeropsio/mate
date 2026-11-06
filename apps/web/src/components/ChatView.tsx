@@ -224,7 +224,7 @@ import { useCrewAccess } from "../zerops/crew/useCrewAccess";
 import { useOpenZeropsChange } from "../zerops/useOpenZeropsChange";
 import { useEditPictureInExpress, useOpenExpressDesign } from "./express/useOpenExpressDesign";
 import { ExpressHistoryContext, useExpressHistoryScope } from "./express/useExpressHistory";
-import { PictureAskContext, usePictureAnswers } from "./ask/PictureAsk";
+import { PictureAskContext, usePictureAsks } from "./ask/PictureAsk";
 import { useExpressGate } from "./express/useExpressGate";
 import { useThreadOnScreen } from "../zerops/threadOnScreen";
 import { useZeropsNextStepStrip } from "./zerops/ZeropsNextStepBanner";
@@ -4283,14 +4283,15 @@ function ConversationView(props: ChatViewProps) {
     },
     [activeThreadRef],
   );
-  const pictureAnswers = usePictureAnswers(activeThreadMessages);
+  const pictureAsks = usePictureAsks(activeThreadMessages);
   const pictureAskScope = useMemo(
     () => ({
-      answers: pictureAnswers,
+      answers: pictureAsks.answers,
+      passed: pictureAsks.passed,
       answer: activeThreadRef ? answerPictureAsk : null,
       mate: pageMateName,
     }),
-    [activeThreadRef, answerPictureAsk, pageMateName, pictureAnswers],
+    [activeThreadRef, answerPictureAsk, pageMateName, pictureAsks],
   );
   const addOverviewSurface = useCallback(() => {
     if (!activeThreadRef) return;
