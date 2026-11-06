@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vite-plus/test";
+import { describe, expect, it, vi } from "vite-plus/test";
 
 import {
   findHeldMateKey,
@@ -274,11 +274,32 @@ describe("makeTokenWriteLock", () => {
   });
 
   it("lets go of a hold that outlives its bound, failing it, so the next writer goes on", async () => {
-    const hold = makeTokenWriteLock(browserLocks(), { timeoutMs: 10 });
-    const stuck = hold("tok-a", () => new Promise<void>(() => undefined));
-    const next = hold("tok-a", async () => "next");
-    await expect(stuck).rejects.toThrow(/tok-a/);
-    await expect(next).resolves.toBe("next");
+    vi.useFakeTimers();
+    try {
+      const started = Promise.withResolvers<void>();
+      const hold = makeTokenWriteLock(browserLocks(), { timeoutMs: 10 });
+      const stuck = hold("tok-a", () => {
+        started.resolve();
+        return new Promise<void>(() => undefined);
+      });
+      let nextStarted = false;
+      const next = hold("tok-a", async () => {
+        nextStarted = true;
+        return "next";
+      });
+      const rejected = stuck.catch((cause: unknown) => cause);
+
+      await started.promise;
+      await vi.advanceTimersByTimeAsync(9);
+      expect(nextStarted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1);
+      const failure = await rejected;
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure).toEqual(expect.objectContaining({ message: expect.stringMatching(/tok-a/) }));
+      await expect(next).resolves.toBe("next");
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
 
