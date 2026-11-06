@@ -254,7 +254,8 @@ describe("relay request tracing", () => {
         Effect.never,
         Layer.succeed(Tracer.Tracer, tracer),
       ).pipe(Effect.provideService(HttpServerRequest.HttpServerRequest, request), Effect.forkChild);
-      yield* TestClock.adjust(Duration.millis(RELAY_REQUEST_DEADLINE_MS));
+      yield* TestClock.adjust(Duration.millis(9_999));
+      expect(fiber.pollUnsafe()).toBeDefined();
       const response = yield* Fiber.join(fiber);
 
       expect(response.status).toBe(504);
