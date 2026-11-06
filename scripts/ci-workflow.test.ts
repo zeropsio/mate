@@ -32,6 +32,122 @@ import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+it("CI promotion fails when the selected State Smoke producer is unavailable", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const promotion = jobs.prepare;
+  expect([promotion.needs].flat()).toContain("scenario_bundle");
+  expect([promotion.needs].flat()).toContain("state_smoke");
+  const verdict = promotion.steps.find(
+    (step: { name: string }) => step.name === "Require selected work to succeed",
+  );
+  expect(verdict.env).toEqual({
+    SELECTION_RESULT: "${{ needs.selection.result }}",
+    BUNDLE_RESULT: "${{ needs.scenario_bundle.result }}",
+    SMOKE_RESULT: "${{ needs.state_smoke.result }}",
+    SKIP: "${{ needs.selection.outputs.skip }}",
+    SMOKE_SELECTED:
+      "${{ contains(fromJSON(needs.selection.outputs.jobs || '[]'), 'state_smoke') }}",
+  });
+  for (const result of ["failure", "cancelled", "skipped", ""]) {
+    const run = NodeChildProcess.spawnSync("bash", ["-eu", "-c", verdict.run], {
+      env: {
+        ...process.env,
+        SELECTION_RESULT: "success",
+        BUNDLE_RESULT: result,
+        SMOKE_RESULT: "success",
+        SKIP: "false",
+        SMOKE_SELECTED: "true",
+      },
+    });
+    expect(run.status, `ASSERTION: bundle result ${result || "missing"}`).toBe(1);
+  }
+  for (const result of ["failure", "cancelled", "skipped", ""]) {
+    const run = NodeChildProcess.spawnSync("bash", ["-eu", "-c", verdict.run], {
+      env: {
+        ...process.env,
+        SELECTION_RESULT: "success",
+        BUNDLE_RESULT: "success",
+        SMOKE_RESULT: result,
+        SKIP: "false",
+        SMOKE_SELECTED: "true",
+      },
+    });
+    expect(run.status, `ASSERTION: State Smoke result ${result || "missing"}`).toBe(1);
+  }
+  for (const { selection, bundle, skip, selected, expected } of [
+    { selection: "success", bundle: "success", skip: "false", selected: "true", expected: 0 },
+    { selection: "success", bundle: "skipped", skip: "true", selected: "true", expected: 0 },
+    { selection: "success", bundle: "skipped", skip: "false", selected: "false", expected: 0 },
+    { selection: "failure", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
+    { selection: "cancelled", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
+    { selection: "", bundle: "skipped", skip: "false", selected: "false", expected: 1 },
+  ]) {
+    const run = NodeChildProcess.spawnSync("bash", ["-eu", "-c", verdict.run], {
+      env: {
+        ...process.env,
+        SELECTION_RESULT: selection,
+        BUNDLE_RESULT: bundle,
+        SMOKE_RESULT: bundle === "success" ? "success" : "skipped",
+        SKIP: skip,
+        SMOKE_SELECTED: selected,
+      },
+    });
+    expect(run.status, `ASSERTION: selection ${selection || "missing"}, bundle ${bundle}`).toBe(
+      expected,
+    );
+  }
+});
+
+it("CI admits independent jobs after selection and fails State Smoke when its bundle is unavailable", () => {
+  const { jobs } = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  expect(
+    jobs.selection.steps.map((step: { name: string }) => step.name),
+    "ASSERTION: selection does not wait for the scenario producer",
+  ).not.toContain("Preflight the pinned mate-hq contract");
+  expect(jobs.scenario_bundle.needs).toBe("selection");
+  expect(jobs.scenario_bundle.if).toContain("needs.selection.outputs.skip != 'true'");
+  expect(jobs.scenario_bundle.if).toContain(
+    "contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke')",
+  );
+  expect(jobs.state_smoke.needs).toEqual(["selection", "scenario_bundle"]);
+  for (const id of [
+    "cache",
+    "changes",
+    "check",
+    "check_guards",
+    "check_types",
+    "check_build",
+    "test_packages",
+    "test_scripts",
+    "test_client_runtime",
+    "test_web",
+    "test_server",
+    "test_mobile",
+    "mobile_native_static_analysis",
+    "test",
+    "release_smoke",
+  ]) {
+    expect([jobs[id].needs].flat(), `ASSERTION: ${id} does not await the bundle`).not.toContain(
+      "scenario_bundle",
+    );
+  }
+  const guard = jobs.state_smoke.steps[0];
+  expect(guard.name).toBe("Require the scenario bundle producer to succeed");
+  expect(guard.env.BUNDLE_RESULT).toBe("${{ needs.scenario_bundle.result }}");
+  for (const result of ["success", "failure", "cancelled", "skipped", ""]) {
+    const run = NodeChildProcess.spawnSync("bash", ["-eu", "-c", guard.run], {
+      env: { ...process.env, BUNDLE_RESULT: result },
+    });
+    expect(run.status, `ASSERTION: bundle result ${result || "missing"}`).toBe(
+      result === "success" ? 0 : 1,
+    );
+  }
+});
+
 it("Signal's scenarios run against the mate-hq test HQ that State Smoke's run against", () => {
   const read = (file: string) =>
     parse(NodeFS.readFileSync(NodePath.join(root, ".github/workflows", file), "utf8"));
@@ -74,9 +190,9 @@ it("CI runs lint, guards, types and builds in parallel without losing the releas
   for (const [id, names] of Object.entries(commands)) {
     const job = workflow.jobs[id];
     expect(job, `ASSERTION: ${id} is an independent Check worker`).toBeDefined();
-    expect(job.needs).toEqual(["prepare", "changes"]);
-    expect(job.if).toContain(`contains(fromJSON(needs.prepare.outputs.jobs), '${id}')`);
-    expect(job.if).toContain("needs.prepare.outputs.skip != 'true'");
+    expect(job.needs).toEqual(["selection", "changes"]);
+    expect(job.if).toContain(`contains(fromJSON(needs.selection.outputs.jobs), '${id}')`);
+    expect(job.if).toContain("needs.selection.outputs.skip != 'true'");
     for (const name of names)
       expect(job.steps.some((step: { name: string }) => step.name === name)).toBe(true);
     expect(workflow.jobs.release_smoke.needs).toContain(id);
@@ -652,15 +768,19 @@ it("Decision: One State Smoke run builds the shared scenario bundle once and eve
   );
   expect(
     builds.map(({ id }) => id),
-    "ASSERTION: prepare builds once; State Smoke shards never rebuild the shared bundle",
-  ).toEqual(["prepare"]);
-  const producer = jobs.prepare;
-  const plan = producer.steps.find((step: { id?: string }) => step.id === "state_smoke_plan");
+    "ASSERTION: the producer builds once; State Smoke shards never rebuild the shared bundle",
+  ).toEqual(["scenario_bundle"]);
+  const producer = jobs.scenario_bundle;
+  const plan = jobs.selection.steps.find((step: { id?: string }) => step.id === "state_smoke_plan");
   const upload = producer.steps.find((step: { uses?: string }) =>
     step.uses?.startsWith("actions/upload-artifact@"),
   );
-  expect(builds[0]!.step.if).toBe(plan.if);
-  expect(upload.if).toBe(plan.if);
+  expect(plan.if).toContain("needs.verification.outputs.skip != 'true'");
+  expect(plan.if).toContain("contains(fromJSON(steps.blame.outputs.jobs), 'state_smoke')");
+  expect(producer.if).toContain("needs.selection.outputs.skip != 'true'");
+  expect(producer.if).toContain("contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke')");
+  expect(builds[0]!.step.if).toBeUndefined();
+  expect(upload.if).toBeUndefined();
   expect(upload.with).toMatchObject({
     name: "state-smoke-scenario-bundle",
     path: "node_modules/.cache/mate-scenario-web",
@@ -668,14 +788,15 @@ it("Decision: One State Smoke run builds the shared scenario bundle once and eve
     "if-no-files-found": "error",
   });
   const consumer = jobs.state_smoke;
-  expect([consumer.needs].flat()).toContain("prepare");
+  expect([consumer.needs].flat()).toContain("selection");
+  expect([consumer.needs].flat()).toContain("scenario_bundle");
   const download = consumer.steps.find((step: { uses?: string }) =>
     step.uses?.startsWith("actions/download-artifact@"),
   );
   expect(download.with).toEqual({ name: upload.with.name, path: upload.with.path });
   expect(producer.outputs.node_version).toBe("${{ steps.node.outputs.version }}");
   const node = producer.steps.find((step: { id?: string }) => step.id === "node");
-  expect(node.if).toBe(plan.if);
+  expect(node.if).toBeUndefined();
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "smoke-node-"));
   try {
     const output = NodePath.join(directory, "output");
@@ -760,8 +881,8 @@ it("Decision: Setup that is identical across shards of one run is done once per 
     NodeFS.rmSync(directory, { recursive: true, force: true });
   }
 
-  // prepare and every shard restore that cache and repeat the store and install only on a miss.
-  for (const job of ["prepare", "state_smoke"]) {
+  // Selection, the producer and every shard install only on a hosted-cache miss.
+  for (const job of ["selection", "scenario_bundle", "state_smoke"]) {
     const steps: Step[] = jobs[job].steps;
     const restore = steps.find((step) => step.id === "hosted_modules")!;
     expect(restore.uses, job).toBe("actions/cache/restore@v4");
@@ -791,12 +912,12 @@ it("Decision: The scenario selection and verdict of State Smoke stay exactly as 
   );
   const consumer = jobs.state_smoke;
   expect(consumer.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}",
+    "${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}",
   );
-  expect(consumer.needs).toBe("prepare");
+  expect(consumer.needs).toEqual(["selection", "scenario_bundle"]);
   expect(consumer.strategy).toEqual({
     "fail-fast": false,
-    matrix: "${{ fromJSON(needs.prepare.outputs.state_smoke) }}",
+    matrix: "${{ fromJSON(needs.selection.outputs.state_smoke) }}",
   });
   expect(consumer["timeout-minutes"]).toBe(14);
   const certify = consumer.steps.find(
@@ -804,7 +925,7 @@ it("Decision: The scenario selection and verdict of State Smoke stay exactly as 
   );
   expect(certify.env).toEqual({
     MATE_SCENARIO_REQUIRE_BUNDLE: "1",
-    MATE_STATE_SMOKE_SELECTION: "${{ needs.prepare.outputs.state_smoke_selection }}",
+    MATE_STATE_SMOKE_SELECTION: "${{ needs.selection.outputs.state_smoke_selection }}",
   });
   expect(certify.run).toBe(
     'vp run test:browser\ntimeout --signal=TERM --kill-after=10s 10m node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}\n',
@@ -842,7 +963,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
       .filter(
         (step) =>
           step.run?.includes("scenarios/harness/build.ts") &&
-          step.if !== "needs.prepare.outputs.skip == 'true'",
+          step.if !== "needs.selection.outputs.skip == 'true'",
       )
       .map((step) => step.run),
   ).toEqual(["vp exec node apps/web/test/scenarios/harness/build.ts"]);
@@ -871,7 +992,7 @@ it("CI builds once and certifies both complete C shards from that artifact", () 
         !step.run.startsWith("vp install ") &&
         !step.run.startsWith("vp run test:browser") &&
         step.name !== "Require the mate-hq deploy key" &&
-        step.if !== "needs.prepare.outputs.skip == 'true'",
+        step.if !== "needs.selection.outputs.skip == 'true'",
     ),
   ).toEqual([
     expect.objectContaining({
@@ -918,12 +1039,12 @@ it("the Test verdict includes every scripts and HQ shard", () => {
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
   expect(workflow.jobs.test.needs, "ASSERTION: Test must wait for every split package").toEqual([
-    "prepare",
+    "selection",
     "test_packages",
     "test_scripts",
     "test_client_runtime",
   ]);
-  expect(workflow.jobs.test.if).toContain("!cancelled() && needs.prepare.result == 'success'");
+  expect(workflow.jobs.test.if).toContain("!cancelled() && needs.selection.result == 'success'");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'failure')");
   expect(workflow.jobs.test.steps.at(-1).run).toContain("contains(needs.*.result, 'skipped')");
   for (const name of ["test_scripts", "test_client_runtime"]) {
@@ -939,7 +1060,7 @@ it("the Test verdict includes every scripts and HQ shard", () => {
   expect(
     workflow.jobs.test_packages.needs,
     "ASSERTION: package execution must not wait for the split suites",
-  ).toEqual(["prepare", "changes"]);
+  ).toEqual(["selection", "changes"]);
   const command = workflow.jobs.test_packages.steps.find(
     (step: { name: string }) => step.name === "Test",
   ).run;
@@ -1055,16 +1176,16 @@ it("CI runs full verification on integration pushes and preserves PR change sele
   expect(workflow.on.pull_request).toBeNull();
   expect(workflow.on.workflow_call).toBeUndefined();
   expect(workflow["run-name"]).toBe("CI · ${{ github.ref_name }}");
-  expect(workflow.jobs.prepare.outputs).toMatchObject({
+  expect(workflow.jobs.selection.outputs).toMatchObject({
     skip: "${{ needs.verification.outputs.skip }}",
   });
   for (const [name, job] of Object.entries(workflow.jobs) as [
     string,
     { needs?: string | string[]; if?: string },
   ][]) {
-    if (name === "prepare" || name === "verification") continue;
+    if (name === "selection" || name === "verification") continue;
     expect([job.needs].flat(), `ASSERTION: ${name} reads the one promotion verdict`).toContain(
-      "prepare",
+      "selection",
     );
     expect(job.if).not.toContain("outputs.level");
   }
@@ -1098,25 +1219,25 @@ it("main promotion reports successful required checks without repeating verified
     const job = workflow.jobs[id];
     expect(job.name).toBe(name);
     expect(job.if, `ASSERTION: ${name} cannot hide a failed preparation`).toContain(
-      "needs.prepare.result == 'success'",
+      "needs.selection.result == 'success'",
     );
     if (id === "test" || id === "release_smoke") {
       const receipt = job.steps.find(
         (step: { name: string }) => step.name === "Report verified promotion",
       );
       expect(receipt, `ASSERTION: ${name} explicitly reports the verified promotion`).toBeDefined();
-      expect(job.if).not.toContain("needs.prepare.outputs.skip");
-      expect(receipt.if).toBe("needs.prepare.outputs.skip == 'true'");
+      expect(job.if).not.toContain("needs.selection.outputs.skip");
+      expect(receipt.if).toBe("needs.selection.outputs.skip == 'true'");
       expect(NodeChildProcess.spawnSync("bash", ["-c", receipt.run]).status).toBe(0);
       for (const step of job.steps.filter((step: { name: string }) => step.name !== receipt.name)) {
         expect(step.if, `ASSERTION: ${name} never repeats verification on promotion`).toBe(
-          "needs.prepare.outputs.skip != 'true'",
+          "needs.selection.outputs.skip != 'true'",
         );
       }
       continue;
     }
     expect(job.if, `ASSERTION: ${name} skips verified work at job level`).toContain(
-      "needs.prepare.outputs.skip != 'true'",
+      "needs.selection.outputs.skip != 'true'",
     );
   }
   expect(workflow.jobs.test_web.strategy.matrix.shard).toEqual([1, 2, 3]);
@@ -1133,11 +1254,12 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
     { if?: string; steps: { name: string; if?: string }[] },
   ][]) {
     // The cache writer runs no tests on a promotion; its own Decision tests pin what it may run.
-    if (["verification", "prepare", "test", "release_smoke", "cache"].includes(id)) continue;
+    if (["verification", "selection", "prepare", "test", "release_smoke", "cache"].includes(id))
+      continue;
     expect(
       job.if,
       `ASSERTION: ${id} skips its entire runner when the SHA already passed on kh-next`,
-    ).toContain("needs.prepare.outputs.skip != 'true'");
+    ).toContain("needs.selection.outputs.skip != 'true'");
     expect(
       job.steps.some((step) => step.name === "Report verified promotion"),
       `ASSERTION: ${id} never allocates a runner just to repeat the receipt`,
@@ -1146,11 +1268,11 @@ it("Decision: a SHA is tested once, on kh-next; main only re-verifies that recei
       const condition = job
         .if!.replace(/^\$\{\{\s*|\s*\}\}$/gu, "")
         .replaceAll(
-          /contains\(fromJSON\(needs.prepare.outputs.jobs\), '[a-z_]+'\)/gu,
+          /contains\(fromJSON\(needs.selection.outputs.jobs\), '[a-z_]+'\)/gu,
           "true == true",
         )
         .replaceAll("!cancelled()", "true == true")
-        .replaceAll("needs.prepare.outputs.skip", `'${skip}'`)
+        .replaceAll("needs.selection.outputs.skip", `'${skip}'`)
         .replaceAll(/needs\.[a-z_]+\.result/gu, "'success'")
         .replaceAll(/needs\.changes\.outputs\.[a-z_]+/gu, "'true'")
         .replaceAll("github.ref", "'refs/heads/main'")
@@ -1283,7 +1405,7 @@ it.each([
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  expect(workflow.jobs.prepare, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
+  expect(workflow.jobs.selection, "ASSERTION: CI owns one verified-SHA projection").toBeDefined();
   const run = workflow.jobs.verification.steps.find(
     (step: { id?: string }) => step.id === "verdict",
   ).run as string;
@@ -1598,7 +1720,7 @@ it("short Ubuntu checks share installed jobs without losing their commands or fa
     const steps = check.steps.filter((step: { run?: string }) => step.run === command);
     expect(steps, `ASSERTION: Check retains ${command} once`).toHaveLength(1);
     expect(steps[0]["continue-on-error"]).toBeUndefined();
-    expect(workflow.jobs.check.if).toContain("needs.prepare.outputs.skip != 'true'");
+    expect(workflow.jobs.check.if).toContain("needs.selection.outputs.skip != 'true'");
     if (command.startsWith("cargo"))
       expect(steps[0].if).toContain("needs.changes.outputs.resource_monitor != 'false'");
   }
@@ -1722,7 +1844,7 @@ const runCacheJob = (os: "Linux" | "macOS", verified: boolean, hits: Record<stri
         (_, id: string) => `'${outputs[id] ?? ""}'`,
       )
       .replaceAll("runner.os", `'${os}'`)
-      .replaceAll("needs.prepare.outputs.skip", `'${verified}'`);
+      .replaceAll("needs.selection.outputs.skip", `'${verified}'`);
     const result = NodeChildProcess.spawnSync("bash", ["-c", `[[ ${condition} ]]`], {
       encoding: "utf8",
     });
@@ -1748,7 +1870,7 @@ it.each([
   (os, caches) => {
     const job = cacheJob();
     const condition = job.if
-      .replaceAll("needs.prepare.outputs.skip", "'true'")
+      .replaceAll("needs.selection.outputs.skip", "'true'")
       .replaceAll("github.ref", "'refs/heads/main'")
       .replaceAll("github.event_name", "'push'");
     expect(
@@ -2080,9 +2202,9 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     string,
     { needs?: string | string[]; "timeout-minutes": number }
   >;
-  // Preparation stays outside suite execution; its optional GitHub wait owns a separate job.
+  // Selection and bundle production stay outside suite execution; the wait owns a separate job.
   const budget = (id: string): number => {
-    if (id === "prepare") return 0;
+    if (id === "selection" || id === "scenario_bundle") return 0;
     const job = jobs[id]!;
     return job["timeout-minutes"] + Math.max(0, ...[job.needs ?? []].flat().map(budget));
   };
@@ -2093,7 +2215,9 @@ it("blocking CI dependency paths have at most fifteen minutes of execution budge
     ).toBeLessThanOrEqual(15);
   }
   for (const [id, measuredCeiling] of Object.entries({
-    prepare: 9,
+    selection: 9,
+    prepare: 1,
+    scenario_bundle: 6,
     changes: 1,
     check: 9,
     state_smoke: 3,
@@ -2341,7 +2465,7 @@ fi
         .filter(Boolean)
         .map((line) => line.split("=")),
     );
-    const guard = workflow.jobs.prepare.steps.find(
+    const guard = workflow.jobs.selection.steps.find(
       (candidate: { name: string }) => candidate.name === "Reject failed main verification",
     );
     expect(guard.env.MAIN_FAILED).toBe("${{ needs.verification.outputs.failed }}");
@@ -2657,7 +2781,7 @@ it("Decision: a step that waits on GitHub has its own timeout and leaves setup a
   const workflow = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
   );
-  const prepare = workflow.jobs.prepare;
+  const prepare = workflow.jobs.selection;
   const verification = workflow.jobs.verification;
   const verdict = verification.steps.find((step: { id?: string }) => step.id === "verdict");
   expect(

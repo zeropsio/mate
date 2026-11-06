@@ -63,12 +63,15 @@ export function blameSelection(ref: string, manifest: string | undefined) {
   for (const [job, name] of Object.entries(jobNames)) {
     if (!narrowed || requested.has(name)) selected.add(job);
   }
-  const stateSmokeShards = narrowed
-    ? [...requested].flatMap((name) => {
-        const shard = stateSmokeContext.exec(name)?.[1];
-        return shard ? [Number(shard)] : [];
-      })
-    : ("all" as const);
+  const bundleFailed = requested.has(`${jobNames.state_smoke} bundle`);
+  if (bundleFailed) selected.add("state_smoke");
+  const stateSmokeShards =
+    narrowed && !bundleFailed
+      ? [...requested].flatMap((name) => {
+          const shard = stateSmokeContext.exec(name)?.[1];
+          return shard ? [Number(shard)] : [];
+        })
+      : ("all" as const);
   if (stateSmokeShards !== "all" && stateSmokeShards.length) selected.add("state_smoke");
   for (const [job, rows] of Object.entries(blameMatrices)) {
     const name = jobNames[job as MatrixJob];

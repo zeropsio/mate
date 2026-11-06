@@ -20,13 +20,14 @@ it("Bisect CI selects only the failed job and preserves its full partition size"
   ]);
   expect(selection.matrices.test_web).toEqual({ include: [{ shard: 2, total: 3 }] });
   for (const [job, definition] of Object.entries(workflow.jobs) as [string, { if?: string }][]) {
-    if (["verification", "prepare", "cache"].includes(job)) continue;
+    if (["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job))
+      continue;
     expect(definition.if, `ASSERTION: ${job} consumes the one selected job verdict`).toContain(
-      `contains(fromJSON(needs.prepare.outputs.jobs), '${job}')`,
+      `contains(fromJSON(needs.selection.outputs.jobs), '${job}')`,
     );
   }
   expect(workflow.jobs.test_web.strategy.matrix).toBe(
-    "${{ fromJSON(needs.prepare.outputs.test_web) }}",
+    "${{ fromJSON(needs.selection.outputs.test_web) }}",
   );
   expect(
     workflow.jobs.test_web.steps.find((step: { name: string }) => step.name === "Test").run,
@@ -50,6 +51,13 @@ it("Blocking blame runs state smoke with its bundle and never selects Signal job
   }
 });
 
+it("A failed State Smoke bundle selects its scenario shards for bisect", () => {
+  expect(workflow.jobs.scenario_bundle.name).toBe("State Smoke bundle");
+  const selection = blameSelection("refs/heads/kh-bisect/abc1234", "State Smoke bundle\n");
+  expect(selection.selected.sort()).toEqual(["changes", "state_smoke"]);
+  expect(selection.stateSmokeShards).toBe("all");
+});
+
 it("Summary failures rerun their failed dependencies without selecting unrelated suites", () => {
   const selection = blameSelection(
     "refs/heads/kh-bisect/abc1234",
@@ -66,7 +74,7 @@ it("Summary failures rerun their failed dependencies without selecting unrelated
     "test_scripts",
   ]);
   expect(selection.matrices.test_client_runtime!.include).toEqual([]);
-  expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.prepare.outputs.blame == 'true'");
+  expect(workflow.jobs.test.steps.at(-1).run).toContain("needs.selection.outputs.blame == 'true'");
 });
 
 it.each([
@@ -88,7 +96,10 @@ it.each(["refs/heads/main", "refs/heads/kh-next", "refs/pull/1/merge"])(
     expect(selection.narrowed).toBe(false);
     expect(selection.selected.sort()).toEqual(
       Object.keys(workflow.jobs)
-        .filter((job) => !["verification", "prepare", "cache"].includes(job))
+        .filter(
+          (job) =>
+            !["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job),
+        )
         .sort(),
     );
     expect(selection.matrices.test_server!.include).toEqual(
@@ -130,7 +141,10 @@ it("A kh-bisect manifest of all selects every job at full partition size", () =>
   expect(selection.narrowed).toBe(false);
   expect(selection.selected.sort()).toEqual(
     Object.keys(workflow.jobs)
-      .filter((job) => !["verification", "prepare", "cache"].includes(job))
+      .filter(
+        (job) =>
+          !["verification", "selection", "prepare", "scenario_bundle", "cache"].includes(job),
+      )
       .sort(),
   );
   expect(selection.matrices.test_server!.include).toHaveLength(3);
@@ -146,7 +160,9 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
     );
     NodeFS.writeFileSync(NodePath.join(dir, ".ci-blame-jobs"), "Test Server 2\n");
     const output = NodePath.join(dir, "output");
-    const step = workflow.jobs.prepare.steps.find((entry: { id?: string }) => entry.id === "blame");
+    const step = workflow.jobs.selection.steps.find(
+      (entry: { id?: string }) => entry.id === "blame",
+    );
     const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
       cwd: dir,
       encoding: "utf8",
@@ -197,7 +213,7 @@ it.each([
     // Running or ready when the smoke shards become ready: every job whose needs
     // the smoke shards' needs cover, minus those needs themselves (already done).
     const wave = Object.keys(jobs)
-      .filter((job) => job !== "prepare" && !smokeNeeds.has(job))
+      .filter((job) => job !== "selection" && !smokeNeeds.has(job))
       .filter((job) => needsOf(job).every((need) => smokeNeeds.has(need)))
       .filter((job) => nativeClients || !jobs[job]!.if?.includes("native_clients"))
       .filter((job) => mainPush || job !== "cache")

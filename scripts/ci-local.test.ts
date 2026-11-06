@@ -257,10 +257,10 @@ it("local Check always verifies work even when CI can skip a promoted SHA", () =
   check:
     steps:
       - name: Verified promotion
-        if: needs.prepare.outputs.skip == 'true'
+        if: needs.selection.outputs.skip == 'true'
         run: echo verified
       - name: Check
-        if: needs.prepare.outputs.skip != 'true'
+        if: needs.selection.outputs.skip != 'true'
         run: vp check
 `;
   expect(

@@ -218,7 +218,7 @@ it("State Smoke CI compares the event base with full history and runs beyond cha
     NodeFS.readFileSync(new URL("../.github/workflows/ci.yml", import.meta.url), "utf8"),
   );
   // prepare selects once; every shard runs its part of that selection.
-  const prepare = workflow.jobs.prepare;
+  const prepare = workflow.jobs.selection;
   const plan = prepare.steps.find((step: { id?: string }) => step.id === "state_smoke_plan");
   expect(
     prepare.steps.find((step: { name: string }) => step.name === "Checkout for State Smoke's plan")
@@ -236,7 +236,7 @@ it("State Smoke CI compares the event base with full history and runs beyond cha
     (step: { name: string }) => step.name === "Certify sign-in, fixed smoke and affected scenarios",
   );
   expect(run.env.MATE_STATE_SMOKE_SELECTION).toBe(
-    "${{ needs.prepare.outputs.state_smoke_selection }}",
+    "${{ needs.selection.outputs.state_smoke_selection }}",
   );
   expect(run.run).toContain(
     'node scripts/state-smoke.ts --selection "$MATE_STATE_SMOKE_SELECTION" --shard ${{ matrix.shard }}/${{ matrix.total }}',

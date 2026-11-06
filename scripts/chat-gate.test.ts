@@ -546,7 +546,7 @@ it("Decision: L3 runs everything on every main push; no test is skipped, deleted
   };
   // A false chat verdict must not prevent the shared scenario graph from selecting affected journeys.
   expect(jobs.state_smoke!.if).toBe(
-    "${{ !cancelled() && needs.prepare.result == 'success' && needs.prepare.outputs.skip != 'true' && contains(fromJSON(needs.prepare.outputs.jobs), 'state_smoke') }}",
+    "${{ !cancelled() && needs.selection.result == 'success' && needs.selection.outputs.skip != 'true' && contains(fromJSON(needs.selection.outputs.jobs), 'state_smoke') }}",
   );
   expect(blameSelection("refs/heads/main", undefined).selected).toContain("state_smoke");
   const signal = parse(
