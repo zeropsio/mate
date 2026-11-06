@@ -1,23 +1,18 @@
-import { Window } from "happy-dom";
+// @vitest-environment happy-dom
+
 import { act, create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, expect, it, vi } from "vite-plus/test";
 import { MessageCopyButton } from "./MessageCopyButton";
 
 afterEach(() => {
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 
 it("copying a message with structured context identifies and copies the whole message", async () => {
   const text =
     '<review_comment filePath="src/example.ts">Review this change</review_comment>\nKeep the surrounding message.';
-  const browser = new Window();
-  vi.stubGlobal("window", browser);
-  vi.stubGlobal("document", browser.document);
-  vi.stubGlobal("Element", browser.Element);
-  vi.stubGlobal("HTMLElement", browser.HTMLElement);
-  vi.stubGlobal("Node", browser.Node);
-  const writeText = vi.fn(async (_value: string) => {});
-  vi.stubGlobal("navigator", { clipboard: { writeText } });
+  const writeText = vi.spyOn(navigator.clipboard, "writeText").mockResolvedValue();
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   let renderer: ReactTestRenderer | undefined;
   try {

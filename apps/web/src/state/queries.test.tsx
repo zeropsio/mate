@@ -1,11 +1,15 @@
 // @vitest-environment happy-dom
 
 import { RegistryContext } from "@effect/atom-react";
+import type { EnvironmentPresentation } from "@t3tools/client-runtime/connection";
 import { EnvironmentId } from "@t3tools/contracts";
 import { AsyncResult, Atom, AtomRegistry } from "effect/reactivity";
 import { act } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
+
+import { orchestrationEnvironment } from "./orchestration";
+import { environmentPresentations } from "./presentation";
 
 import {
   areProjectPathSearchTargetsEqual,
@@ -13,30 +17,7 @@ import {
   useThreadSearch,
 } from "./queries";
 
-const searches = vi.hoisted(() => ({ asked: [] as unknown[] }));
-
-vi.mock("./presentation", async () => {
-  const { Atom: Atoms } = await import("effect/reactivity");
-  return {
-    environmentPresentations: {
-      presentationsAtom: Atoms.make(
-        new Map([
-          ["open-mate", { connection: { phase: "connected" } }],
-          ["parked-mate", { connection: { phase: "available" } }],
-        ]),
-      ),
-    },
-  };
-});
-
-vi.mock("./orchestration", () => ({
-  orchestrationEnvironment: {
-    threadSearch: ({ environmentId }: { environmentId: unknown }) => {
-      searches.asked.push(environmentId);
-      return Atom.make(AsyncResult.initial(true));
-    },
-  },
-}));
+const searches = { asked: [] as unknown[] };
 
 describe("areProjectPathSearchTargetsEqual", () => {
   const target = {
@@ -78,10 +59,33 @@ describe("connectedEnvironmentIds", () => {
 
 describe("useThreadSearch", () => {
   const mounted: ReactTestRenderer[] = [];
+  let previousPresentations: typeof environmentPresentations.presentationsAtom;
+
+  beforeEach(() => {
+    previousPresentations = environmentPresentations.presentationsAtom;
+    environmentPresentations.presentationsAtom = Atom.make(
+      new Map([
+        [
+          EnvironmentId.make("open-mate"),
+          { connection: { phase: "connected" } } as EnvironmentPresentation,
+        ],
+        [
+          EnvironmentId.make("parked-mate"),
+          { connection: { phase: "available" } } as EnvironmentPresentation,
+        ],
+      ]),
+    );
+    vi.spyOn(orchestrationEnvironment, "threadSearch").mockImplementation(({ environmentId }) => {
+      searches.asked.push(environmentId);
+      return Atom.make(AsyncResult.initial(true));
+    });
+  });
 
   afterEach(() => {
     for (const renderer of mounted.splice(0)) act(() => renderer.unmount());
     searches.asked = [];
+    environmentPresentations.presentationsAtom = previousPresentations;
+    vi.restoreAllMocks();
   });
 
   function Probe({ environmentIds }: { environmentIds: ReadonlyArray<EnvironmentId> }) {

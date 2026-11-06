@@ -49,25 +49,49 @@ function testWindow(): Window & typeof globalThis {
   return globalThis.window ?? (globalThis as unknown as Window & typeof globalThis);
 }
 
+let closeStorageLifetime: (() => Promise<void>) | undefined;
+let savedWindowProperties:
+  | {
+      window: Window & typeof globalThis;
+      desktopBridge: PropertyDescriptor | undefined;
+      localStorage: PropertyDescriptor | undefined;
+    }
+  | undefined;
+
 beforeEach(async () => {
   vi.resetModules();
   vi.clearAllMocks();
   if (globalThis.window === undefined) {
-    Object.defineProperty(globalThis, "window", {
-      configurable: true,
-      value: globalThis,
-    });
+    vi.stubGlobal("window", globalThis);
   }
-  Reflect.deleteProperty(testWindow(), "desktopBridge");
-  Object.defineProperty(testWindow(), "localStorage", {
+  const window = testWindow();
+  savedWindowProperties = {
+    window,
+    desktopBridge: Object.getOwnPropertyDescriptor(window, "desktopBridge"),
+    localStorage: Object.getOwnPropertyDescriptor(window, "localStorage"),
+  };
+  Reflect.deleteProperty(window, "desktopBridge");
+  Object.defineProperty(window, "localStorage", {
     configurable: true,
     value: createLocalStorageStub(),
   });
-  const { openAccountLifetime } = await import("./zerops/accountLifetime");
+  const { openAccountLifetime, closeAccountLifetime } = await import("./zerops/accountLifetime");
+  closeStorageLifetime = closeAccountLifetime;
   openAccountLifetime("storage-test");
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await closeStorageLifetime?.();
+  closeStorageLifetime = undefined;
+  if (savedWindowProperties !== undefined) {
+    for (const name of ["desktopBridge", "localStorage"] as const) {
+      const descriptor = savedWindowProperties[name];
+      if (descriptor === undefined) Reflect.deleteProperty(savedWindowProperties.window, name);
+      else Object.defineProperty(savedWindowProperties.window, name, descriptor);
+    }
+    savedWindowProperties = undefined;
+  }
+  vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
 

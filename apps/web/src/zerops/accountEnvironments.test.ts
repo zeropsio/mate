@@ -19,10 +19,11 @@ import { RegistryContext } from "@effect/atom-react";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
 import { AtomRegistry } from "effect/reactivity";
 import { act, createElement as h } from "react";
-import { create } from "react-test-renderer";
-import { afterEach, describe, expect, it, vi } from "vite-plus/test";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
+import * as atomCommand from "../state/use-atom-command";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import {
@@ -41,14 +42,17 @@ import { onZeropsInvalidation } from "./accountInvalidations";
 const ENV = "env-1" as EnvironmentId;
 
 /** What happened, in order: the Mate held and let go, the command sent. */
-const sent = vi.hoisted(() => ({ log: [] as Array<string> }));
+const sent = { log: [] as Array<string> };
+const mounted: ReactTestRenderer[] = [];
+const cleanup: Array<() => void> = [];
 
-vi.mock("../state/use-atom-command", () => ({
-  useAtomCommand: () => async (value: { readonly input: string }) => {
-    sent.log.push(`command ${value.input}`);
-    return "answered";
-  },
-}));
+beforeEach(() => {
+  vi.spyOn(atomCommand, "useAtomCommand").mockImplementation((() =>
+    async (value: { readonly input: string }) => {
+      sent.log.push(`command ${value.input}`);
+      return "answered";
+    }) as unknown as typeof atomCommand.useAtomCommand);
+});
 
 const organizationRef = (organizationId: string): OrganizationRef => ({
   kind: "organization",
@@ -60,7 +64,12 @@ const organizationRef = (organizationId: string): OrganizationRef => ({
 });
 
 afterEach(() => {
+  act(() => {
+    for (const tree of mounted.splice(0)) tree.unmount();
+  });
+  for (const close of cleanup.splice(0).reverse()) close();
   vi.useRealTimers();
+  vi.restoreAllMocks();
   sent.log.length = 0;
 });
 
@@ -332,6 +341,7 @@ const bindHolder = () =>
 describe("useMateCommand: a Mate's command, sent with its action lease", () => {
   it("holds the Mate the command names until the command answers", async () => {
     const unbind = bindHolder();
+    cleanup.push(unbind);
     type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
     const command = {} as AtomCommand<Stop, string, never>;
     const senders: Array<(value: Stop) => Promise<unknown>> = [];
@@ -340,18 +350,18 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
       return null;
     }
     act(() => {
-      create(h(Probe));
+      mounted.push(create(h(Probe)));
     });
     const send = senders.at(-1)!;
 
     expect(await send({ environmentId: ENV, input: "stop" })).toBe("answered");
     expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
-    unbind();
   });
 
   it("sends to a Mate HQ names once its hold has connected it", async () => {
     const stage = connecting(sent.log);
     const unbind = bindAccountEnvironments(stage.environments as unknown as AccountEnvironments);
+    cleanup.push(unbind);
     const atoms = AtomRegistry.make();
     atoms.set(zeropsSessionAtom, {
       status: "signed-in",
@@ -370,6 +380,10 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
         } as unknown as MateLiveView,
       },
     });
+    cleanup.push(() => {
+      store.close();
+      atoms.dispose();
+    });
     type Stop = { readonly environmentId: EnvironmentId; readonly input: string };
     const command = {} as AtomCommand<Stop, string, never>;
     const senders: Array<(value: Stop) => Promise<unknown>> = [];
@@ -378,7 +392,7 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
       return null;
     }
     act(() => {
-      create(h(RegistryContext, { value: atoms }, h(Probe)));
+      mounted.push(create(h(RegistryContext, { value: atoms }, h(Probe))));
     });
     const answered = senders.at(-1)!({ environmentId: ENV, input: "stop" });
     await Promise.resolve();
@@ -414,7 +428,6 @@ describe("useMateCommand: a Mate's command, sent with its action lease", () => {
 
     expect(await answered).toBe("answered");
     expect(sent.log).toEqual(["hold env-1", "command stop", "release env-1"]);
-    unbind();
   });
 });
 

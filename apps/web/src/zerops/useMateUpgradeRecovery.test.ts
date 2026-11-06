@@ -1,30 +1,24 @@
 /**
- * The upgrade restart over its container's verdict, run as a plain function against
- * `reactHookHarness`: calling the hook again after each step observes the next state the way a
- * re-render would. The restart is the account's `mate-restart` operation; a refusal is Zerops's.
+ * The upgrade restart over its container's verdict, rendered as the account's readings change.
+ * The restart is the account's `mate-restart` operation; a refusal is Zerops's.
  */
 import { upgradeRecoveryFromEvidence, type OperationProgress } from "@t3tools/client-runtime/data";
 import type { ContainerVerdict } from "@t3tools/client-runtime/zerops/environments";
-import { beforeEach, describe, expect, it, vi } from "vite-plus/test";
+import { act, createElement } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
-import { reactHookHarness } from "../test/reactHookHarness";
-
-vi.mock("react", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("react")>();
-  const { reactHookHarness: harness } = await import("../test/reactHookHarness");
-  return {
-    ...actual,
-    useEffect: harness.useEffect,
-    useMemo: harness.useMemo,
-    useRef: harness.useRef,
-    useState: harness.useState,
-  };
-});
+import * as operations from "./accountOperations";
+import * as accountData from "./ZeropsAccountData";
+import * as inventory from "./inventoryContext";
+import * as lifetime from "./accountLifetime";
+import * as containers from "./zeropsContainers";
+import { useMateUpgradeRecovery } from "./useMateUpgradeRecovery";
 
 const ORIGIN = "https://zcp-1-8080.prg1.zerops.app";
 const KEY = "project-1:service-1";
 
-const mock = vi.hoisted(() => ({
+const mock = {
   data: {},
   progress: { stage: "accepted", operationId: "proc-restart" } as OperationProgress,
   restart: vi.fn(),
@@ -37,14 +31,19 @@ const mock = vi.hoisted(() => ({
     verdict: { level: "ready" } as ContainerVerdict,
     serverVersion: "0.10.0" as string | undefined,
   },
-}));
+};
 
-vi.mock("./accountOperations", () => ({
-  useAccountOperations: () => ({ submit: mock.submit }),
-}));
-vi.mock("./ZeropsAccountData", () => ({
-  useAccountData: () => ({ orgId: "org-1", data: mock.data }),
-  useProjection: (_projection: unknown, key: unknown) =>
+function installTestDoubles() {
+  vi.spyOn(operations, "useAccountOperations").mockReturnValue({
+    submit: mock.submit,
+  } as unknown as ReturnType<typeof operations.useAccountOperations>);
+  vi.spyOn(accountData, "useAccountData").mockImplementation(
+    () => ({ orgId: "org-1", data: mock.data }) as ReturnType<typeof accountData.useAccountData>,
+  );
+  vi.spyOn(accountData, "useProjection").mockImplementation(((
+    _projection: unknown,
+    key: unknown,
+  ) =>
     key === null
       ? { state: "waiting" }
       : upgradeRecoveryFromEvidence({
@@ -52,40 +51,54 @@ vi.mock("./ZeropsAccountData", () => ({
           verdict: mock.container.verdict,
           serverVersion: mock.container.serverVersion,
           returned: mock.container.verdict.level === "ready",
-        }),
-}));
-vi.mock("./inventoryContext", () => ({
-  useZeropsInventory: () => ({ error: null }),
-  useInventoryCandidates: () => [
+        })) as typeof accountData.useProjection);
+  vi.spyOn(inventory, "useZeropsInventory").mockReturnValue({ error: null } as ReturnType<
+    typeof inventory.useZeropsInventory
+  >);
+  vi.spyOn(inventory, "useInventoryCandidates").mockReturnValue([
     {
       key: KEY,
       project: { id: "project-1", status: "ACTIVE" },
       service: { id: "service-1", status: "ACTIVE" },
       containerOrigin: ORIGIN,
     },
-  ],
-}));
-vi.mock("./accountLifetime", () => ({
-  captureAccountLifetime: () => () => true,
-  onAccountLifetimeClose: () => () => undefined,
-}));
-vi.mock("./zeropsContainers", () => ({
-  useTargetContainer: (key: string | null) => ({ key, ...mock.container }),
-  readContainerInitAt: (key: string) => mock.readInitAt(key),
-  intendContainer: (key: string, intent: unknown) => {
+  ] as unknown as ReturnType<typeof inventory.useInventoryCandidates>);
+  vi.spyOn(lifetime, "captureAccountLifetime").mockReturnValue(() => true);
+  vi.spyOn(lifetime, "onAccountLifetimeClose").mockReturnValue(() => undefined);
+  vi.spyOn(containers, "useTargetContainer").mockImplementation(
+    (key) => ({ key, ...mock.container }) as ReturnType<typeof containers.useTargetContainer>,
+  );
+  vi.spyOn(containers, "readContainerInitAt").mockImplementation((key) => mock.readInitAt(key));
+  vi.spyOn(containers, "intendContainer").mockImplementation((key, intent) => {
     mock.intents.push({ key, intent });
     mock.container.verdict = { level: "restarting", by: "you", overdue: false };
     return true;
-  },
-}));
+  });
+}
 
-const { useMateUpgradeRecovery } = await import("./useMateUpgradeRecovery");
-
+let tree: ReactTestRenderer | undefined;
+let shown: ReturnType<typeof useMateUpgradeRecovery> = null;
+function Probe() {
+  shown = useMateUpgradeRecovery(ORIGIN, mock.reconnect);
+  return null;
+}
 function render() {
-  reactHookHarness.beginRender();
-  const recovery = useMateUpgradeRecovery(ORIGIN, mock.reconnect);
-  if (recovery === null) throw new Error("no recovery for an origin");
-  return recovery;
+  act(() => {
+    if (tree === undefined) tree = create(createElement(Probe));
+    else tree.update(createElement(Probe));
+  });
+  if (shown === null) throw new Error("no recovery for an origin");
+  const recovery: NonNullable<typeof shown> = shown;
+  return {
+    ...recovery,
+    request: () => act(() => recovery.request()),
+    confirm: () => act(() => recovery.confirm()),
+  };
+}
+function unmount() {
+  act(() => tree?.unmount());
+  tree = undefined;
+  shown = null;
 }
 
 /** Wait for the init read and the submitted operation the hook is following. */
@@ -111,7 +124,8 @@ async function restart() {
 const INIT_AT = "2026-09-23T08:00:00Z";
 
 beforeEach(() => {
-  reactHookHarness.reset();
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  installTestDoubles();
   mock.data = {};
   mock.restart.mockReset().mockResolvedValue({
     requestId: "r1",
@@ -129,6 +143,11 @@ beforeEach(() => {
   mock.intents = [];
   mock.container.verdict = { level: "ready" };
   mock.container.serverVersion = "0.10.0";
+});
+afterEach(() => {
+  unmount();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 describe("useMateUpgradeRecovery", () => {
@@ -231,7 +250,7 @@ it("a refused restart survives surface remount through its operation identity", 
   render().request();
   await confirmRestart();
   expect(render().state).toBe("failed");
-  reactHookHarness.reset();
+  unmount();
   render();
   expect(render()).toMatchObject({ state: "failed", error: "No restart" });
   expect(mock.restart).toHaveBeenCalledOnce();
@@ -247,7 +266,7 @@ it("a lost acceptance answer is unresolved and never installs a guessed restart 
   await confirmRestart();
   expect(render().state).toBe("unresolved");
   expect(mock.intents).toEqual([]);
-  reactHookHarness.reset();
+  unmount();
   render();
   expect(render().state).toBe("unresolved");
   expect(mock.restart).toHaveBeenCalledOnce();

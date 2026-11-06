@@ -56,6 +56,8 @@ import type { ZeropsCandidatePresentation } from "./useZeropsCandidates";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 import { useDeleteApplicationDialog } from "~/zerops/deleteApplicationDialog";
 import { appAtomRegistry } from "~/rpc/atomRegistry";
+import * as accountData from "./ZeropsAccountData";
+import * as sessionContext from "./sessionContext";
 
 interface AssignDialogProps {
   readonly candidates: ReadonlyArray<{ readonly userId: string; readonly name: string }>;
@@ -222,43 +224,6 @@ vi.mock("./useHqOffers", async (original) => ({
       ? { kind: "allowed" }
       : { kind: "refused", reason: "not_structure_writer" },
 }));
-vi.mock("./ZeropsAccountData", async (original) => ({
-  ...(await original<typeof import("./ZeropsAccountData")>()),
-  useProjection: (
-    projection: Projection<unknown, unknown>,
-    key: unknown,
-    fallback: Atom.Atom<unknown>,
-  ) => {
-    const value = useAtomValue(
-      (mock.liveBirths || projection.name === "faceAction") &&
-        key !== null &&
-        mock.faceStore !== null
-        ? mock.faceStore.data.project(projection, key)
-        : fallback,
-    );
-    if (mock.liveBirths) return value;
-    if (projection.name === "faceAction") return value;
-    if (projection.name === "organizationMembers") return key === null ? value : mock.members;
-    return {
-      renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
-      deletions: [],
-    };
-  },
-  useAccountOrgId: () => (mock.liveBirths ? mock.organizationId : null),
-  useDetailDemand: (family: string, _listing: unknown, ownerId: string | null) => {
-    if (ownerId !== null) mock.demanded.push(`${family}:${ownerId}`);
-  },
-  useAccountDataOptional: () => ({
-    moveOffers: () =>
-      (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
-        moveTo,
-        refused: {},
-      })),
-    retryDetail: (demand: unknown) => {
-      mock.retried.push(demand);
-    },
-  }),
-}));
 vi.mock("./deleteProject", async (original) => ({
   ...(await original<typeof import("./deleteProject")>()),
   useDeleteProject: () => mock.deleteProject,
@@ -322,25 +287,6 @@ vi.mock("./accountInvalidations", async (original) => ({
   },
 }));
 
-vi.mock("./ZeropsSessionProvider", async (original) => ({
-  ...(await original<typeof import("./ZeropsSessionProvider")>()),
-  useZeropsSession: () => ({
-    activeOrganization: {
-      id: mock.organizationId,
-      membershipId: "member-ada",
-      name: "Acme",
-      roleCode: mock.roleCode,
-      canCreateProjects: true,
-    },
-    client: {
-      deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
-        mock.deletedTokens.push(tokenId);
-        if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
-      },
-    },
-    user: mock.user,
-  }),
-}));
 // The account's operations: a rename Zerops refuses is said with its reason.
 vi.mock("./accountOperations", async (original) => ({
   ...(await original<typeof import("./accountOperations")>()),
@@ -602,6 +548,60 @@ const renderedText = (node: ReactTestInstance | string): string =>
 
 const mounted: ReactTestRenderer[] = [];
 beforeEach(() => {
+  vi.spyOn(sessionContext, "useZeropsSession").mockImplementation(
+    () =>
+      ({
+        activeOrganization: {
+          id: mock.organizationId,
+          membershipId: "member-ada",
+          name: "Acme",
+          roleCode: mock.roleCode,
+          canCreateProjects: true,
+        },
+        client: {
+          deleteIntegrationToken: async ({ tokenId }: { readonly tokenId: string }) => {
+            mock.deletedTokens.push(tokenId);
+            if (mock.deleteTokenFailure) throw new Error("Key retirement refused");
+          },
+        },
+        user: mock.user,
+      }) as unknown as ReturnType<typeof sessionContext.useZeropsSession>,
+  );
+  vi.spyOn(accountData, "useProjection").mockImplementation(((
+    projection: Projection<unknown, unknown>,
+    key: unknown,
+    fallback: Atom.Atom<unknown>,
+  ) => {
+    const value = useAtomValue(
+      (mock.liveBirths || projection.name === "faceAction") &&
+        key !== null &&
+        mock.faceStore !== null
+        ? mock.faceStore.data.project(projection, key)
+        : fallback,
+    );
+    if (mock.liveBirths || projection.name === "faceAction") return value;
+    if (projection.name === "organizationMembers") return key === null ? value : mock.members;
+    return {
+      renames: currentAccountId() === mock.user?.id ? mock.moveRemainders : new Map(),
+      deletions: [],
+    };
+  }) as typeof accountData.useProjection);
+  vi.spyOn(accountData, "useAccountOrgId").mockImplementation(() =>
+    mock.liveBirths ? mock.organizationId : null,
+  );
+  vi.spyOn(accountData, "useDetailDemand").mockImplementation((family, _listing, ownerId) => {
+    if (ownerId !== null) mock.demanded.push(`${family}:${ownerId}`);
+  });
+  vi.spyOn(accountData, "useAccountDataOptional").mockReturnValue({
+    moveOffers: () =>
+      (mock.moveAnswer?.() ?? Promise.resolve(mock.moveTo)).then((moveTo) => ({
+        moveTo,
+        refused: {},
+      })),
+    retryDetail: (demand: unknown) => {
+      mock.retried.push(demand);
+    },
+  } as unknown as ReturnType<typeof accountData.useAccountDataOptional>);
   openAccountLifetime("user-ada");
   appAtomRegistry.set(creationPressStoreAtom, makeAccountStore(appAtomRegistry));
   mock.coming = undefined;
@@ -668,6 +668,7 @@ afterEach(() => {
   closeAccountLifetime();
   appAtomRegistry.get(creationPressStoreAtom)?.close();
   appAtomRegistry.set(creationPressStoreAtom, null);
+  vi.restoreAllMocks();
   vi.unstubAllGlobals();
 });
 

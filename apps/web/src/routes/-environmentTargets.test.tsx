@@ -52,7 +52,8 @@ import { AccountDataContext } from "../zerops/accountData";
 import { hqOutage } from "../zerops/hqNavigation";
 import { mountRoster } from "@t3tools/client-runtime/zerops/testing";
 import { useMateVoice } from "../zerops/mateVoiceContext";
-import type { ZeropsOrganizationStatus } from "../zerops/ZeropsSessionProvider";
+import { ZeropsSessionContext } from "../zerops/sessionContext";
+import type { ZeropsOrganizationStatus, ZeropsSessionValue } from "../zerops/ZeropsSessionProvider";
 
 /** Where the fixture's zcp service is served: `zcp`, subdomain host `abc`, port 8080, region `prg1`. */
 const ORIGIN = "https://zcp-abc-8080.prg1.zerops.app";
@@ -99,10 +100,6 @@ vi.mock("../state/shell", async () => {
   const cached = Atom.make({ snapshot: Option.none(), status: "cached", error: Option.none() });
   return { environmentShell: { stateValueAtom: () => cached } };
 });
-vi.mock("../zerops/ZeropsSessionProvider", () => ({
-  useZeropsSession: () => ({ organizationStatus: shell.organization }),
-}));
-
 /**
  * The account runtime's Mate environments as the hooks ask them: every Mate itself is read from
  * the account's store (`showMates`, or a real Mate adapter writing there).
@@ -248,7 +245,15 @@ let unbindStage: () => void = () => undefined;
 
 /** Renders under the test's atoms, as the app's registry holds the account's store. */
 const renderIn = (node: ReactNode) =>
-  root.render(<RegistryContext value={atoms}>{node}</RegistryContext>);
+  root.render(
+    <RegistryContext value={atoms}>
+      <ZeropsSessionContext
+        value={{ organizationStatus: shell.organization } as ZeropsSessionValue}
+      >
+        {node}
+      </ZeropsSessionContext>
+    </RegistryContext>,
+  );
 
 afterEach(() => {
   act(() => root.unmount());

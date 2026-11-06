@@ -3,7 +3,7 @@
  * the signed-out page: the account's data must end first, so no screen's release afterwards
  * writes into a disposed registry.
  */
-import { act, createElement } from "react";
+import { act, createElement, type ReactNode } from "react";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
@@ -12,6 +12,7 @@ import {
   type AccountObservation,
   type AccountStore,
 } from "@t3tools/client-runtime/data";
+import * as accountData from "@t3tools/client-runtime/data";
 import { membershipInputs } from "@t3tools/client-runtime/data/fixtures";
 import {
   makeZeropsApiOrigin,
@@ -22,44 +23,42 @@ import {
 import { AppAtomRegistryProvider, appAtomRegistry } from "../rpc/atomRegistry";
 import { bindTestInvalidationBus } from "./__fixtures__/invalidationBus";
 import { closeAccountLifetime, openAccountLifetime } from "./accountLifetime";
+import { ZeropsSessionContext } from "./sessionContext";
+import type { ZeropsSessionValue } from "./ZeropsSessionProvider";
 import { useDetailDemand, ZeropsAccountData } from "./ZeropsAccountData";
 
-const shown = vi.hoisted(() => ({
+const shown = {
   organization: { id: "org-1", name: "Org", membershipId: "m-1" },
-}));
+};
 // The account's store, so a test can hand it what Zerops answered about the person's memberships.
 // The account's observation too, so a test can see what was asked of it.
-const made = vi.hoisted(() => ({
+const made = {
   store: undefined as AccountStore | undefined,
   observation: undefined as AccountObservation | undefined,
-}));
-vi.mock("@t3tools/client-runtime/data", async (actual) => {
-  const data = await actual<typeof import("@t3tools/client-runtime/data")>();
-  return {
-    ...data,
-    makeAccountStore: (...args: Parameters<typeof data.makeAccountStore>) =>
-      (made.store = data.makeAccountStore(...args)),
-    observeAccount: (...args: Parameters<typeof data.observeAccount>) =>
-      (made.observation = data.observeAccount(...args)),
-  };
-});
-vi.mock("./ZeropsSessionProvider", () => {
-  // The session's client: its socket login never answers, so the link stays connecting.
-  const client = {
-    baseUrl: "https://api.example.test",
-    exchangeWebSocketToken: () => new Promise(() => {}),
-    requestData: () => new Promise(() => {}),
-    renewHeldSession: () => new Promise(() => {}),
-  };
-  return {
-    useZeropsSession: () => ({
-      client,
-      status: "signed-in",
-      activeOrganization: shown.organization,
-      updateVerifiedMemberships: () => undefined,
-    }),
-  };
-});
+};
+// The session's client: its socket login never answers, so the link stays connecting.
+const client = {
+  baseUrl: "https://api.example.test",
+  exchangeWebSocketToken: () => new Promise(() => {}),
+  requestData: () => new Promise(() => {}),
+  renewHeldSession: () => new Promise(() => {}),
+};
+const makeAccountStore = accountData.makeAccountStore;
+const observeAccount = accountData.observeAccount;
+
+function account(children?: ReactNode) {
+  const session = {
+    client,
+    status: "signed-in",
+    activeOrganization: shown.organization,
+    updateVerifiedMemberships: () => undefined,
+  } as unknown as ZeropsSessionValue;
+  return createElement(
+    ZeropsSessionContext.Provider,
+    { value: session },
+    createElement(ZeropsAccountData, null, children),
+  );
+}
 
 /** A drawn deploy card's hold on its project's history. */
 function DeployCard() {
@@ -68,29 +67,39 @@ function DeployCard() {
 }
 
 let tree: ReactTestRenderer | undefined;
+let bus: ReturnType<typeof bindTestInvalidationBus> | undefined;
 const errors: unknown[] = [];
 
 beforeEach(() => {
   vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
   errors.length = 0;
   vi.spyOn(console, "error").mockImplementation((...args: unknown[]) => void errors.push(args));
+  vi.spyOn(accountData, "makeAccountStore").mockImplementation(
+    (...args) => (made.store = makeAccountStore(...args)),
+  );
+  vi.spyOn(accountData, "observeAccount").mockImplementation(
+    (...args) => (made.observation = observeAccount(...args)),
+  );
   openAccountLifetime("user-1");
 });
-afterEach(() => {
+afterEach(async () => {
+  vi.useRealTimers();
+  bus?.close();
+  bus = undefined;
+  await act(async () => tree?.unmount());
+  tree = undefined;
+  await closeAccountLifetime();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
-  closeAccountLifetime();
+  made.store = undefined;
+  made.observation = undefined;
 });
 
 describe("ZeropsAccountData — signing out", () => {
   it("ends the account's data before its registry goes, so a card's release writes nothing", async () => {
     await act(async () => {
       tree = create(
-        createElement(
-          AppAtomRegistryProvider,
-          null,
-          createElement(ZeropsAccountData, null, createElement(DeployCard)),
-        ),
+        createElement(AppAtomRegistryProvider, null, account(createElement(DeployCard))),
       );
     });
     // Sign-out: the lifetime closes (the registry is disposed), then the page unmounts.
@@ -112,8 +121,7 @@ describe("ZeropsAccountData — signing out", () => {
 describe("ZeropsAccountData — another organization shown", () => {
   it("hands the account's reads over to it, never leaving them unset between", async () => {
     shown.organization = { ...shown.organization, id: "org-1" };
-    const app = () =>
-      createElement(AppAtomRegistryProvider, null, createElement(ZeropsAccountData, null));
+    const app = () => createElement(AppAtomRegistryProvider, null, account());
     await act(async () => {
       tree = create(app());
     });
@@ -142,11 +150,9 @@ describe("ZeropsAccountData — an organization's inventory invalidated", () => 
     vi.spyOn(process.hrtime, "bigint").mockImplementation(() =>
       BigInt(Math.round(performance.now() * 1_000_000)),
     );
-    const bus = bindTestInvalidationBus();
+    bus = bindTestInvalidationBus();
     await act(async () => {
-      tree = create(
-        createElement(AppAtomRegistryProvider, null, createElement(ZeropsAccountData, null)),
-      );
+      tree = create(createElement(AppAtomRegistryProvider, null, account()));
     });
     const reread = vi.spyOn(made.observation!, "rereadListing");
     const organization = {
@@ -166,10 +172,10 @@ describe("ZeropsAccountData — an organization's inventory invalidated", () => 
 
     expect(reread.mock.calls).toEqual([["org-1"]]);
     bus.close();
+    bus = undefined;
     await act(async () => {
       tree?.unmount();
     });
     tree = undefined;
-    vi.useRealTimers();
   });
 });

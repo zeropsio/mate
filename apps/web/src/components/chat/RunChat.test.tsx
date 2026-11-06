@@ -35,7 +35,7 @@ import {
   foldSubagentActivities,
   type RuntimeSubagent,
 } from "@t3tools/client-runtime/state/subagentRuntime";
-import { act, StrictMode, type ReactNode } from "react";
+import { act, Fragment, StrictMode, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
@@ -51,6 +51,10 @@ import { useHelperFocus } from "./helperFocus";
 import { SLOT_HOLD_MS, SLOT_MIN_SHOW_MS } from "./liveSlot.logic";
 import { forgetRunFolds, setRunFold } from "./runCard.logic";
 import { foldWork } from "./foldWork";
+import * as foldWorkModule from "./foldWork";
+import * as operationCard from "../../zerops/activity/useOperationCard";
+import * as mates from "../../zerops/useZeropsMates";
+import * as highlightedTokens from "./HighlightedTokens";
 import {
   TimelineRowActivityCtx,
   TimelineRowCtx,
@@ -63,26 +67,31 @@ import { stepOf } from "./workSteps.logic";
 
 // An operation in the live slot reads the platform through its card's hook;
 // the account store it reads is not drawn here, so it reads nothing.
-vi.mock("../../zerops/activity/useOperationCard", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../../zerops/activity/useOperationCard")>()),
-  useOperationCard: () => ({}),
-}));
-
 // Whether the card's Mate is automated: its record is not drawn here, so a test says it.
-const knownMate = vi.hoisted(() => ({ automated: false }));
-vi.mock("../../zerops/useZeropsMates", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("../../zerops/useZeropsMates")>();
-  return {
-    ...actual,
-    useKnownMate: (environmentId: EnvironmentId) =>
-      knownMate.automated
-        ? ({ automated: true } as ReturnType<typeof actual.useKnownMate>)
-        : actual.useKnownMate(environmentId),
-  };
+const knownMate = { automated: false };
+beforeEach(() => {
+  vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+  vi.spyOn(operationCard, "useOperationCard").mockReturnValue(
+    {} as ReturnType<typeof operationCard.useOperationCard>,
+  );
+  const originalKnownMate = mates.useKnownMate;
+  vi.spyOn(mates, "useKnownMate").mockImplementation((environmentId) =>
+    knownMate.automated
+      ? ({ automated: true } as ReturnType<typeof mates.useKnownMate>)
+      : originalKnownMate(environmentId),
+  );
+  // Measured execution is held until the test supplies its completion receipt.
+  vi.spyOn(foldWorkModule, "foldWork").mockImplementation(() => () => undefined);
+  // These conversation tests read the command text, not asynchronous syntax colors.
+  vi.spyOn(highlightedTokens, "HighlightedTokens").mockImplementation(({ code }) => [
+    <Fragment key="code">{code}</Fragment>,
+  ]);
 });
-
-// Measured execution is held until the test supplies its completion receipt.
-vi.mock("./foldWork", () => ({ foldWork: vi.fn(() => () => undefined) }));
+afterEach(() => {
+  knownMate.automated = false;
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
+});
 
 const at = (second: number) => new Date(Date.UTC(2026, 8, 27, 10, 0, second)).toISOString();
 const turnId = TurnId.make("turn-1");

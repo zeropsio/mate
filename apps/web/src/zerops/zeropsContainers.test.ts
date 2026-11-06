@@ -4,42 +4,21 @@ import {
   type ProbeReading,
 } from "@t3tools/client-runtime/zerops/environments";
 import { EnvironmentId } from "@t3tools/contracts";
+import { RegistryContext } from "@effect/atom-react";
 import type { MateLiveView } from "@t3tools/shared/hqMates";
+import { AtomRegistry } from "effect/reactivity";
+import { act, createElement } from "react";
+import { create, type ReactTestRenderer } from "react-test-renderer";
 import { describe, expect, it, vi } from "vite-plus/test";
 
+import { mountHqNavigation } from "./__fixtures__/hqNavigation";
+import * as accountEnvironments from "./accountEnvironments";
 import {
   containerSnapshotWithHq,
   mateServerVersion,
   useTargetContainer,
   useZeropsContainers,
 } from "./zeropsContainers";
-
-/** What the hooks read: each Mate as the account's store holds it, and HQ's Mates in view. */
-const held = vi.hoisted(() => ({
-  links: new Map<string, unknown>(),
-  mates: null as ReadonlyMap<string, unknown> | null,
-}));
-
-vi.mock("react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("react")>()),
-  useMemo: (factory: () => unknown) => factory(),
-}));
-vi.mock("@effect/atom-react", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@effect/atom-react")>()),
-  useAtomValue: () =>
-    Object.fromEntries(
-      [...(held.mates ?? [])].map(([id, mate]) => [
-        id,
-        (mate as MateLiveView).identity?.serverVersion,
-      ]),
-    ),
-}));
-vi.mock("./accountEnvironments", () => ({
-  accountEnvironmentsReady: () => new Promise(() => undefined),
-  currentAccountEnvironments: () => null,
-  useMateLinkValues: () => held.links,
-  useEnvironmentMachines: () => new Map(),
-}));
 
 /** HQ's presence moved at this instant: its identity holds from then on. */
 const SINCE = "2026-10-03T10:00:00.000Z";
@@ -134,15 +113,41 @@ describe("containerSnapshotWithHq: the rows' containers, their versions from HQ 
 describe("the container hooks: a Mate never read runs the version HQ names", () => {
   const KEY = "project-1:zcp";
 
+  function read<T>(hook: () => T): T {
+    const atoms = AtomRegistry.make();
+    const { store } = mountHqNavigation(atoms, "org-1", { mates: { "project-1": told("0.12.0") } });
+    vi.spyOn(accountEnvironments, "useMateLinkValues").mockReturnValue(
+      new Map([[KEY, { container: initialContainer(), watched: false }]]) as unknown as ReturnType<
+        typeof accountEnvironments.useMateLinkValues
+      >,
+    );
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    let shown: T | undefined;
+    let tree: ReactTestRenderer | undefined;
+    function Probe() {
+      shown = hook();
+      return null;
+    }
+    try {
+      act(() => {
+        tree = create(createElement(RegistryContext, { value: atoms }, createElement(Probe)));
+      });
+      if (shown === undefined) throw new Error("container hook did not render");
+      return shown;
+    } finally {
+      act(() => tree?.unmount());
+      store.close();
+      atoms.dispose();
+      vi.restoreAllMocks();
+      vi.unstubAllGlobals();
+    }
+  }
+
   it("useTargetContainer", () => {
-    held.links = new Map([[KEY, { container: initialContainer(), watched: false }]]);
-    held.mates = new Map([["project-1", told("0.12.0")]]);
-    expect(useTargetContainer(KEY).serverVersion).toBe("0.12.0");
+    expect(read(() => useTargetContainer(KEY)).serverVersion).toBe("0.12.0");
   });
 
   it("useZeropsContainers", () => {
-    held.links = new Map([[KEY, { container: initialContainer(), watched: false }]]);
-    held.mates = new Map([["project-1", told("0.12.0")]]);
-    expect(useZeropsContainers().serverVersions.get(KEY)).toBe("0.12.0");
+    expect(read(useZeropsContainers).serverVersions.get(KEY)).toBe("0.12.0");
   });
 });

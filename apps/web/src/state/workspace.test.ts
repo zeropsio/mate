@@ -211,15 +211,15 @@ it("the MCP tab keeps showing its last list while it reads the servers again", a
     agents: [ProviderDriverKind.make("codex")],
   };
   let reads = 0;
-  let askedAgain!: () => void;
+  let reportReread = () => {};
   const rereadStarted = new Promise<void>((resolve) => {
-    askedAgain = resolve;
+    reportReread = resolve;
   });
   const workspaceReads = makeWorkspaceReads(store, {
     // The first read answers; the one a refresh sends never does (a slow Mate).
     read: () => {
       if (++reads === 1) return Effect.succeed(answered);
-      askedAgain();
+      reportReread();
       return Effect.never;
     },
   } as Parameters<typeof makeWorkspaceReads>[1]);
@@ -244,23 +244,27 @@ it("the MCP tab keeps showing its last list while it reads the servers again", a
     }),
   });
   const atom = workspaceQuery("mcp")({ environmentId: EnvironmentId.make("mate"), input: {} });
-  const received = new Promise<void>((resolve) => {
+  let stopListening = () => {};
+  const firstAnswer = new Promise<void>((resolve) => {
     const check = () => {
       if (AsyncResult.value(registry.get(atom))._tag === "Some") resolve();
     };
-    registry.subscribe(atom, check);
+    stopListening = registry.subscribe(atom, check);
     check();
   });
   const unmount = registry.mount(atom);
   try {
-    await received;
+    await firstAnswer;
+    expect(AsyncResult.value(registry.get(atom))._tag).toBe("Some");
     registry.refresh(atom);
     await rereadStarted;
     expect(AsyncResult.value(registry.get(atom))).toMatchObject({ _tag: "Some", value: answered });
   } finally {
+    stopListening();
     unmount();
     workspaceReads.close();
     vcs.close();
+    store.close();
     registry.dispose();
   }
 });

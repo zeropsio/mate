@@ -47,7 +47,7 @@ import { HqEnvironmentId, ProjectId } from "@t3tools/contracts";
 import type { CanonicalHqStructure } from "@t3tools/client-runtime/zerops/hq";
 import { create, type ReactTestRenderer } from "react-test-renderer";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vite-plus/test";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vite-plus/test";
 
 import { service as platformService } from "~/zerops/__fixtures__/platformData";
 import type { ZeropsHistoryState } from "~/zerops/useRepositoryHistory";
@@ -118,10 +118,23 @@ vi.mock("@tanstack/react-router", async (actual) => {
 });
 
 // Render the popup in place so the stop page's project link is visible in SSR.
-vi.mock("../ui/menu", async (actual) => ({
-  ...(await actual<typeof import("../ui/menu")>()),
-  MenuPopup: ({ children }: { children: ReactNode }) => children,
-}));
+const menuParts = await import("../ui/menu");
+beforeEach(() => {
+  vi.spyOn(menuParts, "MenuPopup").mockImplementation(
+    (({ children }: { children: ReactNode }) => children) as typeof menuParts.MenuPopup,
+  );
+});
+const mountedTrees = new Set<ReactTestRenderer>();
+const mountedRegistries = new Set<ReturnType<typeof AtomRegistry.make>>();
+afterEach(() => {
+  act(() => {
+    for (const tree of mountedTrees) tree.unmount();
+  });
+  mountedTrees.clear();
+  for (const registry of mountedRegistries) registry.dispose();
+  mountedRegistries.clear();
+  vi.restoreAllMocks();
+});
 
 const CHECKING = "Checking your access to this project…";
 
@@ -1773,6 +1786,7 @@ describe("environment route target dispatch", () => {
     "The environment route resolves its target before observing a Zerops project.",
     (kind) => {
       const registry = AtomRegistry.make();
+      mountedRegistries.add(registry);
       const id = HqEnvironmentId.make("environment-without-project");
       const structure = {
         apps: [
@@ -1832,6 +1846,7 @@ describe("environment route target dispatch", () => {
               </AccountDataContext.Provider>
             </RegistryContext.Provider>,
           );
+          mountedTrees.add(mounted);
         });
       } catch (cause) {
         failure = cause;
@@ -1905,7 +1920,9 @@ describe("environment route target dispatch", () => {
       expect(platform.projectReads).toEqual([]);
       expect(requests.filter((family) => family !== "hqAppDetail")).toEqual([]);
       act(() => mounted?.unmount());
+      if (mounted !== undefined) mountedTrees.delete(mounted);
       registry.dispose();
+      mountedRegistries.delete(registry);
     },
   );
 });
@@ -1918,6 +1935,7 @@ it("Environment navigation keeps its identity when the target's project name cha
   };
   const open = (name: string) => {
     const registry = AtomRegistry.make();
+    mountedRegistries.add(registry);
     const store = mountRoster(registry, "org", [
       { id: target.projectId, name: `Shop - ${name}`, status: "ACTIVE" },
     ]);
@@ -1987,6 +2005,7 @@ it("Environment navigation keeps its identity when the target's project name cha
           />
         </RegistryContext.Provider>,
       );
+      mountedTrees.add(mounted);
     });
     const button = mounted.root
       .findAllByType("button")
@@ -1994,7 +2013,9 @@ it("Environment navigation keeps its identity when the target's project name cha
     expect(button).toBeDefined();
     act(() => button!.props.onClick());
     act(() => mounted.unmount());
+    mountedTrees.delete(mounted);
     registry.dispose();
+    mountedRegistries.delete(registry);
   };
   platform.navigation = [];
   open("Original project name");
@@ -2196,10 +2217,12 @@ it("A runtime stop opens its recorded environment identity and keeps an unrecord
     mounted = create(
       <ZeropsRuntimeStops stops={stops} deployments={new Map()} onOpen={(id) => opened.push(id)} />,
     );
+    mountedTrees.add(mounted);
   });
   act(() => {
     for (const button of mounted.root.findAllByType("button")) button.props.onClick();
   });
   expect(opened).toEqual(["environment-stage", "unregistered-stage"]);
   act(() => mounted.unmount());
+  mountedTrees.delete(mounted);
 });
