@@ -72,10 +72,12 @@ const PERSON: HqPersonFacts = {
   waitsOnViewer: false,
   unseen: null,
 };
-let revisions = 0;
+const revisions = new WeakMap<AccountStore, number>();
 
 export function seedHqNavigation(store: AccountStore, orgId: string, seed: SeededHq): void {
-  const revision = { kind: "hq", incarnation: "seed", revision: (revisions += 1) } as const;
+  const nextRevision = (revisions.get(store) ?? 0) + 1;
+  revisions.set(store, nextRevision);
+  const revision = { kind: "hq", incarnation: "seed", revision: nextRevision } as const;
   const event = (key: ScopeKey | ReturnType<typeof linkKeys.hq>, streamEvent: StreamEvent) =>
     store.dispatch({ kind: "stream", key, now: 0, event: streamEvent });
   const navigation = [
