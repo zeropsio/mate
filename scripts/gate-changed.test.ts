@@ -26,6 +26,7 @@ import {
 
 const gateRunnerFiles = [
   "gate-changed.ts",
+  "ci-blame.ts",
   "gate-input-scopes.ts",
   "gate-installed-dependencies.ts",
   "state-smoke-cases.ts",

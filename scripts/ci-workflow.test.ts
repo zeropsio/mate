@@ -5,7 +5,7 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import * as NodeVM from "node:vm";
 import { parse as parseYaml } from "yaml";
-import { blameMatrices, stateSmokeMatrix } from "./ci-blame.ts";
+import { blameMatrices, ciSelectionManifest, stateSmokeMatrix } from "./ci-blame.ts";
 import { stateSmokePlan } from "./state-smoke.ts";
 
 const parse = (source: string) => {
@@ -32,6 +32,27 @@ import { checkJobIds } from "./ci-blame.ts";
 import { checkSteps } from "./ci-local.ts";
 
 const root = NodePath.resolve(import.meta.dirname, "..");
+it("CI selection passes one candidate manifest to Changes and State Smoke", () => {
+  const workflow = parse(
+    NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
+  );
+  const selection = workflow.jobs.selection;
+  const plan = selection.steps.find(
+    (step: { name: string }) => step.name === "Plan State Smoke shards",
+  );
+  expect(plan.env.MATE_CI_SELECTION).toBe("${{ steps.blame.outputs.selection_manifest }}");
+  expect(selection.outputs.selection_manifest).toContain(
+    "steps.state_smoke_plan.outputs.selection_manifest",
+  );
+  expect(workflow.jobs.state_smoke.env.MATE_CI_SELECTION).toBe(
+    "${{ needs.selection.outputs.selection_manifest }}",
+  );
+  const changes = workflow.jobs.changes.steps.find(
+    (step: { name: string }) => step.name === "Detect changed areas",
+  );
+  expect(changes.env.MATE_CI_SELECTION).toBe("${{ needs.selection.outputs.selection_manifest }}");
+});
+
 it("CI promotion fails when the selected State Smoke producer is unavailable", () => {
   const { jobs } = parse(
     NodeFS.readFileSync(NodePath.join(root, ".github/workflows/ci.yml"), "utf8"),
@@ -419,6 +440,20 @@ it("Decision: supersede pending main runs; never cancel a running deploy", () =>
 const selectionPath = [NodePath.dirname(process.execPath), "/usr/bin", "/bin"].join(
   NodePath.delimiter,
 );
+const selectionSha = "0123456789012345678901234567890123456789";
+const selectionEnv = {
+  GITHUB_SHA: selectionSha,
+  MATE_CI_SELECTION: JSON.stringify(
+    ciSelectionManifest("refs/heads/main", selectionSha, undefined),
+  ),
+};
+const copySelectionRunner = (directory: string) => {
+  NodeFS.mkdirSync(NodePath.join(directory, "scripts"));
+  NodeFS.copyFileSync(
+    NodePath.join(root, "scripts/ci-blame.ts"),
+    NodePath.join(directory, "scripts/ci-blame.ts"),
+  );
+};
 
 const selectionWorkspace = () => {
   const directory = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-ci-selection-"));
@@ -441,8 +476,50 @@ const selectionWorkspace = () => {
     NodeFS.mkdirSync(NodePath.join(directory, path), { recursive: true });
     NodeFS.writeFileSync(NodePath.join(directory, path, "package.json"), JSON.stringify(pkg));
   }
+  copySelectionRunner(directory);
   return directory;
 };
+
+it("a truncated GitHub change list selects every gated job", () => {
+  const directory = selectionWorkspace();
+  const output = NodePath.join(directory, "output");
+  const bin = NodePath.join(directory, "bin");
+  NodeFS.mkdirSync(bin);
+  NodeFS.writeFileSync(
+    NodePath.join(bin, "gh"),
+    `#!${process.execPath}\nconsole.log(process.argv[3].includes('/pulls/') && !process.argv[3].endsWith('/files') ? process.env.EXPECTED : process.env.ROWS);\n`,
+    { mode: 0o755 },
+  );
+  try {
+    const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
+    for (const [name, pr, expected, rows] of [
+      ["pull request", "42", "2", "docs/one.md"],
+      ["compare", "", "", Array.from({ length: 300 }, (_, i) => `docs/${i}.md`).join("\n")],
+    ]) {
+      NodeFS.writeFileSync(output, "");
+      const result = NodeChildProcess.spawnSync("/bin/bash", ["-c", run], {
+        cwd: directory,
+        encoding: "utf8",
+        env: {
+          PATH: [bin, selectionPath].join(NodePath.delimiter),
+          GITHUB_REPOSITORY: "fixture/mate",
+          GITHUB_OUTPUT: output,
+          BEFORE_SHA: "base",
+          PR_NUMBER: pr!,
+          EXPECTED: expected!,
+          ROWS: rows!,
+          ...selectionEnv,
+        },
+      });
+      expect(result.status, `${name}: ${result.stderr}`).toBe(0);
+      expect
+        .soft(NodeFS.readFileSync(output, "utf8"), name)
+        .toBe("chat=true\nresource_monitor=true\nnative_clients=true\n");
+    }
+  } finally {
+    NodeFS.rmSync(directory, { recursive: true, force: true });
+  }
+});
 
 const scenarioPaths = NodeFS.readdirSync(NodePath.join(root, "apps/web/test/scenarios/areas"), {
   withFileTypes: true,
@@ -468,7 +545,13 @@ it.each([
     const result = NodeChildProcess.spawnSync("/bin/bash", ["-c", selection], {
       cwd: directory,
       encoding: "utf8",
-      env: { PATH: selectionPath, rows: path, PR_NUMBER: "1", GITHUB_OUTPUT: output },
+      env: {
+        PATH: selectionPath,
+        rows: path,
+        PR_NUMBER: "1",
+        GITHUB_OUTPUT: output,
+        ...selectionEnv,
+      },
     });
     expect(result.status, result.stderr).toBe(0);
     expect(
@@ -506,13 +589,28 @@ it.each([
       const result = NodeChildProcess.spawnSync("/bin/bash", ["-c", selection], {
         cwd: directory,
         encoding: "utf8",
-        env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+        env: {
+          PATH: selectionPath,
+          rows: path,
+          PR_NUMBER: "",
+          GITHUB_OUTPUT: output,
+          ...selectionEnv,
+        },
       });
       expect(result.status, result.stderr).toBe(0);
       expect(
         NodeFS.readFileSync(output, "utf8"),
         "ASSERTION: the real Changes selector must scope native clients to their own code and imported packages",
       ).toMatch(new RegExp(`^native_clients=${selected}$`, "mu"));
+      if (path.includes("\t")) {
+        const line = result.stdout.split("\n").find((entry) => entry.startsWith("CI selection: "));
+        expect(JSON.parse(line?.slice("CI selection: ".length) ?? "null")).toMatchObject({
+          version: 1,
+          context: "ci",
+          paths: ["docs/renamed.ts", "apps/mobile/src/removed.ts"],
+          changes: { native_clients: true },
+        });
+      }
       for (const name of ["test_mobile", "mobile_native_static_analysis"]) {
         expect(workflow.jobs[name].needs).toContain("changes");
         expect(workflow.jobs[name].if).toContain("needs.changes.outputs.native_clients != 'false'");
@@ -544,6 +642,7 @@ it("native client selection follows app manifest dependencies without a pinned p
     NodeFS.mkdirSync(NodePath.join(directory, "packages/leftover/node_modules"), {
       recursive: true,
     });
+    copySelectionRunner(directory);
     const run = jobs.changes!.steps.find((step) => step.name === "Detect changed areas")!.run!;
     for (const [path, selected] of [
       ["packages/new-reader/src/index.ts", true],
@@ -556,7 +655,13 @@ it("native client selection follows app manifest dependencies without a pinned p
         {
           cwd: directory,
           encoding: "utf8",
-          env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+          env: {
+            PATH: selectionPath,
+            rows: path,
+            PR_NUMBER: "",
+            GITHUB_OUTPUT: output,
+            ...selectionEnv,
+          },
         },
       );
       expect(result.status, result.stderr).toBe(0);
@@ -584,7 +689,13 @@ it.each([
       {
         cwd: directory,
         encoding: "utf8",
-        env: { PATH: selectionPath, rows: path, PR_NUMBER: "", GITHUB_OUTPUT: output },
+        env: {
+          PATH: selectionPath,
+          rows: path,
+          PR_NUMBER: "",
+          GITHUB_OUTPUT: output,
+          ...selectionEnv,
+        },
       },
     );
     expect(result.status, result.stderr).toBe(0);

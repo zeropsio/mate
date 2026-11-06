@@ -166,7 +166,12 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
     const result = NodeChildProcess.spawnSync("bash", ["-c", step.run], {
       cwd: dir,
       encoding: "utf8",
-      env: { ...process.env, GITHUB_REF: "refs/heads/kh-bisect/abc1234", GITHUB_OUTPUT: output },
+      env: {
+        ...process.env,
+        GITHUB_REF: "refs/heads/kh-bisect/abc1234",
+        GITHUB_SHA: "0123456789012345678901234567890123456789",
+        GITHUB_OUTPUT: output,
+      },
     });
     expect(result.status, result.stderr).toBe(0);
     const outputs = Object.fromEntries(
@@ -183,6 +188,14 @@ it("CI's real selector command publishes its narrowed job and matrix outputs", (
       "ASSERTION: CI runs the selected job through its real command",
     ).toEqual(["test_server"]);
     expect(JSON.parse(outputs.test_server!)).toEqual({ include: [{ shard: 2, total: 3 }] });
+    expect(JSON.parse(outputs.selection_manifest ?? "null")).toMatchObject({
+      version: 1,
+      context: "ci",
+      candidate: "0123456789012345678901234567890123456789",
+      ref: "refs/heads/kh-bisect/abc1234",
+      jobs: ["test_server"],
+      matrices: { test_server: { include: [{ shard: 2, total: 3 }] } },
+    });
   } finally {
     NodeFS.rmSync(dir, { recursive: true, force: true });
   }
