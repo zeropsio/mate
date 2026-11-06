@@ -374,28 +374,6 @@ describe("ZeropsDataPanel", () => {
     });
   });
 
-  it("shows a starting line while idle", () => {
-    feedState.session = undefined;
-    commandSpy.mockImplementation(() => new Promise(() => {}));
-    const tree = render();
-    // Never a state word: the console opening is not the database starting.
-    const starting = findByAttribute(tree, "data-zerops-data-starting");
-    expect(starting?.props.children).toBe("Opening this project's data…");
-  });
-
-  it("issues the listing as a refresh while idle — that first call is what starts the console, and refresh sees services created since it started", async () => {
-    feedState.session = { status: "idle" };
-    commandSpy.mockImplementation(() => Promise.resolve(AsyncResult.success(servicesResponse())));
-
-    render();
-    await flush();
-
-    expect(commandSpy).toHaveBeenCalledWith({
-      environmentId: THREAD_REF.environmentId,
-      input: { kind: "refresh" },
-    });
-  });
-
   // The onboarding run, 2026-10-16: a line, then the row that replaced it, then its words.
   it("while it opens, draws the project's databases in their rows' place, never a line the rows replace", () => {
     feedState.session = undefined;
@@ -447,6 +425,10 @@ describe("ZeropsDataPanel", () => {
 
     render();
     await flush();
+    expect(commandSpy).toHaveBeenCalledWith({
+      environmentId: THREAD_REF.environmentId,
+      input: { kind: "refresh" },
+    });
     feedState.session = { status: "ready", allowWrites: false };
     render();
     await flush();
@@ -566,6 +548,7 @@ describe("ZeropsDataPanel", () => {
       expect(
         findByAttribute(tree, "data-zerops-data-service")!.props["data-zerops-data-service"],
       ).toBe("db1");
+      expect(findByAttribute(tree, "data-zerops-data-service-view-only")).toBeNull();
     });
 
     it("says a project holds no data service rather than drawing an empty panel", async () => {
@@ -592,11 +575,6 @@ describe("ZeropsDataPanel", () => {
       expect(findByAttribute(tree, "data-zerops-data-service-vpn-hint")!.props.children).toBe(
         "Connect over VPN to browse this service.",
       );
-    });
-
-    it("a supported service gets no view-only badge", async () => {
-      const tree = await picker([SERVICE_SUPPORTED]);
-      expect(findByAttribute(tree, "data-zerops-data-service-view-only")).toBeNull();
     });
 
     it("a service with no browse affordance is listed but not openable", async () => {
@@ -730,6 +708,10 @@ describe("ZeropsDataPanel", () => {
         input: { kind: "tree", path: { service: "db1", segments: [] } },
       });
       expect(findComponent(tree, ZeropsDataTree)).not.toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-view-only")).toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-identity")).not.toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-choose")).not.toBeNull();
+      expect(findByAttribute(tree, "data-zerops-data-loaded-search")).not.toBeNull();
     });
 
     it("shows a View only chip next to the breadcrumb for a non-supported service (ClickHouse/Qdrant/streams)", async () => {
@@ -744,12 +726,6 @@ describe("ZeropsDataPanel", () => {
       respond([SERVICE_VIEW_ONLY_TABULAR]);
       const tree = await serviceTab();
       expect(findByAttribute(tree, "data-zerops-data-view-only")).not.toBeNull();
-    });
-
-    it("shows no View only chip for a fully supported service", async () => {
-      respond([SERVICE_SUPPORTED]);
-      const tree = await serviceTab();
-      expect(findByAttribute(tree, "data-zerops-data-view-only")).toBeNull();
     });
 
     it("expanding an unloaded container issues a tree request for its own path", async () => {
@@ -1037,13 +1013,6 @@ describe("ZeropsDataPanel", () => {
       expect(textOf(tree)).toContain("does not offer read-only SQL or filters");
     });
 
-    it("Opening a service shows its identity and a useful inventory before selection.", async () => {
-      respond([SERVICE_SUPPORTED]);
-      const tree = await serviceTab();
-      expect(findByAttribute(tree, "data-zerops-data-identity")).not.toBeNull();
-      expect(findByAttribute(tree, "data-zerops-data-choose")).not.toBeNull();
-      expect(findByAttribute(tree, "data-zerops-data-loaded-search")).not.toBeNull();
-    });
     it("Decision: iteration 1 read-only as proposed; no editing or arbitrary queries.", async () => {
       const tree = await selectOrders();
       expect(textOf(tree)).toContain("Read only");
@@ -2093,32 +2062,6 @@ describe("ZeropsDataPanel", () => {
       expect(grid.props.model.columns[0]).toMatchObject({ dataType: "text", sortable: true });
     });
 
-    it("A failed SQL read shows its own error while retaining the authorized table.", async () => {
-      const tree = await selectOrders((request) =>
-        request.kind === "table"
-          ? { kind: "table", page: tablePage({ rows: [["plain"]] }) }
-          : undefined,
-      );
-      (findByAttribute(tree, "data-zerops-data-query-toggle")!.props.onClick as () => void)();
-      commandSpy.mockImplementation(() =>
-        Promise.resolve(
-          AsyncResult.failure(
-            Cause.fail(new ZeropsDataConsoleError({ code: "timeout", message: "timed out" })),
-          ),
-        ),
-      );
-      findComponent<{ onSubmit: (stmt: string) => void }>(
-        render({ service: "db1", widthForTest: 1200 }),
-        ZeropsDataQuery,
-      )!.props.onSubmit("SELECT 1");
-      await flush();
-      const failed = render({ service: "db1", widthForTest: 1200 });
-      expect(textOf(failed)).toContain("timed out");
-      expect(
-        findComponent<{ model: { rows: unknown } }>(failed, ZeropsDataTable)!.props.model.rows,
-      ).toEqual([["plain"]]);
-    });
-
     it("Retry repeats a failed first SQL statement and labels the retained table's last read.", async () => {
       const tree = await selectOrders((request) =>
         request.kind === "table"
@@ -2139,6 +2082,10 @@ describe("ZeropsDataPanel", () => {
       )!.props.onSubmit("SELECT 42");
       await flush();
       const failed = render({ service: "db1", widthForTest: 1200 });
+      expect(textOf(failed)).toContain("timed out");
+      expect(
+        findComponent<{ model: { rows: unknown } }>(failed, ZeropsDataTable)!.props.model.rows,
+      ).toEqual([["plain"]]);
       expect(textOf(failed)).toContain("Last read");
       commandSpy.mockClear();
       (
@@ -2389,7 +2336,11 @@ describe("ZeropsDataPanel", () => {
       respondTree([SERVICE_OBJECT], {
         [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
       });
-      await serviceTab();
+      const initial = await serviceTab();
+      const treeComponent = findComponent<{
+        readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
+      }>(initial, ZeropsDataTree)!;
+      expect(treeComponent.props.nodeFilter).toBeUndefined();
       const tree = render({ service: "db1", widthForTest: 1200 });
 
       const table = findComponent<{
@@ -2409,18 +2360,6 @@ describe("ZeropsDataPanel", () => {
         ["photo.png", "2 KB", "", "image/png"],
         ["uploads/", "Unknown", "", ""],
       ]);
-    });
-
-    it("lists objects and prefixes together in the shared inventory", async () => {
-      respondTree([SERVICE_OBJECT], {
-        [ROOT_KEY]: { kind: "tree", nodes: [PREFIX_NODE, BLOB_NODE], nextCursor: "" },
-      });
-      const tree = await serviceTab();
-
-      const treeComponent = findComponent<{
-        readonly nodeFilter?: (node: ZeropsDataConsoleNode) => boolean;
-      }>(tree, ZeropsDataTree)!;
-      expect(treeComponent.props.nodeFilter).toBeUndefined();
     });
 
     it("clicking a prefix row in the object-storage grid descends — issues a tree request for its own path", async () => {
@@ -2600,52 +2539,17 @@ describe("ZeropsDataPanel", () => {
         const status = findByAttribute(tree, "data-zerops-data-document-search-status");
         expect(status).not.toBeNull();
         expect(findByAttribute(tree, "data-zerops-data-document-search-back")).not.toBeNull();
-      });
-
-      it("Back to index restores the plain listing", async () => {
-        respondTree(
-          [SERVICE_DOCUMENT_SEARCHABLE],
-          { [ROOT_KEY]: { kind: "tree", nodes: [DOC_A], nextCursor: "" } },
-          () => ({
-            kind: "search",
-            nodes: [
-              {
-                name: "order-99",
-                kind: "blob",
-                path: { service: "db1", segments: ["order-99"] },
-                hasChildren: false,
-                meta: {},
-              },
-            ],
-            nextCursor: "",
-          }),
-        );
-        await serviceTab();
-        let tree = render({ service: "db1", widthForTest: 1200 });
-        const input = findByAttribute(tree, "data-zerops-data-document-search")!;
-        (input.props.onChange as (event: { target: { value: string } }) => void)({
-          target: { value: "x" },
-        });
-        tree = render({ service: "db1", widthForTest: 1200 });
-        (
-          findByAttribute(tree, "data-zerops-data-document-search")!.props.onKeyDown as (event: {
-            key: string;
-          }) => void
-        )({ key: "Enter" });
-        await flush();
-        tree = render({ service: "db1", widthForTest: 1200 });
 
         (
           findByAttribute(tree, "data-zerops-data-document-search-back")!.props
             .onClick as () => void
         )();
         tree = render({ service: "db1", widthForTest: 1200 });
-
         expect(findByAttribute(tree, "data-zerops-data-document-search-status")).toBeNull();
-        const table = findComponent<{
+        const restored = findComponent<{
           readonly model: { readonly rows: ReadonlyArray<ReadonlyArray<unknown>> };
         }>(tree, ZeropsDataTable)!;
-        expect(table.props.model.rows).toEqual([["order-1"]]);
+        expect(restored.props.model.rows).toEqual([["order-1"]]);
       });
 
       it("drops a search reply that lands after the user has already selected a different node", async () => {

@@ -6,6 +6,7 @@ import {
   type ServerProvider,
 } from "@t3tools/contracts";
 import { createModelCapabilities } from "@t3tools/shared/model";
+import * as Clock from "effect/Clock";
 import * as DateTime from "effect/DateTime";
 import * as Deferred from "effect/Deferred";
 import * as Duration from "effect/Duration";
@@ -13,7 +14,9 @@ import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as PubSub from "effect/PubSub";
+import * as Queue from "effect/Queue";
 import * as Ref from "effect/Ref";
+import * as Scheduler from "effect/Scheduler";
 import * as Stream from "effect/Stream";
 import { TestClock } from "effect/testing";
 
@@ -349,19 +352,24 @@ describe("makeManagedServerProvider", () => {
       Effect.gen(function* () {
         const settingsRef = yield* Ref.make<TestSettings>({ enabled: true });
         const settingsChanges = yield* PubSub.unbounded<TestSettings>();
+        const settingsSubscription = yield* PubSub.subscribe(settingsChanges);
         const checkCalls = yield* Ref.make(0);
+        const initialCheckStarted = yield* Deferred.make<void>();
         const releaseInitialCheck = yield* Deferred.make<void>();
         const releaseSettingsCheck = yield* Deferred.make<void>();
         const provider = yield* makeManagedServerProvider<TestSettings>({
           resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
           getSettings: Ref.get(settingsRef),
-          streamSettings: Stream.fromPubSub(settingsChanges),
+          streamSettings: Stream.fromSubscription(settingsSubscription),
           haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
           initialSnapshot: () => Effect.succeed(initialSnapshot),
           checkProvider: Ref.updateAndGet(checkCalls, (count) => count + 1).pipe(
             Effect.flatMap((count) =>
               count === 1
-                ? Deferred.await(releaseInitialCheck).pipe(Effect.as(refreshedSnapshot))
+                ? Deferred.succeed(initialCheckStarted, undefined).pipe(
+                    Effect.andThen(Deferred.await(releaseInitialCheck)),
+                    Effect.as(refreshedSnapshot),
+                  )
                 : Deferred.await(releaseSettingsCheck).pipe(Effect.as(refreshedSnapshotSecond)),
             ),
           ),
@@ -370,9 +378,10 @@ describe("makeManagedServerProvider", () => {
 
         const updatesFiber = yield* Stream.take(provider.streamChanges, 2).pipe(
           Stream.runCollect,
-          Effect.forkChild,
+          Effect.forkChild({ startImmediately: true }),
+          Effect.provideService(Scheduler.PreventSchedulerYield, true),
         );
-        yield* Effect.yieldNow;
+        yield* Deferred.await(initialCheckStarted);
 
         yield* Deferred.succeed(releaseInitialCheck, undefined);
         yield* Ref.set(settingsRef, { enabled: false });
@@ -393,30 +402,57 @@ describe("makeManagedServerProvider", () => {
     Effect.scoped(
       Effect.gen(function* () {
         const settingsChanges = yield* PubSub.unbounded<TestSettings>();
+        const settingsSubscription = yield* PubSub.subscribe(settingsChanges);
         const checkCalls = yield* Ref.make(0);
-        const initialCheckDone = yield* Deferred.make<void>();
         const enrichmentCalls = yield* Ref.make(0);
+        const initialEnrichmentDone = yield* Deferred.make<void>();
+        const changedEnrichmentDone = yield* Deferred.make<void>();
+        const sleeps = yield* Queue.unbounded<{
+          readonly duration: Duration.Duration;
+          readonly release: Deferred.Deferred<void>;
+        }>();
+        const clock = yield* Clock.Clock;
         yield* makeManagedServerProvider<TestSettings>({
           resolveMaintenance: () => Effect.succeed(maintenanceCapabilities),
           getSettings: Effect.succeed({ enabled: true }),
-          streamSettings: Stream.fromPubSub(settingsChanges),
+          streamSettings: Stream.fromSubscription(settingsSubscription),
           haveSettingsChanged: (previous, next) => previous.enabled !== next.enabled,
           checkProviderOnSettingsChange: () => false,
           refreshOnInterval: false,
           initialSnapshot: () => Effect.succeed(initialSnapshot),
           checkProvider: Ref.updateAndGet(checkCalls, (count) => count + 1).pipe(
-            Effect.tap(() => Deferred.succeed(initialCheckDone, undefined).pipe(Effect.ignore)),
             Effect.as(refreshedSnapshot),
           ),
-          enrichSnapshot: () => Ref.update(enrichmentCalls, (count) => count + 1),
+          enrichSnapshot: ({ settings }) =>
+            Ref.update(enrichmentCalls, (count) => count + 1).pipe(
+              Effect.andThen(
+                Deferred.succeed(
+                  settings.enabled ? initialEnrichmentDone : changedEnrichmentDone,
+                  undefined,
+                ),
+              ),
+              Effect.asVoid,
+            ),
           refreshInterval: "1 second",
-        });
+        }).pipe(
+          Effect.provideService(Clock.Clock, {
+            ...clock,
+            sleep: (duration) =>
+              Effect.gen(function* () {
+                const release = yield* Deferred.make<void>();
+                yield* Queue.offer(sleeps, { duration, release });
+                yield* Deferred.await(release);
+              }),
+          }),
+        );
 
-        yield* Deferred.await(initialCheckDone);
+        yield* Deferred.await(initialEnrichmentDone);
         yield* PubSub.publish(settingsChanges, { enabled: false });
-        yield* Effect.yieldNow;
-        yield* TestClock.adjust("1 second");
-        yield* Effect.yieldNow;
+        yield* Deferred.await(changedEnrichmentDone);
+        const interval = yield* Queue.take(sleeps);
+        assert.strictEqual(Duration.toMillis(interval.duration), 1_000);
+        yield* Deferred.succeed(interval.release, undefined);
+        yield* Queue.take(sleeps);
 
         assert.strictEqual(yield* Ref.get(checkCalls), 1);
         assert.strictEqual(yield* Ref.get(enrichmentCalls), 2);

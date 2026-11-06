@@ -7,7 +7,6 @@ import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { ProviderDriverKind, ProviderInstanceId, type ServerProvider } from "@t3tools/contracts";
 import { HostProcessPlatform } from "@t3tools/shared/hostProcess";
-import * as Crypto from "effect/Crypto";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
@@ -33,16 +32,14 @@ import {
   type ProviderMaintenanceCapabilities,
 } from "./providerMaintenance.ts";
 import { symlinksSupported } from "@t3tools/shared/testing/symlinks";
+import { afterAll, afterEach, beforeAll } from "vite-plus/test";
 
 const driver = (value: string) => ProviderDriverKind.make(value);
 // These write `#!/bin/sh` stubs and evaluate them with darwin/linux path
 // semantics; a Windows temp path cannot be split on `:`.
 const windowsHost = HostProcessPlatform.defaultValue() === "win32";
-const makeTempDir = (name: string) =>
-  Crypto.Crypto.pipe(
-    Effect.flatMap((crypto) => crypto.randomUUIDv4),
-    Effect.map((id) => NodePath.join(NodeOS.tmpdir(), `${name}-${id}`)),
-  );
+let fixtureRoot: string;
+const makeTempDir = (name: string) => Effect.succeed(NodePath.join(fixtureRoot, name));
 const isNativeTestCommandPath =
   (expectedPathSegment: string) =>
   (commandPath: string): boolean =>
@@ -124,6 +121,27 @@ function stdoutSpawner(onSpawn: (command: string, args: ReadonlyArray<string>) =
 }
 
 it.layer(NodeServices.layer)("providerMaintenance", (it) => {
+  beforeAll(() => {
+    fixtureRoot = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-provider-maintenance-"));
+  });
+
+  afterEach(() => {
+    for (const directory of NodeFS.readdirSync(fixtureRoot, { withFileTypes: true })) {
+      const path = NodePath.join(fixtureRoot, directory.name);
+      if (!directory.isDirectory()) {
+        NodeFS.rmSync(path, { recursive: true, force: true });
+        continue;
+      }
+      for (const entry of NodeFS.readdirSync(path)) {
+        NodeFS.rmSync(NodePath.join(path, entry), { recursive: true, force: true });
+      }
+    }
+  });
+
+  afterAll(() => {
+    NodeFS.rmSync(fixtureRoot, { recursive: true, force: true });
+  });
+
   it.effect("reads cached versions through the injectable cache reference", () =>
     resolveLatestProviderVersion(manualPackageTool).pipe(
       Effect.provideService(
@@ -792,26 +810,30 @@ it.layer(NodeServices.layer)("providerMaintenance", (it) => {
   it.effect("starts a fresh read instead of joining the resolution already running", () =>
     Effect.gen(function* () {
       const releaseStale = yield* Deferred.make<void>();
+      const staleStarted = yield* Deferred.make<void>();
       let resolutions = 0;
       const resolve = yield* makeCachedProviderMaintenanceResolution(
         Effect.suspend(() => {
           resolutions += 1;
           return resolutions === 1
-            ? Deferred.await(releaseStale).pipe(Effect.as(manualPackageTool))
+            ? Deferred.succeed(staleStarted, undefined).pipe(
+                Effect.andThen(Deferred.await(releaseStale)),
+                Effect.as(manualPackageTool),
+              )
             : Effect.succeed(manualPackageTool);
         }),
       );
 
       // An advisory read starts a resolution that is still running when the
       // user clicks Update; the fresh read must not wait on or reuse it.
-      const advisory = yield* Effect.forkChild(resolve(), { startImmediately: true });
-      const fresh = yield* Effect.forkChild(resolve({ fresh: true }), { startImmediately: true });
+      const advisory = yield* Effect.forkChild(resolve());
+      yield* Deferred.await(staleStarted);
+      const fresh = yield* Effect.forkChild(resolve({ fresh: true }));
       // The fresh read runs its own resolution, so it finishes while the stale
       // one is still waiting.
-      expect(resolutions).toBe(2);
-      expect(fresh.pollUnsafe()).toBeDefined();
-      yield* Deferred.succeed(releaseStale, undefined);
       expect(yield* Fiber.join(fresh)).toEqual(manualPackageTool);
+      expect(resolutions).toBe(2);
+      yield* Deferred.succeed(releaseStale, undefined);
       yield* Fiber.join(advisory);
     }),
   );

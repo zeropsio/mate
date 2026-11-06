@@ -1,14 +1,14 @@
 // @effect-diagnostics nodeBuiltinImport:off
 import * as NodeFS from "node:fs";
-import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 
 import * as NodeServices from "@effect/platform-node/NodeServices";
-import { assert, describe, it } from "@effect/vitest";
+import { afterEach, assert, describe, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
 
 import * as ServerConfig from "../../config.ts";
+import { testTempDir } from "../../testing/testTempDir.ts";
 import * as CrewHome from "./CrewHome.ts";
 
 const CREW_YAML = [
@@ -21,23 +21,27 @@ const CREW_YAML = [
   "",
 ].join("\n");
 
+const workspace = testTempDir("t3-crew-home-");
+
+afterEach(() => {
+  for (const file of ["crew.yaml", "brief.md", "jobs/backend.md", "notes.txt"]) {
+    NodeFS.rmSync(NodePath.join(workspace, ".mate", "crew", CrewHome.CREW_ID, file), {
+      force: true,
+    });
+  }
+});
+
 const withHome = <A, E>(body: (workspace: string) => Effect.Effect<A, E, CrewHome.CrewHome>) =>
-  Effect.gen(function* () {
-    const workspace = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "t3-crew-home-"));
-    return yield* body(workspace).pipe(
-      Effect.provide(
-        CrewHome.layer.pipe(
-          Layer.provide(
-            ServerConfig.layer({ cwd: workspace } as ServerConfig.ServerConfig["Service"]),
-          ),
-          Layer.provide(NodeServices.layer),
+  body(workspace).pipe(
+    Effect.provide(
+      CrewHome.layer.pipe(
+        Layer.provide(
+          ServerConfig.layer({ cwd: workspace } as ServerConfig.ServerConfig["Service"]),
         ),
+        Layer.provide(NodeServices.layer),
       ),
-      Effect.ensuring(
-        Effect.sync(() => NodeFS.rmSync(workspace, { recursive: true, force: true })),
-      ),
-    );
-  });
+    ),
+  );
 
 describe("CrewHome", () => {
   it.effect("lives in the workspace under .mate/crew/main", () =>

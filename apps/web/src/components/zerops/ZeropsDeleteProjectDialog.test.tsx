@@ -97,13 +97,9 @@ describe("ZeropsDeleteProjectDialog", () => {
     expect(press.onClose).not.toHaveBeenCalled();
   });
 
-  it("asks about the project by its name", () => {
-    mount();
-    expect(mock.form).toMatchObject({ name: "mate-rig-e2e-a", pending: false, error: null });
-  });
-
   it("stays open and pending until HQ answers, then closes", async () => {
     const press = mount();
+    expect(mock.form).toMatchObject({ name: "mate-rig-e2e-a", pending: false, error: null });
     act(() => {
       mock.form!.onConfirm();
     });

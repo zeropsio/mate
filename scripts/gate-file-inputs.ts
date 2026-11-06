@@ -66,6 +66,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/assets/ContentAssetHttp.test.ts": [],
   "apps/server/src/assets/ContentAssets.test.ts": [],
   "apps/server/src/assets/ConversationMedia.test.ts": [],
+  "apps/server/src/assets/EngineImages.test.ts": [],
   "apps/server/src/assets/PersistentAssets.test.ts": [],
   "apps/server/src/atomicWrite.test.ts": [],
   "apps/server/src/auth/RpcAuthorization.clientScopes.test.ts": [
@@ -101,6 +102,7 @@ export const fileReadInputs: Readonly<Record<string, ReadonlyArray<string>>> = {
   "apps/server/src/provider/acp/AcpJsonRpcConnection.test.ts": [],
   "apps/server/src/provider/acp/AntigravityAcpSupport.test.ts": [],
   "apps/server/src/provider/antigravityAuthSupport.test.ts": [],
+  "apps/server/src/provider/providerMaintenance.test.ts": [],
   "apps/server/src/provider/userInputAttachments.test.ts": [],
   "apps/server/src/resourceTelemetry/DesktopTelemetryReceiver.test.ts": [],
   "apps/server/src/server.test.ts": [],

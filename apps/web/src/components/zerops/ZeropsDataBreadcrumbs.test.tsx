@@ -21,17 +21,13 @@ function findByAttribute(tree: unknown, attribute: string) {
 const PATH: ZeropsDataConsolePath = { service: "db1", segments: ["public", "orders"] };
 
 describe("ZeropsDataBreadcrumbs", () => {
-  it("renders one crumb per path prefix, the last one inert", () => {
-    const tree = ZeropsDataBreadcrumbs({ path: PATH, onNavigate: vi.fn() });
+  it("a crumb click navigates to that prefix", () => {
+    const onNavigate = vi.fn();
+    const tree = ZeropsDataBreadcrumbs({ path: PATH, onNavigate });
     expect(collect(tree, "data-zerops-data-breadcrumb")).toEqual(["db1", "public"]);
     expect(findByAttribute(tree, "data-zerops-data-breadcrumb-current")!.props.children).toBe(
       "orders",
     );
-  });
-
-  it("a crumb click navigates to that prefix", () => {
-    const onNavigate = vi.fn();
-    const tree = ZeropsDataBreadcrumbs({ path: PATH, onNavigate });
     const crumb = visitElements(
       tree,
       (element) => element.props["data-zerops-data-breadcrumb"] === "public",

@@ -1,3 +1,6 @@
+// @effect-diagnostics nodeBuiltinImport:off - the engine reuses one test database path.
+import * as NodeFS from "node:fs";
+
 import { assert, describe, it } from "@effect/vitest";
 import * as Cause from "effect/Cause";
 import * as Effect from "effect/Effect";
@@ -35,9 +38,15 @@ const ask = (command: CrewOwnerCommand, principal: Principal = KAREL) =>
 const press = (input: Extract<CrewOwnerCommand, { _tag: "Press" }>["press"], extra = {}) =>
   ask({ _tag: "Press", press: input, door: { refusal: null }, ...extra });
 
+const database = tempDb("crew-owner");
+
 const withEngine = <A, E>(effect: Effect.Effect<A, E, Conversations | SqlClient.SqlClient>) =>
   Effect.scoped(
-    effect.pipe(Effect.provide(engineLayer(tempDb("crew-owner"), new Map(), {}, [crewDomain]))),
+    Effect.sync(() => NodeFS.writeFileSync(database, "")).pipe(
+      Effect.andThen(
+        effect.pipe(Effect.provide(engineLayer(database, new Map(), {}, [crewDomain]))),
+      ),
+    ),
   );
 
 describe("the crew owner on the engine", () => {

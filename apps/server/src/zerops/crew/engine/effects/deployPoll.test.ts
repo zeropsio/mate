@@ -36,27 +36,14 @@ const deploy = (status: string) => ({
 
 describe("crew.deployPoll", () => {
   it.effect("a deploy still running on the host is running; one that ended is settled", () => {
-    const { provide } = platform([[deploy("RUNNING")], [deploy("FINISHED")]]);
-    return Effect.gen(function* () {
-      const handler = yield* makeDeployPoll;
-      const running = okValue(yield* attempt(handler, row()));
-      const settled = okValue(yield* attempt(handler, row()));
-      assert.deepStrictEqual(
-        { running, settled },
-        { running: { state: "running" }, settled: { state: "settled" } },
-      );
-    }).pipe(provide);
-  });
-
-  it.effect("a poll the restart cut asks the platform again", () => {
     const { state, provide } = platform([[deploy("RUNNING")], [deploy("FINISHED")]]);
     return Effect.gen(function* () {
       const handler = yield* makeDeployPoll;
-      yield* attempt(handler, row(1));
-      const again = okValue(yield* attempt(handler, row(2)));
+      const running = okValue(yield* attempt(handler, row(1)));
+      const settled = okValue(yield* attempt(handler, row(2)));
       assert.deepStrictEqual(
-        { again, reads: state.reads },
-        { again: { state: "settled" }, reads: 2 },
+        { running, settled, reads: state.reads },
+        { running: { state: "running" }, settled: { state: "settled" }, reads: 2 },
       );
     }).pipe(provide);
   });

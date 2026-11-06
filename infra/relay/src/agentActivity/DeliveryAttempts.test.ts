@@ -1,7 +1,10 @@
 import * as NodeCryptoLayer from "@effect/platform-node/NodeCrypto";
 import { describe, expect, it } from "@effect/vitest";
+import type { SQL } from "drizzle-orm";
+import { PgDialect } from "drizzle-orm/pg-core";
 import * as Effect from "effect/Effect";
 import * as Layer from "effect/Layer";
+import * as TestClock from "effect/testing/TestClock";
 
 import * as RelayDb from "../db.ts";
 import { relayDeliveryAttempts } from "../persistence/schema.ts";
@@ -175,7 +178,7 @@ describe("DeliveryAttempts", () => {
             limit: () =>
               Effect.succeed([
                 {
-                  createdAt: "2999-01-01T00:00:00.000Z",
+                  createdAt: "2026-05-25T11:59:59.000Z",
                   apnsStatus: null,
                   apnsReason: null,
                   apnsId: null,
@@ -185,9 +188,15 @@ describe("DeliveryAttempts", () => {
           }),
         }),
       }),
+      update: () => ({
+        set: () => ({
+          where: () => ({ returning: () => Effect.succeed([{ id: "attempt-1" }]) }),
+        }),
+      }),
     } as unknown as RelayDb.RelayDb["Service"];
 
     return Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-05-25T12:00:00.000Z"));
       const attempts = yield* DeliveryAttempts.DeliveryAttempts;
       const claimed = yield* attempts.claimSourceJob({
         userId: "user-1",
@@ -212,6 +221,7 @@ describe("DeliveryAttempts", () => {
 
   it.effect("reclaims source jobs after the claim lease expires", () => {
     const updatedValues: Array<Record<string, unknown>> = [];
+    const whereClauses: Array<SQL> = [];
     const fakeDb = {
       insert: () => ({
         values: () => ({
@@ -226,7 +236,7 @@ describe("DeliveryAttempts", () => {
             limit: () =>
               Effect.succeed([
                 {
-                  createdAt: "1969-12-31T23:00:00.000Z",
+                  createdAt: "2026-05-25T11:00:00.000Z",
                   apnsStatus: null,
                   apnsReason: null,
                   apnsId: null,
@@ -240,15 +250,17 @@ describe("DeliveryAttempts", () => {
         set: (values: Record<string, unknown>) => {
           updatedValues.push(values);
           return {
-            where: () => ({
-              returning: () => Effect.succeed([{ id: "attempt-1" }]),
-            }),
+            where: (clause: SQL) => {
+              whereClauses.push(clause);
+              return { returning: () => Effect.succeed([{ id: "attempt-1" }]) };
+            },
           };
         },
       }),
     } as unknown as RelayDb.RelayDb["Service"];
 
     return Effect.gen(function* () {
+      yield* TestClock.setTime(Date.parse("2026-05-25T12:00:00.000Z"));
       const attempts = yield* DeliveryAttempts.DeliveryAttempts;
       const claimed = yield* attempts.claimSourceJob({
         userId: "user-1",
@@ -261,7 +273,18 @@ describe("DeliveryAttempts", () => {
       });
 
       expect(claimed).toBe("claimed");
-      expect(updatedValues[0]?.createdAt).toEqual(expect.any(String));
+      expect(updatedValues[0]?.createdAt).toBe("2026-05-25T12:00:00.000Z");
+      expect(whereClauses).toHaveLength(1);
+      const query = new PgDialect().sqlToQuery(whereClauses[0]!);
+      expect(query.sql.replace(/[()]/g, "")).toBe(
+        '"relay_delivery_attempts"."source_job_id" = $1 and ' +
+          '"relay_delivery_attempts"."created_at" = $2 and ' +
+          '"relay_delivery_attempts"."apns_status" is null and ' +
+          '"relay_delivery_attempts"."apns_reason" is null and ' +
+          '"relay_delivery_attempts"."apns_id" is null and ' +
+          '"relay_delivery_attempts"."transport_error" is null',
+      );
+      expect(query.params).toEqual(["job-1", "2026-05-25T11:00:00.000Z"]);
     }).pipe(
       Effect.provide(
         DeliveryAttempts.layer.pipe(
@@ -274,7 +297,7 @@ describe("DeliveryAttempts", () => {
 
   it.effect("completes a claimed source job with the APNs outcome", () => {
     const updatedValues: Array<Record<string, unknown>> = [];
-    const whereClauses: Array<unknown> = [];
+    const whereClauses: Array<SQL> = [];
     const fakeDb = {
       update: (table: unknown) => {
         expect(table).toBe(relayDeliveryAttempts);
@@ -282,7 +305,7 @@ describe("DeliveryAttempts", () => {
           set: (values: Record<string, unknown>) => {
             updatedValues.push(values);
             return {
-              where: (clause: unknown) => {
+              where: (clause: SQL) => {
                 whereClauses.push(clause);
                 return Effect.void;
               },
@@ -302,6 +325,10 @@ describe("DeliveryAttempts", () => {
       });
 
       expect(whereClauses).toHaveLength(1);
+      expect(new PgDialect().sqlToQuery(whereClauses[0]!)).toEqual({
+        sql: '"relay_delivery_attempts"."source_job_id" = $1',
+        params: ["job-1"],
+      });
       expect(updatedValues).toEqual([
         {
           createdAt: expect.any(String),
