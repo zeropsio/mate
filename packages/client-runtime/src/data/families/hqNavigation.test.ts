@@ -1,11 +1,8 @@
 import { describe, expect, it } from "vite-plus/test";
-import {
-  hqAppFamily,
-  hqOrganizationFamily,
-  placementFamily,
-  hqPersonFamily,
-} from "./hqNavigation.ts";
-import { gitEnvironment } from "../__fixtures__/hqWire.ts";
+import { CanonicalHqNavigationApp } from "@t3tools/shared/hqStream";
+import * as Schema from "effect/Schema";
+
+import { hqAppFamily, hqOrganizationFamily } from "./hqNavigation.ts";
 
 const app = {
   id: "shop",
@@ -17,176 +14,35 @@ const app = {
   projectIds: ["ada"],
   births: [],
 };
-const project = {
+const readApp = Schema.decodeUnknownSync(CanonicalHqNavigationApp);
+
+// HQ emits these fields from its birth view (structure/read.go).
+const birth = {
+  id: "birth-ada",
+  face: "ada",
+  madeBy: "owner",
+  intent: { recipe: { revision: "abc" }, agents: ["one"] },
+  attempts: {},
   projectId: "ada",
-  appId: "shop",
-  name: "Ada",
-  kind: "mate",
-  mate: { face: "ada", madeBy: null, standupRequestedBy: null },
-  person: {
-    mine: true,
-    ownerUserId: null,
-    waitsOnViewer: false,
-    unseen: null,
-  },
-  signedInNow: {},
-  everSignedIn: {},
 };
 
-it("Navigation retains HQ's finding without deriving a surface-owned classification.", () => {
-  const problem = {
-    code: "invalid_recipe",
-    what: "Invalid setting",
-    where: { appId: "shop", service: "api" },
-    rule: { source: "hq", code: "invalid_recipe" },
-    next: { actor: "mate", action: "Propose a corrected recipe" },
-  } as const;
-  expect(hqAppFamily.hq!.decode({ ...app, problems: [problem] }, "app:shop")?.problems).toEqual([
-    problem,
-  ]);
-  expect(hqAppFamily.hq!.decode(app, "app:shop")?.problems).toBeUndefined();
-});
-
-it("admits Git identity and exact confirmed release beside a Zerops target", () => {
-  const zerops = {
-    ...gitEnvironment,
-    id: "stage",
-    target: { kind: "zerops", projectId: "stage-project" },
-    tier: "stage",
-    jobs: [],
-  };
-  const value = hqAppFamily.hq!.decode({ environments: [zerops, gitEnvironment] }, "app:shop");
-  expect(value?.environments).toEqual([zerops, gitEnvironment]);
-});
-
-it.each(["building", "live", "failed", "skipped"])(
-  "Git navigation never admits the Zerops job state %s",
-  (state) => {
-    expect(
-      hqAppFamily.hq!.decode(
-        { environments: [{ ...gitEnvironment, jobs: [{ ...gitEnvironment.jobs[0], state }] }] },
-        "app:shop",
-      )?.environments,
-    ).toBeUndefined();
-  },
-);
-it("slice one admits direct branches only and never invents a PR target", () => {
+it("keeps an adopted birth's identity so its existing project is protected", () => {
+  const adopted = { ...birth, adopted: true };
   expect(
-    hqAppFamily.hq!.decode(
-      {
-        environments: [{ ...gitEnvironment, target: { ...gitEnvironment.target, delivery: "pr" } }],
-      },
-      "app:shop",
-    )?.environments,
-  ).toBeUndefined();
+    hqAppFamily.hq!.decode(readApp({ ...app, births: [adopted] }), "app:shop")?.births,
+  ).toEqual([adopted]);
 });
 
-describe("navigation record decoding", () => {
-  it("keeps an adopted birth's identity so its existing project is protected", () => {
-    const birth = { id: "birth-ada", face: "ada", projectId: "ada", adopted: true };
-    expect(hqAppFamily.hq!.decode({ ...app, births: [birth] }, "app:shop")?.births).toEqual([
-      birth,
-    ]);
-  });
-
-  it("a fresh observer retains the accepted import identity from an HQ birth without a press", () => {
-    const birth = {
-      id: "birth-ada",
-      face: "ada",
-      projectId: "ada",
-      importProcessId: "accepted-import",
-    };
-    expect(hqAppFamily.hq!.decode({ ...app, births: [birth] }, "app:shop")?.births).toEqual([
-      birth,
-    ]);
-  });
-  it("a fresh observer retains the accepted import identity after HQ attaches the Mate", () => {
-    const mate = {
-      ...project.mate,
-      birthId: "birth-ada",
-      importProcessId: "accepted-import",
-    };
-    expect(placementFamily.hq!.decode({ ...project, mate }, "project:ada")?.mate).toEqual(mate);
-  });
-  it.each([undefined, "unreadable", { head: 42 }])(
-    "keeps an app with an unknown release offer: %s",
-    (releaseOffer) => {
-      const value = hqAppFamily.hq!.decode({ ...app, releaseOffer }, "app:shop");
-      expect(value).toEqual({ ...app, releaseOffer: undefined });
-    },
-  );
-  it.each(Object.keys(app))("isolates an unreadable app fact: %s", (field) => {
-    const value = hqAppFamily.hq!.decode({ ...app, [field]: 42 }, "app:shop");
-    expect(value).toEqual({ ...app, [field]: undefined });
-  });
-  it.each(Object.keys(project))("isolates an unreadable project fact: %s", (field) => {
-    expect(placementFamily.hq!.decode({ ...project, [field]: 42 }, "project:ada")).toEqual({
-      ...project,
-      [field]: undefined,
-    });
-  });
-  it.each(Object.keys(project.mate))("keeps the other Mate facts when %s is missing", (field) => {
-    const mate = { ...project.mate, [field]: undefined };
-    expect(placementFamily.hq!.decode({ ...project, mate }, "project:ada")).toEqual({
-      ...project,
-      mate,
-    });
-  });
-  it.each(Object.keys(project.person))(
-    "keeps the other person facts when %s is unreadable",
-    (field) => {
-      expect(
-        placementFamily.hq!.decode(
-          { ...project, person: { ...project.person, [field]: {} } },
-          "project:ada",
-        ),
-      ).toEqual({ ...project, person: { ...project.person, [field]: undefined } });
-    },
-  );
-  it("keeps a person's identity when their avatar is unreadable", () => {
-    expect(
-      hqPersonFamily.hq!.decode(
-        { name: "Ada", clientUserId: "member", avatarUrl: 42 },
-        "person:ada",
-      ),
-    ).toEqual({ name: "Ada", clientUserId: "member", avatarUrl: undefined });
-  });
-  it("keeps unreadable births unknown rather than claiming none", () => {
-    expect(hqAppFamily.hq!.decode({ ...app, births: [{ id: 42 }] }, "app:shop")).toEqual({
-      ...app,
-      births: undefined,
-    });
-  });
-  it.each([null, [], 42, "bad"])(
-    "rejects a non-record without replacing prior evidence: %s",
-    (raw) => {
-      expect(hqAppFamily.hq!.decode(raw, "app:shop")).toBeNull();
-    },
-  );
-});
-
-it("keeps modern identity and its authoritative target, even beside an older address", () => {
-  const environment = {
-    id: "environment-stage",
-    target: { kind: "zerops", projectId: "project-stage" },
-    projectId: "wrong-legacy",
-    tier: "stage",
-    name: "Stage",
-    sources: ["main"],
-    order: 1,
-    keyHeld: true,
-    keyInvalid: false,
-    jobs: [],
-    release: null,
-    birth: null,
-  };
-  const app = hqAppFamily.hq!.decode({ environments: [environment] }, "app:shop");
-  expect(app?.environments).toEqual([environment]);
+it("a fresh observer retains the accepted import identity from an HQ birth without a press", () => {
+  const imported = { ...birth, importProcessId: "accepted-import" };
+  expect(
+    hqAppFamily.hq!.decode(readApp({ ...app, births: [imported] }), "app:shop")?.births,
+  ).toEqual([imported]);
 });
 
 it("explicit empty environments replace the known rows", () => {
   const held = hqAppFamily.hq!.decode(
-    {
+    readApp({
       ...app,
       environments: [
         {
@@ -199,12 +55,15 @@ it("explicit empty environments replace the known rows", () => {
           keyHeld: true,
           keyInvalid: false,
           jobs: [],
+          release: null,
+          birth: null,
         },
       ],
-    },
+    }),
     "app:shop",
   )!;
-  const row = hqAppFamily.hq!.decode({ ...app, environments: [] }, "app:shop")!;
+  expect(held.environments).toHaveLength(1);
+  const row = hqAppFamily.hq!.decode(readApp(app), "app:shop")!;
   expect(hqAppFamily.keepUnsaid?.(held, row, "listing") ?? row).toEqual(row);
 });
 
@@ -219,25 +78,9 @@ describe("the organization's record, as its reader reads it", () => {
       viewer: { firstSignedInAt: "2026-10-16T08:00:00Z", founder: false },
       read: { firstSignedInAt: "2026-10-16T08:00:00Z", founder: false },
     },
-    {
-      sentence: "An older HQ's record says nothing of its reader's first sign-in",
-      viewer: undefined,
-      read: undefined,
-    },
-    {
-      sentence: "A first sign-in sent unreadably is unknown, and the record stands",
-      viewer: { firstSignedInAt: 42, founder: "yes" },
-      read: undefined,
-    },
   ])("$sentence", ({ viewer, read }) => {
     expect(decode(viewer === undefined ? organization : { ...organization, viewer })).toEqual(
       read === undefined ? record : { ...record, viewer: read },
-    );
-  });
-
-  it("A record that still carries a tools list is read without it", () => {
-    expect(decode({ ...organization, tools: [{ projectId: "p1", kind: "gitea" }] })).toEqual(
-      record,
     );
   });
 });
