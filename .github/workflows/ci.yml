@@ -44,6 +44,7 @@ jobs:
     outputs:
       skip: ${{ steps.verdict.outputs.skip }}
       failed: ${{ steps.verdict.outputs.failed }}
+      hq_ref_valid: ${{ steps.hq_ref_guard.outcome }}
     steps:
       - name: Checkout CI receipt
         uses: actions/checkout@v6
@@ -51,16 +52,35 @@ jobs:
           sparse-checkout: |
             /package.json
             /.mate-hq-ref
+            /scripts/hq-ref.ts
             /scripts/ci-tree-runs.sh
           sparse-checkout-cone-mode: false
 
+      - name: Checkout mate-hq main for promotion
+        if: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/kh-next') }}
+        continue-on-error: true
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: main
+          fetch-depth: 0
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+
+      - name: Setup Node for the mate-hq pin
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: package.json
+
       - name: Check mate-hq ref for verified promotion
+        if: ${{ !cancelled() }}
         id: hq_ref_guard
         continue-on-error: true
-        run: &require_main_hq |
-          if [[ "${GITHUB_EVENT_NAME:-}" == push && "${GITHUB_REF:-}" == refs/heads/main && -f .mate-hq-ref ]] && [[ $(cat .mate-hq-ref) != main ]]; then
-            echo '::error::.mate-hq-ref must be main on a push to main'
-            exit 1
+        run: |
+          if [[ "${GITHUB_EVENT_NAME:-}" == push && ( "${GITHUB_REF:-}" == refs/heads/main || "${GITHUB_REF:-}" == refs/heads/kh-next ) ]]; then
+            node scripts/hq-ref.ts --check-main mate-hq
+          else
+            node scripts/hq-ref.ts > /dev/null
           fi
 
       - name: Check kh-next verification
@@ -168,7 +188,13 @@ jobs:
       state_smoke: ${{ steps.state_smoke_plan.outputs.state_smoke }}
       state_smoke_selection: ${{ steps.state_smoke_plan.outputs.state_smoke_selection }}
       node_version: ${{ steps.node.outputs.version }}
+      hq_ref: ${{ steps.hq_ref.outputs.ref }}
     steps:
+      - name: Reject invalid mate-hq pin
+        env:
+          HQ_REF_VALID: ${{ needs.verification.outputs.hq_ref_valid }}
+        run: test "$HQ_REF_VALID" = success
+
       - name: Reject failed main verification
         env:
           MAIN_FAILED: ${{ needs.verification.outputs.failed }}
@@ -254,6 +280,54 @@ jobs:
           PNPM_CONFIG_FROZEN_LOCKFILE: "true"
           PNPM_CONFIG_TRUST_LOCKFILE: "true"
         run: &hosted_dependencies vp install --frozen-lockfile --filter='!@t3tools/mobile' --filter='!@t3tools/desktop'
+
+      - name: Require the mate-hq deploy key for preflight
+        if: *plans_state_smoke
+        env:
+          MATE_HQ_DEPLOY_KEY: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+        run: |
+          if [ -z "$MATE_HQ_DEPLOY_KEY" ]; then
+            echo '::error::Secret MATE_HQ_DEPLOY_KEY is absent; the pinned HQ preflight cannot run.'
+            exit 1
+          fi
+
+      - name: Resolve the mate-hq ref
+        if: *plans_state_smoke
+        id: hq_ref
+        run: |
+          ref=$(node scripts/hq-ref.ts)
+          echo "ref=$ref" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout mate-hq
+        if: *plans_state_smoke
+        uses: actions/checkout@v6
+        with:
+          repository: zeropsio/mate-hq
+          ref: ${{ steps.hq_ref.outputs.ref }}
+          ssh-key: ${{ secrets.MATE_HQ_DEPLOY_KEY }}
+          path: mate-hq
+
+      - name: Setup Go for mate-hq
+        if: *plans_state_smoke
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: mate-hq/go.mod
+          cache: false
+
+      - name: Install mate-hq and its services
+        if: *plans_state_smoke
+        working-directory: mate-hq/conformance
+        env: *verified_lockfile
+        run: |
+          vp install --frozen-lockfile
+          ../scripts/ci-install-object-store.sh
+          ../scripts/ci-install-postgres.sh
+
+      - name: Preflight the pinned mate-hq contract
+        if: *plans_state_smoke
+        env:
+          MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
+        run: vp exec node apps/web/test/scenarios/harness/hqPreflight.ts
 
       - name: Plan State Smoke shards
         if: *plans_state_smoke
@@ -474,9 +548,6 @@ jobs:
             /*
             !/.repos/
           sparse-checkout-cone-mode: false
-
-      - name: Require mate-hq main on main
-        run: *require_main_hq
 
       - name: Restore pnpm metadata
         uses: actions/cache/restore@v4
@@ -718,6 +789,7 @@ jobs:
     env:
       # The bundle build reads it too: an external HQ changes the bundle's HQ origin.
       MATE_HQ_TEST_COMMAND: node ${{ github.workspace }}/mate-hq/conformance/scripts/test-hq.ts
+      MATE_HQ_PREFLIGHT_SHA: ${{ needs.prepare.outputs.hq_ref }}
     steps:
       - name: Require the mate-hq deploy key
         env:
@@ -737,17 +809,18 @@ jobs:
             !/.repos/
           sparse-checkout-cone-mode: false
 
+      - name: Setup Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          node-version: ${{ needs.prepare.outputs.node_version }}
+          cache: false
+          run-install: false
+
       - name: Resolve the mate-hq ref
         id: hq_ref
-        env:
-          BRANCH: ${{ github.head_ref || github.ref_name }}
         run: |
-          ref=main
-          if [[ -f .mate-hq-ref ]]; then
-            ref=$(cat .mate-hq-ref)
-          fi
-          git check-ref-format --branch "$ref" > /dev/null
-          echo "$BRANCH tests against mate-hq $ref"
+          ref=$(node scripts/hq-ref.ts)
+          echo "Testing against mate-hq $ref"
           echo "ref=$ref" >> "$GITHUB_OUTPUT"
 
       - name: Checkout mate-hq
@@ -763,13 +836,6 @@ jobs:
         with:
           go-version-file: mate-hq/go.mod
           cache: false
-
-      - name: Setup Vite+
-        uses: voidzero-dev/setup-vp@v1
-        with:
-          node-version: ${{ needs.prepare.outputs.node_version }}
-          cache: false
-          run-install: false
 
       - name: Resolve store path
         id: paths
