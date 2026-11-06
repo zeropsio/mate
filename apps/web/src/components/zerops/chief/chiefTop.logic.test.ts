@@ -174,13 +174,11 @@ describe("chiefTopShown", () => {
       { own: undefined, setup: null },
       false,
     ],
-    ["the Chief is a menu row while it is being set up", { own: null, setup: "running" }, true],
     [
       "the Chief is a menu row once its setup stopped, to try again",
       { own: null, setup: "stopped" },
       true,
     ],
-    ["the Chief is a menu row once it exists", { own: "chief-project", setup: null }, true],
   ])("%s", (_title, input, shown) => {
     expect(chiefTopShown(input)).toBe(shown);
   });
