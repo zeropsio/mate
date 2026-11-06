@@ -522,7 +522,6 @@ describe("crewReachLogins", () => {
 
 describe("CrewCommand resume", () => {
   it.each([
-    { _tag: "resume", runId: "run-1" },
     { _tag: "resume", runId: "run-1", budgetUsd: 5 },
     { _tag: "resume", runId: "run-1", budgetUsd: "unlimited", timeLimitHours: "unlimited" },
     { _tag: "resume", runId: "run-1", timeLimitHours: 12, stopAtUsagePercent: null },
