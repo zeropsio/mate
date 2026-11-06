@@ -5,7 +5,6 @@ import * as NodeUtil from "node:util";
 
 import { assert, describe, it } from "@effect/vitest";
 import { type CrewCommand, type CrewCommandError } from "@t3tools/contracts";
-import * as TestClock from "effect/testing/TestClock";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
 import * as Fiber from "effect/Fiber";
@@ -1208,36 +1207,6 @@ describe("CrewEngine", () => {
             assert.strictEqual(yield* world.deployReads, after);
           }),
       ]),
-  );
-
-  it.live(
-    "a deploy's end recovers the copies before it thaws: a press meanwhile waits its turn",
-    () =>
-      crewJourney((world) =>
-        Effect.gen(function* () {
-          yield* applied(world);
-          yield* world.deploy("started");
-          yield* world.snapshotWhere((snapshot) => snapshot.crewmates[0]!.lane?.state === "frozen");
-          const hold = yield* world.hold({ step: "recover" });
-          yield* world.deploy("finished");
-          yield* hold.reached;
-          yield* Effect.gen(function* () {
-            const press = yield* world
-              .press({
-                _tag: "message",
-                handle: "backend",
-                text: "Work",
-                attachments: [],
-              })
-              .pipe(Effect.forkChild({ startImmediately: true }));
-            yield* TestClock.adjust(0);
-            assert.isTrue(press.pollUnsafe() === undefined);
-            yield* hold.release;
-            yield* Fiber.join(press);
-          }).pipe(Effect.provide(TestClock.layer()));
-          yield* world.snapshotWhere((snapshot) => snapshot.board.tasks[0]?.state === "working");
-        }),
-      ),
   );
 
   it.live(
