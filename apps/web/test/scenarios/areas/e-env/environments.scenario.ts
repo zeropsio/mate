@@ -3,6 +3,8 @@ import { describe, expect, it } from "@effect/vitest";
 import * as Effect from "effect/Effect";
 import * as Schema from "effect/Schema";
 import { HqStreamMessage } from "@t3tools/shared/hqStream";
+import { rendered } from "../../harness/completedHttp.ts";
+import { transportGate } from "../../harness/transportGate.ts";
 import { installArea as installChangeTransport, hqFramesFor } from "../d-change/fake.ts";
 import { environmentFixture, environmentFixtureWith } from "./fake.ts";
 import { addGitEnvironment, environmentActions, environmentJobs, gitEnvironments } from "./dsl.ts";
@@ -17,16 +19,75 @@ describe("E: stage, production, release and rollback", () => {
         Effect.gen(function* () {
           const f = yield* environmentFixture;
           const a = environmentActions(f);
+          const hq = yield* Effect.acquireRelease(
+            Effect.promise(() => transportGate(() => f.s.drivers.hq.origin, "")),
+            (gate) => Effect.promise(gate.close),
+          );
+          f.s.drivers.routes["https://hqzone.prg1-zerops.zone"] = hq.origin;
+          yield* Effect.promise(() => f.s.web.setRoutes());
           yield* f.s.given.signedIn;
-          yield* Effect.promise(() => f.s.page.setViewport({ width: 1786, height: 1000 }));
+          const page = f.s.page;
+          const globe = `[data-zerops-group="${f.appId}"] [data-zerops-surface="sidebar-project-sites"]`;
+          const popover = '[data-zerops-surface="sidebar-project-sites-popover"]';
+          yield* Effect.promise(async () => {
+            await page.setViewport({ width: 1786, height: 1000 });
+            await page.goto(`${f.s.web.origin}/group/${f.appId}`);
+            await page.waitForSelector(globe);
+            await page.click(globe);
+            await page.waitForSelector(popover);
+            await page.waitForFunction(
+              (selector) => document.querySelector(selector)?.textContent?.includes("Shop-stage"),
+              {},
+              popover,
+            );
+            await page.click(globe);
+          });
+          // Hold the real update until the bookmark paints, then use the sidebar as its receipt.
+          const held = hq.holdFrames(
+            (frame) =>
+              !frame.isBinary && Buffer.from(frame.bytes).toString().includes('"git-witness"'),
+          );
+          yield* Effect.addFinalizer(() => Effect.sync(held.release));
           const environmentId = yield* addGitEnvironment(f, { tier: "stage", name: "git-witness" });
-          yield* Effect.promise(() =>
-            f.s.page.goto(`${f.s.web.origin}/group/${f.appId}/${environmentId}`),
-          );
-          yield* a.then.text(
-            "Nothing pushed yet · pushes on the next merge",
-            '[data-zerops-surface="git-stop-detail"]',
-          );
+          yield* Effect.promise(() => held.held);
+          const documentBefore = yield* Effect.promise(() => page.evaluateHandle(() => document));
+          yield* Effect.promise(async () => {
+            await page.evaluate((path) => {
+              history.pushState(history.state, "", path);
+              window.dispatchEvent(new PopStateEvent("popstate"));
+            }, `/group/${f.appId}/${environmentId}`);
+            await page.waitForSelector('[data-slot="loading"][aria-label="This environment"]');
+            await rendered(page);
+            await page.click(globe);
+          });
+          held.release();
+          yield* Effect.promise(async () => {
+            await page.waitForFunction(
+              (selector) =>
+                document
+                  .querySelector(selector)
+                  ?.textContent?.toLowerCase()
+                  .includes("git-witness"),
+              {},
+              popover,
+            );
+            await rendered(page);
+          });
+          expect(
+            yield* Effect.promise(() =>
+              page.evaluate((before) => before === document, documentBefore),
+            ),
+          ).toBe(true);
+          yield* Effect.promise(() => documentBefore.dispose());
+          expect(
+            yield* Effect.promise(() =>
+              page.evaluate(
+                () =>
+                  document.querySelector('[data-zerops-surface="git-stop-detail"]')?.textContent ??
+                  "",
+              ),
+            ),
+          ).toContain("Nothing pushed yet · pushes on the next merge");
           expect(
             yield* Effect.promise(() =>
               f.s.page.$eval(
@@ -35,6 +96,7 @@ describe("E: stage, production, release and rollback", () => {
               ),
             ),
           ).toBe("Nothing pushed yet · pushes on the next merge");
+          yield* Effect.promise(() => page.click(globe));
           yield* a.when.click("Remove environment");
           yield* a.then.text("Removing this environment never deletes an external");
           const removed = f.s.page.waitForResponse(

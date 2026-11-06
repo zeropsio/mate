@@ -279,6 +279,31 @@ describe("C: a page the Mate publishes", () => {
               const { s, publish } = yield* journey(180, {
                 script: `setTimeout(function(){${trick.script}},400);`,
               });
+              // Observe each document while it exists, before removal can hide a transient spoof.
+              let shown = false;
+              yield* Effect.promise(async () => {
+                await s.page.exposeFunction("recordSpoof", () => {
+                  shown = true;
+                });
+                await s.page.evaluateOnNewDocument(() => {
+                  let reported = false;
+                  const sample = () => {
+                    if (
+                      !reported &&
+                      /Sign in to Zerops|Example Domain/.test(document.body?.innerText ?? "")
+                    ) {
+                      reported = true;
+                      void (window as unknown as { recordSpoof(): Promise<void> }).recordSpoof();
+                    }
+                  };
+                  new MutationObserver(sample).observe(document, {
+                    childList: true,
+                    subtree: true,
+                    characterData: true,
+                  });
+                  document.addEventListener("DOMContentLoaded", sample, { once: true });
+                });
+              });
               publish();
               yield* Effect.promise(() => s.page.waitForSelector(`iframe[title="${TITLE}"]`));
               yield* Effect.promise(() =>
@@ -318,6 +343,10 @@ describe("C: a page the Mate publishes", () => {
               expect(
                 readable.some((text) => /Sign in to Zerops|Example Domain/.test(text)),
                 "ASSERTION: what it navigated to stands nowhere in the conversation",
+              ).toBe(false);
+              expect(
+                shown,
+                "ASSERTION: what it navigated to was never shown before the frame closed",
               ).toBe(false);
               // Nothing left: the harness records any request it would have made.
               yield* s.then.noExternalNetwork;

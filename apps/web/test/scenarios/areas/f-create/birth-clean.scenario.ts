@@ -27,6 +27,11 @@ describe("a shared Mate birth", () => {
               new URL(response.url()).pathname ===
                 "/api/rest/public/project/created-1/service-stack/import",
           );
+          const ended = s.page.waitForResponse(
+            (response) =>
+              response.request().method() === "DELETE" &&
+              /^\/api\/presses\/created-1\/[^/]+$/u.test(new URL(response.url()).pathname),
+          );
           yield* c.submitProject;
           expect(
             (yield* Effect.promise(() => receipt(bound, "HQ bound the clean birth"))).status(),
@@ -36,11 +41,6 @@ describe("a shared Mate birth", () => {
               receipt(imported, "Zerops accepted the clean import"),
             )).status(),
           ).toBe(200);
-          const imports = s.drivers.zerops.world.imports.filter(
-            (entry) => entry.projectId === "created-1",
-          );
-          expect(imports).toHaveLength(1);
-          expect(imports[0]!.yaml.includes("zcp@")).toBe(true);
           const second = yield* s.given.browserActor();
           yield* second.given.signedIn;
           yield* Effect.promise(async () => {
@@ -56,6 +56,18 @@ describe("a shared Mate birth", () => {
               "second device showed container-starting progress",
             );
           });
+          // Count only after the press has ended and its requests and rendering have settled.
+          expect(
+            (yield* Effect.promise(() =>
+              receipt(ended, "HQ ended the clean birth press"),
+            )).status(),
+          ).toBe(200);
+          yield* c.settled;
+          const imports = s.drivers.zerops.world.imports.filter(
+            (entry) => entry.projectId === "created-1",
+          );
+          expect(imports).toHaveLength(1);
+          expect(imports[0]!.yaml.includes("zcp@")).toBe(true);
           yield* s.then.noExternalNetwork;
         }),
       60_000,
