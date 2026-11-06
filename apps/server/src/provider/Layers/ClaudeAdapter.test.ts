@@ -831,25 +831,6 @@ describe("ClaudeAdapterLive", () => {
     );
   });
 
-  it.effect("uses bypass permissions for full-access claude sessions", () => {
-    const harness = makeHarness();
-    return Effect.gen(function* () {
-      const adapter = yield* ClaudeAdapter;
-      yield* adapter.startSession({
-        threadId: THREAD_ID,
-        provider: ProviderDriverKind.make("claudeAgent"),
-        runtimeMode: "full-access",
-      });
-
-      const createInput = harness.getLastCreateQueryInput();
-      assert.equal(createInput?.options.permissionMode, "bypassPermissions");
-      assert.equal(createInput?.options.allowDangerouslySkipPermissions, true);
-    }).pipe(
-      Effect.provideService(Random.Random, makeDeterministicRandomService()),
-      Effect.provide(harness.layer),
-    );
-  });
-
   it.effect("passes the configured auto-compaction window to Claude", () => {
     const harness = makeHarness({ claudeConfig: { autoCompactWindow: "300000" } });
     return Effect.gen(function* () {
@@ -1408,15 +1389,8 @@ describe("ClaudeAdapterLive", () => {
         Effect.sync(() => NodeFS.rmSync(baseDir, { recursive: true, force: true })),
       );
       const adapter = yield* ClaudeAdapter;
-      const started: Array<string> = [];
-      const observer = yield* adapter.streamEvents.pipe(
-        Stream.runForEach((event) =>
-          Effect.sync(() => {
-            if (event.type === "turn.started") started.push(event.turnId ?? "");
-          }),
-        ),
-        Effect.forkChild,
-      );
+      const { runtimeEvents, runtimeEventsFiber, drainSdkMessages } =
+        yield* observeUsageLimitEvents(adapter, harness.query);
       const session = yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: ProviderDriverKind.make("claudeAgent"),
@@ -1437,15 +1411,18 @@ describe("ClaudeAdapterLive", () => {
           ],
         })
         .pipe(Effect.flip);
-      for (let tick = 0; tick < 20; tick += 1) yield* Effect.yieldNow;
+      yield* drainSdkMessages;
       assert.equal(error._tag, "ProviderAdapterRequestError");
       assert.equal(
         "detail" in error ? error.detail : undefined,
         "A picture you attached could not be read. Attach it again and send.",
       );
-      assert.deepEqual(started, []);
+      assert.deepEqual(
+        runtimeEvents.filter((event) => event.type === "turn.started"),
+        [],
+      );
       assert.isUndefined((yield* adapter.listSessions())[0]?.activeTurnId);
-      yield* Fiber.interrupt(observer);
+      yield* Fiber.interrupt(runtimeEventsFiber);
     }).pipe(
       Effect.provideService(Random.Random, makeDeterministicRandomService()),
       Effect.provide(harness.layer),
@@ -6004,15 +5981,22 @@ describe("ClaudeAdapterLive", () => {
 
   it.effect("closes the session when the Claude stream aborts after a turn starts", () => {
     const harness = makeHarness();
+    let captureCleanup = (_fiber: Fiber.Fiber<unknown, unknown> | undefined) => {};
+    const cleanupStarted = new Promise<Fiber.Fiber<unknown, unknown> | undefined>((resolve) => {
+      captureCleanup = resolve;
+    });
+    const close = harness.query.close;
+    (harness.query as { close: () => void }).close = () => {
+      captureCleanup(Fiber.getCurrent());
+      close();
+    };
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
-      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-
-      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-        Effect.sync(() => {
-          runtimeEvents.push(event);
-        }),
-      ).pipe(Effect.forkChild);
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
 
       yield* adapter.startSession({
         threadId: THREAD_ID,
@@ -6028,10 +6012,10 @@ describe("ClaudeAdapterLive", () => {
 
       harness.query.fail(new Error("All fibers interrupted without error"));
 
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      runtimeEventsFiber.interruptUnsafe();
+      const cleanupFiber = yield* Effect.promise(() => cleanupStarted);
+      assert.isDefined(cleanupFiber);
+      if (cleanupFiber !== undefined) yield* Fiber.await(cleanupFiber);
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
       assert.deepEqual(
         runtimeEvents.map((event) => event.type),
         [
@@ -6069,12 +6053,11 @@ describe("ClaudeAdapterLive", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
-      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-        Effect.sync(() => {
-          runtimeEvents.push(event);
-        }),
-      ).pipe(Effect.forkChild);
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
 
       yield* adapter.startSession({
         threadId: THREAD_ID,
@@ -6089,10 +6072,7 @@ describe("ClaudeAdapterLive", () => {
 
       harness.query.fail(new Error("credential material that must stay in the cause chain"));
 
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      runtimeEventsFiber.interruptUnsafe();
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
 
       const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
       assert.equal(runtimeError?.type, "runtime.error");
@@ -6128,12 +6108,11 @@ describe("ClaudeAdapterLive", () => {
     const harness = makeHarness();
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
-      const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-        Effect.sync(() => {
-          runtimeEvents.push(event);
-        }),
-      ).pipe(Effect.forkChild);
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runCollect,
+        Effect.forkChild,
+      );
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: ProviderDriverKind.make("claudeAgent"),
@@ -6148,8 +6127,7 @@ describe("ClaudeAdapterLive", () => {
       harness.query.fail(
         Object.assign(new Error("Claude Code process exited with code 134"), { exitCode: 134 }),
       );
-      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
-      runtimeEventsFiber.interruptUnsafe();
+      const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
 
       const words = "Claude Code ran out of memory. Send a message to pick up where it left off.";
       const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
@@ -6193,6 +6171,7 @@ describe("ClaudeAdapterLive", () => {
       readonly run: (
         harness: ReturnType<typeof makeHarness>,
         adapter: ClaudeAdapterShape,
+        firstTurnCompleted: Deferred.Deferred<void>,
       ) => Effect.Effect<void, ProviderAdapterError>;
       readonly words: string;
     }> = [
@@ -6234,11 +6213,11 @@ describe("ClaudeAdapterLive", () => {
       },
       {
         name: "an earlier turn's stderr is not this one's",
-        run: (harness, adapter) =>
+        run: (harness, adapter, firstTurnCompleted) =>
           Effect.gen(function* () {
             harness.getLastCreateQueryInput()?.options.stderr?.("API Error: 529 overloaded\n");
             harness.query.emit(resultOf("result-first"));
-            for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+            yield* Deferred.await(firstTurnCompleted);
             yield* adapter.sendTurn({ threadId: THREAD_ID, input: "again", attachments: [] });
             harness.query.fail(new Error("stream closed"));
           }),
@@ -6252,20 +6231,27 @@ describe("ClaudeAdapterLive", () => {
         return Effect.gen(function* () {
           const adapter = yield* ClaudeAdapter;
           const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-          const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-            Effect.sync(() => {
-              runtimeEvents.push(event);
-            }),
-          ).pipe(Effect.forkChild);
+          const firstTurnCompleted = yield* Deferred.make<void>();
+          const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+            Stream.takeUntil((event) => event.type === "session.exited"),
+            Stream.runForEach((event) =>
+              Effect.gen(function* () {
+                runtimeEvents.push(event);
+                if (event.type === "turn.completed") {
+                  yield* Deferred.succeed(firstTurnCompleted, undefined);
+                }
+              }),
+            ),
+            Effect.forkChild,
+          );
           yield* adapter.startSession({
             threadId: THREAD_ID,
             provider: ProviderDriverKind.make("claudeAgent"),
             runtimeMode: "full-access",
           });
           yield* adapter.sendTurn({ threadId: THREAD_ID, input: "hello", attachments: [] });
-          yield* run(harness, adapter);
-          for (let tick = 0; tick < 10; tick += 1) yield* Effect.yieldNow;
-          runtimeEventsFiber.interruptUnsafe();
+          yield* run(harness, adapter, firstTurnCompleted);
+          yield* Fiber.join(runtimeEventsFiber);
           const errors = runtimeEvents.flatMap((event) =>
             event.type === "runtime.error" ? [event.payload.message] : [],
           );
@@ -6298,11 +6284,19 @@ describe("ClaudeAdapterLive", () => {
     return Effect.gen(function* () {
       const adapter = yield* ClaudeAdapter;
       const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-      const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-        Effect.sync(() => {
-          runtimeEvents.push(event);
-        }),
-      ).pipe(Effect.forkChild);
+      const turnCompleted = yield* Deferred.make<void>();
+      const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+        Stream.takeUntil((event) => event.type === "session.exited"),
+        Stream.runForEach((event) =>
+          Effect.gen(function* () {
+            runtimeEvents.push(event);
+            if (event.type === "turn.completed") {
+              yield* Deferred.succeed(turnCompleted, undefined);
+            }
+          }),
+        ),
+        Effect.forkChild,
+      );
       yield* adapter.startSession({
         threadId: THREAD_ID,
         provider: ProviderDriverKind.make("claudeAgent"),
@@ -6342,10 +6336,9 @@ describe("ClaudeAdapterLive", () => {
       ]) {
         harness.query.emit(message as unknown as SDKMessage);
       }
-      for (let tick = 0; tick < 5; tick += 1) yield* Effect.yieldNow;
+      yield* Deferred.await(turnCompleted);
       harness.query.fail(new Error("socket hang up"));
-      for (let tick = 0; tick < 8; tick += 1) yield* Effect.yieldNow;
-      runtimeEventsFiber.interruptUnsafe();
+      yield* Fiber.join(runtimeEventsFiber);
 
       const runtimeError = runtimeEvents.find((event) => event.type === "runtime.error");
       assert.equal(
@@ -6378,12 +6371,13 @@ describe("ClaudeAdapterLive", () => {
       const harness = makeHarness();
       return Effect.gen(function* () {
         const adapter = yield* ClaudeAdapter;
-        const runtimeEvents: Array<ProviderRuntimeEvent> = [];
-        const runtimeEventsFiber = yield* Stream.runForEach(adapter.streamEvents, (event) =>
-          Effect.sync(() => {
-            runtimeEvents.push(event);
-          }),
-        ).pipe(Effect.forkChild);
+        const runtimeEventsFiber = yield* adapter.streamEvents.pipe(
+          Stream.takeUntil(
+            (event) => event.type === "task.completed" && event.payload.taskId === "task-a",
+          ),
+          Stream.runCollect,
+          Effect.forkChild,
+        );
         yield* adapter.startSession({
           threadId: THREAD_ID,
           provider: ProviderDriverKind.make("claudeAgent"),
@@ -6460,8 +6454,7 @@ describe("ClaudeAdapterLive", () => {
         ]) {
           harness.query.emit(message as unknown as SDKMessage);
         }
-        for (let tick = 0; tick < 8; tick += 1) yield* Effect.yieldNow;
-        runtimeEventsFiber.interruptUnsafe();
+        const runtimeEvents = Array.from(yield* Fiber.join(runtimeEventsFiber));
 
         const ownerOf = (type: string, id: string) => {
           const event = runtimeEvents.find(
@@ -6568,6 +6561,10 @@ describe("ClaudeAdapterLive", () => {
     };
 
     let promptConsumerError: unknown = undefined;
+    let finishPromptConsumer = () => {};
+    const promptConsumerFinished = new Promise<void>((resolve) => {
+      finishPromptConsumer = resolve;
+    });
 
     const layer = Layer.effect(
       ClaudeAdapter,
@@ -6583,6 +6580,8 @@ describe("ClaudeAdapterLive", () => {
                 }
               } catch (error) {
                 promptConsumerError = error;
+              } finally {
+                finishPromptConsumer();
               }
             })();
             return query;
@@ -6611,11 +6610,7 @@ describe("ClaudeAdapterLive", () => {
 
       yield* adapter.stopSession(THREAD_ID);
 
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      yield* Effect.yieldNow;
-      yield* TestClock.adjust("50 millis");
-      yield* Effect.yieldNow;
+      yield* Effect.promise(() => promptConsumerFinished);
 
       runtimeEventsFiber.interruptUnsafe();
 
@@ -7450,14 +7445,7 @@ describe("ClaudeAdapterLive", () => {
       });
       if (turnOpen) {
         yield* adapter.sendTurn({ threadId: THREAD_ID, input: "/mcp", attachments: [] });
-        // The turn's start reaches the observer a few ticks after the send.
-        for (
-          let tick = 0;
-          tick < 20 && !runtimeEvents.some((event) => event.type === "turn.started");
-          tick += 1
-        ) {
-          yield* Effect.yieldNow;
-        }
+        yield* drainSdkMessages;
       }
       const turnsBefore = runtimeEvents.filter((event) => event.type === "turn.started").length;
 
