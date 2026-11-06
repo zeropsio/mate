@@ -22,7 +22,7 @@ export interface BirthEvidence {
   readonly projectsCurrent: boolean;
   readonly heldProjects: ReadonlySet<string>;
   readonly projectHistoryCurrent: boolean;
-  readonly placement: "unplaced" | "attached" | "unknown";
+  readonly placement: "unplaced" | "plain" | "attached" | "unknown";
   readonly createProcess?: ProcessValue;
   readonly importProcess?: ProcessValue;
   /** The bound project's retained process facts, including a service's import and first build. */
@@ -67,12 +67,12 @@ export interface SharedBirth {
   readonly projectId: string | null;
   readonly importProcessId: string | null;
   /** A registration may be skipped only after HQ proves this birth is attached. */
-  readonly placement: "unplaced" | "attached" | "unknown";
+  readonly placement: "unplaced" | "plain" | "attached" | "unknown";
   readonly intent: ReturnType<typeof readBirthIntent>;
   readonly progress: BirthProgress;
   readonly canContinue: boolean;
   /** Which permission the next actionable step needs when this person cannot continue. */
-  readonly continuePermission?: "maker" | "attach" | "add-mate";
+  readonly continuePermission?: "maker" | "attach" | "record" | "add-mate";
   readonly canDelete: boolean;
 }
 
@@ -128,7 +128,13 @@ export const sharedBirths: Projection<
                   placed.value.appId === app.id &&
                   placed.value.mate?.birthId === birth.id
                 ? "attached"
-                : "unknown";
+                : placed.kind === "known" &&
+                    placed.value.appId === app.id &&
+                    placed.value.kind === "plain" &&
+                    placed.value.mate === null &&
+                    birth.adopted === true
+                  ? "plain"
+                  : "unknown";
         const services =
           projectId === null ? undefined : projectServices.derive(read, { orgId, projectId });
         const processes =
@@ -190,20 +196,24 @@ export const sharedBirths: Projection<
         const attachment =
           attachProject === null || placement === "attached"
             ? true
-            : placementsCurrent && (projectId === null || placement === "unplaced")
-              ? decided(
-                  livePermissionFacts(read, orgId),
-                  [attachProject, ...appProjects],
-                  (facts) =>
-                    attachPermission(facts, {
-                      projectId: attachProject,
-                      projectIds: appProjects,
-                      kind: "mate",
-                      held: "none",
-                      slotTaken: false,
-                    }),
+            : placement === "plain"
+              ? decided(livePermissionFacts(read, orgId), [attachProject], (facts) =>
+                  mateRecordPermission(facts, attachProject, { create: true, held: "plain" }),
                 )?.allow
-              : undefined;
+              : placementsCurrent && (projectId === null || placement === "unplaced")
+                ? decided(
+                    livePermissionFacts(read, orgId),
+                    [attachProject, ...appProjects],
+                    (facts) =>
+                      attachPermission(facts, {
+                        projectId: attachProject,
+                        projectIds: appProjects,
+                        kind: "mate",
+                        held: "none",
+                        slotTaken: false,
+                      }),
+                  )?.allow
+                : undefined;
         const actionable =
           progress.next.kind !== "unknown" &&
           progress.next.kind !== "blocked" &&
@@ -220,9 +230,11 @@ export const sharedBirths: Projection<
               ? "maker"
               : placement === "unplaced" && (!authorized || attachment === false)
                 ? "attach"
-                : placement === "attached" && !authorized
-                  ? "add-mate"
-                  : undefined;
+                : placement === "plain" && attachment === false
+                  ? "record"
+                  : (placement === "attached" || placement === "plain") && !authorized
+                    ? "add-mate"
+                    : undefined;
         return {
           id: birth.id,
           appId: app.id,
@@ -374,7 +386,7 @@ export function birthProgressOf(evidence: BirthEvidence): BirthProgress {
       phase,
       next: {
         kind: "wait",
-        attach: evidence.placement === "unplaced",
+        attach: evidence.placement === "unplaced" || evidence.placement === "plain",
         for:
           evidence.service === "several"
             ? "several-services"

@@ -170,6 +170,47 @@ export interface Records {
   readonly requests: ReadonlyArray<Request>;
 }
 
+/**
+ * Records cut and counted once each, for a frame tried at several sizes: a frame's bytes, as
+ * `bytesOf` counts them, are its bytes with its lists empty and each list's records', comma
+ * separated, so a narrower frame is counted without writing it again.
+ */
+export const frameSizer = () => {
+  const fitted = new WeakMap<object, object>();
+  const sizes = new WeakMap<object, number>();
+  const once =
+    <A extends object>(fit: (record: A) => A) =>
+    (record: A): A => {
+      const known = fitted.get(record) as A | undefined;
+      if (known !== undefined) return known;
+      const cut = fit(record);
+      fitted.set(record, cut);
+      return cut;
+    };
+  const sizeOf = (record: object) => {
+    const known = sizes.get(record);
+    if (known !== undefined) return known;
+    const size = bytesOf(record);
+    sizes.set(record, size);
+    return size;
+  };
+  const listBytes = (list: ReadonlyArray<object>) =>
+    list.reduce((sum, record) => sum + sizeOf(record), Math.max(0, list.length - 1));
+  return {
+    fitRun: once(fitRun),
+    fitItem: once(fitItem),
+    fitRequest: once(fitRequest),
+    /** A frame's bytes, its records' counted once. */
+    bytesOf: <F extends Records>(frame: F) =>
+      bytesOf({ ...frame, runs: [], items: [], requests: [] }) +
+      listBytes(frame.runs) +
+      listBytes(frame.items) +
+      listBytes(frame.requests),
+    /** What one record of a list of `length` adds to its frame: itself and a comma. */
+    listed: (record: object, length: number) => sizeOf(record) + (length > 1 ? 1 : 0),
+  };
+};
+
 export const fitRecords = (records: Records): Records => ({
   runs: records.runs.map(fitRun),
   items: records.items.map(fitItem),

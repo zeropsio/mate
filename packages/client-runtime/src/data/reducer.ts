@@ -518,7 +518,22 @@ function commitBaseline(
       [...members].some(([id, member]) => membership.members.get(id) !== member))
   )
     changed.add(`members:${scope}`);
-  return next;
+  // The family's own whole read now says what its reads ahead previewed: what they hold that it
+  // did not take over is forgotten — unknown, never deleted — and they answer for nothing more.
+  return coverage === "complete" ? forget(next, readsAheadOf(next, scope), changed) : next;
+}
+
+/** The scopes read ahead of a navigation scope (`DetailListing.ahead`) that hold anything now. */
+function readsAheadOf(state: AccountState, scope: ScopeKey): ReadonlyArray<ScopeKey> {
+  if (scopeListing(scope).detail !== null) return [];
+  const ahead = (candidate: ScopeKey) =>
+    candidate !== scope &&
+    scopeListing(candidate).detail?.ahead === true &&
+    ownScopeOf(candidate) === scope;
+  const scopes = new Set<ScopeKey>();
+  for (const candidate of state.memberships.keys()) if (ahead(candidate)) scopes.add(candidate);
+  for (const fact of state.facts.values()) if (ahead(fact.scope)) scopes.add(fact.scope);
+  return [...scopes];
 }
 
 function leaveScope(

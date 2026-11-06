@@ -1,6 +1,7 @@
 /**
  * One project's services as the organization's services listing holds them: not known until that
- * listing's first baseline, then every service the project has now, each as its newest row says
+ * listing's first baseline — or, for the route's project, its own read ahead of it — then every
+ * service the project has now, each as its newest row says
  * it. An outage keeps what was read and says it is catching up. A project its owner withholds from
  * the viewer shows none of its services: the services' own leaving comes only with their next
  * change. A project this organization does not list — another's, or one not listed yet — is not
@@ -8,7 +9,7 @@
  *
  * @module data/projections/services
  */
-import { servicesScope, type ServiceValue } from "../families/service.ts";
+import { routeServicesScope, servicesScope, type ServiceValue } from "../families/service.ts";
 import type { Projection } from "../store.ts";
 import { sameValue } from "./equal.ts";
 import { scopeFreshness, type ScopeFreshness } from "./freshness.ts";
@@ -27,7 +28,9 @@ export const projectServices: Projection<ProjectKey, ProjectServices> = {
   keyOf: ({ orgId, projectId }) => `${orgId}/${projectId}`,
   derive: (read, { orgId, projectId }) => {
     const { complete, ...freshness } = scopeFreshness(read, servicesScope(orgId));
-    if (!complete) return { services: undefined, ...freshness };
+    // The route's project's own read, ahead of the organization's listing, answers for it alone.
+    const readAhead = read.coverage(routeServicesScope(orgId, projectId)) === "complete";
+    if (!complete && !readAhead) return { services: undefined, ...freshness };
     const project = read.fact("project", projectId);
     if (project.kind === "withheld" && project.reason === "denied")
       return { services: undefined, ...freshness, unavailableReason: "forbidden" };

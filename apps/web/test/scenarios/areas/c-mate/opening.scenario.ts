@@ -143,5 +143,62 @@ describe("C: the conversation opening follows readiness", () => {
           yield* s.then.noExternalNetwork;
         }),
     );
+
+    it.effect(
+      "a reload while the platform's socket is still logging in opens the Mate's conversation and never says it isn't in your projects",
+      () =>
+        Effect.gen(function* () {
+          const s = yield* createScenario([installArea]);
+          yield* s.given.project("Sage", { mate: true });
+          const chat = mateChat(s);
+          chat.fixture("Sage").exchange("Earlier question", "Sage's conversation is ready");
+          yield* s.given.signedIn;
+          yield* chat.when.openReadOnly("Sage");
+          yield* chat.then.text("Sage's conversation is ready");
+          // Every listing reads behind the platform's socket: its login never answers now.
+          s.drivers.zerops.faults.set("POST /web-socket/login", { silence: true });
+          yield* Effect.addFinalizer(() =>
+            Effect.sync(() => s.drivers.zerops.faults.delete("POST /web-socket/login")),
+          );
+          // From the reload's first frame: whether the page ever said the Mate is absent, and how
+          // many opening stages it drew on its way to the conversation.
+          yield* Effect.promise(() =>
+            s.page.evaluateOnNewDocument(() => {
+              const seen = { absent: false, stages: new Set<Element>() };
+              (window as unknown as { __opening: typeof seen }).__opening = seen;
+              const sample = () => {
+                if (document.body?.innerText.includes("isn't in your Zerops projects"))
+                  seen.absent = true;
+                const stage = document.querySelector("[data-conversation-opening]");
+                if (
+                  stage !== null &&
+                  stage.getAttribute("data-conversation-opening") !== "complete"
+                )
+                  seen.stages.add(stage);
+                requestAnimationFrame(sample);
+              };
+              requestAnimationFrame(sample);
+            }),
+          );
+
+          yield* Effect.promise(() => s.page.reload());
+          yield* chat.then.text("Sage's conversation is ready");
+
+          expect(
+            yield* Effect.promise(() =>
+              s.page.evaluate(() => {
+                const seen = (
+                  window as unknown as {
+                    __opening: { absent: boolean; stages: Set<Element> };
+                  }
+                ).__opening;
+                return { absent: seen.absent, stages: seen.stages.size };
+              }),
+            ),
+            "ASSERTION: one opening stage, and no absence said, from the reload to the conversation",
+          ).toEqual({ absent: false, stages: 1 });
+          yield* s.then.noExternalNetwork;
+        }),
+    );
   });
 });

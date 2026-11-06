@@ -51,6 +51,10 @@ zerops:
         # Adobe Express Embed SDK's public client id (Adobe limits it to the
         # domains listed for it); the panel still waits on each person's Labs switch.
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
+        # A reload paints from the page the app-shell worker kept (`/sw.js`, `src/appShell/`),
+        # never waiting on this origin. `retire` ships the worker that removes it; never just
+        # delete this line (docs/operations/release-and-deploy.md).
+        VITE_APP_SHELL_WORKER: app-shell
         # `--filter` already leaves Electron out; this makes a stray install
         # of it cheap rather than a 100 MB download.
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
@@ -69,7 +73,8 @@ zerops:
         # `documentRoot` — that one is for webserver runtimes and is silently
         # ignored here, leaving nginx on /var/www and every request a 404.
         root: dist
-        # The page is asked again on every load. Served without a
+        # The page and /sw.js (a real file, so the SPA fallback never answers it) are asked
+        # again on every load: `/*` below. Served without a
         # Cache-Control header, a browser may reuse a page it fetched before
         # a release — and with it the old release's bundle — for a tenth of
         # the page's age (heuristic freshness). The bundle's files under
@@ -112,6 +117,7 @@ zerops:
         VITE_ZEROPS_SIGN_IN: device-login
         VITE_ADOBE_EXPRESS_CLIENT_ID: a3cdc81c5842438cb95c4e772c03e0a7
         VITE_ZEROPS_CONSENT_ORIGIN: https://hq.zerops.io
+        VITE_APP_SHELL_WORKER: app-shell
         ELECTRON_SKIP_BINARY_DOWNLOAD: "1"
         PUPPETEER_SKIP_DOWNLOAD: "1"
         CI: "1"

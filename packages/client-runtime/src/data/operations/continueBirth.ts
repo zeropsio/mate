@@ -51,7 +51,7 @@ export async function continueBirth(
     case "record-import":
       if (birth.projectId === null) return "unavailable";
       if (birth.placement === "unknown") return "waiting";
-      if (birth.placement === "unplaced") {
+      if (birth.placement === "unplaced" || birth.placement === "plain") {
         const { id, projectId } = birth;
         await ports.attach(birth);
         birth = await ports.waitForPlacement(projectId, "attached");

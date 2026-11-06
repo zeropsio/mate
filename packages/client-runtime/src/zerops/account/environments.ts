@@ -7,7 +7,10 @@
  *   them (B4, `mateListingsAtom`) — and from the catalog's registrations at a listed Mate's address
  *   (C1). A remembered Mate is looked for where it was registered until its project's services are
  *   read (A16);
- *   one they were read without is gone only once a direct read lacks it too (§9 C19). A listing
+ *   one they were read without is gone only once a direct read lacks it too (§9 C19). The route's
+ *   project — HQ's word, or what this account remembered of it — is read ahead of the listing
+ *   over plain REST (`holdRoutePreview`): its own row and its services, so the route's Mate is
+ *   found while the platform's socket logs in and the organization's whole search runs. A listing
  *   change that changes no row and settles no absence feeds nothing. No React holds a fact here:
  *   the web and mobile hand over ports and send intents — the route, the active organization, a
  *   Connect.
@@ -32,10 +35,11 @@ import type { MateAdapter, MateAdapterPorts, MateTarget } from "../../data/adapt
 import type { ProjectProcesses } from "../../data/projections/processes.ts";
 import {
   holdProjectHistory,
+  holdRoutePreview,
   holdServiceRead,
   hqMatePresenceAtom,
   projectProcessesAtom,
-  readMateFlag,
+  readMateFlagOnceLive,
 } from "../../data/reads.ts";
 
 import { normalizeOrigin } from "../candidates.ts";
@@ -60,7 +64,14 @@ import {
   resolveEnvironment,
   type DescriptorIndex,
 } from "../environments/descriptorIndex.ts";
-import { mateListingsAtom, type OrganizationListing } from "../environments/listings.ts";
+import {
+  listsProjectRows,
+  mateListingsAtom,
+  routePreviewAtom,
+  withRoutePreview,
+  type OrganizationListing,
+  type RoutePreview,
+} from "../environments/listings.ts";
 import type {
   DescriptorFacts,
   EnvironmentMachine,
@@ -267,12 +278,27 @@ const origin = (url: string | undefined | null): string | null =>
 /** How long the Mate left last stays connected (krok-a-hub §3, the warm policy Q8). */
 const RECENT_MS = 5 * 60_000;
 
+/** The route's project read ahead of the listing: the hold on its reads, and what they hold. */
+interface HeldPreview {
+  readonly projectId: string;
+  readonly stop: () => void;
+  rows: RoutePreview | null;
+}
+
 // ── The wiring ───────────────────────────────────────────────────────────────────────────────
 
 export function makeEnvironmentWiring(options: EnvironmentWiringOptions): EnvironmentWiring {
   const { ports, atomRegistry } = options;
   let adapter: MateAdapter | null = null;
   let closed = false;
+  /** The account's listing as `mateListingsAtom` last published it. */
+  let listed: ReadonlyArray<OrganizationListing> = [];
+  /**
+   * The route's project read ahead of the listing, while the listing holds none of its rows
+   * (`withRoutePreview`): the hold on its reads, and what they hold now.
+   */
+  let preview: HeldPreview | null = null;
+  /** The listing, with the route's project read ahead of it until it holds that project itself. */
   let listings: ReadonlyArray<OrganizationListing> = [];
   let rows: ReadonlyArray<CandidateRow> = [];
   let registered: ReadonlyArray<RegisteredEnvironment> = [];
@@ -355,7 +381,7 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
   /** `ZCP_MATE_ENABLED` for a target's service, read by key with the organization's Mate variables. */
   const readTargetMateFlag = async (key: TargetKey): Promise<MateFlag> => {
     const serviceId = key.split(":")[1];
-    return serviceId === undefined ? "unknown" : readMateFlag(atomRegistry, serviceId);
+    return serviceId === undefined ? "unknown" : readMateFlagOnceLive(atomRegistry, serviceId);
   };
 
   /** Whose organization lists the target's project: the listing's, else the one shown. */
@@ -656,10 +682,43 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     if (left !== undefined) keepRecent(left);
   };
 
+  /**
+   * The route's project is read ahead of the listing while the listing holds none of its rows:
+   * the hold moves with the route, and goes once the listing reads the project itself. Whether
+   * what the preview holds changed.
+   */
+  const updatePreview = (projectId: string | null): boolean => {
+    const wanted = projectId !== null && !listsProjectRows(listed, projectId) ? projectId : null;
+    if (preview?.projectId === wanted) return false;
+    const before = preview?.rows ?? null;
+    preview?.stop();
+    preview = null;
+    if (wanted !== null) {
+      const releaseReads = holdRoutePreview(atomRegistry, wanted);
+      const held: HeldPreview = {
+        projectId: wanted,
+        rows: atomRegistry.get(routePreviewAtom(wanted)),
+        stop: () => {
+          stopFollowing();
+          releaseReads();
+        },
+      };
+      const stopFollowing = atomRegistry.subscribe(routePreviewAtom(wanted), (next) => {
+        if (preview !== held || closed) return;
+        held.rows = next;
+        listingsChanged();
+      });
+      preview = held;
+    }
+    return before !== (preview?.rows ?? null);
+  };
+
   /** Hold detail only for the route, the project on screen, or an explicit action. */
   const updateRoute = () => {
     if (adapter === null || closed) return;
     const routedProject = route === null ? null : projectOfEnvironment(route);
+    // What the route's project read ahead holds is part of the listing: it is fed again, once.
+    if (updatePreview(routedProject)) return listingsChanged();
     const actionProjects = [...actions].map(({ environmentId }) =>
       projectOfEnvironment(environmentId),
     );
@@ -840,6 +899,23 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
     }
   };
 
+  /** The listing, or the route's project read ahead of it, moved: every target is fed again. */
+  function listingsChanged() {
+    if (closed) return;
+    const before = listings;
+    const next = withRoutePreview(listed, preview?.rows ?? null);
+    listings = next;
+    const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
+    const moved = !sameItems(rows, listedRows);
+    if (moved) rows = listedRows;
+    updateAddressWatch();
+    updateRoute();
+    updateActions();
+    updateDrawn();
+    if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
+      updateTargets();
+  }
+
   const start = (built: MateAdapter): EnvironmentStage => {
     adapter = built;
     route = ports.route?.() ?? route;
@@ -899,17 +975,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
       atomRegistry.subscribe(
         mateListingsAtom,
         (next) => {
-          const before = listings;
-          listings = next;
-          const listedRows = next.flatMap(({ listing }) => heldCandidates(listing).rows);
-          const moved = !sameItems(rows, listedRows);
-          if (moved) rows = listedRows;
-          updateAddressWatch();
-          updateRoute();
-          updateActions();
-          updateDrawn();
-          if (moved || JSON.stringify(before.map(settling)) !== JSON.stringify(next.map(settling)))
-            updateTargets();
+          listed = next;
+          listingsChanged();
         },
         { immediate: true },
       ),
@@ -1013,6 +1080,8 @@ export function makeEnvironmentWiring(options: EnvironmentWiringOptions): Enviro
         actions.clear();
         for (const stop of addressWatch.values()) stop();
         addressWatch.clear();
+        preview?.stop();
+        preview = null;
         detailProjects = new Set();
         built.dispose();
         preferRoute();

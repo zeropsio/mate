@@ -18,9 +18,12 @@ import { makeHqApi } from "@t3tools/client-runtime/zerops/hq";
 import * as Effect from "effect/Effect";
 import { AtomRegistry } from "effect/reactivity";
 import { describe, expect, it } from "@effect/vitest";
+import { vi } from "vite-plus/test";
 
 import { zeropsSessionAtom } from "../state/zerops";
-import { hqIndexPort, linkPhaseOf } from "./environmentPorts";
+import { setMateTicketHq } from "~/connection/platform";
+import { hqIndexPort, linkPhaseOf, webEnvironmentPorts } from "./environmentPorts";
+import { mateDescriptors } from "./mateDescriptors";
 import { mountHqNavigation } from "~/zerops/__fixtures__/hqNavigation";
 
 const ENVIRONMENT_ID = EnvironmentId.make("environment-1");
@@ -366,4 +369,41 @@ describe("HQ ticket refusal on the Mate's state", () => {
         }
       }),
   );
+});
+
+describe("the route's exchange at its Mate's door", () => {
+  it("asks HQ for the Mate's connection ticket while its descriptor is still being read", async () => {
+    const events: Array<string> = [];
+    const reset = setMateTicketHq(() => ({
+      mateTicket: async (projectId) => {
+        events.push(`ticket ${projectId}`);
+        return { ticket: "T1", expiresIn: 60, origin: ORIGIN };
+      },
+    }));
+    vi.stubGlobal("window", { location: { origin: "https://mate.example.test" } });
+    const descriptor = vi.spyOn(mateDescriptors, "descriptor").mockImplementation(() => {
+      events.push("descriptor");
+      return new Promise(() => undefined);
+    });
+    try {
+      const ports = webEnvironmentPorts(AtomRegistry.make());
+      void ports.door.exchange({
+        key: KEY,
+        origin: ORIGIN,
+        expected: null,
+        reason: "restore",
+        asked: true,
+        signal: new AbortController().signal,
+        projectId: "project-1",
+        organizationId: "org-1",
+      });
+      await Promise.resolve();
+
+      expect(events).toEqual(["ticket project-1", "descriptor"]);
+    } finally {
+      descriptor.mockRestore();
+      vi.unstubAllGlobals();
+      reset();
+    }
+  });
 });

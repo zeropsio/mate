@@ -65,6 +65,15 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
       const registration = (birth: SharedBirth): PressRegistration => {
         if (birth.intent === undefined)
           throw new Error("This birth's original plan is unavailable.");
+        if (birth.placement === "plain")
+          return {
+            hq,
+            kind: "mate-record",
+            // HQ requires a nonempty input, then takes the authoritative face from the birth.
+            record: { face: birth.face || birth.id },
+            standUp: birth.intent.standUp,
+            ...(birth.chief === true ? { chiefBirthId: birth.id } : {}),
+          };
         const face = readMateFace(birth.face);
         return {
           hq,
@@ -98,7 +107,7 @@ export function useBirthActions(births: ReadonlyArray<SharedBirth>) {
           latest === undefined ||
           !latest.canContinue ||
           latest.projectId !== birth.projectId ||
-          latest.placement !== "unplaced" ||
+          (latest.placement !== "unplaced" && latest.placement !== "plain") ||
           latest.projectId === null
         )
           throw new Error("The birth changed before its registration.");

@@ -219,6 +219,32 @@ describe("continuing a shared birth", () => {
     expect(ports.run).not.toHaveBeenCalled();
   });
 
+  it("registers an adopted plain project before recording its accepted import", async () => {
+    let current: SharedBirth = {
+      ...birth,
+      projectId: "p1",
+      adopted: true,
+      placement: "plain",
+      progress: {
+        phase: "container-starting",
+        next: { kind: "record-import", receipt: "service-1" },
+        reason: null,
+      },
+    };
+    const events: string[] = [];
+    const ports = portsFor(() => current);
+    ports.attach.mockImplementation(async () => {
+      events.push("register");
+      current = { ...current, placement: "attached" };
+    });
+    ports.recordImport.mockImplementation(async () => {
+      events.push("record import");
+    });
+    expect(await continueBirth(ports)).toBe("started");
+    expect(events).toEqual(["register", "record import"]);
+    expect(ports.recordImport).toHaveBeenCalledExactlyOnceWith(current, "service-1");
+  });
+
   it("an accepted import continues only by attaching the unplaced Mate", async () => {
     const accepted: SharedBirth = {
       ...birth,

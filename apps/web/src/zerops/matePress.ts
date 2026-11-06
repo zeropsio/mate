@@ -597,12 +597,14 @@ export type PressRegistration = {
       readonly chief?: true;
     }
   | {
-      /** A Mate HQ holds no record of, set up in no application (`POST /api/mates`). */
+      /** A Mate HQ holds no record of, including an adopted plain project (`POST /api/mates`). */
       readonly kind: "mate-record";
-      /** Its face as HQ records it (`setUpMateRecord`). */
+      /** Its proposed face; for an adopted birth HQ takes the face from the birth. */
       readonly record: { readonly face: string };
       /** The person pressing asks for its stand-up, with its record. */
       readonly standUp: boolean;
+      /** A Chief birth must be registered before its container can say hello. */
+      readonly chiefBirthId?: string;
     }
   | {
       readonly kind: "stage" | "production";
@@ -612,9 +614,9 @@ export type PressRegistration = {
 );
 
 /**
- * The `register` step: a Mate's record in HQ — attached to its application, or in none — with its
- * stand-up ask in the same write, naming `serviceId`, its zcp service, where its project holds it
- * already (one Mate per project, audit D2); for a stage or a production, `addGroupEnvironment` —
+ * The `register` step: a Mate's record in HQ, with its stand-up ask in the same write, naming
+ * `serviceId`, its zcp service, where its project holds it already (one Mate per project, audit D2);
+ * for a stage or a production, `addGroupEnvironment` —
  * the attachment and its deploy key. Each write reads what is there first, so asking again writes
  * nothing twice.
  */
@@ -636,6 +638,8 @@ export function pressRegistration(
         orgId,
         mate: { projectId, ...registration.record, standUp: registration.standUp, ...service },
       });
+      if (registration.chiefBirthId !== undefined)
+        await run({ kind: "register-birth-chief", orgId, birthId: registration.chiefBirthId });
       return;
     }
     if (registration.kind === "mate") {
