@@ -191,6 +191,7 @@ describe("Slack in Settings", () => {
     const html = renderToStaticMarkup(
       <>
         <SlackSettingsView
+          channels={controls(known({ bot: "mate", channels: [] }))}
           controls={controls(known({ ...slackOff, connected: true, workspace: "Acme" }))}
           defaultOpen
         />

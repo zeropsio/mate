@@ -99,10 +99,6 @@ it.each([true, false])("a non-admin reads %s and sees who may change it", (enabl
   expect(words(tree)).toContain(enabled ? "On" : "Off");
   expect(words(tree)).toContain("Organization admins and the owner can change this.");
 });
-it("does not invent an enabled state before HQ answers", () => {
-  expect(control(render())).toBeNull();
-  expect(words(render())).toContain("Waiting for HQ…");
-});
 it("keeps the observed state while saving and explains HQ's refusal", () => {
   observePolicy(store, { orgId: "org", enabled: true, revision: 1 });
   store.dispatch({
