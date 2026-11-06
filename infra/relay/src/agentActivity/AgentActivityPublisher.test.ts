@@ -657,7 +657,14 @@ describe("isExpiredAgentActivityState", () => {
 });
 
 describe("makeAggregateState", () => {
-  it.each(threadStatusVectors)("uses the shared status phrase for $name", (vector) => {
+  it.each(
+    threadStatusVectors.filter(
+      (vector, index, vectors) =>
+        vectors.findIndex(
+          (candidate) => candidate.expectedAwarenessPhase === vector.expectedAwarenessPhase,
+        ) === index,
+    ),
+  )("uses the shared status phrase for $name", (vector) => {
     const phase = vector.expectedAwarenessPhase;
     if (phase === null) {
       expect(
