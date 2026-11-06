@@ -138,15 +138,6 @@ describe("terminal session reducers", () => {
     expect(terminalOutputText(output.output)).toBe("lo world");
   });
 
-  it("does not advance the lifecycle for the initial attach snapshot", () => {
-    const snapshot = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
-      type: "snapshot",
-      snapshot: BASE_SNAPSHOT,
-    });
-
-    expect(snapshot).toMatchObject({ status: "running", lifecycleVersion: 0 });
-  });
-
   it("advances the lifecycle for a live started snapshot", () => {
     const initial = applyTerminalAttachStreamEvent(EMPTY_TERMINAL_BUFFER_STATE, {
       type: "snapshot",

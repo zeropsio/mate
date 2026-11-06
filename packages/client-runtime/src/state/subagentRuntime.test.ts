@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vite-plus/test";
 import { classifyTaskAgentKind, type OrchestrationThreadActivity } from "@t3tools/contracts";
+import * as DateTime from "effect/DateTime";
 import {
   deriveAgentPanelModel,
   foldSubagentActivities,
@@ -8,6 +9,10 @@ import {
 } from "./subagentRuntime.ts";
 
 let sequence = 0;
+const activityTime = () =>
+  DateTime.formatIso(
+    DateTime.add(DateTime.makeUnsafe("2026-08-01T10:00:00.000Z"), { seconds: sequence }),
+  );
 /**
  * Fixtures model POST-INGESTION rows: ingestion stamps agentKind on every
  * task.* payload, so the helper stamps too (same classifier). Pass an
@@ -16,7 +21,7 @@ let sequence = 0;
 function activity(
   kind: string,
   payload: Record<string, unknown>,
-  at = `2026-08-01T10:00:${String(sequence).padStart(2, "0")}.000Z`,
+  at = activityTime(),
 ): OrchestrationThreadActivity {
   sequence += 1;
   const stamped =
@@ -53,7 +58,7 @@ function legacyActivity(
     summary: kind,
     payload,
     turnId: null,
-    createdAt: `2026-08-01T10:00:${String(sequence).padStart(2, "0")}.000Z`,
+    createdAt: activityTime(),
   } as unknown as OrchestrationThreadActivity;
 }
 
