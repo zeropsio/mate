@@ -1,6 +1,7 @@
 // @effect-diagnostics nodeBuiltinImport:off -- real gate CLI with disposable command fixtures.
 import * as NodeChildProcess from "node:child_process";
 import * as NodeFS from "node:fs";
+import * as NodeModule from "node:module";
 import * as NodeOS from "node:os";
 import * as NodePath from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vite-plus/test";
@@ -26,14 +27,23 @@ interface Check {
   readonly args: string[];
 }
 
+let reusable: { gate: ReturnType<typeof createFixture>; base: string } | undefined;
 function fixture(assertion: (gate: ReturnType<typeof createFixture>) => void) {
-  const gate = createFixture();
-  try {
-    assertion(gate);
-  } finally {
-    NodeFS.rmSync(gate.root, { recursive: true, force: true });
+  if (!reusable) {
+    const gate = createFixture();
+    gate.baseline();
+    reusable = { gate, base: gate.git("rev-parse", "HEAD") };
+  } else {
+    reusable.gate.git("reset", "--hard", reusable.base);
+    reusable.gate.git("clean", "-fd");
+    reusable.gate.clearChecks();
+    reusable.gate.clearReceipt();
   }
+  assertion(reusable.gate);
 }
+afterAll(() => {
+  if (reusable) NodeFS.rmSync(reusable.gate.root, { recursive: true, force: true });
+});
 
 function createFixture(cacheHome?: string) {
   const root = NodeFS.mkdtempSync(NodePath.join(NodeOS.tmpdir(), "mate-gate-rerun-"));
@@ -49,15 +59,35 @@ function createFixture(cacheHome?: string) {
   };
   for (const directory of ["scripts", "apps", "packages", "infra", "node_modules/.bin"])
     NodeFS.mkdirSync(NodePath.join(root, directory), { recursive: true });
+  for (const directory of ["apps", "packages", "infra"]) write(`${directory}/.gitkeep`, "");
   for (const file of gateRunnerFiles)
     NodeFS.copyFileSync(
       NodePath.join(import.meta.dirname, file),
       NodePath.join(root, "scripts", file),
     );
-  NodeFS.symlinkSync(
-    NodePath.join(import.meta.dirname, "node_modules"),
-    NodePath.join(root, "scripts/node_modules"),
-  );
+  if (cacheHome) {
+    for (const name of ["@t3tools/shared", "oxc-parser", "lightningcss", "parse5"]) {
+      const target = NodePath.join(root, "scripts/node_modules", name);
+      NodeFS.mkdirSync(NodePath.dirname(target), { recursive: true });
+      NodeFS.symlinkSync(NodePath.join(import.meta.dirname, "node_modules", name), target);
+    }
+    // Cache identity only needs installed package bytes, not the full real dependency trees.
+    for (const name of ["vite-plus", "madge", "effect", "@effect/platform-node"])
+      write(`scripts/node_modules/${name}/package.json`, JSON.stringify({ name }));
+    write(
+      "scripts/node_modules/effect/package.json",
+      JSON.stringify({ name: "effect", type: "module", exports: { "./Schema": "./Schema.js" } }),
+    );
+    write(
+      "scripts/node_modules/effect/Schema.js",
+      `export * from ${JSON.stringify(NodeModule.createRequire(import.meta.url).resolve("effect/Schema"))};\n`,
+    );
+  } else {
+    NodeFS.symlinkSync(
+      NodePath.join(import.meta.dirname, "node_modules"),
+      NodePath.join(root, "scripts/node_modules"),
+    );
+  }
   const stub = `#!${process.execPath}
 const fs = require("node:fs");
 const path = require("node:path");
@@ -113,7 +143,7 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
   }
   write(
     ".gitignore",
-    "node_modules/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
+    "node_modules/\n.local/\nchecks.log\n.gate-receipt.json*\napps/web/src/components.json\n",
   );
   write("README.md", "before\n");
   for (const path of Object.keys(stateOnlySmoke)) write(path, "export {};\n");
@@ -122,8 +152,8 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
     git("config", "user.name", "Gate fixture");
     git("config", "user.email", "gate@example.test");
     git("add", ".");
-    git("commit", "-qm", "base");
-    git("branch", "base");
+    git("commit", "--allow-empty", "-qm", "base");
+    git("branch", "-f", "base");
   };
   const run = (args: string[] = [], fail = "") => {
     const result = NodeChildProcess.spawnSync(
@@ -137,7 +167,8 @@ fs.appendFileSync(path.join(process.env.GATE_FIXTURE_ROOT, "checks.log"), JSON.s
           PATH: [NodePath.dirname(process.execPath), process.env.PATH ?? ""].join(
             NodePath.delimiter,
           ),
-          HOME: cacheHome ?? process.env.HOME,
+          // Fake scenario commands must not queue behind real machine-wide browser work.
+          HOME: cacheHome ?? root,
           // The repository vp wrapper sets NODE_PATH; these fake installs have their own modules.
           NODE_PATH: cacheHome ? "" : process.env.NODE_PATH,
           XDG_CACHE_HOME: cacheHome

@@ -1510,7 +1510,7 @@ export function buildGateGraph(
   return Object.freeze({ workspace, units, scenarios, related });
 }
 
-function selectScenarioFiles(
+export function selectScenarioFiles(
   graph: ReturnType<typeof buildGateGraph>,
   paths: ReadonlyArray<string>,
   existing: ReadonlyArray<string>,
